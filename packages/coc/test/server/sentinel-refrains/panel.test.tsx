@@ -12,7 +12,10 @@ const mock = vi.hoisted(() => ({
     tiers: {} as Record<string, Record<string, { model: string; reasoningEffort: string; source: 'config' | 'default' }>>,
 }));
 vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({ useContainerWidth: () => ({ width: mock.width }) }));
-vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
+vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
+    useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; },
+    useCloneBaseUrl: () => mock.route.baseUrl,
+}));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 vi.mock('../../../src/server/spa/client/react/hooks/useProviderModels', () => ({
     useProviderModels: () => ({ models: [{ id: 'test-model', enabled: true, name: 'Test model' }], loading: false, error: null, reload: vi.fn() }),
@@ -847,6 +850,33 @@ describe('Sentinel Refrains', () => {
             expect(input).toMatchObject({ provider: 'copilot', effortTier: 'high' });
             expect(input).not.toHaveProperty('model');
             expect(input).not.toHaveProperty('effort');
+        });
+        it.each([undefined, 'https://owner.test'])('opens tier settings for the owning server (%s) without saving', async baseUrl => {
+            const previousHash = window.location.hash;
+            try {
+                applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+                if (baseUrl) {
+                    mock.route = { kind: 'remote', baseUrl };
+                    mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, effortLevelsEnabled: true } });
+                }
+                view(baseUrl ? { ...owner, ownerRoutingRef: 'remote:server:ws-a' } : owner);
+                await openNew();
+                fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'codex' } });
+                fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+                fireEvent.click(screen.getByRole('button', { name: 'Configure tiers…' }));
+                const [route, query] = window.location.hash.split('?');
+                expect(route).toBe('#admin/agents');
+                const params = new URLSearchParams(query);
+                expect(params.get('section')).toBe('effort-tiers');
+                expect(params.get('provider')).toBe('codex');
+                expect(params.get('owner')).toBe(baseUrl ?? null);
+                expect(screen.getByLabelText('Name')).toHaveValue('Daily audit');
+                expect(screen.getByLabelText('Instructions')).toHaveValue('Review pending work.');
+                expect(mock.create).not.toHaveBeenCalled();
+                expect(mock.update).not.toHaveBeenCalled();
+            } finally {
+                window.location.hash = previousHash;
+            }
         });
         it('waits for owner tiers before saving', async () => {
             applyRuntimeConfigPatch({ effortLevelsEnabled: true });

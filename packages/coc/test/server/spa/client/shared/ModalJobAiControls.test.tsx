@@ -161,9 +161,11 @@ describe('ModalJobAiControls', () => {
     });
 
     it('opens configuration without changing the modal selection or preferences', async () => {
-        render(<Harness />);
-        await screen.findByTestId('job-effort-tier-selector');
+        await act(async () => { render(<Harness />); });
         const before = readResolved();
+        expect(before).toEqual({
+            provider: 'codex', effortTier: 'medium', model: 'tier-medium-model', reasoningEffort: 'high',
+        });
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
         fireEvent.click(screen.getByTestId('effort-tier-configure'));
         expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=codex');
