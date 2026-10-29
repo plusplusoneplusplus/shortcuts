@@ -62,6 +62,7 @@ export function buildSchedulePromptTask(ctx: ScheduleTaskContext): CreateTaskInp
         payload: {
             kind: 'chat',
             mode,
+            workspaceId: repoId,
             prompt: buildSchedulePrompt(repoId, schedule),
             provider: schedule.provider,
             context: {
