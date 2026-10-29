@@ -332,9 +332,30 @@ describe('UnifiedPanelTabStrip', () => {
             fireEvent.contextMenu(tabNode(file), { clientX: 20, clientY: 30 });
             expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
                 'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
-                'Copy Path', 'Copy Relative Path', 'Reveal in Explorer',
+                'Copy path', 'Copy Relative Path', 'Reveal in Explorer',
             ]);
             expect(props.onActivate).not.toHaveBeenCalled();
+        });
+
+        it('offers Markdown Copy path through the keyboard menu with file grouping', async () => {
+            const tabs = sampleTabs();
+            const note = { ...tabs[1], kind: 'note' as const, resourceId: 'auto||/owner/file.md' };
+            const props = renderStrip({
+                tabs: [tabs[0], note], activeId: tabs[0].id,
+                fileActionAvailability: () => ({ copyPath: true, copyRelativePath: false, revealInExplorer: false }),
+            });
+            const origin = tabNode(note);
+            origin.focus();
+            fireEvent.keyDown(origin, { key: 'F10', shiftKey: true });
+            const menu = screen.getByRole('menu', { name: 'Tab actions' });
+            fireEvent.keyDown(menu, { key: 'End' });
+            expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Copy path' }));
+            expect(screen.getAllByRole('separator').length).toBeGreaterThan(0);
+            fireEvent.keyDown(menu, { key: 'Enter' });
+            expect(props.onMenuAction).toHaveBeenCalledWith('copy-path', note.id);
+            expect(props.onActivate).not.toHaveBeenCalled();
+            await Promise.resolve();
+            expect(document.activeElement).toBe(origin);
         });
 
         it('offers Keep Open for a preview and dispatches it in place', () => {

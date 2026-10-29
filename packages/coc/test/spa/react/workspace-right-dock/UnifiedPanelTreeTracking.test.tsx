@@ -69,6 +69,11 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         ),
     };
 });
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
+    NoteEditor: ({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) => (
+        <textarea data-testid="mock-markdown-editor" defaultValue="Markdown source" onChange={() => onDirtyChange?.(true)} />
+    ),
+}));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: ({ workspaceId }: { workspaceId: string }) => (
         <div data-testid="mock-notes">notes:{workspaceId}</div>
@@ -96,6 +101,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
     async () => await import('../language-servers/inertTransportMock'));
 
 
+import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
@@ -254,6 +260,58 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(writeText).toHaveBeenCalledWith('/repos/local/src/app.ts');
     });
 
+    it.each([null, 'remote:server-2:ws-1'])('copies the clicked Markdown tab on owner %s without changing selection', async ownerRoutingRef => {
+        const writeText = vi.fn(async () => undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        const id = openUnifiedPanelTab(WS, {
+            kind: 'note', ownerWorkspaceId: WS, ownerRoutingRef, chatId: null,
+            resourceId: 'auto||/owner/docs/actual.md', label: 'Display title',
+        });
+        renderWithTree({ workspaceRootPath: '/unrelated/current/repo' });
+        fireEvent.change(screen.getByTestId('mock-markdown-editor'), { target: { value: 'unsaved Markdown' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
+        const clicked = screen.getAllByRole('tab').find(tab => tab.dataset.testid?.includes(id))!;
+        expect(clicked.getAttribute('aria-selected')).toBe('false');
+        fireEvent.contextMenu(clicked, { clientX: 20, clientY: 30 });
+        expect(screen.getByRole('menuitem', { name: 'Copy path' })).toBeTruthy();
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-path')); });
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('/owner/docs/actual.md');
+        expect(screen.getByText('Path copied.')).toBeTruthy();
+        expect(clicked.getAttribute('aria-selected')).toBe('false');
+        expect((screen.getByTestId('mock-markdown-editor') as HTMLTextAreaElement).value).toBe('unsaved Markdown');
+    });
+
+    it('reports clipboard rejection without a success message', async () => {
+        const writeText = vi.fn().mockRejectedValue(new Error('permission denied'));
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        openUnifiedPanelTab(WS, {
+            kind: 'note', ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: null,
+            resourceId: 'tasks|/owner/custom/tasks|plan.md', label: 'plan',
+        });
+        renderWithTree({ workspaceRootPath: '/unrelated' });
+        await runTabAction('copy-path');
+        expect(writeText).toHaveBeenCalledWith('/owner/custom/tasks/plan.md');
+        expect(screen.getByText('Failed to copy file path.')).toBeTruthy();
+        expect(screen.queryByText('Path copied.')).toBeNull();
+    });
+
+    it.each([
+        ['note', 'tasks||unknown.md', null],
+        ['note', 'auto||relative.md', 'remote:other:ws-1'],
+        ['file', 'relative.md', 'remote:other:ws-1'],
+        ['file', 'relative.md', null],
+    ] as const)('does not borrow a root for unavailable %s %s owner %s', (kind, resourceId, ownerRoutingRef) => {
+        const writeText = vi.fn();
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        openUnifiedPanelTab(WS, { kind, ownerWorkspaceId: WS, ownerRoutingRef, chatId: null, resourceId, label: 'unknown' });
+        renderWithTree({ routingRef: 'remote:panel:ws-1', workspaceRootPath: '/wrong/same-id/clone' });
+        const current = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+        fireEvent.contextMenu(current, { clientX: 20, clientY: 30 });
+        expect(screen.queryByRole('menuitem', { name: 'Copy path' })).toBeNull();
+        expect(writeText).not.toHaveBeenCalled();
+        expect(screen.getByRole('menuitem', { name: 'Close' })).toBeTruthy();
+    });
+
     it('sends an explicit reveal request each time, even for the already-tracked file', async () => {
         renderWithTree();
         await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
@@ -268,7 +326,7 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(column().getAttribute('data-reveal')).toBe('src/app.ts#2');
     });
 
-    it('omits Copy Path for a remote-clone file while preserving relative copy and reveal', async () => {
+    it('copies the remote owner path while preserving relative copy and reveal', async () => {
         const writeText = vi.fn(async () => undefined);
         const setTarget = vi.fn(() => true);
         const selectMode = vi.fn();
@@ -282,7 +340,9 @@ describe('unified panel tree tracking (AC-06)', () => {
 
         const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
         fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
-        expect(screen.queryByTestId('unified-panel-tab-menu-copy-path')).toBeNull();
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-path')); });
+        expect(writeText).toHaveBeenLastCalledWith('/remote/repo/src/app.ts');
+        fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-relative-path')); });
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 

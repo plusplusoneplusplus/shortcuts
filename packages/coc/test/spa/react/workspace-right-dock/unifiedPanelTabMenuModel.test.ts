@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../../src/server/spa/client/react/shared/file-viewer/workspacePreview';
 import { TRUSTED_PATH_PREFIX } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 import {
     EMPTY_UNIFIED_PANEL,
@@ -34,7 +35,7 @@ function tab(
 }
 
 describe('unified panel tab menu model', () => {
-    it('offers common close commands for every tab kind and local-file commands only for files', () => {
+    it('offers common close commands for every tab kind and path copy only for file-backed tabs', () => {
         const kinds: UnifiedPanelTab['kind'][] = ['terminal', 'notes', 'note', 'file', 'canvas', 'diff', 'external'];
         for (const kind of kinds) {
             const current = tab(kind, kind);
@@ -46,7 +47,7 @@ describe('unified panel tab menu model', () => {
             expect(actions.slice(0, 5)).toEqual([
                 'close', 'close-others', 'close-right', 'close-saved', 'close-all',
             ]);
-            expect(actions.includes('copy-path')).toBe(kind === 'file');
+            expect(actions.includes('copy-path')).toBe(kind === 'file' || kind === 'note');
             expect(actions).not.toContain('split-right');
             expect(actions).not.toContain('pin');
         }
@@ -65,7 +66,7 @@ describe('unified panel tab menu model', () => {
         }
     });
 
-    it('omits Copy Path when the file does not resolve to the local filesystem', () => {
+    it('offers Copy path for a remote file using its owner root', () => {
         const remote = tab('file', 'src/remote.ts', { ownerRoutingRef: 'remote:server-b:ws-1' });
         const actions = unifiedPanelTabMenuItems(
             remote,
@@ -74,7 +75,7 @@ describe('unified panel tab menu model', () => {
             unifiedPanelFileActionAvailability(remote, '/remote/repo'),
         ).map(item => item.action);
 
-        expect(actions).not.toContain('copy-path');
+        expect(actions).toContain('copy-path');
         expect(actions).toContain('copy-relative-path');
     });
 
@@ -163,12 +164,43 @@ describe('unified panel tab menu model', () => {
         expect(unifiedPanelAbsoluteFilePath(trusted, undefined)).toBe('/home/user/.config/file.json');
         expect(unifiedPanelRelativeFilePath(trusted)).toBeNull();
         const remote = { ...file, ownerRoutingRef: 'remote:server-b:ws-1' };
-        expect(unifiedPanelAbsoluteFilePath(remote, '/remote/repo')).toBeNull();
-        expect(unifiedPanelFileActionAvailability(remote, '/remote/repo').copyPath).toBe(false);
+        expect(unifiedPanelAbsoluteFilePath(remote, '/remote/repo')).toBe('/remote/repo/src/a.ts');
+        expect(unifiedPanelFileActionAvailability(remote, '/remote/repo').copyPath).toBe(true);
         expect(unifiedPanelFileActionAvailability(file, undefined)).toEqual({
             copyPath: false,
             copyRelativePath: true,
             revealInExplorer: true,
         });
+    });
+
+    it.each([
+        ['auto||/remote/docs/actual.md', undefined, '/remote/docs/actual.md'],
+        ['tasks|/remote/custom/tasks|plan.md', '/wrong/repo', '/remote/custom/tasks/plan.md'],
+        ['tasks||plan.md', '/wrong/repo', null],
+        ['auto||docs/plan.md', '/owner/repo', '/owner/repo/docs/plan.md'],
+        ['auto||docs/plan.md', undefined, null],
+        ['auto||https://host/plan.md', '/owner/repo', null],
+        ['invalid', '/owner/repo', null],
+        ['auto||C:\\docs\\actual.md', undefined, 'C:\\docs\\actual.md'],
+        ['tasks|\\\\host\\share\\tasks|plan.md', undefined, '\\\\host\\share\\tasks\\plan.md'],
+    ])('resolves a Markdown tab from its saved resource %s', (resourceId, root, expected) => {
+        const note = tab('note', resourceId, { label: 'unrelated title', ownerRoutingRef: 'remote:other:ws-1' });
+        expect(unifiedPanelAbsoluteFilePath(note, root)).toBe(expected);
+        const items = unifiedPanelTabMenuItems(note, [note], new Set(), unifiedPanelFileActionAvailability(note, root));
+        expect(items.some(item => item.action === 'copy-path')).toBe(expected !== null);
+        expect(items.some(item => item.action === 'copy-relative-path')).toBe(false);
+    });
+
+    it('uses exact preview paths and rejects missing paths and non-file content', () => {
+        const preview = tab('file', WORKSPACE_PREVIEW_PREFIX + '/remote/actual.md', { ownerRoutingRef: 'remote:b:ws-1' });
+        expect(unifiedPanelAbsoluteFilePath(preview, '/wrong')).toBe('/remote/actual.md');
+        for (const resource of ['', TRUSTED_PATH_PREFIX, WORKSPACE_PREVIEW_PREFIX, TRUSTED_PATH_PREFIX + 'relative.md']) {
+            expect(unifiedPanelAbsoluteFilePath(tab('file', resource), '/repo')).toBeNull();
+        }
+        for (const kind of ['paste', 'browser', 'canvas', 'external', 'notes'] as const) {
+            expect(unifiedPanelAbsoluteFilePath(tab(kind, '/looks/like/a/path.md'), '/repo')).toBeNull();
+        }
+        expect(unifiedPanelAbsoluteFilePath(tab('file', 'a.md'), 'relative/root')).toBeNull();
+        expect(unifiedPanelAbsoluteFilePath(tab('file', 'a.md'), '/')).toBe('/a.md');
     });
 });

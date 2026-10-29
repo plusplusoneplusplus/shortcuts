@@ -199,6 +199,7 @@ import {
     hasWorkspaceRouteForBaseUrl,
 } from '../../../repos/cloneRegistry';
 import { routingRefForPanelOwner } from './unifiedPanelOwnerRouting';
+import { ToastContainer, useToast } from '../../../ui/Toast';
 import { copyToClipboard } from '../../../utils/format';
 import {
     unifiedPanelAbsoluteFilePath,
@@ -256,6 +257,7 @@ export function UnifiedRightPanel({
     repoGroup,
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
+    const { toasts, addToast, removeToast } = useToast();
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
@@ -405,11 +407,13 @@ export function UnifiedRightPanel({
     );
     const rootPathForTab = useCallback(
         (tab: (typeof tabs)[number]) => (
-            tab.ownerWorkspaceId === workspaceId
-                ? workspaceRootPath
-                : targetOptions.find(option => option.workspaceId === tab.ownerWorkspaceId)?.rootPath
+            (tab.ownerRoutingRef ?? null) !== (routingRefForPanelOwner(routingRef, tab.ownerWorkspaceId) ?? null)
+                ? undefined
+                : tab.ownerWorkspaceId === workspaceId
+                    ? workspaceRootPath
+                    : targetOptions.find(option => option.workspaceId === tab.ownerWorkspaceId)?.rootPath
         ),
-        [targetOptions, workspaceId, workspaceRootPath],
+        [routingRef, targetOptions, workspaceId, workspaceRootPath],
     );
     const definitionPreviewOwners = useMemo(() => (
         repoGroup
@@ -1123,14 +1127,21 @@ export function UnifiedRightPanel({
             requestBulkClose(unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds));
             return;
         }
+        if (action === 'copy-path') {
+            const path = unifiedPanelAbsoluteFilePath(tab, rootPathForTab(tab));
+            if (!path) {
+                addToast('File path is unavailable.', 'error');
+                return;
+            }
+            void copyToClipboard(path).then(
+                () => addToast('Path copied.', 'success'),
+                () => addToast('Failed to copy file path.', 'error'),
+            );
+            return;
+        }
         if (tab.kind !== 'file') return;
         if (action === 'open-to-side') {
             openToSide(tabId);
-            return;
-        }
-        if (action === 'copy-path') {
-            const path = unifiedPanelAbsoluteFilePath(tab, rootPathForTab(tab));
-            if (path) void copyToClipboard(path).catch(err => console.error('Failed to copy file path:', err));
             return;
         }
         if (action === 'copy-relative-path') {
@@ -1149,7 +1160,7 @@ export function UnifiedRightPanel({
                 nonce: (prev?.nonce ?? 0) + 1,
             }));
         }
-    }, [dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
+    }, [addToast, dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // Reusing the preview slot destroys the outgoing buffer, so it goes through
     // the same unsaved-edits guard a close does. Cancel or a failed save leaves
@@ -2544,6 +2555,8 @@ export function UnifiedRightPanel({
                     onClose={() => setExactOpenVisible(false)}
                     onFileSelect={handlePanelFileSelect}
                 />
+
+                <ToastContainer toasts={toasts} removeToast={removeToast} />
 
                 <ExplorerCloseTabsDialog
                     open={pendingDirty !== null}
