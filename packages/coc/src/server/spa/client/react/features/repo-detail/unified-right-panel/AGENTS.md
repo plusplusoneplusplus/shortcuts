@@ -963,7 +963,10 @@ Attach button are copy-drag sources for their owning Sentinel composer. Grips al
 attach on click or keyboard activation; the overflow menu retains Attach. Cards use
 `select-text` with text outside draggable ancestors. Title pointer clicks after a
 card text selection leave details closed; keyboard activation opens details.
-Menu interactions stay isolated from row selection and dragging. Payloads contain
+Row right-click, ContextMenu and Shift+F10 share the overflow actions through
+`ChatHeaderOverflowMenu.contextTargetRef`. Selected text, editors and links keep
+native menus. Escape/Tab restores the originating row or control; menu interactions
+stay isolated from row selection and dragging. Payloads contain
 the stable item reference and owner, not notes or job data; attaching never writes
 the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference).

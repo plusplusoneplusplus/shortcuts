@@ -14,7 +14,7 @@
  * restores the previous view when it closes.
  */
 
-import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import type {
     CocClient,
     SentinelTodoCategory,
@@ -1289,9 +1289,10 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }: {
+function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, contextTargetRef }: {
     owner: SentinelTodoOwner; item: SentinelTodoItem; onAttach?: () => void; disabled: boolean; onAction: (action: TodoMenuAction) => void;
     categories?: readonly SentinelTodoCategory[];
+    contextTargetRef?: RefObject<HTMLElement | null>;
 }) {
     const currentCategory = item.categoryId && categories?.some(category => category.id === item.categoryId) ? item.categoryId : null;
     const root = useRef<HTMLDivElement>(null);
@@ -1311,7 +1312,7 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }:
             }
         }}
         onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
-        <ChatHeaderOverflowMenu ariaLabel="To-do actions" wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[
+        <ChatHeaderOverflowMenu contextTargetRef={contextTargetRef} ariaLabel="To-do actions" wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[
             ...(!item.archived ? [
                 ...SENTINEL_TODO_STATUSES.map(status => ({
                     key: `status-${status}`, label: SENTINEL_TODO_STATUS_LABELS[status], group: 'status', groupLabel: 'Status',
@@ -1381,7 +1382,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categor
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
         data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</span> : null;
-    return <li ref={card} data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
+    return <li ref={card} tabIndex={-1} data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
         className={cn('relative select-text rounded border pl-1', selected
             ? 'border-[#0078d4]/50 bg-[#0078d4]/10 dark:border-[#3794ff]/50'
             : 'border-[#e0e0e0] dark:border-[#3c3c3c]')}>
@@ -1428,7 +1429,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categor
                 title="Drag to a category to move; use the actions menu from the keyboard" data-testid={`sentinel-todo-move-grip-${item.id}`}
                 className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] active:cursor-grabbing dark:hover:bg-white/[0.04]">⠿</span>}
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction}
-                categories={categories} />
+                categories={categories} contextTargetRef={card} />
         </div>
         {excerpt && search && <p className={cn('m-0 min-w-0 break-words px-1.5 pb-1 text-[11px] [overflow-wrap:anywhere]', MUTED)}
             data-testid={`sentinel-todo-search-excerpt-${item.id}`}>

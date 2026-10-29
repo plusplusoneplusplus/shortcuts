@@ -283,8 +283,11 @@ resets when switching to a draft key with no saved attachments. Follow-up compos
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
 `AttachedContextPreviews`; their Attach action uses `activeChatAttach` without
-new-chat seed fallback. `sentinelTodoContext.ts` binds each pointer to the parent
-workspace, Sentinel process and concrete server route. Both the ledger and context
+new-chat seed fallback. Row context gestures and the overflow trigger share
+`ChatHeaderOverflowMenu` actions, preserving native selected-text, editor and link
+menus and restoring the originating focus on keyboard dismissal.
+`sentinelTodoContext.ts` binds each pointer to the parent workspace, Sentinel
+process and concrete server route. Both the ledger and context
 attachment flags gate the surface. Remote reads require concrete clone identity;
 unresolved owners never fall through locally.
 

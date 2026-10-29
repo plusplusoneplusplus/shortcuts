@@ -954,6 +954,62 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('opens the same row actions by right-click and keyboard without selecting or mutating the item', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const select = within(row).getByRole('button', { pressed: false });
+        const trigger = within(row).getByRole('button', { name: 'More actions' });
+        fireEvent.click(trigger);
+        const labels = screen.getAllByRole('menuitemradio').map(el => el.textContent);
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(fireEvent.contextMenu(row, { clientX: 180, clientY: 120 })).toBe(false);
+        expect(screen.getAllByRole('menuitemradio').map(el => el.textContent)).toEqual(labels);
+        expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(row);
+        for (const gesture of [{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }]) {
+            select.focus();
+            expect(fireEvent.keyDown(select, gesture)).toBe(false);
+            expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+            fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+            expect(document.activeElement).toBe(select);
+            expect(select.getAttribute('aria-pressed')).toBe('false');
+        }
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('preserves native row menus for selected text, links and editors', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const title = within(row).getByText('Fix login');
+        const selection = document.getSelection()!;
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        selection.addRange(range);
+        try {
+            expect(fireEvent.contextMenu(title)).toBe(true);
+            expect(fireEvent.keyDown(title, { key: 'ContextMenu' })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+        } finally {
+            selection.removeAllRanges();
+        }
+        for (const tag of ['a', 'input', 'textarea', 'select', 'div']) {
+            const native = document.createElement(tag);
+            if (tag === 'div') native.setAttribute('contenteditable', 'true');
+            row.appendChild(native);
+            expect(fireEvent.contextMenu(native)).toBe(true);
+            expect(fireEvent.keyDown(native, { key: 'F10', shiftKey: true })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+            native.remove();
+        }
+        expect(fireEvent.keyDown(row, { key: 'F10' })).toBe(true);
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
     it.each(['normal', 'manual'] as const)('isolates the %s card menu and supports keyboard dismissal and attachment', async type => {
         const user = userEvent.setup();
         applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
