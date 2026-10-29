@@ -7,7 +7,7 @@ import {
     createSentinelTodoTracking,
 } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { buildSentinelTodosAddon, SENTINEL_TODO_LEDGER_GUIDANCE } from '../../../src/server/executors/prompt-builder';
-import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import { buildChatModeDirective, SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
@@ -505,10 +505,9 @@ describe('buildSentinelTodosAddon', () => {
     });
 
     it('uses the approved compact closure rule across assembled mode, ledger, result and review-only guidance', () => {
-        const approved = "Mark Done only when the user's overall goal is fully resolved—not when a child job or intermediate phase finishes. " +
-            'Investigation results, commits and PRs alone do not mean resolution. ' +
-            'If uncertain, keep the To-do open and ask the user before closing.';
-        expect(SENTINEL_COMPLETION_GUIDANCE).toBe(approved);
+        const approved = 'Track the issue, not the investigation. When findings are ready, return it to To do: Investigation ready; awaiting decision. ' +
+            "Save findings and next steps; don't implement without approval. Use Done only for resolved issues, explicit closure, or research-only requests. Preserve Deferred.";
+        expect(SENTINEL_COMPLETION_GUIDANCE).toContain(approved);
         const service = { list: vi.fn(), create: vi.fn(), update: vi.fn() } as any;
         const addon = buildSentinelTodosAddon({ service, owner });
         const reviewAddon = buildSentinelTodosAddon({ service, owner, reviewOnly: true });
@@ -520,9 +519,30 @@ describe('buildSentinelTodosAddon', () => {
             expect(guidance!.split(approved)).toHaveLength(2);
         }
         for (const guidance of [addon.suffix, addon.tools[0].description, SENTINEL_JOB_REVIEW_INSTRUCTIONS]) {
-            expect(guidance).toContain("An investigation-only overall request may finish when its findings fully resolve the user's goal.");
+            expect(guidance).toContain(SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE);
             expect(guidance).toMatch(/[Ss]uccessful intermediate phases are neither `done` nor failures/);
             expect(guidance).toContain('honor manual user verdicts and latest instructions');
+        }
+    });
+
+    it.each([
+        ['reported issue, including investigate or Ask-mode analysis', 'Investigating a reported issue is not a research-only overall request just because the user says investigate or asks for Ask-mode analysis.'],
+        ['findings awaiting a decision', 'use `todo` with reason "Investigation ready; awaiting decision", not `needs_attention`'],
+        ['continuing authorized work', 'preserve `in_progress` if already-authorized work continues'],
+        ['genuine research-only completion', 'A genuine research-only overall request may finish when its findings satisfy its completion condition'],
+        ['explicit closure and issue resolution', 'explicit closure requires a user decision, and resolution requires evidence'],
+        ['Deferred and no implied implementation authority', "Save findings and next steps; don't implement without approval. Use Done only for resolved issues, explicit closure, or research-only requests. Preserve Deferred."],
+        ['actual failures and blockers', 'Failed, cancelled, blocked, or incomplete final work still needs `needs_attention` with a reason'],
+    ])('shares the policy for %s across prompt consumers', (_scenario, instruction) => {
+        const service = { list: vi.fn(), create: vi.fn(), update: vi.fn() } as any;
+        const { tool } = createSentinelTodosTool({ service, owner });
+        const reviewAddon = buildSentinelTodosAddon({ service, owner, reviewOnly: true });
+        for (const guidance of [
+            buildChatModeDirective({ mode: 'sentinel' }), SENTINEL_TODO_LEDGER_GUIDANCE,
+            SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description, reviewAddon.suffix, reviewAddon.tools[0].description,
+        ]) {
+            expect(guidance).toContain(SENTINEL_COMPLETION_GUIDANCE);
+            expect(guidance).toContain(instruction);
         }
     });
 

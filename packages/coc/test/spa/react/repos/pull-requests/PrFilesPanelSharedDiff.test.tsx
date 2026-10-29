@@ -456,6 +456,26 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
 
 describe('PR shared navigator regressions', () => {
     const nav = () => screen.getByRole('complementary', { name: 'Changed files' });
+    it.each([
+        ['ArrowDown', 'one.ts', 'two.ts'],
+        ['End', 'one.ts', 'two.ts'],
+        ['ArrowUp', 'two.ts', 'one.ts'],
+        ['Home', 'two.ts', 'one.ts'],
+    ])('keeps the drawer open and the selected row focused after %s', (key, from, to) => {
+        render(<PrFilesPanel files={parsedFiles} workspaceId="ws-1" diffSource={makeSource()} />);
+        const trigger = screen.getByRole('button', { name: 'Files · 2' });
+        fireEvent.click(trigger);
+        const start = nav().querySelector<HTMLButtonElement>(`[data-file-path="${from}"]`)!;
+        start.focus();
+        fireEvent.keyDown(start, { key });
+        expect(lastPanelProps.filePath).toBe(to);
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        const selected = nav().querySelector<HTMLButtonElement>(`[data-file-path="${to}"]`)!;
+        expect(selected).toHaveFocus();
+        fireEvent.click(selected);
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        expect(trigger).toHaveFocus();
+    });
     it.each(['gh_org_repo', 'ado_org_project_repo'])('preserves %s source capabilities, rename metadata and filtered navigation', origin => {
         const files = [
             { path: 'src/new.ts', oldPath: 'old/name.ts', status: 'renamed', additions: 1, deletions: 2 },

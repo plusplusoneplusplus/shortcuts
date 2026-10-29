@@ -53,12 +53,15 @@ export function getSentinelTodoContextClient(owner: SentinelTodoOwner): CocClien
 export async function resolveSentinelTodoContext(
     source: SentinelTodoContextDragPayload,
     owner: SentinelTodoOwner,
+    signal?: AbortSignal,
 ): Promise<SentinelTodoItem> {
+    signal?.throwIfAborted();
     const error = sentinelTodoContextScopeError(source, owner);
     if (error) throw new Error(error);
     const route = resolveCloneRoute(owner.ownerRoutingRef);
     const client = getSentinelTodoContextClient(owner);
-    const ledger = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { itemId: source.todoItemId });
+    const ledger = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { itemId: source.todoItemId, ...(signal ? { signal } : {}) });
+    signal?.throwIfAborted();
     const currentRoute = resolveCloneRoute(owner.ownerRoutingRef);
     if (currentRoute.kind !== route.kind
         || (route.kind === 'remote' && currentRoute.kind === 'remote' && route.baseUrl !== currentRoute.baseUrl)) {

@@ -67,6 +67,7 @@ function serializeHistoryQuery(query?: WorkspaceHistoryQuery): CocRequestOptions
   return {
     limit: query.limit,
     offset: query.offset,
+    unseen: query.unseen,
   };
 }
 

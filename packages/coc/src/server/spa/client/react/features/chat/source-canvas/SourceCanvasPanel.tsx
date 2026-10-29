@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { Spinner } from '../../../ui/Spinner';
+import { MarkdownFileLinkScope } from '../../../shared/file-path/MarkdownFileLinkScope';
 import { SourceCanvasBody } from './SourceCanvasBody';
 import { SourceCanvasTreeBody } from './SourceCanvasTreeBody';
 import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
@@ -448,6 +449,8 @@ export function SourceCanvasPanel({
         <div
             className="flex flex-col h-full min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e]"
             data-testid="source-canvas-panel"
+            data-ws-id={wsId ?? fileRef.wsId}
+            data-source-file={content?.resolvedPath || fileRef.fullPath}
         >
             <div className="px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-center justify-between gap-2">
                 <div className="min-w-0 flex items-center gap-1.5">
@@ -593,15 +596,18 @@ export function SourceCanvasPanel({
                         </div>
                     )}
                     {content && content.status === 'success' && (
-                        <SourceCanvasBody
-                            fileName={fileName}
-                            content={content.content}
-                            encoding={content.encoding}
-                            mimeType={content.mimeType}
-                            language={content.language}
-                            line={fileRef.line}
-                            endLine={fileRef.endLine}
-                        />
+                        <MarkdownFileLinkScope workspaceId={wsId ?? fileRef.wsId ?? ''}
+                            sourceFilePath={content.resolvedPath || fileRef.fullPath} onNavigate={onNavigate}>
+                            <SourceCanvasBody
+                                fileName={fileName}
+                                content={content.content}
+                                encoding={content.encoding}
+                                mimeType={content.mimeType}
+                                language={content.language}
+                                line={fileRef.line}
+                                endLine={fileRef.endLine}
+                            />
+                        </MarkdownFileLinkScope>
                     )}
                 </div>
             )}

@@ -2,7 +2,7 @@
  * Seen State API — typed client helpers for read/unread tracking.
  */
 
-import type { SeenStateEntry, SeenStateMap } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, SeenStateEntry, SeenStateMap } from '@plusplusoneplusplus/coc-client';
 import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { getCocClientFor } from '../../api/cocClient';
 
@@ -30,15 +30,19 @@ export async function fetchSeenMap(workspaceId: string, route?: SeenStateRoute):
 
 /**
  * Batch-update seen entries. Returns the updated full map.
+ * `options.client` writes through the caller's exact owner client (the one that
+ * read the rows) instead of re-resolving one; `route.baseUrl` stays the
+ * reconciliation key published to mounted readers.
  */
 export async function patchSeenState(
     workspaceId: string,
     entries: SeenStateEntry[],
     route?: SeenStateRoute,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; client?: CocClient },
 ): Promise<SeenStateMap> {
     const { baseUrl } = resolveRoute(workspaceId, route);
-    const map = await getCocClientFor(baseUrl).seenState.updateMany(workspaceId, entries, { signal: options?.signal });
+    const client = options?.client ?? getCocClientFor(baseUrl);
+    const map = await client.seenState.updateMany(workspaceId, entries, { signal: options?.signal });
     window.dispatchEvent(new CustomEvent<SeenStateChange>(SEEN_STATE_CHANGED_EVENT, {
         detail: { workspaceId, baseUrl, entries },
     }));

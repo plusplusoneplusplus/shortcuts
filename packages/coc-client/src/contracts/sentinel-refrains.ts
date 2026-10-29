@@ -62,6 +62,10 @@ export interface SentinelRefrain extends Omit<SentinelRefrainInput, 'mode' | 'en
   processId?: string;
   nextRunAt?: string;
   activeRun?: SentinelRefrainRun;
+  /** Latest non-skipped run, including active runs, independent of the history window. */
+  latestRun?: SentinelRefrainRun;
+  /** Older records have expired from retained history. */
+  runHistoryTruncated?: boolean;
   runs: SentinelRefrainRun[];
 }
 

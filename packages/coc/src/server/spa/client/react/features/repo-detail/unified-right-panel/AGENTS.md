@@ -963,10 +963,24 @@ Attach button are copy-drag sources for their owning Sentinel composer. Grips al
 attach on click or keyboard activation; the overflow menu retains Attach. Cards use
 `select-text` with text outside draggable ancestors. Title pointer clicks after a
 card text selection leave details closed; keyboard activation opens details.
-Menu interactions stay isolated from row selection and dragging. Payloads contain
+Row right-click, ContextMenu and Shift+F10 share the overflow actions through
+`ChatHeaderOverflowMenu.contextTargetRef`. Selected text, editors and links keep
+native menus. Escape/Tab restores the originating row or control; menu interactions
+stay isolated from row selection and dragging. Payloads contain
 the stable item reference and owner, not notes or job data; attaching never writes
 the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
+on drop and send (see the composer knowledge reference).
+`SentinelTodoMessageDialog` provides a controlled message surface for a fixed item
+and owner; the caller supplies draft, context readiness, destination labels and
+admission state. It traps/restores focus and retains text through inline failures.
+The component performs no navigation or I/O and has no list-menu wiring.
+`sentinelTodoMessageContext.ts` captures its concrete ledger route and durable
+server identity from dashboard topology. Its read-only preparation brackets exact
+Sentinel process/item reads with health verification, rejects stale routes and
+owners, and returns the shared escaped context block. Both existing feature gates
+are required; reads have a ten-second deadline and accept caller cancellation.
+Callers abort on draft changes and revalidate before admission.
+Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
@@ -1062,10 +1076,16 @@ retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
-Refrain history carries run timing
-and a clone-qualified job-turn link; run results stay in the job chat. Model catalogs and effort tiers use
-the same owner client. When the owning server's `effortLevelsEnabled` is on and the
-provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
+
+Hosted Refrain history shares To-do's detail column through `RefrainHistoryHostContext`;
+standalone history measures its own list/detail split with `useContainerWidth`.
+Selection binds a run ID across refreshes and resizing and resets per owner mount.
+Details read the current retained record; pruning reports its absence without
+selecting another run. Exact timing, full errors and clone-qualified job-turn
+links stay read-only; run results stay in the job chat.
+
+Model catalogs and effort tiers use the same owner client. When the owning
+server's `effortLevelsEnabled` is on and the provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
 Autopilot displays a permission warning. The optional Gate script field needs a
 cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged

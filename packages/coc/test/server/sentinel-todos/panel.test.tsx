@@ -8,6 +8,7 @@
  * @vitest-environment jsdom
  */
 import userEvent from '@testing-library/user-event';
+import { useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
@@ -60,6 +61,7 @@ const fakeClient = {
 };
 
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
+import { SentinelTodoMessageDialog, type SentinelTodoMessageDialogProps } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoMessageDialog';
 import { CodaFindingsContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -78,6 +80,115 @@ import { resetActiveChatAttach, subscribeActiveChatAttach } from '../../../src/s
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
+
+function MessageDialogHarness(props: Partial<SentinelTodoMessageDialogProps>) {
+    const origin = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
+    const [text, setText] = useState('');
+    return <>
+        <button ref={origin} onClick={() => setOpen(true)}>Message Sentinel…</button>
+        {open && <SentinelTodoMessageDialog owner={OWNER} item={item()} sentinelName="Login Sentinel"
+            workspaceLabel="Owning workspace" serverLabel="Owning server" ready text={text} onTextChange={setText}
+            onQueue={() => {}} returnFocusRef={origin} {...props} onClose={() => { props.onClose?.(); setOpen(false); }} />}
+    </>;
+}
+
+describe('Sentinel To-do message dialog surface', () => {
+    it('shows the fixed item and destination, focuses the blank message and restores the opener', async () => {
+        const user = userEvent.setup();
+        render(<MessageDialogHarness />);
+        const opener = screen.getByRole('button', { name: 'Message Sentinel…' });
+        await user.click(opener);
+        const dialog = screen.getByRole('dialog', { name: 'Message Sentinel' });
+        const message = within(dialog).getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+        expect(document.activeElement).toBe(message);
+        expect(message.value).toBe('');
+        expect(dialog.textContent).toContain('i1 · Fix login');
+        expect(dialog.textContent).toContain('Login Sentinel');
+        expect(dialog.textContent).toContain('(queue_sentinel)');
+        expect(dialog.textContent).toContain('Owning workspace');
+        expect(dialog.textContent).toContain('(ws-1)');
+        expect(dialog.textContent).toContain('Owning server');
+        expect(within(dialog).queryByRole('combobox')).toBeNull();
+        expect((within(dialog).getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.activeElement).toBe(opener);
+    });
+
+    it('traps focus, leaves Enter as a newline, ignores the backdrop and submits only nonblank text by button', async () => {
+        const user = userEvent.setup();
+        const onQueue = vi.fn();
+        render(<MessageDialogHarness onQueue={onQueue} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        const message = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+        const queue = screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement;
+        await user.type(message, '  {Enter}  ');
+        expect(queue.disabled).toBe(true);
+        await user.clear(message);
+        await user.type(message, 'Please check{Enter}the login test');
+        expect(message.value).toBe('Please check\nthe login test');
+        expect(onQueue).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(message);
+        await user.tab({ shift: true });
+        expect(document.activeElement).toBe(queue);
+        await user.tab();
+        expect(document.activeElement).toBe(message);
+        for (const shift of [false, true]) {
+            for (let index = 0; index < 4; index++) {
+                await user.tab({ shift });
+                expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+            }
+        }
+        fireEvent.click(screen.getByTestId('dialog-overlay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await user.click(queue);
+        expect(onQueue).toHaveBeenCalledOnce();
+        // The controller alone closes after confirmed admission.
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('blocks queueing while context loads and preserves text with a focused inline failure', async () => {
+        const user = userEvent.setup();
+        const view = render(<MessageDialogHarness loading ready={false} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Keep this draft');
+        expect(screen.getByRole('status').textContent).toBe('Loading attached To-do…');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+        view.rerender(<MessageDialogHarness ready={false} error="Reconnect the owning server and try again." />);
+        const error = screen.getByRole('alert');
+        expect(document.activeElement).toBe(error);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Keep this draft');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('locks editing, repeated submission and dismissal while admission is pending', async () => {
+        const user = userEvent.setup();
+        const onQueue = vi.fn();
+        const onClose = vi.fn();
+        const view = render(<MessageDialogHarness onQueue={onQueue} onClose={onClose} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Check login');
+        view.rerender(<MessageDialogHarness onQueue={onQueue} onClose={onClose} pending />);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled).toBe(true);
+        expect(screen.getByRole('status').textContent).toBe('Queueing message…');
+        expect(document.activeElement).toBe(screen.getByRole('status'));
+        await user.tab();
+        expect(document.activeElement).toBe(screen.getByRole('status'));
+        await user.click(screen.getByRole('button', { name: 'Queue message' }));
+        await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        await user.keyboard('{Escape}');
+        fireEvent.click(screen.getByTestId('dialog-overlay'));
+        expect(onQueue).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        view.rerender(<MessageDialogHarness onQueue={onQueue} onClose={onClose} error="Queue rejected. Try again." />);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Check login');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+});
 
 function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
@@ -841,6 +952,62 @@ describe('UnifiedTodoTab', () => {
         expect(receive).toHaveBeenCalledWith(payload);
         expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
+    });
+
+    it('opens the same row actions by right-click and keyboard without selecting or mutating the item', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const select = within(row).getByRole('button', { pressed: false });
+        const trigger = within(row).getByRole('button', { name: 'More actions' });
+        fireEvent.click(trigger);
+        const labels = screen.getAllByRole('menuitemradio').map(el => el.textContent);
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(fireEvent.contextMenu(row, { clientX: 180, clientY: 120 })).toBe(false);
+        expect(screen.getAllByRole('menuitemradio').map(el => el.textContent)).toEqual(labels);
+        expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(row);
+        for (const gesture of [{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }]) {
+            select.focus();
+            expect(fireEvent.keyDown(select, gesture)).toBe(false);
+            expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+            fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+            expect(document.activeElement).toBe(select);
+            expect(select.getAttribute('aria-pressed')).toBe('false');
+        }
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('preserves native row menus for selected text, links and editors', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const title = within(row).getByText('Fix login');
+        const selection = document.getSelection()!;
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        selection.addRange(range);
+        try {
+            expect(fireEvent.contextMenu(title)).toBe(true);
+            expect(fireEvent.keyDown(title, { key: 'ContextMenu' })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+        } finally {
+            selection.removeAllRanges();
+        }
+        for (const tag of ['a', 'input', 'textarea', 'select', 'div']) {
+            const native = document.createElement(tag);
+            if (tag === 'div') native.setAttribute('contenteditable', 'true');
+            row.appendChild(native);
+            expect(fireEvent.contextMenu(native)).toBe(true);
+            expect(fireEvent.keyDown(native, { key: 'F10', shiftKey: true })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+            native.remove();
+        }
+        expect(fireEvent.keyDown(row, { key: 'F10' })).toBe(true);
+        expect(screen.queryByRole('menu')).toBeNull();
     });
 
     it.each(['normal', 'manual'] as const)('isolates the %s card menu and supports keyboard dismissal and attachment', async type => {

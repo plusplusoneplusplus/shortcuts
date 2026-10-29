@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { formatDuration } from '../../../utils/format';
+import { copyToClipboard, formatDuration } from '../../../utils/format';
 import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
@@ -13,6 +13,7 @@ import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusone
 import type { ClientTokenUsage } from '../../../types/dashboard';
 import { botControlSourceLabel, readBotControl } from '../../../utils/botControl';
 import { resolveActiveChatProvider } from '../../../utils/providerSelection';
+import { CopyIcon } from '../icons/ChatMenuIcons';
 
 const RALPH_FIELD_TRUNCATE = 200;
 
@@ -581,6 +582,11 @@ export function buildCompactRows(rows: MetaRow[]): MetaRow[] {
     return compactRows;
 }
 
+/** Shared with the chat list context menu; copy only the standard metadata rows. */
+export function formatMetadataText(process: any): string {
+    return buildRows(process).map(row => `${row.label}: ${row.value}`).join('\n');
+}
+
 export type ConversationToolInventoryTarget = Pick<ConversationToolsDialogProps, 'client' | 'workspaceId' | 'processId' | 'refreshKey'>;
 
 export interface ConversationMetadataPopoverProps {
@@ -624,6 +630,17 @@ const DEFAULT_TRIGGER_CLASS = 'inline-flex items-center justify-center w-[26px] 
 
 export function ConversationMetadataPopover({ process, toolInventoryTarget, additionalInstructionsTarget, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows, triggerClassName }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
+    const [copyState, setCopyState] = useState<{ process: any; status: 'copying' | 'copied' | 'failed' }>();
+    const copyStatus = copyState?.process === process ? copyState.status : undefined;
+    const handleCopyMetadata = async () => {
+        setCopyState({ process, status: 'copying' });
+        try {
+            await copyToClipboard(formatMetadataText(process));
+            setCopyState({ process, status: 'copied' });
+        } catch {
+            setCopyState({ process, status: 'failed' });
+        }
+    };
     const [toolsOpen, setToolsOpen] = useState(false);
     const [instructionsOpen, setInstructionsOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
@@ -706,9 +723,24 @@ export function ConversationMetadataPopover({ process, toolInventoryTarget, addi
 
     const popoverContent = (
         <>
-            <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
-                Conversation metadata
+            <div className="flex min-w-0 items-center gap-1 mb-2 text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                <span className="min-w-0 truncate">Conversation metadata</span>
+                <button
+                    type="button"
+                    aria-label="Copy metadata"
+                    title="Copy metadata"
+                    disabled={!process || copyStatus === 'copying'}
+                    onClick={() => { void handleCopyMetadata(); }}
+                    className="inline-flex shrink-0 items-center justify-center w-6 h-6 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 transition-colors"
+                >
+                    <CopyIcon />
+                </button>
             </div>
+            {copyStatus && (
+                <div role={copyStatus === 'failed' ? 'alert' : 'status'} className="mb-2 text-xs text-[#848484]">
+                    {copyStatus === 'copying' ? 'Copying metadata…' : copyStatus === 'copied' ? 'Metadata copied' : 'Could not copy metadata. Try again.'}
+                </div>
+            )}
             {summaryItems.length > 0 && (
                 <div
                     className="mb-2 flex flex-wrap gap-1.5 text-[11px] leading-4"

@@ -54,7 +54,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         if (!panel) return;
         const previous = returnFocusRef?.current ?? document.activeElement;
         const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]',
+            ':is(button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"])',
         )).filter(element => !element.closest('[hidden], [inert], details:not([open]) > :not(summary)'));
         (panel.querySelector<HTMLElement>('[data-dialog-initial-focus]') ?? focusable()[0] ?? panel).focus();
         const contain = (event: FocusEvent) => {

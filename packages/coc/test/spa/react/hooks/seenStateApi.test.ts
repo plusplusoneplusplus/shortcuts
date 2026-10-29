@@ -79,6 +79,26 @@ describe('seenStateApi', () => {
         }
     });
 
+    it('writes through an exact owner client and publishes its reconciliation key, without a fallback on failure', async () => {
+        const listener = vi.fn();
+        window.addEventListener(SEEN_STATE_CHANGED_EVENT, listener);
+        try {
+            const owner = { seenState: { updateMany: vi.fn().mockResolvedValue({}) } } as any;
+            const signal = new AbortController().signal;
+            const entries = [{ processId: 'proc', seenAt: '2026-05-02T00:00:00.000Z' }];
+            await patchSeenState('ws', entries, { baseUrl: 'https://owner.test' }, { signal, client: owner });
+            expect(owner.seenState.updateMany).toHaveBeenCalledWith('ws', entries, { signal });
+            expect(mocks.seenState.updateMany).not.toHaveBeenCalled();
+            expect(listener.mock.calls[0][0].detail).toEqual({ workspaceId: 'ws', baseUrl: 'https://owner.test', entries });
+            owner.seenState.updateMany.mockRejectedValueOnce(new Error('owner offline'));
+            await expect(patchSeenState('ws', entries, { baseUrl: 'https://owner.test' }, { client: owner })).rejects.toThrow('owner offline');
+            expect(mocks.seenState.updateMany).not.toHaveBeenCalled();
+            expect(listener).toHaveBeenCalledTimes(1);
+        } finally {
+            window.removeEventListener(SEEN_STATE_CHANGED_EVENT, listener);
+        }
+    });
+
     it('propagates failed mutations without publishing a successful read-state change', async () => {
         const listener = vi.fn();
         window.addEventListener(SEEN_STATE_CHANGED_EVENT, listener);

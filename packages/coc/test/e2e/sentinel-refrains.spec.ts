@@ -24,6 +24,19 @@ test.beforeAll(async () => {
                 { id: 'seed-2', name: 'Implement feature or bug fix', enabled: false, runs: [{ id: 'failed', runNumber: 1, status: 'failed', error: diagnostic, createdAt: '2026-10-18T12:00:00Z', trigger: 'manual' }] },
                 { id: 'seed-3', name: 'LongRefrainName'.repeat(30), enabled: true, activeRun: { id: 'active', runNumber: 2, status: 'running' }, runs: [], gateScript: 'return []', gatePaused: true },
             ].map(job => ({ revision: 1, provider: 'copilot', effortTier: 'medium', mode: 'autopilot', gateConsecutiveFailures: 0, processId: 'queue_job', ...job })) : [];
+            if (state.history) {
+                const makeRun = (runNumber, status, extra = {}) => ({ id: 'history-' + runNumber, runNumber, status, trigger: runNumber % 2 ? 'schedule' : 'manual',
+                    createdAt: '2026-10-28T08:47:01.123Z', startedAt: '2026-10-28T08:47:02.456Z', finishedAt: '2026-10-28T08:48:53.789Z', durationMs: 112100,
+                    jobTurnHref: '#repos/ws-owner/chats/queue_job?turn=' + runNumber + '&source=history', ...extra });
+                jobs.splice(0, jobs.length, { id: 'history', name: 'New stable revision release', provider: 'copilot', effortTier: 'medium', mode: 'autopilot', enabled: true,
+                    cron: '0 14 * * *', nextRunAt: '2026-10-29T14:00:00Z', revision: 1, processId: 'queue_job', gateConsecutiveFailures: 0,
+                    runs: [makeRun(7, 'failed', { error: diagnostic }), makeRun(6, 'completed'), makeRun(5, 'cancelled'),
+                        makeRun(4, 'skipped', { skipReason: 'gate-unavailable', error: diagnostic }), makeRun(3, 'interrupted'),
+                        makeRun(2, 'running', { finishedAt: undefined, durationMs: undefined }), makeRun(1, 'queued', { startedAt: undefined, finishedAt: undefined, durationMs: undefined })] });
+                const invalidate = () => state.listeners.forEach(listener => listener.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-owner', processId: 'queue_sentinel' }));
+                state.addRun = () => { jobs[0].runs.unshift(makeRun(8, 'completed')); invalidate(); };
+                state.pruneRun = id => { jobs[0].runs = jobs[0].runs.filter(run => run.id !== id); invalidate(); };
+            }
             const calls = state.calls;
             const at = '2026-10-18T12:00:00Z';
             const scrub = { enabled: true, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 1 };
@@ -34,9 +47,9 @@ test.beforeAll(async () => {
             const find = id => jobs.find(job => job.id === id);
             window.fakeClient = {
                 request: async () => ({ features: policy }),
-                triggers: { listSentinelTodo: async () => ({ triggers: [] }) },
+                triggers: { listSentinelTodo: async () => [], sentinelTodoCapabilities: async () => ({ dateTime: false }) },
                 agentProviders: { getEffortTiers: async () => ({ effortTiers: {}, defaults: {} }) },
-                events: { connect: () => ({ close() {} }) },
+                events: { connect: options => { state.listeners.push(options); return { close() { state.listeners = state.listeners.filter(listener => listener !== options); } }; } },
                 sentinelTodos: {
                     get: async () => ({ revision: 1, items: [item] }),
                     jobs: {
@@ -66,10 +79,13 @@ test.beforeAll(async () => {
             };
             registerCloneBaseUrls(state.remote ? [{ workspaceId: 'ws-owner', baseUrl: 'https://owner.example.test' }] : []);
             applyRuntimeConfigPatch({ ...policy, triggersEnabled: false });
-            const owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: state.remote ? 'ws-owner' : null, processId: 'queue_sentinel' };
-            createRoot(document.getElementById('fixture')).render(state.seeded
-                ? <SentinelRefrains owner={owner} items={[]} onFollowLink={event => event.preventDefault()} />
+            let owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: state.remote ? 'ws-owner' : null, processId: 'queue_sentinel' };
+            const root = createRoot(document.getElementById('fixture'));
+            const render = () => root.render(state.seeded && !state.hosted
+                ? <SentinelRefrains owner={owner} items={[]} onFollowLink={(event, key) => { event.preventDefault(); state.followed = key; }} />
                 : <UnifiedTodoTab scopeWorkspaceId="ws-owner" chatId="queue_sentinel" owner={owner} />);
+            state.changeOwner = () => { owner = { ...owner, processId: 'queue_other_sentinel' }; render(); };
+            render();
         ` },
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'jobs-fixture-client', setup(builder) {
@@ -89,7 +105,7 @@ test.beforeAll(async () => {
     });
     script = result.outputFiles[0].text;
 });
-async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false } = {}) {
+async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false, history = false, hosted = false } = {}) {
     await page.route('http://jobs.fixture.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
     await page.routeWebSocket(/.*/, () => {});
     await page.goto('http://jobs.fixture.test/');
@@ -98,11 +114,11 @@ async function mount(page: Page, { dark = false, width = 800, enabled = true, re
         <body style="margin:0;background:${dark ? '#1e1e1e' : 'white'};color:${dark ? '#cccccc' : '#1e1e1e'}">
         <div id="fixture" style="width:${width}px;height:820px;margin:8px"></div></body></html>`);
     await page.evaluate(values => {
-        Object.assign(window, { jobsFixture: { ...values, calls: [], refs: [] } });
-    }, { enabled, remote, seeded });
+        Object.assign(window, { jobsFixture: { ...values, calls: [], refs: [], listeners: [] } });
+    }, { enabled, remote, seeded, history, hosted });
     await page.addStyleTag({ content: css });
     await page.addScriptTag({ content: script });
-    if (!seeded) {
+    if (!seeded || hosted) {
         await expect(page.getByTestId('sentinel-todo-row-item')).toBeVisible();
         expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => getComputedStyle(element).display)).toBe('flex');
     }
@@ -231,7 +247,7 @@ for (const dark of [false, true]) {
             await expect(history.locator('..')).not.toHaveAttribute('open', '');
             await history.focus();
             await page.keyboard.press('Enter');
-            await expect(job.getByText('#1 · manual · failed')).toBeVisible();
+            await expect(job.getByLabel('Select run #1: failed (manual)')).toBeVisible();
             await history.press('Enter');
             await more.press('Escape');
             for (const card of [job, coda]) {
@@ -263,6 +279,157 @@ for (const dark of [false, true]) {
             await expect(codaMore).toBeFocused();
             await coda.scrollIntoViewIfNeeded();
             await page.screenshot({ path: info.outputPath('compact-refrains.png'), fullPage: true });
+            const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);
+            expect(calls.every(call => call[0] === 'list')).toBe(true);
+            expect(errors).toEqual([]);
+        });
+    }
+}
+
+for (const dark of [false, true]) {
+    for (const width of [280, 800]) {
+        test(`run history master/detail fits ${width}px ${dark ? 'dark' : 'light'}`, async ({ page }, info) => {
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+            await mount(page, { dark, width, seeded: true, history: true, remote: true, hosted: true });
+            const job = page.getByTestId('sentinel-refrain-history');
+            const history = job.getByText('History (7)', { exact: true });
+            await history.focus();
+            await history.press('Enter');
+            const body = job.locator('.sentinel-refrain-history-body');
+            await expect(body).toHaveAttribute('data-layout', width === 800 ? 'split' : 'single');
+            const list = job.locator('.sentinel-refrain-runs');
+            await expect(list).toHaveAttribute('aria-label', 'Run history for New stable revision release');
+            const detail = page.locator('.sentinel-refrain-run-detail');
+            const rows = list.getByRole('listitem');
+            await expect(rows).toHaveCount(7);
+            for (const row of await rows.all()) {
+                const button = row.getByRole('button');
+                expect((await row.boundingBox())!.height).toBeLessThanOrEqual(50);
+                expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(width === 800 ? 32 : 44);
+                expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+                await expect(button).toHaveAttribute('aria-pressed', 'false');
+                await expect(row.getByRole('link')).toHaveCount(0);
+            }
+            await expect(job.getByLabel('Last run #7: failed. Show full error')).toHaveCount(0);
+            await expect(job.getByText(/copilot \/ medium effort tier/)).toContainText('Next');
+            await page.screenshot({ path: info.outputPath('run-history-list.png'), fullPage: true });
+            const failed = list.locator('[data-run-select="history-7"]');
+            const completed = list.locator('[data-run-select="history-6"]');
+            const skipped = list.locator('[data-run-select="history-4"]');
+            await failed.focus();
+            await failed.press('ArrowDown');
+            await expect(completed).toBeFocused();
+            await completed.press('End');
+            await expect(list.locator('[data-run-select="history-1"]')).toBeFocused();
+            await page.keyboard.press('ArrowUp');
+            await expect(list.locator('[data-run-select="history-2"]')).toBeFocused();
+            await page.keyboard.press('Home');
+            await expect(failed).toBeFocused();
+            await expect(failed).toHaveAttribute('aria-pressed', 'false');
+            await failed.press('Space');
+            await expect(detail).toBeVisible();
+            await expect(detail.getByRole('heading')).toHaveText('Run #7: failed');
+            if (width === 280) {
+                await expect(list).toBeHidden();
+                await expect(detail.getByRole('heading')).toBeFocused();
+            } else {
+                await expect(list).toBeVisible();
+                const listBounds = (await list.boundingBox())!;
+                const detailBounds = (await detail.boundingBox())!;
+                expect(listBounds.x + listBounds.width).toBeLessThan(detailBounds.x);
+            }
+            const error = detail.getByRole('region', { name: 'Error for run #7', exact: true });
+            await expect(error).toContainText('Full error ending');
+            for (const timestamp of ['2026-10-28T08:47:01.123Z', '2026-10-28T08:47:02.456Z', '2026-10-28T08:48:53.789Z']) await expect(detail.getByText(timestamp)).toBeVisible();
+            const close = detail.getByRole('button', { name: 'Close run details' });
+            await close.focus();
+            await close.press('Tab');
+            const link = detail.getByRole('link', { name: 'Job turn' });
+            await expect(link).toBeFocused();
+            await page.keyboard.press('Tab');
+            await expect(error).toBeFocused();
+            expect(await error.evaluate(el => {
+                const range = document.createRange(); range.selectNodeContents(el);
+                const selection = window.getSelection(); if (!selection) return false;
+                selection.removeAllRanges(); selection.addRange(range);
+                return selection.toString() === el.textContent;
+            })).toBe(true);
+            await page.evaluate(() => window.getSelection()?.removeAllRanges());
+            await detail.evaluate(el => { el.scrollTop = 0; });
+            await page.screenshot({ path: info.outputPath('selected-run-details.png'), fullPage: true });
+            await expect(link).toHaveAttribute('href', '#repos/ws-owner/chats/queue_job?turn=7&source=history');
+            expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(width === 800 ? 32 : 44);
+            await link.focus();
+            await link.press('Enter');
+            await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#repos/ws-owner/chats/queue_job?turn=7&source=history');
+            if (width === 280) {
+                await detail.getByRole('button', { name: 'Back to runs' }).click();
+                await expect(failed).toBeFocused();
+                await expect(failed).toHaveAttribute('aria-pressed', 'true');
+            }
+            await completed.focus();
+            await completed.press('Enter');
+            await expect(detail.getByRole('heading')).toHaveText('Run #6: completed');
+            await expect(error).toHaveCount(0);
+            if (width === 280) await detail.getByRole('button', { name: 'Back to runs' }).click();
+            await skipped.focus();
+            await skipped.press('Enter');
+            await expect(detail.getByText('Skipped: gate unavailable (tool scripting off)', { exact: true })).toBeVisible();
+            await expect(detail.getByRole('region', { name: 'Error for run #4', exact: true })).toContainText('Full error ending');
+            await close.press('Enter');
+            await expect(skipped).toBeFocused();
+            await expect(skipped).toHaveAttribute('aria-pressed', 'false');
+            await completed.press('Enter');
+            await page.evaluate(() => (window as Window & { jobsFixture: { addRun: () => void } }).jobsFixture.addRun());
+            await expect(job.getByText('History (8)', { exact: true })).toHaveText('History (8)');
+            await expect(completed).toHaveAttribute('aria-pressed', 'true');
+            await expect(detail.getByRole('heading')).toHaveText('Run #6: completed');
+            // Change dock width inside a wide viewport: the measured container controls the split.
+            await page.setViewportSize({ width: 1100, height: 900 });
+            await page.locator('#fixture').evaluate(el => { el.style.width = '800px'; });
+            await expect(body).toHaveAttribute('data-layout', 'split');
+            await expect(list).toBeVisible();
+            await expect(detail).toBeVisible();
+            await completed.focus();
+            await page.locator('#fixture').evaluate(el => { el.style.width = '280px'; });
+            await expect(body).toHaveAttribute('data-layout', 'single');
+            await expect(list).toBeHidden();
+            await expect(detail.getByRole('heading')).toBeFocused();
+            await detail.getByRole('button', { name: 'Back to runs' }).click();
+            await expect(completed).toBeFocused();
+            await expect(list).toBeVisible();
+            await completed.press('Enter');
+            await page.evaluate(() => (window as Window & { jobsFixture: { pruneRun: (id: string) => void } }).jobsFixture.pruneRun('history-6'));
+            await expect(job.getByText('This run is no longer in retained history. Select another run.')).toBeVisible();
+            await expect(list).toBeVisible();
+            await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
+            await expect(detail).toBeHidden();
+            expect(await job.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+            // The same right pane still opens ordinary To-do details after viewing a run.
+            const todoRow = page.getByTestId('sentinel-todo-row-item').locator('[data-todo-select]');
+            await todoRow.click();
+            await expect(page.getByTestId('sentinel-todo-detail-item')).toBeVisible();
+            await expect(page.getByTestId('sentinel-refrain-details-host')).toBeHidden();
+            await page.getByTestId('sentinel-todo-details').getByRole('button', { name: 'Back to list', exact: true }).click();
+            await expect(todoRow).toBeFocused();
+            const toggle = job.getByText('History (7)', { exact: true });
+            await toggle.focus();
+            await toggle.press('Space');
+            await expect(list).toBeHidden();
+            await expect(job.getByText('Last run #8: completed')).toBeVisible();
+            await toggle.press('Enter');
+            await list.locator('[data-run-select="history-8"]').press('Enter');
+            await expect(detail.getByRole('heading')).toHaveText('Run #8: completed');
+            await page.evaluate(() => (window as Window & { jobsFixture: { changeOwner: () => void } }).jobsFixture.changeOwner());
+            const newHistory = job.getByText('History (7)', { exact: true });
+            await expect(newHistory.locator('..')).not.toHaveAttribute('open', '');
+            await newHistory.click();
+            await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
+            await expect(page.getByTestId('sentinel-refrain-details-host')).toBeHidden();
+
             const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);
             expect(calls.every(call => call[0] === 'list')).toBe(true);
             expect(errors).toEqual([]);

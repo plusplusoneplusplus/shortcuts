@@ -283,8 +283,11 @@ resets when switching to a draft key with no saved attachments. Follow-up compos
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
 `AttachedContextPreviews`; their Attach action uses `activeChatAttach` without
-new-chat seed fallback. `sentinelTodoContext.ts` binds each pointer to the parent
-workspace, Sentinel process and concrete server route. Both the ledger and context
+new-chat seed fallback. Row context gestures and the overflow trigger share
+`ChatHeaderOverflowMenu` actions, preserving native selected-text, editor and link
+menus and restoring the originating focus on keyboard dismissal.
+`sentinelTodoContext.ts` binds each pointer to the parent workspace, Sentinel
+process and concrete server route. Both the ledger and context
 attachment flags gate the surface. Remote reads require concrete clone identity;
 unresolved owners never fall through locally.
 
@@ -295,6 +298,18 @@ pointer block: ID, title, type, status, archive state, completion condition, not
 and target repo. Draft changes invalidate pending reads; failed sends retain chips
 and text. Context grants no execution/delegation authority, especially for manual
 tracking. Missing items and unavailable owners surface inline errors.
+
+`SentinelTodoMessageDialog` is a controlled, in-memory composer surface for one
+fixed To-do and ledger owner. Its caller owns the draft, destination labels,
+context readiness and admission. The shared modal traps/restores focus; loading
+blocks submission and pending admission blocks editing and dismissal. Inline
+errors retain text. The surface performs no routing, context reads or message I/O.
+`sentinelTodoMessageContext.ts` captures durable server identity and the concrete
+ledger owner from dashboard topology. Its read-only preparation requires both
+existing gates and verifies health around exact Sentinel process/item reads,
+rejecting replaced, offline or stale destinations. Reads accept cancellation and
+have a ten-second deadline; callers abort on draft changes. It returns current
+escaped context through the shared serializer and never writes ledger or chat state.
 
 ### Session-context attachments
 

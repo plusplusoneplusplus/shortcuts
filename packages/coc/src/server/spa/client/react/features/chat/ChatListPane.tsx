@@ -11,7 +11,7 @@ import { useAnchoredPanelPosition } from '../../shared/useAnchoredPanelPosition'
 import { Card, Button, cn } from '../../ui';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
-import { buildRows } from './conversation/ConversationMetadataPopover';
+import { formatMetadataText } from './conversation/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../../queue/hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -901,10 +901,6 @@ export interface ChatListPaneProps {
      * OFF / non-schedule routes) → the persisted scope is used unchanged.
      */
     forceScope?: ActivityScope;
-}
-
-function formatMetadataText(task: any): string {
-    return buildRows(task).map(r => `${r.label}: ${r.value}`).join('\n');
 }
 
 function RepoGateBanner({

@@ -93,7 +93,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unif
     openUnifiedPanelTab,
 }));
 
-import { WorkingTreeFileDiff } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
+import { WorkingTreeFileDiff, untrackedContentAsDiff } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import {
     DIFF_ENGINE_STORAGE_KEY,
     __resetDiffEngineForTesting,
@@ -144,6 +144,62 @@ beforeEach(() => {
 });
 
 describe('WorkingTreeFileDiff — diff engine', () => {
+    it('renders untracked text as a full all-added comparison in the shared review', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\ntext\n', {
+            base: { content: '', ref: 'EMPTY', exists: false },
+        }));
+        await renderDiff({ stage: 'untracked', untrackedAsDiff: true });
+        expect(fakes[0].models[0].original.text).toBe('');
+        expect(fakes[0].models[0].modified.text).toBe('new\ntext\n');
+        expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'untracked');
+        expect(clients['ws-a'].git.getWorkingTreeFileDiff).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('toggle-comments-btn')).toBeNull();
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
+        expect(screen.getByTestId('classic-viewer').textContent).toBe('@@ -0,0 +1,2 @@\n+new\n+text');
+        expect(untrackedContentAsDiff('')).toBe('');
+    });
+    it('refreshes a stale untracked entry when its full content read returns 404', async () => {
+        const onFileMissing = vi.fn();
+        clients['ws-a'].git.getWorkingTreeFileContent.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+        await renderDiff({ stage: 'untracked', untrackedAsDiff: true, onFileMissing });
+        expect(onFileMissing).toHaveBeenCalledOnce();
+        expect(screen.getByTestId('working-tree-file-diff-missing')).toBeTruthy();
+    });
+    it.each([{ binary: true }, { tooLarge: true }])('retains untracked preview handling for %o', async flags => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', '', flags));
+        await renderDiff({ stage: 'untracked', untrackedAsDiff: true });
+        expect(screen.getByTestId('preview-pane')).toBeTruthy();
+        expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();
+    });
+    it('rejects delayed full content superseded by a refresh during initial loading', async () => {
+        let finishOld!: (value: Content) => void;
+        clients['ws-a'].git.getWorkingTreeFileContent.mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }));
+        const view = await renderDiff({ refreshKey: 0 });
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('a\n', 'fresh\n'));
+        await act(async () => { view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" refreshKey={1} createDiffEditor={createDiffEditor} />); });
+        expect(fakes.at(-1)!.modifiedText).toBe('fresh\n');
+        await act(async () => { finishOld(content('a\n', 'stale\n')); });
+        expect(fakes.at(-1)!.modifiedText).toBe('fresh\n');
+    });
+    it('shows a retryable error if refresh supersedes an initial content read and then fails', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockReturnValueOnce(new Promise(() => {}));
+        const view = await renderDiff({ refreshKey: 0 });
+        clients['ws-a'].git.getWorkingTreeFileContent.mockRejectedValue(new Error('content unavailable'));
+        clients['ws-a'].git.getWorkingTreeFileDiff.mockRejectedValue(new Error('patch unavailable'));
+        await act(async () => { view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" refreshKey={1} createDiffEditor={createDiffEditor} />); });
+        expect(screen.getByTestId('working-tree-file-diff-error').textContent).toContain('patch unavailable');
+        expect(screen.getByTestId('working-tree-file-diff-retry-btn')).toBeTruthy();
+    });
+    it('rejects a delayed patch superseded by refresh while the first patch is loading', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        let finishOld!: (value: any) => void;
+        clients['ws-a'].git.getWorkingTreeFileDiff.mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }));
+        const view = await renderDiff({ refreshKey: 0 });
+        await act(async () => { view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" refreshKey={1} />); });
+        expect(screen.getByTestId('classic-viewer').textContent).toContain('+b');
+        await act(async () => { finishOld({ diff: 'stale patch' }); });
+        expect(screen.getByTestId('classic-viewer').textContent).not.toContain('stale patch');
+    });
     it.each(['staged', 'unstaged'] as const)('toggles word wrap in a mounted %s editor', async stage => {
         await renderDiff({ stage });
         const toggle = screen.getByRole('button', { name: 'Word wrap' });

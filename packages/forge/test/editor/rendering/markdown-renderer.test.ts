@@ -429,3 +429,18 @@ describe('resolveImagePath', () => {
         expect(resolveImagePath('./image.png')).toBe('IMG_PATH:./image.png');
     });
 });
+
+
+describe('explicit Markdown file destinations', () => {
+    it.each([
+        '../src/a%20file.ts:42-58',
+        './src/main.ts#L42-L58',
+        '/repo/src/main.ts:42',
+        'C:/repo/src/main.ts:42-58',
+        'file:///C:/repo/src/main.ts#L42',
+    ])('preserves %s without bare path spans inside the link', href => {
+        const html = applyInlineMarkdown(`[Source](${href})`);
+        expect(html).toContain(`data-href="${href}"`);
+        expect(html).not.toContain('file-path-link');
+    });
+});

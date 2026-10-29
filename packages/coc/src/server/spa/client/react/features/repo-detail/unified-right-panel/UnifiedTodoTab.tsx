@@ -14,7 +14,7 @@
  * restores the previous view when it closes.
  */
 
-import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import type {
     CocClient,
     SentinelTodoCategory,
@@ -55,7 +55,7 @@ import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllCodaProposals, CodaFindingsContext, SentinelCodaFinding } from './SentinelCodaFinding';
-import { SentinelRefrains } from './SentinelRefrains';
+import { RefrainHistoryHostContext, SentinelRefrains } from './SentinelRefrains';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import { useScopedFindShortcut } from '../../../hooks/useScopedFindShortcut';
 import {
@@ -359,6 +359,25 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(restored.expandedIds));
     const [selectedId, setSelectedId] = useState<string | null>(restored.selectedId ?? null);
     const [detailOpen, setDetailOpen] = useState(restored.detailOpen ?? restored.selectedId != null);
+    const [historyJobId, setHistoryJobId] = useState<string | null>(null);
+    const [historyTarget, setHistoryTarget] = useState<HTMLDivElement | null>(null);
+    const historyJobRef = useRef(historyJobId);
+    historyJobRef.current = historyJobId;
+    const selectHistory = useCallback((jobId: string) => {
+        setHistoryJobId(jobId);
+        setSelectedId(null);
+        setDetailOpen(true);
+    }, []);
+    const leaveHistory = useCallback((jobId: string, clear: boolean) => {
+        if (historyJobRef.current !== jobId) return;
+        if (clear) setHistoryJobId(null);
+        setDetailOpen(false);
+    }, []);
+    useEffect(() => {
+        if (selectedId) setHistoryJobId(null);
+    }, [selectedId]);
+    const historyHost = useMemo(() => ({ target: historyTarget, wide, activeJobId: historyJobId, detailOpen,
+        select: selectHistory, leave: leaveHistory }), [historyTarget, wide, historyJobId, detailOpen, selectHistory, leaveHistory]);
     const [menuAction, setMenuAction] = useState<TodoMenuAction | null>(null);
     const consumeMenuAction = useCallback(() => setMenuAction(null), []);
     const [blockedMenus, setBlockedMenus] = useState<ReadonlySet<string>>(() => new Set());
@@ -713,6 +732,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             .find(button => button.dataset.todoSelect === id)?.focus({ preventScroll: true });
     };
     const selectItem = (id: string) => {
+        setHistoryJobId(null);
         setSelectedId(id);
         setDetailOpen(true);
         setExpanded(previous => new Set([...previous, id]));
@@ -896,6 +916,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     );
 
     return (
+        <RefrainHistoryHostContext.Provider value={historyHost}>
         <div ref={panelRef}
             className="flex h-full min-h-0 flex-col gap-2 overflow-auto p-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]"
             data-testid="sentinel-todo-tab" data-layout={wide ? 'split' : 'single'}>
@@ -999,7 +1020,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 tabIndex={-1}
                 onScroll={event => { if (!searchSnapshotRef.current) scrollTop.current = event.currentTarget.scrollTop; }}
                 style={wide ? { flex: '0 0 43%' } : undefined}
-                hidden={!wide && detailOpen && !!selected}
+                hidden={!wide && detailOpen && (historyJobId !== null || !!selected)}
                 className="min-w-0 flex-1 overflow-auto"
                 data-testid="sentinel-todo-list"
                 onKeyDown={event => {
@@ -1157,7 +1178,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </>
             )}
             </div>
-            <section hidden={!wide && (!detailOpen || !selected)}
+            <section hidden={historyJobId !== null || (!wide && (!detailOpen || !selected))}
                 className={cn('min-w-0 flex-1 overflow-auto', wide && 'border-l border-[#e0e0e0] pl-2 dark:border-[#3c3c3c]')}
                 aria-label={selected ? undefined : 'Item details'} aria-labelledby={selected ? `${detailId}-${selected.id}` : undefined}
                 data-testid="sentinel-todo-details">
@@ -1175,10 +1196,14 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             menuAction={menuAction?.itemId === item.id ? menuAction : null} onMenuBlocked={blockMenu} onMenuActionConsumed={consumeMenuAction} />)}
                 </ul>
             </section>
+            <div ref={setHistoryTarget} hidden={historyJobId === null || (!wide && !detailOpen)}
+                className={cn('min-w-0 flex-1 overflow-auto', wide && 'border-l border-[#e0e0e0] pl-2 dark:border-[#3c3c3c]')}
+                data-testid="sentinel-refrain-details-host" />
             </div>
             </>}
             </SentinelRefrains>
         </div>
+        </RefrainHistoryHostContext.Provider>
     );
 }
 
@@ -1264,9 +1289,10 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }: {
+function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, contextTargetRef }: {
     owner: SentinelTodoOwner; item: SentinelTodoItem; onAttach?: () => void; disabled: boolean; onAction: (action: TodoMenuAction) => void;
     categories?: readonly SentinelTodoCategory[];
+    contextTargetRef?: RefObject<HTMLElement | null>;
 }) {
     const currentCategory = item.categoryId && categories?.some(category => category.id === item.categoryId) ? item.categoryId : null;
     const root = useRef<HTMLDivElement>(null);
@@ -1286,7 +1312,7 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }:
             }
         }}
         onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
-        <ChatHeaderOverflowMenu ariaLabel="To-do actions" wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[
+        <ChatHeaderOverflowMenu contextTargetRef={contextTargetRef} ariaLabel="To-do actions" wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[
             ...(!item.archived ? [
                 ...SENTINEL_TODO_STATUSES.map(status => ({
                     key: `status-${status}`, label: SENTINEL_TODO_STATUS_LABELS[status], group: 'status', groupLabel: 'Status',
@@ -1356,7 +1382,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categor
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
         data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</span> : null;
-    return <li ref={card} data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
+    return <li ref={card} tabIndex={-1} data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
         className={cn('relative select-text rounded border pl-1', selected
             ? 'border-[#0078d4]/50 bg-[#0078d4]/10 dark:border-[#3794ff]/50'
             : 'border-[#e0e0e0] dark:border-[#3c3c3c]')}>
@@ -1403,7 +1429,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categor
                 title="Drag to a category to move; use the actions menu from the keyboard" data-testid={`sentinel-todo-move-grip-${item.id}`}
                 className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] active:cursor-grabbing dark:hover:bg-white/[0.04]">⠿</span>}
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction}
-                categories={categories} />
+                categories={categories} contextTargetRef={card} />
         </div>
         {excerpt && search && <p className={cn('m-0 min-w-0 break-words px-1.5 pb-1 text-[11px] [overflow-wrap:anywhere]', MUTED)}
             data-testid={`sentinel-todo-search-excerpt-${item.id}`}>

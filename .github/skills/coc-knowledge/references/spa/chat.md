@@ -121,17 +121,22 @@ visibility; groups supply feed counts and `isUnseenGroupChat` rows through
 `RepoChatTab.renderUnreadRail`. Entry performs no read-state mutation; selection
 retains native or owner-qualified member navigation and intentional read behavior.
 
-`unreadMarkAllRead` scans all pages before batching completion-stamped entries via
-`seenStateApi`. Native scope retains preview visibility and writes only rows whose
-server `seenAt` differs (the server applies batches synchronously, so resending read
-rows can stall it); the page-origin client's `''` base is keyed as the local owner so
+`unreadMarkAllRead` reads the full unread scope before batching completion-stamped
+entries via `seenStateApi`. Native scope pages `history?unseen=true` on the owner
+client, so the owner returns unread rows only (typically one request, not a walk
+over the whole history, which takes minutes on a busy remote owner); older servers
+ignore the flag and the client still writes only rows whose server `seenAt` differs.
+The write goes through that same owner client (`patchSeenState` `options.client`),
+never a client re-resolved from `baseUrl`, so a remote scope cannot fall back to the
+page origin; the page-origin client's `''` base is keyed as the local owner so
 committed events reach mounted readers. Group scope matches the badge's group/member
-count, independent of list filters. Each owner batch uses the captured concrete
-server. Scans and writes carry the run's abort signal. Incomplete/offline scans
-reject before writes; failed batches retain unread state and surface errors. Scope
-changes cancel pending runs; `MARK_ALL_READ_TIMEOUT_MS` (120s) aborts a stalled run
-and settles it even if a request ignores the signal, then shows a retryable error.
-Committed events refresh rows/counts through the shared reconciliation path.
+count, independent of list filters, and still pages the group feed. Each owner batch
+uses the captured concrete server. Reads and writes carry the run's abort signal.
+Incomplete/offline scans reject before writes; failed batches retain unread state and
+surface errors. Scope changes cancel pending runs; `MARK_ALL_READ_TIMEOUT_MS` (120s)
+aborts a stalled run and settles it even if a request ignores the signal, then shows
+a retryable error. Committed events refresh rows/counts through the shared
+reconciliation path.
 
 ### ChatListPane
 

@@ -73,3 +73,81 @@
 }
 .sentinel-automation-last-run > .sentinel-automation-error { flex: 1 1 140px; }
 .sentinel-automation-secondary > details { flex-basis: 100%; }
+
+.sentinel-refrain-history { min-width: 0; }
+.sentinel-refrain-history[open] { flex-basis: 100%; }
+.sentinel-refrain-history > summary { width: fit-content; }
+.sentinel-refrain-history-body {
+    display: flex;
+    min-width: 0;
+    min-height: 160px;
+    gap: 8px;
+    margin-top: 4px;
+}
+.sentinel-refrain-runs,
+.sentinel-refrain-run-detail {
+    flex: 1;
+    min-width: 0;
+    max-height: 320px;
+    overflow: auto;
+}
+.sentinel-refrain-runs { padding: 2px; }
+.sentinel-refrain-runs:focus-visible { outline: 2px solid #0078d4; outline-offset: -2px; }
+.sentinel-refrain-run {
+    margin-bottom: 4px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+.dark .sentinel-refrain-run { border-color: #3c3c3c; }
+.sentinel-refrain-run[data-selected="true"] {
+    border-color: #0078d4;
+    background: rgb(0 120 212 / 8%);
+}
+.sentinel-refrain-run > button {
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 4px 6px;
+    text-align: left;
+}
+.sentinel-refrain-run-state { flex-basis: 100%; min-width: 0; }
+.sentinel-refrain-run-detail { padding: 2px; }
+.sentinel-refrain-history-body[data-layout="split"] > .sentinel-refrain-run-detail {
+    border-left: 1px solid #e0e0e0;
+    padding-left: 8px;
+}
+.dark .sentinel-refrain-history-body[data-layout="split"] > .sentinel-refrain-run-detail { border-color: #3c3c3c; }
+.sentinel-refrain-detail-header { display: flex; align-items: center; gap: 4px; }
+.sentinel-refrain-detail-header h4 { flex: 1; min-width: 0; }
+.sentinel-refrain-detail-header button { min-width: 32px; justify-content: center; }
+.sentinel-refrain-run-detail > a {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 4px;
+    min-height: 32px;
+}
+.sentinel-refrain-run-detail > a:focus-visible { outline: 2px solid #0078d4; outline-offset: -2px; }
+.sentinel-refrain-run-detail dl > div { display: flex; flex-wrap: wrap; column-gap: 8px; }
+.sentinel-refrain-run-detail dt { min-width: 52px; color: #616161; }
+.dark .sentinel-refrain-run-detail dt { color: #9d9d9d; }
+.sentinel-refrain-run-detail pre {
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    user-select: text;
+}
+@media (max-width: 767px), (pointer: coarse) {
+    .sentinel-refrain-run-detail > a { min-height: 44px; }
+    .sentinel-refrain-detail-header button { min-width: 44px; }
+}
+
+.sentinel-refrain-history-body[data-hosted="true"] { min-height: 0; }
+.sentinel-refrain-run-detail button { min-height: 32px; }
+.sentinel-refrain-run-detail button:focus-visible,
+.sentinel-refrain-run-detail pre:focus-visible { outline: 2px solid #0078d4; outline-offset: 1px; }
+@media (max-width: 767px), (pointer: coarse) {
+    .sentinel-refrain-run-detail button { min-height: 44px; }
+}

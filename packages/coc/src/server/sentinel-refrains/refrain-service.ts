@@ -61,7 +61,7 @@ export class SentinelRefrainService {
     }
 
     view(owner: SentinelTodoOwner, job: RefrainRecord): SentinelRefrain {
-        const { runCount: _, chatCreated: _chat, ...settings } = job;
+        const { runCount, chatCreated: _chat, ...settings } = job;
         const runs = this.deps.jobs.runs(owner, job.id);
         const next = job.enabled && job.cron && this.deps.getEnabled() ? nextCronTime(job.cron, this.now()) : undefined;
         const publicRun = (run: RefrainRunRecord) => {
@@ -70,8 +70,11 @@ export class SentinelRefrainService {
             return value;
         };
         const activeRun = runs.find(run => ACTIVE.includes(run.status as typeof ACTIVE[number]));
+        const latestRun = runs.find(run => run.status !== 'skipped');
         return { ...settings, runs: runs.slice(0, 20).map(publicRun),
             ...(activeRun ? { activeRun: publicRun(activeRun) } : {}),
+            ...(latestRun ? { latestRun: publicRun(latestRun) } : {}),
+            ...(runCount > runs.length ? { runHistoryTruncated: true } : {}),
             ...(next ? { nextRunAt: next.toISOString() } : {}) };
     }
 

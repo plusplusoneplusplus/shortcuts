@@ -104,16 +104,16 @@ function insertFile(root: MutableFolder, file: FileChange): void {
     let cursor = root;
     for (let i = 0; i < segments.length - 1; i++) {
         const seg = segments[i];
-        let child = cursor.childMap.get(seg);
+        let child = cursor.childMap.get(`directory:${seg}`);
         if (!child || child.kind !== 'folder') {
             const folder = makeFolder(seg, cursor.path ? `${cursor.path}/${seg}` : seg);
-            cursor.childMap.set(seg, folder);
+            cursor.childMap.set(`directory:${seg}`, folder);
             child = folder;
         }
         cursor = child;
     }
     const leaf: FileTreeFile = { kind: 'file', name: basename, path: file.path, file };
-    cursor.childMap.set(basename, leaf);
+    cursor.childMap.set(`file:${file.id ?? basename}`, leaf);
 }
 
 function aggregate(folder: MutableFolder): void {

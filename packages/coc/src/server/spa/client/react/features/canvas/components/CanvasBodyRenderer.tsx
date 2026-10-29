@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo } from 'react';
 import type { Canvas, CanvasVersion } from '@plusplusoneplusplus/coc-client';
+import { MarkdownFileLinkScope } from '../../../shared/file-path/MarkdownFileLinkScope';
 import { MarkdownView } from '../../../shared/MarkdownView';
 import { chatMarkdownToHtml } from '../../chat/conversation/markdownHtml';
 import { copySelectionWithInlineImages } from '../../../utils/format';
@@ -27,6 +28,7 @@ import { SvgCanvasView } from '../SvgCanvasView';
 import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode } from '../canvas-panel-model';
 
 export interface CanvasBodyRendererProps {
+    routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
     loading: boolean;
@@ -48,7 +50,7 @@ export interface CanvasBodyRendererProps {
 }
 
 export function CanvasBodyRenderer({
-    workspaceId, canvasId, loading, loadError, canvas, kind, viewingVersion, viewingRevision,
+    workspaceId, routingRef, canvasId, loading, loadError, canvas, kind, viewingVersion, viewingRevision,
     displayedContent, mode, draft, onDraftChange, onCanvasSaved, onSelectionChange, onImageMenu, notify,
 }: CanvasBodyRendererProps) {
     const excalidrawScene = useMemo(
@@ -175,16 +177,18 @@ export function CanvasBodyRenderer({
         );
     }
     return (
-        <div
-            className="canvas-mermaid-preview text-xs p-3"
-            data-testid="canvas-panel-preview"
-            onMouseUp={handlePreviewMouseUp}
-            onContextMenu={handlePreviewContextMenu}
-            onCopy={handlePreviewCopy}
-        >
-            {previewMarkdown.trim()
-                ? <MarkdownView html={previewHtml} />
-                : <span className="italic text-[#848484]">Empty canvas.</span>}
-        </div>
+        <MarkdownFileLinkScope workspaceId={workspaceId} routingRef={routingRef}>
+            <div
+                className="canvas-mermaid-preview text-xs p-3"
+                data-testid="canvas-panel-preview"
+                onMouseUp={handlePreviewMouseUp}
+                onContextMenu={handlePreviewContextMenu}
+                onCopy={handlePreviewCopy}
+            >
+                {previewMarkdown.trim()
+                    ? <MarkdownView html={previewHtml} />
+                    : <span className="italic text-[#848484]">Empty canvas.</span>}
+            </div>
+        </MarkdownFileLinkScope>
     );
 }

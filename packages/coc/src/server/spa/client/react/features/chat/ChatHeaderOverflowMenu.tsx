@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useCallback, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, useCallback, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from '../../ui/cn';
 
@@ -26,12 +26,14 @@ export interface OverflowMenuItem {
 
 interface ChatHeaderOverflowMenuProps {
     items: OverflowMenuItem[];
+    /** Optional row whose native context-menu gestures open these same actions. */
+    contextTargetRef?: RefObject<HTMLElement | null>;
     ariaLabel?: string;
     /** Workspace ID stamped on the portal div so DOM traversal in file-path-preview.ts can resolve it. */
     wsId?: string;
 }
 
-const MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
+const MENU_ITEM_SELECTOR = ':is([role="menuitem"], [role="menuitemradio"]):not([disabled])';
 
 function focusMenuItem(menu: HTMLElement | null, which: 'first' | 'last' | 'next' | 'prev') {
     if (!menu) return;
@@ -46,17 +48,21 @@ function focusMenuItem(menu: HTMLElement | null, which: 'first' | 'last' | 'next
     items[index].focus();
 }
 
-export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation actions' }: ChatHeaderOverflowMenuProps) {
+export function ChatHeaderOverflowMenu({ items, wsId, contextTargetRef, ariaLabel = 'Conversation actions' }: ChatHeaderOverflowMenuProps) {
     const [open, setOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
+    const returnFocusRef = useRef<HTMLElement | null>(null);
+    const contextAnchorRef = useRef<{ top: number; bottom: number; right: number } | null>(null);
     const initialFocusRef = useRef<'first' | 'last'>('first');
 
     const openMenu = useCallback((focus: 'first' | 'last' = 'first') => {
         const el = triggerRef.current;
         if (!el) return;
         const rect = el.getBoundingClientRect();
+        contextAnchorRef.current = null;
+        returnFocusRef.current = el;
         initialFocusRef.current = focus;
         setMenuPos({ top: rect.bottom + 4, left: rect.right });
         setOpen(true);
@@ -64,8 +70,44 @@ export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation 
 
     const closeMenu = useCallback((restoreFocus: boolean) => {
         setOpen(false);
-        if (restoreFocus) triggerRef.current?.focus();
+        if (restoreFocus) (returnFocusRef.current ?? triggerRef.current)?.focus();
     }, []);
+
+    useEffect(() => {
+        const row = contextTargetRef?.current;
+        if (!row || items.length === 0) return;
+        const openContext = (event: MouseEvent | KeyboardEvent) => {
+            if (event.defaultPrevented) return;
+            if (event instanceof KeyboardEvent && event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+            const target = event.target;
+            if (!(target instanceof Element) || target.closest('input, textarea, select, a, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return;
+            // A selected range anywhere in this row belongs to the native Copy menu.
+            const selection = row.ownerDocument.getSelection();
+            if (selection && !selection.isCollapsed) {
+                for (let i = 0; i < selection.rangeCount; i++) {
+                    if (selection.getRangeAt(i).intersectsNode(row)) return;
+                }
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = row.getBoundingClientRect();
+            const keyboard = event instanceof KeyboardEvent;
+            const anchor = keyboard
+                ? { top: rect.top, bottom: rect.bottom, right: rect.right }
+                : { top: event.clientY, bottom: event.clientY, right: event.clientX };
+            contextAnchorRef.current = anchor;
+            returnFocusRef.current = keyboard && target instanceof HTMLElement ? target : row;
+            initialFocusRef.current = 'first';
+            setMenuPos({ top: anchor.bottom + 4, left: anchor.right });
+            setOpen(true);
+        };
+        row.addEventListener('contextmenu', openContext);
+        row.addEventListener('keydown', openContext);
+        return () => {
+            row.removeEventListener('contextmenu', openContext);
+            row.removeEventListener('keydown', openContext);
+        };
+    }, [contextTargetRef, items.length]);
 
     const handleToggle = useCallback(() => {
         if (open) {
@@ -82,7 +124,7 @@ export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation 
         const popover = popoverRef.current;
         const trigger = triggerRef.current;
         const popoverRect = popover.getBoundingClientRect();
-        const triggerRect = trigger.getBoundingClientRect();
+        const triggerRect = contextAnchorRef.current ?? trigger.getBoundingClientRect();
 
         let { top, left } = menuPos;
         left = triggerRect.right - popoverRect.width;
@@ -93,7 +135,7 @@ export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation 
         if (top + popoverRect.height > window.innerHeight - 8) {
             top = triggerRect.top - popoverRect.height - 4;
         }
-        if (top < 8) top = 8;
+        top = Math.max(8, Math.min(top, window.innerHeight - popoverRect.height - 8));
         if (top !== menuPos.top || left !== menuPos.left) {
             setMenuPos({ top, left });
         }
@@ -144,8 +186,9 @@ export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation 
     const handleMenuKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
         const target = e.target as HTMLElement;
         // Embedded controls (References dropdown, context popover) own their keys.
-        if (!['menuitem', 'menuitemradio'].includes(target.getAttribute('role') ?? '') && e.key !== 'Tab') return;
+        if (!['menuitem', 'menuitemradio'].includes(target.getAttribute('role') ?? '') && e.key !== 'Tab' && e.key !== 'Escape') return;
         switch (e.key) {
+            case 'Escape': e.preventDefault(); e.stopPropagation(); closeMenu(true); break;
             case 'ArrowDown': e.preventDefault(); focusMenuItem(popoverRef.current, 'next'); break;
             case 'ArrowUp': e.preventDefault(); focusMenuItem(popoverRef.current, 'prev'); break;
             case 'Home': e.preventDefault(); focusMenuItem(popoverRef.current, 'first'); break;

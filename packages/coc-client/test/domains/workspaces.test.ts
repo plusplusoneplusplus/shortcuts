@@ -95,12 +95,12 @@ describe('WorkspacesClient', () => {
     });
   });
 
-  it('forwards the caller abort signal on history pages', async () => {
+  it('forwards the unread filter and caller abort signal on history pages', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkspacesClient(adapter);
     const signal = new AbortController().signal;
-    await client.history('repo-a', { limit: 100, offset: 0 }, { signal });
-    expect(adapter.calls[0].options?.signal).toBe(signal);
+    await client.history('repo-a', { limit: 100, offset: 0, unseen: true }, { signal });
+    expect(adapter.calls[0].options).toEqual({ query: { limit: 100, offset: 0, unseen: true }, signal });
   });
 
   it('encodes workspace and history IDs with special characters once', async () => {

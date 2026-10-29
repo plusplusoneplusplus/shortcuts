@@ -27,6 +27,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
 import type { GitWorkingTreeFileContentResponse } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
@@ -69,6 +70,8 @@ export interface WorkingTreeFileDiffProps {
     attachmentDestinationId?: string;
     filePath: string;
     stage: 'staged' | 'unstaged' | 'untracked';
+    /** Render untracked text against an empty base in the all-changes review. */
+    untrackedAsDiff?: boolean;
     /** Workspace repo root; used to convert the absolute `filePath` to a
      * repo-relative path for the untracked-file preview. */
     repoRoot?: string;
@@ -136,7 +139,9 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, untrackedAsDiff = false, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
+    const previewUntracked = stage === 'untracked' && !untrackedAsDiff;
+    const [untrackedPreviewFallback, setUntrackedPreviewFallback] = useState(false);
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -175,22 +180,25 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const cloneClient = useCocClient(workspaceId);
 
     // Monaco engine: load both full-text sides for this file and stage.
-    const wantsEditor = diffEngine === 'monaco' && stage !== 'untracked';
+    const wantsEditor = diffEngine === 'monaco' && !previewUntracked;
     const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}\u0000${editorAttempt}`;
     const loadEditorContent = useCallback(async (): Promise<LoadedEditorContent> => {
-        const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged');
+        const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage);
         if (stage !== 'staged') return { content, diskMatchesIndex: false, diskText: content.head.content };
         // The unstaged head is the disk file; a failed check keeps the diff read-only.
         const disk = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'unstaged').catch(() => null);
         return { content, diskMatchesIndex: stagedDiskMatchesIndex(content, disk), diskText: disk?.head.content ?? null };
     }, [cloneClient, workspaceId, filePath, stage]);
+    const contentRequestGeneration = useRef(0);
+    useEffect(() => () => { contentRequestGeneration.current++; }, []);
     useEffect(() => {
         if (!wantsEditor) return;
+        const generation = ++contentRequestGeneration.current;
         let cancelled = false;
         setEditorContent({ key: contentKey, status: 'loading' });
         loadEditorContent()
-            .then(loaded => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', ...loaded }); })
-            .catch(() => { if (!cancelled) setEditorContent({ key: contentKey, status: 'failed' }); });
+            .then(loaded => { if (!cancelled && generation === contentRequestGeneration.current) setEditorContent({ key: contentKey, status: 'loaded', ...loaded }); })
+            .catch(() => { if (!cancelled && generation === contentRequestGeneration.current) setEditorContent({ key: contentKey, status: 'failed' }); });
         return () => { cancelled = true; };
     }, [wantsEditor, contentKey, loadEditorContent]);
 
@@ -201,7 +209,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             : { status: currentContent.status };
     const engineSelection = resolveDiffEngineSelection({
         preference: diffEngine,
-        stage,
+        stage: untrackedAsDiff && stage === 'untracked' ? undefined : stage,
         content: contentLoadState,
         editorFailed: editorFailedKey === contentKey,
     });
@@ -219,7 +227,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
     const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
     const diskMatchesIndex = currentContent?.status === 'loaded' && currentContent.diskMatchesIndex;
-    const editable = stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
+    const editable = (untrackedAsDiff && stage === 'untracked') || stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
     const [editedText, setEditedText] = useState<string | null>(null);
     const [savedText, setSavedText] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -241,8 +249,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const diskText = savedText ?? editorSides?.head.content ?? null;
     const isDirty = editedText !== null && editedText !== diskText;
     const shownModified = currentContent?.status === 'loaded' ? currentContent.content.head.content : null;
-    const saveStateRef = useRef({ editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath });
-    saveStateRef.current = { editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath };
+    const saveStateRef = useRef({ editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath, routingRef: attachmentDestinationId === undefined ? undefined : ownerRoute });
+    saveStateRef.current = { editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath, routingRef: attachmentDestinationId === undefined ? undefined : ownerRoute };
 
     // Show freshly loaded sides, dropping any edits in the buffer.
     const applyLoadedContent = useCallback((key: string, loaded: LoadedEditorContent) => {
@@ -283,10 +291,12 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const onSavedRef = useRef(onSaved);
     onSavedRef.current = onSaved;
     const handleSaveEdits = useCallback(async (): Promise<boolean> => {
-        const { editedText: text, isDirty: dirty, workspaceId: ws, relativePath: path } = saveStateRef.current;
+        const { editedText: text, isDirty: dirty, workspaceId: ws, relativePath: path, routingRef } = saveStateRef.current;
         if (!dirty || text === null) return true;
         try {
-            await explorerApi.writeBlob(ws, path, text);
+            if (routingRef && resolveCloneRoute(routingRef).kind === 'unresolved-remote') throw new Error('The owning server is unavailable. The file was not saved.');
+            if (routingRef === undefined) await explorerApi.writeBlob(ws, path, text);
+            else await explorerApi.writeBlob(ws, path, text, routingRef);
             setSavedText(text);
             setSaveError(null);
             setDiskChange(null);
@@ -300,20 +310,20 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     }, []);
 
     // The untracked view forwards these to its PreviewPane instead.
-    const canSave = stage !== 'untracked' && editable && editorSides !== null;
+    const canSave = !previewUntracked && editable && editorSides !== null;
     useEffect(() => {
-        if (stage !== 'untracked') onDirtyChange?.(isDirty);
-    }, [stage, isDirty, onDirtyChange]);
+        if (!previewUntracked) onDirtyChange?.(isDirty);
+    }, [previewUntracked, isDirty, onDirtyChange]);
     useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
     useEffect(() => {
-        if (!onRegisterSave || stage === 'untracked') return;
+        if (!onRegisterSave || previewUntracked) return;
         if (!canSave) {
             onRegisterSave(null);
             return;
         }
         onRegisterSave(handleSaveEdits);
         return () => onRegisterSave(null);
-    }, [stage, canSave, onRegisterSave, handleSaveEdits]);
+    }, [previewUntracked, canSave, onRegisterSave, handleSaveEdits]);
 
     // ── Go to definition: same diff side, else the current file in Explorer ──
     // The working tree is not a review, so another changed file opens in Explorer too.
@@ -406,31 +416,33 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
+            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
 
-    // `quiet` keeps the current diff on screen while re-reading it (refresh).
+    const patchGeneration = useRef(0);
+    useEffect(() => () => { patchGeneration.current++; }, []);
+    // Quiet refreshes retain the editor and reject superseded patch reads.
     const fetchDiff = useCallback((full = false, quiet = false) => {
-        if (stage === 'untracked') {
-            setLoading(false);
-            setDiff(null);
-            setError(null);
+        const generation = ++patchGeneration.current;
+        if (previewUntracked) {
+            setLoading(false); setDiff(null); setError(null);
             return;
         }
-        if (!quiet) {
-            setLoading(true);
-            setError(null);
-            setDiff(null);
-        }
-        cloneClient.git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full })
-            .then(data => {
-                setDiff(data.diff ?? '');
-                setTruncated(!!data.truncated);
-                setTotalLines(data.totalLines ?? 0);
-                setError(null);
+        if (!quiet) { setLoading(true); setError(null); setDiff(null); }
+        const request = stage === 'untracked'
+            ? cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'untracked').then(content => {
+                if (generation === patchGeneration.current && !saveStateRef.current.isDirty) setUntrackedPreviewFallback(content.binary || content.tooLarge);
+                return { diff: content.binary || content.tooLarge ? '' : untrackedContentAsDiff(content.head.content ?? ''), truncated: false, totalLines: 0 };
             })
-            .catch(err => { if (!quiet) setError(err.message || 'Failed to load diff'); })
-            .finally(() => { if (!quiet) setLoading(false); });
-    }, [workspaceId, filePath, stage, cloneClient]);
+            : cloneClient.git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full });
+        request.then(data => {
+            if (generation !== patchGeneration.current) return;
+            setDiff(data.diff ?? ''); setTruncated(!!data.truncated); setTotalLines(data.totalLines ?? 0); setError(null);
+        }).catch(err => {
+            if (generation !== patchGeneration.current) return;
+            if (stage === 'untracked' && err.status === 404) handlePreviewNotFound();
+            setError(err.message || 'Failed to load diff');
+        }).finally(() => { if (generation === patchGeneration.current) setLoading(false); });
+    }, [workspaceId, filePath, stage, previewUntracked, cloneClient, handlePreviewNotFound]);
 
     useEffect(() => {
         setFullRequested(false);
@@ -445,14 +457,18 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     useEffect(() => {
         if (refreshKey === lastRefreshKeyRef.current) return;
         lastRefreshKeyRef.current = refreshKey;
-        if (stage === 'untracked') return;
+        if (previewUntracked) return;
         fetchDiff(fullRequested, true);
-        // Only a shown editor reloads; a loading one already reads fresh content.
-        if (!wantsEditor || saveStateRef.current.shownModified === null) return;
+        if (!wantsEditor) return;
         const key = saveStateRef.current.contentKey;
+        const generation = ++contentRequestGeneration.current;
         loadEditorContent()
-            .then(loaded => handleRefreshedContent(key, loaded))
-            .catch(() => { /* keep what is shown */ });
+            .then(loaded => { if (generation === contentRequestGeneration.current) handleRefreshedContent(key, loaded); })
+            .catch(() => {
+                if (generation === contentRequestGeneration.current && saveStateRef.current.shownModified === null) {
+                    setEditorContent({ key, status: 'failed' });
+                }
+            });
     }, [refreshKey, stage, fullRequested, fetchDiff, wantsEditor, loadEditorContent, handleRefreshedContent]);
 
     const handleAddComment = useCallback(
@@ -576,8 +592,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                         </button>
                     )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
-                    {stage !== 'untracked' && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
-                    {stage !== 'untracked' && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
+                    {!previewUntracked && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
+                    {!previewUntracked && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
                     {editorSides && <DiffWordWrapToggle />}
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
@@ -645,7 +661,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                 The change list was out of date and has been refreshed.
                             </span>
                         </div>
-                    ) : stage === 'untracked' ? (
+                    ) : previewUntracked || (stage === 'untracked' && untrackedPreviewFallback) ? (
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
                                 key={attachmentDestinationId ?? workspaceId}
@@ -664,7 +680,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             ref={monacoViewerRef}
                             workspaceId={workspaceId}
                             relativePath={relativePath}
-                            stage={stage as 'staged' | 'unstaged'}
+                            stage={stage === 'untracked' ? 'unstaged' : stage}
                             editable={editable}
                             modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
                             historicalDefinitions
@@ -683,7 +699,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             onEditorError={handleEditorError}
                             comments={comments}
                             renderCommentThread={renderCommentThread}
-                            onAddComment={handleAddComment}
+                            onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                             onAskAI={handleAskAIDiff}
                             onCopyAsContext={handleCopyAsContext}
                             diffSelectionDragSource={diffSelectionDragSource}
@@ -706,11 +722,11 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     ref={viewerRef}
                                     diff={diff}
                                     fileName={filePath}
-                                    enableComments
+                                    enableComments={stage !== 'untracked'}
                                     showLineNumbers
                                     comments={comments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                    onAddComment={handleAddComment}
+                                    onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
@@ -722,11 +738,11 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     ref={viewerRef}
                                     diff={diff}
                                     fileName={filePath}
-                                    enableComments
+                                    enableComments={stage !== 'untracked'}
                                     showLineNumbers
                                     comments={comments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                    onAddComment={handleAddComment}
+                                    onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
@@ -806,4 +822,11 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             )}
         </div>
     );
+}
+
+/** The empty base makes every untracked text line an addition. */
+export function untrackedContentAsDiff(content: string): string {
+    if (content === '') return '';
+    const lines = content.replace(/\n$/, '').split('\n');
+    return [`@@ -0,0 +1,${lines.length} @@`, ...lines.map(line => `+${line}`)].join('\n');
 }
