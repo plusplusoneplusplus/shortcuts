@@ -53,6 +53,16 @@ describe('ClassifyDiffAiControls', () => {
         effortTierMap: { medium: { model: 'm', reasoningEffort: 'medium', source: 'config' as const } },
     };
 
+    it('opens tier configuration from review controls without changing the selection', () => {
+        const selection = createSelection({ ...MULTI_PROVIDER_TIERS, provider: 'codex' });
+        render(<ClassifyDiffAiControls selection={selection} collapseLabels />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-configure'));
+        expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=codex');
+        expect(selection.setEffortTier).not.toHaveBeenCalled();
+        expect(selection.setProvider).not.toHaveBeenCalled();
+    });
+
     it('collapseLabels hides the provider name and Effort prefix in a narrow container and stays on one row', () => {
         render(<ClassifyDiffAiControls selection={createSelection(MULTI_PROVIDER_TIERS)} collapseLabels />);
 

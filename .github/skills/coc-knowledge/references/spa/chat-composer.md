@@ -481,6 +481,11 @@ live from Admin to get the separate model picker and reasoning-effort controls.
 tooltips expose the model and effort each tier maps to (empty effort shows as `Auto`) and
 unconfigured options stay disabled with an Admin tooltip. Under Auto, every tier stays
 selectable and tooltips explain that provider and model resolve at scheduling time.
+The shared selector opens the existing server-wide tier editor through
+`admin/openConfiguration.ts`, carrying its exact workspace owner and concrete provider
+(Auto leaves provider selection to Admin). Composers, compact settings, review and modal
+controls retain their drafts and selected tier. Unresolved owners and external catalogs
+without an explicit configuration owner cannot fall back to local settings.
 
 `ChatStyleSelector` renders a `Style: <label>` chip after Effort in both composers when
 `features.chatStyleSelector` is on. Options come from `CHAT_STYLES` / `CHAT_STYLE_LABELS` in

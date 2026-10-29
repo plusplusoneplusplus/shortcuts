@@ -63,6 +63,7 @@ import {
     useModalJobAiSelection,
     isSelectableProvider,
     type ResolvedModalJobAiSelection,
+    type UseModalJobAiSelectionOptions,
 } from '../../../../../src/server/spa/client/react/shared/ModalJobAiControls';
 
 const PROVIDERS: AgentProviderStatus[] = [
@@ -93,12 +94,13 @@ const MODELS = [
     },
 ];
 
-function Harness({ workspaceId = 'ws-1', mode = 'ask', initialSelection }: {
+function Harness({ workspaceId = 'ws-1', mode = 'ask', initialSelection, catalogOptions }: {
+    catalogOptions?: Pick<UseModalJobAiSelectionOptions, 'configurationBaseUrl' | 'externalAgentProviders' | 'externalEffortTierMap'>;
     workspaceId?: string;
     mode?: 'ask' | 'ralph';
     initialSelection?: ResolvedModalJobAiSelection;
 }) {
-    const selection = useModalJobAiSelection({ workspaceId, mode, initialSelection });
+    const selection = useModalJobAiSelection({ workspaceId, mode, initialSelection, ...catalogOptions });
     return (
         <>
             <ModalJobAiControls selection={selection} testIdPrefix="job" />
@@ -156,6 +158,32 @@ describe('ModalJobAiControls', () => {
                 reasoningEffort: 'high',
             });
         });
+    });
+
+    it('opens configuration without changing the modal selection or preferences', async () => {
+        render(<Harness />);
+        await screen.findByTestId('job-effort-tier-selector');
+        const before = readResolved();
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-configure'));
+        expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=codex');
+        expect(readResolved()).toEqual(before);
+        expect(mocks.patchRepo).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, 'https://owner.example'])('keeps external catalogs bound to their configuration owner: %s', async (baseUrl) => {
+        render(<Harness catalogOptions={{ configurationBaseUrl: baseUrl, externalAgentProviders: PROVIDERS,
+            externalEffortTierMap: { codex: { medium: { model: 'remote-model', reasoningEffort: 'high', source: 'config' } } } }} />);
+        await screen.findByTestId('job-effort-tier-selector');
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        const action = screen.getByTestId('effort-tier-configure');
+        if (baseUrl) {
+            fireEvent.click(action);
+            expect(new URLSearchParams(window.location.hash.split('?')[1]).get('owner')).toBe(baseUrl);
+        } else {
+            expect(action).toBeDisabled();
+        }
+        expect(mocks.patchRepo).not.toHaveBeenCalled();
     });
 
     it('falls back to legacy model and reasoning-effort controls when tier mode is disabled', async () => {

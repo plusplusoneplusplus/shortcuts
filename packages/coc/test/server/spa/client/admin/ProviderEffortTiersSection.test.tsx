@@ -504,3 +504,16 @@ describe('ProviderEffortTiersSection', () => {
         expect(screen.getByTestId('provider-effort-tiers-retry')).toBeTruthy();
     });
 });
+
+
+it('focuses the existing tier editor on configuration entry without saving mappings', async () => {
+    window.location.hash = '#admin/agents?section=effort-tiers&provider=copilot';
+    mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({}));
+    mockListModels.mockResolvedValue(makeModelsResponse([]));
+    render(<ProviderEffortTiersSection provider="copilot" />);
+    const section = await screen.findByTestId('provider-effort-tiers-section');
+    expect(section).toHaveFocus();
+    expect(section).toHaveTextContent('all workspaces on this server');
+    expect(mockReplaceEffortTiers).not.toHaveBeenCalled();
+    window.location.hash = '';
+});

@@ -10,6 +10,8 @@
  * floats over the top-right corner instead of taking a header row.
  */
 
+import { isContainerMode } from '../utils/config';
+import { readEffortTierSettingsTarget } from './openConfiguration';
 import { Dialog } from '../ui/Dialog';
 import { AdminPanel } from './AdminPanel';
 import { AdminTargetGate, AdminTargetProvider } from './adminTarget';
@@ -24,6 +26,8 @@ export function AdminDialog({ open, onClose }: AdminDialogProps) {
     return (
         <Dialog
             open={open}
+            trapFocus
+            title="Configure"
             onClose={onClose}
             className="admin-dialog-panel max-w-[1100px] h-[85vh]"
             id="admin-dialog"
@@ -40,12 +44,14 @@ export function AdminDialog({ open, onClose }: AdminDialogProps) {
                 </button>
             )}
         >
-            {/* Mounted only while open, so each genuine open starts on the connected server. */}
-            <AdminTargetProvider>
+            {/* Mount settings only after resolving the requested owner. */}
+            {isContainerMode() && readEffortTierSettingsTarget() ? (
+                <div role="alert" className="p-4">Configure tiers on the owning CoC server. Tier settings are unavailable in container Admin.</div>
+            ) : <AdminTargetProvider>
                 <AdminTargetGate>
                     <AdminPanel />
                 </AdminTargetGate>
-            </AdminTargetProvider>
+            </AdminTargetProvider>}
         </Dialog>
     );
 }

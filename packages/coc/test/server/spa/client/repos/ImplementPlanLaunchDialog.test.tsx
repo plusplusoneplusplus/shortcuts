@@ -631,6 +631,7 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(Array.isArray(lastOptions.externalAgentProviders)).toBe(true);
         expect((lastOptions.externalAgentProviders as any[]).length).toBeGreaterThan(0);
         expect(lastOptions.externalEffortTierMap).toBeDefined();
+        expect(lastOptions.configurationBaseUrl).toBe(remoteTarget.baseUrl);
     });
 
     it('disables AI controls with a hint when the remote target server is unreachable (AC-04-b)', async () => {

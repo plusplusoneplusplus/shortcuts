@@ -246,6 +246,7 @@ export function ImplementPlanLaunchDialog({
         workspaceId: selectedTargetId ?? workspaceId,
         mode: 'autopilot',
         ...(remoteAiData ? {
+            configurationBaseUrl: selectedTarget?.baseUrl,
             externalAgentProviders: remoteAiData.agentProviders,
             externalEffortTierMap: remoteAiData.effortTierMap,
         } : {}),

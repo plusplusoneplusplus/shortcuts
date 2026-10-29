@@ -1629,6 +1629,24 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('compact-ai-settings-effort-control')).toBeTruthy();
         });
 
+        it('opens tier configuration from compact settings and preserves the draft and selection', async () => {
+            mockEffortLevelsEnabled.value = true;
+            mockEffortTiers.value = { medium: { model: 'gpt-5.4', reasoningEffort: 'medium' } };
+            const submit = vi.fn();
+            renderCompactComposer(submit);
+            const input = screen.getByTestId('lens-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Keep this draft' } });
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+            await screen.findByTestId('effort-tier-trigger-btn');
+            const selected = screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value');
+            fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-tier-configure'));
+            expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=copilot');
+            expect(input.value).toBe('Keep this draft');
+            expect(screen.getByTestId('effort-tier-selector')).toHaveAttribute('data-tier-value', selected);
+            expect(submit).not.toHaveBeenCalled();
+        });
+
         it('lays out the provider and effort controls in a shared flex row', () => {
             renderCompactComposer();
             fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));

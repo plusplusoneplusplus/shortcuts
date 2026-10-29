@@ -91,6 +91,10 @@ export function ClassifyDiffAiControls({
             )}
             {useEffortTierMode ? (
                 <EffortTierSelector
+                    workspaceId={selection.configurationWorkspaceId}
+                    settingsBaseUrl={selection.configurationBaseUrl}
+                    provider={provider}
+                    configurationUnavailable={selection.configurationUnavailable}
                     tiers={effortTierMap}
                     selectedTier={selectedEffortTier}
                     onChange={setEffortTier}

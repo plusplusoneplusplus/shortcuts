@@ -7,6 +7,7 @@
  * This component is pure UI — all state, handlers, and API calls remain in
  * `AdminPanel.tsx` and are passed as props.
  */
+import { readEffortTierSettingsTarget } from './openConfiguration';
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { Spinner } from '../ui';
 import { useAdminSaveShortcut } from './useAdminSaveShortcut';
@@ -392,9 +393,12 @@ export function AIProviderPage(props: AIProviderPageProps) {
 
     const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
     const [activeModelProvider, setActiveModelProvider] = useState<Provider>(
-        defaultProvider,
+        () => {
+            const provider = readEffortTierSettingsTarget()?.provider;
+            return provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode' ? provider : defaultProvider;
+        },
     );
-    const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>('routing');
+    const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>(() => readEffortTierSettingsTarget() ? 'models' : 'routing');
     useAdminSaveShortcut(true, activeSubTab === 'routing' ? [{ dirty, saving, onSave }] : []);
 
     const providers: Array<{
