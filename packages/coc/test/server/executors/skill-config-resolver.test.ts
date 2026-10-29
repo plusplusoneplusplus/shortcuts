@@ -139,9 +139,7 @@ describe('resolveSkillConfig', () => {
             }],
         });
         // Model available WSL directories without requiring an installed distro.
-        const access = vi.spyOn(fs.promises, 'access').mockRejectedValue(
-            Object.assign(new Error('Missing directory'), { code: 'ENOENT' }),
-        );
+        const access = vi.spyOn(fs.promises, 'access');
         const stat = vi.spyOn(fs.promises, 'stat').mockImplementation(async (dir) => {
             if (![repoSkillsDir, extraSkillsDir].includes(String(dir))) {
                 throw Object.assign(new Error('Missing directory'), { code: 'ENOENT' });
