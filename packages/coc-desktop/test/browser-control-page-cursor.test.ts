@@ -120,6 +120,17 @@ describe('browser control cursor overlay wiring', () => {
         expect(overlay()!.layer.style.visibility).toBe('visible');
     });
 
+    it('hides a key chip drawn before the cursor has any point', async () => {
+        const { events, page } = fixture();
+        page.setCursorOverlay(true);
+        await page.press('Enter');
+        await vi.waitFor(() => expect(overlay()).toBeDefined());
+        events.length = 0;
+        await page.screenshot();
+        await vi.waitFor(() => expect(events).toContain('cursor:show'));
+        expect(events.slice(events.indexOf('cursor:hide'))).toEqual(['cursor:hide', 'Page.captureScreenshot', 'overlay:hidden', 'cursor:show']);
+    });
+
     it('does not touch the page around screenshots when nothing was drawn', async () => {
         const { events, page } = fixture();
         page.setCursorOverlay(true);

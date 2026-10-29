@@ -345,8 +345,8 @@ export class BrowserControlPage {
             : { x: viewport.pageX, y: viewport.pageY, width: viewport.clientWidth, height: viewport.clientHeight };
         const pixelRatio = await this.evaluate('window.devicePixelRatio');
         if (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0) throw new Error('Browser pixel ratio unavailable');
-        // The agent never sees its own cursor; a slow hide must not hold the capture.
-        const hidden = this.cursorPoint !== undefined;
+        // The agent never sees its own cursor or effects (a first key chip has no point yet); a slow hide must not hold the capture.
+        const hidden = this.cursorDrawn;
         if (hidden) await Promise.race([this.cursor({ op: 'hide' }), delay(250)]);
         let result: { data?: string };
         try {

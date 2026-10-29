@@ -3,7 +3,7 @@
 // Isolated shared-page-engine fixture; the server/SPA relay is tested separately.
 const http = require('node:http');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, nativeImage } = require('electron');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
 const { BrowserControlPage } = require('../../dist/browser-control-page.js');
@@ -32,6 +32,65 @@ const server = http.createServer((request, response) => {
             shadow.querySelector('button').addEventListener('click',e=>{window.shadowClicked=e.isTrusted});
         </script>`);
 });
+
+const evaluate = async expression => (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })).result.value;
+async function until(check, label) {
+    for (const started = Date.now(); Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
+        if (await check()) return;
+    }
+    throw new Error('Timed out waiting for ' + label);
+}
+
+/** Pixels that differ between two same-size PNG screenshots, optionally inside a CSS-pixel box. */
+function pixelDiff(first, second, box) {
+    const [a, b] = [first, second].map(shot => nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
+    const { width, height } = a.getSize();
+    if (b.getSize().width !== width || b.getSize().height !== height) throw new Error('Screenshot sizes differ');
+    const scale = box ? width / box.viewportWidth : 1;
+    const [left, top] = box ? [Math.floor(box.x * scale), Math.floor(box.y * scale)] : [0, 0];
+    const [right, bottom] = box ? [Math.min(width, Math.ceil((box.x + box.size) * scale)), Math.min(height, Math.ceil((box.y + box.size) * scale))] : [width, height];
+    const [pixelsA, pixelsB] = [a.toBitmap(), b.toBitmap()];
+    let changed = 0;
+    for (let y = Math.max(0, top); y < bottom; y++) {
+        for (let x = Math.max(0, left); x < right; x++) {
+            const offset = (y * width + x) * 4;
+            if (pixelsA.readUInt32LE(offset) !== pixelsB.readUInt32LE(offset)) changed++;
+        }
+    }
+    return changed;
+}
+
+/** The agent's screenshots, snapshots and reads never contain the AI cursor drawn on screen. */
+async function cursorEvidence(queue, ref, baseline) {
+    // An overlay-free page with the same capture path shows what is really on screen.
+    const screen = new BrowserControlPage((method, params) => cdp.send(method, params), process.platform);
+    await queue.run(async page => page.setCursorOverlay(true));
+    await queue.run(page => page.type(ref('Name'), 'Ada'));
+    const hosts = await evaluate('document.querySelectorAll("coc-ai-cursor").length');
+    const snapshot = await queue.run(page => page.snapshot());
+    const text = await queue.run(page => page.read());
+    await queue.run(page => page.click(ref('Save')));
+    // Let the glide and ripple settle, well before the idle fade.
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const point = await evaluate('window.__cocCursorOverlay?.point');
+    const box = { ...point, size: 20, viewportWidth: await evaluate('document.documentElement.clientWidth') };
+    const visible = await screen.screenshot(undefined, 'png');
+    const agent = await queue.run(page => page.screenshot(undefined, 'png'));
+    await until(async () => await evaluate('window.__cocCursorOverlay?.layer.style.visibility') === 'visible', 'cursor shown again after the agent screenshot');
+    queue.removeCursor();
+    await until(async () => await evaluate('document.querySelectorAll("coc-ai-cursor").length') === 0, 'cursor removed');
+    const clean = await screen.screenshot(undefined, 'png');
+    const serialized = JSON.stringify(snapshot);
+    return {
+        hosts, point: !!point,
+        snapshotHasOverlay: /coc-ai-cursor|typing…/i.test(serialized),
+        readHasOverlay: /coc-ai-cursor|typing…/i.test(text),
+        refsStable: snapshot.elements.map(e => e.ref).join() === baseline.elements.map(e => e.ref).join(),
+        visibleCursorPixels: pixelDiff(visible, clean, box),
+        agentCursorPixels: pixelDiff(agent, clean, box),
+        agentPagePixels: pixelDiff(agent, clean),
+    };
+}
 
 (async () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -82,11 +141,12 @@ const server = http.createServer((request, response) => {
         returnByValue: true,
     });
     const repeated = await queue.run(page => page.snapshot());
+    const cursor = await cursorEvidence(queue, ref, repeated);
     await win.loadURL(url + '?navigated');
     const after = await queue.run(page => page.snapshot());
     let stale;
     try { await queue.run(page => page.click(ref('Save'))); } catch (error) { stale = error.message; }
-    console.log('E2E::' + JSON.stringify({ report: report.result.value, typeAheadSelections, cancelled, stoppedField: stoppedField.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
+    console.log('E2E::' + JSON.stringify({ cursor, report: report.result.value, typeAheadSelections, cancelled, stoppedField: stoppedField.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
     cdp.dispose();
     win.destroy();
     await new Promise(resolve => server.close(resolve));
