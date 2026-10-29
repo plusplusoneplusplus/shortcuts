@@ -274,6 +274,12 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             void control?.releaseFrames?.(ref).catch(error => console.warn('Could not release desktop browser frame control:', error));
         }
     };
+    /** The server's cursor setting turned off: drawn AI cursors in its scopes go away now. */
+    const removeCursors = () => {
+        for (const ref of visibilityScopes().keys()) {
+            void control?.removeCursors?.(ref).catch(error => console.warn('Could not remove the desktop AI cursor:', error));
+        }
+    };
     /** Cancels pending work; retained background scopes keep theirs unless `all`. */
     const cancelPending = (all = true) => {
         for (const [id, ref] of [...pending]) {
@@ -376,6 +382,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         onClose() { connected = false; clearHandoffs(); cancelPending(); blockNavigations(); releaseRetained(true); clearActivities(); },
         onMessage(message: { type: string; [key: string]: unknown }): boolean {
             if (message.type === 'browser-takeover-policy' && message.enabled === false) { clearHandoffs(); return true; }
+            if (message.type === 'browser-cursor-policy' && message.enabled === false) { removeCursors(); return true; }
             if (message.type === 'config-changed') {
                 for (const id of [...framePending]) {
                     if (dropWaiting(id, 'Browser frame policy changed during command')) continue;

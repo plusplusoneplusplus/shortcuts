@@ -53,7 +53,7 @@ function harness(baseUrl?: string, modern = false) {
         ...(modern ? {
             onTakeover: vi.fn((handler: (state: any) => void) => { takeoverState = handler; return vi.fn(); }),
             setTakeoverPolicy: vi.fn(async () => {}),
-            finish: vi.fn(), setVisible: vi.fn(), releaseFrames: vi.fn(async () => {}),
+            finish: vi.fn(), setVisible: vi.fn(), releaseFrames: vi.fn(async () => {}), removeCursors: vi.fn(async () => {}),
             onActivity: vi.fn((handler: (event: any) => void) => { activity = handler; return vi.fn(); }),
             onStop: vi.fn((handler: (event: any) => void) => { stop = handler; return vi.fn(); }),
             onNavigationCheck: vi.fn((handler: (event: any) => void) => { navigationCheck = handler; return vi.fn(); }),
@@ -113,6 +113,35 @@ describe('SPA browser socket relay', () => {
         resolve({ tabs: [] }); await tick();
         expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
         h.relay.dispose();
+    });
+    it('removes drawn AI cursors in its own scopes as soon as its server turns the cursor setting off', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'turn' } });
+        await tick();
+        expect(h.relay.onMessage({ type: 'browser-cursor-policy', enabled: true })).toBe(false);
+        expect(h.control.removeCursors).not.toHaveBeenCalled();
+        expect(h.relay.onMessage({ type: 'browser-cursor-policy', enabled: false })).toBe(true);
+        expect(h.control.removeCursors).toHaveBeenCalledExactlyOnceWith('w');
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        h.control.removeCursors.mockRejectedValueOnce(new Error('Synthetic closed window'));
+        h.relay.onMessage({ type: 'browser-cursor-policy', enabled: false });
+        await tick();
+        expect(warn).toHaveBeenCalledWith('Could not remove the desktop AI cursor:', expect.objectContaining({ message: 'Synthetic closed window' }));
+        h.relay.dispose();
+        // A clone's relay touches only the clone's scope.
+        const baseUrl = 'http://127.0.0.1:4500';
+        registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+        const remote = harness(baseUrl, true);
+        await remote.relay.update('remote:server:w'); remote.relay.onOpen();
+        remote.relay.onMessage({ type: 'browser-cursor-policy', enabled: false });
+        expect(remote.control.removeCursors).toHaveBeenCalledExactlyOnceWith('remote:server:w');
+        remote.relay.dispose();
+        // Older desktops without the call ignore the message.
+        const legacy = harness();
+        await legacy.relay.update('w'); legacy.relay.onOpen();
+        expect(() => legacy.relay.onMessage({ type: 'browser-cursor-policy', enabled: false })).not.toThrow();
+        legacy.relay.dispose();
     });
     it('releases idle frame tracking on a source config change without waiting for another command', async () => {
         const h = harness(undefined, true);

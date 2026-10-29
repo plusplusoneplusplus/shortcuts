@@ -50,6 +50,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private navigationApprovalEnabled = () => true;
     private cursorOverlayEnabled = () => true;
     private lastHumanTakeoverPolicy?: boolean;
+    private lastCursorOverlayPolicy?: boolean;
     private humanTakeoverEnabled = () => false;
     private readonly handoffs = new Map<string, { client: BrowserRelayClient; state: BrowserTakeoverState }>();
     private readonly revokedTakeoverTurns = new Set<string>();
@@ -148,6 +149,11 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             }
             if (hadHandoffs || disabledTransition) for (const capability of this.clients.values()) if (capability.humanTakeoverSupported) capability.client.send(JSON.stringify({ type: 'browser-takeover-policy', enabled: false }));
         }
+        // A drawn AI cursor goes away now, not at the window's next browser command.
+        const cursorOverlay = this.getCursorOverlayEnabled();
+        const cursorOff = this.lastCursorOverlayPolicy === true && !cursorOverlay;
+        this.lastCursorOverlayPolicy = cursorOverlay;
+        if (cursorOff) for (const capability of this.clients.values()) capability.client.send(JSON.stringify({ type: 'browser-cursor-policy', enabled: false }));
         this.syncBackgroundPolicy();
         this.syncFramesPolicy();
         this.syncNavigationApprovalPolicy();

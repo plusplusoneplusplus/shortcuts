@@ -4,6 +4,8 @@ import type { BrowserCommandRequest, BrowserCommandReply, BrowserNavigationAnswe
 
 export type BrowserControlServerEvent =
   | { type: 'browser-takeover-policy'; enabled: boolean }
+  /** The AI cursor setting turned off: the desktop removes drawn cursors without waiting for a command. */
+  | { type: 'browser-cursor-policy'; enabled: boolean }
   | { type: 'browser-command'; request: BrowserCommandRequest }
   | { type: 'browser-command-cancel'; id: string }
   | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }

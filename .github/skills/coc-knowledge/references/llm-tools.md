@@ -747,7 +747,9 @@ pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
 Live `browserControl.cursorOverlayEnabled` (default on, requires browser control)
 adds `cursorOverlayEnabled: true` to each relayed command; absent means off. The
 desktop then draws a fake cursor and action effects in the controlled page, never
-in agent screenshots, snapshots or reads. See `spa/shell.md`.
+in agent screenshots, snapshots or reads. When it (or browser control) turns off,
+`syncPolicies()` sends `{type:'browser-cursor-policy', enabled:false}` once to every
+desktop socket so drawn cursors go away between commands. See `spa/shell.md`.
 
 Site approval: with live `browserControl.navigationApprovalEnabled` (default on,
 requires browser control) the desktop asks before an agent-driven top-level load

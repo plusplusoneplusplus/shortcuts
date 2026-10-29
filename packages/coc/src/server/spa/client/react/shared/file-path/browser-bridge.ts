@@ -126,6 +126,8 @@ export interface DesktopBrowserBridge {
         execute(request: BrowserCommandRequest, routingRef?: string): Promise<BrowserCommandResult>;
         cancel(id: string): void;
         releaseFrames?(routingRef: string): Promise<void>;
+        /** Removes the AI cursor from this window's views in the scope now; absent on older desktops. */
+        removeCursors?(routingRef: string): Promise<void>;
         finish?(turnId?: string, routingRef?: string): void;
         setVisible?(visible: boolean, routingRef: string): void;
         onActivity?(callback: (event: BrowserControlActivityEvent) => void): () => void;

@@ -418,9 +418,13 @@ Drawing is fire-and-forget beside dispatch: errors are logged and never fail,
 delay or retry an action. Agent screenshots hide the overlay (bounded wait) and
 show it again afterwards; DOM snapshots and reads never include it.
 `removeCursor` bypasses the queue on turn finish, Stop, tab close, a moved turn,
-Take over, `request_human` and takeover termination; flag off removes it at the
-turn's next command. Human-takeover mutation stamps ignore cursor-host-only
-changes. Overlay state is in memory per view.
+Take over, `request_human` and takeover termination. Turning the setting (or
+browser control) off removes it at once: the server's `browser-cursor-policy`
+`{enabled:false}` makes each SPA relay call `control.removeCursors(ref)` for its
+own scopes, and `BrowserHostManager.removeCursors(ownerId, ref)` disables the overlay
+out of queue on that window's controlled views in the scope, so the running command
+draws nothing more; other windows and scopes keep theirs. Human-takeover mutation
+stamps ignore cursor-host-only changes. Overlay state is in memory per view.
 
 Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
 agent-driven main-frame loads while a control turn is active on the view, its
