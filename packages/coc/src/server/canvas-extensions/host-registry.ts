@@ -17,6 +17,8 @@ export interface CanvasExtensionRegistryOptions {
     log: (message: string) => void;
     send?: (owner: CanvasExtensionOwner, extensionKey: string, prompt: string) => Promise<{ messageId: string }>;
     ephemeralQuery?: (owner: CanvasExtensionOwner, question: string) => Promise<{ answer: string }>;
+    /** Open persisted instances, read once when a conversation runtime is first used. */
+    loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
     startHost?: (options: CanvasExtensionHostOptions) => Promise<CanvasExtensionHost>;
 }
@@ -29,6 +31,7 @@ interface Entry {
     tail: Promise<unknown>;
     pending: number;
     retired: boolean;
+    hydrated: boolean;
     timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -145,7 +148,7 @@ export class CanvasExtensionHostRegistry {
         let entry = this.entries.get(key);
         if (!entry) {
             entry = { owner: { ...owner }, extension: { ...extension }, instances: new Map(),
-                tail: Promise.resolve(), pending: 0, retired: false };
+                tail: Promise.resolve(), pending: 0, retired: false, hydrated: false };
             this.entries.set(key, entry);
         }
         const current = entry;
@@ -157,6 +160,11 @@ export class CanvasExtensionHostRegistry {
             this.assertActive(current);
             if (!conversation || conversation.archived || conversation.metadata?.workspaceId !== owner.workspaceId) {
                 throw new Error('Canvas conversation is missing, archived or owned by another workspace');
+            }
+            if (!current.hydrated) {
+                const instances = this.options.loadInstances?.(current.owner, current.extension.extensionKey) ?? [];
+                for (const instance of instances) current.instances.set(instance.instanceId, structuredClone(instance));
+                current.hydrated = true;
             }
             const host = await this.ensureHost(current);
             this.assertActive(current);

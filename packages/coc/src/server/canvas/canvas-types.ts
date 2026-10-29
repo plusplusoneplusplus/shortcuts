@@ -9,9 +9,9 @@ import * as crypto from 'crypto';
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto';
+export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto' | 'copilot-extension';
 
-export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension', 'excalidraw', 'kusto'];
+export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension', 'excalidraw', 'kusto', 'copilot-extension'];
 
 export interface CanvasDescriptor {
     id: string;

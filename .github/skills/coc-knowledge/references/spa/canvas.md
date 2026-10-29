@@ -157,7 +157,21 @@ Open instances prevent idle expiry; otherwise `COC_CANVAS_EXT_IDLE_TTL_MS` defau
 to 600000. The server forwards archive/removal events and reconciles filtered clears
 against surviving owners. Disabling the flag and shutdown stop runtimes and drain
 pending startup; deletion removes the conversation's isolated session-state folder.
-Callback services remain injected; tool/persistence and desktop composition are separate.
+Callback services remain injected; executor tool wiring and desktop composition are separate.
+
+`llm-tools/canvas-extension-tools.ts` provides four provider-neutral factories with a
+live gate before discovery, owner reads or runtime calls. `open_canvas` persists a
+`copilot-extension` record in the conversation workspace, with extension key, declared
+canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
+The shared notifier emits both WebSocket and process updates on open/close. A closed
+marker retains reopen input while excluding that record from runtime hydration.
+
+`instance-records.ts` reads owner-filtered records and supplies the registry's optional
+`loadInstances` callback. First use restores every saved open instance before the next
+operation. Group records belong to the group conversation; runtime descriptors retain
+member cwd. Tool calls serialize per conversation across factory invocations, preventing
+duplicate instance records. SDK CanvasError data returns as `{ code, message }` tool
+errors. Failed initial persistence closes the newly opened runtime instance.
 
 ### Extension canvases
 

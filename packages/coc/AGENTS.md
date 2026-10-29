@@ -217,6 +217,11 @@ references before editing. Paths are package-relative.
   No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
   Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
   deletion removes only that conversation's isolated session-state directory.
+  `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
+  executor/registry composition supplies discovery, host, store and notifier services.
+  `copilot-extension` records store identity/input/title and a closed marker, never
+  runtime URLs. Supply `loadCanvasExtensionInstances` to the host registry to restore
+  open records on first use; keep group conversation storage separate from member cwd.
 
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation

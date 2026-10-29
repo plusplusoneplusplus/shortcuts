@@ -152,7 +152,7 @@ export class CanvasStore {
     createCanvas(input: CreateCanvasInput): CanvasRecord {
         const id = generateCanvasId(input.title);
         const now = new Date().toISOString();
-        const type: CanvasType = input.type === 'code' || input.type === 'extension' || input.type === 'excalidraw' || input.type === 'kusto'
+        const type: CanvasType = input.type === 'code' || input.type === 'extension' || input.type === 'excalidraw' || input.type === 'kusto' || input.type === 'copilot-extension'
             ? input.type
             : 'markdown';
         const language = type === 'code' ? normalizeCanvasLanguage(input.language) : undefined;
