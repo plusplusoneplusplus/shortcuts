@@ -159,6 +159,14 @@ against surviving owners. Disabling the flag and shutdown stop runtimes and drai
 pending startup; deletion removes the conversation's isolated session-state folder.
 Callback services remain injected; desktop composition is separate.
 
+The registry caches cloned SDK declarations in memory by entry path/content hash
+after successful startup. Capability lists check the live flag and conversation
+owner before using a cached entry, without creating or hydrating a runtime.
+Discovery supplies the current hash on each tool call; a changed path/hash refreshes
+an existing runtime and reopens known instances before dispatch. Idle expiry preserves
+declarations; disable/shutdown clear them. Opens and actions retain separate
+conversation processes even when their declarations come from the shared cache.
+
 Server composition supplies shared runtime, CanvasStore hydration and update notifier
 services through `getCanvasExtensionRuntime`. Standard chat, follow-up, Ralph and
 owner-script turns bind their exact workspace/conversation in the common tool builder.

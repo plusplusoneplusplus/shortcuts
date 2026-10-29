@@ -214,6 +214,10 @@ references before editing. Paths are package-relative.
   startup/RPC calls, stop children on transport failure, and await disposal.
   `host-registry.ts` serializes calls per conversation/extension, keeps open
   instances alive, and reopens their saved inputs after crashes before dispatch.
+  It caches cloned declarations by entry path/content hash across conversations;
+  cache reads retain live flag/owner checks and start no runtime. Changed hashes
+  refresh runtimes before dispatch and reopen known instances. Disable/shutdown
+  clear the cache; idle expiry preserves it.
   No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
   Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
   deletion removes only that conversation's isolated session-state directory.

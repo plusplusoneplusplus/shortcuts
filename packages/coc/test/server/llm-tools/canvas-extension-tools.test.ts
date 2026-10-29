@@ -77,6 +77,25 @@ describe('canvas extension tool factories and persistence', () => {
         expect(startHost).toHaveBeenCalledTimes(1);
         expect(canvasStore.listCanvases(owner.workspaceId)).toEqual([]);
     });
+    it('lists cached real SDK declarations across conversations and refreshes them after a file edit', async () => {
+        const first = await call('list_canvas_capabilities');
+        const sibling = { ...owner, processId: 'conversation-2' };
+        expect(await call('list_canvas_capabilities', {}, sibling)).toEqual(first);
+        expect(startHost).toHaveBeenCalledTimes(1);
+        const entryPath = path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs');
+        fs.writeFileSync(entryPath, fs.readFileSync(entryPath, 'utf8').replace("displayName: 'Counter'", "displayName: 'Changed counter'"));
+        const refreshed = await call('list_canvas_capabilities');
+        expect(refreshed).toMatchObject({ success: true, canvases: [{ displayName: 'Changed counter' }] });
+        expect(startHost).toHaveBeenCalledTimes(2);
+        expect(await call('list_canvas_capabilities', {}, sibling)).toEqual(refreshed);
+        expect(startHost).toHaveBeenCalledTimes(2);
+        await open();
+        await call('open_canvas', { canvasId: qualifiedId, instanceId: 'sibling-instance' }, sibling);
+        expect(startHost).toHaveBeenCalledTimes(3);
+        expect(startHost.mock.calls.map(([options]) => options.processId)).toEqual([
+            owner.processId, owner.processId, sibling.processId,
+        ]);
+    });
     it('persists owner, input and title without URLs and emits both update channels', async () => {
         const opened = await open();
         const canvas = canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!;

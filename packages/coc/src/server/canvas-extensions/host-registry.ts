@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
 import { CanvasExtensionHost, type CanvasInstanceRequest, type CanvasExtensionHostOptions } from './extension-host';
@@ -38,6 +39,7 @@ interface Entry {
 /** One lazy canvas runtime per conversation and extension, independent of providers. */
 export class CanvasExtensionHostRegistry {
     private readonly entries = new Map<string, Entry>();
+    private readonly declarationCache = new Map<string, { contentHash: string; declarations: CanvasDeclaration[] }>();
     private readonly cleanup = new Set<Promise<void>>();
     private disposed = false;
     private disposePromise?: Promise<void>;
@@ -48,8 +50,11 @@ export class CanvasExtensionHostRegistry {
         this.idleTtlMs = Number.isFinite(value) && value >= 0 && value <= 2_147_483_647 ? value : 600_000;
     }
 
-    declarations(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension) {
-        return this.run(owner, extension, host => Promise.resolve(host.declarations));
+    async declarations(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension) {
+        await this.assertOwner(owner);
+        const cached = this.declarationCache.get(extension.extensionPath);
+        if (cached?.contentHash === extension.contentHash) return structuredClone(cached.declarations);
+        return this.run(owner, extension, host => Promise.resolve(structuredClone(host.declarations)));
     }
 
     open(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension, request: CanvasInstanceRequest) {
@@ -128,6 +133,7 @@ export class CanvasExtensionHostRegistry {
     }
 
     stopAll(): Promise<void> {
+        this.declarationCache.clear();
         return this.track(Promise.all([...this.entries.values()].map(entry => this.retire(entry))).then(() => {}));
     }
 
@@ -156,10 +162,13 @@ export class CanvasExtensionHostRegistry {
         current.pending++;
         const result = current.tail.then(async () => {
             this.assertActive(current);
-            const conversation = await this.options.store.getProcess(owner.processId, owner.workspaceId);
+            await this.assertOwner(owner);
             this.assertActive(current);
-            if (!conversation || conversation.archived || conversation.metadata?.workspaceId !== owner.workspaceId) {
-                throw new Error('Canvas conversation is missing, archived or owned by another workspace');
+            if (current.extension.extensionPath !== extension.extensionPath
+                || current.extension.contentHash !== extension.contentHash) {
+                await current.host?.dispose();
+                this.assertActive(current);
+                current.extension = { ...extension };
             }
             if (!current.hydrated) {
                 const instances = this.options.loadInstances?.(current.owner, current.extension.extensionKey) ?? [];
@@ -205,6 +214,9 @@ export class CanvasExtensionHostRegistry {
         entry.host = host;
         try {
             this.assertActive(entry);
+            this.declarationCache.set(entry.extension.extensionPath, {
+                contentHash: entry.extension.contentHash, declarations: structuredClone(host.declarations),
+            });
             for (const instance of entry.instances.values()) {
                 await host.open(instance);
                 this.assertActive(entry);
@@ -242,6 +254,15 @@ export class CanvasExtensionHostRegistry {
     private assertEnabled(): void {
         if (this.disposed) throw new Error('Canvas extension registry is disposed');
         if (!this.options.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
+    }
+
+    private async assertOwner(owner: CanvasExtensionOwner): Promise<void> {
+        this.assertEnabled();
+        const conversation = await this.options.store.getProcess(owner.processId, owner.workspaceId);
+        this.assertEnabled();
+        if (!conversation || conversation.archived || conversation.metadata?.workspaceId !== owner.workspaceId) {
+            throw new Error('Canvas conversation is missing, archived or owned by another workspace');
+        }
     }
 
     private assertActive(entry: Entry): void {

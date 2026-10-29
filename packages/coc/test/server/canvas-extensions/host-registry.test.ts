@@ -58,7 +58,78 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         await vi.advanceTimersByTimeAsync(1);
         expect(host.running).toBe(false);
         await expect(registry.declarations(owner, extension)).resolves.toEqual(host.declarations);
+        expect(options.startHost).toHaveBeenCalledTimes(1);
+        await registry.open(owner, extension, instance);
         expect(options.startHost).toHaveBeenCalledTimes(2);
+    });
+
+    it('shares cloned declarations across conversations without hydrating or starting the reader runtime', async () => {
+        options.loadInstances = vi.fn(() => []);
+        const first = await registry.declarations(owner, extension);
+        first[0].id = 'modified';
+        const sibling = { ...owner, processId: 'conversation-2' };
+        expect(await registry.declarations(sibling, extension)).toEqual([{ id: 'counter' }]);
+        expect(options.startHost).toHaveBeenCalledTimes(1);
+        expect(options.loadInstances).toHaveBeenCalledTimes(1);
+        await registry.open(sibling, extension, instance);
+        expect(options.startHost).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(options.startHost!).mock.calls[1][0].processId).toBe(sibling.processId);
+    });
+
+    it('caches declarations from opens and keys them by path as well as hash', async () => {
+        await registry.open(owner, extension, instance);
+        const sibling = { ...owner, processId: 'conversation-2' };
+        await registry.declarations(sibling, extension);
+        expect(options.startHost).toHaveBeenCalledTimes(1);
+        await registry.declarations(sibling, { ...extension, extensionPath: path.join(root, 'other', 'extension.mjs') });
+        expect(options.startHost).toHaveBeenCalledTimes(2);
+    });
+
+    it('refreshes a changed hash in an existing runtime and reopens its instances', async () => {
+        await registry.open(owner, extension, instance);
+        const changed = { ...extension, contentHash: 'changed' };
+        const replacement = fakeHost();
+        replacement.declarations = [{ id: 'new-counter' }];
+        vi.mocked(options.startHost!).mockResolvedValueOnce(replacement as unknown as CanvasExtensionHost);
+        expect(await registry.declarations(owner, changed)).toEqual([{ id: 'new-counter' }]);
+        expect(host.running).toBe(false);
+        expect(replacement.open).toHaveBeenCalledExactlyOnceWith(instance);
+        expect(vi.mocked(options.startHost!).mock.calls[1][0].extension.contentHash).toBe('changed');
+        const sibling = { ...owner, processId: 'conversation-2' };
+        expect(await registry.declarations(sibling, changed)).toEqual([{ id: 'new-counter' }]);
+        expect(options.startHost).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache failed startup and retries on the next list', async () => {
+        vi.mocked(options.startHost!).mockRejectedValueOnce(new Error('startup failed'));
+        await expect(registry.declarations(owner, extension)).rejects.toThrow('startup failed');
+        await expect(registry.declarations(owner, extension)).resolves.toEqual([{ id: 'counter' }]);
+        expect(options.startHost).toHaveBeenCalledTimes(2);
+    });
+
+    it('validates the live gate and conversation owner even with cached declarations', async () => {
+        await registry.declarations(owner, extension);
+        for (const process of [undefined, { archived: true, metadata: { workspaceId: owner.workspaceId } }, { metadata: { workspaceId: 'other' } }]) {
+            vi.mocked(options.store.getProcess).mockResolvedValueOnce(process as never);
+            await expect(registry.declarations(owner, extension)).rejects.toThrow('missing, archived or owned');
+        }
+        options.config = () => ({ canvasExtensions: { enabled: false } });
+        vi.mocked(options.store.getProcess).mockClear();
+        await expect(registry.declarations(owner, extension)).rejects.toThrow('disabled');
+        expect(options.store.getProcess).not.toHaveBeenCalled();
+        expect(options.startHost).toHaveBeenCalledTimes(1);
+        await registry.dispose();
+        await expect(registry.declarations(owner, extension)).rejects.toThrow('disposed');
+    });
+
+    it('rechecks live disable after an asynchronous owner lookup on a cache hit', async () => {
+        await registry.declarations(owner, extension);
+        vi.mocked(options.store.getProcess).mockImplementationOnce(async id => {
+            options.config = () => ({ canvasExtensions: { enabled: false } });
+            return { id, metadata: { workspaceId: owner.workspaceId } } as never;
+        });
+        await expect(registry.declarations(owner, extension)).rejects.toThrow('disabled');
+        expect(options.startHost).toHaveBeenCalledTimes(1);
     });
 
     it('keeps open instances alive and starts a fresh idle interval after the last close', async () => {
