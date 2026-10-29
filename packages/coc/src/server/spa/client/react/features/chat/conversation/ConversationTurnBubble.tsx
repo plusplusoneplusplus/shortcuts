@@ -238,14 +238,42 @@ type RenderChunk =
         parentToolId?: string;
       };
 
+function useCopyFeedback() {
+    const [copied, setCopied] = useState(false);
+    const mounted = useRef(false);
+    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+            clearTimeout(timer.current);
+        };
+    }, []);
+
+    const showCopied = useCallback(() => {
+        // Clipboard writes can finish after their bubble or context card unmounts.
+        if (!mounted.current) {
+            return;
+        }
+        clearTimeout(timer.current);
+        setCopied(true);
+        timer.current = setTimeout(() => {
+            timer.current = undefined;
+            setCopied(false);
+        }, 1500);
+    }, []);
+
+    return [copied, showCopied] as const;
+}
+
 function AttachedSessionContextBlockCard({ context }: { context: ParsedSessionContextBlock }) {
-    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+    const [copiedRawBlock, showCopiedRawBlock] = useCopyFeedback();
 
     const handleCopyRawBlock = async () => {
         try {
             await copyToClipboard(context.rawBlock);
-            setCopiedRawBlock(true);
-            setTimeout(() => setCopiedRawBlock(false), 1500);
+            showCopiedRawBlock();
         } catch (e) {
             console.error('Copy attached session context block failed:', e);
         }
@@ -378,13 +406,12 @@ function getPointerContextSummaryMeta(context: ParsedPointerContextBlock): strin
 }
 
 function AttachedPointerContextBlockCard({ context }: { context: ParsedPointerContextBlock }) {
-    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+    const [copiedRawBlock, showCopiedRawBlock] = useCopyFeedback();
 
     const handleCopyRawBlock = async () => {
         try {
             await copyToClipboard(context.rawBlock);
-            setCopiedRawBlock(true);
-            setTimeout(() => setCopiedRawBlock(false), 1500);
+            showCopiedRawBlock();
         } catch (e) {
             console.error('Copy attached pointer context block failed:', e);
         }
@@ -440,13 +467,12 @@ function AttachedPointerContextBlockCard({ context }: { context: ParsedPointerCo
 }
 
 function AttachedRalphSessionContextBlockCard({ context }: { context: ParsedRalphSessionContextBlock }) {
-    const [copiedRawBlock, setCopiedRawBlock] = useState(false);
+    const [copiedRawBlock, showCopiedRawBlock] = useCopyFeedback();
 
     const handleCopyRawBlock = async () => {
         try {
             await copyToClipboard(context.rawBlock);
-            setCopiedRawBlock(true);
-            setTimeout(() => setCopiedRawBlock(false), 1500);
+            showCopiedRawBlock();
         } catch (e) {
             console.error('Copy attached Ralph session context block failed:', e);
         }
@@ -690,14 +716,13 @@ export function splitLargePasteTurnContent(content: string): LargePasteParts {
 
 function LargePasteCard({ content, onOpenInPanel }: { content: string; onOpenInPanel?: () => void }) {
     const [expanded, setExpanded] = useState(false);
-    const [copiedFullContent, setCopiedFullContent] = useState(false);
+    const [copiedFullContent, showCopiedFullContent] = useCopyFeedback();
     const previewLines = useMemo(() => getPastePreviewLines(content), [content]);
 
     const handleCopy = async () => {
         try {
             await copyToClipboard(content);
-            setCopiedFullContent(true);
-            setTimeout(() => setCopiedFullContent(false), 1500);
+            showCopiedFullContent();
         } catch (e) {
             console.error('Copy large paste content failed:', e);
         }
@@ -1443,8 +1468,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
 
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
-    const [copied, setCopied] = useState(false);
-    const [copiedHtml, setCopiedHtml] = useState(false);
+    const [copied, showCopied] = useCopyFeedback();
+    const [copiedHtml, showCopiedHtml] = useCopyFeedback();
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; linkHref?: string } | null>(null);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -1859,8 +1884,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             const text = showRaw ? buildRawContent(turn) : (turn.content || '');
                             try {
                                 await copyToClipboard(text);
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 1500);
+                                showCopied();
                             } catch (e) {
                                 console.error('Copy failed:', e);
                             }
@@ -1876,8 +1900,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                 try {
                                     const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
                                     await copyHtmlToClipboard(embedMathCssForCopy(html), turn.content || '');
-                                    setCopiedHtml(true);
-                                    setTimeout(() => setCopiedHtml(false), 1500);
+                                    showCopiedHtml();
                                 } catch (e) {
                                     console.error('Copy HTML failed:', e);
                                 }
