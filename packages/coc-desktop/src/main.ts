@@ -97,6 +97,7 @@ import {
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
 import { disposeBrowserViews, registerBrowserViewIpc, registerBrowserEmbedder } from './browser-view-host';
+import { disposeExtensionCanvasIpc, registerExtensionCanvasIpc } from './extension-canvas-ipc';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -1184,6 +1185,7 @@ async function bootstrap(): Promise<void> {
 
     // Browser and HTML tabs share owner-validated hosting and guest authorization.
     registerBrowserViewIpc();
+    registerExtensionCanvasIpc(() => serverHandle?.url);
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the
     // hotkey works even before/without the main window being focused.
@@ -1294,6 +1296,7 @@ app.on('before-quit', (event) => {
     devTunnelManager?.dispose();
     event.preventDefault();
     isQuitting = true;
+    disposeExtensionCanvasIpc();
     void Promise.all([
         disposeBrowserViews()
             .catch(error => console.error('[coc-desktop] Browser shutdown failed:', error)),

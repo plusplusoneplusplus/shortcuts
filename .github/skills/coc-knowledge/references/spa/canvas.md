@@ -208,8 +208,12 @@ It accepts credential-free HTTP IPv4 loopback sources, uses in-memory sessions k
 by extension identity and binds exact-origin navigation/request gates before loading.
 External HTTP(S) links use the system browser; permissions, downloads and popup windows
 are denied. Owner reload/destruction, attachment expiry and host disposal revoke guests.
-The host exposes attachment/adoption, load state and close; callers own workspace
-validation and saved-instance reopening. Desktop IPC and panel composition are separate.
+`extension-canvas-ipc.ts` owns one host for the desktop lifetime. Its preload
+`extensionCanvas` bridge accepts saved workspace/canvas IDs, not runtime URLs.
+Main reopens through the existing POST on the desktop's fixed local server and
+derives the URL/key from that response. IPC requires the registered SPA main
+frame on that server; close, reload, crash and shutdown abort pending opens.
+Late and superseded responses cannot create or retire another view's guest.
 
 ### Extension canvases
 

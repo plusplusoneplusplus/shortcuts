@@ -11,13 +11,20 @@ const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || !existsSync(path.join(here, '..', '..', 'dist', 'extension-canvas-host.js'));
 
 describe.skipIf(skip)('extension canvas guest (real Electron)', () => {
-    it('renders a guarded loopback page, receives SSE and blocks cross-origin loads', async () => {
+    it.each([
+        ['extension-canvas-runner.cjs', {
+            rendered: true, sse: true, external: true, originBlocked: true, sandboxed: true, closed: true,
+        }],
+        ['extension-canvas-bridge-runner.cjs', {
+            sdk: true, preload: true, savedReopen: true, agentActionSse: true, external: true, restoredAfterRestart: true,
+        }],
+    ])('runs %s', async (runner, expected) => {
         const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
             const electron = createRequire(import.meta.url)('electron') as string;
             const args = process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : [];
             const env = { ...process.env };
             delete env.ELECTRON_RUN_AS_NODE;
-            const child = spawn(electron, [...args, path.join(here, 'extension-canvas-runner.cjs')], { env });
+            const child = spawn(electron, [...args, path.join(here, runner)], { env });
             let output = '';
             child.stdout.on('data', data => { output += String(data); });
             child.stderr.on('data', data => { output += String(data); });
@@ -31,8 +38,6 @@ describe.skipIf(skip)('extension canvas guest (real Electron)', () => {
         expect(result.code, result.output).toBe(0);
         const record = result.output.split('\n').find(line => line.startsWith('E2E::'));
         expect(record, result.output).toBeDefined();
-        expect(JSON.parse(record!.slice(5))).toEqual({
-            rendered: true, sse: true, external: true, originBlocked: true, sandboxed: true, closed: true,
-        });
+        expect(JSON.parse(record!.slice(5))).toEqual(expected);
     }, 40_000);
 });
