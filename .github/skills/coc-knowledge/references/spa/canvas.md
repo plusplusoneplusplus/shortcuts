@@ -28,8 +28,9 @@ Inline content remains in the transcript.
 
 ## CanvasPanel
 
-`features/canvas/CanvasPanel.tsx` is a composition root gated by `canvas.enabled`
-(`isCanvasEnabled()` in `utils/config.ts`, default on). It owns the public props, the
+`features/canvas/CanvasPanel.tsx` is a composition root for saved canvas records.
+`canvas.enabled` gates ordinary canvas creation tools and composer affordances;
+installed extensions use the independent `canvasExtensions.enabled` gate. The panel owns the public props, the
 owner-routed `useCocClient` (explicit `routingRef` when supplied), fullscreen chrome, and layout, delegating
 the rest:
 
@@ -163,7 +164,7 @@ enqueue-only delivery and ordinary pending-message/SSE handling. Busy conversati
 buffer until the next turn boundary. Ephemeral queries reuse `createCanvasCompleteFn`
 with the active conversation provider, recorded model and follow-up model policy.
 The one-shot invoker denies permissions and ambient MCP, adds no turn, and rechecks
-owner/flag state before returning. Desktop composition is separate.
+owner/flag state before returning.
 
 The registry caches cloned SDK declarations in memory by entry path/content hash
 after successful startup. Capability lists check the live flag and conversation
@@ -214,6 +215,19 @@ Main reopens through the existing POST on the desktop's fixed local server and
 derives the URL/key from that response. IPC requires the registered SPA main
 frame on that server; close, reload, crash and shutdown abort pending opens.
 Late and superseded responses cannot create or retire another view's guest.
+
+`CopilotExtensionCanvasView` renders `copilot-extension` records without interpreting
+their descriptor JSON as document content. Only `UnifiedCanvasTab` opts into guests;
+clone routing and workspace-owner context restrict them to local desktop owners.
+Browser, remote, inline and pop-out surfaces show a desktop-only message without
+opening a runtime. Each mount/effect gets a unique attachment identity; record updates
+retain the guest without reopening. The header keeps title, extension badge, fullscreen
+and close, while descriptor editing, export, history and comments stay unavailable.
+
+The typed client exposes `canvases.openCopilotExtension` for saved-record reopening.
+Native Copilot loading/rendering remain opted out on create/resume/fallback; the pinned
+runtime's opt-in controls and one-process/tool-set conformance are covered by
+`copilot-native-loader.test.ts`. See [SDK ownership](../sdk-wrapper.md#canvas-extension-ownership).
 
 ### Extension canvases
 
