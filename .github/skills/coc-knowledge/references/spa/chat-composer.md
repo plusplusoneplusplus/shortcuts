@@ -316,7 +316,13 @@ chat style and leaves model/effort/provider/mode to destination follow-up policy
 Only a matching process ID and valid turn index confirm admission. Post-dispatch
 transport errors, invalid responses and a thirty-second deadline require explicit
 duplicate-risk confirmation before retry; late responses never revise outcomes.
-The helper is independent of mounted conversations and has no production wiring.
+`SentinelTodoMessageComposer` binds the surface and helpers to one immutable
+captured target. It retains drafts on failure, cancels stale opening reads on
+text/route/topology changes and revalidates on explicit send. Failed initial
+reads remain retryable. Live gates block admission; synchronous UI locking spans
+preflight through admission. A focused separate confirmation authorizes uncertain
+retry. Only confirmed admission invokes the host success callback. The controller
+is independent of mounted conversations and has no production menu wiring.
 
 ### Session-context attachments
 

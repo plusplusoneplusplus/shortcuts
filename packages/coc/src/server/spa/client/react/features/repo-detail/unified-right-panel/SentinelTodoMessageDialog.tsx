@@ -19,21 +19,24 @@ export interface SentinelTodoMessageDialogProps {
     error?: string | null;
     onQueue: () => void;
     onClose: () => void;
+    duplicateConfirmation?: { onConfirm: () => void; onCancel: () => void };
     returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 /** In-memory composer surface; its caller owns validation, admission and draft lifetime. */
 export function SentinelTodoMessageDialog({
     owner, item, sentinelName, workspaceLabel, serverLabel, text, onTextChange,
-    ready, loading = false, pending = false, error, onQueue, onClose, returnFocusRef,
+    ready, loading = false, pending = false, error, onQueue, onClose, returnFocusRef, duplicateConfirmation,
 }: SentinelTodoMessageDialogProps) {
     const id = useId();
     const errorRef = useRef<HTMLParagraphElement>(null);
+    const confirmationRef = useRef<HTMLDivElement>(null);
     const statusRef = useRef<HTMLParagraphElement>(null);
     useEffect(() => {
-        if (pending) statusRef.current?.focus();
+        if (duplicateConfirmation) confirmationRef.current?.focus();
+        else if (pending) statusRef.current?.focus();
         else if (error) errorRef.current?.focus();
-    }, [error, pending]);
+    }, [error, pending, !!duplicateConfirmation]);
     const close = () => { if (!pending) onClose(); };
     return <Dialog open title="Message Sentinel" trapFocus returnFocusRef={returnFocusRef}
         onClose={close} onMinimize={() => {}} disableClose={pending}
@@ -41,8 +44,8 @@ export function SentinelTodoMessageDialog({
         renderHeader={() => <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Message Sentinel</h2>}
         footer={<>
             <Button variant="secondary" disabled={pending} onClick={close}>Cancel</Button>
-            <Button aria-label="Queue message" disabled={!ready || loading || !text.trim()} loading={pending}
-                onClick={() => { if (ready && !loading && !pending && text.trim()) onQueue(); }}>Queue message</Button>
+            <Button aria-label="Queue message" disabled={!ready || loading || !!duplicateConfirmation || !text.trim()} loading={pending}
+                onClick={() => { if (ready && !loading && !pending && !duplicateConfirmation && text.trim()) onQueue(); }}>Queue message</Button>
         </>}>
         <div className="flex min-w-0 flex-col gap-4 [overflow-wrap:anywhere]">
             <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-lg bg-black/[0.03] p-3 text-xs dark:bg-white/[0.04]">
@@ -63,6 +66,14 @@ export function SentinelTodoMessageDialog({
                 {pending ? 'Queueing message…' : loading ? 'Loading attached To-do…'
                     : 'The To-do stays attached. Your message joins the Sentinel’s normal queue.'}
             </p>
+            {duplicateConfirmation && <div ref={confirmationRef} tabIndex={-1} role="group" aria-label="Confirm duplicate-risk retry"
+                className="flex flex-col gap-3 rounded-lg border border-[#c8c8c8] p-3 text-xs dark:border-[#555555]">
+                <p>Delivery is unconfirmed. Retrying may queue a duplicate. Queue this message again?</p>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" disabled={pending} onClick={duplicateConfirmation.onCancel}>Keep editing</Button>
+                    <Button disabled={pending || !ready || loading || !text.trim()} onClick={duplicateConfirmation.onConfirm}>Queue again anyway</Button>
+                </div>
+            </div>}
             {error && <p ref={errorRef} id={`${id}-error`} role="alert" tabIndex={-1}
                 className="rounded-lg border border-[#f14c4c]/40 p-3 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/60">{error}</p>}
         </div>

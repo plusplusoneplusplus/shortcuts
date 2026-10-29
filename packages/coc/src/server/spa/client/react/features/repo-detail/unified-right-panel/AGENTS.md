@@ -973,7 +973,13 @@ on drop and send (see the composer knowledge reference).
 `SentinelTodoMessageDialog` provides a controlled message surface for a fixed item
 and owner; the caller supplies draft, context readiness, destination labels and
 admission state. It traps/restores focus and retains text through inline failures.
-The component performs no navigation or I/O and has no list-menu wiring.
+The component performs no navigation or I/O.
+`SentinelTodoMessageComposer` owns its in-memory draft and one admission instance
+for a fixed captured target. Opening reads are cancelled on draft/route/topology
+changes; explicit send always revalidates. Failed initial reads permit explicit
+retry. Pending admission locks editing/dismissal; uncertain delivery requires a
+separate focused duplicate-risk confirmation. Only confirmed admission reaches
+the host success callback. Live gate changes block admission without dropping text.
 `sentinelTodoMessageContext.ts` captures its concrete ledger route and durable
 server identity from dashboard topology. Its read-only preparation brackets exact
 Sentinel process/item reads with health verification, rejects stale routes and
@@ -988,7 +994,7 @@ process ID and an integer turn index (including buffered -1) confirm admission.
 Transport failures, invalid success responses and the thirty-second deadline
 retain uncertainty; retry requires a separate duplicate-risk confirmation action.
 Confirmed rejection permits retry, but cannot clear a prior uncertain attempt.
-The helper has no production menu/dialog wiring.
+The controller and helpers have no production menu wiring.
 Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
