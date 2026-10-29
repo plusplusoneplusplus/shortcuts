@@ -215,6 +215,27 @@ describe('createQueueInfrastructure', () => {
         }
     });
 
+    it('forwards the live canvas extension capability into executor runtimes', () => {
+        let service: ReturnType<NonNullable<ExecutorRuntimeCapabilities['getCanvasExtensionRuntime']>>;
+        const getCanvasExtensionRuntime = () => service;
+        const args: Parameters<typeof createQueueInfrastructure> = [
+            store, dataDir, { queue: { autoStart: false } }, DEFAULT_QUEUE_RUNTIME_CONFIG, getWsServer,
+        ];
+        args[31] = getCanvasExtensionRuntime;
+        const result = createQueueInfrastructure(...args);
+        try {
+            const runtime = (result.bridge as unknown as {
+                defaultOptions: { runtime: ExecutorRuntimeCapabilities };
+            }).defaultOptions.runtime;
+            expect(runtime.getCanvasExtensionRuntime).toBe(getCanvasExtensionRuntime);
+            expect(runtime.getCanvasExtensionRuntime?.()).toBeUndefined();
+            service = {} as NonNullable<typeof service>;
+            expect(runtime.getCanvasExtensionRuntime?.()).toBe(service);
+        } finally {
+            result.queuePersistence.dispose(); result.bridge.dispose();
+        }
+    });
+
     it('forwards the inventory store getter into restored and lazy executor runtimes', () => {
         let inventoryStore: ConversationToolInventoryStore | undefined;
         const getInventory = () => inventoryStore;

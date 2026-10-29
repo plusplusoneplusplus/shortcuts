@@ -45,6 +45,7 @@ function makeSentinelRuntime() {
     const sentinels = {
         getWsServer: vi.fn(() => undefined),
         getKustoRuntime: vi.fn(() => undefined),
+        getCanvasExtensionRuntime: vi.fn(() => undefined),
         getOwnerScriptRunner: vi.fn(() => undefined),
         getBrowserControlRuntime: vi.fn(() => undefined),
         getBrowserToolState: vi.fn(() => undefined),
@@ -141,6 +142,9 @@ describe('Executor runtime capability wiring', () => {
             ['getSentinelRefrainCommands', 'chat executors', p => p.chatExecutor.runtime.getSentinelRefrainCommands],
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
             ['getKustoRuntime', 'chat executors', p => p.chatExecutor.runtime.getKustoRuntime],
+            ['getCanvasExtensionRuntime', 'chat executors', p => p.chatExecutor.runtime.getCanvasExtensionRuntime],
+            ['getCanvasExtensionRuntime', 'follow-up executor', p => p.followUpExecutor.runtime.getCanvasExtensionRuntime],
+            ['getCanvasExtensionRuntime', 'ralph executor', p => p.ralphExecutor.runtime.getCanvasExtensionRuntime],
             ['getOwnerScriptRunner', 'chat executors', p => p.chatExecutor.runtime.getOwnerScriptRunner],
             ['getOwnerScriptRunner', 'follow-up executor', p => p.followUpExecutor.runtime.getOwnerScriptRunner],
             ['getOwnerScriptRunner', 'ralph executor', p => p.ralphExecutor.runtime.getOwnerScriptRunner],

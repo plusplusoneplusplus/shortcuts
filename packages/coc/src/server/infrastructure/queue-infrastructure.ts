@@ -88,6 +88,7 @@ export function createQueueInfrastructure(
     getRegisterPrOutcome?: ExecutorRuntimeCapabilities['getRegisterPrOutcome'],
     getSentinelRefrains?: ExecutorRuntimeCapabilities['getSentinelRefrains'],
     getSentinelRefrainCommands?: ExecutorRuntimeCapabilities['getSentinelRefrainCommands'],
+    getCanvasExtensionRuntime?: ExecutorRuntimeCapabilities['getCanvasExtensionRuntime'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -113,6 +114,7 @@ export function createQueueInfrastructure(
         getBrowserControlRuntime,
         getBrowserToolState,
         getKustoRuntime,
+        getCanvasExtensionRuntime,
         // Late-bound to the router below: canvas scripts run on the owner chat's repo bridge.
         getOwnerScriptRunner: () => bridge.runOwnerScript,
         getWsServer,

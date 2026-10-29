@@ -220,8 +220,12 @@ references before editing. Paths are package-relative.
   `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
   their registry metadata and schema summaries use an independent default-off
   `canvasExtensionsEnabled` gate in live GET/PUT workspace tool settings. Keep
-  this gate separate from `canvas.enabled`; executor composition supplies discovery,
-  host, store and notifier services.
+  this gate separate from `canvas.enabled`. The server supplies shared host, store,
+  hydration and notifier services via `getCanvasExtensionRuntime`; standard chat,
+  follow-up, Ralph and owner-script turns bind their exact owner in the common
+  tool builder. The turn context adds discovery-only catalog lines to system tool
+  guidance after preference filtering. Restricted turns omit tools and catalog.
+  Return SDK failure envelopes containing structured error JSON for provider parity.
   `copilot-extension` records store identity/input/title and a closed marker, never
   runtime URLs. Supply `loadCanvasExtensionInstances` to the host registry to restore
   open records on first use; keep group conversation storage separate from member cwd.

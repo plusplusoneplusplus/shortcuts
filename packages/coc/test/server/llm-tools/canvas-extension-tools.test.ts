@@ -36,7 +36,9 @@ describe('canvas extension tool factories and persistence', () => {
         });
     }
     async function call(name: string, args: unknown = {}, scope = owner): Promise<any> {
-        return tools(scope).find(tool => tool.name === name)!.handler(args);
+        const result = await tools(scope).find(tool => tool.name === name)!.handler(args) as any;
+        if (result.resultType === 'failure') return JSON.parse(result.textResultForLlm);
+        return result;
     }
     async function open(count = 5, instanceId = 'instance-1') {
         const result = await call('open_canvas', { canvasId: qualifiedId, instanceId, input: { count } });
@@ -199,7 +201,12 @@ describe('canvas extension tool factories and persistence', () => {
         const captured = tools(); enabled = false;
         expect(tools()).toEqual([]);
         const results = await Promise.all(captured.map(tool => tool.handler({})));
-        expect(results.every((result: any) => !result.success && result.error.message.includes('disabled'))).toBe(true);
+        for (const result of results as any[]) {
+            expect(result.resultType).toBe('failure');
+            expect(JSON.parse(result.textResultForLlm)).toMatchObject({
+                success: false, error: { message: 'Canvas extensions are disabled' },
+            });
+        }
         expect(processStore.getWorkspaces).not.toHaveBeenCalled(); expect(processStore.getProcess).not.toHaveBeenCalled();
         expect(startHost).not.toHaveBeenCalled(); expect(emitProcessEvent).not.toHaveBeenCalled();
     });

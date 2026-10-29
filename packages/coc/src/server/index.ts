@@ -2,6 +2,9 @@
  * Creates and manages an HTTP server for the `coc serve` command.
  */
 
+import { CanvasStore } from './canvas/canvas-store';
+import { createCanvasUpdateNotifier } from './canvas/canvas-update-notifier';
+import { loadCanvasExtensionInstances } from './canvas-extensions/instance-records';
 import * as http from 'http';
 import * as path from 'path';
 import * as os from 'os';
@@ -453,7 +456,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const decisionService = createDecisionService(copilotService);
     const kustoRuntime = createKustoClientRuntime(() => runtimeConfigService.config.kusto);
     const unsubscribeKustoConfig = runtimeConfigService.onChange(() => kustoRuntime.syncConfig());
+    const extensionCanvasStore = new CanvasStore(dataDir);
     const canvasExtensionHosts = new CanvasExtensionHostRegistry({
+        loadInstances: (owner, key) => loadCanvasExtensionInstances(extensionCanvasStore, owner, key),
         config: () => runtimeConfigService.config, store, dataDir,
         log: message => getServerLogger().warn(message),
     });
@@ -527,6 +532,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             })) : undefined,
         () => getSentinelRefrainsCapability?.(),
         () => getSentinelRefrainCommandsCapability?.(),
+        () => ({
+            config: () => runtimeConfigService.config,
+            hosts: canvasExtensionHosts,
+            canvasStore: extensionCanvasStore,
+            notifier: createCanvasUpdateNotifier({ processStore: store, getWsServer: () => wsServer }),
+        }),
     );
     // Owner workspace for cron automation: live queue task, then persisted process.
     const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);

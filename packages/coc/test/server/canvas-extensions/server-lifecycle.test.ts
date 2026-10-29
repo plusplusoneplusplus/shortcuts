@@ -1,3 +1,4 @@
+import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import { mkdtemp, rm, copyFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -48,7 +49,12 @@ it('server composition forwards archive/delete events and awaits registry shutdo
             promptPreview: 'Canvas', fullPrompt: 'Canvas', startTime: new Date(),
             metadata: { type: 'chat', workspaceId: owner.workspaceId } });
         const shutdownOwner = { ...owner, processId: 'shutdown-conversation' };
-        const final = await hosts.open(shutdownOwner, extension, instance);
+        // Production composition hydrates saved instances before an action, including after restart.
+        new CanvasStore(root).createCanvas({ ...shutdownOwner, type: 'copilot-extension', title: 'Saved counter',
+            editor: 'ai', content: JSON.stringify({ extensionKey: extension.extensionKey, ...instance,
+                input: { count: 41 }, title: 'Saved counter' }) });
+        expect(await hosts.invoke(shutdownOwner, extension, { instanceId: instance.instanceId, actionName: 'increment' })).toBe(42);
+        const final = await hosts.open(shutdownOwner, extension, { ...instance, input: { count: 42 } });
         const env = await hosts.invoke(shutdownOwner, extension, { instanceId: instance.instanceId, actionName: 'environment' }) as { pid: number };
         await server.close();
         server = undefined;

@@ -18,6 +18,10 @@ export interface CanvasExtensionToolsDeps extends CanvasExtensionOwner {
     notifier: CanvasUpdateNotifier;
 }
 
+/** Shared server services; the executor binds the owning conversation per turn. */
+export type CanvasExtensionRuntime = Omit<CanvasExtensionToolsDeps,
+    'workspaceId' | 'processId' | 'dataDir' | 'processStore'>;
+
 interface OpenArgs { canvasId: string; instanceId?: string; input?: Record<string, unknown> }
 interface InvokeArgs { instanceId: string; actionName: string; input?: Record<string, unknown> }
 interface CloseArgs { instanceId: string }
@@ -82,10 +86,11 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
             });
         } catch (error) {
             const data = (error as { data?: { code?: unknown; message?: unknown } } | null)?.data;
-            return { success: false, error: {
+            const failure = { success: false, error: {
                 code: typeof data?.code === 'string' ? data.code : 'canvas-extension-error',
                 message: typeof data?.message === 'string' ? data.message : error instanceof Error ? error.message : String(error),
             } };
+            return { resultType: 'failure', textResultForLlm: JSON.stringify(failure) };
         }
     };
 
