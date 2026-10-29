@@ -202,6 +202,10 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- `canvasExtensions.enabled` is a live, default-off admin setting. Keep its
+  code-execution trust warning in the shared admin setting definition; Features
+  controls and save keys derive from that registry.
+
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation
   across workspaces, transports and port changes. Preserve it on restart; invalid

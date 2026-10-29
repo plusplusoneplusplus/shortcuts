@@ -63,6 +63,22 @@ beforeEach(() => {
 });
 
 describe('useAdminFeatureSettings', () => {
+    it('defaults canvas extensions off and saves the explicit opt-in on Features', async () => {
+        const definition = FEATURES_CARD_SETTINGS.find(d => d.key === 'canvasExtensions.enabled');
+        expect(definition?.ui?.hint).toContain('run code shipped in any opened repo');
+        const { view } = renderController();
+        act(() => view.result.current.hydrate({}));
+        expect(view.result.current.featureValues['canvasExtensions.enabled']).toBe(false);
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'canvasExtensions.enabled': true })));
+        expect(view.result.current.isTabDirty('features')).toBe(true);
+        await act(async () => { await view.result.current.handleSaveTab('features'); });
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({ 'canvasExtensions.enabled': true }));
+        expect(view.result.current.isTabDirty('features')).toBe(false);
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'canvasExtensions.enabled': false })));
+        act(() => view.result.current.handleCancelTab('features'));
+        expect(view.result.current.featureValues['canvasExtensions.enabled']).toBe(true);
+    });
+
     it.each(['tab', 'all'])('preserves an invalid compliance draft and displays a validation error on %s save', async scope => {
         const { view, addToast } = renderController();
         act(() => view.result.current.setFeatureValues(prev => ({

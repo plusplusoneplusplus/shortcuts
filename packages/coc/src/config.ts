@@ -248,6 +248,10 @@ export interface CLIConfig {
     canvas?: {
         enabled?: boolean;
     };
+    /** Run discovered Copilot canvas extensions. Disabled by default. */
+    canvasExtensions?: {
+        enabled?: boolean;
+    };
     /** Desktop browser control. Disabled by default. */
     browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean; cursorOverlayEnabled?: boolean };
     /** Target for native Azure CLI IC3 own-user Ask commands. */
@@ -693,6 +697,10 @@ export interface ResolvedCLIConfig {
     canvas: {
         enabled: boolean;
     };
+    /** Run discovered Copilot canvas extensions. */
+    canvasExtensions: {
+        enabled: boolean;
+    };
     /** Desktop browser control. */
     browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean; cursorOverlayEnabled: boolean };
     teamsIc3OwnCommands: {
@@ -1066,6 +1074,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     canvas: {
         enabled: true,
+    },
+    canvasExtensions: {
+        enabled: false,
     },
     kusto: {
         enabled: false,

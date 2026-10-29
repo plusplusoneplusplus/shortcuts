@@ -1063,6 +1063,7 @@ describe('feature toggle settings-tab placement', () => {
         'workItems.workflow.enabled': 'features',
         'cron.enabled': 'features',
         'canvas.enabled': 'features',
+        'canvasExtensions.enabled': 'features',
         'browserControl.backgroundEnabled': 'browser',
         'browserControl.navigationApprovalEnabled': 'browser',
         'browserControl.enabled': 'browser',

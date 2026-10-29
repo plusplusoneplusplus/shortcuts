@@ -826,6 +826,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'canvasExtensions.enabled', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 61.5, label: 'Copilot canvas extensions', badge: 'experimental',
+            hint: 'Enabling this lets the agent run code shipped in any opened repo and in ~/.copilot/extensions. Disabled by default.',
+            testId: 'toggle-canvas-extensions-enabled',
+        },
+    }),
+    bool({
         key: 'browserControl.enabled', default: false, runtime: 'live', runtimeFlag: 'browserControlEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 10, label: 'Browser control',
