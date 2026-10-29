@@ -468,6 +468,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const unsubscribeCanvasExtensionsConfig = runtimeConfigService.onChange(() => {
         void canvasExtensionHosts.syncConfig().catch(error => getServerLogger().warn({ error }, 'Canvas extension cleanup failed'));
     });
+    const canvasExtensionRuntime = {
+        config: () => runtimeConfigService.config,
+        hosts: canvasExtensionHosts,
+        canvasStore: extensionCanvasStore,
+        notifier: createCanvasUpdateNotifier({ processStore: store, getWsServer: () => wsServer }),
+    };
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
@@ -535,12 +541,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             })) : undefined,
         () => getSentinelRefrainsCapability?.(),
         () => getSentinelRefrainCommandsCapability?.(),
-        () => ({
-            config: () => runtimeConfigService.config,
-            hosts: canvasExtensionHosts,
-            canvasStore: extensionCanvasStore,
-            notifier: createCanvasUpdateNotifier({ processStore: store, getWsServer: () => wsServer }),
-        }),
+        () => canvasExtensionRuntime,
     );
     const canvasExtensionCallbacks = createCanvasExtensionCallbacks({
         config: () => runtimeConfigService.config, store, dataDir, bridge,
@@ -873,6 +874,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedConfig,
         runtimeConfigService,
         kustoClientFactory: kustoRuntime.clientFactory,
+        canvasExtensionRuntime,
         remoteServerStore,
         remoteServerConnector,
         remoteServerSshConnector,

@@ -84,7 +84,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 
 ## Canvases
 
-Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSocket and owning-process SSE. See [spa/canvas.md](spa/canvas.md).
+Canvas tools use `canvas.enabled` (default on); installed Copilot extension operations use the independent default-off `canvasExtensions.enabled` gate. Mutations emit `canvas-updated` on WebSocket and owning-process SSE. See [spa/canvas.md](spa/canvas.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -98,6 +98,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set status (`open`/`sent`/`resolved`) |
 | DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete comment |
 | GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
+| POST | `/api/workspaces/:id/canvases/:canvasId/copilot-extension/open` | Reopen a saved `copilot-extension` with its stored conversation/identity/input; returns ephemeral URL and extension key (`no-store`). Disabled/unavailable runtime or missing/wrong-kind record → `404`; invalid ID → `400`; invalid/unavailable owner, record or runtime failure → `422` with structured CanvasError details |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only file metadata, ≤2000 entries; symlinks omitted |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Text/base64 content; optional `encoding=base64`. Canonical containment rejects traversal/absolute/backslash/NUL/symlink escapes (`400`); missing → `404`; over 1 MB text/10 MB binary → `413` |
 | POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` (and `host.runScript` as the canvas owner when `features.canvasToolScripts` is on) gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |

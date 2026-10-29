@@ -191,8 +191,14 @@ marker retains reopen input while excluding that record from runtime hydration.
 `instance-records.ts` reads owner-filtered records and supplies the registry's optional
 `loadInstances` callback. First use restores every saved open instance before the next
 operation. Group records belong to the group conversation; runtime descriptors retain
-member cwd. Tool calls serialize per conversation across factory invocations, preventing
-duplicate instance records. Failures use SDK `resultType: 'failure'` envelopes whose
+member cwd. `instance-service.ts` shares opening, persistence and per-conversation
+serialization across tool factories and tab reopening, preventing duplicate records and
+close/open races. `POST /api/workspaces/:id/canvases/:canvasId/copilot-extension/open`
+derives the conversation and extension identity/input from the saved record, revalidates
+the live owner/gate, re-sends `canvas.open` and returns an uncached runtime URL plus
+extension key. Closed records reopen with their original input. Request bodies cannot
+override ownership or input. The route and tools share the server-owned host registry.
+Failures use SDK `resultType: 'failure'` envelopes whose
 `textResultForLlm` contains `{ success: false, error: { code, message } }` JSON,
 preserving CanvasError details and MCP `isError` across providers. Failed initial persistence closes the newly opened runtime instance.
 

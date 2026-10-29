@@ -1,5 +1,5 @@
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
-import { mkdtemp, rm, copyFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, copyFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -10,7 +10,10 @@ import { CanvasExtensionHostRegistry } from '../../../src/server/canvas-extensio
 it('server composition forwards archive/delete events and awaits registry shutdown', async () => {
     const root = await mkdtemp(join(tmpdir(), 'canvas-server-lifetime-'));
     await writeFile(join(root, 'config.yaml'), 'canvasExtensions:\n  enabled: true\n');
-    const extensionPath = join(root, 'extension.mjs');
+    const repo = join(root, 'repo');
+    const extensionFolder = join(repo, '.github', 'extensions', 'counter');
+    await mkdir(extensionFolder, { recursive: true });
+    const extensionPath = join(extensionFolder, 'extension.mjs');
     await copyFile(resolve('test/fixtures/canvas-extensions/minimal/extension.mjs'), extensionPath);
     const store = new SqliteProcessStore({ dbPath: join(root, 'processes.db') });
     const service = new CopilotSDKService();
@@ -23,13 +26,14 @@ it('server composition forwards archive/delete events and awaits registry shutdo
     try {
         server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: root,
             configPath: join(root, 'config.yaml'), aiService: service, store });
+        await store.registerWorkspace({ id: 'workspace-1', name: 'Canvas repo', rootPath: repo });
         await server.store.addProcess({ id: 'canvas-conversation', type: 'chat', status: 'completed',
             promptPreview: 'Canvas', fullPrompt: 'Canvas', startTime: new Date(),
             metadata: { type: 'chat', workspaceId: 'workspace-1' } });
         const hosts = lifecycle.mock.contexts.at(-1)!;
         const owner = { workspaceId: 'workspace-1', processId: 'canvas-conversation' };
         const extension = { extensionKey: 'workspace-1:counter', name: 'counter', ownerWorkspaceId: owner.workspaceId,
-            extensionPath, cwd: root, contentHash: 'fixture' };
+            extensionPath, cwd: repo, contentHash: 'fixture' };
         const instance = { canvasId: 'counter', instanceId: 'instance-1' };
         const opened = await hosts.open(owner, extension, instance);
         expect((await fetch(opened.url!)).ok).toBe(true);
@@ -58,10 +62,18 @@ it('server composition forwards archive/delete events and awaits registry shutdo
             metadata: { type: 'chat', workspaceId: owner.workspaceId } });
         const shutdownOwner = { ...owner, processId: 'shutdown-conversation' };
         // Production composition hydrates saved instances before an action, including after restart.
-        new CanvasStore(root).createCanvas({ ...shutdownOwner, type: 'copilot-extension', title: 'Saved counter',
+        const saved = new CanvasStore(root).createCanvas({ ...shutdownOwner, type: 'copilot-extension', title: 'Saved counter',
             editor: 'ai', content: JSON.stringify({ extensionKey: extension.extensionKey, ...instance,
                 input: { count: 41 }, title: 'Saved counter' }) });
         expect(await hosts.invoke(shutdownOwner, extension, { instanceId: instance.instanceId, actionName: 'increment' })).toBe(42);
+        await hosts.stopConversation(shutdownOwner);
+        const restoredResponse = await fetch(`${server.url}/api/workspaces/${owner.workspaceId}/canvases/${saved.id}/copilot-extension/open`, {
+            method: 'POST',
+        });
+        expect(restoredResponse.status).toBe(200);
+        const restored = await restoredResponse.json();
+        expect(restored).toMatchObject({ canvasId: saved.id, instanceId: instance.instanceId, extensionKey: extension.extensionKey });
+        expect(await (await fetch(restored.url)).json()).toEqual({ count: 41 });
         const final = await hosts.open(shutdownOwner, extension, { ...instance, input: { count: 42 } });
         const env = await hosts.invoke(shutdownOwner, extension, { instanceId: instance.instanceId, actionName: 'environment' }) as { pid: number };
         await server.close();

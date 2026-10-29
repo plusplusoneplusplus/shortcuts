@@ -238,6 +238,10 @@ references before editing. Paths are package-relative.
   `copilot-extension` records store identity/input/title and a closed marker, never
   runtime URLs. Supply `loadCanvasExtensionInstances` to the host registry to restore
   open records on first use; keep group conversation storage separate from member cwd.
+  `instance-service.ts` shares opening, persistence and the owner queue between tools
+  and `POST .../canvases/:canvasId/copilot-extension/open`. Tab reopening derives its
+  conversation, extension identity and input from the saved record, validates the live
+  owner/gate and returns an uncached runtime URL; request bodies cannot override them.
 
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation

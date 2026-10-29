@@ -68,6 +68,8 @@ import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-rout
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
+import { registerCanvasExtensionRoutes } from '../canvas-extensions/routes';
+import type { CanvasExtensionRuntime } from '../canvas-extensions/instance-service';
 import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
@@ -295,6 +297,7 @@ export interface RegisterRoutesOptions {
     resolvedConfig?: ResolvedCLIConfig;
     runtimeConfigService?: RuntimeConfigService;
     kustoClientFactory?: import('../kusto/kusto-exec').KustoClientFactory;
+    canvasExtensionRuntime?: CanvasExtensionRuntime;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
     remoteServerSshConnector?: SshConnector;
@@ -1142,6 +1145,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
             getOwnerScriptRunner: () => bridge.runOwnerScript,
         }));
+    registerCanvasExtensionRoutes(routes, { dataDir, processStore: store, runtime: opts.canvasExtensionRuntime });
     registerAdminRoutes(routes, {
         store,
         dataDir,
