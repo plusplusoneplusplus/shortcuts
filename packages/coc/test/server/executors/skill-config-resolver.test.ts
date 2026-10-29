@@ -24,8 +24,9 @@ import {
     resolveEffectiveSkillPaths,
     resolveSkillConfig,
 } from '../../../src/server/executors/skill-config-resolver';
-import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
+import { getBundledSkillsPath, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { resolveSelectedSkillReferences } from '../../../src/server/executors/prompt-builder';
 
 describe('resolveSkillConfig', () => {
     let tmpDir: string;
@@ -91,6 +92,77 @@ describe('resolveSkillConfig', () => {
         expect(result.disabledSkills).toBeDefined();
         expect(result.disabledSkills).toContain('create-work-item');
         expect(result.disabledSkills).toContain('go-deep');
+    });
+
+    it('keeps host-readable skill sources and selected skill references for a WSL workspace', async () => {
+        const repoDir = String.raw`\\wsl.localhost\Ubuntu\home\test\repo`;
+        const fakeHome = path.join(tmpDir, 'home');
+        const dataDir = path.join(tmpDir, 'data');
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        const configuredDir = path.join(tmpDir, 'configured');
+        const workspaceExtraDir = path.join(tmpDir, 'workspace-extra');
+        const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+        for (const dir of [globalSkillsDir, configuredDir, workspaceExtraDir, oneDriveSkillsDir]) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        const skillFilePath = path.join(globalSkillsDir, 'example-skill', 'SKILL.md');
+        fs.mkdirSync(path.dirname(skillFilePath));
+        fs.writeFileSync(skillFilePath, '# Example skill\n');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+        const wslStore = createMockProcessStore({
+            initialWorkspaces: [{
+                id: 'ws-wsl', name: 'WSL repo', rootPath: repoDir,
+                extraSkillFolders: [workspaceExtraDir], disabledSkills: ['disabled-skill'],
+            }],
+        });
+
+        const result = await resolveSkillConfig(wslStore, dataDir, 'ws-wsl', repoDir, {
+            globalExtraFolders: [configuredDir],
+        });
+
+        expect(result.skillDirectories?.slice(0, 4)).toEqual([
+            globalSkillsDir, configuredDir, workspaceExtraDir, oneDriveSkillsDir,
+        ]);
+        expect(result.disabledSkills).toEqual(['disabled-skill']);
+        expect(resolveSelectedSkillReferences(['example-skill'], result.skillDirectories, result.disabledSkills))
+            .toEqual([{ name: 'example-skill', skillFilePath }]);
+    });
+
+    it.each([false, true])('returns host paths for WSL repo-local and relative extra skills (strict: %s)', async (strict) => {
+        const repoDir = String.raw`\\wsl$\Ubuntu\home\test\repo`;
+        const repoSkillsDir = resolvePathForHostFilesystem(repoDir, '.github/skills');
+        const extraSkillsDir = resolvePathForHostFilesystem(repoDir, 'extra-skills');
+        const wslStore = createMockProcessStore({
+            initialWorkspaces: [{
+                id: 'ws-wsl', name: 'WSL repo', rootPath: repoDir,
+                extraSkillFolders: ['extra-skills'],
+            }],
+        });
+        // Model available WSL directories without requiring an installed distro.
+        const access = vi.spyOn(fs.promises, 'access').mockRejectedValue(
+            Object.assign(new Error('Missing directory'), { code: 'ENOENT' }),
+        );
+        const stat = vi.spyOn(fs.promises, 'stat').mockImplementation(async (dir) => {
+            if (![repoSkillsDir, extraSkillsDir].includes(String(dir))) {
+                throw Object.assign(new Error('Missing directory'), { code: 'ENOENT' });
+            }
+            return { isDirectory: () => true } as fs.Stats;
+        });
+        access.mockImplementation(async (dir) => {
+            if (![repoSkillsDir, extraSkillsDir].includes(String(dir))) {
+                throw Object.assign(new Error('Missing directory'), { code: 'ENOENT' });
+            }
+        });
+        try {
+            const result = await resolveSkillConfig(wslStore, undefined, 'ws-wsl', repoDir, {
+                autoDetectDefaultFolders: false, strict,
+            });
+
+            expect(result.skillDirectories?.slice(0, 2)).toEqual([repoSkillsDir, extraSkillsDir]);
+        } finally {
+            access.mockRestore();
+            stat.mockRestore();
+        }
     });
 
     describe('OneDrive skill directories', () => {

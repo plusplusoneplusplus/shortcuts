@@ -16,9 +16,7 @@ import {
     DEFAULT_SKILLS_SETTINGS,
     getBundledSkillsPath,
     resolvePathForHostFilesystem,
-    resolvePathInExecutionContext,
     resolveWorkspaceExecutionContext,
-    translatePathForExecution,
 } from '@plusplusoneplusplus/forge';
 import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 import { isRepoGroupWorkspaceId, resolveRepoGroupMembers } from '../workspaces/repo-group-workspace';
@@ -220,9 +218,8 @@ export async function resolveSkillConfig(
 
     const dirs: string[] = [];
     const root = workingDirectory;
-    const sessionContext = resolveWorkspaceExecutionContext(root);
 
-    async function tryAddSkillDirectory(sourcePath: string, hostPath: string): Promise<void> {
+    async function tryAddSkillDirectory(hostPath: string): Promise<void> {
         try {
             if (options?.strict) {
                 if (!(await fs.promises.stat(hostPath)).isDirectory()) throw new Error('Skill source is not a directory.');
@@ -234,23 +231,15 @@ export async function resolveSkillConfig(
             return;
         }
 
-        try {
-            dirs.push(sessionContext.kind === 'wsl'
-                ? translatePathForExecution(sourcePath, sessionContext)
-                : hostPath);
-        } catch (error) {
-            if (options?.strict) throw error;
-            // Non-fatal: skip skill folders that the active session namespace cannot access
-        }
+        dirs.push(hostPath);
     }
 
     // Repo-group members inherit each live member's `.github/skills`, taking the
     // slot the (empty, virtual) group root's repo-local folder would occupy.
     for (const member of await resolveRepoGroupMemberSkillRoots(store, dataDir, workspaceId)) {
         try {
-            const memberSkillsDir = resolvePathInExecutionContext(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
             const hostMemberSkillsDir = resolvePathForHostFilesystem(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
-            await tryAddSkillDirectory(memberSkillsDir, hostMemberSkillsDir);
+            await tryAddSkillDirectory(hostMemberSkillsDir);
         } catch {
             // Non-fatal: skip a member whose path cannot be translated for this session.
         }
@@ -258,9 +247,8 @@ export async function resolveSkillConfig(
 
     if (root) {
         try {
-            const skillsDir = resolvePathInExecutionContext(root, DEFAULT_SKILLS_SETTINGS.installPath);
             const hostSkillsDir = resolvePathForHostFilesystem(root, DEFAULT_SKILLS_SETTINGS.installPath);
-            await tryAddSkillDirectory(skillsDir, hostSkillsDir);
+            await tryAddSkillDirectory(hostSkillsDir);
         } catch (error) {
             if (options?.strict) throw error;
             // Non-fatal: skip repo-local skills when path translation fails (e.g. Linux path on Windows without WSL)
@@ -269,7 +257,7 @@ export async function resolveSkillConfig(
 
     if (dataDir) {
         const globalSkillsDir = path.join(dataDir, 'skills');
-        await tryAddSkillDirectory(globalSkillsDir, globalSkillsDir);
+        await tryAddSkillDirectory(globalSkillsDir);
     }
 
     const homedir = os.homedir();
@@ -290,10 +278,8 @@ export async function resolveSkillConfig(
                     continue; // global folders must be absolute (no repo root to anchor to)
                 }
                 const hostPath = resolvePathForHostFilesystem(expanded);
-                const sourceCandidates = expandSkillFolderCandidates(expanded);
-                const hostCandidates = expandSkillFolderCandidates(hostPath);
-                for (let i = 0; i < sourceCandidates.length; i++) {
-                    await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
+                for (const candidate of expandSkillFolderCandidates(hostPath)) {
+                    await tryAddSkillDirectory(candidate);
                 }
             } catch (error) {
                 if (options?.strict) throw error;
@@ -305,17 +291,12 @@ export async function resolveSkillConfig(
     if (extraSkillFolders) {
         for (const folder of extraSkillFolders) {
             try {
-                const sourcePath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
-                    ? folder
-                    : (root ? resolvePathInExecutionContext(root, folder) : null);
                 const hostPath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
                     ? resolvePathForHostFilesystem(folder)
                     : (root ? resolvePathForHostFilesystem(root, folder) : null);
-                if (sourcePath && hostPath) {
-                    const sourceCandidates = expandSkillFolderCandidates(sourcePath);
-                    const hostCandidates = expandSkillFolderCandidates(hostPath);
-                    for (let i = 0; i < sourceCandidates.length; i++) {
-                        await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
+                if (hostPath) {
+                    for (const candidate of expandSkillFolderCandidates(hostPath)) {
+                        await tryAddSkillDirectory(candidate);
                     }
                 }
             } catch (error) {
@@ -330,7 +311,7 @@ export async function resolveSkillConfig(
     // disabled.
     if (options?.autoDetectDefaultFolders !== false) {
         for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
-            await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
+            await tryAddSkillDirectory(oneDriveSkillsDir);
         }
     }
 
