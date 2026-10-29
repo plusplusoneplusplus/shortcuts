@@ -172,6 +172,8 @@ export class BrowserHostManager {
             this.finishedTurns.set(activity.routingOwnerId, turns);
         }
         entry.activity = undefined;
+        // Turn finish, Stop, tab close and a moved turn take the AI cursor away at once.
+        if (!entry.closed) entry.control?.removeCursor();
         this.pruneNavigationChecks();
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
@@ -351,7 +353,11 @@ export class BrowserHostManager {
             const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
                 turnId: request.turnId ?? request.processId, routingRef: scope.sessionKey }, state => {
                 const live = this.takeovers.get(key);
-                if (live) for (const entry of live.entries) { this.nativeActivity(entry); this.nativeNavigationGate(entry); }
+                if (live) for (const entry of live.entries) {
+                    this.nativeActivity(entry); this.nativeNavigationGate(entry);
+                    // The human drives now, or the continuation ended: the AI cursor goes at once.
+                    if (state.status !== 'agent' && state.status !== 'checking' && !entry.closed) entry.control?.removeCursor();
+                }
                 this.pruneNavigationChecks();
                 if (state.status === 'terminated' && live) for (const [pendingKey, pending] of this.pendingHumanTabs) {
                     if (pending.control === live.control) this.pendingHumanTabs.delete(pendingKey);

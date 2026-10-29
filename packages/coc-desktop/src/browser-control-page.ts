@@ -5,7 +5,7 @@ import type { BrowserControlFrame } from '@plusplusoneplusplus/coc-client';
 import { browserClipRect } from './browser-control-clip';
 import { browserPaste } from './browser-control-paste';
 import { randomUUID } from 'node:crypto';
-import { buildBrowserCursorExpression, type BrowserCursorCommand, type BrowserCursorPoint } from './browser-control-cursor';
+import { BROWSER_CURSOR_TAG, buildBrowserCursorExpression, type BrowserCursorCommand, type BrowserCursorPoint } from './browser-control-cursor';
 
 export type BrowserCdpSender = (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown>;
 export type BrowserScrollDirection = 'up' | 'down' | 'left' | 'right';
@@ -23,6 +23,7 @@ export class BrowserControlPage {
     private mouseContext?: { session: string; x: number; y: number };
     private cursorEnabled = false;
     private cursorPoint?: BrowserCursorPoint;
+    private cursorDrawn = false;
 
     private readonly send: BrowserCdpSender;
 
@@ -68,13 +69,16 @@ export class BrowserControlPage {
                 state = { document: document, id: ${JSON.stringify(randomUUID())}, revision: 0 };
                 Object.defineProperty(window, '__cocHumanContinuation', { value: state, configurable: true });
                 const changed = () => { state.revision++; };
-                state.observer = new MutationObserver(changed);
+                // Drawing or removing the AI cursor host is not a page change.
+                state.relevant = records => records.some(record => record.type !== 'childList'
+                    || ![...record.addedNodes, ...record.removedNodes].every(node => node.nodeName === ${JSON.stringify(BROWSER_CURSOR_TAG.toUpperCase())}));
+                state.observer = new MutationObserver(records => { if (state.relevant(records)) changed(); });
                 state.observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
                 for (const name of ['input', 'change', 'focusin', 'scroll', 'pagehide', 'hashchange', 'popstate'])
                     window.addEventListener(name, changed, true);
             }
             if (state.url !== location.href) { state.url = location.href; state.revision++; }
-            if (state.observer.takeRecords().length) state.revision++;
+            if (state.relevant(state.observer.takeRecords())) state.revision++;
             return state.id + ':' + state.revision;
         })()`;
         if (this.frames) {
@@ -95,20 +99,36 @@ export class BrowserControlPage {
 
     /** Live per command. Turning it off removes a drawn overlay at once. */
     setCursorOverlay(enabled: boolean): void {
-        if (this.cursorEnabled && !enabled) this.cursor({ op: 'remove' }, true);
-        if (!enabled) this.cursorPoint = undefined;
+        // Sent synchronously, so the active command carries it even when it returns at once.
+        if (!enabled) this.removeCursor(this.send);
         this.cursorEnabled = enabled;
+    }
+
+    /**
+     * Remove a drawn overlay at once through `send`, which may bypass the command queue (human
+     * takeover, turn finish). The next shown action draws it again; errors are logged and ignored.
+     */
+    removeCursor(send: BrowserCdpSender): void {
+        if (!this.cursorDrawn) return;
+        this.cursorDrawn = false;
+        this.cursorPoint = undefined;
+        // The top-level target's default context is the frames path's main-frame context too.
+        let reply: Promise<unknown>;
+        try { reply = send('Runtime.evaluate', { expression: buildBrowserCursorExpression({ op: 'remove' }), returnByValue: true }); }
+        catch (error) { reply = Promise.reject(error); }
+        reply.catch(error => { console.warn('[coc-desktop] Browser cursor overlay failed:', error instanceof Error ? error.message : error); });
     }
 
     /**
      * Fire-and-forget overlay drawing in the top-level document. It never fails, retries or
      * holds the action; the returned promise only lets screenshot wait briefly for a hide.
      */
-    private cursor(command: BrowserCursorCommand, force = false): Promise<void> {
-        if (!this.cursorEnabled && !force) return Promise.resolve();
+    private cursor(command: BrowserCursorCommand): Promise<void> {
+        if (!this.cursorEnabled) return Promise.resolve();
         // The last point lets a new document glide the cursor in from where it was.
         const drawn = command.op === 'click' || command.op === 'field' || command.op === 'key' || command.op === 'scroll'
             ? { ...command, ...(this.cursorPoint ? { from: this.cursorPoint } : {}) } : command;
+        if (drawn !== command) this.cursorDrawn = true;
         if (command.op === 'click' || command.op === 'scroll' && command.point) this.cursorPoint = { ...command.point! };
         else if (command.op === 'field' && command.rect) {
             this.cursorPoint = { x: command.rect.x + command.rect.width / 2, y: command.rect.y + command.rect.height / 2 };
@@ -122,7 +142,7 @@ export class BrowserControlPage {
         return reply.then(value => {
             // The page resolves points the caller could not, such as a focused field or a whole-page scroll.
             const point = value as BrowserCursorPoint | undefined;
-            if (drawn !== command && this.cursorEnabled && point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.cursorPoint = { x: point.x, y: point.y };
+            if (drawn !== command && this.cursorEnabled && this.cursorDrawn && point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.cursorPoint = { x: point.x, y: point.y };
         }, error => { console.warn('[coc-desktop] Browser cursor overlay failed:', error instanceof Error ? error.message : error); });
     }
 

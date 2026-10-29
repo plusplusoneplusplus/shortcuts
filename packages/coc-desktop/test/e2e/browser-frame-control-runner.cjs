@@ -337,8 +337,21 @@ async function cleanup() {
     await run(page => page.press('End'));
     await run(page => page.press('x'));
     assert.equal(await evaluate('document.getElementById("field").value', input.frame), 'frame valuex');
+    await run(async page => page.setCursorOverlay(true));
     await run(page => page.click(save.ref));
     assert((await run(page => page.readPage(undefined, 0, input.frame))).text.includes('Saved synthetic: frame valuex'));
+    // The AI cursor lives in the top-level document, at the nested OOPIF click translated to top-level viewport space.
+    const cursor = await until(() => evaluate(`(() => {
+        const point = window.__cocCursorOverlay?.point;
+        return point && { ...point, hit: document.elementFromPoint(point.x, point.y)?.tagName, hosts: document.querySelectorAll('coc-ai-cursor').length };
+    })()`), 'AI cursor drawn in the top-level document');
+    const nestedClick = (await evaluate('window.syntheticEvents', input.frame)).findLast(event => event.type === 'click' && event.target === 'save');
+    assert.equal(cursor.hosts, 1);
+    assert.equal(cursor.hit, 'IFRAME');
+    assert(cursor.x > nestedClick.x && cursor.y > nestedClick.y, `cursor ${JSON.stringify(cursor)} is in top-level space, not frame-local ${JSON.stringify(nestedClick)}`);
+    assert.equal(await evaluate('document.querySelectorAll("coc-ai-cursor").length', input.frame), 0);
+    await run(async page => page.setCursorOverlay(false));
+    await until(async () => await evaluate('document.querySelectorAll("coc-ai-cursor").length') === 0, 'AI cursor removed when the setting turns off');
     const trusted = await evaluate('window.syntheticEvents', input.frame);
     assert(trusted.some(event => event.type === 'input' && event.trusted));
     assert(trusted.some(event => event.type === 'change' && event.trusted));

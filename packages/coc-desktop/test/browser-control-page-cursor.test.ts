@@ -142,6 +142,63 @@ describe('browser control cursor overlay wiring', () => {
         expect(drawn(send).at(-1)).toEqual({ op: 'key', key: 'Enter' });
     });
 
+    it('removes the overlay through an out-of-queue sender and redraws on the next action', async () => {
+        const { send, page } = fixture();
+        const raw = vi.fn((method: string, params?: Record<string, unknown>) => send(method, params));
+        page.removeCursor(raw);
+        expect(raw).not.toHaveBeenCalled();
+        page.setCursorOverlay(true);
+        await page.click('e1');
+        page.removeCursor(raw);
+        await vi.waitFor(() => expect(overlay()).toBeUndefined());
+        expect(raw).toHaveBeenCalledOnce();
+        expect(document.querySelector('coc-ai-cursor')).toBeNull();
+        page.removeCursor(raw);
+        expect(raw).toHaveBeenCalledOnce();
+        await page.press('Enter');
+        expect(drawn(send).at(-1)).toEqual({ op: 'key', key: 'Enter' });
+        expect(document.querySelectorAll('coc-ai-cursor')).toHaveLength(1);
+    });
+
+    it('logs and ignores a removal the engine rejects or throws on', async () => {
+        const { page } = fixture();
+        page.setCursorOverlay(true);
+        await page.click('e1');
+        page.removeCursor(() => { throw new Error('Synthetic detached view'); });
+        await vi.waitFor(() => expect(console.warn).toHaveBeenCalledWith('[coc-desktop] Browser cursor overlay failed:', 'Synthetic detached view'));
+    });
+
+    it('glides in from the last point on a new document after navigation', async () => {
+        const { send, page } = fixture();
+        page.setCursorOverlay(true);
+        await page.click('e1');
+        // A committed navigation drops the old document's overlay and state.
+        window.eval('delete window.__cocCursorOverlay');
+        document.querySelector('coc-ai-cursor')!.remove();
+        await page.scroll('down');
+        expect(drawn(send).at(-1)).toEqual({ op: 'scroll', direction: 'down', from: { x: 50, y: 35 } });
+        expect(document.querySelectorAll('coc-ai-cursor')).toHaveLength(1);
+        expect(overlay()!.cursor.style.transform).toBe('translate(50px, 35px)');
+    });
+
+    it('keeps the human takeover continuation stamp across drawing and removing the cursor', async () => {
+        const { send, page } = fixture();
+        const original = send.getMockImplementation()!;
+        send.mockImplementation(async (method, params) => String(params?.expression ?? '').includes('__cocHumanContinuation')
+            ? { result: { value: window.eval(String(params!.expression)) } } : original(method, params));
+        window.eval('delete window.__cocHumanContinuation');
+        const before = await page.continuationStamp();
+        page.setCursorOverlay(true);
+        await page.click('e1');
+        expect(document.querySelector('coc-ai-cursor')).not.toBeNull();
+        expect(await page.continuationStamp()).toBe(before);
+        page.removeCursor(send);
+        await vi.waitFor(() => expect(document.querySelector('coc-ai-cursor')).toBeNull());
+        expect(await page.continuationStamp()).toBe(before);
+        document.body.append(document.createElement('p'));
+        expect(await page.continuationStamp()).not.toBe(before);
+    });
+
     it.each(['reject', 'hang'] as const)('never fails or delays an action when overlay drawing fails (%s)', async mode => {
         const { send, page } = fixture();
         const original = send.getMockImplementation()!;

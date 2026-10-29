@@ -95,6 +95,30 @@ describe('main browser control scope and selection', () => {
             await h.manager.dispose();
         }
     });
+    it.each(['finish', 'close'] as const)('removes the drawn cursor at once on turn %s and redraws on the next turn', async end => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            const press = (turnId: string) => h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId,
+                selectedTab: opened.tab, cursorOverlayEnabled: true, command: { action: 'press', key: 'Enter' } });
+            await press('t1');
+            expect(overlay()).toEqual(['key']);
+            // The toolbar Stop cancels the turn and finishes it through the same path.
+            if (end === 'finish') h.manager.finishControl(1, 't1');
+            else await h.manager.close(1, opened.tab!.slice(3));
+            expect(overlay()).toEqual(['key', 'remove']);
+            if (end === 'close') return;
+            h.manager.finishControl(1, 't1');
+            expect(overlay()).toEqual(['key', 'remove']);
+            await press('t2');
+            expect(overlay()).toEqual(['key', 'remove', 'key']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
     it('routes rich paste through native focus and the clipboard without clicking or selecting all', async () => {
         const clipboard = { availableFormats: () => [], write: vi.fn() };
         const h = harness(undefined, clipboard);
@@ -575,6 +599,32 @@ describe('human takeover exact owner enforcement', () => {
             await h.manager.humanTakeover(1, identity(), 'return', 'finished');
             expect(await pending).toMatchObject({ text: expect.any(String), handoffNote: 'finished' });
             expect(await second).toMatchObject({ valueJson: '42' });
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it.each(['take', 'request_human', 'stop'] as const)('removes the AI cursor right away on takeover %s', async action => {
+        const h = harness();
+        const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockResolvedValue('doc:1');
+        try {
+            const tab = (await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }))).tab;
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            const press = () => h.manager.executeControl(1, { ...request('press', { action: 'press', key: 'Enter' }, tab), cursorOverlayEnabled: true });
+            await press();
+            expect(overlay()).toEqual(['key']);
+            if (action === 'stop') {
+                await h.manager.humanTakeover(1, identity(), 'stop');
+                expect(overlay()).toEqual(['key', 'remove']);
+                return;
+            }
+            const help = action === 'request_human' ? h.manager.executeControl(1, request('help', { action: 'request_human', text: 'Sign in' }, tab)) : undefined;
+            if (action === 'take') await h.manager.humanTakeover(1, identity(), 'take');
+            await vi.waitFor(() => expect(overlay()).toEqual(['key', 'remove']));
+            await h.manager.humanTakeover(1, identity(), 'return');
+            await help;
+            expect(overlay()).toEqual(['key', 'remove']);
+            await press();
+            expect(overlay()).toEqual(['key', 'remove', 'key']);
         } finally { stamp.mockRestore(); await h.manager.dispose(); }
     });
     it('agent initiation pauses immediately without reveal/focus and rejects changed page generations on Return', async () => {
