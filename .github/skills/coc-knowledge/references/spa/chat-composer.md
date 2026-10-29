@@ -310,6 +310,13 @@ existing gates and verifies health around exact Sentinel process/item reads,
 rejecting replaced, offline or stale destinations. Reads accept cancellation and
 have a ten-second deadline; callers abort on draft changes. It returns current
 escaped context through the shared serializer and never writes ledger or chat state.
+`sentinelTodoMessageAdmission.ts` serializes one dialog's preflight and normal
+queue admission with an in-memory single-flight guard. It preserves recorded
+chat style and leaves model/effort/provider/mode to destination follow-up policy.
+Only a matching process ID and valid turn index confirm admission. Post-dispatch
+transport errors, invalid responses and a thirty-second deadline require explicit
+duplicate-risk confirmation before retry; late responses never revise outcomes.
+The helper is independent of mounted conversations and has no production wiring.
 
 ### Session-context attachments
 

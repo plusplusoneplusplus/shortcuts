@@ -980,6 +980,15 @@ Sentinel process/item reads with health verification, rejects stale routes and
 owners, and returns the shared escaped context block. Both existing feature gates
 are required; reads have a ten-second deadline and accept caller cancellation.
 Callers abort on draft changes and revalidate before admission.
+`sentinelTodoMessageAdmission.ts` owns one in-memory admission attempt. It guards
+validation and submission synchronously, re-reads the captured context, and uses
+normal enqueue with the raw owning workspace query. Destination follow-up policy
+resolves model/effort/provider/mode; recorded chat style is explicit. Matching
+process ID and an integer turn index (including buffered -1) confirm admission.
+Transport failures, invalid success responses and the thirty-second deadline
+retain uncertainty; retry requires a separate duplicate-risk confirmation action.
+Confirmed rejection permits retry, but cannot clear a prior uncertain attempt.
+The helper has no production menu/dialog wiring.
 Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
