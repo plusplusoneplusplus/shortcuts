@@ -352,6 +352,12 @@ async function cleanup() {
     assert.equal(await evaluate('document.querySelectorAll("coc-ai-cursor").length', input.frame), 0);
     await run(async page => page.setCursorOverlay(false));
     await until(async () => await evaluate('document.querySelectorAll("coc-ai-cursor").length') === 0, 'AI cursor removed when the setting turns off');
+    // Turning the setting off live between commands removes it out of queue, with no command running.
+    await run(async page => page.setCursorOverlay(true));
+    await run(page => page.click(save.ref));
+    await until(async () => await evaluate('document.querySelectorAll("coc-ai-cursor").length') === 1, 'AI cursor drawn again');
+    queue.disableCursor();
+    await until(async () => await evaluate('document.querySelectorAll("coc-ai-cursor").length') === 0, 'AI cursor removed between commands');
     const trusted = await evaluate('window.syntheticEvents', input.frame);
     assert(trusted.some(event => event.type === 'input' && event.trusted));
     assert(trusted.some(event => event.type === 'change' && event.trusted));
