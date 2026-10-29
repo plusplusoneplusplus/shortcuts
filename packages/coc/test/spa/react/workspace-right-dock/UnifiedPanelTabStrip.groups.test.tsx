@@ -89,6 +89,20 @@ function overflow(group: UnifiedTabStripGroup = 'files'): HTMLElement {
 describe('UnifiedPanelTabStrip grouped presentation', () => {
     afterEach(cleanup);
 
+    it('keeps repo-group browser overflow labels free of repository names', () => {
+        const tabs = Array.from({ length: 5 }, (_, index) => tab('browser', `Page ${index}`, {
+            repoLabel: `Repo ${index}`, ownerWorkspaceId: `owner-${index}`,
+        }));
+        const { props } = renderStrip({ tabs, hideBrowserRepoLabels: true });
+        fireEvent.click(screen.getByTestId('unified-panel-group-overflow-web'));
+        for (const entry of tabs) {
+            expect(screen.getByRole('option', { name: entry.label })).toBeTruthy();
+            expect(screen.getByTestId(`unified-panel-tab-overflow-row-${entry.id}`)).not.toHaveTextContent(entry.repoLabel!);
+        }
+        fireEvent.click(screen.getByRole('option', { name: tabs[4].label }));
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
+    });
+
     it('uses fixed Tools, Files, Web, Canvas order and exposes counts and expanded state', () => {
         const tabs = Object.freeze([...ALL_UNIFIED_TAB_KINDS, 'external' as const].reverse()
             .map(kind => tab(kind, kind)));

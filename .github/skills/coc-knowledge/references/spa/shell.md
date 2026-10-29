@@ -286,6 +286,9 @@ Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All throug
 registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label; the site icon replaces the tab's globe.
+Repo-group panels suppress browser repository labels through the shared
+`unifiedTabLabels.ts` display helper in the strip and overflow menu; descriptors
+retain their owner workspace and concrete server route.
 Browser tabs ignore title length: `UnifiedPanelTabStrip` gives each a 160px basis
 that shrinks evenly to 96px before the row scrolls, ellipsizing the label; other
 kinds stay content-sized (max 180px) and non-shrinking.

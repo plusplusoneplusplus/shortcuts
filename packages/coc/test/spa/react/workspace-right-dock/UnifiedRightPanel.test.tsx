@@ -155,6 +155,31 @@ async function openViaMenu(testId: string) {
 }
 
 describe('UnifiedRightPanel', () => {
+    it.each(['group-web', 'remote:server-a:group-web', WS])(
+        'hides browser repo names only for group panels (%s) without changing owners', workspaceId => {
+            let state = EMPTY_UNIFIED_PANEL;
+            for (const owner of ['one', 'two']) {
+                state = openTab(state, {
+                    kind: 'browser', ownerWorkspaceId: owner, ownerRoutingRef: `remote:server-a:${owner}`,
+                    resourceId: 'page', label: 'Same page', repoLabel: `Repo ${owner}`,
+                });
+            }
+            writeUnifiedPanelState(workspaceId, state);
+            renderPanel({ workspaceId });
+            const tabs = readUnifiedPanelState(workspaceId).workspaceTabs;
+            expect(tabs).toHaveLength(2);
+            expect(new Set(tabs.map(tab => tab.id)).size).toBe(2);
+            for (const tab of tabs) {
+                const node = screen.getByTestId(`unified-panel-tab-${tab.id}`);
+                expect(node.getAttribute('title')).toBe(workspaceId === WS ? `Same page — ${tab.repoLabel}` : 'Same page');
+            }
+            fireEvent.click(screen.getByTestId(`unified-panel-tab-${tabs[0].id}`));
+            const selected = readUnifiedPanelState(workspaceId);
+            expect(selected.activeByScope['@workspace']).toBe(tabs[0].id);
+            expect(selected.workspaceTabs).toEqual(tabs);
+        },
+    );
+
     it.each([null, 'remote:server-a:group-g'])('keeps a member Sentinel owner on the group server (%s)', routingRef => {
         publishSentinelTodoChat('group-g', 'chat-s', { ownerWorkspaceId: WS, processId: 'chat-s', title: 'Sentinel' });
         try {

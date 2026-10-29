@@ -796,6 +796,38 @@ describe('UnifiedPanelTabStrip', () => {
         expect(tabNode(tabs[0]).querySelector('.sr-only')?.textContent).not.toContain('api');
     });
 
+    it.each([false, true])('hides only browser repo labels in repo groups (grouped tabs: %s)', groupsEnabled => {
+        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'terminal', 'canvas', 'file', 'note'].includes(tab.kind))
+            .map(tab => ({ ...tab, repoLabel: 'Target repo' }));
+        renderStrip({ tabs, hideBrowserRepoLabels: true, groupsEnabled });
+        for (const tab of tabs) {
+            const badge = screen.queryByTestId(`unified-panel-tab-repo-${tab.id}`);
+            if (tab.kind === 'browser') {
+                expect(badge).toBeNull();
+                expect(tabNode(tab).textContent).not.toContain('Target repo');
+                expect(tabNode(tab).getAttribute('title')).toBe(tab.label);
+                expect(screen.getByRole('tab', { name: /^browser/ })).toBe(tabNode(tab));
+                expect(tabNode(tab).querySelector('[data-icon="browser-globe"]')).toBeTruthy();
+            } else if (tab.kind === 'file') {
+                expect(badge).toBeNull();
+                expect(tabNode(tab).querySelector('.sr-only')?.textContent).toContain('Target repo');
+            } else {
+                expect(badge?.textContent).toBe('Target repo');
+                expect(tabNode(tab).getAttribute('title')).toContain('Target repo');
+            }
+        }
+    });
+
+    it('keeps browser repo labels outside repo groups', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'browser', ownerWorkspaceId: WS, resourceId: 'page', label: 'Page', repoLabel: 'Target repo',
+        });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(screen.getByTestId(`unified-panel-tab-repo-${tabs[0].id}`).textContent).toBe('Target repo');
+        expect(tabNode(tabs[0]).getAttribute('title')).toBe('Page — Target repo');
+    });
+
     it('gives browser tabs one title-independent width that shrinks to a shared floor', () => {
         let state = EMPTY_UNIFIED_PANEL;
         for (const label of ['Google', 'Search - Microsoft Bing with a very long page title', 'YouTube', 'A']) {

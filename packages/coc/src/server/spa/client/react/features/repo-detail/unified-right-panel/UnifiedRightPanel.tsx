@@ -108,6 +108,7 @@ import {
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelRepoPicker } from './UnifiedPanelRepoPicker';
+import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { toggleGroupFolded, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
@@ -2123,6 +2124,7 @@ export function UnifiedRightPanel({
             >
                 {fileIdentity.error}
                 <UnifiedPanelTabStrip
+                    hideBrowserRepoLabels={isRepoGroupWorkspaceId(workspaceId)}
                     tabs={tabs}
                     activeId={activeId}
                     dirtyIds={dirtyIds}
