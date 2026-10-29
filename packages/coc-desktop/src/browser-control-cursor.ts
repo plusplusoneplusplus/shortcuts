@@ -4,9 +4,9 @@ export interface BrowserCursorPoint { x: number; y: number }
 
 export type BrowserCursorCommand =
     | { op: 'click'; point: BrowserCursorPoint; from?: BrowserCursorPoint }
-    | { op: 'field'; rect: BrowserCursorRect; label: string; from?: BrowserCursorPoint }
+    | { op: 'field'; rect?: BrowserCursorRect; label: string; from?: BrowserCursorPoint }
     | { op: 'key'; key: string; rect?: BrowserCursorRect; from?: BrowserCursorPoint }
-    | { op: 'scroll'; point: BrowserCursorPoint; direction: 'up' | 'down' | 'left' | 'right'; from?: BrowserCursorPoint }
+    | { op: 'scroll'; point?: BrowserCursorPoint; direction: 'up' | 'down' | 'left' | 'right'; from?: BrowserCursorPoint }
     | { op: 'hide' } | { op: 'show' } | { op: 'remove' };
 
 export const BROWSER_CURSOR_TAG = 'coc-ai-cursor';
@@ -98,11 +98,21 @@ export function browserCursor(command: BrowserCursorCommand): BrowserCursorPoint
         return element;
     };
     const fadeOut: Keyframe[] = [{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }];
+    // Without an explicit rect, mark the top-level focused element (a focused frame marks its owner).
+    const activeRect = (): BrowserCursorRect | undefined => {
+        let active = document.activeElement;
+        for (let depth = 0; active?.shadowRoot?.activeElement && depth < 256; depth++) active = active.shadowRoot.activeElement;
+        if (!active || active === document.body || active === document.documentElement) return undefined;
+        const { x, y, width, height } = active.getBoundingClientRect();
+        return width > 0 && height > 0 ? { x, y, width, height } : undefined;
+    };
+    const fieldRect = command.op === 'field' || command.op === 'key' ? command.rect ?? activeRect() : undefined;
     const label = (text: string, x: number, y: number) => effect({ left: `${x}px`, top: `${y}px` }, fadeOut, text.slice(0, 80));
     // A key press leaves the cursor where it is; other actions move it to their target.
-    const point = 'point' in command ? command.point
-        : command.op === 'field' ? { x: command.rect.x + command.rect.width / 2, y: command.rect.y + command.rect.height / 2 }
-            : state.point ?? command.from;
+    const point = command.op === 'click' ? command.point
+        : command.op === 'scroll' ? command.point ?? state.point ?? command.from ?? { x: innerWidth / 2, y: innerHeight / 2 }
+            : command.op === 'field' && fieldRect ? { x: fieldRect.x + fieldRect.width / 2, y: fieldRect.y + fieldRect.height / 2 }
+                : state.point ?? command.from;
     const from = state.point ?? command.from;
     if (point && finite(point.x, point.y)) {
         state.layer.style.visibility = 'visible';
@@ -118,20 +128,20 @@ export function browserCursor(command: BrowserCursorCommand): BrowserCursorPoint
         const { x, y } = state.point;
         effect({ left: `${x - 16}px`, top: `${y - 16}px`, width: '32px', height: '32px', borderRadius: '50%', border: '3px solid #7c3aed' },
             [{ transform: 'scale(0.3)', opacity: 1 }, { transform: 'scale(1.4)', opacity: 0 }]);
-    } else if (command.op === 'field' && finite(command.rect.x, command.rect.y, command.rect.width, command.rect.height)) {
-        const { x, y, width, height } = command.rect;
+    } else if (command.op === 'field' && fieldRect && finite(fieldRect.x, fieldRect.y, fieldRect.width, fieldRect.height)) {
+        const { x, y, width, height } = fieldRect;
         effect({ left: `${x - 2}px`, top: `${y - 2}px`, width: `${width + 4}px`, height: `${height + 4}px`,
             border: '2px solid #7c3aed', borderRadius: '4px', background: 'rgba(124,58,237,0.08)' }, fadeOut);
         label(command.label, x, Math.max(0, y - 24));
     } else if (command.op === 'key') {
-        const rect = command.rect && finite(command.rect.x, command.rect.y, command.rect.width, command.rect.height) ? command.rect : undefined;
+        const rect = fieldRect && finite(fieldRect.x, fieldRect.y, fieldRect.width, fieldRect.height) ? fieldRect : undefined;
         const x = rect ? rect.x : state.point?.x ?? innerWidth / 2;
         const y = rect ? rect.y + rect.height + 6 : (state.point?.y ?? innerHeight / 2) + 24;
         label(`⌨ ${command.key}`, Math.max(0, x), Math.min(Math.max(0, y), Math.max(0, innerHeight - 24)));
-    } else if (command.op === 'scroll' && finite(command.point.x, command.point.y)) {
+    } else if (command.op === 'scroll' && state.point) {
         const glyphs = { up: '↑', down: '↓', left: '←', right: '→' };
         const shift = { up: [0, -24], down: [0, 24], left: [-24, 0], right: [24, 0] }[command.direction];
-        effect({ left: `${command.point.x - 16}px`, top: `${command.point.y - 16}px`, width: '32px', height: '32px',
+        effect({ left: `${state.point.x - 16}px`, top: `${state.point.y - 16}px`, width: '32px', height: '32px',
             borderRadius: '50%', background: '#7c3aed', color: '#ffffff', font: '700 20px/32px system-ui, sans-serif', textAlign: 'center' },
         [{ transform: 'translate(0, 0)', opacity: 1 }, { transform: `translate(${shift[0]}px, ${shift[1]}px)`, opacity: 0 }]).textContent = glyphs[command.direction];
     }

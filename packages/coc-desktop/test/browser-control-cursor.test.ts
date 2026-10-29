@@ -103,6 +103,27 @@ describe('browser cursor overlay script', () => {
         expect(overlay()!.point).toEqual({ x: 50, y: 60 });
     });
 
+    it('marks the focused element when no rect is given, without changing focus', () => {
+        const field = document.getElementById('field') as HTMLInputElement;
+        vi.spyOn(field, 'getBoundingClientRect').mockReturnValue({ x: 30, y: 40, width: 20, height: 10 } as DOMRect);
+        field.focus();
+        draw({ op: 'click', point: { x: 1, y: 2 } });
+        draw({ op: 'key', key: 'Tab' });
+        const chip = [...overlay()!.layer.children].find(child => child.textContent === '⌨ Tab') as HTMLElement;
+        expect([chip.style.left, chip.style.top]).toEqual(['30px', '56px']);
+        expect(overlay()!.point).toEqual({ x: 1, y: 2 });
+        expect(draw({ op: 'field', label: 'pasting…' })).toEqual({ x: 40, y: 45 });
+        expect(texts()).toContain('pasting…');
+        expect(document.activeElement).toBe(field);
+    });
+
+    it('shows a whole-page scroll arrow at the last point, or the viewport centre at first', () => {
+        expect(draw({ op: 'scroll', direction: 'down' })).toEqual({ x: innerWidth / 2, y: innerHeight / 2 });
+        draw({ op: 'click', point: { x: 5, y: 6 } });
+        expect(draw({ op: 'scroll', direction: 'left' })).toEqual({ x: 5, y: 6 });
+        expect(texts()).toContain('←');
+    });
+
     it('fades the cursor after about 3s idle and brings it back on the next action', () => {
         draw({ op: 'click', point: { x: 1, y: 2 } });
         vi.advanceTimersByTime(2999);

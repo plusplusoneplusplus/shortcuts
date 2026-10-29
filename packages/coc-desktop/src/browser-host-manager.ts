@@ -487,6 +487,8 @@ export class BrowserHostManager {
             await page.configureFrames(request.framesEnabled === true,
                 view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
                 view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
+            // Also drawn for background tabs, so the last spot shows when the user switches back.
+            page.setCursorOverlay(request.cursorOverlayEnabled === true);
             // Background tabs never take focus: input relies on CDP focus emulation instead.
             if (!scope.background && (selected.popout || command.action === 'click' || command.action === 'type'
                 || command.action === 'select_option' || command.action === 'press'

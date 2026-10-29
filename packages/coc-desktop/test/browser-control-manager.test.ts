@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 /** `gated` hosts hold every main-frame load at the sink's navigation gate, like Electron's onBeforeRequest. */
-function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = false) {
+function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = false, engine: 'electron' | 'webview2' = 'electron') {
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
     const loads: string[] = [];
@@ -59,7 +59,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
             snapshot: () => ({ viewId: request.viewId, engine: 'electron', url: 'file:///preview', title: '', loading: false, canGoBack: false, canGoForward: false }),
             navigate: () => {}, nav: () => {}, close: () => {}, setBounds: () => {}, focus: () => {},
         }), dispose: async () => {} },
-        getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
+        getDefault: () => engine, saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
     });
     manager.bindControlScope(1, 'w', 'w');
     manager.bindControlScope(2, 'w', 'w');
@@ -70,6 +70,31 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
 }
 
 describe('main browser control scope and selection', () => {
+    it.each(['electron', 'webview2'] as const)('injects the cursor overlay through the %s host only while the setting is on', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const creates = vi.spyOn(h.manager['options'].hosts[engine], 'create');
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            expect(creates).toHaveBeenCalledOnce();
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await h.run({ action: 'press', key: 'Enter' }, opened.tab);
+            expect(overlay()).toEqual([]);
+            const press = (cursorOverlayEnabled?: boolean) => h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p',
+                selectedTab: opened.tab, command: { action: 'press', key: 'Enter' }, ...(cursorOverlayEnabled ? { cursorOverlayEnabled } : {}) });
+            await press(true);
+            expect(overlay()).toEqual(['key']);
+            const keyDown = cdp.mock.calls.findLastIndex(([method, params]) => method === 'Input.dispatchKeyEvent' && params?.type === 'keyDown');
+            const drawn = cdp.mock.calls.findIndex(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'));
+            expect(drawn).toBeLessThan(keyDown);
+            await press();
+            expect(overlay()).toEqual(['key', 'remove']);
+        } finally {
+            creates.mockRestore();
+            await h.manager.dispose();
+        }
+    });
     it('routes rich paste through native focus and the clipboard without clicking or selecting all', async () => {
         const clipboard = { availableFormats: () => [], write: vi.fn() };
         const h = harness(undefined, clipboard);
