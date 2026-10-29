@@ -204,7 +204,10 @@ references before editing. Paths are package-relative.
 
 - `canvasExtensions.enabled` is a live, default-off admin setting. Keep its
   code-execution trust warning in the shared admin setting definition; Features
-  controls and save keys derive from that registry.
+  controls and save keys derive from that registry. Read-only discovery lives in
+  `src/server/canvas-extensions/discovery.ts` and checks the flag before I/O.
+  Resolve group membership live; preserve member ownership and repository cwd.
+  User extensions come from the real home, independent of `COPILOT_HOME`.
 
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation

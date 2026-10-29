@@ -123,6 +123,18 @@ base64 raster `data:` URIs; internal paint references like `fill="url(#gradient)
 valid. **Any surface mounting the sanitized result must use a shadow root** so allowed SVG
 `<style>` rules cannot reach the surrounding document.
 
+### Copilot canvas extension discovery
+
+`server/canvas-extensions/discovery.ts` reads `.github/extensions/*/extension.mjs`
+under registered repository roots and `.copilot/extensions/*/extension.mjs` under
+`os.homedir()`, independent of `COPILOT_HOME`. `canvasExtensions.enabled` gates all
+discovery I/O. Groups resolve live members on every call; keys retain member
+ownership as `<workspaceId>:<name>`, with `global:<name>` for user extensions.
+Results carry the entry path, owning repository cwd (extension folder for globals),
+optional package description and a SHA-256 hash of entry bytes and package metadata.
+Discovery never imports code; malformed optional JSON is ignored, while unexpected
+filesystem errors propagate.
+
 ### Extension canvases
 
 `type: 'extension'` renders `ExtensionCanvasView` in preview mode: the extension's
