@@ -157,7 +157,13 @@ Open instances prevent idle expiry; otherwise `COC_CANVAS_EXT_IDLE_TTL_MS` defau
 to 600000. The server forwards archive/removal events and reconciles filtered clears
 against surviving owners. Disabling the flag and shutdown stop runtimes and drain
 pending startup; deletion removes the conversation's isolated session-state folder.
-Callback services remain injected; desktop composition is separate.
+`conversation-callbacks.ts` binds `session.send` to owner-validated
+`ProcessMessageDeliveryService.deliverOnce`: attributed text, stable message receipt,
+enqueue-only delivery and ordinary pending-message/SSE handling. Busy conversations
+buffer until the next turn boundary. Ephemeral queries reuse `createCanvasCompleteFn`
+with the active conversation provider, recorded model and follow-up model policy.
+The one-shot invoker denies permissions and ambient MCP, adds no turn, and rechecks
+owner/flag state before returning. Desktop composition is separate.
 
 The registry caches cloned SDK declarations in memory by entry path/content hash
 after successful startup. Capability lists check the live flag and conversation

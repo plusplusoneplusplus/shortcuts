@@ -17,7 +17,7 @@ export interface CanvasExtensionRegistryOptions {
     dataDir: string;
     log: (message: string) => void;
     send?: (owner: CanvasExtensionOwner, extensionKey: string, prompt: string) => Promise<{ messageId: string }>;
-    ephemeralQuery?: (owner: CanvasExtensionOwner, question: string) => Promise<{ answer: string }>;
+    ephemeralQuery?: (owner: CanvasExtensionOwner, extensionKey: string, question: string) => Promise<{ answer: string }>;
     /** Open persisted instances, read once when a conversation runtime is first used. */
     loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
@@ -208,7 +208,7 @@ export class CanvasExtensionHostRegistry {
             ephemeralQuery: question => {
                 this.assertActive(entry);
                 if (!this.options.ephemeralQuery) throw new Error('Canvas extension completion service is unavailable');
-                return this.options.ephemeralQuery(entry.owner, question);
+                return this.options.ephemeralQuery(entry.owner, entry.extension.extensionKey, question);
             },
         });
         entry.host = host;

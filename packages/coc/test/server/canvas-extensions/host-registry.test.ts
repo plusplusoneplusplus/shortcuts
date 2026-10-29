@@ -187,7 +187,7 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         await first.send('hi');
         await first.ephemeralQuery('question');
         expect(options.send).toHaveBeenCalledExactlyOnceWith(owner, extension.extensionKey, 'hi');
-        expect(options.ephemeralQuery).toHaveBeenCalledExactlyOnceWith(owner, 'question');
+        expect(options.ephemeralQuery).toHaveBeenCalledExactlyOnceWith(owner, extension.extensionKey, 'question');
         await registry.stopConversation(owner);
         expect(() => first.send('late')).toThrow('stopped');
     });

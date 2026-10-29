@@ -221,6 +221,11 @@ references before editing. Paths are package-relative.
   No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
   Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
   deletion removes only that conversation's isolated session-state directory.
+  `conversation-callbacks.ts` routes attributed `session.send` messages through
+  guarded `ProcessMessageDeliveryService.deliverOnce` admission with stable receipts.
+  Sends queue, never steer; ephemeral queries reuse canvas completion with the active
+  conversation provider/model, denied permissions and ambient MCP, and add no turn.
+  Preserve live owner/flag checks during admission and before returning model answers.
   `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
   their registry metadata and schema summaries use an independent default-off
   `canvasExtensionsEnabled` gate in live GET/PUT workspace tool settings. Keep

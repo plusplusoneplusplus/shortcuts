@@ -5,6 +5,7 @@
 import { CanvasStore } from './canvas/canvas-store';
 import { createCanvasUpdateNotifier } from './canvas/canvas-update-notifier';
 import { loadCanvasExtensionInstances } from './canvas-extensions/instance-records';
+import { createCanvasExtensionCallbacks } from './canvas-extensions/conversation-callbacks';
 import * as http from 'http';
 import * as path from 'path';
 import * as os from 'os';
@@ -461,6 +462,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loadInstances: (owner, key) => loadCanvasExtensionInstances(extensionCanvasStore, owner, key),
         config: () => runtimeConfigService.config, store, dataDir,
         log: message => getServerLogger().warn(message),
+        send: (...args) => canvasExtensionCallbacks.send(...args),
+        ephemeralQuery: (...args) => canvasExtensionCallbacks.ephemeralQuery(...args),
     });
     const unsubscribeCanvasExtensionsConfig = runtimeConfigService.onChange(() => {
         void canvasExtensionHosts.syncConfig().catch(error => getServerLogger().warn({ error }, 'Canvas extension cleanup failed'));
@@ -539,6 +542,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             notifier: createCanvasUpdateNotifier({ processStore: store, getWsServer: () => wsServer }),
         }),
     );
+    const canvasExtensionCallbacks = createCanvasExtensionCallbacks({
+        config: () => runtimeConfigService.config, store, dataDir, bridge,
+        resolveAiService: resolveAiServiceForProvider,
+        log: message => getServerLogger().info(message),
+    });
     // Owner workspace for cron automation: live queue task, then persisted process.
     const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
 

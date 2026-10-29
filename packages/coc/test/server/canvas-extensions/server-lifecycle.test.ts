@@ -16,6 +16,7 @@ it('server composition forwards archive/delete events and awaits registry shutdo
     const service = new CopilotSDKService();
     vi.spyOn(service, 'listModels').mockResolvedValue([]);
     vi.spyOn(service, 'isAvailable').mockResolvedValue({ available: false });
+    const completion = vi.spyOn(service, 'sendMessage').mockResolvedValue({ success: true, response: 'Server answer' });
     const lifecycle = vi.spyOn(CanvasExtensionHostRegistry.prototype, 'onProcessChange');
     const dispose = vi.spyOn(CanvasExtensionHostRegistry.prototype, 'dispose');
     let server: Awaited<ReturnType<typeof createExecutionServer>> | undefined;
@@ -32,6 +33,13 @@ it('server composition forwards archive/delete events and awaits registry shutdo
         const instance = { canvasId: 'counter', instanceId: 'instance-1' };
         const opened = await hosts.open(owner, extension, instance);
         expect((await fetch(opened.url!)).ok).toBe(true);
+        await store.updateProcess(owner.processId, { status: 'running' });
+        const callbackResult = await hosts.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'callbacks' });
+        expect(callbackResult).toMatchObject({ messageId: expect.any(String), answer: 'Server answer' });
+        expect((await store.getProcess(owner.processId))?.pendingMessages).toEqual([expect.objectContaining({
+            content: '[Canvas extension workspace-1:counter]\n\nhi', id: expect.any(String),
+        })]);
+        expect(completion).toHaveBeenCalledOnce();
         lifecycle.mockClear();
         store.archiveProcess('canvas-conversation');
         expect(lifecycle).toHaveBeenCalledWith({ type: 'process-updated', process: expect.objectContaining({
