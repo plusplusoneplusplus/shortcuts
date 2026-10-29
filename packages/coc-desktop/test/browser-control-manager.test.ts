@@ -119,6 +119,30 @@ describe('main browser control scope and selection', () => {
             await h.manager.dispose();
         }
     });
+    it('draws no cursor for actions without input, even with the setting on', async () => {
+        const h = harness();
+        const exec = (command: BrowserCommand, selectedTab?: string) => h.manager.executeControl(1,
+            { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', cursorOverlayEnabled: true, command, selectedTab });
+        try {
+            const opened = await exec({ action: 'open', url: 'https://fixture.test/' });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const original = cdp.getMockImplementation()!;
+            cdp.mockImplementation(async (method, params, session) => {
+                if (method === 'Page.getLayoutMetrics') return { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } };
+                if (method === 'Page.captureScreenshot') return { data: 'fixture==' };
+                return original(method, params, session);
+            });
+            for (const command of [{ action: 'tabs' }, { action: 'snapshot' }, { action: 'read' }, { action: 'eval', js: '42' },
+                { action: 'wait', ms: 1 }, { action: 'navigate', direction: 'reload' }, { action: 'screenshot' }] as BrowserCommand[]) {
+                await exec(command, opened.tab);
+            }
+            expect(cdp.mock.calls.some(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'))).toBe(false);
+            await exec({ action: 'press', key: 'Enter' }, opened.tab);
+            expect(cdp.mock.calls.some(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'))).toBe(true);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
     it('routes rich paste through native focus and the clipboard without clicking or selecting all', async () => {
         const clipboard = { availableFormats: () => [], write: vi.fn() };
         const h = harness(undefined, clipboard);
