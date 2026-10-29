@@ -1198,7 +1198,8 @@ browser on plain clicks and follow `#…` links through the excursion. Under a r
 ledger owner, bare `#repos/<ws>` links gain that server's clone key; already-qualified
 and `#chat-references/…` links are unchanged. `notes-links-panel.test.tsx` covers it.
 
-A plain primary click on an in-app (`#…`) Job or verified Ref link starts one in-memory
+A plain primary click on an in-app (`#…`) Job or verified Ref link, a verified Sentinel
+response link, or a delegated-result card's Open job link starts one in-memory
 excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
 ledger owner, published title and owner-qualified chat route, the followed link,
 and up to five hosted chats visited since. The owner workspace/process defines

@@ -260,7 +260,9 @@ cancellation suppress late results; failures retain the current chat with retry
 guidance. Display labels and unverified badges are metadata only; opening never
 writes ledger or parent state. Reference and Back-focus keys qualify owner identity.
 
-`useSentinelResponseLinks` admits plain response Markdown chat links only. Standard
+`useSentinelResponseLinks` admits plain response Markdown chat links and the same
+chat's delegated-result Open job anchors. Card routes come from the owner-validated
+delivery, so they skip the process read but keep owner qualification. Standard
 repo/group/member routes verify exact process, type and workspace on the concrete
 owner; remote sources qualify bare repo routes with their server. Artifact, external,
 user-turn and modified/new-tab links retain their handlers. Existing excursions keep

@@ -84,7 +84,10 @@ are absent. Cards require receipt-correlated user turns with the exact review pr
 validated result schema and matching parent workspace/process. Unknown envelopes keep
 ordinary rendering. Native disclosures separate readable inert chat Markdown from exact
 JSON view/copy; links, images and embeds in summaries remain inactive. Open-job routes
-inherit the source owner, with explicit endpoints taking precedence. Stored/model content,
+inherit the source owner, with explicit endpoints taking precedence. In a hosted Sentinel,
+a plain click on an in-app Open job link (`data-sentinel-result-job`, ordinary or Ralph child)
+opens it without a process read and starts the shared To-do excursion, so the job shows
+`SentinelTodoOriginBar`'s Back to Sentinel. Stored/model content,
 whole-turn raw/copy, review admission, To-do assessment and authorization remain unchanged.
 
 ### Conversation compaction

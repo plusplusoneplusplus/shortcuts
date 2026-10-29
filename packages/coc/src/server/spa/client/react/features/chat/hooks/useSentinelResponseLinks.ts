@@ -33,7 +33,10 @@ function chatTarget(href: string, source: ResponseLinkOrigin) {
 
 const UNAVAILABLE = 'Referenced chat unavailable. Reconnect its server and try again.';
 
-/** Response links join the same per-window excursion as To-do links, after read-only verification. */
+/**
+ * Response links join the same per-window excursion as To-do links, after read-only
+ * verification. A delegated-result card's Open job link joins it directly.
+ */
 export function useSentinelResponseLinks(origin: ResponseLinkOrigin | null, notify: (message: string) => void, ownerKey?: string) {
     const pending = useRef<AbortController | null>(null);
     const cancel = () => { pending.current?.abort(); pending.current = null; };
@@ -50,13 +53,28 @@ export function useSentinelResponseLinks(origin: ResponseLinkOrigin | null, noti
     return (event: MouseEvent<HTMLDivElement>) => {
         if (!origin || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
             || !(event.target instanceof Element)) return;
-        const anchor = event.target.closest<HTMLAnchorElement>('.markdown-body a[href]');
-        const bubble = anchor?.closest<HTMLElement>('.chat-message.assistant');
+        const resultJob = event.target.closest<HTMLAnchorElement>('a[data-sentinel-result-job]');
+        const anchor = resultJob ?? event.target.closest<HTMLAnchorElement>('.markdown-body a[href]');
+        const bubble = anchor?.closest<HTMLElement>(resultJob ? '.chat-message.user' : '.chat-message.assistant');
         if (!anchor || !bubble || bubble.dataset.chatId !== origin.chatId || !event.currentTarget.contains(anchor)
             || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self') || event.target.closest('img')) return;
         cancel();
         const href = anchor.getAttribute('href') ?? '';
         if (!href.startsWith('#')) return;
+        if (resultJob) {
+            // The card's route comes from the owner-validated delivery, not model
+            // text, so it opens like before and only adds the way back.
+            let job: ReturnType<typeof chatTarget>;
+            try { job = chatTarget(href, origin); } catch { return; }
+            if (!job) return;
+            event.preventDefault();
+            const initialHash = window.location.hash;
+            window.location.hash = job.href;
+            if (excursionStopIndex(getSentinelTodoExcursion(), origin.scopeWorkspaceId, origin.chatId) < 0) {
+                startSentinelTodoExcursion({ ...origin, href: initialHash, linkKey: `result:${bubble.dataset.turnIndex ?? ''}:${href}` });
+            }
+            return;
+        }
         const reference = parseDashboardChatReference(href);
         let target: ReturnType<typeof chatTarget>;
         try { target = reference ? null : chatTarget(href, origin); } catch { return; }

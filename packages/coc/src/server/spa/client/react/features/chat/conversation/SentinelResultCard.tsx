@@ -39,7 +39,7 @@ export function SentinelResultCard({ result, sourceSelectionId, sourceBaseUrl }:
                 <span className={cn('rounded-full px-2 py-0.5 text-xs', outcomeClasses[data.outcome])}>
                     Job {data.outcome}
                 </span>
-                {href && <a href={href} className={actionClasses}>Open job</a>}
+                {href && <a href={href} data-sentinel-result-job="" className={actionClasses}>Open job</a>}
             </div>
             <details className="mt-2">
                 <summary className={cn('cursor-pointer w-fit', actionClasses)}>Details</summary>
