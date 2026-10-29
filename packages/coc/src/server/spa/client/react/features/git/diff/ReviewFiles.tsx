@@ -130,8 +130,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         const row = navRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
         row?.scrollIntoView?.({ block: 'nearest' });
     }, [selected && reviewFileKey(selected)]);
-    function select(path: string, hunk: 'first' | 'last' = 'first') {
-        const proceed = () => { setSelection(path); setTarget(hunk); setOverview(false); setDrawer(false); onSelect?.(path, hunk); };
+    function select(path: string, hunk: 'first' | 'last' = 'first', closeDrawer = true) {
+        const proceed = () => { setSelection(path); setTarget(hunk); setOverview(false); if (closeDrawer) setDrawer(false); onSelect?.(path, hunk); };
         if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
@@ -219,7 +219,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     if (next >= 0 && next < buttons.length) {
                         event.preventDefault();
                         const path = buttons[next].dataset.filePath!;
-                        select(path); buttons[next].focus();
+                        select(path, 'first', false); buttons[next].focus();
                     }
                 }}>
                 <div className="git-review-filters">
