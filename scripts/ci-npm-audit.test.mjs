@@ -160,6 +160,15 @@ test("locks http-cache-semantics outside the affected range", () => {
     assert.ok(found);
 });
 
+test("locks re2js outside the affected range", () => {
+    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+    const re2js = lock.packages["node_modules/re2js"];
+    assert.ok(re2js, "re2js must be present in the production dependency graph");
+    const [major, minor, patch] = re2js.version.split(".").map(Number);
+    assert.ok(major > 2 || (major === 2 && (minor > 8 || (minor === 8 && patch >= 7))),
+        `re2js ${re2js.version}: quadratic-time denial of service`);
+});
+
 test("accepts only the reviewed development advisories by default", { skip }, () => {
     assert.equal(runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories }).status, 0);
     assert.notEqual(runAudit({
