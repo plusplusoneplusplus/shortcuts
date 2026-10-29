@@ -9,7 +9,7 @@ import test from "node:test";
 const auditScript = fileURLToPath(new URL("./ci-npm-audit.sh", import.meta.url));
 
 for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"]) {
-    test(`${lockfile} excludes vulnerable redirect and Vite releases, including nested copies`, () => {
+    test(`${lockfile} excludes vulnerable redirect, Vite and re2js releases, including nested copies`, () => {
         const lock = JSON.parse(readFileSync(new URL(lockfile, import.meta.url), "utf8"));
         for (const [path, pkg] of Object.entries(lock.packages)) {
             if (/(^|\/)node_modules\/follow-redirects$/.test(path)) {
@@ -22,6 +22,12 @@ for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"])
                         || (minor === 2 && patch <= 3) || (minor === 3 && patch <= 2);
                     assert.ok(!vulnerable, `${path}: launch-editor injection`);
                 }
+            }
+            if (/(^|\/)node_modules\/re2js$/.test(path)) {
+                const [major, minor, patch] = pkg.version.split(".").map(Number);
+                const vulnerable = major === 2 && minor >= 2
+                    && (minor < 8 || (minor === 8 && patch < 7));
+                assert.ok(!vulnerable, `${path}: quadratic lookbehind matching (GHSA-gg6h-894w-4m9c)`);
             }
         }
     });
