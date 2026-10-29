@@ -1,3 +1,5 @@
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { createSentinelTodoMessageAdmission } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoMessageAdmission';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { WorkspaceInfo, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
@@ -12,15 +14,16 @@ import { captureSentinelTodoMessageTarget, resolveSentinelTodoMessageContext } f
 import { publishDashboardTopology } from '../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
 import { tagRemoteWorkspaces } from '../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 
-const { getLedger, getHealth, getProcess, origins } = vi.hoisted(() => ({
+const { getLedger, getHealth, getProcess, sendMessage, origins } = vi.hoisted(() => ({
     getLedger: vi.fn(),
     getHealth: vi.fn(),
     getProcess: vi.fn(),
+    sendMessage: vi.fn(),
     origins: [] as string[],
 }));
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => { origins.push('local'); return { health: { get: getHealth }, processes: { get: getProcess }, sentinelTodos: { get: getLedger } }; },
-    getCocClientFor: (origin: string) => { origins.push(origin); return { health: { get: getHealth }, processes: { get: getProcess }, sentinelTodos: { get: getLedger } }; },
+    getSpaCocClient: () => { origins.push('local'); return { health: { get: getHealth }, processes: { get: getProcess, sendMessage }, sentinelTodos: { get: getLedger } }; },
+    getCocClientFor: (origin: string) => { origins.push(origin); return { health: { get: getHealth }, processes: { get: getProcess, sendMessage }, sentinelTodos: { get: getLedger } }; },
 }));
 
 const owner = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'sentinel-1' };
@@ -40,6 +43,7 @@ const validationOptions = {
 beforeEach(() => {
     getLedger.mockReset().mockResolvedValue({ revision: 4, items: [item] });
     origins.length = 0;
+    sendMessage.mockReset().mockResolvedValue({ processId: owner.processId, turnIndex: -1 });
     getHealth.mockReset().mockResolvedValue({ serverIdentity: 'local-identity' });
     getProcess.mockReset().mockResolvedValue({ process: { id: owner.processId, type: 'chat', metadata: { workspaceId: owner.ownerWorkspaceId, mode: 'sentinel' } } });
     publishDashboardTopology(null, [{ id: owner.ownerWorkspaceId, name: 'Owner repo' } as WorkspaceInfo], 'local-identity');
@@ -281,5 +285,127 @@ describe('headless To-do message owner validation', () => {
         release({ serverIdentity: 'local-identity' });
         await Promise.resolve();
         expect(getProcess).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('headless Sentinel To-do message admission', () => {
+    const gates = { sentinelTodos: true, sessionContextAttachments: true };
+    const signal = () => new AbortController().signal;
+    const admission = () => createSentinelTodoMessageAdmission(captureSentinelTodoMessageTarget(owner, item.id));
+    const rejected = (status: number) => new CocApiError({ status, statusText: 'Rejected', url: '/message', message: 'Queue rejected' });
+
+    it.each(['running', 'completed'])('uses normal enqueue for a %s closed Sentinel and preserves destination settings', async status => {
+        getProcess.mockResolvedValue({ process: { id: owner.processId, type: 'chat', status,
+            metadata: { workspaceId: owner.ownerWorkspaceId, mode: 'sentinel', model: 'destination-model', chatStyle: 'terse' } } });
+        const attempt = admission();
+        expect(await attempt.submit('  Please check this item\nwithout executing it  ', gates, signal())).toEqual({ kind: 'admitted', processId: owner.processId, turnIndex: -1 });
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        const [id, request, query] = sendMessage.mock.calls[0];
+        expect(id).toBe(owner.processId);
+        expect(query).toEqual({ workspace: owner.ownerWorkspaceId });
+        expect(Object.keys(request).sort()).toEqual(['chatStyle', 'content', 'deliveryMode']);
+        expect(request).toMatchObject({ chatStyle: 'terse', deliveryMode: 'enqueue' });
+        expect(request.content).toContain('&lt;instruction&gt;');
+        expect(request.content).toMatch(/manual/i);
+        expect(request.content).toMatch(/Please check this item\nwithout executing it$/);
+        expect(await attempt.submit('again', gates, signal())).toEqual({ kind: 'blocked', reason: 'admitted' });
+    });
+
+    it('posts only to the captured remote group owner despite colliding IDs and job target', async () => {
+        const workspace = { id: 'group-owner', name: 'Group', virtual: true } as WorkspaceInfo;
+        const remote = (id: string) => tagRemoteWorkspaces({ id, label: id, kind: 'ssh', serverIdentity: id },
+            `https://${id}.example.test`, [workspace]);
+        publishDashboardTopology(workspace.id, [workspace, ...remote('a'), ...remote('b')], 'local-identity');
+        registerCloneBaseUrls(['a', 'b'].map(serverId => ({ serverId, workspaceId: workspace.id, baseUrl: `https://${serverId}.example.test` })));
+        getHealth.mockResolvedValue({ serverIdentity: 'a' });
+        getProcess.mockResolvedValue({ process: { id: owner.processId, type: 'chat', metadata: { workspaceId: workspace.id, mode: 'sentinel' } } });
+        const attempt = createSentinelTodoMessageAdmission(captureSentinelTodoMessageTarget({ ...owner, ownerWorkspaceId: workspace.id, ownerRoutingRef: `remote:a:${workspace.id}` }, item.id));
+        expect(await attempt.submit('draft', gates, signal())).toMatchObject({ kind: 'admitted' });
+        expect(origins.every(origin => origin === 'https://a.example.test')).toBe(true);
+        expect(sendMessage).toHaveBeenCalledWith(owner.processId, expect.objectContaining({ deliveryMode: 'enqueue' }), { workspace: workspace.id });
+    });
+
+    it('uses explicit default style for a destination with no recorded style', async () => {
+        expect(await admission().submit('hello', gates, signal())).toMatchObject({ kind: 'admitted' });
+        expect(sendMessage.mock.calls[0][1].chatStyle).toBe('default');
+    });
+
+    it('blocks double submission synchronously throughout validation and POST', async () => {
+        let finishRead!: (value: unknown) => void;
+        getHealth.mockImplementationOnce(() => new Promise(resolve => { finishRead = resolve; }));
+        let finishPost!: (value: unknown) => void;
+        sendMessage.mockImplementationOnce(() => new Promise(resolve => { finishPost = resolve; }));
+        const attempt = admission();
+        const first = attempt.submit('draft', gates, signal());
+        expect(await attempt.submit('draft', gates, signal())).toEqual({ kind: 'blocked', reason: 'pending' });
+        finishRead({ serverIdentity: 'local-identity' });
+        await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+        expect(await attempt.submit('draft', gates, signal())).toEqual({ kind: 'blocked', reason: 'pending' });
+        finishPost({ processId: owner.processId, turnIndex: 4 });
+        expect(await first).toMatchObject({ kind: 'admitted', turnIndex: 4 });
+    });
+
+    it.each([400, 409, 410, 429])('retains retry eligibility after a confirmed %s rejection', async status => {
+        sendMessage.mockRejectedValueOnce(rejected(status));
+        const attempt = admission();
+        expect(await attempt.submit('retained draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: false });
+        expect(await attempt.submit('retained draft', gates, signal())).toMatchObject({ kind: 'admitted' });
+        expect(getLedger).toHaveBeenCalledTimes(2);
+        expect(sendMessage.mock.calls.map(call => call[1].content)).toEqual([expect.stringContaining('retained draft'), expect.stringContaining('retained draft')]);
+    });
+
+    it.each([new Error('Disconnected'), rejected(500), rejected(408)])('requires separate duplicate-risk confirmation after %s', async error => {
+        sendMessage.mockRejectedValueOnce(error);
+        const attempt = admission();
+        expect(await attempt.submit('draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: true, error: expect.stringContaining('Retrying may queue a duplicate') });
+        expect(await attempt.submit('changed draft', gates, signal())).toEqual({ kind: 'blocked', reason: 'duplicate-confirmation-required' });
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(await attempt.retryAfterDuplicateConfirmation('draft', gates, signal())).toMatchObject({ kind: 'admitted' });
+        expect(getLedger).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([{}, { processId: 'other', turnIndex: 1 }, { processId: owner.processId, turnIndex: -2 },
+        { processId: owner.processId, turnIndex: 0.5 }, { processId: owner.processId, turnIndex: '1' }])('treats invalid acceptance %j as uncertain', async response => {
+        sendMessage.mockResolvedValueOnce(response);
+        expect(await admission().submit('draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: true });
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('bounds admission, ignores late success, and never auto-retries', async () => {
+        vi.useFakeTimers();
+        let finishPost!: (value: unknown) => void;
+        sendMessage.mockImplementationOnce(() => new Promise(resolve => { finishPost = resolve; }));
+        const attempt = admission();
+        const first = attempt.submit('draft', gates, signal());
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(await first).toMatchObject({ kind: 'failed', uncertain: true });
+        finishPost({ processId: owner.processId, turnIndex: 2 });
+        await Promise.resolve();
+        expect(await attempt.submit('draft', gates, signal())).toEqual({ kind: 'blocked', reason: 'duplicate-confirmation-required' });
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('keeps an earlier uncertain attempt uncertain through failed retry validation or rejection', async () => {
+        const attempt = admission();
+        sendMessage.mockRejectedValueOnce(new Error('lost response'));
+        await attempt.submit('draft', gates, signal());
+        getLedger.mockRejectedValueOnce(new Error('offline'));
+        expect(await attempt.retryAfterDuplicateConfirmation('draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: true });
+        sendMessage.mockRejectedValueOnce(rejected(409));
+        expect(await attempt.retryAfterDuplicateConfirmation('draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: true });
+        expect(await attempt.submit('draft', gates, signal())).toMatchObject({ kind: 'blocked', reason: 'duplicate-confirmation-required' });
+    });
+
+    it('does not POST for blank text, disabled gates, missing items or cancelled preparation', async () => {
+        const attempt = admission();
+        expect(await attempt.submit('  ', gates, signal())).toMatchObject({ kind: 'failed', uncertain: false });
+        expect(await attempt.submit('draft', { ...gates, sentinelTodos: false }, signal())).toMatchObject({ kind: 'failed', uncertain: false });
+        getLedger.mockResolvedValueOnce({ revision: 5, items: [] });
+        expect(await attempt.submit('draft', gates, signal())).toMatchObject({ kind: 'failed', uncertain: false });
+        const cancelled = new AbortController();
+        cancelled.abort(new Error('draft changed'));
+        expect(await attempt.submit('draft', gates, cancelled.signal)).toMatchObject({ kind: 'failed', uncertain: false });
+        expect(sendMessage).not.toHaveBeenCalled();
     });
 });

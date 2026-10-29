@@ -310,6 +310,26 @@ existing gates and verifies health around exact Sentinel process/item reads,
 rejecting replaced, offline or stale destinations. Reads accept cancellation and
 have a ten-second deadline; callers abort on draft changes. It returns current
 escaped context through the shared serializer and never writes ledger or chat state.
+`sentinelTodoMessageAdmission.ts` serializes one dialog's preflight and normal
+queue admission with an in-memory single-flight guard. It preserves recorded
+chat style and leaves model/effort/provider/mode to destination follow-up policy.
+Only a matching process ID and valid turn index confirm admission. Post-dispatch
+transport errors, invalid responses and a thirty-second deadline require explicit
+duplicate-risk confirmation before retry; late responses never revise outcomes.
+`SentinelTodoMessageComposer` binds the surface and helpers to one immutable
+captured target. It retains drafts on failure, cancels stale opening reads on
+text/route/topology changes and revalidates on explicit send. Failed initial
+reads remain retryable. Live gates block admission; synchronous UI locking spans
+preflight through admission. A focused separate confirmation authorizes uncertain
+retry. Only confirmed admission invokes the host success callback. The controller
+is independent of mounted conversations.
+
+`UnifiedTodoTab` hosts it above ledger
+owner/transport remounts, preserving the captured destination and draft through
+row refreshes. One menu action serves context gestures and overflow with origin
+focus restoration. Live default-off `sentinelEnabled` and
+`sessionContextAttachmentsEnabled` gate entry/admission; capture errors and
+confirmed queued notices stay on the current page without changing selections.
 
 ### Session-context attachments
 
