@@ -322,7 +322,14 @@ text/route/topology changes and revalidates on explicit send. Failed initial
 reads remain retryable. Live gates block admission; synchronous UI locking spans
 preflight through admission. A focused separate confirmation authorizes uncertain
 retry. Only confirmed admission invokes the host success callback. The controller
-is independent of mounted conversations and has no production menu wiring.
+is independent of mounted conversations.
+
+`UnifiedTodoTab` hosts it above ledger
+owner/transport remounts, preserving the captured destination and draft through
+row refreshes. One menu action serves context gestures and overflow with origin
+focus restoration. Live default-off `sentinelEnabled` and
+`sessionContextAttachmentsEnabled` gate entry/admission; capture errors and
+confirmed queued notices stay on the current page without changing selections.
 
 ### Session-context attachments
 

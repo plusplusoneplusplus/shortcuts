@@ -6,7 +6,8 @@ export interface OverflowMenuItem {
     key: string;
     label: string;
     icon?: ReactNode;
-    onClick: () => void;
+    /** Originating row/control, suitable for restoring focus after an action dialog. */
+    onClick: (origin?: HTMLElement) => void;
     /** Rendered as a distinct inline element instead of a menu row */
     render?: () => ReactNode;
     /** Consecutive items with the same group render together; a separator divides groups. */
@@ -276,7 +277,7 @@ export function ChatHeaderOverflowMenu({ items, wsId, contextTargetRef, ariaLabe
                                     disabled={item.disabled}
                                     data-testid={`overflow-item-${item.key}`}
                                     onClick={() => {
-                                        item.onClick();
+                                        item.onClick(returnFocusRef.current ?? triggerRef.current ?? undefined);
                                         setOpen(false);
                                     }}
                                     className={cn(

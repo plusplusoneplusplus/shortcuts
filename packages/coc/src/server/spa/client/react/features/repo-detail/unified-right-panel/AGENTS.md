@@ -994,7 +994,13 @@ process ID and an integer turn index (including buffered -1) confirm admission.
 Transport failures, invalid success responses and the thirty-second deadline
 retain uncertainty; retry requires a separate duplicate-risk confirmation action.
 Confirmed rejection permits retry, but cannot clear a prior uncertain attempt.
-The controller and helpers have no production menu wiring.
+`UnifiedTodoTab` hosts the composer above its owner/transport-keyed ledger view.
+One Message Sentinel action serves row context gestures and the overflow menu;
+its originating row/control supplies focus restoration. Live default-off
+`sentinelEnabled` and `sessionContextAttachmentsEnabled` gates control entry and
+admission. The immutable capture survives row refresh/removal and transport
+remounts. Capture errors stay in place; confirmed admission alone clears the draft
+and publishes an accessible queued notice without navigation or selection changes.
 Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle

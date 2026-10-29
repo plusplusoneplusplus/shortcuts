@@ -3950,4 +3950,183 @@ describe('Sentinel To-do message controller', () => {
         expect(p.onAdmitted).not.toHaveBeenCalled();
         expect(send).not.toHaveBeenCalled();
     });
+    describe('production Message Sentinel action', () => {
+        beforeEach(() => applyRuntimeConfigPatch({ sentinelEnabled: true, sessionContextAttachmentsEnabled: true }));
+        afterEach(() => act(() => applyRuntimeConfigPatch({ sentinelEnabled: false, sessionContextAttachmentsEnabled: false })));
+
+        async function openFromRow(gesture = 'right-click') {
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            const trigger = within(row).getByTestId('chat-header-overflow-btn');
+            if (gesture === 'overflow') fireEvent.click(trigger);
+            else if (gesture === 'right-click') fireEvent.contextMenu(row, { clientX: 80, clientY: 100 });
+            else {
+                row.focus();
+                fireEvent.keyDown(row, { key: gesture === 'ContextMenu' ? gesture : 'F10', shiftKey: gesture !== 'ContextMenu' });
+            }
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Message Sentinel…' }));
+            const dialog = screen.getByRole('dialog', { name: 'Message Sentinel' });
+            await waitFor(() => expect(within(dialog).getByRole('status').textContent).not.toContain('Loading'));
+            return { row, trigger, dialog };
+        }
+
+        it.each(['right-click', 'ContextMenu', 'Shift+F10', 'overflow'])('opens from %s with closed chat and restores the origin without selecting or navigating', async gesture => {
+            const attach = vi.fn();
+            const { unsubscribe } = subscribeActiveChatAttach(OWNER.ownerWorkspaceId, attach);
+            const hash = window.location.hash;
+            render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="different-viewer" />);
+            const { row, trigger, dialog } = await openFromRow(gesture);
+            expect(document.activeElement).toBe(message());
+            expect(message().value).toBe('');
+            expect(dialog.textContent).toContain('Login Sentinel');
+            expect(dialog.textContent).toContain('i1 · Fix login');
+            expect(screen.getByTestId('sentinel-todo-details').textContent).toContain('Select an item');
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(document.activeElement).toBe(gesture === 'overflow' ? trigger : row);
+            expect(window.location.hash).toBe(hash);
+            expect(attach).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+            expect(send).not.toHaveBeenCalled();
+            unsubscribe();
+        });
+
+        it.each(['running', 'completed'])('closes only on confirmed admission to the %s destination and opens a blank new draft', async status => {
+            process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', status,
+                metadata: { workspaceId: OWNER.ownerWorkspaceId, mode: 'sentinel', displayName: 'Login Sentinel', chatStyle: 'terse' } } });
+            const post = deferred<{ processId: string; turnIndex: number }>();
+            send.mockReturnValueOnce(post.promise);
+            render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="different-viewer" />);
+            await openFromRow();
+            draft();
+            fireEvent.click(queue());
+            fireEvent.click(queue());
+            await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.getByRole('dialog')).toBeTruthy();
+            expect(message().value).toBe('Please check this item');
+            expect(send.mock.calls[0]).toEqual([OWNER.processId, expect.objectContaining({ deliveryMode: 'enqueue', chatStyle: 'terse',
+                content: expect.stringMatching(/Please check this item$/) }), { workspace: OWNER.ownerWorkspaceId }]);
+            expect(send.mock.calls[0][1]).not.toHaveProperty('model');
+            expect(send.mock.calls[0][1]).not.toHaveProperty('provider');
+            expect(send.mock.calls[0][1]).not.toHaveProperty('mode');
+            await act(async () => post.resolve({ processId: OWNER.processId, turnIndex: -1 }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(screen.getByText('Message queued to Login Sentinel').getAttribute('role')).toBe('status');
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+            await openFromRow('overflow');
+            expect(message().value).toBe('');
+            expect(screen.queryByText('Message queued to Login Sentinel')).toBeNull();
+        });
+
+        it.each(['sentinelEnabled', 'sessionContextAttachmentsEnabled'])('subscribes to live %s without discarding a draft', async flag => {
+            act(() => applyRuntimeConfigPatch({ [flag]: false }));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.contextMenu(row);
+            expect(screen.queryByRole('menuitem', { name: 'Message Sentinel…' })).toBeNull();
+            fireEvent.keyDown(document, { key: 'Escape' });
+            act(() => applyRuntimeConfigPatch({ [flag]: true }));
+            await openFromRow();
+            draft('Retained across gate changes');
+            act(() => applyRuntimeConfigPatch({ [flag]: false }));
+            expect(queue().disabled).toBe(true);
+            expect(message().value).toBe('Retained across gate changes');
+            fireEvent.click(queue());
+            expect(send).not.toHaveBeenCalled();
+            act(() => applyRuntimeConfigPatch({ [flag]: true }));
+            await waitFor(() => expect(queue().disabled).toBe(false));
+            expect(message().value).toBe('Retained across gate changes');
+        });
+
+        it('announces capture failure and leaves the current page and ledger untouched', async () => {
+            publishDashboardTopology(null, []);
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.contextMenu(row);
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Message Sentinel…' }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            const alert = screen.getByText('The to-do owning Sentinel is unavailable. Reconnect its server and try again.');
+            expect(alert.textContent).toContain('unavailable');
+            expect(document.activeElement).toBe(alert);
+            expect(send).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+        });
+
+        it('retains the composer after a ledger refresh removes its row and rejects sending the missing item', async () => {
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await openFromRow();
+            draft('Keep after row removal');
+            get.mockResolvedValue(ledger([], 5));
+            act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId,
+                processId: OWNER.processId, ledgerRevision: 5 }));
+            await waitFor(() => expect(screen.queryByTestId('sentinel-todo-row-i1')).toBeNull());
+            expect(message().value).toBe('Keep after row removal');
+            fireEvent.click(queue());
+            await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+            expect(message().value).toBe('Keep after row removal');
+            expect(send).not.toHaveBeenCalled();
+        });
+
+        it.each(['rejection', 'uncertain'])('retains the production draft on %s and only closes on explicit retry acceptance', async failure => {
+            if (failure === 'rejection') send.mockRejectedValueOnce(new CocApiError({ status: 410, statusText: 'Gone', url: '/message', message: 'Session ended' }));
+            else send.mockRejectedValueOnce(new Error('Connection lost'));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await openFromRow();
+            draft('Keep until accepted');
+            fireEvent.click(queue());
+            await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+            expect(message().value).toBe('Keep until accepted');
+            expect(screen.queryByText('Message queued to Login Sentinel')).toBeNull();
+            expect(send).toHaveBeenCalledTimes(1);
+            fireEvent.click(queue());
+            if (failure === 'uncertain') {
+                await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+                expect(send).toHaveBeenCalledTimes(1);
+                fireEvent.click(screen.getByRole('button', { name: 'Queue again anyway' }));
+            }
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            expect(send).toHaveBeenCalledTimes(2);
+            expect(screen.getByText('Message queued to Login Sentinel')).toBeTruthy();
+        });
+
+        it.each(['unchanged', 'replaced route', 'different panel owner'])('keeps the captured remote group with %s and never falls back to a colliding local owner', async change => {
+            const workspace = { id: 'group-owner', name: 'Group owner', virtual: true } as WorkspaceInfo;
+            const rows = (id: string) => tagRemoteWorkspaces({ id, label: id, kind: 'ssh', serverIdentity: id },
+                `https://${id}.example.test`, [workspace]);
+            publishDashboardTopology(null, [workspace, ...rows('a'), ...rows('b')], 'local-message-owner');
+            registerCloneBaseUrls(['a', 'b'].map(serverId => ({ serverId, workspaceId: workspace.id, baseUrl: `https://${serverId}.example.test` })));
+            health.mockResolvedValue({ serverIdentity: 'a' });
+            process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', metadata: { workspaceId: workspace.id, mode: 'sentinel' } } });
+            const owner = { ...OWNER, ownerWorkspaceId: workspace.id, ownerRoutingRef: 'remote:a:group-owner' };
+            const view = render(<UnifiedTodoTab owner={owner} scopeWorkspaceId="different-viewer" />);
+            await openFromRow();
+            draft('Keep the original server');
+            expect(local).not.toHaveBeenCalled();
+            expect(remote.mock.calls.every(args => args[0] === 'https://a.example.test')).toBe(true);
+            if (change === 'replaced route') {
+                act(() => registerCloneBaseUrls([{ serverId: 'a', workspaceId: workspace.id, baseUrl: 'https://replacement.example.test' }]));
+                view.rerender(<UnifiedTodoTab owner={owner} scopeWorkspaceId="different-viewer" />);
+            } else if (change === 'different panel owner') {
+                view.rerender(<UnifiedTodoTab owner={{ ...owner, processId: 'another-sentinel', ownerRoutingRef: 'remote:b:group-owner' }} scopeWorkspaceId="different-viewer" />);
+            }
+            expect(message().value).toBe('Keep the original server');
+            fireEvent.click(queue());
+            if (change === 'replaced route') {
+                await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+                expect(send).not.toHaveBeenCalled();
+                expect(message().value).toBe('Keep the original server');
+            } else {
+                await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+                expect(send).toHaveBeenCalledExactlyOnceWith(OWNER.processId, expect.objectContaining({ deliveryMode: 'enqueue' }), { workspace: workspace.id });
+                expect(remote.mock.calls.every(args => args[0] === 'https://a.example.test')).toBe(true);
+                expect(create).not.toHaveBeenCalled();
+                expect(update).not.toHaveBeenCalled();
+            }
+            expect(local).not.toHaveBeenCalled();
+        });
+    });
+
 });

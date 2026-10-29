@@ -14,7 +14,7 @@
  * restores the previous view when it closes.
  */
 
-import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import type {
     CocClient,
     SentinelTodoCategory,
@@ -28,6 +28,8 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { SentinelTodoMessageComposer } from './SentinelTodoMessageComposer';
+import { captureSentinelTodoMessageTarget, type SentinelTodoMessageTarget } from './sentinelTodoMessageContext';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
 import { SentinelTodoNotes } from './SentinelTodoNotes';
@@ -36,7 +38,7 @@ import { EditableNotesArea, NotesActionButton, SentinelTodoNotesEditor, useSenti
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
-import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isSentinelEnabled, isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { ChatHeaderOverflowMenu } from '../../chat/ChatHeaderOverflowMenu';
 import { ChatStatusPill } from '../../chat/ChatStatusPill';
@@ -321,17 +323,62 @@ function AddItemForm({ form, testIdPrefix, label, manual = false, categories }: 
     );
 }
 
+type OpenTodoMessage = (item: SentinelTodoItem, origin?: HTMLElement) => void;
+
+function subscribeMessageConfig(listener: () => void) {
+    window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
+    return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
+}
+
 export function UnifiedTodoTab(props: UnifiedTodoTabProps) {
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
     const transportKey = route.kind === 'remote' ? route.baseUrl : route.kind;
-    return <TodoTab key={`${sentinelTodoOwnerKey(props.owner)}:${transportKey}`} {...props} client={client}
-        unavailable={route.kind === 'unresolved-remote'} />;
+    const sentinelTodos = useSyncExternalStore(subscribeMessageConfig, isSentinelEnabled, isSentinelEnabled);
+    const sessionContextAttachments = useSyncExternalStore(subscribeMessageConfig, isSessionContextAttachmentsEnabled, isSessionContextAttachmentsEnabled);
+    // Keep the draft above the owner/transport-keyed ledger and its refreshing rows.
+    const [message, setMessage] = useState<{ target: SentinelTodoMessageTarget; item: SentinelTodoItem } | null>(null);
+    const messageOpen = useRef(false);
+    const originRef = useRef<HTMLElement | null>(null);
+    const noticeRef = useRef<HTMLParagraphElement>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [queued, setQueued] = useState<string | null>(null);
+    const openMessage: OpenTodoMessage = (item, origin) => {
+        if (messageOpen.current || !isSentinelEnabled() || !isSessionContextAttachmentsEnabled()) return;
+        setQueued(null);
+        setError(null);
+        originRef.current = origin ?? null;
+        try {
+            const target = captureSentinelTodoMessageTarget(props.owner, item.id);
+            messageOpen.current = true;
+            setMessage({ target, item });
+        } catch (failure) {
+            setError(failure instanceof Error ? failure.message : 'The owning Sentinel is unavailable. Reconnect and try again.');
+        }
+    };
+    const closeMessage = () => {
+        messageOpen.current = false;
+        setMessage(null);
+    };
+    useEffect(() => { if (error) noticeRef.current?.focus(); }, [error]);
+    return <>
+        {/* Keep the live region mounted so confirmed admission is announced in place. */}
+        <p role="status" aria-live="polite" className={queued ? 'px-2 py-1 text-xs' : 'sr-only'}>{queued}</p>
+        {error && <p ref={noticeRef} role="alert" tabIndex={-1} className="px-2 py-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
+        <TodoTab key={`${sentinelTodoOwnerKey(props.owner)}:${transportKey}`} {...props} client={client}
+            unavailable={route.kind === 'unresolved-remote'} onMessage={sentinelTodos && sessionContextAttachments ? openMessage : undefined} />
+        {message && <SentinelTodoMessageComposer target={message.target} item={message.item}
+            gates={{ sentinelTodos, sessionContextAttachments }} returnFocusRef={originRef}
+            onClose={closeMessage} onAdmitted={name => {
+                closeMessage();
+                setQueued(`Message queued to ${name}`);
+            }} />}
+    </>;
 }
 
-function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client, unavailable }: UnifiedTodoTabProps & {
-    client: CocClient; unavailable: boolean;
+function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client, unavailable, onMessage }: UnifiedTodoTabProps & {
+    client: CocClient; unavailable: boolean; onMessage?: OpenTodoMessage;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { width } = useContainerWidth(panelRef, { throttleMs: 0, wideThreshold: SENTINEL_TODO_SPLIT_MIN_WIDTH });
@@ -895,7 +942,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)}
                 categoryLabel={categories.enabled && (search || sentinelTodoType(item) === 'manual' || item.archived || item.status === 'done')
                     ? categories.categorySet?.categories.find(category => category.id === item.categoryId)?.name ?? 'Uncategorized' : undefined}
-                search={search} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
+                onMessage={onMessage} search={search} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
                 onReopenDragStart={item.status === 'done' && !item.archived ? event => {
                     draggedDone.current = item;
                     setDraggedDoneType(sentinelTodoType(item));
@@ -1289,10 +1336,11 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, contextTargetRef }: {
+function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, contextTargetRef, onMessage }: {
     owner: SentinelTodoOwner; item: SentinelTodoItem; onAttach?: () => void; disabled: boolean; onAction: (action: TodoMenuAction) => void;
     categories?: readonly SentinelTodoCategory[];
     contextTargetRef?: RefObject<HTMLElement | null>;
+    onMessage?: OpenTodoMessage;
 }) {
     const currentCategory = item.categoryId && categories?.some(category => category.id === item.categoryId) ? item.categoryId : null;
     const root = useRef<HTMLDivElement>(null);
@@ -1339,6 +1387,8 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, c
                     },
                 })) : []),
             ] : []),
+            ...(onMessage ? [{ key: 'message-sentinel', label: 'Message Sentinel…', group: 'message',
+                onClick: (origin?: HTMLElement) => onMessage(item, origin) }] : []),
             ...(onAttach ? [{ key: 'attach', label: 'Attach', group: 'attach', onClick: () => {
                 trigger()?.focus();
                 onAttach();
@@ -1347,7 +1397,8 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories, c
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categories, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onMoveDragStart, onGripDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'categories'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categories, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onMoveDragStart, onGripDragEnd, search, categoryLabel, onMessage }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'categories'> & {
+    onMessage?: OpenTodoMessage;
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
     onReopenDragStart?: (event: DragEvent<HTMLElement>) => void;
     /** Dragging the grip onto a category section moves the item there. */
@@ -1429,7 +1480,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categor
                 title="Drag to a category to move; use the actions menu from the keyboard" data-testid={`sentinel-todo-move-grip-${item.id}`}
                 className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] active:cursor-grabbing dark:hover:bg-white/[0.04]">⠿</span>}
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction}
-                categories={categories} contextTargetRef={card} />
+                categories={categories} contextTargetRef={card} onMessage={onMessage} />
         </div>
         {excerpt && search && <p className={cn('m-0 min-w-0 break-words px-1.5 pb-1 text-[11px] [overflow-wrap:anywhere]', MUTED)}
             data-testid={`sentinel-todo-search-excerpt-${item.id}`}>

@@ -143,7 +143,7 @@ describe('ChatHeaderOverflowMenu', () => {
         render(<ChatHeaderOverflowMenu items={items} />);
         fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
         fireEvent.click(screen.getByTestId('overflow-item-item-0'));
-        expect(items[0].onClick).toHaveBeenCalledTimes(1);
+        expect(items[0].onClick).toHaveBeenCalledExactlyOnceWith(screen.getByTestId('chat-header-overflow-btn'));
         expect(screen.queryByTestId('chat-header-overflow-menu')).toBeNull();
     });
 
