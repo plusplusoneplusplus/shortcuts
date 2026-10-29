@@ -432,6 +432,49 @@ describe('main browser control scope and selection', () => {
         }
     });
 
+    it.each(['electron', 'webview2'] as const)('keeps drawing the AI cursor for a retained background scope through the %s host', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const exec = (command: BrowserCommand, routingRef: string | undefined, selectedTab?: string) => h.manager.executeControl(1,
+            { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', cursorOverlayEnabled: true, command, selectedTab }, undefined, routingRef);
+        try {
+            const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined);
+            const view = h.views[0];
+            view.setBackgroundControl = vi.fn();
+            const cdp = vi.mocked(view.cdp!);
+            const original = cdp.getMockImplementation()!;
+            // The page reports where it drew, like a whole-page scroll resolving its own point.
+            cdp.mockImplementation(async (method, params, session) => String(params?.expression ?? '').includes('__cocCursorOverlay')
+                ? { result: { value: { x: 40, y: 50 } } } : original(method, params, session));
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay'));
+            const ops = () => overlay().map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await exec({ action: 'press', key: 'Enter' }, undefined, opened.tab);
+            expect(ops()).toEqual(['key']);
+            // Switching the window to another workspace keeps the retained turn's cursor.
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            h.manager.finishUnretainedControl(1);
+            expect(ops()).toEqual(['key']);
+            h.send.mockClear();
+            vi.mocked(view.focus).mockClear();
+            await exec({ action: 'press', key: 'Tab' }, 'w', opened.tab);
+            await exec({ action: 'scroll', direction: 'down' }, 'w', opened.tab);
+            expect(ops()).toEqual(['key', 'key', 'scroll']);
+            expect(view.setBackgroundControl).toHaveBeenLastCalledWith(true);
+            expect(view.focus).not.toHaveBeenCalled();
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.objectContaining({ active: true, background: true }));
+            // Back on screen, the next action continues from the spot the background turn left.
+            h.manager.bindControlScope(1, 'w', 'w');
+            await exec({ action: 'press', key: 'Enter' }, 'w', opened.tab);
+            expect(ops()).toEqual(['key', 'key', 'scroll', 'key']);
+            expect(overlay().at(-1)).toContain('"from":{"x":40,"y":50}');
+            h.manager.finishControl(1, 't');
+            expect(ops()).toEqual(['key', 'key', 'scroll', 'key', 'remove']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
     it('validates and bounds retained background scopes', async () => {
         const h = harness();
         expect(() => h.manager.retainControlScope(1, '', 'w')).toThrow(TypeError);

@@ -744,6 +744,11 @@ hidden tab without focus or selection changes. Actions that need the screen
 relay shows a Switch back notice, sends `browser-command-waiting` so the server
 pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
 
+Live `browserControl.cursorOverlayEnabled` (default on, requires browser control)
+adds `cursorOverlayEnabled: true` to each relayed command; absent means off. The
+desktop then draws a fake cursor and action effects in the controlled page, never
+in agent screenshots, snapshots or reads. See `spa/shell.md`.
+
 Site approval: with live `browserControl.navigationApprovalEnabled` (default on,
 requires browser control) the desktop asks before an agent-driven top-level load
 reaches a new root domain. `browserApprovalSite(url)` in
