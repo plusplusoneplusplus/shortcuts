@@ -109,7 +109,7 @@ export function previewMarkdownFor(
     displayedContent: string,
     viewingHistory: boolean,
 ): string {
-    if (kind.isExcalidraw || kind.isKusto) return '';
+    if (kind.isExcalidraw || kind.isKusto || canvas?.type === 'copilot-extension') return '';
     if (kind.isExtension) return viewingHistory ? fenceCode(displayedContent, 'json') : '';
     return kind.isCode ? fenceCode(displayedContent, canvas?.language) : displayedContent;
 }

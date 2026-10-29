@@ -1243,7 +1243,11 @@ so a mounted view reconciles, but nothing is opened or activated.
 
 `UnifiedCanvasTab` resolves three things `CanvasPanel` cannot get from a tab
 descriptor: the live event, the owning chat's composer actions, and pop-out /
-Kusto-creation chrome.
+Kusto-creation chrome. It also opts into `allowDesktopGuest` for saved
+`copilot-extension` canvases. `CopilotExtensionCanvasView` owns that dedicated
+guest lifecycle through `cocDesktop.extensionCanvas`; only local-owned desktop
+tabs attach guests. Other surfaces show the desktop-only message. Extension
+headers retain tab chrome but omit document editing, history and export actions.
 
 - **Ask AI / Send comments** go to the chat named by `tab.chatId` — the
   *originating* conversation, so a pending send never follows a chat switch. A

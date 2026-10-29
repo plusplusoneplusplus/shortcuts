@@ -15,6 +15,32 @@ const KUSTO_CANVAS: Canvas = {
   content: '{"query":"StormEvents | take 10","clusterUrl":"https://help.kusto.windows.net","database":"Samples","columns":[],"rows":[],"truncated":false}',
 };
 
+describe('CanvasesClient (Copilot extensions)', () => {
+  it('reopens the saved canvas using encoded owner and canvas segments', async () => {
+    const response = {
+      success: true, canvasId: 'canvas/2', instanceId: 'instance-1',
+      title: 'Extension', extensionKey: 'ws/1:board', embed: 'canvas://canvas/2',
+      url: 'http://127.0.0.1:3210/',
+    };
+    const adapter = createMockAdapter(response);
+    const client = new CanvasesClient(adapter);
+    expect(await client.openCopilotExtension('ws/1', 'canvas/2')).toEqual(response);
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/workspaces/ws%2F1/canvases/canvas%2F2/copilot-extension/open',
+      options: { method: 'POST', body: {} },
+    });
+  });
+
+  it('preserves a reopening response without a URL', async () => {
+    const response = {
+      success: true, canvasId: 'canvas-1', instanceId: 'instance-1',
+      title: 'Extension', extensionKey: 'global:board', embed: 'canvas://canvas-1',
+    };
+    const client = new CanvasesClient(createMockAdapter(response));
+    expect(await client.openCopilotExtension('ws one', 'canvas-1')).toEqual(response);
+  });
+});
+
 describe('CanvasesClient (Kusto)', () => {
   it('create() posts the encoded canvas route with type "kusto" and body fields', async () => {
     const adapter = createMockAdapter({ canvas: KUSTO_CANVAS });

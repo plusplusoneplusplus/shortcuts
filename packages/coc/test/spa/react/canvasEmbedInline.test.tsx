@@ -78,6 +78,22 @@ describe('inline canvas:// embed', () => {
         vi.unstubAllGlobals();
     });
 
+    it('shows a message for Copilot extensions without rendering their persisted JSON or opening a guest', async () => {
+        const open = vi.fn();
+        Object.assign(window, { cocDesktop: { extensionCanvas: { open } } });
+        mocks.get.mockResolvedValue({
+            id: 'native-board', workspaceId: 'ws-1', title: 'Board', type: 'copilot-extension',
+            content: '{"extensionKey":"global:board","input":"saved-input"}', revision: 1,
+        });
+        render(<CanvasEmbed workspaceId="ws-1" canvasId="native-board" />);
+        await screen.findByText('Open in the CoC desktop app');
+        expect(screen.queryByText(/saved-input/)).toBeNull();
+        expect(document.querySelector('webview')).toBeNull();
+        expect(open).not.toHaveBeenCalled();
+        expect(mocks.getExtension).not.toHaveBeenCalled();
+        delete (window as { cocDesktop?: unknown }).cocDesktop;
+    });
+
     it('preserves the Excalidraw preview for an Excalidraw canvas', async () => {
         mocks.get.mockResolvedValue({
             id: 'arch',

@@ -68,6 +68,21 @@ describe('useCanvasExport', () => {
         });
     }
 
+    it('never exports the saved runtime descriptor of a Copilot extension', async () => {
+        const { result } = mount(makeCanvas({ type: 'copilot-extension', content: '{"input":"saved"}' }));
+        await act(async () => {
+            await result.current.copyContent();
+            result.current.download();
+            await result.current.exportHtml();
+            await result.current.saveToNotes();
+        });
+        expect(copyText).not.toHaveBeenCalled();
+        expect(downloadBlob).not.toHaveBeenCalled();
+        expect(saveContent).not.toHaveBeenCalled();
+        expect(getExtension).not.toHaveBeenCalled();
+        expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
+    });
+
     it('copies the canvas content and clears the status after the flash window', async () => {
         const { result } = mount(makeCanvas());
 

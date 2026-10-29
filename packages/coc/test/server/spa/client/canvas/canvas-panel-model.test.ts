@@ -40,6 +40,13 @@ function makeCanvas(overrides: Record<string, unknown> = {}) {
 }
 
 describe('canvas-panel-model', () => {
+    it('never passes a Copilot extension descriptor through Markdown, including history views', () => {
+        const canvas = makeCanvas({ type: 'copilot-extension', content: '{"input":"saved"}' });
+        const kind = canvasKind(canvas, canvas.content);
+        expect(previewMarkdownFor(kind, canvas, canvas.content, false)).toBe('');
+        expect(previewMarkdownFor(kind, canvas, canvas.content, true)).toBe('');
+    });
+
     describe('buildAskAiPrompt', () => {
         it('names the canvas, its id, and the revision the selection came from', () => {
             const prompt = buildAskAiPrompt(makeCanvas(), 'second paragraph');

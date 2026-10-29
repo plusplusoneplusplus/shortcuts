@@ -24,6 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
         'data-has-ask-ai': props.onAskAi ? 'yes' : 'no',
         'data-has-send': props.onSendToAi ? 'yes' : 'no',
         'data-available-count': String(props.availableCanvases?.length ?? 0),
+        'data-allow-desktop-guest': String(props.allowDesktopGuest === true),
     },
         React.createElement('button', { 'data-testid': 'fire-ask-ai', onClick: () => props.onAskAi?.('Rewrite this') }, 'Ask AI'),
         React.createElement('button', { 'data-testid': 'fire-send', onClick: () => { void props.onSendToAi?.('2 comments'); } }, 'Send'),
@@ -66,6 +67,11 @@ beforeEach(() => {
     clearUnifiedChatCanvasActions();
     clearUnifiedPanelState();
     clearCanvasPopOutHandles();
+});
+
+it('explicitly authorizes desktop extension guests only through the unified tab host', () => {
+    renderTab();
+    expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-allow-desktop-guest')).toBe('true');
 });
 
 afterEach(() => {
