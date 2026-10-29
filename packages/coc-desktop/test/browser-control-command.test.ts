@@ -9,6 +9,8 @@ describe('desktop browser command validation', () => {
         expect(() => validateBrowserCommandRequest({ ...input, framesEnabled: true })).toThrow('must be enabled');
         expect(() => validateBrowserCommandRequest({ ...input, richPasteEnabled: true })).toThrow('must be enabled');
         expect(validateBrowserCommandRequest({ ...input, framesEnabled: true, richPasteEnabled: true }).command).toEqual(input.command);
+        expect(validateBrowserCommandRequest({ ...input, framesEnabled: true, richPasteEnabled: true, cursorOverlayEnabled: true }).cursorOverlayEnabled).toBe(true);
+        expect(() => validateBrowserCommandRequest({ ...input, framesEnabled: true, richPasteEnabled: true, cursorOverlayEnabled: 'yes' })).toThrow('cursor overlay policy');
     });
     it.each([
         { action: 'request_human', text: 'Complete MFA' }, { action: 'tabs' }, { action: 'open', url: 'https://fixture.test/', newTab: true },

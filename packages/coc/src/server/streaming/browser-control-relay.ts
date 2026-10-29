@@ -48,6 +48,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private richPasteEnabled = () => false;
     private backgroundEnabled = () => false;
     private navigationApprovalEnabled = () => true;
+    private cursorOverlayEnabled = () => true;
     private lastHumanTakeoverPolicy?: boolean;
     private humanTakeoverEnabled = () => false;
     private readonly handoffs = new Map<string, { client: BrowserRelayClient; state: BrowserTakeoverState }>();
@@ -121,6 +122,9 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         this.backgroundEnabled = getEnabled;
         this.syncBackgroundPolicy();
     }
+    /** Default-on: the desktop draws the AI cursor inside the controlled page. */
+    getCursorOverlayEnabled(): boolean { return this.getEnabled() && this.cursorOverlayEnabled() !== false; }
+    setCursorOverlayEnabledGetter(getEnabled: () => boolean): void { this.cursorOverlayEnabled = getEnabled; }
     /** Agent navigations to an unapproved root domain ask the user first; off allows every site. */
     getNavigationApprovalEnabled(): boolean { return this.getEnabled() && this.navigationApprovalEnabled() !== false; }
     setNavigationApprovalEnabledGetter(getEnabled: () => boolean): void {
@@ -413,7 +417,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             this.pending.set(id, { client, workspaceId, processId, framesEnabled, richPasteEnabled, cancel, finish, wait });
             if (this.asking(workspaceId, processId)) wait(true);
             signal?.addEventListener('abort', abort, { once: true });
-            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(observedTakeoverRevision !== undefined && observedTakeoverRevision !== this.getHumanTakeoverRevision(workspaceId, processId) ? { validateAfterTakeover: true } : {}), ...(this.getHumanTakeoverEnabled() && selected.humanTakeoverSupported ? { humanTakeoverEnabled: true } : {}), ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
+            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(observedTakeoverRevision !== undefined && observedTakeoverRevision !== this.getHumanTakeoverRevision(workspaceId, processId) ? { validateAfterTakeover: true } : {}), ...(this.getHumanTakeoverEnabled() && selected.humanTakeoverSupported ? { humanTakeoverEnabled: true } : {}), ...(richPasteEnabled ? { richPasteEnabled: true } : {}), ...(this.getCursorOverlayEnabled() ? { cursorOverlayEnabled: true } : {}) } })); }
             catch (error) { finish(error); }
         });
     }

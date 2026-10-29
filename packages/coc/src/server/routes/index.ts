@@ -911,6 +911,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         browserControl?.setBackgroundEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.backgroundEnabled === true);
+        browserControl?.setCursorOverlayEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.cursorOverlayEnabled !== false);
         browserControl?.setNavigationApprovalEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.navigationApprovalEnabled !== false);

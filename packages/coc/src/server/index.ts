@@ -1002,6 +1002,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     wsServer.browserControl.setRichPasteEnabledGetter(() => runtimeConfigService.config.browserControl.richPasteEnabled === true);
     wsServer.browserControl.setBackgroundEnabledGetter(() => runtimeConfigService.config.browserControl.backgroundEnabled === true);
     wsServer.browserControl.setNavigationApprovalEnabledGetter(() => runtimeConfigService.config.browserControl.navigationApprovalEnabled !== false);
+    wsServer.browserControl.setCursorOverlayEnabledGetter(() => runtimeConfigService.config.browserControl.cursorOverlayEnabled !== false);
     wsServer.browserControl.setNavigationApprovals(browserNavigationApprovals);
     runtimeConfigService.onChange(() => wsServer.browserControl.syncPolicies());
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =

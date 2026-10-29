@@ -29,6 +29,21 @@ describe('browser control relay', () => {
         on = false;
         expect(relay.getNavigationApprovalEnabled()).toBe(false);
     });
+    it('sends the default-on cursor overlay policy with each command and follows the live getter', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        expect(relay.getCursorOverlayEnabled()).toBe(true);
+        void relay.execute('w', 'p', { action: 'snapshot' }).catch(() => undefined);
+        expect(request(a).cursorOverlayEnabled).toBe(true);
+        let on = false;
+        relay.setCursorOverlayEnabledGetter(() => on);
+        expect(relay.getCursorOverlayEnabled()).toBe(false);
+        void relay.execute('w', 'p', { action: 'snapshot' }).catch(() => undefined);
+        expect(request(a).cursorOverlayEnabled).toBeUndefined();
+        on = true;
+        relay.setEnabledGetter(() => false);
+        expect(relay.getCursorOverlayEnabled()).toBe(false);
+    });
     it('gates rich paste by owning-server policy and cancels it when disabled', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);

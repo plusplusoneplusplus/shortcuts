@@ -46,6 +46,7 @@ interface DashboardConfig {
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
     browserHumanTakeoverEnabled?: boolean;
+    browserCursorOverlayEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
     browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled?: boolean;

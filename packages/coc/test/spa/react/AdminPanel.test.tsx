@@ -1676,6 +1676,7 @@ describe('AdminPanel', () => {
                 'browserControl.backgroundEnabled': false,
                 'browserControl.navigationApprovalEnabled': true,
                 'browserControl.humanTakeoverEnabled': false,
+                'browserControl.cursorOverlayEnabled': true,
                 'features.htmlPageTab': false,
                 'features.browserTabShortcuts': false,
                 'features.sensitiveInput': false,

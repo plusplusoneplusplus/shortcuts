@@ -341,6 +341,8 @@ describe('runtime feature flags', () => {
         expect(DEFAULT_CONFIG.browserControl.humanTakeoverEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({}).browserHumanTakeoverEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({ browserControl: { humanTakeoverEnabled: true } }).browserHumanTakeoverEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).browserCursorOverlayEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ browserControl: { cursorOverlayEnabled: false } }).browserCursorOverlayEnabled).toBe(false);
         expect(DEFAULT_CONFIG.browserControl.enabled).toBe(false);
         expect(buildRuntimeFeatureFlags({}).browserControlEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({ browserControl: { enabled: true } }).browserControlEnabled).toBe(true);
@@ -1067,6 +1069,7 @@ describe('feature toggle settings-tab placement', () => {
         'browserControl.framesEnabled': 'browser',
         'browserControl.richPasteEnabled': 'browser',
         'browserControl.humanTakeoverEnabled': 'browser',
+        'browserControl.cursorOverlayEnabled': 'browser',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
@@ -1177,11 +1180,12 @@ describe('feature toggle settings-tab placement', () => {
             ['browserControl.backgroundEnabled', 'browserAutomation', false, undefined, 'live', 'browserBackgroundControlEnabled', 'experimental', 'toggle-browser-background-control-enabled'],
             ['browserControl.humanTakeoverEnabled', 'browserAutomation', false, undefined, 'live', 'browserHumanTakeoverEnabled', 'experimental', 'toggle-browser-human-takeover-enabled'],
             ['browserControl.navigationApprovalEnabled', 'browserAutomation', true, undefined, 'live', 'browserNavigationApprovalEnabled', 'experimental', 'toggle-browser-navigation-approval-enabled'],
+            ['browserControl.cursorOverlayEnabled', 'browserAutomation', true, undefined, 'live', 'browserCursorOverlayEnabled', 'experimental', 'toggle-browser-cursor-overlay-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
             ['features.browserTabShortcuts', 'browserPages', false, undefined, 'live', 'browserTabShortcutsEnabled', 'experimental', 'toggle-browser-tab-shortcuts-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
-        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'browserControl.cursorOverlayEnabled', 'features.sensitiveInput']);
         expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.backgroundEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.navigationApprovalEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');

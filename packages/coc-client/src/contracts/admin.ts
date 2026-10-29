@@ -281,6 +281,7 @@ export interface RuntimeDashboardConfig {
     browserControlEnabled?: boolean;
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
+    browserCursorOverlayEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
     browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled: boolean;

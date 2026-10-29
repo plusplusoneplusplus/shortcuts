@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
@@ -1099,6 +1099,7 @@ timeout: 300
                 '  backgroundEnabled: true',
                 '  navigationApprovalEnabled: false',
                 '  humanTakeoverEnabled: true',
+                '  cursorOverlayEnabled: false',
                 'teamsIc3OwnCommands:',
                 '  workspaceId: ws-fixture',
                 'teamsReactionDelegation:',
@@ -1488,6 +1489,7 @@ timeout: 300
                   "approvePermissions": true,
                   "browserControl": {
                     "backgroundEnabled": false,
+                    "cursorOverlayEnabled": true,
                     "enabled": false,
                     "framesEnabled": false,
                     "humanTakeoverEnabled": false,
@@ -1774,6 +1776,7 @@ timeout: 300
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
                   "browserControl.backgroundEnabled": "default",
+                  "browserControl.cursorOverlayEnabled": "default",
                   "browserControl.enabled": "default",
                   "browserControl.framesEnabled": "default",
                   "browserControl.humanTakeoverEnabled": "default",
