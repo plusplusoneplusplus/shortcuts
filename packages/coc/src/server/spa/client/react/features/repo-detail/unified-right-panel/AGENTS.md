@@ -974,6 +974,12 @@ on drop and send (see the composer knowledge reference).
 and owner; the caller supplies draft, context readiness, destination labels and
 admission state. It traps/restores focus and retains text through inline failures.
 The component performs no navigation or I/O and has no list-menu wiring.
+`sentinelTodoMessageContext.ts` captures its concrete ledger route and durable
+server identity from dashboard topology. Its read-only preparation brackets exact
+Sentinel process/item reads with health verification, rejects stale routes and
+owners, and returns the shared escaped context block. Both existing feature gates
+are required; reads have a ten-second deadline and accept caller cancellation.
+Callers abort on draft changes and revalidate before admission.
 Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle

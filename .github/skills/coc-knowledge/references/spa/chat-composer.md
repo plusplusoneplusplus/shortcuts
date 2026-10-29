@@ -304,6 +304,12 @@ fixed To-do and ledger owner. Its caller owns the draft, destination labels,
 context readiness and admission. The shared modal traps/restores focus; loading
 blocks submission and pending admission blocks editing and dismissal. Inline
 errors retain text. The surface performs no routing, context reads or message I/O.
+`sentinelTodoMessageContext.ts` captures durable server identity and the concrete
+ledger owner from dashboard topology. Its read-only preparation requires both
+existing gates and verifies health around exact Sentinel process/item reads,
+rejecting replaced, offline or stale destinations. Reads accept cancellation and
+have a ten-second deadline; callers abort on draft changes. It returns current
+escaped context through the shared serializer and never writes ledger or chat state.
 
 ### Session-context attachments
 
