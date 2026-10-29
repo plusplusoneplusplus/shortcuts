@@ -202,6 +202,15 @@ Failures use SDK `resultType: 'failure'` envelopes whose
 `textResultForLlm` contains `{ success: false, error: { code, message } }` JSON,
 preserving CanvasError details and MCP `isError` across providers. Failed initial persistence closes the newly opened runtime instance.
 
+`coc-desktop/src/extension-canvas-host.ts` provides dedicated Electron guests through
+the shared webview guard, separate from the browser manager's history/control registry.
+It accepts credential-free HTTP IPv4 loopback sources, uses in-memory sessions keyed
+by extension identity and binds exact-origin navigation/request gates before loading.
+External HTTP(S) links use the system browser; permissions, downloads and popup windows
+are denied. Owner reload/destruction, attachment expiry and host disposal revoke guests.
+The host exposes attachment/adoption, load state and close; callers own workspace
+validation and saved-instance reopening. Desktop IPC and panel composition are separate.
+
 ### Extension canvases
 
 `type: 'extension'` renders `ExtensionCanvasView` in preview mode: the extension's
