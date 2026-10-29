@@ -150,6 +150,15 @@ Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
 terminate the child; idempotent disposal waits for exit with forced termination
 after two seconds.
 
+`host-registry.ts` owns lazy runtimes by workspace/conversation/extension key.
+Calls serialize per runtime; crash recovery reopens all known instances with their
+saved input before dispatching the next action, without replaying failed actions.
+Open instances prevent idle expiry; otherwise `COC_CANVAS_EXT_IDLE_TTL_MS` defaults
+to 600000. The server forwards archive/removal events and reconciles filtered clears
+against surviving owners. Disabling the flag and shutdown stop runtimes and drain
+pending startup; deletion removes the conversation's isolated session-state folder.
+Callback services remain injected; tool/persistence and desktop composition are separate.
+
 ### Extension canvases
 
 `type: 'extension'` renders `ExtensionCanvasView` in preview mode: the extension's

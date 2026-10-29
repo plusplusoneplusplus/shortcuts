@@ -212,6 +212,11 @@ references before editing. Paths are package-relative.
   owning cwd and isolated `<dataDir>/canvas-ext/home`. Keep the SDK resolver in
   the package build; it forces root/subpath imports to CoC's pinned SDK. Bound
   startup/RPC calls, stop children on transport failure, and await disposal.
+  `host-registry.ts` serializes calls per conversation/extension, keeps open
+  instances alive, and reopens their saved inputs after crashes before dispatch.
+  No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
+  Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
+  deletion removes only that conversation's isolated session-state directory.
 
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation

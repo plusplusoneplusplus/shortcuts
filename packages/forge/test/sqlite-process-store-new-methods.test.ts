@@ -2,7 +2,7 @@
  * SqliteProcessStore Tests — getConversationTurns and listRecentProcesses
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -342,5 +342,29 @@ describe('SqliteProcessStore.appendPendingMessage', () => {
     it('returns undefined for a non-existent process', async () => {
         const result = await store.appendPendingMessage('no-such', makePending('m1', 'x'));
         expect(result).toBeUndefined();
+    });
+});
+
+
+describe('archive process lifecycle notifications', () => {
+    it('publishes owner-qualified archived snapshots synchronously for individual and batch archive', async () => {
+        await store.addProcess(makeProcess('first', { conversationTurns: [makeTurn(0)] }));
+        await store.addProcess(makeProcess('second', { metadata: { type: 'ai', workspaceId: 'ws-other' } }));
+        const changed = vi.fn();
+        store.onProcessChange = changed;
+        store.archiveProcess('first');
+        expect(changed).toHaveBeenCalledExactlyOnceWith({ type: 'process-updated', process: expect.objectContaining({
+            id: 'first', archived: true, metadata: expect.objectContaining({ workspaceId: 'ws-test' }),
+            conversationTurns: [expect.objectContaining({ content: 'message-0' })],
+        }) });
+        changed.mockClear();
+        store.archiveProcesses(['second', 'second', 'missing']);
+        expect(changed).toHaveBeenCalledExactlyOnceWith({ type: 'process-updated', process: expect.objectContaining({
+            id: 'second', archived: true, metadata: expect.objectContaining({ workspaceId: 'ws-other' }),
+        }) });
+        changed.mockClear();
+        store.archiveProcesses([]);
+        store.archiveProcess('missing');
+        expect(changed).not.toHaveBeenCalled();
     });
 });

@@ -6,6 +6,8 @@ import * as http from 'http';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { CanvasExtensionHostRegistry } from './canvas-extensions/host-registry';
+import { getServerLogger } from './logging/server-logger';
 import { createRequestHandler } from './router';
 import { getOrCreateServerIdentity } from './servers/server-identity';
 import { registerAllRoutes } from './routes/index';
@@ -96,6 +98,7 @@ function formatLocalBaseUrl(host: string, port: number): string {
 interface CloseHandlerDeps {
     adoDispose?: () => void;
     kustoDispose?: () => void;
+    canvasExtensionsDispose?: () => Promise<void>;
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
     heapMonitor: { dispose(): void };
@@ -147,6 +150,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
                 scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
 
+        await deps.canvasExtensionsDispose?.();
         await deps.teamsReactions?.dispose();
         await deps.teamsIc3OwnCommands?.dispose();
         staleDetector.dispose();
@@ -449,6 +453,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const decisionService = createDecisionService(copilotService);
     const kustoRuntime = createKustoClientRuntime(() => runtimeConfigService.config.kusto);
     const unsubscribeKustoConfig = runtimeConfigService.onChange(() => kustoRuntime.syncConfig());
+    const canvasExtensionHosts = new CanvasExtensionHostRegistry({
+        config: () => runtimeConfigService.config, store, dataDir,
+        log: message => getServerLogger().warn(message),
+    });
+    const unsubscribeCanvasExtensionsConfig = runtimeConfigService.onChange(() => {
+        void canvasExtensionHosts.syncConfig().catch(error => getServerLogger().warn({ error }, 'Canvas extension cleanup failed'));
+    });
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
@@ -995,6 +1006,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             browserState?.delete(workspaceId, process.id);
             browserNavigationApprovals.forgetConversation(workspaceId, process.id);
         },
+        event => canvasExtensionHosts.onProcessChange(event),
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     wsServer.browserControl.setFramesEnabledGetter(() => runtimeConfigService.config.browserControl.framesEnabled === true);
@@ -1123,6 +1135,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             kustoDispose: () => { unsubscribeKustoConfig(); kustoRuntime.dispose(); },
+            canvasExtensionsDispose: () => {
+                unsubscribeCanvasExtensionsConfig();
+                return canvasExtensionHosts.dispose();
+            },
             adoDispose: () => disposeAdoTokenResolver(dataDir),
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             notesSearchService, watchService,
