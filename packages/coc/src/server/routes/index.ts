@@ -869,6 +869,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => ({
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
+            canvasExtensionsEnabled: opts.runtimeConfigService!.config.canvasExtensions?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
             browserControlEnabled: opts.runtimeConfigService!.config.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: (opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled) === true,
@@ -884,6 +885,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         : () => ({
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
+            canvasExtensionsEnabled: opts.resolvedConfig?.canvasExtensions?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
             browserControlEnabled: opts.resolvedConfig?.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: (opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled) === true,

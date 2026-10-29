@@ -147,6 +147,24 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['prompt', 'delay'],
     },
+    list_canvas_capabilities: { type: 'object', properties: {}, required: [] },
+    open_canvas: {
+        type: 'object',
+        properties: {
+            canvasId: { type: 'string' }, input: { type: 'object' }, instanceId: { type: 'string' },
+        },
+        required: ['canvasId'],
+    },
+    invoke_canvas_action: {
+        type: 'object',
+        properties: {
+            instanceId: { type: 'string' }, actionName: { type: 'string' }, input: { type: 'object' },
+        },
+        required: ['instanceId', 'actionName'],
+    },
+    close_canvas: {
+        type: 'object', properties: { instanceId: { type: 'string' } }, required: ['instanceId'],
+    },
     write_canvas: {
         type: 'object',
         properties: {

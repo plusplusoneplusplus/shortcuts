@@ -16,10 +16,16 @@ The folder has no barrel `index.ts`; import each tool module directly.
 
 ### Gating
 
-`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled, browserControlEnabled, toolScriptingEnabled })`
-filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_query`
-(`KUSTO_LLM_TOOL_NAMES`), `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`), and `run_tool_script`
-(`TOOL_SCRIPTING_LLM_TOOL_NAMES`) out of the settings list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
+`getEffectiveLlmToolRegistry` filters feature-owned tools from workspace settings when
+its corresponding flag is off: `cronEnabled` for `scheduleWakeup`, `canvasEnabled`
+for `CANVAS_LLM_TOOL_NAMES`, `canvasExtensionsEnabled` for
+`CANVAS_EXTENSION_LLM_TOOL_NAMES`, `kustoEnabled` for `kusto_query`,
+`llmToolSystemOneEnabled` for `system_one`, `browserControlEnabled` for `browser`,
+`toolScriptingEnabled` for `run_tool_script`, and `queryPullRequestToolEnabled` for
+`query_pull_request`. Installed-extension tools have their own default-off gate,
+independent of `canvas.enabled`. Route composition reads `canvasExtensions.enabled`
+from live runtime config (or resolved startup config); both GET and PUT tool settings
+include structural parameter summaries without discovery or process startup.
 
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`,
 `recall_memory`, and `sentinel_jobs` by default, independently of UI layout mode.

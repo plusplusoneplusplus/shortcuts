@@ -218,7 +218,10 @@ references before editing. Paths are package-relative.
   Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
   deletion removes only that conversation's isolated session-state directory.
   `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
-  executor/registry composition supplies discovery, host, store and notifier services.
+  their registry metadata and schema summaries use an independent default-off
+  `canvasExtensionsEnabled` gate in live GET/PUT workspace tool settings. Keep
+  this gate separate from `canvas.enabled`; executor composition supplies discovery,
+  host, store and notifier services.
   `copilot-extension` records store identity/input/title and a closed marker, never
   runtime URLs. Supply `loadCanvasExtensionInstances` to the host registry to restore
   open records on first use; keep group conversation storage separate from member cwd.
