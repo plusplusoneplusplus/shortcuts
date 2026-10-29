@@ -11,7 +11,7 @@ import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
@@ -219,6 +219,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, (event, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         return manager!.releaseFrames(event.sender.id, sessionKey);
+    });
+    ipcMain.handle(BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, (event, routingRef: unknown) => {
+        if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
+        manager!.removeCursors(event.sender.id, routingRef);
     });
     ipcMain.handle(BROWSER_CONTROL_TAKEOVER_CHANNEL, (event, identity, action, note) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');

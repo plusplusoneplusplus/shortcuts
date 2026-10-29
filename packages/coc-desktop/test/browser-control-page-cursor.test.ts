@@ -171,6 +171,24 @@ describe('browser control cursor overlay wiring', () => {
         expect(document.querySelectorAll('coc-ai-cursor')).toHaveLength(1);
     });
 
+    it('turns the overlay off between commands through an out-of-queue sender, so the running command draws nothing more', async () => {
+        const { send, page } = fixture();
+        const raw = vi.fn((method: string, params?: Record<string, unknown>) => send(method, params));
+        page.setCursorOverlay(true);
+        await page.click('e1');
+        page.setCursorOverlay(false, raw);
+        expect(raw).toHaveBeenCalledOnce();
+        await vi.waitFor(() => expect(overlay()).toBeUndefined());
+        expect(drawn(send).at(-1)).toEqual({ op: 'remove' });
+        // Later steps of the running command draw nothing; the next request's setting applies again.
+        await page.press('Enter');
+        expect(drawn(send).at(-1)).toEqual({ op: 'remove' });
+        expect(document.querySelector('coc-ai-cursor')).toBeNull();
+        page.setCursorOverlay(true);
+        await page.press('Enter');
+        expect(drawn(send).at(-1)).toEqual({ op: 'key', key: 'Enter' });
+    });
+
     it('logs and ignores a removal the engine rejects or throws on', async () => {
         const { page } = fixture();
         page.setCursorOverlay(true);

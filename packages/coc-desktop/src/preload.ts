@@ -31,6 +31,7 @@ const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-take
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
+const BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL = 'coc-desktop:browser-control-remove-cursors';
 const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
 const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
@@ -282,6 +283,8 @@ const browser = {
                 : ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef),
         cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
         releaseFrames: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, routingRef),
+        /** The cursor setting turned off: remove the AI cursor from this window's views in the scope now. */
+        removeCursors: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, routingRef),
         finish: (turnId?: string, routingRef?: string): void => ipcRenderer.send(BROWSER_CONTROL_FINISH_CHANNEL, turnId, routingRef),
         setVisible: (visible: boolean, routingRef: string): void => ipcRenderer.send(BROWSER_CONTROL_VISIBLE_CHANNEL, visible, routingRef),
         onActivity: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_ACTIVITY_CHANNEL, callback),

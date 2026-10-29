@@ -285,6 +285,17 @@ export class BrowserHostManager {
         throwRejected(results);
     }
 
+    /**
+     * The cursor setting turned off live: take the AI cursor away now from the views this window
+     * drives under `routingRef`, without waiting for a command. Other windows and scopes keep theirs.
+     */
+    removeCursors(ownerId: number, routingRef: unknown): void {
+        if (!isValidBrowserSessionKey(routingRef)) throw new TypeError('Invalid browser workspace scope');
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (!entry.closed && entry.activity?.routingOwnerId === ownerId && entry.activity.routingRef === routingRef) entry.control?.disableCursor();
+        }
+    }
+
     private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
 
     private scopedEntries(ownerId: number, workspaceId: string, routingRef?: string): Entry[] {

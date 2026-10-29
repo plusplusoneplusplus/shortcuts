@@ -119,6 +119,9 @@ export class BrowserControlQueue {
     /** Remove a drawn AI cursor right away; it bypasses the queue so it never waits on or delays a command. */
     removeCursor(): void { this.page.removeCursor(this.send); }
 
+    /** The live setting turned off: remove the cursor out of queue and keep the running command from drawing it again. */
+    disableCursor(): void { this.page.setCursorOverlay(false, this.send); }
+
     /** Wait for the issued engine call and required input releases, without waiting on queued commands. */
     settled(): Promise<void> { return this.activeBarrier; }
 

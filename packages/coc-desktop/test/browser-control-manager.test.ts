@@ -119,6 +119,34 @@ describe('main browser control scope and selection', () => {
             await h.manager.dispose();
         }
     });
+    it.each(['electron', 'webview2'] as const)('removes the drawn cursor through the %s host when the setting turns off, with no further command', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const creates = vi.spyOn(h.manager['options'].hosts[engine], 'create');
+        const exec = (ownerId: number, command: BrowserCommand, selectedTab?: string) => h.manager.executeControl(ownerId,
+            { id: `r${ownerId}`, workspaceId: 'w', processId: `p${ownerId}`, turnId: `t${ownerId}`, cursorOverlayEnabled: true, command, selectedTab });
+        try {
+            const mine = await exec(1, { action: 'open', url: 'https://fixture.test/' });
+            const theirs = await exec(2, { action: 'open', url: 'https://fixture.test/' });
+            expect(creates).toHaveBeenCalledTimes(2);
+            const ops = (view: BrowserHostedView) => vi.mocked(view.cdp!).mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await exec(1, { action: 'press', key: 'Enter' }, mine.tab);
+            await exec(2, { action: 'press', key: 'Enter' }, theirs.tab);
+            expect([ops(h.views[0]), ops(h.views[1])]).toEqual([['key'], ['key']]);
+            // Another workspace scope of the same window is left alone.
+            h.manager.removeCursors(1, 'other');
+            expect(ops(h.views[0])).toEqual(['key']);
+            h.manager.removeCursors(1, 'w');
+            expect([ops(h.views[0]), ops(h.views[1])]).toEqual([['key', 'remove'], ['key']]);
+            expect(() => h.manager.removeCursors(1, '')).toThrow('Invalid browser workspace scope');
+            // The next command of the turn carries the setting off and draws nothing.
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p1', turnId: 't1', command: { action: 'press', key: 'Enter' }, selectedTab: mine.tab });
+            expect(ops(h.views[0])).toEqual(['key', 'remove']);
+        } finally {
+            creates.mockRestore();
+            await h.manager.dispose();
+        }
+    });
     it('draws no cursor for actions without input, even with the setting on', async () => {
         const h = harness();
         const exec = (command: BrowserCommand, selectedTab?: string) => h.manager.executeControl(1,

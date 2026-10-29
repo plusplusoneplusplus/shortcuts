@@ -180,6 +180,8 @@ describe('preload bridge', () => {
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
         await control.releaseFrames('remote:server:w');
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-release-frames', 'remote:server:w');
+        await control.removeCursors('remote:server:w');
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-remove-cursors', 'remote:server:w');
         control.setVisible(true, 'remote:server:w');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-visible', true, 'remote:server:w');
         control.finish(undefined, 'remote:server:w');

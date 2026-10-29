@@ -97,10 +97,13 @@ export class BrowserControlPage {
         return result.result.value;
     }
 
-    /** Live per command. Turning it off removes a drawn overlay at once. */
-    setCursorOverlay(enabled: boolean): void {
+    /**
+     * Live per command. Turning it off removes a drawn overlay at once, through `send` when the
+     * setting turns off between commands; the running command then draws nothing more.
+     */
+    setCursorOverlay(enabled: boolean, send: BrowserCdpSender = this.send): void {
         // Sent synchronously, so the active command carries it even when it returns at once.
-        if (!enabled) this.removeCursor(this.send);
+        if (!enabled) this.removeCursor(send);
         this.cursorEnabled = enabled;
     }
 

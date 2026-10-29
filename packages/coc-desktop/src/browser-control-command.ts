@@ -34,6 +34,7 @@ export const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retai
 export const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 export const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 export const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
+export const BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL = 'coc-desktop:browser-control-remove-cursors';
 export const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 export const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
 export const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
