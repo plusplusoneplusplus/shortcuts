@@ -114,3 +114,5 @@ export {
 export type { WorktreeLaunchState, WorktreeLaunchControlsProps } from './WorktreeLaunchControls';
 export { useWorktreeCleanup } from './useWorktreeCleanup';
 export type { WorktreeCleanupState } from './useWorktreeCleanup';
+export { SelectionActionsGroup, SELECTION_ACTION_BUTTON_CLASS } from './SelectionActionsGroup';
+export type { SelectionActionsGroupProps } from './SelectionActionsGroup';
