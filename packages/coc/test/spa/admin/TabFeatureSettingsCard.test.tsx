@@ -5,7 +5,7 @@
  * only that tab's keys; Cancel reverts only that tab's edits.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 
 const { updateConfig, applyRuntimeConfigPatch, invalidateDisplaySettings } = vi.hoisted(() => ({
     updateConfig: vi.fn(),
@@ -14,7 +14,9 @@ const { updateConfig, applyRuntimeConfigPatch, invalidateDisplaySettings } = vi.
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ admin: { updateConfig }, workspaces: { list: async () => ({ workspaces: [] }) } }),
+    getSpaCocClient: () => ({ admin: { updateConfig }, workspaces: { list: async () => ({ workspaces: [
+        { id: 'group-team', name: 'Team', rootPath: 'fixture-group', virtual: true },
+    ] }) } }),
     getSpaCocClientErrorMessage: (_e: unknown, fallback: string) => fallback,
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -189,6 +191,19 @@ describe('TabFeatureSettingsCard', () => {
         expect(keys).toEqual([
             'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId', 'teamsReactionDelegation.dispatcherSkill',
         ]);
+    });
+
+    it('offers repo groups for reaction execution and IC3 own commands', async () => {
+        render(<Harness tabs={['teams']} />);
+        const reactions = screen.getByTestId('select-teams-reaction-workspace');
+        const commands = screen.getByTestId('select-teams-ic3-command-workspace');
+        await waitFor(() => expect(reactions).toHaveProperty('disabled', false));
+        expect(within(reactions).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
+        expect(within(commands).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
+        fireEvent.change(reactions, { target: { value: 'group-team' } });
+        expect(controller.featureValues['teamsReactionDelegation.workspaceId']).toBe('group-team');
+        fireEvent.change(commands, { target: { value: 'group-team' } });
+        expect(controller.featureValues['teamsIc3OwnCommands.workspaceId']).toBe('group-team');
     });
 
     it('ignores saved rail Git opt-outs in Appearance and runtime updates', () => {

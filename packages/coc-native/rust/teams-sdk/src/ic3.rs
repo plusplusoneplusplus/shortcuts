@@ -39,7 +39,88 @@ pub struct VerifiedChat {
 pub trait ChatVerifier: Send + Sync {
     async fn verify(&self, account: &Account, chat: &ChatId) -> Result<VerifiedChat>;
 }
+
+pub(crate) fn chat_kind(properties: &Value) -> Option<ChatKind> {
+    match (
+        properties["threadType"].as_str(),
+        properties["productThreadType"].as_str(),
+    ) {
+        (Some("chat"), Some("OneToOneChat")) => Some(ChatKind::OneOnOne),
+        (Some("chat"), Some("Chat")) => Some(ChatKind::Group),
+        (Some("meeting"), Some("Meeting")) => Some(ChatKind::Meeting),
+        _ => None,
+    }
+}
+
 impl Session {
+    /// Read one exact chat thread, retaining its root even when it is outside the reply page.
+    pub async fn ic3_thread_history(
+        &self,
+        reference: &ConversationRef,
+        root: &MessageId,
+        cursor: Option<&Cursor>,
+        ctx: &OperationContext,
+    ) -> Result<Page<MessageDetail>> {
+        self.validate_ref(reference)?;
+        let Conversation::Chat(chat) = &reference.conversation else {
+            return Err(Error::new(ErrorCode::Unsupported));
+        };
+        if reference.backend != Backend::Ic3
+            || chat.as_str() == SELF_CHAT_ID
+            || root.as_str().len() > 20
+            || !root.as_str().bytes().all(|b| b.is_ascii_digit())
+        {
+            return Err(Error::new(ErrorCode::InvalidTarget));
+        }
+        let kind = self.ic3_validate_chat(reference, ctx).await?;
+        let scoped = format!("{};messageid={}", chat.as_str(), root.as_str());
+        let mut url = self.url(Backend::Ic3, &["conversations", &scoped, "messages"])?;
+        url.query_pairs_mut().append_pair("pageSize", "50");
+        let (value, next) = self.get_page(Backend::Ic3, url, cursor, ctx).await?;
+        let rows = crate::session::rows(&value, "messages")?;
+        let mut items = Vec::new();
+        for row in rows {
+            if let Some(mut item) = normalize(row, reference, self)? {
+                if item.metadata.reference.id() != root
+                    && item.root_message_id.as_ref() != Some(root)
+                {
+                    return Err(protocol());
+                }
+                item.chat_kind = kind;
+                items.push(item);
+            }
+        }
+        let mut raw_count = rows.len();
+        if cursor.is_none()
+            && !items
+                .iter()
+                .any(|item| item.metadata.reference.id() == root)
+        {
+            let url = self.url(
+                Backend::Ic3,
+                &["conversations", chat.as_str(), "messages", root.as_str()],
+            )?;
+            let value = self.get(Backend::Ic3, url, ctx).await?;
+            let mut item = normalize(&value, reference, self)?.ok_or_else(protocol)?;
+            if item.metadata.reference.id() != root
+                || item
+                    .root_message_id
+                    .as_ref()
+                    .is_some_and(|parent| parent != root)
+            {
+                return Err(protocol());
+            }
+            item.chat_kind = kind;
+            items.push(item);
+            raw_count += 1;
+        }
+        Ok(Page {
+            items,
+            next,
+            raw_count,
+        })
+    }
+
     pub(crate) async fn ic3_participants(
         &self,
         reference: &ConversationRef,
@@ -115,7 +196,7 @@ impl Session {
         &self,
         reference: &ConversationRef,
         ctx: &OperationContext,
-    ) -> Result<()> {
+    ) -> Result<Option<ChatKind>> {
         let Conversation::Chat(chat) = &reference.conversation else {
             return Err(Error::new(ErrorCode::Unsupported));
         };
@@ -126,17 +207,11 @@ impl Session {
         }
         // Notes is an account-scoped stream, not an ordinary chat thread.
         if chat.as_str() == SELF_CHAT_ID {
-            return Ok(());
+            return Ok(None);
         }
-        if info["threadProperties"]["threadType"].as_str() != Some("chat")
-            || !matches!(
-                info["threadProperties"]["productThreadType"].as_str(),
-                Some("OneToOneChat" | "Chat")
-            )
-        {
-            return Err(Error::new(ErrorCode::Unsupported));
-        }
-        Ok(())
+        chat_kind(&info["threadProperties"])
+            .map(Some)
+            .ok_or_else(|| Error::new(ErrorCode::Unsupported))
     }
     /// Explicit intended-recipient contract for private-protocol 1:1 writes.
     pub async fn send_to_existing_one_on_one(
@@ -447,11 +522,24 @@ pub(crate) fn normalize(
             })
             .collect::<Vec<_>>()
     });
-    normalize::graph(
+    let mut detail = normalize::graph(
         &json!({"id":id,"createdDateTime":created,"lastModifiedDateTime":modified.to_rfc3339(),
         "deletedDateTime":if deleted { json!(modified.to_rfc3339()) } else { Value::Null },
         "from":from,"body":{"content":raw["content"],"contentType":if kind == "RichText/Html" { "html" } else { "text" }},
         "mentions":mentions}),
         reference,
-    )
+    )?;
+    if let Some(detail) = &mut detail {
+        detail.root_message_id = match raw.get("rootMessageId").filter(|value| !value.is_null()) {
+            None => None,
+            Some(value) => {
+                let id = value.as_str().ok_or_else(protocol)?;
+                if id.is_empty() || id.len() > 20 || !id.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(protocol());
+                }
+                Some(MessageId::new(id).map_err(|_| protocol())?)
+            }
+        };
+    }
+    Ok(detail)
 }

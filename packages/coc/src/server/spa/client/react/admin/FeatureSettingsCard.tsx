@@ -99,6 +99,7 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                 </div>
             ) : ui.control?.type === 'workspace' ? (
                 <AdminWorkspaceSelect
+                    includeRepoGroups={ui.control.includeRepoGroups}
                     value={String(featureValues[def.key] ?? '')}
                     onChange={value => setFeatureValues(prev => ({ ...prev, [def.key]: value }))}
                     label={ui.label}

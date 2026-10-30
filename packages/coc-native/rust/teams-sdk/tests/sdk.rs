@@ -1247,6 +1247,249 @@ mod ic3_tests {
             .conversation(Backend::Ic3, Conversation::Chat(ChatId::new(id).unwrap()))
             .unwrap()
     }
+
+    #[tokio::test]
+    async fn ic3_meeting_discovery_history_and_detail_preserve_exact_source() {
+        let id = "19:meeting_fixture@thread.v2";
+        let info = json!({
+            "id": id,
+            "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}
+        });
+        let (session, mock) = ic3_session(vec![
+            reply(json!({"conversations": [
+                info.clone(),
+                {"id": "channel", "threadProperties": {"threadType": "channel", "productThreadType": "Meeting"}}
+            ]})),
+            reply(info.clone()),
+            reply(json!({"messages": [ic3_message(id, "command", "8:orgid:sender")]})),
+            reply(info),
+            reply(ic3_message(id, "command", "8:orgid:sender")),
+        ]);
+        let ctx = OperationContext::default();
+        let chats = session.chats(Backend::Ic3, None, &ctx).await.unwrap();
+        assert_eq!(chats.raw_count, 2);
+        assert_eq!(chats.items.len(), 1);
+        assert_eq!(chats.items[0].kind, ChatKind::Meeting);
+        assert_eq!(chats.items[0].reference, ic3_chat(&session, id));
+        let history = session
+            .history(&chats.items[0].reference, None, &ctx)
+            .await
+            .unwrap();
+        assert_eq!(history.items.len(), 1);
+        assert_eq!(history.items[0].chat_kind, Some(ChatKind::Meeting));
+        let detail = session
+            .detail(&history.items[0].metadata.reference, &ctx)
+            .await
+            .unwrap();
+        assert_eq!(detail.chat_kind, Some(ChatKind::Meeting));
+        assert_eq!(
+            detail.metadata.reference,
+            history.items[0].metadata.reference
+        );
+        let requests = mock.requests.lock().unwrap();
+        assert_eq!(requests.len(), 5);
+        assert!(requests.iter().all(|request| request.method == Method::GET));
+        for (request, suffix) in requests[1..].iter().zip([
+            id.to_owned(),
+            format!("{id}/messages"),
+            id.to_owned(),
+            format!("{id}/messages/command"),
+        ]) {
+            let url = url::Url::parse(&request.url).unwrap();
+            let path = percent_encoding::percent_decode_str(url.path())
+                .decode_utf8()
+                .unwrap();
+            assert_eq!(
+                path,
+                format!("/api/chatsvc/emea/v1/users/ME/conversations/{suffix}")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ic3_thread_history_fetches_missing_root_and_isolates_thread_cursors() {
+        let chat = "19:context@thread.v2";
+        let root = MessageId::new("1790000000000").unwrap();
+        let mut reply_message = ic3_message(chat, "1790000000001", "8:orgid:sender");
+        reply_message["rootMessageId"] = json!(root.as_str());
+        let link = format!("https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/{chat};messageid={}/messages?pageSize=50&cursor=next", root.as_str());
+        let (session, mock) = ic3_session(vec![
+            chat_info(chat),
+            reply(json!({"messages":[reply_message],"_metadata":{"backwardLink":link}})),
+            reply(ic3_message(chat, root.as_str(), "8:orgid:sender")),
+            chat_info(chat),
+            reply(json!({"messages":[]})),
+            chat_info(chat),
+        ]);
+        let reference = ic3_chat(&session, chat);
+        let ctx = OperationContext::default();
+        let first = session
+            .ic3_thread_history(&reference, &root, None, &ctx)
+            .await
+            .unwrap();
+        assert_eq!(first.raw_count, 2);
+        assert_eq!(first.items.len(), 2);
+        assert_eq!(first.items[1].metadata.reference.id(), &root);
+        assert!(first
+            .items
+            .iter()
+            .all(|item| item.chat_kind == Some(ChatKind::Group)));
+        let cursor = first.next.unwrap();
+        let second = session
+            .ic3_thread_history(&reference, &root, Some(&cursor), &ctx)
+            .await
+            .unwrap();
+        assert!(second.items.is_empty());
+        let other = MessageId::new("1790000000002").unwrap();
+        assert_eq!(
+            session
+                .ic3_thread_history(&reference, &other, Some(&cursor), &ctx)
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::UnsafeCursor
+        );
+        let requests = mock.requests.lock().unwrap();
+        assert!(requests.iter().all(|request| request.method == Method::GET));
+        assert!(requests[1].url.contains("messageid"));
+        assert!(requests[2].url.ends_with("/messages/1790000000000"));
+    }
+
+    #[tokio::test]
+    async fn ic3_thread_history_rejects_foreign_messages_and_roots_without_fallback() {
+        let chat = "19:context@thread.v2";
+        let root = MessageId::new("1790000000000").unwrap();
+        for parent in [None, Some("1790000000002")] {
+            let mut item = ic3_message(chat, "1790000000001", "8:orgid:sender");
+            if let Some(parent) = parent {
+                item["rootMessageId"] = json!(parent);
+            }
+            let (session, mock) =
+                ic3_session(vec![chat_info(chat), reply(json!({"messages":[item]}))]);
+            assert_eq!(
+                session
+                    .ic3_thread_history(
+                        &ic3_chat(&session, chat),
+                        &root,
+                        None,
+                        &OperationContext::default()
+                    )
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                ErrorCode::Protocol
+            );
+            assert_eq!(mock.count(), 2);
+        }
+        let (session, mock) = ic3_session(vec![
+            chat_info(chat),
+            reply(json!({"messages":[]})),
+            reply(ic3_message(chat, "1790000000002", "8:orgid:sender")),
+        ]);
+        assert_eq!(
+            session
+                .ic3_thread_history(
+                    &ic3_chat(&session, chat),
+                    &root,
+                    None,
+                    &OperationContext::default()
+                )
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Protocol
+        );
+        assert_eq!(mock.count(), 3);
+    }
+
+    #[tokio::test]
+    async fn ic3_thread_history_validates_roots_and_rejects_self_before_io() {
+        let (session, mock) = ic3_session(vec![]);
+        for (chat, root) in [
+            ("48:notes", "1790000000000"),
+            ("chat", "root"),
+            ("chat", "123;messageid=456"),
+        ] {
+            assert_eq!(
+                session
+                    .ic3_thread_history(
+                        &ic3_chat(&session, chat),
+                        &MessageId::new(root).unwrap(),
+                        None,
+                        &OperationContext::default()
+                    )
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                ErrorCode::InvalidTarget
+            );
+        }
+        assert_eq!(mock.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn ic3_history_preserves_root_and_verified_kind_independent_of_identifier_shape() {
+        for (thread_type, product, expected) in [
+            ("chat", "OneToOneChat", ChatKind::OneOnOne),
+            ("chat", "Chat", ChatKind::Group),
+            ("meeting", "Meeting", ChatKind::Meeting),
+        ] {
+            let id = "19:opaque@thread.v2";
+            let mut message = ic3_message(id, "1790000000001", "8:orgid:sender");
+            message["rootMessageId"] = json!("1790000000000");
+            let (session, _) = ic3_session(vec![
+                reply(
+                    json!({"id":id,"threadProperties":{"threadType":thread_type,"productThreadType":product}}),
+                ),
+                reply(json!({"messages":[message]})),
+            ]);
+            let page = session
+                .history(&ic3_chat(&session, id), None, &OperationContext::default())
+                .await
+                .unwrap();
+            assert_eq!(page.items[0].chat_kind, Some(expected));
+            assert_eq!(
+                page.items[0].root_message_id.as_ref().unwrap().as_str(),
+                "1790000000000"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ic3_history_rejects_malformed_thread_roots() {
+        for root in [
+            json!(""),
+            json!("root"),
+            json!("123;messageid=456"),
+            json!(123),
+            json!("1".repeat(21)),
+        ] {
+            let mut message = ic3_message("chat", "1790000000001", "8:orgid:sender");
+            message["rootMessageId"] = root;
+            let (session, _) = ic3_session(vec![
+                chat_info("chat"),
+                reply(json!({"messages":[message]})),
+            ]);
+            assert_eq!(
+                session
+                    .history(
+                        &ic3_chat(&session, "chat"),
+                        None,
+                        &OperationContext::default()
+                    )
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                ErrorCode::Protocol
+            );
+        }
+    }
+
     #[tokio::test]
     async fn ic3_history_skips_call_artifacts_without_losing_messages_or_pagination() {
         for kind in [
@@ -1401,6 +1644,21 @@ mod ic3_tests {
             (
                 "ordinary",
                 json!({"id":"ordinary","threadProperties":{"threadType":"chat","productThreadType":"Unknown"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"chat","productThreadType":"Meeting"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"meeting","productThreadType":"Chat"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"meeting","productThreadType":"Unknown"}}),
                 ErrorCode::Unsupported,
             ),
         ] {

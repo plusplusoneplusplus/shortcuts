@@ -37,6 +37,23 @@ function expectValid(parts: string[], label: string): void {
 }
 
 describe('formatTeamsAnswerChunks', () => {
+    it('reserves an exact byte budget for native reply markup without losing answer content', () => {
+        const limit = TEAMS_ANSWER_MAX_BYTES - 1500;
+        const answer = '&\u{1f600}'.repeat(10_000);
+        const parts = formatTeamsAnswerChunks(answer, 'quoted', undefined, undefined, 'compact', limit);
+        expect(parts.length).toBeGreaterThan(1);
+        expectValid(parts, 'quoted');
+        for (const part of parts) {
+            expect(size(formatTeamsOutbound(part, 'html'))).toBeLessThanOrEqual(limit);
+        }
+        expect(visible(content(parts))).toBe(answer);
+    });
+
+    it.each([0, 511, 20_001, NaN, Infinity, 19_000.5])('rejects invalid byte budget %s', maxBytes => {
+        expect(() => formatTeamsAnswerChunks('answer', 'invalid', undefined, undefined, 'compact', maxBytes))
+            .toThrow(RangeError);
+    });
+
     it('counts the complete UTF-8 attribution at the exact outbound byte boundary', () => {
         const header = '<p><strong>Request edge · Part 1/1</strong></p>';
         const overhead = size(formatTeamsOutbound(header + '<p></p>', 'html'));

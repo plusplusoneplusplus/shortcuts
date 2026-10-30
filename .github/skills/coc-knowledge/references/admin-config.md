@@ -145,8 +145,9 @@ The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a
 
 `features.teamsIc3OwnCommands` (default off) enables the independent native Azure CLI
 [Ask launcher](server-architecture.md#ic3-own-command-launcher). Its live
-`teamsIc3OwnCommands.workspaceId` selects a registered local workspace on the owning
-server. The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
+`teamsIc3OwnCommands.workspaceId` selects a registered local workspace or repo group
+on the owning server. The selector labels groups and excludes other virtual scopes.
+The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
 the shared explicit `amer`, `emea` or `apac` region for IC3 operations. Saving a
 region change restarts own-command reads; an unset region blocks connection.
 Own-user mentions share one Ask conversation per account, Teams chat and workspace,
@@ -161,9 +162,9 @@ both names when enabled; disabled drafts may be incomplete. Workspace IDs exclud
 remote selectors, and dispatcher values identify a skill by name, not a path.
 The strict namespace accepts neither permission/source selectors nor provider/model
 overrides. Connections -> Teams presents one registry group with the experimental
-toggle, local execution workspace and dispatcher skill selectors. `AdminSkillSelect`
+toggle, local execution workspace (repo or repo group) and dispatcher skill selectors. `AdminSkillSelect`
 uses ordinary workspace skill listing and filters workspace/global disabled names.
-`adminWorkspaceSkills.ts` checks physical registration and enabled skills on the
+`adminWorkspaceSkills.ts` checks repo/group registration and enabled skills on the
 selected Admin server; enabled UI saves re-read these before persisting. Failures
 preserve drafts; disabled drafts remain saveable without live lookups. Late skill
 results cannot cross workspace/machine changes. The server's independent reaction
@@ -172,8 +173,10 @@ refusal/Crossmark reporting, server-account GitHub approval verification before
 Checkmark, unverified other positive claims and links to the bound local dashboard.
 `messaging/teams-reaction-dispatcher.ts` provides uncached dispatch-time binding
 resolution through `resolveSkillConfig` strict mode and Forge's skill reader.
-It verifies a physical local execution root, normal source precedence and both
-disabled-name sets, rejecting unreadable policy and missing/empty selected skill
+It verifies an existing local execution root, normal source precedence and both
+disabled-name sets. Repo groups execute in their own root, inheriting live members'
+`.github/skills` in membership order before global sources. It rejects unreadable
+group membership or policy and missing/empty selected skill
 instructions. An invalid higher-priority dispatcher cannot fall through to another
 copy. Admission must invoke it with current configuration and cancellation.
 

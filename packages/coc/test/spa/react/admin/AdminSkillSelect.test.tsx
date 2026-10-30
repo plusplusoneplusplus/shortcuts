@@ -68,6 +68,21 @@ describe('Admin dispatcher skill selection', () => {
         expect(screen.getByTestId('skill')).toHaveProperty('disabled', true);
     });
 
+    it('loads inherited repo-group skills using the group workspace and disabled-name policy', async () => {
+        mocks.workspaces.mockResolvedValue({ workspaces: [
+            { id: 'group-team', rootPath: 'fixture-group', virtual: true },
+        ] });
+        mocks.list.mockResolvedValue([{ name: 'dispatcher' }, { name: 'disabled' }]);
+        mocks.workspaceConfig.mockResolvedValue({ disabledSkills: ['disabled'] });
+        render(<AdminSkillSelect {...props('group-team')} />);
+        await waitFor(() => expect(screen.getByTestId('skill')).toHaveProperty('disabled', false));
+        expect(mocks.list).toHaveBeenCalledWith('group-team');
+        expect(mocks.workspaceConfig).toHaveBeenCalledWith('group-team');
+        expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+            'Select a dispatcher skill', 'dispatcher',
+        ]);
+    });
+
     it('preserves a missing or disabled saved name without choosing a substitute', async () => {
         const p = props('alpha', 'missing');
         render(<AdminSkillSelect {...p} />);

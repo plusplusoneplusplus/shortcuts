@@ -77,6 +77,7 @@ pub enum Backend {
 pub enum ChatKind {
     OneOnOne,
     Group,
+    Meeting,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,6 +156,8 @@ pub struct MessageMetadata {
 /// Not serializable or Debug: these fields are transient, untrusted provider content.
 pub struct MessageDetail {
     pub metadata: MessageMetadata,
+    pub chat_kind: Option<ChatKind>,
+    pub root_message_id: Option<MessageId>,
     pub text: String,
     pub text_truncated: bool,
     pub untrusted_html: Option<String>,

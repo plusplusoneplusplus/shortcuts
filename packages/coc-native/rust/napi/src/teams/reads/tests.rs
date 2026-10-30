@@ -112,6 +112,7 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
         vec![
             json!({"conversations": [
             chat("ordinary", "OneToOneChat"), chat("group", "Chat"),
+            {"id": "meeting", "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}},
             {"id": "channel", "threadProperties": {"threadType": "channel"}},
             {"id": "48:notes"}
         ], "_metadata": {"backwardLink":
@@ -123,10 +124,11 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
     let first = read(&owner);
     first.state.begin(&Collection::Chats, None).unwrap();
     let page = first.state.publish_chats(first.state.chats(None).await.unwrap()).unwrap();
-    assert_eq!(page.raw_count, 4);
-    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.raw_count, 5);
+    assert_eq!(page.items.len(), 3);
     assert_eq!((&*page.items[0].chat_id, &*page.items[0].kind), ("ordinary", "oneOnOne"));
     assert_eq!((&*page.items[1].chat_id, &*page.items[1].kind), ("group", "group"));
+    assert_eq!((&*page.items[2].chat_id, &*page.items[2].kind), ("meeting", "meeting"));
     let next = read(&owner);
     let cursor = next.state.begin(&Collection::Chats, page.next.as_ref()).unwrap();
     let page = next.state.publish_chats(next.state.chats(cursor.as_ref()).await.unwrap()).unwrap();
@@ -136,18 +138,21 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
 }
 
 #[tokio::test]
-async fn ordinary_group_and_explicit_self_history_preserve_author_edit_deletion_and_untrusted_content(
+async fn ordinary_group_meeting_and_explicit_self_history_preserve_author_edit_deletion_and_untrusted_content(
 ) {
-    for id in ["ordinary", "group", "48:notes"] {
+    for id in ["ordinary", "group", "meeting", "48:notes"] {
         let mut edited = message(id, "edited", "8:orgid:fixture-user");
         edited["version"] = json!("1767229200000");
         edited["messagetype"] = json!("RichText/Html");
         edited["content"] =
             json!("<p>@coc synthetic prompt</p><blockquote>ignored quote</blockquote>");
+        edited["rootMessageId"] = json!("1790000000000");
         let (owner, _) = setup(
             vec![
                 if id == "48:notes" {
                     json!({"id": id})
+                } else if id == "meeting" {
+                    json!({"id": id, "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}})
                 } else {
                     chat(id, if id == "ordinary" { "OneToOneChat" } else { "Chat" })
                 },
@@ -172,6 +177,16 @@ async fn ordinary_group_and_explicit_self_history_preserve_author_edit_deletion_
         let own = &page.items[0];
         assert_eq!(own.chat_id, id);
         assert_eq!(own.message_id, "edited");
+        assert_eq!(own.root_message_id.as_deref(), Some("1790000000000"));
+        assert_eq!(
+            own.chat_kind.as_deref(),
+            match id {
+                "ordinary" => Some("oneOnOne"),
+                "group" => Some("group"),
+                "meeting" => Some("meeting"),
+                _ => None,
+            }
+        );
         assert_eq!((&*own.author_kind, own.author_id.as_deref()), ("user", Some("fixture-user")));
         assert!(own.modified_at > own.created_at);
         assert!(own.untrusted_html.as_ref().unwrap().contains("<blockquote>"));
@@ -187,6 +202,43 @@ async fn ordinary_group_and_explicit_self_history_preserve_author_edit_deletion_
         assert!(page.items[3].author_id.is_none());
         assert!(page.items[3].text.is_empty());
     }
+}
+
+#[tokio::test]
+async fn thread_history_publishes_root_and_binds_continuation_to_exact_thread() {
+    let chat_id = ChatId::new("19:context@thread.v2").unwrap();
+    let root = MessageId::new("1790000000000").unwrap();
+    let mut child = message(chat_id.as_str(), "1790000000001", "8:orgid:fixture-user");
+    child["rootMessageId"] = json!(root.as_str());
+    let (owner, _) = setup(
+        vec![
+            chat(chat_id.as_str(), "Chat"),
+            json!({"messages":[child],"_metadata":{"backwardLink":
+            "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/19:context@thread.v2;messageid=1790000000000/messages?pageSize=50&cursor=next"}}),
+            message(chat_id.as_str(), root.as_str(), "8:orgid:fixture-user"),
+        ],
+        false,
+    );
+    let request = read(&owner);
+    let collection = Collection::ThreadHistory(chat_id.clone(), root.clone());
+    request.state.begin(&collection, None).unwrap();
+    let page = request.state.thread_history(&chat_id, &root, None).await.unwrap();
+    let next = request.state.continuation(collection.clone(), page.next.clone());
+    let published = request.state.publish_history(chat_id.clone(), page).unwrap();
+    assert_eq!(published.items.len(), 2);
+    assert_eq!(published.items[0].root_message_id.as_deref(), Some(root.as_str()));
+    assert_eq!(published.items[1].message_id, root.as_str());
+    for wrong in [
+        Collection::History(chat_id.clone()),
+        Collection::ThreadHistory(chat_id.clone(), MessageId::new("1790000000002").unwrap()),
+        Collection::ThreadHistory(ChatId::new("other").unwrap(), root),
+    ] {
+        assert_eq!(
+            read(&owner).state.begin(&wrong, next.as_ref()).err().unwrap().code,
+            ErrorCode::UnsafeCursor
+        );
+    }
+    assert!(read(&owner).state.begin(&collection, next.as_ref()).unwrap().is_some());
 }
 
 #[tokio::test]

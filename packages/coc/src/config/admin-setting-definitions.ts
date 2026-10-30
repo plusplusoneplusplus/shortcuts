@@ -127,7 +127,7 @@ export interface AdminSettingUiSpec {
     /** Only render when this other (boolean) setting is currently on. */
     dependsOn?: string;
     /** Defaults to a toggle when omitted. */
-    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' } | { type: 'skill'; workspaceKey: string } | { type: 'textarea' };
+    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace'; includeRepoGroups?: boolean } | { type: 'skill'; workspaceKey: string } | { type: 'textarea' };
     testId: string;
 }
 
@@ -1102,8 +1102,8 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace',
-            hint: 'Required. Teams commands run in this registered local workspace on the configured machine, not the dashboard selection.',
-            control: { type: 'workspace' }, testId: 'select-teams-ic3-command-workspace',
+            hint: 'Required. Teams commands run in this registered local workspace or repo group on the configured machine, not the dashboard selection.',
+            control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-ic3-command-workspace',
         },
     },
     bool({
@@ -1124,8 +1124,8 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 20, label: 'Execution workspace',
-            hint: 'Required when enabled. Teams reaction jobs run in this registered local workspace on the configured machine, with its normal provider and model defaults.',
-            control: { type: 'workspace' }, testId: 'select-teams-reaction-workspace',
+            hint: 'Required when enabled. Teams reaction jobs run in this registered local workspace or repo group on the configured machine, with its normal provider and model defaults.',
+            control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-reaction-workspace',
         },
     },
     {

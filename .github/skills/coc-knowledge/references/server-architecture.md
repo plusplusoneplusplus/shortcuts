@@ -693,7 +693,7 @@ lossless connector text chunking.
 ### IC3 own-command launcher
 
 `messaging/teams-ic3-own-commands-runtime.ts` uses an account-pinned connector
-Trouter listener to wake native Azure CLI reads of self/direct/group chats.
+Trouter listener to wake native Azure CLI reads of self/direct/group/meeting chats.
 `TeamsMessagingManager` supplies the shared saved `ic3Region` and change
 subscription; region changes cancel and restart the runtime independently of
 the channel bridge connection. An unset region blocks reads.
@@ -701,19 +701,36 @@ A 64-chat mailbox coalesces hints and drains between scan reads; overflow,
 loss and disconnect reconcile. Single-flight fallback scans read self first,
 process discovery pages incrementally and remain due 60 seconds after completion.
 Failed hints retry after cooldown; HTTP429 pauses all reads. Native `Unsupported`
-discards non-self notification targets such as meeting chats, without changing
+discards unsupported non-self notification targets, without changing
 read health or blocking other hints. Self-stream and discovered-chat failures
 remain visible.
 
+Native discovery and history share exact type checks: `chat` with `OneToOneChat`/`Chat`,
+or `meeting` with `Meeting`. Channels and unknown thread types remain excluded.
 Only the newest 30 messages per chat are inspected. Admission excludes pre-start
 messages, edits, quotes, attachments and foreign senders. Own-user `@coc <prompt>`
 messages share one Ask conversation per tenant/user, Teams chat and configured local
-workspace. A stable hashed first-task ID resolves queued or saved conversations
+workspace or repo group. Group jobs run at the registered group root; normal chat
+execution supplies member context and access policy on initial and follow-up turns.
+Other virtual scopes and non-absolute roots reject without dashboard fallback.
+A stable hashed first-task ID resolves queued or saved conversations
 across restarts. First turns use medium effort and normal Auto provider resolution;
 follow-ups retain conversation policy and use queue process ordering. Admission
 serializes by conversation. Account/chat/message hashes, queue evidence and persisted
 user-turn request IDs prevent duplicates. Mark attempts before admission; uncertain
 outcomes never retry.
+
+`teams-ic3-command-context.ts` enriches a mention inside a thread before marking
+admission or attempting Eyes. The native `readThread` collection supplies the root
+independently of reply pagination; account/session/chat/root-bound cursors keep
+other threads out. The root and up to 20 strictly earlier replies form thread-local
+context. Direct/group chats also read up to 10 top-level chat messages strictly
+before the root; other thread replies and duplicate IDs are excluded. Meeting
+context stays thread-only. Both collections use at most five pages each under one
+30-second deadline. Separate oldest-first JSON sections share a 48 KiB budget;
+chat messages are dropped before thread content. Coverage, omissions and deleted/
+truncated bodies are explicit. Escaped context is untrusted reference data, refreshed
+per follow-up. Read failures prevent context-free jobs and leave admission retryable.
 
 Each eligible mention, including follow-ups, attempts Eyes before admission.
 `Ic3ReactionClient.acknowledgeSourceMessage` wraps account-pinned
@@ -722,13 +739,21 @@ Writes need no discovery/custom emoji, retain a ten-second deadline and never re
 Transport success proves no task outcome; acknowledgment failures log safely without
 discarding commands. Channel Likes remain independent.
 
-Memory-only pending replies capture source identity before enqueue and consume it
-on queue terminal events. Delivery serializes within each conversation; different
+Memory-only pending replies capture source identity, verified native chat kind,
+original message ID/text and existing root before enqueue. Queue terminal events
+consume them. Delivery serializes within each conversation; different
 chats deliver independently. Shutdown drains all active reply chains; reconfiguration
 revokes their authority without blocking the new generation. Shared answer extraction
 returns only the matching request's answer; fixed notices replace raw failures.
-`teams-ic3-own-command-reply.ts` reuses HTML
-chunking and `Ic3DirectMessageClient.sendToSourceChat`, preserving exact
+`teams-ic3-own-command-reply.ts` threads direct/group answers using the existing
+`rootMessageId` or the originating mention ID. The connector appends
+`;messageid=<root>` only to the chatsvc request route, preserving the base source
+identity in the envelope, access checks and compliance destination. Self/meeting
+answers carry a native `schema.skype.com/Reply` blockquote whose `itemid` identifies
+the mention. Its escaped preview is bounded to 200 code points; chunking reserves
+its UTF-8 bytes within the 20,000-byte total. Compliance evaluates complete HTML.
+Follow-ups and fixed notices share this policy; channel routing is independent.
+`Ic3DirectMessageClient.sendToSourceChat` preserves exact
 `48:notes`, `19:...@thread.v2` or `19:...@unq.gbl.spaces` IDs. Each part pins the
 account and rechecks access through the captured native reader; Graph/MCP are excluded.
 Source replies allow 70 seconds total for preparation and 10 seconds from dispatch;
@@ -765,8 +790,8 @@ replay protection; timestamp-distinct re-additions get stable account/source-qua
 request IDs. Live completeness and timestamp semantics require protocol verification.
 
 `teams-reaction-launch.ts` creates separate first-turn Ask jobs with medium effort,
-runtime-default timeout and normal queue/provider/pause policy. It checks physical
-workspace/dispatcher bindings before and after preparation and verifies queued/saved
+runtime-default timeout and normal queue/provider/pause policy. It checks local
+repo or repo-group workspace/dispatcher bindings before and after preparation and verifies queued/saved
 ownership before deduplicating. Prompts reference the exact skill path; JSON-encoded
 Teams data cannot enable slash-command capabilities. Context caps at 512 KiB UTF-8;
 questions stay dashboard-only and automatic merging is prohibited.

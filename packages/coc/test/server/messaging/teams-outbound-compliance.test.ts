@@ -5,7 +5,7 @@ import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { createDecisionService } from '../../../src/server/decisions/decision-service';
 import { COPILOT_DECISION_TIMEOUT_MS } from '../../../src/server/decisions/copilot-decision-backend';
 import { DECISION_LIMITS } from '../../../src/server/decisions/decision-validation';
-import { sendTeamsIc3OwnCommandReply, sendTeamsIc3SourceReply, type TeamsIc3CommandSource }
+import { sendTeamsIc3OwnCommandReply, sendTeamsIc3SourceReply, type TeamsIc3OwnCommandSource }
     from '../../../src/server/messaging/teams-ic3-own-command-reply';
 import { formatTeamsReactionNotice, sendTeamsReactionReply, sendTeamsReactionResult }
     from '../../../src/server/messaging/teams-reaction-reply';
@@ -36,10 +36,11 @@ function harness(type: 'mention' | 'reaction' = 'mention') {
         workspaceId: 'ws-fixture', workingDirectory: resolve('fixture-workspace'),
         trigger: { type, messageId: 'original-request', text: '@coc do the work', untrustedHtml: '<p>do the work</p>' },
     };
-    const source: TeamsIc3CommandSource = {
+    const source: TeamsIc3OwnCommandSource = {
         account: { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' },
         chatId: '19:fixture@thread.v2', region: 'amer', verifyAccess: vi.fn(async () => {}),
         compliance,
+        replyTo: { kind: 'quote', messageId: '1790000000000', text: '@coc do the work' },
     };
     return { source, sdk, transform, evaluate, policy, compliance };
 }
@@ -97,6 +98,22 @@ describe('Teams complete-message compliance delivery boundary', () => {
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).toHaveBeenCalledOnce();
     });
 
+    it('gates a thread reply before sending without adding quote markup or changing the source identity', async () => {
+        const h = harness();
+        h.source.replyTo.kind = 'thread';
+        h.source.replyTo.rootMessageId = '1780000000000';
+        const signal = new AbortController().signal;
+        await sendTeamsIc3OwnCommandReply(h.source, 'request-id', 'Safe answer', signal);
+        const send = vi.mocked(Ic3DirectMessageClient.prototype.sendToSourceChat);
+        expect(send).toHaveBeenCalledExactlyOnceWith(h.source.chatId, expect.stringContaining('Safe answer'),
+            h.source.verifyAccess, signal, '1780000000000');
+        expect(send.mock.calls[0][1]).not.toContain('<blockquote');
+        expect(h.evaluate.mock.calls[0][0]).toMatchObject({
+            state: { chunks: [send.mock.calls[0][1]], destination: { chatId: h.source.chatId } },
+        });
+        expect(h.evaluate.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+    });
+
     it.each(['mention', 'reaction'] as const)('evaluates every formatted chunk once before any %s text is sent', async type => {
         const h = harness(type);
         h.transform.mockImplementation(async () => {
@@ -125,6 +142,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         });
         expect(sent[0][1]).toContain('<strong>answer</strong>');
         expect(sent[0][1]).toContain('CoC');
+        expect(sent[0][1]).toContain('itemid="1790000000000"');
         expect(h.transform.mock.calls[0][1]).toMatchObject({ model: 'gpt-6-luna', loadDefaultMcpConfig: false });
     });
 

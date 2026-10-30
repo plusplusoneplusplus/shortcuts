@@ -110,7 +110,7 @@ created with `conversation`/`message_ref` establish session ownership, not membe
 |---|---|---|---|
 | Chat discovery (`chats`) | Paged | Bounded `ListChats(fetchAllPages)` | Paged supported chat types |
 | Teams/channels discovery | `teams`/`channels` | `teams_with_backend`/`channels_with_backend` | Unsupported |
-| Chat history/detail | Supported | Supported | Exact ordinary chat/type verification; reserved `48:notes` self stream |
+| Chat history/detail | Supported | Supported | Exact direct/group/meeting type verification; reserved `48:notes` self stream |
 | Channel root/reply history | Separate typed collections | Separate typed collections | Unsupported |
 | Channel detail | Direct lookup | Bounded history scan | Unsupported |
 | Chat/channel participants | Actual member pages | Advertised membership tools; channel-root refs | Chat thread roster; channels unsupported |
@@ -126,8 +126,16 @@ retain edits and tombstones. `scan_messages` deduplicates by modification time a
 deletion on ties, returning `Scan::Incomplete` on failure/caps rather than partial coverage.
 Ordinary pages are not complete-scan guarantees. Cursors are opaque and session/backend/
 collection scoped. Text is UTF-8 bounded; oversized HTML is omitted rather than sliced.
-IC3 history/detail verifies exact IDs through the region-pinned `users/ME` endpoint.
-Only exact `48:notes` bypasses ordinary-thread type checks; callers bind this
+IC3 discovery and history/detail share exact native type pairs: `chat` with
+`OneToOneChat`/`Chat`, and `meeting` with `Meeting`. History/detail verifies exact IDs
+through the region-pinned `users/ME` endpoint; channels and unknown pairs reject.
+History/detail expose this verified `chat_kind` on transient message details and
+preserve numeric `root_message_id` values; malformed explicit roots reject the read.
+`ic3_thread_history` reads the exact `;messageid=<root>` collection, validates each
+reply's parent and retains the base chat identity. Its first page fetches the root
+by exact message ID when absent; raw counts include that additional record.
+Thread cursors cannot cross roots or ordinary history. Self-stream thread reads reject.
+Only exact `48:notes` bypasses thread type checks; callers bind this
 account-scoped self stream explicitly, independently of discovery. History skips
 live call-recording/transcript artifacts and system events, retaining raw counts
 and tombstones; unknown message formats fail.

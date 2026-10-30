@@ -8,11 +8,13 @@ import type { createTeamsIc3OwnCommandLaunch } from './teams-ic3-own-command-lau
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { onTaskTerminal } from './chat-target';
 import { findRequestAnswer, findRequestTurn, isTerminalStatus, RELAY_ANSWER_TEXT } from './relay-answer';
-import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from './teams-ic3-own-command-reply';
+import { sendTeamsIc3OwnCommandReply, type TeamsIc3OwnCommandSource } from './teams-ic3-own-command-reply';
 import { getTeamsOutboundComplianceFailure, type TeamsOutboundCompliance, type TeamsOutboundComplianceFailure } from './teams-outbound-compliance';
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
+import { buildTeamsIc3CommandPrompt } from './teams-ic3-command-context';
 import { Ic3ReactionClient, TeamsOperationError, TrouterClient, type Ic3DirectMessageOptions, type TrouterStatus, type TrouterWake } from '@plusplusoneplusplus/coc-connector/teams';
 
 function isCommandChat(chatId: string): boolean {
@@ -38,7 +40,7 @@ interface Options {
     decisionService?: TeamsOutboundCompliance['decisionService'];
     sendReply?: typeof sendTeamsIc3OwnCommandReply;
     createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
-    createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'dispose'>;
+    createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'readThread' | 'dispose'>;
     createTrouter?: (options: ConstructorParameters<typeof TrouterClient>[0]) => Pick<TrouterClient, 'start' | 'stop' | 'getStatus'>;
 }
 
@@ -54,7 +56,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     const replies = new Set<Promise<void>>();
     let trouter: ReturnType<NonNullable<Options['createTrouter']>> | undefined;
     let stoppingTrouter = Promise.resolve();
-    const pending = new Map<string, { workspaceId: string; conversationId: string; source: TeamsIc3CommandSource;
+    const pending = new Map<string, { workspaceId: string; conversationId: string; source: TeamsIc3OwnCommandSource;
         signal: AbortSignal; detectedAt: number }>();
     let stopped = false;
     let status: Omit<TeamsIc3ConnectivityStatus, 'trouter'> = { state: 'disabled' };
@@ -229,9 +231,9 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 signal.throwIfAborted();
                 const target = config.teamsIc3OwnCommands;
                 const workspace = workspaces.find(workspace => workspace.id === target.workspaceId
-                    && !workspace.virtual && isAbsolute(workspace.rootPath));
+                    && (!workspace.virtual || isRepoGroupWorkspaceId(workspace.id)) && isAbsolute(workspace.rootPath));
                 if (!configuredRegion || !workspace) {
-                    throw new Error('Configure a local IC3 workspace and region.');
+                    throw new Error('Configure a local IC3 workspace or repo group and region.');
                 }
                 const region = configuredRegion;
                 const { rootPath: workingDirectory } = workspace;
@@ -263,7 +265,11 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                         checked();
                         for (const message of page.items.slice(0, 30).reverse()) {
                             if (Date.parse(message.createdAt) <= cutoff) continue;
-                            const admission = admitTeamsIc3OwnCommand({ account: owner, chat }, message);
+                            const kind = chat.chatId === '48:notes' ? 'self' : message.chatKind;
+                            if (!kind || !['self', 'oneOnOne', 'group', 'meeting'].includes(kind)) {
+                                throw new Error('IC3 source chat kind is unavailable; rebuild the native Teams reader.');
+                            }
+                            const admission = admitTeamsIc3OwnCommand({ account: owner, chat: { ...chat, kind } }, message);
                             if (admission.kind !== 'command') continue;
                             const id = 'ic3-command-' + createHash('sha256').update(JSON.stringify([
                                 owner.tenantId, owner.userId, chat.chatId, message.messageId,
@@ -272,6 +278,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 owner.tenantId, owner.userId, target.workspaceId, chat.chatId,
                             ])).digest('hex');
                             if (commands.has(id)) continue;
+                            const prompt = await buildTeamsIc3CommandPrompt(reader, message, admission.prompt, signal);
+                            signal.throwIfAborted();
                             commands.add(id);
                             const detectedAt = Date.now();
                             timing(id, 'detected', { detectionLagMs: Math.max(0, detectedAt - Date.parse(message.createdAt)),
@@ -296,6 +304,9 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 }
                                 pending.set(id, { workspaceId: target.workspaceId, conversationId,
                                     source: { account: owner, chatId: chat.chatId, region,
+                                        replyTo: { kind: kind === 'self' || kind === 'meeting' ? 'quote' : 'thread',
+                                            messageId: message.messageId, text: message.text,
+                                            ...(message.rootMessageId ? { rootMessageId: message.rootMessageId } : {}) },
                                         compliance: {
                                             decisionService: options.decisionService,
                                             workspaceId: target.workspaceId, workingDirectory,
@@ -308,7 +319,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                         },
                                         verifyAccess: async signal => { await reader.readHistory(chat.chatId, { signal }); } },
                                     signal, detectedAt });
-                                await options.launch(target.workspaceId, id, admission.prompt, signal, conversationId);
+                                await options.launch(target.workspaceId, id, prompt, signal, conversationId);
                                 signal.throwIfAborted();
                                 timing(id, 'admitted', { admissionMs: Date.now() - detectedAt });
                                 const task = options.queue.getTask(id) ?? options.queue.getTask(conversationId);
@@ -322,7 +333,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                         }
                     } catch (error) {
                         if (signal.aborted) return false;
-                        // Meeting IDs also match Trouter hints; native metadata decides eligibility.
+                        // Matching IDs alone do not prove a supported native conversation type.
                         if (notification && chat.chatId !== '48:notes'
                             && error instanceof NativeTeamsError && error.code === 'Unsupported') {
                             getLogger().debug(LogCategory.AI, '[IC3 commands] Ignoring notification for an unsupported conversation.');
@@ -365,7 +376,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                     checked();
                     await drainWakes();
                     for (const chat of page.items) {
-                        if ((chat.kind === 'oneOnOne' || chat.kind === 'group') && !chats.has(chat.chatId)) {
+                        if (['oneOnOne', 'group', 'meeting'].includes(chat.kind) && !chats.has(chat.chatId)) {
                             chats.add(chat.chatId);
                             await readChat(chat);
                             await drainWakes();

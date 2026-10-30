@@ -111,6 +111,7 @@ export declare class NativeTeamsIc3Cursor {
 export declare class NativeTeamsIc3Read {
   readChats(cursor?: NativeTeamsIc3Cursor | undefined | null): Promise<TeamsIc3ChatPage>
   readHistory(chatId: string, cursor?: NativeTeamsIc3Cursor | undefined | null): Promise<TeamsIc3HistoryPage>
+  readThread(chatId: string, rootMessageId: string, cursor?: NativeTeamsIc3Cursor | undefined | null): Promise<TeamsIc3HistoryPage>
   cancel(): void
 }
 
@@ -1297,6 +1298,8 @@ export interface TeamsIc3HistoryPage {
 
 export interface TeamsIc3Message {
   chatId: string
+  chatKind?: string
+  rootMessageId?: string
   messageId: string
   createdAt: string
   modifiedAt: string

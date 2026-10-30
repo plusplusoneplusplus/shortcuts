@@ -59,7 +59,39 @@ describe('IC3 replies to verified inbound source chats', () => {
     }
     afterEach(() => { clients.splice(0).forEach(client => client.dispose()); });
 
-    it.each(['48:notes', sourceChat, '19:source@thread.v2', '19:source-group@thread.v2'])('checks live source access and sends only through IC3: %s', async chatId => {
+    it.each(['19:direct@unq.gbl.spaces', '19:direct@thread.v2', '19:group@thread.v2'])(
+        'routes a verified thread reply without changing source chat identity: %s', async chatId => {
+            fetchMock.mockResolvedValue(success());
+            const verify = vi.fn(async () => {});
+            await create().sendToSourceChat(chatId, '<p>Thread answer</p>', verify, undefined, '1790000000000');
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(fetchMock.mock.calls[0][0]).toBe(
+                `https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${encodeURIComponent(chatId + ';messageid=1790000000000')}/messages`);
+            expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+                conversationid: chatId, content: '<p>Thread answer</p>',
+            });
+            expect(verify).toHaveBeenCalledOnce();
+        },
+    );
+
+    it.each(['', 'root', '123;messageid=456', '1'.repeat(21)])(
+        'rejects invalid thread root %s before credentials or network', async root => {
+            const verify = vi.fn(async () => {});
+            await expect(create().sendToSourceChat(sourceChat, 'answer', verify, undefined, root))
+                .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+            expect(verify).not.toHaveBeenCalled();
+            expect(acquireAzureCliToken).not.toHaveBeenCalled();
+            expect(fetchMock).not.toHaveBeenCalled();
+        },
+    );
+
+    it('rejects thread routing on self chat', async () => {
+        await expect(create().sendToSourceChat('48:notes', 'answer', async () => {}, undefined, '1790000000000'))
+            .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['48:notes', sourceChat, '19:source@thread.v2', '19:source-group@thread.v2', '19:meeting_fixture@thread.v2'])('checks live source access and sends only through IC3: %s', async chatId => {
         fetchMock.mockResolvedValue(success());
         const verify = vi.fn(async () => { expect(fetchMock).not.toHaveBeenCalled(); });
         expect(await create().sendToSourceChat(chatId, '<p>CoC answer</p>', verify)).toBe('1790000000123');

@@ -1,9 +1,11 @@
 import type { CocClient, SkillInfo } from '@plusplusoneplusplus/coc-client';
+import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 export async function loadEnabledAdminWorkspaceSkills(client: CocClient, workspaceId: string): Promise<SkillInfo[]> {
     const { workspaces } = await client.workspaces.list();
-    if (!workspaces.some(workspace => workspace.id === workspaceId && !workspace.virtual && workspace.rootPath?.trim())) {
-        throw new Error('Select a registered local execution workspace on the configured machine.');
+    if (!workspaces.some(workspace => workspace.id === workspaceId
+        && (!workspace.virtual || isRepoGroupWorkspaceId(workspace.id)) && workspace.rootPath?.trim())) {
+        throw new Error('Select a registered local execution workspace or repo group on the configured machine.');
     }
     const [skills, workspaceConfig, globalConfig] = await Promise.all([
         client.skills.listWorkspace(workspaceId),

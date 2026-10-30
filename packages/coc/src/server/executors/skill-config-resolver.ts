@@ -145,15 +145,17 @@ export async function resolveRepoGroupMemberSkillRoots(
     store: ProcessStore,
     dataDir: string | undefined,
     workspaceId: string | undefined,
+    options?: { strict?: boolean },
 ): Promise<RepoGroupMemberSkillRoot[]> {
     if (!workspaceId || !isRepoGroupWorkspaceId(workspaceId)) return [];
     const effectiveDataDir = dataDir ?? path.join(os.homedir(), '.coc');
     try {
-        const members = await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId);
+        const members = await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId, options);
         return members
             .filter(m => !m.stale && typeof m.rootPath === 'string' && m.rootPath.length > 0)
             .map(m => ({ workspaceId: m.workspaceId, name: m.name, rootPath: m.rootPath as string }));
-    } catch {
+    } catch (error) {
+        if (options?.strict) throw error;
         // Non-fatal: a group with an unreadable membership file inherits nothing.
         return [];
     }
@@ -173,7 +175,8 @@ export async function resolveSkillConfig(
         try {
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find(w => w.id === workspaceId);
-            if (options?.strict && (!ws || ws.virtual || (workingDirectory && ws.rootPath !== workingDirectory))) {
+            if (options?.strict && (!ws || (ws.virtual && !isRepoGroupWorkspaceId(workspaceId))
+                || (workingDirectory && ws.rootPath !== workingDirectory))) {
                 throw new Error('Skill execution workspace is unavailable or changed.');
             }
             if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
@@ -236,11 +239,12 @@ export async function resolveSkillConfig(
 
     // Repo-group members inherit each live member's `.github/skills`, taking the
     // slot the (empty, virtual) group root's repo-local folder would occupy.
-    for (const member of await resolveRepoGroupMemberSkillRoots(store, dataDir, workspaceId)) {
+    for (const member of await resolveRepoGroupMemberSkillRoots(store, dataDir, workspaceId, options)) {
         try {
             const hostMemberSkillsDir = resolvePathForHostFilesystem(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
             await tryAddSkillDirectory(hostMemberSkillsDir);
-        } catch {
+        } catch (error) {
+            if (options?.strict) throw error;
             // Non-fatal: skip a member whose path cannot be translated for this session.
         }
     }

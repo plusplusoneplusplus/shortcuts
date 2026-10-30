@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLogger, toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
 import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
-import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page } from '@plusplusoneplusplus/coc-native';
+import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page, TeamsIc3Session } from '@plusplusoneplusplus/coc-native';
 import { DEFAULT_CONFIG, mergeConfig, type CLIConfig } from '../../../src/config';
 import { createTeamsIc3OwnCommandsRuntime } from '../../../src/server/messaging/teams-ic3-own-commands-runtime';
 import type { ScheduleQueueEventBus } from '../../../src/server/schedule/schedule-queue-await';
@@ -36,7 +36,11 @@ describe('basic IC3 own-command launcher', () => {
             { chatId: 'direct', kind: 'oneOnOne' }, { chatId: 'group', kind: 'group' },
             { chatId: 'channel', kind: 'channel' },
         ], rawCount: 3 })),
-        readHistory: vi.fn(async (chatId: string) => ({ items: histories.get(chatId) ?? [], rawCount: 0 })),
+        readHistory: vi.fn(async (chatId: string) => {
+            const items = histories.get(chatId) ?? [];
+            return { items, rawCount: items.length };
+        }),
+        readThread: vi.fn<TeamsIc3Session['readThread']>(),
         dispose: vi.fn(),
     };
     const createSession = vi.fn(() => reader);
@@ -59,12 +63,15 @@ describe('basic IC3 own-command launcher', () => {
         { id: workspaceId, name: 'Alpha', rootPath: path.resolve('alpha') },
         { id: 'workspace-beta', name: 'Beta', rootPath: path.resolve('beta') },
         { id: 'virtual', name: 'Virtual', rootPath: path.resolve('virtual'), virtual: true },
+        { id: 'group-relative', name: 'Relative group', rootPath: 'relative', virtual: true },
+        { id: 'group-INVALID', name: 'Invalid group', rootPath: path.resolve('invalid'), virtual: true },
     ]) };
 
     function message(messageId: string, chatId = 'direct', patch: Partial<TeamsIc3Message> = {}): TeamsIc3Message {
         const createdAt = new Date(Date.now() + 1000).toISOString();
         return {
             messageId, chatId, createdAt, modifiedAt: createdAt, authorKind: 'user',
+            chatKind: chatId.startsWith('19:meeting_') ? 'meeting' : chatId === 'direct' ? 'oneOnOne' : 'group',
             authorId: account.userId, text: '@coc explain this', textTruncated: false,
             htmlTruncated: false, deleted: false, ...patch,
         };
@@ -95,6 +102,10 @@ describe('basic IC3 own-command launcher', () => {
         store.getProcess.mockReset();
         sendReply.mockReset().mockResolvedValue(undefined);
         reactions.acknowledgeSourceMessage.mockReset().mockResolvedValue(undefined);
+        reader.readThread.mockReset().mockImplementation(async (chatId, root) => ({
+            items: [message(root, chatId, { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
+                chatKind: histories.get(chatId)?.[0]?.chatKind, text: 'Root context' })], rawCount: 1,
+        }));
         launch.mockResolvedValue(undefined);
         histories = new Map();
         decisionService = undefined;
@@ -180,7 +191,8 @@ describe('basic IC3 own-command launcher', () => {
         expect(service.getStatus().trouter).toEqual({ state: 'registered', error: null });
     });
 
-    it('coalesces notifications and reads only the changed chat without trusting notification content', async () => {
+    it.each(['19:fixture@thread.v2', '19:meeting_fixture@thread.v2'])(
+        'coalesces notifications and reads only %s without trusting notification content', async notifiedChat => {
         const listener = await startNotifications();
         const discovery = reader.readChats.mock.calls.length;
         const reads = reader.readHistory.mock.calls.length;
@@ -197,7 +209,104 @@ describe('basic IC3 own-command launcher', () => {
         expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledOnce();
     });
 
-    it.each(['48:notes', 'direct', 'group'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
+    it.each(['oneOnOne', 'group', 'meeting'])(
+        'uses authoritative %s metadata for notified chats without inferring kind from the ID', async chatKind => {
+            const listener = await startNotifications();
+            const chatId = '19:opaque@thread.v2';
+            histories.set(chatId, [message('1790000000001', chatId, { chatKind, rootMessageId: '1790000000000' })]);
+            listener.onWake({ cause: 'message', conversationId: chatId });
+            await vi.advanceTimersByTimeAsync(0);
+            const id = launch.mock.calls[0][1];
+            store.getProcess.mockResolvedValue(result(id));
+            events.emit('taskCompleted', terminal(id));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(sendReply).toHaveBeenCalledWith(
+                expect.objectContaining({ chatId, replyTo: {
+                    kind: chatKind === 'meeting' ? 'quote' : 'thread',
+                    messageId: '1790000000001', text: '@coc explain this', rootMessageId: '1790000000000',
+                } }), id, 'The initial answer', expect.any(AbortSignal));
+        },
+    );
+
+    it.each([undefined, 'unknown', 'channel'])('rejects missing or unsupported native kind %s without guessing', async chatKind => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { chatKind })]);
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
+        expect(sendReply).not.toHaveBeenCalled();
+        expect(service.getStatus().state).toBe('degraded');
+    });
+
+    it('passes the thread root to an ambiguous mention and refreshes context for the next request', async () => {
+        const listener = await startNotifications();
+        const chatId = notifiedChat;
+        const first = message('1790000000001', chatId, {
+            rootMessageId: '1790000000000', text: '@coc what does this mean',
+        });
+        const root = message('1790000000000', chatId, {
+            text: 'HTTP 429 means too many requests.', createdAt: new Date().toISOString(),
+        });
+        reader.readThread.mockResolvedValue({ items: [root, first], rawCount: 2 });
+        histories.set(chatId, [first]);
+        listener.onWake({ cause: 'message', conversationId: chatId });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch.mock.calls[0][2]).toContain(root.text);
+        expect(launch.mock.calls[0][2]).toContain('untrusted Teams thread context');
+        expect(launch.mock.calls[0][2].endsWith('User request:\nwhat does this mean')).toBe(true);
+        const next = message('1790000000002', chatId, {
+            createdAt: new Date(Date.now() + 2000).toISOString(),
+            modifiedAt: new Date(Date.now() + 2000).toISOString(),
+            rootMessageId: '1790000000000', text: '@coc how do we resolve it',
+        });
+        reader.readThread.mockResolvedValue({ items: [root, first, next], rawCount: 3 });
+        histories.set(chatId, [next]);
+        listener.onWake({ cause: 'message', conversationId: chatId });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).toHaveBeenCalledTimes(2);
+        expect(launch.mock.calls[1][2]).toContain('@coc what does this mean');
+        expect(launch.mock.calls[1][2].endsWith('User request:\nhow do we resolve it')).toBe(true);
+        expect(launch.mock.calls[0][4]).toBe(launch.mock.calls[1][4]);
+    });
+
+    it('does not acknowledge or launch without context and can retry a definite failed context read', async () => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { rootMessageId: '1790000000000' })]);
+        const root = message('1790000000000', notifiedChat, { createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString(), text: 'Root context' });
+        reader.readThread.mockResolvedValue({ items: [root], rawCount: 1 })
+            .mockRejectedValueOnce(new NativeTeamsError('Network'));
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
+        expect(reactions.acknowledgeSourceMessage).not.toHaveBeenCalled();
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(launch).toHaveBeenCalledOnce();
+    });
+
+    it('revokes a slow context read on shutdown without admitting a late job', async () => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { rootMessageId: '1790000000000' })]);
+        let finish!: (value: TeamsIc3Page<TeamsIc3Message>) => void;
+        reader.readThread.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        const readSignal = reader.readThread.mock.calls[0][2]?.signal;
+        const stopped = service.dispose();
+        expect(readSignal?.aborted).toBe(true);
+        finish({ items: [], rawCount: 0 });
+        await stopped;
+        expect(launch).not.toHaveBeenCalled();
+        expect(reactions.acknowledgeSourceMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
+        if (chatId.startsWith('19:meeting_')) {
+            reader.readChats.mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 })
+                .mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 })
+                .mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 });
+        }
         histories.set(chatId, [message('first', chatId)]);
         start();
         await vi.advanceTimersByTimeAsync(0);
@@ -326,7 +435,7 @@ describe('basic IC3 own-command launcher', () => {
 
     it('discards unsupported notification targets without degrading health or blocking eligible wakes', async () => {
         const listener = await startNotifications();
-        const unsupported = '19:meeting@thread.v2';
+        const unsupported = '19:unsupported@thread.v2';
         const reads = reader.readHistory.mock.calls.length;
         reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Unsupported'));
         histories.set(notifiedChat, [message('eligible', notifiedChat)]);
@@ -665,7 +774,7 @@ describe('basic IC3 own-command launcher', () => {
         expect(JSON.stringify(vi.mocked(getLogger().warn).mock.calls)).not.toContain('private provider detail');
     });
 
-    it.each(['missing', 'virtual'])('does not connect for %s targets or fall back to another workspace', async target => {
+    it.each(['missing', 'virtual', 'group-missing', 'group-relative', 'group-INVALID'])('does not connect for %s targets or fall back to another workspace', async target => {
         config = mergeConfig(config, { teamsIc3OwnCommands: { workspaceId: target } });
         start();
         await vi.advanceTimersByTimeAsync(0);
@@ -757,7 +866,7 @@ describe('basic IC3 own-command launcher', () => {
     }
 
     async function launched(chatId = 'direct') {
-        histories.set(chatId, [message('command', chatId)]);
+        histories.set(chatId, [message('1790000000000', chatId)]);
         start();
         await vi.advanceTimersByTimeAsync(0);
         return launch.mock.calls[0][1];
@@ -776,7 +885,7 @@ describe('basic IC3 own-command launcher', () => {
             const evaluate = vi.spyOn(decisionService, 'evaluate');
             const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
             sendReply.mockImplementation(sendTeamsIc3OwnCommandReply);
-            const original = message('command', '48:notes', { untrustedHtml: '<p>@coc explain this</p>' });
+            const original = message('1790000000000', '48:notes', { untrustedHtml: '<p>@coc explain this</p>' });
             histories.set('48:notes', [original]);
             start();
             await vi.advanceTimersByTimeAsync(0);
@@ -800,7 +909,7 @@ describe('basic IC3 own-command launcher', () => {
                 expect.objectContaining({
                     backend: 'copilot',
                     state: expect.objectContaining({
-                        trigger: { type: 'mention', messageId: 'command', text: original.text,
+                        trigger: { type: 'mention', messageId: original.messageId, text: original.text,
                             untrustedHtml: original.untrustedHtml },
                         chunks: send.mock.calls.map(call => call[1]),
                         destination: { ...account, chatId: '48:notes', region },
@@ -847,7 +956,7 @@ describe('basic IC3 own-command launcher', () => {
             expect(sendReply).toHaveBeenCalledOnce();
             expect(react).toHaveBeenCalledTimes(outcome === 'block' ? 1 : 0);
             if (outcome === 'block') {
-                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', 'command', 'crossmark', expect.any(AbortSignal));
+                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', '1790000000000', 'crossmark', expect.any(AbortSignal));
             }
             expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
                 text.includes('"stage":"delivered"'))).toBe(outcome === 'disabled');
@@ -918,7 +1027,10 @@ describe('basic IC3 own-command launcher', () => {
         },
     );
 
-    it.each(['48:notes', 'direct', 'group'])('returns the final initial answer to the exact %s source once', async chatId => {
+    it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('returns the final initial answer to the exact %s source once', async chatId => {
+        if (chatId.startsWith('19:meeting_')) {
+            reader.readChats.mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 });
+        }
         const id = await launched(chatId);
         const proc = result(id);
         proc.conversationTurns!.push(
@@ -930,7 +1042,9 @@ describe('basic IC3 own-command launcher', () => {
         events.emit('taskCompleted', terminal(id));
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ account, chatId, region, verifyAccess: expect.any(Function) }),
+            expect.objectContaining({ account, chatId, region, verifyAccess: expect.any(Function),
+                replyTo: { kind: chatId === '48:notes' || chatId.startsWith('19:meeting_') ? 'quote' : 'thread',
+                    messageId: '1790000000000', text: '@coc explain this' } }),
             id, 'The initial answer', expect.any(AbortSignal));
         const readCount = reader.readHistory.mock.calls.length;
         const source = sendReply.mock.calls[0][0];
@@ -959,7 +1073,8 @@ describe('basic IC3 own-command launcher', () => {
         events.emit('taskCompleted', task);
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ chatId: 'direct' }), id, 'Follow-up answer', expect.any(AbortSignal));
+            expect.objectContaining({ chatId: 'direct',
+                replyTo: { kind: 'thread', messageId: 'second', text: '@coc explain this' } }), id, 'Follow-up answer', expect.any(AbortSignal));
     });
 
     it.each(['delivered', 'failed'])('keeps same-chat reply order without blocking another chat when the first reply is %s', async outcome => {

@@ -13,13 +13,14 @@ use std::{
 };
 use teams_sdk::{
     Author, Backend, Chat, ChatId, ChatKind, Conversation, Cursor, ErrorCode, MessageDetail,
-    OperationContext, Page, Session,
+    MessageId, OperationContext, Page, Session,
 };
 
 #[derive(Clone, PartialEq, Eq)]
 enum Collection {
     Chats,
     History(ChatId),
+    ThreadHistory(ChatId, MessageId),
 }
 
 /// Native-owned continuation: no URL, token or cross-session reconstruction.
@@ -39,6 +40,8 @@ pub struct TeamsIc3Chat {
 #[napi(object)]
 pub struct TeamsIc3Message {
     pub chat_id: String,
+    pub chat_kind: Option<String>,
+    pub root_message_id: Option<String>,
     pub message_id: String,
     pub created_at: String,
     pub modified_at: String,
@@ -151,6 +154,18 @@ impl ReadState {
         self.session.history(&reference, cursor, &self.ctx).await
     }
 
+    async fn thread_history(
+        &self,
+        chat: &ChatId,
+        root: &MessageId,
+        cursor: Option<&Cursor>,
+    ) -> teams_sdk::Result<Page<MessageDetail>> {
+        self.check()?;
+        let reference =
+            self.session.conversation(Backend::Ic3, Conversation::Chat(chat.clone()))?;
+        self.session.ic3_thread_history(&reference, root, cursor, &self.ctx).await
+    }
+
     fn publish_chats(&self, page: Page<Chat>) -> teams_sdk::Result<TeamsIc3ChatPage> {
         self.check()?;
         let items = page
@@ -165,6 +180,7 @@ impl ReadState {
                     kind: match chat.kind {
                         ChatKind::OneOnOne => "oneOnOne",
                         ChatKind::Group => "group",
+                        ChatKind::Meeting => "meeting",
                     }
                     .into(),
                 })
@@ -196,6 +212,15 @@ impl ReadState {
                 };
                 TeamsIc3Message {
                     chat_id: chat.as_str().to_owned(),
+                    chat_kind: message.chat_kind.map(|kind| {
+                        match kind {
+                            ChatKind::OneOnOne => "oneOnOne",
+                            ChatKind::Group => "group",
+                            ChatKind::Meeting => "meeting",
+                        }
+                        .to_owned()
+                    }),
+                    root_message_id: message.root_message_id.map(|id| id.as_str().to_owned()),
                     message_id: metadata.reference.id().as_str().to_owned(),
                     created_at: metadata.created_at.to_rfc3339(),
                     modified_at: metadata.modified_at.to_rfc3339(),
@@ -256,6 +281,32 @@ impl NativeTeamsIc3Read {
         env.spawn_future_with_callback(
             async move { read.history(&target, cursor.as_ref()).await.map_err(error) },
             move |_, page| publish.publish_history(chat, page).map_err(error),
+        )
+    }
+
+    #[napi]
+    pub fn read_thread<'env>(
+        &self,
+        env: &'env Env,
+        chat_id: String,
+        root_message_id: String,
+        cursor: Option<ClassInstance<NativeTeamsIc3Cursor>>,
+    ) -> Result<PromiseRaw<'env, TeamsIc3HistoryPage>> {
+        let chat = ChatId::new(chat_id).map_err(error)?;
+        let root = MessageId::new(root_message_id).map_err(error)?;
+        let collection = Collection::ThreadHistory(chat.clone(), root.clone());
+        let cursor = self.state.begin(&collection, cursor.as_deref()).map_err(error)?;
+        let read = self.state.clone();
+        let publish = self.state.clone();
+        let target = chat.clone();
+        env.spawn_future_with_callback(
+            async move { read.thread_history(&target, &root, cursor.as_ref()).await.map_err(error) },
+            move |_, page| {
+                let next = publish.continuation(collection, page.next.clone());
+                let mut result = publish.publish_history(chat, page).map_err(error)?;
+                result.next = next;
+                Ok(result)
+            },
         )
     }
 

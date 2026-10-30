@@ -183,6 +183,16 @@ one-shot read whose cancellation is independent of other reads. Deadlines start
 at handle creation and cover dispatch through Node publication. Cursors are
 native-owned and session/collection-bound. The Node API exposes IC3 discovery
 and history only, without writes, notifications, credential callbacks or fallback.
+Discovery preserves direct/group/meeting kinds; history verifies the exact native
+thread type, including `meeting`/`Meeting`, and publishes it as each message's
+`chatKind`. History also preserves validated numeric `rootMessageId` values for
+threaded replies. Callers use this evidence rather than chat-ID patterns or hints
+to select reply routing. The explicit self stream has no ordinary chat kind.
+`readThread(chatId, rootMessageId, options)` reads an exact thread; its first page
+includes the root even when it needs a separate exact-message fetch. Returned
+messages retain base chat identities, and continuations bind the account, session,
+chat and root independently of ordinary history. Native capability checks require
+this method; missing binaries fail with the rebuild instruction.
 Protocol, self-chat, transient-content and credential contracts belong in
 [`teams-sdk/AGENTS.md`](rust/teams-sdk/AGENTS.md). Tests in `rust/napi/src/teams/`
 inject Rust transports; `test/teams.test.ts` covers built-addon and wrapper behavior.

@@ -250,6 +250,7 @@ describe('safe Teams diagnostics and capability guard', () => {
                 cancel() {}
                 readChats(cursor: unknown) { return action('chats', undefined, cursor); }
                 readHistory(target: string, cursor: unknown) { return action('history', target, cursor); }
+                readThread(target: string, root: string, cursor: unknown) { return action('thread', { target, root }, cursor); }
             }
             class Session {
                 async connect() { return { tenantId: tenant, userId: user }; }
@@ -317,6 +318,25 @@ describe('safe Teams diagnostics and capability guard', () => {
             }]);
             expect(Object.isFrozen(page.items[0].mentionedUserIds)).toBe(true);
             expect(page.next).toBeUndefined();
+        });
+
+        it('passes exact thread scope and continuation through the cancellable wrapper', async () => {
+            const { session, requests, setAction } = await fixture();
+            const cursor = Object.freeze({});
+            const root = { chatId: '19:fixture@thread.v2', messageId: '1790000000000',
+                rootMessageId: undefined, text: 'Root context', mentionedUserIds: ['fixture-user'] };
+            const action = vi.fn(async () => ({ items: [root], next: cursor, rawCount: 1 }));
+            setAction(action);
+            const page = await session.readThread(root.chatId, root.messageId);
+            expect(page.items[0]).toEqual(root);
+            expect(Object.isFrozen(page.items[0])).toBe(true);
+            expect(Object.isFrozen(page.items[0].mentionedUserIds)).toBe(true);
+            await session.readThread(root.chatId, root.messageId, { cursor: page.next });
+            expect(action.mock.calls).toEqual([
+                ['thread', { target: root.chatId, root: root.messageId }, undefined],
+                ['thread', { target: root.chatId, root: root.messageId }, cursor],
+            ]);
+            expect(requests.every(request => vi.mocked(request.cancel).mock.calls.length === 1)).toBe(true);
         });
 
         it('cancels only the pending read, removes listeners and rejects late results', async () => {

@@ -12,6 +12,7 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { createTeamsIc3OwnCommandLaunch } from '../../../src/server/messaging/teams-ic3-own-command-launch';
 import type { QueueRouteContext } from '../../../src/server/routes/queue-shared';
 import * as queueShared from '../../../src/server/routes/queue-shared';
+import { createRepoGroup } from '../../../src/server/workspaces/repo-group-workspace';
 
 describe('IC3 Ask queue admission', () => {
     let directory: string;
@@ -26,7 +27,9 @@ describe('IC3 Ask queue admission', () => {
     const tasks = () => bridge.createAggregateQueueFacade().getAll();
     beforeEach(async () => {
         vi.spyOn(configModule, 'loadConfigFile').mockReturnValue({});
-        directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ic3-launch-'));
+        // Native real path, matching repo-group member resolution
+        // (macOS /var -> /private/var, Windows RUNNER~1 -> runneradmin).
+        directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ic3-launch-')));
         store = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
         sdk = createMockSDKService({
             listModelsResult: [{
@@ -35,7 +38,7 @@ describe('IC3 Ask queue admission', () => {
             }],
         });
         bridge = new MultiRepoQueueRouter(new RepoQueueRegistry(), store, {
-            autoStart: false, aiService: sdk.service,
+            autoStart: false, aiService: sdk.service, dataDir: directory,
         });
         for (const [key, name] of [[workspaceId, 'alpha'], ['workspace-beta', 'beta']]) {
             const rootPath = path.join(directory, name);
@@ -100,6 +103,27 @@ describe('IC3 Ask queue admission', () => {
         expect(tasks()).toHaveLength(1);
     });
 
+    it.each([{ members: [] }, { members: [workspaceId, 'workspace-beta'] }])(
+        'admits repo-group commands and ordered follow-ups with $members', async ({ members }) => {
+        const group = await createRepoGroup(directory, store, { name: 'Team', members });
+        bridge.registerRepoId(group.id, group.rootPath);
+        const signal = new AbortController().signal;
+        await launch(group.id, id, 'first', signal, 'ic3-chat-group');
+        await launch(group.id, 'next', 'follow-up', signal, 'ic3-chat-group');
+        await launch(group.id, id, 'first', signal, 'ic3-chat-group');
+        expect(tasks()).toHaveLength(2);
+        expect(tasks()[0]).toMatchObject({
+            id: 'ic3-chat-group', repoId: group.id,
+            payload: { workspaceId: group.id, workingDirectory: group.rootPath, mode: 'ask' },
+        });
+        expect(tasks()[1]).toMatchObject({
+            id: 'next', repoId: group.id, processId: toQueueProcessId('ic3-chat-group'),
+            payload: { workspaceId: group.id, workingDirectory: group.rootPath, mode: 'ask' },
+        });
+        expect(bridge.registry.getQueueForRepo(root()).getAll()).toHaveLength(0);
+        expect(bridge.registry.getQueueForRepo(path.join(directory, 'beta')).getAll()).toHaveLength(0);
+    });
+
     it('serializes rapid mentions behind one first turn, including concurrent admission and replay', async () => {
         const signal = new AbortController().signal;
         const conversation = 'ic3-chat-fixture';
@@ -150,8 +174,11 @@ describe('IC3 Ask queue admission', () => {
 
     it('rejects missing and virtual workspaces without global fallback', async () => {
         await expect(launch('missing', id, 'explain', new AbortController().signal, id)).rejects.toThrow();
+        await expect(launch('group-missing', id, 'explain', new AbortController().signal, id)).rejects.toThrow();
         await store.registerWorkspace({ id: 'virtual', name: 'Virtual', rootPath: root(), virtual: true });
         await expect(launch('virtual', id, 'explain', new AbortController().signal, id)).rejects.toThrow();
+        await store.registerWorkspace({ id: 'group-INVALID', name: 'Invalid group', rootPath: root(), virtual: true });
+        await expect(launch('group-INVALID', id, 'explain', new AbortController().signal, id)).rejects.toThrow();
         expect(tasks()).toHaveLength(0);
     });
 
@@ -177,11 +204,17 @@ describe('IC3 Ask queue admission', () => {
         expect(tasks()).toHaveLength(1);
     });
 
-    it('returns a real queued Ask result through the Teams client to its original group chat', async () => {
+    it.each(['repo', 'repo-group'])('returns real queued %s Ask results and follow-ups to the original Teams chat', async target => {
+        const group = target === 'repo-group'
+            ? await createRepoGroup(directory, store, { name: 'Team', members: [workspaceId, 'workspace-beta'] })
+            : undefined;
+        if (group) bridge.registerRepoId(group.id, group.rootPath);
+        const commandWorkspaceId = group?.id ?? workspaceId;
         const account = { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' };
         const chatId = '19:source-group@thread.v2';
         const createdAt = new Date(Date.now() + 1000).toISOString();
-        let messageId = 'source-command';
+        let messageId = '1790000000001';
+        let chatContextText = 'The service failed after a traffic burst.';
         let wake!: () => void;
         const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
             if (init?.method === 'PUT') return new Response(null, { status: 200 });
@@ -203,7 +236,7 @@ describe('IC3 Ask queue admission', () => {
             teams: { getIc3Region: () => 'amer', onIc3RegionChange: () => () => {} },
             config: {
                 config: mergeConfig(DEFAULT_CONFIG, { features: { teamsIc3OwnCommands: true },
-                    teamsIc3OwnCommands: { workspaceId } }),
+                    teamsIc3OwnCommands: { workspaceId: commandWorkspaceId } }),
                 onChange: () => () => {},
             },
             store, queue: bridge.createAggregateQueueFacade(), launch, routes: [],
@@ -215,43 +248,86 @@ describe('IC3 Ask queue admission', () => {
                 connect: async () => account,
                 readChats: async () => ({ items: [{ chatId, kind: 'group' }], rawCount: 1 }),
                 readHistory: async source => ({ items: source === chatId ? [{
-                    chatId, messageId, createdAt, modifiedAt: createdAt,
-                    authorKind: 'user', authorId: account.userId, text: '@coc explain this',
+                    chatId, chatKind: 'group', messageId, createdAt, modifiedAt: createdAt,
+                    rootMessageId: '1790000000000',
+                    authorKind: 'user', authorId: account.userId, text: '@coc what does this mean',
                     deleted: false, textTruncated: false, htmlTruncated: false,
-                }] : [], rawCount: source === chatId ? 1 : 0 }),
+                }, {
+                    chatId, chatKind: 'group', messageId: '1789999999999',
+                    createdAt: new Date(Date.parse(createdAt) - 2000).toISOString(),
+                    modifiedAt: new Date(Date.parse(createdAt) - 2000).toISOString(),
+                    authorKind: 'user', authorId: 'fixture-other-user', text: chatContextText,
+                    deleted: false, textTruncated: false, htmlTruncated: false,
+                }] : [], rawCount: source === chatId ? 2 : 0 }),
+                readThread: async () => ({ items: [{
+                    chatId, chatKind: 'group', messageId: '1790000000000',
+                    createdAt: new Date(Date.parse(createdAt) - 1000).toISOString(),
+                    modifiedAt: new Date(Date.parse(createdAt) - 1000).toISOString(),
+                    authorKind: 'user', authorId: 'fixture-other-user', text: 'HTTP 429 means too many requests.',
+                    deleted: false, textTruncated: false, htmlTruncated: false,
+                }], rawCount: 1 }),
                 dispose: () => {},
             }),
         });
         try {
             await vi.waitFor(() => expect(tasks()).toHaveLength(1));
             const task = tasks()[0];
+            expect(task.repoId).toBe(commandWorkspaceId);
+            expect(task.payload.workingDirectory).toBe(group?.rootPath ?? root());
             expect(task.payload.mode).toBe('ask');
+            expect(task.payload.prompt).toContain('HTTP 429 means too many requests.');
+            expect(task.payload.prompt).toContain('The service failed after a traffic burst.');
+            expect(task.payload.prompt).toContain('"chatPreceding":[');
+            expect(task.payload.prompt).toContain('untrusted Teams thread context');
             expect(task.config).toMatchObject({ afterEffortTier: 'medium' });
             bridge.activateQueueProcessing();
             await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2), { timeout: 10_000 });
             expect(fetch.mock.calls[0][1]?.method).toBe('PUT');
-            expect(String(fetch.mock.calls[0][0])).toContain('/messages/source-command/properties?name=emotions');
+            expect(String(fetch.mock.calls[0][0])).toContain('/messages/1790000000001/properties?name=emotions');
             expect(JSON.parse(String(fetch.mock.calls[0][1]?.body)).emotions.key).toBe('1f440_eyes');
             const [url, init] = vi.mocked(globalThis.fetch).mock.calls[1];
-            expect(url).toBe('https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/19%3Asource-group%40thread.v2/messages');
+            expect(url).toBe('https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/19%3Asource-group%40thread.v2%3Bmessageid%3D1790000000000/messages');
             expect(JSON.parse(String(init?.body)).content).toContain('AI response text');
-            const proc = await store.getProcess(toQueueProcessId(task.id), workspaceId);
+            const proc = await store.getProcess(toQueueProcessId(task.id), commandWorkspaceId);
+            expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('HTTP 429 means too many requests.'),
+            }));
+            expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('The service failed after a traffic burst.'),
+            }));
+            expect(proc?.metadata?.workspaceId).toBe(commandWorkspaceId);
+            if (group) {
+                expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    workingDirectory: group.rootPath,
+                    additionalDirectories: [root(), path.join(directory, 'beta')],
+                    prompt: expect.stringContaining('repo_group_context'),
+                }));
+            }
             expect(proc?.metadata?.mode).toBe('ask');
             expect(proc?.metadata?.afterEffortTier).toBe('medium');
             expect(proc?.metadata?.queueTaskId).toBe(task.id);
             expect(proc?.conversationTurns?.[0].relayRequestId).toBe(task.payload.relayRequestId);
-            messageId = 'follow-up-command';
+            messageId = '1790000000002';
+            chatContextText = 'The traffic burst lasted five minutes.';
             wake();
             await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4), { timeout: 10_000 });
             expect(fetch.mock.calls[2][1]?.method).toBe('PUT');
-            expect(String(fetch.mock.calls[2][0])).toContain('/messages/follow-up-command/properties?name=emotions');
+            expect(String(fetch.mock.calls[2][0])).toContain('/messages/1790000000002/properties?name=emotions');
             const followUp = tasks().find(item => item.id !== task.id)!;
             expect(followUp.payload.processId).toBe(proc?.id);
-            const continued = await store.getProcess(proc!.id, workspaceId);
+            const continued = await store.getProcess(proc!.id, commandWorkspaceId);
             expect(continued?.conversationTurns?.filter(turn => turn.role === 'user')).toHaveLength(2);
             expect(continued?.conversationTurns?.find(turn => turn.relayRequestId === followUp.id)?.role).toBe('user');
             expect(tasks().filter(item => !item.payload.processId)).toHaveLength(1);
             expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionId: 'session-123' }));
+            expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+                prompt: expect.stringContaining('The traffic burst lasted five minutes.'),
+            }));
+            if (group) {
+                expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+                    workingDirectory: group.rootPath, additionalDirectories: [root(), path.join(directory, 'beta')],
+                }));
+            }
             expect(JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[3][1]?.body)).content).toContain('AI response text');
         } finally { await runtime.dispose(); }
     });
