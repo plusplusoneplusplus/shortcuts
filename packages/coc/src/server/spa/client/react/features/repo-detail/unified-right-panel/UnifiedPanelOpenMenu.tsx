@@ -29,6 +29,12 @@
  *    search (with Retry) are all rendered; an unavailable target disables the
  *    repo-bound actions with the reason rather than silently dropping them.
  *
+ * Extensions is a drill-in: selecting it (or ArrowRight on it) swaps the list
+ * for the workspace's discovered Copilot canvas extensions, headed by a Back
+ * row; ArrowLeft, Escape or Backspace in an empty box return. Picking one opens
+ * its canvas in the selected chat. A query in the main list also reaches
+ * matching extensions directly.
+ *
  * Selection is handed back as an `OpenUnifiedTabInput` (files, canvases,
  * changes) or a workspace-resource action (terminal, explorer, notes) — `explorer` toggles
  * the panel's file-tree column rather than opening a tab; the panel owns the tab
@@ -51,8 +57,10 @@ import {
     openMenuActions,
     type OpenMenuActionId,
     type OpenMenuCanvasResult,
+    type OpenMenuExtensionResult,
     type OpenMenuFileResult,
     type OpenMenuItem,
+    type OpenMenuView,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
@@ -106,6 +114,10 @@ export function UnifiedPanelOpenMenu({
     const [canvases, setCanvases] = useState<readonly OpenMenuCanvasResult[]>([]);
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [view, setView] = useState<OpenMenuView>('main');
+    const [extensions, setExtensions] = useState<readonly OpenMenuExtensionResult[]>([]);
+    const [openingExtension, setOpeningExtension] = useState<string | null>(null);
+    const [extensionError, setExtensionError] = useState<string | null>(null);
     const [cursor, setCursor] = useState(0);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -127,14 +139,16 @@ export function UnifiedPanelOpenMenu({
         chatHasChanges: chatChanges !== null,
         todoAvailable: todoInput !== null,
         settingsAvailable,
+        extensionsAvailable: extensions.length > 0,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoInput, settingsAvailable, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoInput, settingsAvailable, extensions.length, targetUnavailable, targetOption?.label]);
 
+    // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
-        () => buildOpenMenuItems({ actions, files, canvases, query }),
-        [actions, files, canvases, query],
+        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view }),
+        [actions, files, canvases, extensions, chatId, query, view],
     );
 
     // The cursor is an index into a list that changes under it; re-seat it on
@@ -170,6 +184,23 @@ export function UnifiedPanelOpenMenu({
             });
         return () => { cancelled = true; };
     }, [workspaceId, chatId]);
+
+    // The workspace's discovered extensions, listed once per workspace. The
+    // server answers from discovery alone, so this never starts an extension.
+    // Best-effort like canvases: a failure (or a server without the route)
+    // just leaves the Extensions entry out.
+    useEffect(() => {
+        let cancelled = false;
+        Promise.resolve()
+            .then(() => getCocClientForWorkspace(workspaceId).canvases.listCopilotExtensions(workspaceId))
+            .then(list => {
+                if (!cancelled) setExtensions(list.map(({ extensionKey, name, description }) => ({ extensionKey, name, description })));
+            })
+            .catch(() => {
+                if (!cancelled) setExtensions([]);
+            });
+        return () => { cancelled = true; };
+    }, [workspaceId]);
 
     // Debounced server-side search, one request in flight, scoped to the repo
     // that was the target when it was issued.
@@ -212,7 +243,8 @@ export function UnifiedPanelOpenMenu({
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const trimmed = query.trim();
-        if (trimmed === '') {
+        // The Extensions drill-in filters its own list; it never searches files.
+        if (trimmed === '' || view === 'extensions') {
             abortRef.current?.abort();
             setFiles([]);
             setLoading(false);
@@ -223,7 +255,7 @@ export function UnifiedPanelOpenMenu({
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
         };
-    }, [query, target, runSearch]);
+    }, [query, target, runSearch, view]);
 
     useEffect(() => () => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -268,6 +300,34 @@ export function UnifiedPanelOpenMenu({
         }
     }, [chatId, creating, workspaceId, ownerContext, onOpenResource, onClose]);
 
+    const enterView = useCallback((next: OpenMenuView) => {
+        setView(next);
+        setQuery('');
+        setExtensionError(null);
+    }, []);
+
+    const openExtension = useCallback(async (extension: OpenMenuExtensionResult) => {
+        if (chatId === null || openingExtension !== null) return;
+        setOpeningExtension(extension.extensionKey);
+        setExtensionError(null);
+        try {
+            const opened = await getCocClientForWorkspace(workspaceId).canvases.openCopilotExtensionByKey(workspaceId, {
+                processId: chatId,
+                extensionKey: extension.extensionKey,
+            });
+            // Like a new canvas, the record belongs to the chat's workspace.
+            onOpenResource(canvasOpenInput({ id: opened.canvasId, title: opened.title }, {
+                ...ownerContext,
+                ownerWorkspaceId: workspaceId,
+            }));
+            onClose();
+        } catch {
+            setExtensionError(`Could not open ${extension.name}. Try again.`);
+        } finally {
+            setOpeningExtension(null);
+        }
+    }, [chatId, openingExtension, workspaceId, ownerContext, onOpenResource, onClose]);
+
     // A browser tab is owned by the target's concrete workspace — the identity
     // its temporary site session is keyed by.
     const browserContext = useMemo(() => ({
@@ -294,7 +354,19 @@ export function UnifiedPanelOpenMenu({
             onClose();
             return;
         }
+        if (item.type === 'back') {
+            enterView('main');
+            return;
+        }
+        if (item.type === 'extension') {
+            void openExtension(item.extension);
+            return;
+        }
         if (item.action.disabled === true) return;
+        if (item.action.id === 'extensions') {
+            enterView('extensions');
+            return;
+        }
         if (item.action.id === 'canvas') {
             void createCanvas();
             return;
@@ -327,7 +399,7 @@ export function UnifiedPanelOpenMenu({
         }
         onOpenWorkspaceResource(item.action.id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, chatChanges, chatId, todoInput, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, todoInput, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -337,11 +409,23 @@ export function UnifiedPanelOpenMenu({
             event.preventDefault();
             const item = items[cursor];
             if (item) selectItem(item);
+        } else if (event.key === 'ArrowRight' && view === 'main') {
+            const item = items[cursor];
+            if (item?.type === 'action' && item.action.id === 'extensions' && item.action.disabled !== true) {
+                event.preventDefault();
+                enterView('extensions');
+            }
+        } else if (view === 'extensions' && query === ''
+            && (event.key === 'ArrowLeft' || event.key === 'Backspace')) {
+            event.preventDefault();
+            enterView('main');
         } else if (event.key === 'Escape') {
             event.preventDefault();
-            onClose();
+            // Escape steps out of the drill-in before it closes the menu.
+            if (view === 'extensions') enterView('main');
+            else onClose();
         }
-    }, [items, cursor, selectItem, onClose]);
+    }, [items, cursor, selectItem, onClose, view, query, enterView]);
 
     return (
         <div
@@ -361,9 +445,10 @@ export function UnifiedPanelOpenMenu({
                     type="text"
                     value={query}
                     onChange={event => setQuery(event.target.value)}
-                    placeholder={targetUnavailable ? 'Repository unavailable' : 'Search files or paste a URL…'}
-                    disabled={targetUnavailable}
-                    aria-label="Search files"
+                    placeholder={view === 'extensions' ? 'Filter extensions…'
+                        : targetUnavailable ? 'Repository unavailable' : 'Search files or paste a URL…'}
+                    disabled={targetUnavailable && view === 'main'}
+                    aria-label={view === 'extensions' ? 'Filter extensions' : 'Search files'}
                     className="min-w-0 flex-1 bg-transparent text-xs text-[#1f1f1f] outline-none placeholder-[#999] dark:text-[#cccccc] dark:placeholder-[#777]"
                     data-testid="unified-panel-open-menu-search"
                 />
@@ -449,6 +534,43 @@ export function UnifiedPanelOpenMenu({
                             </button>
                         );
                     }
+                    if (item.type === 'back') {
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={rowClass}
+                                onMouseEnter={() => setCursor(index)}
+                                onClick={() => selectItem(item)}
+                                data-testid="unified-panel-open-menu-back"
+                            >
+                                <span aria-hidden className="opacity-60">‹</span>
+                                <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Extensions</span>
+                            </button>
+                        );
+                    }
+                    if (item.type === 'extension') {
+                        const opening = openingExtension === item.extension.extensionKey;
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={rowClass}
+                                title={item.extension.description}
+                                onMouseEnter={() => setCursor(index)}
+                                onClick={() => selectItem(item)}
+                                data-testid={`unified-panel-open-menu-extension-${item.extension.extensionKey}`}
+                            >
+                                <span aria-hidden className="opacity-60">{ACTION_ICONS.extensions}</span>
+                                <span className="flex-shrink-0 text-[#1f1f1f] dark:text-[#cccccc]">
+                                    {opening ? `Opening ${item.extension.name}…` : item.extension.name}
+                                </span>
+                                {item.extension.description && (
+                                    <span className="ml-auto truncate text-[10px] text-[#8a8a8a]">{item.extension.description}</span>
+                                )}
+                            </button>
+                        );
+                    }
                     const disabled = item.action.disabled === true;
                     return (
                         <button
@@ -467,6 +589,9 @@ export function UnifiedPanelOpenMenu({
                             </span>
                             {disabled && item.action.disabledReason && (
                                 <span className="ml-auto truncate text-[10px] text-[#8a8a8a]">{item.action.disabledReason}</span>
+                            )}
+                            {!disabled && item.action.id === 'extensions' && (
+                                <span aria-hidden className="ml-auto text-[#8a8a8a]">›</span>
                             )}
                         </button>
                     );
@@ -490,9 +615,19 @@ export function UnifiedPanelOpenMenu({
                         </button>
                     </div>
                 )}
-                {!loading && !searchError && query.trim() !== '' && files.length === 0 && (
+                {view === 'extensions' && items.length === 1 && (
+                    <div className="px-2.5 py-2 text-[11px] text-[#8a8a8a]" data-testid="unified-panel-open-menu-no-extensions">
+                        No matching extensions
+                    </div>
+                )}
+                {!loading && !searchError && view === 'main' && query.trim() !== '' && files.length === 0 && (
                     <div className="px-2.5 py-2 text-[11px] text-[#8a8a8a]" data-testid="unified-panel-open-menu-no-results">
                         No matching files
+                    </div>
+                )}
+                {extensionError && (
+                    <div className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-extension-error">
+                        {extensionError}
                     </div>
                 )}
                 {createError && (
@@ -515,6 +650,7 @@ const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
     notes: '🗒',
     browser: '🌐',
     canvas: '🎨',
+    extensions: '🧩',
     changes: '±',
     todo: TODO_ICON,
 };

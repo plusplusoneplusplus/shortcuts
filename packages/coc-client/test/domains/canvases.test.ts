@@ -39,6 +39,28 @@ describe('CanvasesClient (Copilot extensions)', () => {
     const client = new CanvasesClient(createMockAdapter(response));
     expect(await client.openCopilotExtension('ws one', 'canvas-1')).toEqual(response);
   });
+
+  it('lists discovered extensions for the "+" menu', async () => {
+    const extensions = [{ extensionKey: 'ws/1:board', name: 'board', description: 'Board' }];
+    const adapter = createMockAdapter({ extensions });
+    const client = new CanvasesClient(adapter);
+    expect(await client.listCopilotExtensions('ws/1')).toEqual(extensions);
+    expect(adapter.calls[0]).toMatchObject({ path: '/workspaces/ws%2F1/canvas-extensions' });
+  });
+
+  it('opens an extension by key in a chat', async () => {
+    const response = {
+      success: true, canvasId: 'canvas-1', instanceId: 'instance-1',
+      title: 'Board', extensionKey: 'ws:board', embed: 'canvas://canvas-1',
+    };
+    const adapter = createMockAdapter(response);
+    const client = new CanvasesClient(adapter);
+    expect(await client.openCopilotExtensionByKey('ws/1', { processId: 'chat-1', extensionKey: 'ws:board' })).toEqual(response);
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/workspaces/ws%2F1/canvas-extensions/open',
+      options: { method: 'POST', body: { processId: 'chat-1', extensionKey: 'ws:board' } },
+    });
+  });
 });
 
 describe('CanvasesClient (Kusto)', () => {

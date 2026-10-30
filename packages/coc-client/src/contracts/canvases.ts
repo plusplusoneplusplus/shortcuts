@@ -8,6 +8,17 @@ export type CanvasEditor = 'ai' | 'user';
 
 export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto' | 'copilot-extension';
 
+/** A discovered Copilot canvas extension, as listed for the panel's "+" menu. */
+export interface CopilotExtensionSummary {
+  extensionKey: string;
+  name: string;
+  description?: string;
+}
+
+export interface ListCopilotExtensionsResponse {
+  extensions: CopilotExtensionSummary[];
+}
+
 export interface OpenCopilotExtensionResponse {
   success: true;
   canvasId: string;

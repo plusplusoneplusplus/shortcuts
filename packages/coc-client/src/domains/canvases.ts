@@ -21,6 +21,8 @@ import type {
   ListCanvasVersionsResponse,
   SaveCanvasRequest,
   OpenCopilotExtensionResponse,
+  CopilotExtensionSummary,
+  ListCopilotExtensionsResponse,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -67,6 +69,25 @@ export class CanvasesClient {
     return this.transport.request<OpenCopilotExtensionResponse>(
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/copilot-extension/open`),
       { method: 'POST', body: {} },
+    );
+  }
+
+  /** Discovered extensions for the workspace; empty while canvas extensions are disabled. */
+  async listCopilotExtensions(workspaceId: string): Promise<CopilotExtensionSummary[]> {
+    const response = await this.transport.request<ListCopilotExtensionsResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/canvas-extensions`,
+    );
+    return response.extensions;
+  }
+
+  /** Opens an extension's first canvas in the chat, reusing that chat's saved instance. */
+  async openCopilotExtensionByKey(
+    workspaceId: string,
+    request: { processId: string; extensionKey: string },
+  ): Promise<OpenCopilotExtensionResponse> {
+    return this.transport.request<OpenCopilotExtensionResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/canvas-extensions/open`,
+      { method: 'POST', body: request },
     );
   }
 

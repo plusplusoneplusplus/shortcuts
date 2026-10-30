@@ -31,7 +31,7 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'changes' | 'todo';
+export type OpenMenuActionId = 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -67,6 +67,12 @@ export interface OpenMenuActionsInput {
     todoAvailable?: boolean;
     /** The panel's workspace owns a Settings page (every repo and group dock host does). */
     settingsAvailable?: boolean;
+    /**
+     * At least one Copilot canvas extension was discovered for the workspace.
+     * Gates the Extensions entry, which is omitted rather than disabled: with
+     * the feature off or nothing installed there is nothing to drill into.
+     */
+    extensionsAvailable?: boolean;
 }
 
 /**
@@ -113,6 +119,16 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
             ? { disabled: true, disabledReason: 'Select a chat first — a canvas belongs to a chat.' }
             : {}),
     });
+    // An extension opens as a canvas, so it needs a chat for the same reason.
+    if (input.extensionsAvailable === true) {
+        actions.push({
+            id: 'extensions',
+            label: 'Extensions',
+            ...(input.chatId === null
+                ? { disabled: true, disabledReason: 'Select a chat first — an extension opens in a chat.' }
+                : {}),
+        });
+    }
     // Listed after New Canvas, and only for a chat that actually changed
     // files — with no chat selected there is nothing to show either.
     if (input.chatId !== null && input.chatHasChanges === true) {
@@ -136,6 +152,16 @@ export interface OpenMenuCanvasResult {
     title: string;
 }
 
+/** One discovered Copilot canvas extension. */
+export interface OpenMenuExtensionResult {
+    extensionKey: string;
+    name: string;
+    description?: string;
+}
+
+/** Which list the menu shows: everything, or the Extensions drill-in. */
+export type OpenMenuView = 'main' | 'extensions';
+
 /**
  * A query that names a web address: `url` when it opens, `reason` when it was
  * written as a URL (an explicit scheme) but cannot be opened.
@@ -147,13 +173,19 @@ export type OpenMenuItem =
     | { key: string; type: 'url'; url: string }
     | { key: string; type: 'url-error'; reason: string }
     | { key: string; type: 'file'; file: OpenMenuFileResult }
-    | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult };
+    | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult }
+    | { key: string; type: 'extension'; extension: OpenMenuExtensionResult }
+    | { key: string; type: 'back' };
 
 export interface BuildOpenMenuItemsInput {
     actions: readonly OpenMenuAction[];
     files: readonly OpenMenuFileResult[];
     canvases: readonly OpenMenuCanvasResult[];
+    /** Openable extensions; pass none when there is no chat to open them in. */
+    extensions?: readonly OpenMenuExtensionResult[];
     query: string;
+    /** Defaults to the main list. */
+    view?: OpenMenuView;
 }
 
 /**
@@ -179,6 +211,13 @@ export function openMenuUrlCandidate(query: string): OpenMenuUrlCandidate | null
 export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem[] {
     const query = input.query.trim().toLowerCase();
     const matches = (text: string) => query === '' || text.toLowerCase().includes(query);
+    const extensionItems: OpenMenuItem[] = (input.extensions ?? [])
+        .filter(extension => matches(extension.name) || matches(extension.description ?? ''))
+        .map(extension => ({ key: `extension:${extension.extensionKey}`, type: 'extension', extension }));
+
+    // The drill-in lists extensions only (the query filters them; no file
+    // search), headed by a row back to the main list.
+    if (input.view === 'extensions') return [{ key: 'back', type: 'back' }, ...extensionItems];
 
     const actionItems: OpenMenuItem[] = input.actions
         .filter(action => matches(action.label))
@@ -190,6 +229,8 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
         ? []
         : input.files.map(file => ({ key: `file:${file.path}`, type: 'file', file }));
 
+    // With no query extensions stay behind the Extensions entry; a query that
+    // names one reaches it directly.
     if (query === '') return [...actionItems, ...canvasItems];
 
     // A pasted URL with its scheme is unambiguous, so its row leads and Enter
@@ -201,8 +242,8 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
             ? [{ key: `url:${candidate.url}`, type: 'url', url: candidate.url }]
             : [{ key: 'url-error', type: 'url-error', reason: candidate.reason }];
     return hasExplicitUrlScheme(input.query)
-        ? [...urlItems, ...fileItems, ...actionItems, ...canvasItems]
-        : [...fileItems, ...urlItems, ...actionItems, ...canvasItems];
+        ? [...urlItems, ...fileItems, ...actionItems, ...canvasItems, ...extensionItems]
+        : [...fileItems, ...urlItems, ...actionItems, ...canvasItems, ...extensionItems];
 }
 
 /** Whether the cursor may land on an item: not a disabled action or a URL error. */

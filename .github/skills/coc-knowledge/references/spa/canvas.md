@@ -136,6 +136,13 @@ optional package description and a SHA-256 hash of entry bytes and package metad
 Discovery never imports code; malformed optional JSON is ignored, while unexpected
 filesystem errors propagate.
 
+This repository ships `.github/extensions/coc-log-tail`, a single-file extension that
+tails `<dataDir>/logs/coc-service.ndjson` and `coc-desktop.log` (it finds `dataDir`
+from `COPILOT_HOME`, not the cwd), serves a filterable SSE log view, and sends a
+chosen line with nearby lines through `session.send`. Keep such extensions single-file:
+the content hash covers only `extension.mjs` and `package.json`.
+`test/server/canvas-extensions/coc-log-tail.test.ts` runs it through the real host.
+
 `extension-host.ts` provides the flag-gated stdio runtime. It starts
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
 conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's
@@ -194,7 +201,15 @@ marker retains reopen input while excluding that record from runtime hydration.
 operation. Group records belong to the group conversation; runtime descriptors retain
 member cwd. `instance-service.ts` shares opening, persistence and per-conversation
 serialization across tool factories and tab reopening, preventing duplicate records and
-close/open races. `POST /api/workspaces/:id/canvases/:canvasId/copilot-extension/open`
+close/open races. `GET /api/workspaces/:id/canvas-extensions` lists discovered
+extensions (key, name, description) from discovery alone, never starting a child, and
+returns an empty list while the flag is off. `POST /api/workspaces/:id/canvas-extensions/open`
+with `{ processId, extensionKey }` opens the extension's first declared canvas in that
+conversation, reusing its saved instance (an open one first, else a closed one with its
+input) so repeated picks keep one record; it shares the owner queue and failure
+envelopes below. The panel's `+` menu uses both through `canvases.listCopilotExtensions`
+and `canvases.openCopilotExtensionByKey`.
+`POST /api/workspaces/:id/canvases/:canvasId/copilot-extension/open`
 derives the conversation and extension identity/input from the saved record, revalidates
 the live owner/gate, re-sends `canvas.open` and returns an uncached runtime URL plus
 extension key. Closed records reopen with their original input. Request bodies cannot

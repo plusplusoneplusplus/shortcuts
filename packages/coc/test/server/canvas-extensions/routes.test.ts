@@ -280,4 +280,71 @@ describe('persisted canvas extension reopening routes', () => {
         expect(await response.json()).toEqual({ success: false, error: { code: 'open_failed', message: 'Cannot open counter' } });
         expect(emit).not.toHaveBeenCalled();
     });
+
+    describe('"+" menu list and open-by-key', () => {
+        const list = (workspaceId = owner.workspaceId) =>
+            fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/canvas-extensions`);
+        const openByKey = (body: unknown, workspaceId = owner.workspaceId) =>
+            fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/canvas-extensions/open`, {
+                method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' },
+            });
+
+        it('lists discovered extensions from discovery alone, and nothing while disabled', async () => {
+            fs.writeFileSync(path.join(repo, '.github', 'extensions', 'counter', 'package.json'),
+                JSON.stringify({ description: 'A counter' }));
+            const response = await list();
+            expect(response.status).toBe(200);
+            expect(response.headers.get('cache-control')).toBe('no-store');
+            expect(await response.json()).toEqual({ extensions: [
+                { extensionKey: 'repo-a:counter', name: 'counter', description: 'A counter' },
+            ] });
+            expect(startHost).not.toHaveBeenCalled();
+            enabled = false;
+            const discover = vi.spyOn(processStore, 'getWorkspaces');
+            expect(await (await list()).json()).toEqual({ extensions: [] });
+            expect(discover).not.toHaveBeenCalled();
+        });
+
+        it('opens the first declared canvas in the chat and reuses its instance on the next pick', async () => {
+            const response = await openByKey({ processId: owner.processId, extensionKey: 'repo-a:counter' });
+            expect(response.status).toBe(200);
+            expect(response.headers.get('cache-control')).toBe('no-store');
+            const opened = await response.json();
+            expect(opened).toMatchObject({ success: true, title: 'Counter', extensionKey: 'repo-a:counter' });
+            expect(await (await fetch(opened.url)).json()).toEqual({ count: 0 });
+            const record = canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!;
+            expect(record).toMatchObject({ type: 'copilot-extension', processId: owner.processId });
+            expect(readCanvasExtensionInstance(record)).toMatchObject({ extensionKey: 'repo-a:counter', canvasId: 'counter' });
+
+            const again = await (await openByKey({ processId: owner.processId, extensionKey: 'repo-a:counter' })).json();
+            expect(again).toMatchObject({ canvasId: opened.canvasId, instanceId: opened.instanceId, url: opened.url });
+            expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
+            expect(startHost).toHaveBeenCalledOnce();
+        });
+
+        it('reopens a closed instance instead of creating another record', async () => {
+            const canvas = saved();
+            const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'close_canvas')!;
+            await close.handler({ instanceId: 'saved-instance' });
+            const opened = await (await openByKey({ processId: owner.processId, extensionKey: 'repo-a:counter' })).json();
+            expect(opened).toMatchObject({ canvasId: canvas.id, instanceId: 'saved-instance' });
+            expect(await (await fetch(opened.url)).json()).toEqual({ count: 7 });
+            expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, canvas.id)!).closed).toBeUndefined();
+        });
+
+        it('rejects bad bodies, unknown extensions and foreign chats without startup', async () => {
+            expect((await openByKey({ extensionKey: 'repo-a:counter' })).status).toBe(400);
+            expect((await openByKey({ processId: owner.processId })).status).toBe(400);
+            expect((await fetch(`${baseUrl}/api/workspaces/${owner.workspaceId}/canvas-extensions/open`,
+                { method: 'POST', body: 'not json' })).status).toBe(400);
+            const unknown = await openByKey({ processId: owner.processId, extensionKey: 'repo-a:missing' });
+            expect(unknown.status).toBe(422);
+            expect(await unknown.json()).toMatchObject({ success: false, error: { message: expect.stringContaining('unavailable') } });
+            expect((await openByKey({ processId: 'no-such-chat', extensionKey: 'repo-a:counter' })).status).toBe(422);
+            expect(startHost).not.toHaveBeenCalled();
+            enabled = false;
+            expect((await openByKey({ processId: owner.processId, extensionKey: 'repo-a:counter' })).status).toBe(404);
+            expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(0);
+        });
+    });
 });

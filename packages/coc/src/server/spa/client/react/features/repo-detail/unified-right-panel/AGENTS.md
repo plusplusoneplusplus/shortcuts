@@ -700,6 +700,7 @@ matching panel use the source dock.
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
 | Linked canvas / New Canvas | the `+` menu | Both build through `canvasOpenInput`, so an embed, a menu pick, and an AI event converge on one tab per `(owning clone, canvas id, chat)`. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |
+| Copilot extension | the `+` menu's **Extensions** drill-in | Listed after New Canvas only when `canvases.listCopilotExtensions` (discovery only, empty while `canvasExtensions.enabled` is off) returns some; disabled without a chat. Selecting it (or ArrowRight) swaps the list for Back + the extensions, filtered by the box with no file search; ArrowLeft, Backspace in an empty box, or Escape return, and Escape closes only from the main list. A main-list query also matches extensions by name/description. A pick calls `openCopilotExtensionByKey`, then opens the returned record through `canvasOpenInput` on the panel's workspace. |
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
 | Chat-wide **Changes** | the `+` menu, via `unifiedChatChanges.ts` | See below. |
 
