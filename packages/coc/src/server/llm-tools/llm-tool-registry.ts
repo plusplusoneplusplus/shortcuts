@@ -143,6 +143,30 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'list_canvas_capabilities',
+        label: 'List Canvas Capabilities',
+        description: 'Lists installed canvas extensions and their declared canvases and actions.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'open_canvas',
+        label: 'Open Canvas',
+        description: 'Opens an installed canvas or reopens a saved instance.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'invoke_canvas_action',
+        label: 'Invoke Canvas Action',
+        description: 'Invokes a declared action on an open canvas instance.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'close_canvas',
+        label: 'Close Canvas',
+        description: 'Closes a canvas instance while keeping its saved record.',
+        enabledByDefault: true,
+    },
+    {
         name: 'kusto_query',
         label: 'Kusto Query',
         description: 'Runs a Kusto (KQL) query server-side and shows the result as an interactive Kusto query canvas.',
@@ -192,6 +216,11 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
 /** Tool names belonging to the canvas feature (gated by `canvas.enabled`). */
 export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_canvas'] as const;
 
+/** Installed-extension tools, independently gated by `canvasExtensions.enabled`. */
+export const CANVAS_EXTENSION_LLM_TOOL_NAMES = [
+    'list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas',
+] as const;
+
 /** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */
 export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 
@@ -218,13 +247,16 @@ export function isScriptableLlmTool(toolName: string): boolean {
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean; queryPullRequestToolEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; canvasExtensionsEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean; queryPullRequestToolEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
     }
     if (!opts.canvasEnabled) {
         registry = registry.filter(t => !(CANVAS_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    }
+    if (!opts.canvasExtensionsEnabled) {
+        registry = registry.filter(t => !(CANVAS_EXTENSION_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
     if (!opts.kustoEnabled) {
         registry = registry.filter(t => !(KUSTO_LLM_TOOL_NAMES as readonly string[]).includes(t.name));

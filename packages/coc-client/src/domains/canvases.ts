@@ -20,6 +20,7 @@ import type {
   ListCanvasesResponse,
   ListCanvasVersionsResponse,
   SaveCanvasRequest,
+  OpenCopilotExtensionResponse,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -59,6 +60,14 @@ export class CanvasesClient {
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}`),
     );
     return response.canvas;
+  }
+
+  /** Reopens the persisted extension instance using its saved input and identity. */
+  async openCopilotExtension(workspaceId: string, canvasId: string): Promise<OpenCopilotExtensionResponse> {
+    return this.transport.request<OpenCopilotExtensionResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/copilot-extension/open`),
+      { method: 'POST', body: {} },
+    );
   }
 
   async save(workspaceId: string, canvasId: string, request: SaveCanvasRequest): Promise<Canvas> {

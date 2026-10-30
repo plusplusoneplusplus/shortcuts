@@ -1,8 +1,8 @@
 # features/canvas
 
 The chat-linked canvas editor: an AI-and-user co-edited document that also
-renders as code, an SVG, an Excalidraw scene, a sandboxed extension UI, or a
-live Kusto query.
+renders as code, an SVG, an Excalidraw scene, a sandboxed extension UI, a
+desktop Copilot extension guest, or a live Kusto query.
 
 `CanvasPanel` has exactly three hosts — a `canvas` tab in the unified right
 panel (`UnifiedCanvasTab`, the primary one), the standalone pop-out window
@@ -31,6 +31,7 @@ component; do not grow `CanvasPanel.tsx` back.
 | `canvasPopOut.ts` | Opens (or focuses) the standalone window for one canvas: `coc-canvas-<id>`, URL routed at the canvas's OWNING workspace, live handles tracked so a repeat click focuses instead of duplicating. |
 | `components/` | `CanvasPanelHeader` (title switcher, badges, version stepper, export menu, chrome), `CanvasPanelBanners`, `CanvasBodyRenderer`, `CanvasSelectionToolbar`, `CanvasCommentsPanel`, `icons.tsx`. |
 | `ExtensionCanvasView.tsx`, `KustoView.tsx`, `KustoChart.tsx`, `SvgCanvasView.tsx` | Per-type interactive views mounted by `CanvasBodyRenderer`. `ExtensionCanvasView` shows a read-only "Uses: …" line when the manifest declares `tools` (server-side `host.runScript`; the iframe never gets it). |
+| `CopilotExtensionCanvasView.tsx` | Desktop-only installed-extension guest. `UnifiedCanvasTab` explicitly opts in through `allowDesktopGuest`; other hosts show a message. Clone routing and subtree ownership exclude remote owners, including unresolved clone refs. The dedicated `cocDesktop.extensionCanvas` bridge opens by saved canvas id, adopts the guest and closes on unmount or failure, including late opens. Main owns authorization, runtime reopening, navigation policy and the in-memory partition. |
 | `extension-runtime.ts` | Pure string builders for the in-iframe runtime of a **JSX-authored** extension: the root element, the sequential library loader (classic `<script src>` / `<link>` at absolute URLs), and the runner that executes the compiled `ui.js` and calls `window.CanvasExtension.mount(rootEl, CanvasHost)`. Shared verbatim by the live view and the offline export — the export just omits `assetBase` because its bundles are already inlined. Every failure (load error, missing global, absent `CanvasExtension`, throwing `mount`) paints an in-frame banner **and** posts `extension-error` to the host. No DOM, no fetch, Node-safe. |
 | `canvas-host-contract.ts` | Single definition of the `window.CanvasHost` bridge contract: `CANVAS_HOST_VERSION` (2), `CANVAS_HOST_REQUEST_TIMEOUT_MS` (60s), the `CanvasHostError` `{ code, message }` shape with codes `offline` / `timeout` / `revision-conflict` / `capability-error` / `file-error`, the `CANVAS_HOST_METHODS` table both bootstraps are generated from, response/state envelope builders, and `parseCanvasState` / `serializeCanvasState`. No React, no DOM, no imports — the offline export bootstrap must stay pure and Node-safe. |
 | `canvas-host-bootstrap.ts` | Builds BOTH in-frame hosts from `CANVAS_HOST_METHODS`: `buildLiveCanvasHostBootstrap()` wires each method to a correlated parent request; `buildOfflineCanvasHostBootstrap(state, meta)` wires the same methods to an `offline` rejection. Generating both from one table is what makes a method present in one host and missing from the other impossible. Pure strings, Node-safe, deterministic. |
@@ -82,6 +83,12 @@ component; do not grow `CanvasPanel.tsx` back.
   markdown pipeline (a Kusto result JSON can be 10k rows); extension canvases
   only do so to show raw JSON in a history view. SVG detection runs against the
   *displayed* content, so an older revision is classified on its own body.
+  `copilot-extension` content never renders as Markdown or editable JSON, including
+  inline and pop-out hosts. Its header retains title, badge, fullscreen and close
+  while hiding export, editing, history, comments and pop-out. Desktop main enforces
+  the independent `canvasExtensions.enabled` gate; `canvas.enabled` does not gate
+  canvas records or the existing `canvas-updated` tab-opening path. Browser control,
+  history and the browser manager never own installed-extension guests.
 - **Markdown embeds use the shared viewer.** `CanvasBodyRenderer` enables canvas
   markers only for Markdown previews. `MarkdownView` mounts owner-routed
   `CanvasEmbed` viewers; code examples and Edit text stay literal. Embedded

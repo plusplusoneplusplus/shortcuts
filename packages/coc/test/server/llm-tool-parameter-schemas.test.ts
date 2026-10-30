@@ -25,6 +25,7 @@ import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/ser
 import { createCreatePullRequestTool } from '../../src/server/llm-tools/create-pull-request-tool';
 import { createSystemOneTool } from '../../src/server/llm-tools/system-one-tool';
 import { createRunToolScriptTool } from '../../src/server/llm-tools/run-tool-script-tool';
+import { createCanvasExtensionTools, type CanvasExtensionToolsDeps } from '../../src/server/llm-tools/canvas-extension-tools';
 import { createQueryPullRequestTool } from '../../src/server/llm-tools/query-pull-request-tool';
 
 /**
@@ -117,7 +118,12 @@ describe('withToolParameterMetadata', () => {
 describe('schema mirror drift guard', () => {
     // Tools whose factories are side-effect-free to construct (no fs/store
     // instantiation) so we can read their live `parameters` and compare.
+    const extensionTools = createCanvasExtensionTools({
+        workspaceId: 'workspace', processId: 'conversation',
+        config: () => ({ canvasExtensions: { enabled: true } }),
+    } as CanvasExtensionToolsDeps);
     const liveSchemas: Array<{ name: string; parameters: unknown }> = [
+        ...extensionTools.map(tool => ({ name: tool.name, parameters: tool.parameters })),
         { name: 'create_pull_request', parameters: createCreatePullRequestTool({} as any).tool.parameters },
         { name: 'suggest_follow_ups', parameters: createSuggestFollowUpsTool().parameters },
         { name: 'search_conversations', parameters: createSearchConversationsTool({} as any).tool.parameters },

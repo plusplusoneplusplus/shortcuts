@@ -41,6 +41,12 @@ describe.skipIf(skip)('shared browser-control page in real Electron', () => {
                 typeAheadSelections: ['c1', 'c', 'c1', 'c'],
                 report: { value: 'Ada', plan: 'c', choices: ['b'], frameText: 'Nested', frameClicked: true, shadowClicked: true },
             });
+            // The AI cursor is on screen, yet the agent's screenshot, snapshot and read never contain it.
+            expect(result.cursor).toMatchObject({
+                hosts: 1, point: true, snapshotHasOverlay: false, readHasOverlay: false, refsStable: true,
+                agentCursorPixels: 0, agentPagePixels: 0,
+            });
+            expect(result.cursor.visibleCursorPixels).toBeGreaterThan(20);
             expect(result.report.events).toContainEqual({ type: 'input', trusted: true });
             expect(result.report.events).toContainEqual({ type: 'change', trusted: true });
             expect(result.report.events.every((event: { trusted: boolean }) => event.trusted)).toBe(true);

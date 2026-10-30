@@ -63,6 +63,21 @@ A **facade singleton**; all logic lives in collaborators: `SdkLoader` (binary di
 
 Copilot requests create fresh session objects. Cold requests own their client process; warm-scoped requests borrow the client managed by `WarmClientRegistry`. Per-request working directories and session options stay isolated.
 
+### Canvas extension ownership
+
+`RequestRunner` leaves `requestExtensions`, `requestCanvasRenderer` and
+`enableConfigDiscovery` unset on create, resume and fallback, retaining the SDK's
+default-off extension/config discovery. Explicit `requestExtensions: true` loads
+repo `.github/extensions` and user extensions under `COPILOT_HOME` (default
+`~/.copilot`), independently of renderer opt-in. An overridden home excludes the
+real-home user directory from native discovery; CoC discovery uses the real home.
+
+Native canvas tools require `requestCanvasRenderer: true`. CoC's four-tool bundle
+works with both native surfaces off, without same-name tool exclusions.
+`copilot-native-loader.test.ts` replays a recorded catalog by default;
+`COC_CANVAS_COPILOT_RUNTIME=1` verifies both scopes and renderer states, home
+isolation, and a complete loopback-model turn with one CoC extension process.
+
 ### Copilot CLI spawn resolution
 
 `sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` locates the runtime and rewrites `app.asar` paths to `app.asar.unpacked`. It supports the SDK runtime package at `@github/copilot-sdk-<platform>/prebuilds/<platform>/copilot-runtime`, the standalone native package at `@github/copilot-<platform>-<arch>`, and the JavaScript `@github/copilot/index.js` entry.

@@ -29,6 +29,21 @@ describe('browser control relay', () => {
         on = false;
         expect(relay.getNavigationApprovalEnabled()).toBe(false);
     });
+    it('sends the default-on cursor overlay policy with each command and follows the live getter', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        expect(relay.getCursorOverlayEnabled()).toBe(true);
+        void relay.execute('w', 'p', { action: 'snapshot' }).catch(() => undefined);
+        expect(request(a).cursorOverlayEnabled).toBe(true);
+        let on = false;
+        relay.setCursorOverlayEnabledGetter(() => on);
+        expect(relay.getCursorOverlayEnabled()).toBe(false);
+        void relay.execute('w', 'p', { action: 'snapshot' }).catch(() => undefined);
+        expect(request(a).cursorOverlayEnabled).toBeUndefined();
+        on = true;
+        relay.setEnabledGetter(() => false);
+        expect(relay.getCursorOverlayEnabled()).toBe(false);
+    });
     it('gates rich paste by owning-server policy and cancels it when disabled', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);
@@ -597,6 +612,29 @@ describe('browser human takeover relay', () => {
         expect(request(a).validateAfterTakeover).toBe(true);
         relay.reply(a, { id: request(a).id, ok: false, error: 'stale-action: page changed; replan' });
         await expect(delayed).rejects.toThrow('stale-action');
+    });
+    it('tells every desktop window once to remove drawn cursors when the cursor setting or browser control turns off', () => {
+        const relay = new BrowserControlRelay(), a = client('a'), b = client('b');
+        let on = true, cursor = true;
+        relay.setEnabledGetter(() => on);
+        relay.setCursorOverlayEnabledGetter(() => cursor);
+        relay.advertise(a, 'w', true); relay.advertise(b, 'other', false);
+        const policies = (target: ReturnType<typeof client>) => target.send.mock.calls.map(([data]) => JSON.parse(data))
+            .filter(message => message.type === 'browser-cursor-policy');
+        const off = { type: 'browser-cursor-policy', enabled: false };
+        relay.syncPolicies(); relay.syncPolicies();
+        expect(policies(a)).toEqual([]);
+        cursor = false; relay.syncPolicies(); relay.syncPolicies();
+        expect([policies(a), policies(b)]).toEqual([[off], [off]]);
+        cursor = true; relay.syncPolicies();
+        expect(policies(a)).toEqual([off]);
+        on = false; relay.syncPolicies(); relay.syncPolicies();
+        expect([policies(a), policies(b)]).toEqual([[off, off], [off, off]]);
+        // A server that starts with the setting off has no cursor to take away.
+        const quiet = new BrowserControlRelay(), c = client('c');
+        quiet.setEnabledGetter(() => true); quiet.setCursorOverlayEnabledGetter(() => false);
+        quiet.advertise(c, 'w', true); quiet.syncPolicies();
+        expect(policies(c)).toEqual([]);
     });
 
     it('rejects commands from a disconnected handoff turn after reconnect instead of automatically restoring control', async () => {

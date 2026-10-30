@@ -84,6 +84,20 @@ describe('createCanvasCompleteFn', () => {
         expect(invoke).not.toHaveBeenCalled();
     });
 
+    it('lets conversation callers override model policy, including the provider default', async () => {
+        const invoke = vi.fn(async () => ({ success: true as const, response: 'answer' }));
+        const defaultModel = vi.fn((): string | undefined => 'conversation-model');
+        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, defaultModel, log: () => {} });
+        await complete({ prompt: 'q' });
+        expect(invoke).toHaveBeenLastCalledWith('q', 'conversation-model');
+        defaultModel.mockReturnValueOnce(undefined);
+        await complete({ prompt: 'q' });
+        expect(invoke).toHaveBeenLastCalledWith('q', undefined);
+        await complete({ prompt: 'q', model: 'explicit-model' });
+        expect(invoke).toHaveBeenLastCalledWith('q', 'explicit-model');
+        expect(defaultModel).toHaveBeenCalledTimes(2);
+    });
+
     it('refuses a prompt over the character cap without calling the model', async () => {
         const invoke = vi.fn();
         const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });

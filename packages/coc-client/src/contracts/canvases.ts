@@ -6,7 +6,17 @@
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto';
+export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto' | 'copilot-extension';
+
+export interface OpenCopilotExtensionResponse {
+  success: true;
+  canvasId: string;
+  instanceId: string;
+  title: string;
+  url?: string;
+  embed: string;
+  extensionKey: string;
+}
 
 // ---------------------------------------------------------------------------
 // Kusto query canvases (type 'kusto')

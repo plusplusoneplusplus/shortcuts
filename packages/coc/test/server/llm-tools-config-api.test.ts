@@ -541,3 +541,72 @@ describe('LLM Tools Config API endpoints', () => {
         });
     });
 });
+
+
+describe('installed canvas extension live settings', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    let tmpDir: string;
+    let enabled: boolean;
+    const names = ['list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas'];
+
+    beforeAll(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-extension-settings-'));
+        const store = createMockProcessStore({ initialWorkspaces: [
+            { id: 'repo', name: 'Repo', rootPath: tmpDir },
+            { id: 'group-demo', name: 'Group', rootPath: tmpDir },
+        ] });
+        const routes: Route[] = [];
+        registerApiRoutes(routes, store, undefined, tmpDir, undefined, undefined, false, () => ({
+            canvasExtensionsEnabled: enabled, canvasEnabled: false, excalidrawEnabled: false,
+            kustoEnabled: false, chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false,
+            defaultChatStyle: 'default',
+        }));
+        server = http.createServer(createRouter({ routes, spaHtml: '' }));
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        baseUrl = `http://127.0.0.1:${(server.address() as import('net').AddressInfo).port}`;
+    });
+    beforeEach(() => { enabled = false; });
+    afterAll(async () => {
+        await new Promise<void>(resolve => server.close(() => resolve()));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('GET and PUT follow live changes for repos and groups while ordinary canvases stay off', async () => {
+        for (const value of [false, true, false]) {
+            enabled = value;
+            for (const workspaceId of ['repo', 'group-demo']) {
+                const url = `${baseUrl}/api/workspaces/${workspaceId}/llm-tools-config`;
+                for (const options of [{}, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: [] }) }]) {
+                    const res = await request(url, options);
+                    expect(res.status).toBe(200);
+                    const tools = res.json().tools;
+                    for (const name of names) expect(tools.some((t: any) => t.name === name)).toBe(value);
+                    expect(tools.some((t: any) => t.name === 'write_canvas')).toBe(false);
+                    if (value) {
+                        expect(tools.find((t: any) => t.name === 'list_canvas_capabilities').params).toEqual([]);
+                        expect(tools.find((t: any) => t.name === 'open_canvas').params).toContainEqual({
+                            name: 'input', type: '{...}', required: false,
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    it('keeps disabled extension tools scoped to their workspace', async () => {
+        enabled = true;
+        const repo = `${baseUrl}/api/workspaces/repo/llm-tools-config`;
+        const group = `${baseUrl}/api/workspaces/group-demo/llm-tools-config`;
+        await request(repo, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: ['open_canvas'] }) });
+        await request(group, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: [] }) });
+        expect((await request(repo)).json().disabledLlmTools).toEqual(['open_canvas']);
+        expect((await request(group)).json().disabledLlmTools).toEqual([]);
+        enabled = false;
+        const hidden = (await request(repo)).json();
+        expect(hidden.tools.some((t: any) => names.includes(t.name))).toBe(false);
+        expect(hidden.disabledLlmTools).toEqual(['open_canvas']);
+        enabled = true;
+        expect((await request(repo)).json().disabledLlmTools).toEqual(['open_canvas']);
+    });
+});

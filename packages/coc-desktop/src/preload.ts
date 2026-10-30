@@ -13,6 +13,7 @@ import type { DownloadRecord, DownloadAction } from './browser-downloads';
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
 import type { BrowserControlActivityEvent, BrowserNavigationCheckEvent } from './browser-control-command';
 import type { BrowserSiteInfoResult } from './browser-view-policy';
+import type { ExtensionCanvasGuestState } from './extension-canvas-host';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -30,6 +31,7 @@ const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-take
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
+const BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL = 'coc-desktop:browser-control-remove-cursors';
 const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
 const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
@@ -72,6 +74,10 @@ const MENU_COPY_CHANNEL = 'coc-desktop:menu-copy';
 const MENU_COPY_HANDLED_CHANNEL = 'coc-desktop:menu-copy-handled';
 const HTML_PAGE_VIEW_PREFIX = 'html-page:';
 const HTML_PAGE_SESSION_KEY = 'html-page';
+const EXTENSION_CANVAS_OPEN_CHANNEL = 'coc-desktop:extension-canvas-open';
+const EXTENSION_CANVAS_ADOPT_CHANNEL = 'coc-desktop:extension-canvas-adopt';
+const EXTENSION_CANVAS_CLOSE_CHANNEL = 'coc-desktop:extension-canvas-close';
+const EXTENSION_CANVAS_STATE_CHANNEL = 'coc-desktop:extension-canvas-state';
 const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
 const BROWSER_VIEW_ADOPT_CHANNEL = 'coc-desktop:browser-view-adopt';
 const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
@@ -277,6 +283,8 @@ const browser = {
                 : ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef),
         cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
         releaseFrames: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, routingRef),
+        /** The cursor setting turned off: remove the AI cursor from this window's views in the scope now. */
+        removeCursors: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, routingRef),
         finish: (turnId?: string, routingRef?: string): void => ipcRenderer.send(BROWSER_CONTROL_FINISH_CHANNEL, turnId, routingRef),
         setVisible: (visible: boolean, routingRef: string): void => ipcRenderer.send(BROWSER_CONTROL_VISIBLE_CHANNEL, visible, routingRef),
         onActivity: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_ACTIVITY_CHANNEL, callback),
@@ -514,6 +522,19 @@ const api = {
         onState: (callback: (state: HtmlPageLoadState) => void) => browser.onState(state => {
             if (state.viewId.startsWith(HTML_PAGE_VIEW_PREFIX)) { callback(toHtmlPageLoadState(state.viewId.slice(HTML_PAGE_VIEW_PREFIX.length), state)); }
         }),
+    },
+    extensionCanvas: {
+        open: (viewId: string, workspaceId: string, canvasId: string): Promise<
+            { ok: true; embed: 'webview'; src: string; partition: string; title?: string } | { ok: false; message: string }
+        > => ipcRenderer.invoke(EXTENSION_CANVAS_OPEN_CHANNEL, viewId, workspaceId, canvasId),
+        adopt: (viewId: string, guestId: number): Promise<void> =>
+            ipcRenderer.invoke(EXTENSION_CANVAS_ADOPT_CHANNEL, viewId, guestId),
+        close: (viewId: string) => ipcRenderer.send(EXTENSION_CANVAS_CLOSE_CHANNEL, viewId),
+        onState: (callback: (state: ExtensionCanvasGuestState & { viewId: string }) => void) => {
+            const listener = (_event: unknown, state: ExtensionCanvasGuestState & { viewId: string }) => callback(state);
+            ipcRenderer.on(EXTENSION_CANVAS_STATE_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(EXTENSION_CANVAS_STATE_CHANNEL, listener);
+        },
     },
     browser,
 } as const;

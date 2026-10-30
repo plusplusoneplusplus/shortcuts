@@ -73,7 +73,7 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
 
     const copyContent = useCallback(async () => {
         const current = canvasRef.current;
-        if (!current) return;
+        if (!current || current.type === 'copilot-extension') return;
         try {
             await copyText(current.content);
             flashExportStatus('Copied');
@@ -84,7 +84,7 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
 
     const download = useCallback(() => {
         const current = canvasRef.current;
-        if (!current) return;
+        if (!current || current.type === 'copilot-extension') return;
         try {
             const blob = new Blob(
                 [current.content],
@@ -117,7 +117,7 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
         if (!current) return;
         // Kusto canvases are interactive (live query + table/chart) and
         // have no meaningful static-HTML snapshot — not HTML-exportable.
-        if (current.type === 'kusto') return;
+        if (current.type === 'kusto' || current.type === 'copilot-extension') return;
         setExportOpen(false);
         try {
             // Extension canvases render from a UI document stored apart from their

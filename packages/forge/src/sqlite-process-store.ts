@@ -1134,7 +1134,7 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     archiveProcess(id: string): void {
-        this.db.prepare('UPDATE processes SET archived = 1 WHERE id = ?').run(id);
+        this.archiveProcesses([id]);
     }
 
     unarchiveProcess(id: string): void {
@@ -1145,6 +1145,15 @@ export class SqliteProcessStore implements ProcessStore {
         if (ids.length === 0) return;
         const placeholders = ids.map(() => '?').join(', ');
         this.db.prepare(`UPDATE processes SET archived = 1 WHERE id IN (${placeholders})`).run(...ids);
+        // Notify runtime owners synchronously so archival revokes work before returning.
+        if (this.onProcessChange) {
+            for (const id of new Set(ids)) {
+                const row = this.getProcessStmt.get(id) as ProcessRow | undefined;
+                if (!row) continue;
+                const turns = (this.getTurnsStmt.all(id) as TurnRow[]).map(rowToTurn);
+                this.onProcessChange({ type: 'process-updated', process: rowToProcess(row, turns) });
+            }
+        }
     }
 
     unarchiveProcesses(ids: string[]): void {

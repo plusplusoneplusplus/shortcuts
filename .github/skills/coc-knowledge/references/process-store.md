@@ -460,7 +460,10 @@ unauthorized links are omitted without discarding valid provenance.
 `archiveProcesses`/`unarchiveProcesses`, `getPinnedProcesses`. `setPinOrder(workspaceId,
 entries)` rewrites `pinned_at` in one transaction for rows that are already pinned in that
 workspace (never pins, never crosses workspaces) and returns the ids it updated — `pinned_at`
-is the Pinned section's sort key.
+is the Pinned section's sort key. Individual and batch archive publish synchronous
+`process-updated` events with owner-qualified archived process snapshots, allowing
+server runtime owners to revoke work before archive returns. Batch events deduplicate
+IDs and skip missing rows.
 
 `softDeleteTurn` / `restoreTurn` / `hardDeleteTurn` and the `deleted_at` column exist on
 `SqliteProcessStore`. Full and paged process reads retain `deleted_at` rows; pinned

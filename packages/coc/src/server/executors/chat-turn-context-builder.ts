@@ -11,6 +11,9 @@
  * SDK built-in exclusions, ask-user handles, and resource disposal.
  */
 
+import type { CanvasExtensionRuntime } from '../llm-tools/canvas-extension-tools';
+import { discoverCanvasExtensions } from '../canvas-extensions/discovery';
+import { CANVAS_EXTENSION_LLM_TOOL_NAMES } from '../llm-tools/llm-tool-registry';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
@@ -77,6 +80,7 @@ export interface ChatTurnContextInput {
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
     kustoRuntime?: KustoToolsRuntime;
+    canvasExtensionRuntime?: CanvasExtensionRuntime;
     /** Owner-bound script runner behind canvas `host.runScript`. */
     ownerScriptRunner?: OwnerScriptRunner;
     browserRuntime?: BrowserControlRuntime;
@@ -244,6 +248,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         askUser: input.askUser,
         systemOne: input.systemOne,
         kustoRuntime: input.kustoRuntime,
+        canvasExtensionRuntime: input.browserOnly ? undefined : input.canvasExtensionRuntime,
         ownerScriptRunner: input.ownerScriptRunner,
         browserRuntime: input.browserRuntime,
         browserState: input.browserState,
@@ -266,6 +271,26 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         } : {}),
     });
 
+    let canvasCatalog = '';
+    if (input.canvasExtensionRuntime && input.dataDir && input.workspaceId
+        && toolBundle.tools.some(tool => (CANVAS_EXTENSION_LLM_TOOL_NAMES as readonly string[]).includes(tool.name))) {
+        try {
+            const extensions = await discoverCanvasExtensions({
+                config: input.canvasExtensionRuntime.config(), dataDir: input.dataDir,
+                store: input.store, workspaceId: input.workspaceId,
+            });
+            if (extensions.length) {
+                const line = (value: string) => value.replace(/\s+/g, ' ').trim();
+                canvasCatalog = '\n\nInstalled canvas extensions (use list_canvas_capabilities for canvases and actions):\n'
+                    + extensions.map(extension => `- ${line(extension.extensionKey)}${extension.description ? `: ${line(extension.description)}` : ''}`).join('\n');
+            }
+        } catch (error) {
+            memoryV2.dispose();
+            await toolBundle.mcpScope?.close();
+            throw error;
+        }
+    }
+
     let browserPrompt = '';
     if (toolBundle.tools.some(tool => tool.name === 'browser') && input.processId) {
         const processId = input.processId;
@@ -285,7 +310,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
     return {
         browserPrompt,
         tools: toolBundle.tools,
-        toolGuidance: toolBundle.toolGuidance,
+        toolGuidance: toolBundle.toolGuidance + canvasCatalog,
         memoryV2,
         excludedTools,
         askUser: toolBundle.askUser,

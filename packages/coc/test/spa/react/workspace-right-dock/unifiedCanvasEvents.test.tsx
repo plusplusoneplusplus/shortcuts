@@ -74,6 +74,19 @@ afterEach(() => {
 });
 
 describe('canvasEventTabInput', () => {
+    it('opens Copilot extension events through the usual tab path independently of canvas.enabled', () => {
+        Object.assign(window, { __DASHBOARD_CONFIG__: { canvasEnabled: false, canvasExtensionsEnabled: true } });
+        try {
+            const tabId = routeUnifiedCanvasUpdate(args({ event: { ...event(), canvasType: 'copilot-extension' } }));
+            expect(tabId).toBeTruthy();
+            expect(visibleTabs(readUnifiedPanelState(WS), CHAT).find(tab => tab.id === tabId)).toMatchObject({
+                kind: 'canvas', resourceId: 'canvas-1', chatId: CHAT, ownerWorkspaceId: WS,
+            });
+        } finally {
+            delete (window as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__;
+        }
+    });
+
     it('files the canvas against the chat that received the event', () => {
         const input = canvasEventTabInput(args())!;
         expect(input).toMatchObject({

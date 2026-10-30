@@ -107,6 +107,21 @@ describe('createWebSocketInfrastructure', () => {
     });
 
     describe('store process change wiring', () => {
+        it('passes archive, removal and clear events to runtime lifecycle cleanup before broadcasting', () => {
+            const lifecycle = vi.fn();
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,
+                undefined, undefined, () => false, undefined, undefined, lifecycle);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+            const process = { id: 'canvas-process', status: 'completed', output: [], archived: true,
+                metadata: { workspaceId: 'ws-canvas' } };
+            for (const event of [{ type: 'process-updated', process }, { type: 'process-removed', process }, { type: 'processes-cleared' }]) {
+                store.onProcessChange(event);
+                expect(lifecycle).toHaveBeenLastCalledWith(event);
+            }
+            expect(lifecycle).toHaveBeenCalledTimes(3);
+            expect(lifecycle.mock.invocationCallOrder[0]).toBeLessThan(broadcast.mock.invocationCallOrder[0]);
+        });
+
         it('passes the removed process to host-owned state cleanup', () => {
             const removed = vi.fn();
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,

@@ -21,7 +21,8 @@
  *
  * Canvas types: markdown, `code` (Monaco + fenced preview, SVG code rendered),
  * `excalidraw` (view-only scene), `extension` (sandboxed-iframe UI over JSON
- * shared state), and `kusto` (live query + table/chart).
+ * shared state), `copilot-extension` (desktop-only guest), and `kusto`
+ * (live query + table/chart).
  *
  * The routed client stays here — every kernel receives it explicitly, so remote
  * clone workspaces keep hitting the workspace-owning server (AC-07).
@@ -48,6 +49,8 @@ import { CanvasCommentsPanel } from './components/CanvasCommentsPanel';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 export interface CanvasPanelProps {
+    /** Only the unified canvas tab may attach a desktop extension guest. */
+    allowDesktopGuest?: boolean;
     /** Concrete owner route; null pins this resource to the page-origin server. */
     routingRef?: string | null;
     workspaceId: string;
@@ -90,7 +93,7 @@ export interface CanvasPanelProps {
 export function CanvasPanel({
     workspaceId, routingRef, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
     onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce,
-    onDirtyChange, onRegisterSave,
+    onDirtyChange, onRegisterSave, allowDesktopGuest = false,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
     const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
@@ -107,13 +110,14 @@ export function CanvasPanel({
 
     const record = useCanvasRecord({ client, workspaceId, canvasId, liveEvent, reloadNonce });
     const { canvas, canvasRef, loadNonce, adoptSaved } = record;
+    const isCopilotExtension = canvas?.type === 'copilot-extension';
 
     const versions = useCanvasVersions({
-        client, workspaceId, canvasId, canvas, canvasRef, loadNonce,
+        client, workspaceId, canvasId, canvas, canvasRef, loadNonce: isCopilotExtension ? 0 : loadNonce,
         adoptSaved, setSaveState: record.setSaveState,
     });
     const comments = useCanvasComments({
-        client, workspaceId, canvasId, canvas, canvasRef, loadNonce, onAskAi, onSendToAi,
+        client, workspaceId, canvasId, canvas, canvasRef, loadNonce: isCopilotExtension ? 0 : loadNonce, onAskAi, onSendToAi,
     });
     const exporter = useCanvasExport({ client, workspaceId, canvasRef, notify });
     const kusto = useCreateKustoCanvas({
@@ -229,7 +233,7 @@ export function CanvasPanel({
             <div className="relative flex-1 min-h-0">
                 <CanvasSelectionToolbar
                     selection={comments.selection}
-                    visible={!viewingVersion}
+                    visible={!viewingVersion && !isCopilotExtension}
                     onAskAi={onAskAi && comments.askAi}
                     onStartComment={comments.startComment}
                     commentAnchor={comments.commentAnchor}
@@ -241,6 +245,7 @@ export function CanvasPanel({
 
                 <div className="h-full overflow-y-auto">
                     <CanvasBodyRenderer
+                        allowDesktopGuest={allowDesktopGuest}
                         routingRef={routingRef}
                         workspaceId={workspaceId}
                         canvasId={canvasId}
@@ -262,7 +267,7 @@ export function CanvasPanel({
                 </div>
             </div>
 
-            {!viewingVersion && (
+            {!viewingVersion && !isCopilotExtension && (
                 <CanvasCommentsPanel
                     comments={comments.comments}
                     openComments={comments.openComments}

@@ -79,6 +79,7 @@ export function UnifiedCanvasTab({
 
     return (
         <CanvasPanel
+            allowDesktopGuest
             workspaceId={workspaceId}
             routingRef={routingRef}
             canvasId={canvasId}

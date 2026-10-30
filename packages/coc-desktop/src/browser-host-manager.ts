@@ -172,6 +172,8 @@ export class BrowserHostManager {
             this.finishedTurns.set(activity.routingOwnerId, turns);
         }
         entry.activity = undefined;
+        // Turn finish, Stop, tab close and a moved turn take the AI cursor away at once.
+        if (!entry.closed) entry.control?.removeCursor();
         this.pruneNavigationChecks();
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
@@ -283,6 +285,17 @@ export class BrowserHostManager {
         throwRejected(results);
     }
 
+    /**
+     * The cursor setting turned off live: take the AI cursor away now from the views this window
+     * drives under `routingRef`, without waiting for a command. Other windows and scopes keep theirs.
+     */
+    removeCursors(ownerId: number, routingRef: unknown): void {
+        if (!isValidBrowserSessionKey(routingRef)) throw new TypeError('Invalid browser workspace scope');
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (!entry.closed && entry.activity?.routingOwnerId === ownerId && entry.activity.routingRef === routingRef) entry.control?.disableCursor();
+        }
+    }
+
     private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
 
     private scopedEntries(ownerId: number, workspaceId: string, routingRef?: string): Entry[] {
@@ -351,7 +364,11 @@ export class BrowserHostManager {
             const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
                 turnId: request.turnId ?? request.processId, routingRef: scope.sessionKey }, state => {
                 const live = this.takeovers.get(key);
-                if (live) for (const entry of live.entries) { this.nativeActivity(entry); this.nativeNavigationGate(entry); }
+                if (live) for (const entry of live.entries) {
+                    this.nativeActivity(entry); this.nativeNavigationGate(entry);
+                    // The human drives now, or the continuation ended: the AI cursor goes at once.
+                    if (state.status !== 'agent' && state.status !== 'checking' && !entry.closed) entry.control?.removeCursor();
+                }
                 this.pruneNavigationChecks();
                 if (state.status === 'terminated' && live) for (const [pendingKey, pending] of this.pendingHumanTabs) {
                     if (pending.control === live.control) this.pendingHumanTabs.delete(pendingKey);
@@ -487,6 +504,8 @@ export class BrowserHostManager {
             await page.configureFrames(request.framesEnabled === true,
                 view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
                 view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
+            // Also drawn for background tabs, so the last spot shows when the user switches back.
+            page.setCursorOverlay(request.cursorOverlayEnabled === true);
             // Background tabs never take focus: input relies on CDP focus emulation instead.
             if (!scope.background && (selected.popout || command.action === 'click' || command.action === 'type'
                 || command.action === 'select_option' || command.action === 'press'

@@ -372,12 +372,14 @@ describe('registerAllRoutes', () => {
             let backgroundEnabled = () => false;
             let navigationApprovalEnabled = () => false;
             let humanTakeoverEnabled = () => true;
+            let cursorOverlayEnabled = () => false;
             const broker = { setEnabledGetter: (get: () => boolean) => { enabled = get; },
                 setFramesEnabledGetter: (get: () => boolean) => { framesEnabled = get; },
                 setRichPasteEnabledGetter: (get: () => boolean) => { richPasteEnabled = get; },
                 setBackgroundEnabledGetter: (get: () => boolean) => { backgroundEnabled = get; },
                 setNavigationApprovalEnabledGetter: (get: () => boolean) => { navigationApprovalEnabled = get; },
                 setHumanTakeoverEnabledGetter: (get: () => boolean) => { humanTakeoverEnabled = get; },
+                setCursorOverlayEnabledGetter: (get: () => boolean) => { cursorOverlayEnabled = get; },
                 getEnabled: () => enabled(), execute: vi.fn() };
             socket = { ...makeWsServer(), browserControl: broker };
             expect(getRuntime()).toBe(broker);
@@ -397,6 +399,10 @@ describe('registerAllRoutes', () => {
             expect(navigationApprovalEnabled()).toBe(true);
             (opts.runtimeConfigService!.config as any).browserControl.navigationApprovalEnabled = false;
             expect(navigationApprovalEnabled()).toBe(false);
+            // Absent cursorOverlayEnabled means the default-on overlay.
+            expect(cursorOverlayEnabled()).toBe(true);
+            (opts.runtimeConfigService!.config as any).browserControl.cursorOverlayEnabled = false;
+            expect(cursorOverlayEnabled()).toBe(false);
             expect(humanTakeoverEnabled()).toBe(false);
             (opts.runtimeConfigService!.config as any).browserControl.humanTakeoverEnabled = true;
             expect(humanTakeoverEnabled()).toBe(true);

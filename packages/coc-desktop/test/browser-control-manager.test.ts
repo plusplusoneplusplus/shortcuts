@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 /** `gated` hosts hold every main-frame load at the sink's navigation gate, like Electron's onBeforeRequest. */
-function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = false) {
+function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = false, engine: 'electron' | 'webview2' = 'electron') {
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
     const loads: string[] = [];
@@ -59,7 +59,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
             snapshot: () => ({ viewId: request.viewId, engine: 'electron', url: 'file:///preview', title: '', loading: false, canGoBack: false, canGoForward: false }),
             navigate: () => {}, nav: () => {}, close: () => {}, setBounds: () => {}, focus: () => {},
         }), dispose: async () => {} },
-        getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
+        getDefault: () => engine, saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
     });
     manager.bindControlScope(1, 'w', 'w');
     manager.bindControlScope(2, 'w', 'w');
@@ -70,6 +70,107 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
 }
 
 describe('main browser control scope and selection', () => {
+    it.each(['electron', 'webview2'] as const)('injects the cursor overlay through the %s host only while the setting is on', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const creates = vi.spyOn(h.manager['options'].hosts[engine], 'create');
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            expect(creates).toHaveBeenCalledOnce();
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await h.run({ action: 'press', key: 'Enter' }, opened.tab);
+            expect(overlay()).toEqual([]);
+            const press = (cursorOverlayEnabled?: boolean) => h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p',
+                selectedTab: opened.tab, command: { action: 'press', key: 'Enter' }, ...(cursorOverlayEnabled ? { cursorOverlayEnabled } : {}) });
+            await press(true);
+            expect(overlay()).toEqual(['key']);
+            const keyDown = cdp.mock.calls.findLastIndex(([method, params]) => method === 'Input.dispatchKeyEvent' && params?.type === 'keyDown');
+            const drawn = cdp.mock.calls.findIndex(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'));
+            expect(drawn).toBeLessThan(keyDown);
+            await press();
+            expect(overlay()).toEqual(['key', 'remove']);
+        } finally {
+            creates.mockRestore();
+            await h.manager.dispose();
+        }
+    });
+    it.each(['finish', 'close'] as const)('removes the drawn cursor at once on turn %s and redraws on the next turn', async end => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            const press = (turnId: string) => h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId,
+                selectedTab: opened.tab, cursorOverlayEnabled: true, command: { action: 'press', key: 'Enter' } });
+            await press('t1');
+            expect(overlay()).toEqual(['key']);
+            // The toolbar Stop cancels the turn and finishes it through the same path.
+            if (end === 'finish') h.manager.finishControl(1, 't1');
+            else await h.manager.close(1, opened.tab!.slice(3));
+            expect(overlay()).toEqual(['key', 'remove']);
+            if (end === 'close') return;
+            h.manager.finishControl(1, 't1');
+            expect(overlay()).toEqual(['key', 'remove']);
+            await press('t2');
+            expect(overlay()).toEqual(['key', 'remove', 'key']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+    it.each(['electron', 'webview2'] as const)('removes the drawn cursor through the %s host when the setting turns off, with no further command', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const creates = vi.spyOn(h.manager['options'].hosts[engine], 'create');
+        const exec = (ownerId: number, command: BrowserCommand, selectedTab?: string) => h.manager.executeControl(ownerId,
+            { id: `r${ownerId}`, workspaceId: 'w', processId: `p${ownerId}`, turnId: `t${ownerId}`, cursorOverlayEnabled: true, command, selectedTab });
+        try {
+            const mine = await exec(1, { action: 'open', url: 'https://fixture.test/' });
+            const theirs = await exec(2, { action: 'open', url: 'https://fixture.test/' });
+            expect(creates).toHaveBeenCalledTimes(2);
+            const ops = (view: BrowserHostedView) => vi.mocked(view.cdp!).mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await exec(1, { action: 'press', key: 'Enter' }, mine.tab);
+            await exec(2, { action: 'press', key: 'Enter' }, theirs.tab);
+            expect([ops(h.views[0]), ops(h.views[1])]).toEqual([['key'], ['key']]);
+            // Another workspace scope of the same window is left alone.
+            h.manager.removeCursors(1, 'other');
+            expect(ops(h.views[0])).toEqual(['key']);
+            h.manager.removeCursors(1, 'w');
+            expect([ops(h.views[0]), ops(h.views[1])]).toEqual([['key', 'remove'], ['key']]);
+            expect(() => h.manager.removeCursors(1, '')).toThrow('Invalid browser workspace scope');
+            // The next command of the turn carries the setting off and draws nothing.
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p1', turnId: 't1', command: { action: 'press', key: 'Enter' }, selectedTab: mine.tab });
+            expect(ops(h.views[0])).toEqual(['key', 'remove']);
+        } finally {
+            creates.mockRestore();
+            await h.manager.dispose();
+        }
+    });
+    it('draws no cursor for actions without input, even with the setting on', async () => {
+        const h = harness();
+        const exec = (command: BrowserCommand, selectedTab?: string) => h.manager.executeControl(1,
+            { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', cursorOverlayEnabled: true, command, selectedTab });
+        try {
+            const opened = await exec({ action: 'open', url: 'https://fixture.test/' });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const original = cdp.getMockImplementation()!;
+            cdp.mockImplementation(async (method, params, session) => {
+                if (method === 'Page.getLayoutMetrics') return { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } };
+                if (method === 'Page.captureScreenshot') return { data: 'fixture==' };
+                return original(method, params, session);
+            });
+            for (const command of [{ action: 'tabs' }, { action: 'snapshot' }, { action: 'read' }, { action: 'eval', js: '42' },
+                { action: 'wait', ms: 1 }, { action: 'navigate', direction: 'reload' }, { action: 'screenshot' }] as BrowserCommand[]) {
+                await exec(command, opened.tab);
+            }
+            expect(cdp.mock.calls.some(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'))).toBe(false);
+            await exec({ action: 'press', key: 'Enter' }, opened.tab);
+            expect(cdp.mock.calls.some(([, params]) => String(params?.expression ?? '').includes('__cocCursorOverlay'))).toBe(true);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
     it('routes rich paste through native focus and the clipboard without clicking or selecting all', async () => {
         const clipboard = { availableFormats: () => [], write: vi.fn() };
         const h = harness(undefined, clipboard);
@@ -383,6 +484,49 @@ describe('main browser control scope and selection', () => {
         }
     });
 
+    it.each(['electron', 'webview2'] as const)('keeps drawing the AI cursor for a retained background scope through the %s host', async engine => {
+        const h = harness(undefined, undefined, false, engine);
+        const exec = (command: BrowserCommand, routingRef: string | undefined, selectedTab?: string) => h.manager.executeControl(1,
+            { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', cursorOverlayEnabled: true, command, selectedTab }, undefined, routingRef);
+        try {
+            const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined);
+            const view = h.views[0];
+            view.setBackgroundControl = vi.fn();
+            const cdp = vi.mocked(view.cdp!);
+            const original = cdp.getMockImplementation()!;
+            // The page reports where it drew, like a whole-page scroll resolving its own point.
+            cdp.mockImplementation(async (method, params, session) => String(params?.expression ?? '').includes('__cocCursorOverlay')
+                ? { result: { value: { x: 40, y: 50 } } } : original(method, params, session));
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay'));
+            const ops = () => overlay().map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            await exec({ action: 'press', key: 'Enter' }, undefined, opened.tab);
+            expect(ops()).toEqual(['key']);
+            // Switching the window to another workspace keeps the retained turn's cursor.
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            h.manager.finishUnretainedControl(1);
+            expect(ops()).toEqual(['key']);
+            h.send.mockClear();
+            vi.mocked(view.focus).mockClear();
+            await exec({ action: 'press', key: 'Tab' }, 'w', opened.tab);
+            await exec({ action: 'scroll', direction: 'down' }, 'w', opened.tab);
+            expect(ops()).toEqual(['key', 'key', 'scroll']);
+            expect(view.setBackgroundControl).toHaveBeenLastCalledWith(true);
+            expect(view.focus).not.toHaveBeenCalled();
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.objectContaining({ active: true, background: true }));
+            // Back on screen, the next action continues from the spot the background turn left.
+            h.manager.bindControlScope(1, 'w', 'w');
+            await exec({ action: 'press', key: 'Enter' }, 'w', opened.tab);
+            expect(ops()).toEqual(['key', 'key', 'scroll', 'key']);
+            expect(overlay().at(-1)).toContain('"from":{"x":40,"y":50}');
+            h.manager.finishControl(1, 't');
+            expect(ops()).toEqual(['key', 'key', 'scroll', 'key', 'remove']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
     it('validates and bounds retained background scopes', async () => {
         const h = harness();
         expect(() => h.manager.retainControlScope(1, '', 'w')).toThrow(TypeError);
@@ -550,6 +694,32 @@ describe('human takeover exact owner enforcement', () => {
             await h.manager.humanTakeover(1, identity(), 'return', 'finished');
             expect(await pending).toMatchObject({ text: expect.any(String), handoffNote: 'finished' });
             expect(await second).toMatchObject({ valueJson: '42' });
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it.each(['take', 'request_human', 'stop'] as const)('removes the AI cursor right away on takeover %s', async action => {
+        const h = harness();
+        const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockResolvedValue('doc:1');
+        try {
+            const tab = (await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }))).tab;
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const overlay = () => cdp.mock.calls.map(([, params]) => String(params?.expression ?? ''))
+                .filter(expression => expression.includes('__cocCursorOverlay')).map(expression => /"op":"(\w+)"/.exec(expression)![1]);
+            const press = () => h.manager.executeControl(1, { ...request('press', { action: 'press', key: 'Enter' }, tab), cursorOverlayEnabled: true });
+            await press();
+            expect(overlay()).toEqual(['key']);
+            if (action === 'stop') {
+                await h.manager.humanTakeover(1, identity(), 'stop');
+                expect(overlay()).toEqual(['key', 'remove']);
+                return;
+            }
+            const help = action === 'request_human' ? h.manager.executeControl(1, request('help', { action: 'request_human', text: 'Sign in' }, tab)) : undefined;
+            if (action === 'take') await h.manager.humanTakeover(1, identity(), 'take');
+            await vi.waitFor(() => expect(overlay()).toEqual(['key', 'remove']));
+            await h.manager.humanTakeover(1, identity(), 'return');
+            await help;
+            expect(overlay()).toEqual(['key', 'remove']);
+            await press();
+            expect(overlay()).toEqual(['key', 'remove', 'key']);
         } finally { stamp.mockRestore(); await h.manager.dispose(); }
     });
     it('agent initiation pauses immediately without reveal/focus and rejects changed page generations on Return', async () => {

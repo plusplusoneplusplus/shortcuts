@@ -164,6 +164,74 @@ describe('CanvasPanel', () => {
         resetCloneRegistryForTests();
     });
 
+    it('renders a Copilot extension as a desktop-only view, never as editable JSON', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'copilot-extension', content: '{"privateInstance":"saved-input"}' }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onPopOut={vi.fn()} />);
+        await screen.findByText('Open in the CoC desktop app');
+        expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan');
+        expect(screen.getByTestId('canvas-panel-extension-badge')).toBeTruthy();
+        for (const id of ['mode-edit', 'export', 'version-older', 'version-newer', 'popout', 'preview', 'editor']) {
+            expect(screen.queryByTestId(`canvas-panel-${id}`)).toBeNull();
+        }
+        expect(screen.queryByText(/privateInstance/)).toBeNull();
+        expect(mocks.listVersions).not.toHaveBeenCalled();
+        expect(mocks.listComments).not.toHaveBeenCalled();
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+
+    it('allows the unified desktop guest with canvas.enabled off and the independent extension gate on', async () => {
+        const open = vi.fn().mockResolvedValue({
+            ok: true, embed: 'webview', src: 'http://127.0.0.1:3210/', partition: 'extension-memory',
+        });
+        const close = vi.fn();
+        (window as any).__DASHBOARD_CONFIG__ = { canvasEnabled: false, features: { canvasExtensionsEnabled: true } };
+        (window as any).cocDesktop = { extensionCanvas: {
+            open, close, adopt: vi.fn().mockResolvedValue(undefined), onState: () => () => {},
+        } };
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'copilot-extension' }));
+        try {
+            const view = render(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+            expect(open).toHaveBeenCalledWith(expect.any(String), 'ws-1', 'doc-abc123');
+            const guest = view.container.querySelector('webview');
+            mocks.get.mockResolvedValue(makeCanvas({ type: 'copilot-extension', title: 'Updated board', revision: 2 }));
+            view.rerender(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123"
+                liveEvent={{ canvasId: 'doc-abc123', revision: 2, canvasType: 'copilot-extension', title: 'Updated board', editor: 'ai' }} />);
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('Updated board'));
+            expect(view.container.querySelector('webview')).toBe(guest);
+            expect(open).toHaveBeenCalledOnce();
+            expect(close).not.toHaveBeenCalled();
+            expect(mocks.listVersions).not.toHaveBeenCalled();
+            expect(mocks.listComments).not.toHaveBeenCalled();
+            expect(mocks.save).not.toHaveBeenCalled();
+            view.unmount();
+            expect(close).toHaveBeenCalled();
+        } finally {
+            delete (window as any).__DASHBOARD_CONFIG__;
+            delete (window as any).cocDesktop;
+        }
+    });
+
+    it('honors main-process extension denial even when canvas.enabled is on', async () => {
+        const open = vi.fn().mockResolvedValue({ ok: false, message: 'Canvas extensions are disabled' });
+        (window as any).__DASHBOARD_CONFIG__ = { canvasEnabled: true, features: { canvasExtensionsEnabled: false } };
+        (window as any).cocDesktop = { extensionCanvas: {
+            open, close: vi.fn(), adopt: vi.fn(), onState: () => () => {},
+        } };
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'copilot-extension' }));
+        try {
+            const view = render(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            expect((await screen.findByRole('alert')).textContent).toBe('Canvas extensions are disabled');
+            expect(view.container.querySelector('webview')).toBeNull();
+            expect(view.container.querySelector('iframe')).toBeNull();
+            expect(mocks.save).not.toHaveBeenCalled();
+            view.unmount();
+        } finally {
+            delete (window as any).__DASHBOARD_CONFIG__;
+            delete (window as any).cocDesktop;
+        }
+    });
+
     it('renders the host title accessory right after the title', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
 

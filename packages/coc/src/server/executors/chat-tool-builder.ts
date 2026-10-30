@@ -1,3 +1,4 @@
+import { createCanvasExtensionTools, type CanvasExtensionRuntime } from '../llm-tools/canvas-extension-tools';
 import type { OwnerScriptRunner } from './owner-script-runner';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -85,6 +86,7 @@ export interface ChatToolBundleOptions {
     /** Overrides the `kusto.enabled` config flag (used by tests). */
     kustoToolsEnabled?: boolean;
     kustoRuntime?: KustoToolsRuntime;
+    canvasExtensionRuntime?: CanvasExtensionRuntime;
     browserRuntime?: BrowserControlRuntime;
     browserState?: BrowserToolStateStore;
     /** Turn abort signal, shared by `browser` and `run_tool_script`. */
@@ -244,6 +246,14 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
                 ...(options.ownerScriptRunner ? { ownerScriptRunner: options.ownerScriptRunner } : {}),
             },
         ));
+    }
+
+    if (options.canvasExtensionRuntime && options.dataDir && options.workspaceId && options.processId
+        && !options.sentinelPrOutcomeReview) {
+        addons.push({ tools: createCanvasExtensionTools({
+            ...options.canvasExtensionRuntime, dataDir: options.dataDir, processStore: options.store,
+            workspaceId: options.workspaceId, processId: options.processId,
+        }), suffix: '' });
     }
 
     if (options.includeKustoTools !== false && !options.sentinelPrOutcomeReview) {

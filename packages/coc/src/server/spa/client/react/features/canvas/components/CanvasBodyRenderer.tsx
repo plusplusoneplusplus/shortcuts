@@ -3,12 +3,13 @@
  *
  * Branch order matters and mirrors the panel's rules:
  *  1. loading / load error
- *  2. Excalidraw scenes and Kusto canvases — host-rendered views, including
+ *  2. Installed Copilot extensions — unified desktop guest or a plain fallback
+ *  3. Excalidraw scenes and Kusto canvases — host-rendered views, including
  *     history revisions, so their content never reaches the markdown pipeline
- *  3. extension canvases in preview — the sandboxed-iframe UI
- *  4. Edit mode — Monaco for code canvases, a plain textarea otherwise
- *  5. SVG code canvases — the isolated SVG render surface
- *  6. everything else — the chat markdown renderer
+ *  4. extension canvases in preview — the sandboxed-iframe UI
+ *  5. Edit mode — Monaco for code canvases, a plain textarea otherwise
+ *  6. SVG code canvases — the isolated SVG render surface
+ *  7. everything else — the chat markdown renderer
  *
  * History views are read-only: no edit branch is reachable while
  * `viewingVersion` is set.
@@ -25,9 +26,11 @@ import { ExcalidrawSceneView, parseSceneContent } from '../../diagrams';
 import { ExtensionCanvasView } from '../ExtensionCanvasView';
 import { KustoView } from '../KustoView';
 import { SvgCanvasView } from '../SvgCanvasView';
+import { CopilotExtensionCanvasView } from '../CopilotExtensionCanvasView';
 import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode } from '../canvas-panel-model';
 
 export interface CanvasBodyRendererProps {
+    allowDesktopGuest?: boolean;
     routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
@@ -52,6 +55,7 @@ export interface CanvasBodyRendererProps {
 export function CanvasBodyRenderer({
     workspaceId, routingRef, canvasId, loading, loadError, canvas, kind, viewingVersion, viewingRevision,
     displayedContent, mode, draft, onDraftChange, onCanvasSaved, onSelectionChange, onImageMenu, notify,
+    allowDesktopGuest = false,
 }: CanvasBodyRendererProps) {
     const excalidrawScene = useMemo(
         () => (kind.isExcalidraw ? parseSceneContent(displayedContent) : null),
@@ -114,6 +118,14 @@ export function CanvasBodyRenderer({
     }
     if (loadError) {
         return <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>;
+    }
+    if (canvas?.type === 'copilot-extension') {
+        return <CopilotExtensionCanvasView
+            workspaceId={workspaceId}
+            routingRef={routingRef}
+            canvasId={canvasId}
+            allowDesktopGuest={allowDesktopGuest}
+        />;
     }
     if (kind.isExcalidraw && excalidrawScene) {
         return (

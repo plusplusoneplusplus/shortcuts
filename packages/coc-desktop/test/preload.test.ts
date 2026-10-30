@@ -141,6 +141,27 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenLastCalledWith(BROWSER_ADDRESS_MENU_CHANNEL, true);
     });
 
+    it('exposes canvas identity-only reopening, guest adoption and state with sandbox-safe IPC', async () => {
+        const api = exposedApi().extensionCanvas;
+        const opened = { ok: true, embed: 'webview', src: 'http://127.0.0.1:8123/', partition: 'token' };
+        invoke.mockResolvedValueOnce(opened);
+        expect(await api.open('view', 'workspace', 'canvas')).toEqual(opened);
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-open', 'view', 'workspace', 'canvas');
+        await api.adopt('view', 10);
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-adopt', 'view', 10);
+        api.close('view');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-close', 'view');
+        const callback = vi.fn();
+        const unsubscribe = api.onState(callback);
+        const [channel, listener] = on.mock.calls.at(-1)!;
+        expect(channel).toBe('coc-desktop:extension-canvas-state');
+        const state = { viewId: 'view', status: 'loaded' };
+        listener({}, state);
+        expect(callback).toHaveBeenCalledWith(state);
+        unsubscribe();
+        expect(removeListener).toHaveBeenLastCalledWith(channel, listener);
+    });
+
     it('exposes structured browser-control IPC and reveal/cancellation, never a raw debugger sender', async () => {
         const { control } = exposedApi().browser;
         expect(control.framesSupported).toBe(true);
@@ -159,6 +180,8 @@ describe('preload bridge', () => {
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
         await control.releaseFrames('remote:server:w');
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-release-frames', 'remote:server:w');
+        await control.removeCursors('remote:server:w');
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-remove-cursors', 'remote:server:w');
         control.setVisible(true, 'remote:server:w');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-visible', true, 'remote:server:w');
         control.finish(undefined, 'remote:server:w');

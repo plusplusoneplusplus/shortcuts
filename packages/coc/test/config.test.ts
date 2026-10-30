@@ -71,8 +71,9 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.canvasExtensions).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
                 idleCheckIntervalMs: 300_000,
@@ -703,6 +704,11 @@ timeout: 300
             expect(result.excalidraw.enabled).toBe(true);
         });
 
+        it.each([undefined, false, true])('resolves canvasExtensions.enabled (%s)', enabled => {
+            const result = mergeConfig(DEFAULT_CONFIG, { canvasExtensions: { enabled } });
+            expect(result.canvasExtensions.enabled).toBe(enabled ?? false);
+        });
+
         it('should default canvas.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.canvas.enabled).toBe(true);
@@ -1099,6 +1105,7 @@ timeout: 300
                 '  backgroundEnabled: true',
                 '  navigationApprovalEnabled: false',
                 '  humanTakeoverEnabled: true',
+                '  cursorOverlayEnabled: false',
                 'teamsIc3OwnCommands:',
                 '  workspaceId: ws-fixture',
                 'teamsReactionDelegation:',
@@ -1129,6 +1136,8 @@ timeout: 300
                 'excalidraw:',
                 '  enabled: true',
                 'canvas:',
+                '  enabled: true',
+                'canvasExtensions:',
                 '  enabled: true',
                 'kusto:',
                 '  enabled: true',
@@ -1267,6 +1276,7 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+            expect(result.resolved.canvasExtensions.enabled).toBe(true);
             expect(result.resolved.browserControl.enabled).toBe(true);
             expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
@@ -1488,6 +1498,7 @@ timeout: 300
                   "approvePermissions": true,
                   "browserControl": {
                     "backgroundEnabled": false,
+                    "cursorOverlayEnabled": true,
                     "enabled": false,
                     "framesEnabled": false,
                     "humanTakeoverEnabled": false,
@@ -1496,6 +1507,9 @@ timeout: 300
                   },
                   "canvas": {
                     "enabled": true,
+                  },
+                  "canvasExtensions": {
+                    "enabled": false,
                   },
                   "chat": {
                     "askUser": {
@@ -1774,12 +1788,14 @@ timeout: 300
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
                   "browserControl.backgroundEnabled": "default",
+                  "browserControl.cursorOverlayEnabled": "default",
                   "browserControl.enabled": "default",
                   "browserControl.framesEnabled": "default",
                   "browserControl.humanTakeoverEnabled": "default",
                   "browserControl.navigationApprovalEnabled": "default",
                   "browserControl.richPasteEnabled": "default",
                   "canvas.enabled": "default",
+                  "canvasExtensions.enabled": "default",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",

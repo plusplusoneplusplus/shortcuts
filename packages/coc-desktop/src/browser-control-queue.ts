@@ -52,7 +52,7 @@ export class BrowserControlQueue {
     private readonly deadlines = new Set<ControlDeadline>();
     private readonly holds = new Set<Map<ControlDeadline, () => void>>();
 
-    constructor(send: BrowserCdpSender) {
+    constructor(private readonly send: BrowserCdpSender) {
         this.page = new BrowserControlPage(async (method, params, sessionId) => {
             const signal = this.active;
             if (!signal) throw new Error('Browser control requires an active command');
@@ -115,6 +115,12 @@ export class BrowserControlQueue {
             for (const release of held.values()) release();
         };
     }
+
+    /** Remove a drawn AI cursor right away; it bypasses the queue so it never waits on or delays a command. */
+    removeCursor(): void { this.page.removeCursor(this.send); }
+
+    /** The live setting turned off: remove the cursor out of queue and keep the running command from drawing it again. */
+    disableCursor(): void { this.page.setCursorOverlay(false, this.send); }
 
     /** Wait for the issued engine call and required input releases, without waiting on queued commands. */
     settled(): Promise<void> { return this.activeBarrier; }

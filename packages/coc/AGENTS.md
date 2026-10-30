@@ -202,6 +202,47 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- `canvasExtensions.enabled` is a live, default-off admin setting. Keep its
+  code-execution trust warning in the shared admin setting definition; Features
+  controls and save keys derive from that registry. Read-only discovery lives in
+  `src/server/canvas-extensions/discovery.ts` and checks the flag before I/O.
+  Resolve group membership live; preserve member ownership and repository cwd.
+  User extensions come from the real home, independent of `COPILOT_HOME`.
+  `extension-host.ts` starts flag-gated, conversation-bound stdio runtimes with
+  owning cwd and isolated `<dataDir>/canvas-ext/home`. Keep the SDK resolver in
+  the package build; it forces root/subpath imports to CoC's pinned SDK. Bound
+  startup/RPC calls, stop children on transport failure, and await disposal.
+  `host-registry.ts` serializes calls per conversation/extension, keeps open
+  instances alive, and reopens their saved inputs after crashes before dispatch.
+  It caches cloned declarations by entry path/content hash across conversations;
+  cache reads retain live flag/owner checks and start no runtime. Changed hashes
+  refresh runtimes before dispatch and reopen known instances. Disable/shutdown
+  clear the cache; idle expiry preserves it.
+  No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
+  Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
+  deletion removes only that conversation's isolated session-state directory.
+  `conversation-callbacks.ts` routes attributed `session.send` messages through
+  guarded `ProcessMessageDeliveryService.deliverOnce` admission with stable receipts.
+  Sends queue, never steer; ephemeral queries reuse canvas completion with the active
+  conversation provider/model, denied permissions and ambient MCP, and add no turn.
+  Preserve live owner/flag checks during admission and before returning model answers.
+  `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
+  their registry metadata and schema summaries use an independent default-off
+  `canvasExtensionsEnabled` gate in live GET/PUT workspace tool settings. Keep
+  this gate separate from `canvas.enabled`. The server supplies shared host, store,
+  hydration and notifier services via `getCanvasExtensionRuntime`; standard chat,
+  follow-up, Ralph and owner-script turns bind their exact owner in the common
+  tool builder. The turn context adds discovery-only catalog lines to system tool
+  guidance after preference filtering. Restricted turns omit tools and catalog.
+  Return SDK failure envelopes containing structured error JSON for provider parity.
+  `copilot-extension` records store identity/input/title and a closed marker, never
+  runtime URLs. Supply `loadCanvasExtensionInstances` to the host registry to restore
+  open records on first use; keep group conversation storage separate from member cwd.
+  `instance-service.ts` shares opening, persistence and the owner queue between tools
+  and `POST .../canvases/:canvasId/copilot-extension/open`. Tab reopening derives its
+  conversation, extension identity and input from the saved record, validates the live
+  owner/gate and returns an uncached runtime URL; request bodies cannot override them.
+
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation
   across workspaces, transports and port changes. Preserve it on restart; invalid

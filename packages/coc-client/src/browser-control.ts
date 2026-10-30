@@ -91,6 +91,7 @@ export interface BrowserCommandRequest {
     framesEnabled?: boolean;
     richPasteEnabled?: boolean;
     humanTakeoverEnabled?: boolean;
+    cursorOverlayEnabled?: boolean;
     validateAfterTakeover?: boolean;
 }
 

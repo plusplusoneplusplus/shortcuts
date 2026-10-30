@@ -80,6 +80,7 @@ export function CanvasPanelHeader({
     }, [canvasId]);
 
     const canSwitchCanvas = availableCanvases.length >= 2 && !!onSelectCanvas;
+    const isCopilotExtension = canvas?.type === 'copilot-extension';
 
     return (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] shrink-0">
@@ -141,7 +142,7 @@ export function CanvasPanelHeader({
                     {canvas?.language ?? 'code'}
                 </span>
             )}
-            {kind.isExtension && (
+            {(kind.isExtension || isCopilotExtension) && (
                 <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-300 shrink-0" data-testid="canvas-panel-extension-badge">
                     extension
                 </span>
@@ -156,7 +157,7 @@ export function CanvasPanelHeader({
                     kusto
                 </span>
             )}
-            {canvas && (
+            {canvas && !isCopilotExtension && (
                 <span className="flex items-center gap-0.5 text-[10px] text-[#848484] shrink-0">
                     <button
                         type="button"
@@ -181,7 +182,7 @@ export function CanvasPanelHeader({
                     </button>
                 </span>
             )}
-            {statusLabel && !viewingVersion && (
+            {statusLabel && !viewingVersion && !isCopilotExtension && (
                 <span
                     className={`text-[10px] shrink-0 ${saveState === 'conflict' || saveState === 'error' ? 'text-red-500' : 'text-[#848484]'}`}
                     data-testid="canvas-panel-save-state"
@@ -190,7 +191,7 @@ export function CanvasPanelHeader({
                 </span>
             )}
             {/* Excalidraw + Kusto canvases have their own view — no md Edit affordance. */}
-            {!viewingVersion && !kind.isExcalidraw && !kind.isKusto && (
+            {!viewingVersion && !kind.isExcalidraw && !kind.isKusto && !isCopilotExtension && (
                 <div className="flex rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden shrink-0">
                     <button
                         type="button"
@@ -210,7 +211,7 @@ export function CanvasPanelHeader({
                     </button>
                 </div>
             )}
-            {canvas && (
+            {canvas && !isCopilotExtension && (
                 <div className="relative shrink-0">
                     {exporter.exportStatus ? (
                         <span className="text-[10px] text-[#848484] px-1" data-testid="canvas-panel-export-status">{exporter.exportStatus}</span>
@@ -266,7 +267,7 @@ export function CanvasPanelHeader({
                     {creatingKusto ? 'Creating…' : 'New Kusto query'}
                 </button>
             )}
-            {onPopOut && !isFullscreen && (
+            {onPopOut && !isFullscreen && !isCopilotExtension && (
                 <button
                     type="button"
                     className={ICON_BTN_CLASS}

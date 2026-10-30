@@ -33,11 +33,13 @@ export interface CanvasCompletionAttribution {
     processId?: string;
 }
 
-/** Seams for tests — neither is used in production. */
+/** Invocation, logging and model-policy overrides for conversation-bound callers and tests. */
 export interface CanvasCompletionDeps {
     /** Replaces the real one-shot AI invocation. */
     invoke?: (prompt: string, model?: string) => Promise<{ success: true; response: string } | { success: false; error: string }>;
     log?: (message: string) => void;
+    /** Conversation-bound callers supply their model policy instead of the quick-ask default. */
+    defaultModel?: () => string | undefined;
 }
 
 /**
@@ -64,9 +66,8 @@ async function invokeOneShot(
 /**
  * Build the `host.complete` implementation for one capability run.
  *
- * Model resolution follows the per-repo preference (`quickAsk` mode, the same
- * "cheap side question" class of call), unless the capability names a model
- * itself.
+ * Model resolution follows the caller's policy or the per-repo `quickAsk`
+ * preference, unless the capability names a model itself.
  */
 export function createCanvasCompleteFn(
     dataDir: string,
@@ -90,7 +91,9 @@ export function createCanvasCompleteFn(
         }
 
         let model = request.model;
-        if (!model) {
+        if (!model && deps.defaultModel) {
+            model = deps.defaultModel();
+        } else if (!model) {
             try {
                 model = resolveDefaultModel(dataDir, attribution.workspaceId, 'quickAsk');
             } catch {

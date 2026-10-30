@@ -54,6 +54,8 @@ import { queueReducer, type QueueContextState } from '../../../src/server/spa/cl
 
 import { useSentinelResponseLinks } from '../../../src/server/spa/client/react/features/chat/hooks/useSentinelResponseLinks';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
+import { SentinelResultCard } from '../../../src/server/spa/client/react/features/chat/conversation/SentinelResultCard';
+import type { SentinelResult } from '../../../src/server/spa/client/react/features/chat/conversation/sentinelResult';
 import { registerCloneBaseUrls, resetCloneRegistryForTests, setActiveCloneForRouting } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'chat-s' };
@@ -658,6 +660,105 @@ describe('Sentinel assistant response links', () => {
         link.addEventListener('click', e => { expect(e.defaultPrevented).toBe(false); e.preventDefault(); });
         fireEvent.click(link, init);
         expect(fetcher).not.toHaveBeenCalled();
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+});
+
+describe('Sentinel delegated-result Open job link', () => {
+    const SERVER = '773706bb-3b2c-429c-95db-305d54607977';
+    const SENTINEL_WS = 'ws-v2-8777024115df4e9eb71f789e';
+    const SENTINEL_ID = 'queue_5d66265a-82ed-4f15-b982-91ead2cd1e06';
+    const notify = vi.fn();
+    function result(child: { workspaceId: string; processId: string; sessionId?: string }, parent = { workspaceId: 'ws-1', processId: 'chat-s' }): SentinelResult {
+        const data = {
+            parent, child, jobId: child.processId, title: 'Submit three UI improvements with auto-fix',
+            repository: { workspaceId: child.workspaceId, name: 'shortcuts' }, terminalEventId: 'terminal-1',
+            outcome: 'completed' as const, summary: 'Done.', links: [],
+        };
+        return { data, rawJson: JSON.stringify(data) };
+    }
+    function Card({ origin = ORIGIN, card = result({ workspaceId: 'ws-2', processId: 'job-1' }), chatId, sourceSelectionId, sourceBaseUrl }: {
+        origin?: SentinelTodoExcursionOrigin | null; card?: SentinelResult; chatId?: string; sourceSelectionId?: string; sourceBaseUrl?: string;
+    }) {
+        const follow = useSentinelResponseLinks(origin, notify, 'owner');
+        return <div onClickCapture={follow}>
+            <div className="chat-message user" data-chat-id={chatId ?? origin?.chatId ?? 'chat-s'} data-turn-index="3">
+                <SentinelResultCard result={card} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} />
+            </div>
+        </div>;
+    }
+    const openJob = () => screen.getByRole('link', { name: 'Open job' });
+    beforeEach(() => { notify.mockReset(); history.replaceState(null, '', ORIGIN.href); });
+
+    it('opens the job and shows the existing Back to Sentinel bar that returns to the origin', () => {
+        const fetcher = vi.fn();
+        vi.stubGlobal('fetch', fetcher);
+        const view = render(<Card />);
+        fireEvent.click(openJob());
+        expect(location.hash).toBe('#repos/ws-2/chats/job-1');
+        expect(getSentinelTodoExcursion()?.origin).toMatchObject({ owner: OWNER, chatId: 'chat-s', title: 'Release coordination',
+            href: ORIGIN.href, linkKey: 'result:3:#repos/ws-2/chats/job-1' });
+        expect(fetcher).not.toHaveBeenCalled();
+        view.rerender(<SentinelTodoOriginBar scopeWorkspaceId="ws-2" chatId="job-1" title="Submit three UI improvements with auto-fix" />);
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Sentinel: Release coordination' }));
+        expect(location.hash).toBe(ORIGIN.href);
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it('opens a remote Ralph job on its owner server and returns to the exact remote Sentinel', () => {
+        const ownerRoutingRef = buildRemoteCloneKey(SERVER, SENTINEL_WS);
+        const remoteHref = `#repos/${encodeURIComponent(ownerRoutingRef)}/chats/${SENTINEL_ID}`;
+        history.replaceState(null, '', remoteHref);
+        const origin: SentinelTodoExcursionOrigin = {
+            owner: { ownerWorkspaceId: SENTINEL_WS, ownerRoutingRef, processId: SENTINEL_ID },
+            scopeWorkspaceId: ownerRoutingRef, chatId: SENTINEL_ID, title: 'Sentinel', href: remoteHref, linkKey: '',
+        };
+        const card = result({ workspaceId: 'ws-child', processId: 'queue_ralph', sessionId: 'ralph-session' },
+            { workspaceId: SENTINEL_WS, processId: SENTINEL_ID });
+        const view = render(<Card origin={origin} card={card} sourceSelectionId={ownerRoutingRef} />);
+        fireEvent.click(openJob());
+        const childSelection = buildRemoteCloneKey(SERVER, 'ws-child');
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(childSelection)}/chats/queue_ralph`);
+        expect(getSentinelTodoExcursion()?.origin.owner).toEqual(origin.owner);
+        view.rerender(<SentinelTodoOriginBar scopeWorkspaceId={childSelection} chatId="queue_ralph" title="Ralph" />);
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        expect(location.hash).toBe(remoteHref);
+    });
+
+    it('returns to a Sentinel opened as a repo-group member', () => {
+        const groupHref = buildRepoGroupChatHash('group-services', 'ws-1', 'chat-s');
+        history.replaceState(null, '', groupHref);
+        render(<Card origin={{ ...ORIGIN, href: groupHref }} />);
+        fireEvent.click(openJob());
+        expect(location.hash).toBe('#repos/ws-2/chats/job-1');
+        expect(returnFromSentinelTodoExcursion()).toBe(groupHref);
+    });
+
+    it('keeps the original Sentinel when opened from a chat already on the path', () => {
+        startSentinelTodoExcursion(ORIGIN);
+        visitSentinelTodoExcursionChat(stop('child-sentinel'));
+        history.replaceState(null, '', '#repos/ws-1/chats/child-sentinel');
+        render(<Card origin={{ ...ORIGIN, chatId: 'child-sentinel', owner: { ...OWNER, processId: 'child-sentinel' } }} />);
+        fireEvent.click(openJob());
+        expect(location.hash).toBe('#repos/ws-2/chats/job-1');
+        expect(getSentinelTodoExcursion()?.origin).toEqual(ORIGIN);
+    });
+
+    it.each([
+        { origin: null }, { chatId: 'other-chat' }, { sourceBaseUrl: 'https://owner.example/' },
+    ])('opens normally without return state (%j)', props => {
+        render(<Card {...props} />);
+        const link = openJob();
+        link.addEventListener('click', e => { expect(e.defaultPrevented).toBe(false); e.preventDefault(); });
+        fireEvent.click(link);
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])('preserves modified-click behavior %j', init => {
+        render(<Card />);
+        const link = openJob();
+        link.addEventListener('click', e => { expect(e.defaultPrevented).toBe(false); e.preventDefault(); });
+        fireEvent.click(link, init);
         expect(getSentinelTodoExcursion()).toBeNull();
     });
 });

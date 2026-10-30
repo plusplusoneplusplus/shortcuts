@@ -28,8 +28,9 @@ Inline content remains in the transcript.
 
 ## CanvasPanel
 
-`features/canvas/CanvasPanel.tsx` is a composition root gated by `canvas.enabled`
-(`isCanvasEnabled()` in `utils/config.ts`, default on). It owns the public props, the
+`features/canvas/CanvasPanel.tsx` is a composition root for saved canvas records.
+`canvas.enabled` gates ordinary canvas creation tools and composer affordances;
+installed extensions use the independent `canvasExtensions.enabled` gate. The panel owns the public props, the
 owner-routed `useCocClient` (explicit `routingRef` when supplied), fullscreen chrome, and layout, delegating
 the rest:
 
@@ -122,6 +123,111 @@ gradients, filters, and animation. Direct `href`/`xlink:href`/`src` values are l
 base64 raster `data:` URIs; internal paint references like `fill="url(#gradient)"` stay
 valid. **Any surface mounting the sanitized result must use a shadow root** so allowed SVG
 `<style>` rules cannot reach the surrounding document.
+
+### Copilot canvas extension discovery and runtime
+
+`server/canvas-extensions/discovery.ts` reads `.github/extensions/*/extension.mjs`
+under registered repository roots and `.copilot/extensions/*/extension.mjs` under
+`os.homedir()`, independent of `COPILOT_HOME`. `canvasExtensions.enabled` gates all
+discovery I/O. Groups resolve live members on every call; keys retain member
+ownership as `<workspaceId>:<name>`, with `global:<name>` for user extensions.
+Results carry the entry path, owning repository cwd (extension folder for globals),
+optional package description and a SHA-256 hash of entry bytes and package metadata.
+Discovery never imports code; malformed optional JSON is ignored, while unexpected
+filesystem errors propagate.
+
+`extension-host.ts` provides the flag-gated stdio runtime. It starts
+`process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
+conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's
+Node-mode environment when needed. The packaged `coc-sdk-resolver.mjs` resolves SDK
+root/subpath imports from CoC, overriding extension-local installations.
+
+The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It captures
+`session.resume` declarations and dispatches canvas open/action/close requests.
+`session.send` and ephemeral queries use required conversation-bound callbacks;
+session IDs are checked before dispatch. Session logs and stderr carry the extension
+key. Unsupported methods return MethodNotFound and log once per extension/method.
+Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
+terminate the child; idempotent disposal waits for exit with forced termination
+after two seconds.
+
+`host-registry.ts` owns lazy runtimes by workspace/conversation/extension key.
+Calls serialize per runtime; crash recovery reopens all known instances with their
+saved input before dispatching the next action, without replaying failed actions.
+Open instances prevent idle expiry; otherwise `COC_CANVAS_EXT_IDLE_TTL_MS` defaults
+to 600000. The server forwards archive/removal events and reconciles filtered clears
+against surviving owners. Disabling the flag and shutdown stop runtimes and drain
+pending startup; deletion removes the conversation's isolated session-state folder.
+`conversation-callbacks.ts` binds `session.send` to owner-validated
+`ProcessMessageDeliveryService.deliverOnce`: attributed text, stable message receipt,
+enqueue-only delivery and ordinary pending-message/SSE handling. Busy conversations
+buffer until the next turn boundary. Ephemeral queries reuse `createCanvasCompleteFn`
+with the active conversation provider, recorded model and follow-up model policy.
+The one-shot invoker denies permissions and ambient MCP, adds no turn, and rechecks
+owner/flag state before returning.
+
+The registry caches cloned SDK declarations in memory by entry path/content hash
+after successful startup. Capability lists check the live flag and conversation
+owner before using a cached entry, without creating or hydrating a runtime.
+Discovery supplies the current hash on each tool call; a changed path/hash refreshes
+an existing runtime and reopens known instances before dispatch. Idle expiry preserves
+declarations; disable/shutdown clear them. Opens and actions retain separate
+conversation processes even when their declarations come from the shared cache.
+
+Server composition supplies shared runtime, CanvasStore hydration and update notifier
+services through `getCanvasExtensionRuntime`. Standard chat, follow-up, Ralph and
+owner-script turns bind their exact workspace/conversation in the common tool builder.
+The async turn context adds one short discovery-only system catalog line per extension
+when any extension tool survives preference filtering. The live flag is independent of
+`canvas.enabled`; disabled, browser-only, Coda and native PR review turns omit both
+extension tools and catalog. Tool assembly and catalog discovery never start children.
+
+`llm-tools/canvas-extension-tools.ts` provides four provider-neutral factories with a
+live gate before discovery, owner reads or runtime calls. `open_canvas` persists a
+`copilot-extension` record in the conversation workspace, with extension key, declared
+canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
+The shared notifier emits both WebSocket and process updates on open/close. A closed
+marker retains reopen input while excluding that record from runtime hydration.
+
+`instance-records.ts` reads owner-filtered records and supplies the registry's optional
+`loadInstances` callback. First use restores every saved open instance before the next
+operation. Group records belong to the group conversation; runtime descriptors retain
+member cwd. `instance-service.ts` shares opening, persistence and per-conversation
+serialization across tool factories and tab reopening, preventing duplicate records and
+close/open races. `POST /api/workspaces/:id/canvases/:canvasId/copilot-extension/open`
+derives the conversation and extension identity/input from the saved record, revalidates
+the live owner/gate, re-sends `canvas.open` and returns an uncached runtime URL plus
+extension key. Closed records reopen with their original input. Request bodies cannot
+override ownership or input. The route and tools share the server-owned host registry.
+Failures use SDK `resultType: 'failure'` envelopes whose
+`textResultForLlm` contains `{ success: false, error: { code, message } }` JSON,
+preserving CanvasError details and MCP `isError` across providers. Failed initial persistence closes the newly opened runtime instance.
+
+`coc-desktop/src/extension-canvas-host.ts` provides dedicated Electron guests through
+the shared webview guard, separate from the browser manager's history/control registry.
+It accepts credential-free HTTP IPv4 loopback sources, uses in-memory sessions keyed
+by extension identity and binds exact-origin navigation/request gates before loading.
+External HTTP(S) links use the system browser; permissions, downloads and popup windows
+are denied. Owner reload/destruction, attachment expiry and host disposal revoke guests.
+`extension-canvas-ipc.ts` owns one host for the desktop lifetime. Its preload
+`extensionCanvas` bridge accepts saved workspace/canvas IDs, not runtime URLs.
+Main reopens through the existing POST on the desktop's fixed local server and
+derives the URL/key from that response. IPC requires the registered SPA main
+frame on that server; close, reload, crash and shutdown abort pending opens.
+Late and superseded responses cannot create or retire another view's guest.
+
+`CopilotExtensionCanvasView` renders `copilot-extension` records without interpreting
+their descriptor JSON as document content. Only `UnifiedCanvasTab` opts into guests;
+clone routing and workspace-owner context restrict them to local desktop owners.
+Browser, remote, inline and pop-out surfaces show a desktop-only message without
+opening a runtime. Each mount/effect gets a unique attachment identity; record updates
+retain the guest without reopening. The header keeps title, extension badge, fullscreen
+and close, while descriptor editing, export, history and comments stay unavailable.
+
+The typed client exposes `canvases.openCopilotExtension` for saved-record reopening.
+Native Copilot loading/rendering remain opted out on create/resume/fallback; the pinned
+runtime's opt-in controls and one-process/tool-set conformance are covered by
+`copilot-native-loader.test.ts`. See [SDK ownership](../sdk-wrapper.md#canvas-extension-ownership).
 
 ### Extension canvases
 

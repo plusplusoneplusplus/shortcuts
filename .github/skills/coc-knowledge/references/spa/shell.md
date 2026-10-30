@@ -399,6 +399,33 @@ cancel, flag off, socket close and dispose reject and clear them. Other backgrou
 errors return unchanged. With the flag off, switching cancels active agent work;
 human takeover retains its private pause until explicit Return or termination.
 
+### AI cursor overlay
+
+With live `browserControl.cursorOverlayEnabled` (default on), commands carry
+`cursorOverlayEnabled: true` and the manager calls `BrowserControlPage.setCursorOverlay`
+per command, background tabs included, so both engines share one path.
+`browser-control-cursor.ts` is a self-contained script evaluated in the top-level
+document (the frames main-frame context when frame control is on). It draws in a
+`<coc-ai-cursor>` host with a closed shadow root: fixed, max z-index,
+`pointer-events: none`, `aria-hidden`, CSSOM styles, no focus or selection change.
+Click glides the cursor and ripples; type/paste_html/select_option highlight the
+field with a label; press shows a key chip; scroll shows an arrow. Frame targets
+use top-level viewport points, OOPIFs included. Effects last about 600ms and the
+cursor fades after 3s idle. `BrowserControlPage` keeps the last point, so a new document
+glides in from it on the next draw.
+
+Drawing is fire-and-forget beside dispatch: errors are logged and never fail,
+delay or retry an action. Agent screenshots hide the overlay (bounded wait) and
+show it again afterwards; DOM snapshots and reads never include it.
+`removeCursor` bypasses the queue on turn finish, Stop, tab close, a moved turn,
+Take over, `request_human` and takeover termination. Turning the setting (or
+browser control) off removes it at once: the server's `browser-cursor-policy`
+`{enabled:false}` makes each SPA relay call `control.removeCursors(ref)` for its
+own scopes, and `BrowserHostManager.removeCursors(ownerId, ref)` disables the overlay
+out of queue on that window's controlled views in the scope, so the running command
+draws nothing more; other windows and scopes keep theirs. Human-takeover mutation
+stamps ignore cursor-host-only changes. Overlay state is in memory per view.
+
 Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
 agent-driven main-frame loads while a control turn is active on the view, its
 control popout or a tab `open` is creating. Electron holds the profile session's

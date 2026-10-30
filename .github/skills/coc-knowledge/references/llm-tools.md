@@ -16,10 +16,16 @@ The folder has no barrel `index.ts`; import each tool module directly.
 
 ### Gating
 
-`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled, browserControlEnabled, toolScriptingEnabled })`
-filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_query`
-(`KUSTO_LLM_TOOL_NAMES`), `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`), and `run_tool_script`
-(`TOOL_SCRIPTING_LLM_TOOL_NAMES`) out of the settings list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
+`getEffectiveLlmToolRegistry` filters feature-owned tools from workspace settings when
+its corresponding flag is off: `cronEnabled` for `scheduleWakeup`, `canvasEnabled`
+for `CANVAS_LLM_TOOL_NAMES`, `canvasExtensionsEnabled` for
+`CANVAS_EXTENSION_LLM_TOOL_NAMES`, `kustoEnabled` for `kusto_query`,
+`llmToolSystemOneEnabled` for `system_one`, `browserControlEnabled` for `browser`,
+`toolScriptingEnabled` for `run_tool_script`, and `queryPullRequestToolEnabled` for
+`query_pull_request`. Installed-extension tools have their own default-off gate,
+independent of `canvas.enabled`. Route composition reads `canvasExtensions.enabled`
+from live runtime config (or resolved startup config); both GET and PUT tool settings
+include structural parameter summaries without discovery or process startup.
 
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`,
 `recall_memory`, and `sentinel_jobs` by default, independently of UI layout mode.
@@ -65,6 +71,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
+| `canvas-extension-tools.ts` | `list_canvas_capabilities`, `open_canvas`, `invoke_canvas_action`, `close_canvas` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
 | `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
@@ -736,6 +743,13 @@ hidden tab without focus or selection changes. Actions that need the screen
 (rich paste, Electron frame-session input) fail with `foreground-required:`; the SPA
 relay shows a Switch back notice, sends `browser-command-waiting` so the server
 pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
+
+Live `browserControl.cursorOverlayEnabled` (default on, requires browser control)
+adds `cursorOverlayEnabled: true` to each relayed command; absent means off. The
+desktop then draws a fake cursor and action effects in the controlled page, never
+in agent screenshots, snapshots or reads. When it (or browser control) turns off,
+`syncPolicies()` sends `{type:'browser-cursor-policy', enabled:false}` once to every
+desktop socket so drawn cursors go away between commands. See `spa/shell.md`.
 
 Site approval: with live `browserControl.navigationApprovalEnabled` (default on,
 requires browser control) the desktop asks before an agent-driven top-level load

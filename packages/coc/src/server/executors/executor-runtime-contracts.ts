@@ -29,6 +29,7 @@
  * contract.
  */
 
+import type { CanvasExtensionRuntime } from '../llm-tools/canvas-extension-tools';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ISDKService } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
@@ -119,6 +120,8 @@ export interface ExecutorRuntimeCapabilities {
     readonly getRegisterPrOutcome?: () => RegisterSentinelPrOutcome | undefined;
     readonly getBrowserControlRuntime?: () => BrowserControlRuntime | undefined;
     readonly getBrowserToolState?: () => BrowserToolStateStore | undefined;
+    /** Server-owned installed-extension hosts, persistence, notifier and live flag. */
+    readonly getCanvasExtensionRuntime?: () => CanvasExtensionRuntime | undefined;
     /** Host-owned Kusto clients and live enablement, shared with the canvas Run route. */
     readonly getKustoRuntime?: () => KustoToolsRuntime | undefined;
     /**
@@ -239,6 +242,7 @@ export type ChatExecutorRuntime = Pick<
     ExecutorRuntimeCapabilities,
     | 'getWsServer'
     | 'getKustoRuntime'
+    | 'getCanvasExtensionRuntime'
     | 'getOwnerScriptRunner'
     | 'getBrowserControlRuntime'
     | 'getBrowserToolState'

@@ -826,6 +826,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'canvasExtensions.enabled', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 61.5, label: 'Copilot canvas extensions', badge: 'experimental',
+            hint: 'Enabling this lets the agent run code shipped in any opened repo and in ~/.copilot/extensions. Disabled by default.',
+            testId: 'toggle-canvas-extensions-enabled',
+        },
+    }),
+    bool({
         key: 'browserControl.enabled', default: false, runtime: 'live', runtimeFlag: 'browserControlEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 10, label: 'Browser control',
@@ -871,6 +879,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'browser', group: 'browserAutomation', order: 14, label: 'Ask before new sites',
             hint: 'Ask before AI browser control loads a page from a new root domain (for example google.com). Turn off to allow every site.',
             dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-navigation-approval-enabled',
+        },
+    }),
+    bool({
+        key: 'browserControl.cursorOverlayEnabled', default: true, runtime: 'live', runtimeFlag: 'browserCursorOverlayEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 16, label: 'Show AI cursor',
+            hint: 'Draw a cursor and short click, typing, key and scroll effects inside the page while AI controls a browser tab. Hidden from AI screenshots and snapshots.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-cursor-overlay-enabled',
         },
     }),
     bool({

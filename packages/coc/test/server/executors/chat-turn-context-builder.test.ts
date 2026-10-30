@@ -97,6 +97,29 @@ describe('buildChatTurnContext', () => {
         expect(ctx.memoryV2.tools).toEqual([]);
     });
 
+    it('forwards the server canvas extension capability unchanged to the tool bundle', async () => {
+        const canvasExtensionRuntime = { config: vi.fn() } as any;
+        await buildChatTurnContext({
+            store: makeStore(), workspaceId: 'fixture-ws', includeMemoryV2: false, canvasExtensionRuntime,
+        });
+        expect(mockBuildChatToolBundle.mock.calls[0][0].canvasExtensionRuntime).toBe(canvasExtensionRuntime);
+    });
+
+    it('releases turn resources if catalog discovery fails', async () => {
+        const failure = new Error('Discovery unavailable');
+        const close = vi.fn();
+        mockBuildMemoryV2Addon.mockResolvedValue(mockActiveMemoryAddon);
+        mockBuildChatToolBundle.mockReturnValue(makeBundleResult({
+            tools: [{ name: 'open_canvas' }], mcpScope: { close },
+        }));
+        await expect(buildChatTurnContext({
+            store: makeStore(), dataDir: '/mock/data', workspaceId: 'fixture-ws',
+            canvasExtensionRuntime: { config: () => { throw failure; } } as any,
+        })).rejects.toBe(failure);
+        expect(mockDispose).toHaveBeenCalledOnce();
+        expect(close).toHaveBeenCalledOnce();
+    });
+
     it('forwards the host Kusto runtime unchanged to the tool bundle', async () => {
         const kustoRuntime = {
             getEnabled: () => true,

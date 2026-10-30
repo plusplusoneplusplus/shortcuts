@@ -1,0 +1,22 @@
+{
+  "sdkVersion": "1.0.9",
+  "cliVersion": "1.0.78",
+  "capture": "session.tools.initializeAndValidate followed by getCurrentMetadata; isolated repo, loopback completions provider, no ambient MCP",
+  "nativeWithoutRenderer": [
+    "bash", "read_bash", "stop_bash", "list_bash", "view", "create", "edit",
+    "web_fetch", "skill", "sql", "read_agent", "list_agents", "write_agent",
+    "grep", "glob", "task", "extensions_reload", "extensions_manage"
+  ],
+  "nativeWithRenderer": [
+    "bash", "read_bash", "stop_bash", "list_bash", "view", "create", "edit",
+    "web_fetch", "skill", "list_canvas_capabilities", "open_canvas",
+    "invoke_canvas_action", "sql", "read_agent", "list_agents", "write_agent",
+    "grep", "glob", "task", "extensions_reload", "extensions_manage"
+  ],
+  "cocOwned": [
+    "bash", "read_bash", "stop_bash", "list_bash", "view", "create", "edit",
+    "web_fetch", "skill", "sql", "read_agent", "list_agents", "write_agent",
+    "grep", "glob", "task", "list_canvas_capabilities", "open_canvas",
+    "invoke_canvas_action", "close_canvas"
+  ]
+}

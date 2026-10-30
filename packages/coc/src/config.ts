@@ -248,8 +248,12 @@ export interface CLIConfig {
     canvas?: {
         enabled?: boolean;
     };
+    /** Run discovered Copilot canvas extensions. Disabled by default. */
+    canvasExtensions?: {
+        enabled?: boolean;
+    };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean; cursorOverlayEnabled?: boolean };
     /** Target for native Azure CLI IC3 own-user Ask commands. */
     teamsIc3OwnCommands?: {
         workspaceId?: string;
@@ -693,8 +697,12 @@ export interface ResolvedCLIConfig {
     canvas: {
         enabled: boolean;
     };
+    /** Run discovered Copilot canvas extensions. */
+    canvasExtensions: {
+        enabled: boolean;
+    };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean; cursorOverlayEnabled: boolean };
     teamsIc3OwnCommands: {
         workspaceId: string;
     };
@@ -1067,11 +1075,14 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     canvas: {
         enabled: true,
     },
+    canvasExtensions: {
+        enabled: false,
+    },
     kusto: {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false },
+    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true },
     teamsIc3OwnCommands: { workspaceId: '' },
     teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
     teamsOutboundCompliance: { prompt: '' },

@@ -191,6 +191,8 @@ function CanvasEmbedContent({ workspaceId, canvasId, disclosureState }: CanvasEm
                     <div className="p-3 text-xs text-red-500" data-testid="canvas-embed-error">Failed to load canvas: {error}</div>
                 ) : !canvas ? (
                     <div className="p-3 text-xs text-[#848484]" data-testid="canvas-embed-loading">Loading canvas…</div>
+                ) : canvas.type === 'copilot-extension' ? (
+                    <div className="p-3 text-xs text-[#848484]">Open in the CoC desktop app</div>
                 ) : canvas.type === 'excalidraw' ? (
                     <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />
                 ) : canvas.type === 'kusto' ? (

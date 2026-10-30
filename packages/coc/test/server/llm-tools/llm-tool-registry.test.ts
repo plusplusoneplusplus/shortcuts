@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import {
     LLM_TOOL_REGISTRY,
+    CANVAS_EXTENSION_LLM_TOOL_NAMES,
+    CANVAS_LLM_TOOL_NAMES,
     DEFAULT_DISABLED_LLM_TOOLS,
     getEffectiveDefaultDisabledTools,
     filterDisabledLlmTools,
@@ -230,10 +232,10 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when cronEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, canvasExtensionsEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true, toolScriptingEnabled: true, queryPullRequestToolEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, canvasExtensionsEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true, toolScriptingEnabled: true, queryPullRequestToolEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -245,8 +247,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 9);
+        // Wakeup, three canvas tools, four installed-extension tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 13);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {
@@ -301,5 +303,31 @@ describe('getEffectiveLlmToolRegistry', () => {
         const { DEFAULT_DISABLED_LLM_TOOLS } = await import('../../../src/server/llm-tools/llm-tool-registry');
         expect(LLM_TOOL_REGISTRY.find(t => t.name === 'system_one')?.enabledByDefault).toBe(true);
         expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain('system_one');
+    });
+});
+
+
+describe('installed canvas extension registry gating', () => {
+    it.each([undefined, false, true])('uses its own flag when canvasEnabled is %s', canvasEnabled => {
+        for (const canvasExtensionsEnabled of [undefined, false, true]) {
+            const names = getEffectiveLlmToolRegistry({ canvasEnabled, canvasExtensionsEnabled }).map(t => t.name);
+            for (const name of CANVAS_EXTENSION_LLM_TOOL_NAMES) {
+                expect(names.includes(name)).toBe(canvasExtensionsEnabled === true);
+            }
+            for (const name of CANVAS_LLM_TOOL_NAMES) {
+                expect(names.includes(name)).toBe(canvasEnabled === true);
+            }
+        }
+    });
+
+    it('honors explicit workspace overrides after feature filtering', () => {
+        const tools = [...getEffectiveLlmToolRegistry({ canvasExtensionsEnabled: true })];
+        const filtered = filterDisabledLlmTools(tools, ['open_canvas']);
+        expect(filtered.map(t => t.name)).not.toContain('open_canvas');
+        for (const name of CANVAS_EXTENSION_LLM_TOOL_NAMES.filter(name => name !== 'open_canvas')) {
+            expect(filtered.map(t => t.name)).toContain(name);
+        }
+        const disabledFeature = [...getEffectiveLlmToolRegistry()];
+        expect(filterDisabledLlmTools(disabledFeature, []).some(t => CANVAS_EXTENSION_LLM_TOOL_NAMES.includes(t.name as any))).toBe(false);
     });
 });

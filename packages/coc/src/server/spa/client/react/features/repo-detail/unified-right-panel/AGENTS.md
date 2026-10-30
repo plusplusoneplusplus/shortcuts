@@ -1198,7 +1198,8 @@ browser on plain clicks and follow `#…` links through the excursion. Under a r
 ledger owner, bare `#repos/<ws>` links gain that server's clone key; already-qualified
 and `#chat-references/…` links are unchanged. `notes-links-panel.test.tsx` covers it.
 
-A plain primary click on an in-app (`#…`) Job or verified Ref link starts one in-memory
+A plain primary click on an in-app (`#…`) Job or verified Ref link, a verified Sentinel
+response link, or a delegated-result card's Open job link starts one in-memory
 excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
 ledger owner, published title and owner-qualified chat route, the followed link,
 and up to five hosted chats visited since. The owner workspace/process defines
@@ -1243,7 +1244,11 @@ so a mounted view reconciles, but nothing is opened or activated.
 
 `UnifiedCanvasTab` resolves three things `CanvasPanel` cannot get from a tab
 descriptor: the live event, the owning chat's composer actions, and pop-out /
-Kusto-creation chrome.
+Kusto-creation chrome. It also opts into `allowDesktopGuest` for saved
+`copilot-extension` canvases. `CopilotExtensionCanvasView` owns that dedicated
+guest lifecycle through `cocDesktop.extensionCanvas`; only local-owned desktop
+tabs attach guests. Other surfaces show the desktop-only message. Extension
+headers retain tab chrome but omit document editing, history and export actions.
 
 - **Ask AI / Send comments** go to the chat named by `tab.chatId` — the
   *originating* conversation, so a pending send never follows a chat switch. A
