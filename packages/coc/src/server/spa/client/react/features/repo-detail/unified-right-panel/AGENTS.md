@@ -627,6 +627,13 @@ The tab context menu opens from right-click, the Context Menu key, or Shift+F10,
 keeps keyboard focus inside enabled actions, clamps to the viewport, and restores
 focus to its originating tab on dismissal. Every kind exposes the close group;
 preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
+Web (`browser`) tabs add Duplicate; HTML previews and other kinds never offer it.
+`duplicateBrowserTabInput` copies owner, route, repo label, title, engine pin and
+the committed URL into a fresh `browserOpenInput` (new view id, so no guest,
+control session or page history carries over) for the viewing chat; it is
+disabled when the URL no longer normalizes as http(s). `openBeside` places the
+copy directly after the source in the strip's order (`openTabBeside`), selects it
+and focuses its strip tab.
 Reveal retargets the dock to the file owner, selects Explorer mode, opens the tree,
 and relies on `activeFilePath` tracking to expand and highlight the row without
 changing the active tab.

@@ -868,7 +868,10 @@ The tab context menu resolves commands against the clicked descriptor. File and
 Markdown note tabs copy full paths from their saved file/task identity or an exact
 workspace-and-clone owner root. Path construction uses the owning filesystem
 spelling without local I/O; unknown paths and non-file resources omit the action.
-Clipboard completion and failure use the shared toast feedback. The docked
+Clipboard completion and failure use the shared toast feedback. Web tabs add
+Duplicate: a fresh-view-id copy (same owner, route, engine pin and committed
+http(s) URL; no live guest or control session) opens selected directly after the
+source in strip order. The docked
 Explorer omits its internal Files/Search switch; the standalone Explorer page
 retains it. Tab descriptors (never document bodies, terminal output, or credentials)
 persist per panel scope in localStorage. Chat-owned `paste`

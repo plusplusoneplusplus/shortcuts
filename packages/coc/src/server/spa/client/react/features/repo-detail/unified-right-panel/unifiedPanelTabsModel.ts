@@ -651,6 +651,36 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
 }
 
 /**
+ * Open a new tab and place it directly after `besideId` in the order the strip
+ * shows: the per-view order when `mixedOrder` is on, otherwise the tab's own
+ * section. A missing `besideId` leaves the ordinary `openTab` placement.
+ */
+export function openTabBeside(
+    state: UnifiedPanelState,
+    chatId: string | null,
+    input: OpenUnifiedTabInput,
+    besideId: string,
+    mixedOrder: boolean,
+): UnifiedPanelState {
+    const opened = openTab(state, input);
+    const id = unifiedTabId(input);
+    if (mixedOrder) {
+        const order = visibleTabs(opened, chatId).filter(tab => tab.id !== id);
+        const index = order.findIndex(tab => tab.id === besideId);
+        return index < 0 ? opened : moveVisibleTab(opened, chatId, id, order[index + 1]?.id ?? null);
+    }
+    const tab = findTab(opened, id);
+    if (tab === null) return opened;
+    const list = (scopeForKind(tab.kind) === 'workspace'
+        ? opened.workspaceTabs
+        : opened.chatTabs[scopeKeyFor(tab.kind, tab.chatId)] ?? []).filter(entry => entry.id !== id);
+    const index = list.findIndex(entry => entry.id === besideId);
+    if (index < 0) return opened;
+    const next = list[index + 1];
+    return moveTab(opened, id, next && displayGroupForKind(next.kind) === displayGroupForKind(tab.kind) ? next.id : null);
+}
+
+/**
  * Persist a panel-local Notes selection without activating or otherwise
  * changing the tab. A null path clears a stale/deleted selection.
  */

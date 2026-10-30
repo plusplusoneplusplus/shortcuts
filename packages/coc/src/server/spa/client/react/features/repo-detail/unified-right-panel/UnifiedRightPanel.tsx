@@ -121,7 +121,9 @@ import { panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
-import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import {
+    browserLabelForUrl, browserOpenInput, browserSessionKey, duplicateBrowserTabInput, normalizeBrowserUrl,
+} from './unifiedBrowserTabs';
 import {
     closedBrowserTabScopeKey,
     popClosedBrowserTab,
@@ -277,7 +279,7 @@ export function UnifiedRightPanel({
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
     const {
-        state, tabs, activeId, active, pinnedId, open, openPreview, previewToReplace, promote, activate, close, move,
+        state, tabs, activeId, active, pinnedId, open, openBeside, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
@@ -1107,6 +1109,16 @@ export function UnifiedRightPanel({
         return () => window.removeEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
     }, [workspaceId, chatId, routingRef, dock, showExplorer, target, targetOptions]);
 
+    // A tab opened from a keyboard or menu gesture (a reopened or duplicated web
+    // tab) takes focus in the strip once it renders.
+    const [focusTabId, setFocusTabId] = useState<string | null>(null);
+    useEffect(() => {
+        if (focusTabId === null) return;
+        setFocusTabId(null);
+        Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
+            .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${focusTabId}`)?.focus();
+    }, [focusTabId, tabs]);
+
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
         if (!tab) return;
@@ -1127,6 +1139,16 @@ export function UnifiedRightPanel({
             || action === 'close-others-in-group'
         ) {
             requestBulkClose(unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds));
+            return;
+        }
+        if (action === 'duplicate') {
+            const input = duplicateBrowserTabInput(tab, chatId);
+            if (!input) {
+                addToast('This tab cannot be duplicated.', 'error');
+                return;
+            }
+            openBeside(input, tabId);
+            setFocusTabId(unifiedTabId(input));
             return;
         }
         if (action === 'copy-path') {
@@ -1162,7 +1184,7 @@ export function UnifiedRightPanel({
                 nonce: (prev?.nonce ?? 0) + 1,
             }));
         }
-    }, [addToast, dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
+    }, [addToast, chatId, dirtyIds, dock, mode, openBeside, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // Reusing the preview slot destroys the outgoing buffer, so it goes through
     // the same unsaved-edits guard a close does. Cancel or a failed save leaves
@@ -1983,7 +2005,6 @@ export function UnifiedRightPanel({
     // Ctrl/Cmd+Shift+T restores this exact panel scope's newest closed web tab
     // through the ordinary open path (fresh view id), then focuses its strip tab.
     // An entry whose owner is no longer a target here is dropped, never retargeted.
-    const [reopenFocusId, setReopenFocusId] = useState<string | null>(null);
     const reopenClosedBrowserTab = useCallback((): boolean => {
         const entry = popClosedBrowserTab(closedTabScopeKey);
         if (entry === null) return false;
@@ -1994,15 +2015,9 @@ export function UnifiedRightPanel({
         setMenuOpen(false);
         const input = reopenBrowserTabInput(entry);
         open(input);
-        setReopenFocusId(unifiedTabId(input));
+        setFocusTabId(unifiedTabId(input));
         return true;
     }, [closedTabScopeKey, workspaceId, targetOptions, routingRef, open]);
-    useEffect(() => {
-        if (reopenFocusId === null) return;
-        setReopenFocusId(null);
-        Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
-            .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${reopenFocusId}`)?.focus();
-    }, [reopenFocusId, tabs]);
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.defaultPrevented || event.isComposing || reopenClosedTabShortcut(event) === null) return;

@@ -12,7 +12,7 @@
  * rather than turned into a search query.
  */
 
-import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -156,4 +156,31 @@ export function browserOpenInput(context: BrowserOpenContext, url?: string): Ope
  */
 export function browserSessionKey(tab: { ownerWorkspaceId: string; ownerRoutingRef?: string | null }): string {
     return tab.ownerRoutingRef || tab.ownerWorkspaceId;
+}
+
+/** Whether a tab is a web tab whose current page (or blank page) can open again. */
+export function canDuplicateBrowserTab(tab: UnifiedPanelTab): boolean {
+    return tab.kind === 'browser' && (!tab.browserUrl || normalizeBrowserUrl(tab.browserUrl).ok);
+}
+
+/**
+ * A fresh, independent copy of a browser tab: same owner scope, engine pin and
+ * committed http(s) URL, with a new view id so no live guest, control session
+ * or page history carries over. `chatId` is the viewing chat, which selects the
+ * copy there, as a page-requested tab does. Null when `canDuplicateBrowserTab` is false.
+ */
+export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | null): OpenUnifiedTabInput | null {
+    const normalized = tab.browserUrl ? normalizeBrowserUrl(tab.browserUrl) : null;
+    if (tab.kind !== 'browser' || normalized?.ok === false) return null;
+    const url = normalized?.ok ? normalized.url : undefined;
+    return {
+        ...browserOpenInput({
+            ownerWorkspaceId: tab.ownerWorkspaceId,
+            ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
+            chatId,
+            ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
+        }, url),
+        label: tab.label,
+        ...(tab.browserEngine ? { browserEngine: tab.browserEngine } : {}),
+    };
 }
