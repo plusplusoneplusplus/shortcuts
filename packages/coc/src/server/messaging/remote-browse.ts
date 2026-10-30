@@ -191,7 +191,7 @@ export async function listRemoteTopicsReply(
     slot: RemoteRefSlot | undefined,
     arg: string,
     { strong, code, escape }: RemoteBrowseFormat,
-    { verbose, now = Date.now() }: { verbose?: boolean; now?: number } = {},
+    { verbose, now = Date.now(), supplement }: { verbose?: boolean; now?: number; supplement?: () => Promise<string> } = {},
 ): Promise<string> {
     if (!directory) return REMOTES_UNAVAILABLE_REPLY;
     let target: RemoteRepoRef | string | undefined;
@@ -200,10 +200,10 @@ export async function listRemoteTopicsReply(
         if (typeof target === 'string') return target;
         const topics = await directory.listRemoteChats(target.serverId, target.workspaceId, TOPIC_LIST_LIMIT);
         const header = `${strong('Topics')} · ${escape(target.name)} @ ${escape(target.server)}`;
-        if (!topics.length) return `${header}\nNo chat topics found.`;
         const footer = verbose ? 'Read-only' : `Read-only · ${code(`list topics ${arg} -v`)} for ids`;
-        return formatTopicList(sortTopicsByActivity(topics.slice(0, TOPIC_LIST_LIMIT)),
-            { header, footer, verbose, now, strong, code, escape });
+        const text = topics.length ? formatTopicList(sortTopicsByActivity(topics.slice(0, TOPIC_LIST_LIMIT)),
+            { header, footer, verbose, now, strong, code, escape }) : `${header}\nNo chat topics found.`;
+        return supplement ? `${text}\n\n${await supplement()}` : text;
     } catch (error) {
         console.error('[messaging] Listing remote topics failed:', error);
         const server = typeof target === 'object' ? target.server : undefined;

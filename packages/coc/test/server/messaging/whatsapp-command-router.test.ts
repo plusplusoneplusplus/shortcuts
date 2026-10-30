@@ -131,7 +131,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('list topics 1.1', 'topics'));
         expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
         expect(send).toHaveBeenLastCalledWith(
-            'Topics · shortcuts @ devbox\n\u2002\u20021. ✅ Remote chat\nRead-only · list topics 1.1 -v for ids', 'topics');
+            'Topics · shortcuts @ devbox\n\u2002\u20021. ✅ Remote chat\nRead-only · list topics 1.1 -v for ids\n\n*Overtures*\nUnavailable from this remote server.', 'topics');
         expect(bindings.isKnownMessage('out-remotes')).toBe(true);
         expect(bindings.isKnownMessage('out-topics')).toBe(true);
         expect(bindings.selectedRepo).toBeFalsy();
@@ -195,7 +195,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
         expect(send).toHaveBeenCalledWith(
-            'Topics · all repos · last24hours · top5\n\u2002\u20021. ❔ Topic G · Global · now\n\u2002\u20022. ❔ Topic A · Alpha · now\n\u2002\u20023. ❔ Topic B · Beta · now\nReply select topic <n> · list topics -v for ids', 'list');
+            'Topics · all repos · last24hours · top5\n\u2002\u20021. ❔ Topic G · Global · now\n\u2002\u20022. ❔ Topic A · Alpha · now\n\u2002\u20023. ❔ Topic B · Beta · now\nReply select topic <n> · list topics -v for ids\n\n*Overtures · all local repos*\nData unavailable.', 'list');
         await router.handle(inbound('list topics -v', 'list-v'));
         expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · Alpha · now · ws-a/topic-a'), 'list-v');
         expect(send).toHaveBeenCalledWith(expect.stringContaining('ws-b/topic-b'), 'list-v');

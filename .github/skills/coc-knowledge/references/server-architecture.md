@@ -674,7 +674,13 @@ Numeric selection retains the displayed refs and revalidates the owner and live
 queue/process transition. Both connectors admit subsequent turns through existing
 durable receipts and queue dependencies; Teams thread selections retain task IDs
 until the process exists. Cancelled or missing queue targets reject selection and
-delivery. Remote directory lists expose saved processes only.
+delivery. Remote directory lists expose saved processes only. WhatsApp's optional
+topic-list supplement (`whatsapp-overtures.ts`) lists up to five saved triggers across
+registered local workspaces, independently of recent topic age/numbering. Owner names
+require exact workspace/process matches; bound item names use the persisted ledger
+store, avoiding the service's dependency refresh. Removed, delivered and delegated
+bound rules are omitted. Read failures and unsupported remote overture reads display
+unavailable states; the supplement never mutates triggers or topic selection.
 
 ### Messaging Git status
 
