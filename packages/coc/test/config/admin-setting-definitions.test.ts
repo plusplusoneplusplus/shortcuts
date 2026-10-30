@@ -344,6 +344,22 @@ describe('runtime feature flags', () => {
         expect(buildRuntimeFeatureFlags({}).browserCursorOverlayEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ browserControl: { cursorOverlayEnabled: false } }).browserCursorOverlayEnabled).toBe(false);
         expect(DEFAULT_CONFIG.browserControl.enabled).toBe(false);
+    });
+
+    it.each([
+        ['framesEnabled', 'browserFrameControlEnabled'],
+        ['richPasteEnabled', 'browserRichPasteEnabled'],
+        ['backgroundEnabled', 'browserBackgroundControlEnabled'],
+    ] as const)('defaults browserControl.%s on while keeping saved false', (field, flag) => {
+        const def = getAdminSettingDefinition(`browserControl.${field}`)!;
+        expect(def.default).toBe(true);
+        expect(DEFAULT_CONFIG.browserControl[field]).toBe(true);
+        expect(buildRuntimeFeatureFlags({})[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ browserControl: { enabled: true } })[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ browserControl: { [field]: false } })[flag]).toBe(false);
+        expect(readAdminSettingValue(def, { browserControl: { [field]: false } })).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {}).browserControl[field]).toBe(true);
+        expect(mergeConfig(DEFAULT_CONFIG, { browserControl: { [field]: false } }).browserControl[field]).toBe(false);
         expect(buildRuntimeFeatureFlags({}).browserControlEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({ browserControl: { enabled: true } }).browserControlEnabled).toBe(true);
     });
@@ -917,22 +933,23 @@ describe('Features card UI metadata', () => {
         })).sentinelTodoInlineNotesEnabled).toBe(true);
     });
 
-    it('exposes browser tab shortcuts as a live, experimental default-off Browser page toggle', () => {
+    it('exposes browser tab shortcuts as a live, experimental default-on Browser page toggle', () => {
         const def = getAdminSettingDefinition('features.browserTabShortcuts')!;
         expect(def.value).toEqual({ kind: 'boolean' });
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('browserTabShortcutsEnabled');
         expect(def.ui).toMatchObject({
             tab: 'browser', group: 'browserPages', badge: 'experimental',
             testId: 'toggle-browser-tab-shortcuts-enabled',
         });
-        expect(DEFAULT_CONFIG.features.browserTabShortcuts).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).browserTabShortcutsEnabled).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).browserTabShortcutsEnabled).toBe(false);
+        expect(def.ui?.hint).not.toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features.browserTabShortcuts).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).browserTabShortcutsEnabled).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).browserTabShortcutsEnabled).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { browserTabShortcuts: true },
-        })).browserTabShortcutsEnabled).toBe(true);
+            features: { browserTabShortcuts: false },
+        })).browserTabShortcutsEnabled).toBe(false);
     });
 
     // Repo-group aggregated chats: a default-off live toggle that gates the
@@ -1181,14 +1198,14 @@ describe('feature toggle settings-tab placement', () => {
         const browserDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'browser');
         expect(browserDefs.map(d => [d.key, d.ui!.group, d.default, d.absentFallback, d.runtime, d.runtimeFlag, d.ui!.badge, d.ui!.testId])).toEqual([
             ['browserControl.enabled', 'browserAutomation', false, undefined, 'live', 'browserControlEnabled', 'experimental', 'toggle-browser-control-enabled'],
-            ['browserControl.framesEnabled', 'browserAutomation', false, undefined, 'live', 'browserFrameControlEnabled', 'experimental', 'toggle-browser-frame-control-enabled'],
-            ['browserControl.richPasteEnabled', 'browserAutomation', false, undefined, 'live', 'browserRichPasteEnabled', 'experimental', 'toggle-browser-rich-paste-enabled'],
-            ['browserControl.backgroundEnabled', 'browserAutomation', false, undefined, 'live', 'browserBackgroundControlEnabled', 'experimental', 'toggle-browser-background-control-enabled'],
+            ['browserControl.framesEnabled', 'browserAutomation', true, undefined, 'live', 'browserFrameControlEnabled', 'experimental', 'toggle-browser-frame-control-enabled'],
+            ['browserControl.richPasteEnabled', 'browserAutomation', true, undefined, 'live', 'browserRichPasteEnabled', 'experimental', 'toggle-browser-rich-paste-enabled'],
+            ['browserControl.backgroundEnabled', 'browserAutomation', true, undefined, 'live', 'browserBackgroundControlEnabled', 'experimental', 'toggle-browser-background-control-enabled'],
             ['browserControl.humanTakeoverEnabled', 'browserAutomation', false, undefined, 'live', 'browserHumanTakeoverEnabled', 'experimental', 'toggle-browser-human-takeover-enabled'],
             ['browserControl.navigationApprovalEnabled', 'browserAutomation', true, undefined, 'live', 'browserNavigationApprovalEnabled', 'experimental', 'toggle-browser-navigation-approval-enabled'],
             ['browserControl.cursorOverlayEnabled', 'browserAutomation', true, undefined, 'live', 'browserCursorOverlayEnabled', 'experimental', 'toggle-browser-cursor-overlay-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
-            ['features.browserTabShortcuts', 'browserPages', false, undefined, 'live', 'browserTabShortcutsEnabled', 'experimental', 'toggle-browser-tab-shortcuts-enabled'],
+            ['features.browserTabShortcuts', 'browserPages', true, undefined, 'live', 'browserTabShortcutsEnabled', 'experimental', 'toggle-browser-tab-shortcuts-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
         expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'browserControl.cursorOverlayEnabled', 'features.sensitiveInput']);

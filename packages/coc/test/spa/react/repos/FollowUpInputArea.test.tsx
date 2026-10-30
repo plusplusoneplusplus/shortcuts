@@ -95,6 +95,7 @@ import {
     type RalphSessionContextDragPayload,
     type SessionContextDragPayload,
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { createWorkingTreeFileContextPayload } from '../../../../src/server/spa/client/react/features/chat/gitFileContext';
 import { createSentinelTodoContextPayload } from '../../../../src/server/spa/client/react/features/chat/sentinelTodoContext';
 import { useAttachedContext } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
@@ -926,6 +927,75 @@ describe('FollowUpInputArea — Explorer file-path drops (AC-02/AC-03)', () => {
     });
 });
 
+
+describe('FollowUpInputArea — source tab file drops', () => {
+    const skillPath = 'packages/forge/resources/bundled-skills/delegate/SKILL.md';
+    function FileComposer(overrides: Partial<FollowUpInputAreaProps>) {
+        const context = useAttachedContext();
+        return <FollowUpInputArea {...makeProps({
+            canRetrieveConversations: false, getAttachedContext: context.getItems,
+            attachedContext: context.items, onAttachSessionContext: context.addSessionContext,
+            onRemoveAttachedContext: context.remove, ...overrides,
+        })} />;
+    }
+    const tabTransfer = (tab: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; resourceId: string }) =>
+        makeSessionDataTransfer(createWorkingTreeFileContextPayload(tab), POINTER_CONTEXT_DRAG_MIME);
+
+    it('attaches a dropped file tab as a removable File chip without sending or touching the draft', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onSend = vi.fn();
+        const setFollowUpInput = vi.fn();
+        render(<FileComposer onSend={onSend} followUpInput="Keep my draft" setFollowUpInput={setFollowUpInput} />);
+        await act(async () => { await Promise.resolve(); });
+        tracker.calls = [];
+        const transfer = tabTransfer({ ownerWorkspaceId: 'ws-1', resourceId: skillPath });
+        fireEvent.dragEnter(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(transfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(screen.getByTestId('attached-git-file-context-chip').textContent).toContain(skillPath);
+        expect(onSend).not.toHaveBeenCalled();
+        expect(setFollowUpInput).not.toHaveBeenCalled();
+        expect(tracker.calls).toEqual([]);
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toContain('This file is already attached');
+        expect(screen.getAllByTestId('attached-git-file-context-chip')).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Remove context' }));
+        expect(screen.queryByTestId('attached-git-file-context-chip')).toBeNull();
+    });
+
+    it('keeps same-path tabs from two group members as separate chips', () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        render(<FileComposer workspaceId="group-team" />);
+        for (const ownerWorkspaceId of ['member-a', 'member-b']) {
+            fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: tabTransfer({ ownerWorkspaceId, resourceId: 'README.md' }) });
+        }
+        expect(screen.getAllByTestId('attached-git-file-context-chip')).toHaveLength(2);
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
+    it('rejects a tab from another server with the shared drop error', () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-b', baseUrl: 'https://b.example' }]);
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext, attachmentDestinationId: 'ws-1' })} />);
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: tabTransfer({ ownerWorkspaceId: 'ws-1', ownerRoutingRef: 'remote:server-b:ws-1', resourceId: skillPath }),
+        });
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toContain('only to a chat on its owning server');
+    });
+
+    it('leaves a file tab drop alone while session-context attachments are off', () => {
+        mockSessionContextAttachmentsEnabled.value = false;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: tabTransfer({ ownerWorkspaceId: 'ws-1', resourceId: skillPath }) });
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+});
 
 describe('FollowUpInputArea paste panel snapshots', () => {
     const fullContent = '# Pasted heading\n' + 'Full raw content with trailing spaces  \n'.repeat(600);

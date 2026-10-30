@@ -29,6 +29,21 @@ describe('browser control relay', () => {
         on = false;
         expect(relay.getNavigationApprovalEnabled()).toBe(false);
     });
+    it('keeps default-on frame, rich paste and background policies behind their prerequisites', () => {
+        const relay = new BrowserControlRelay();
+        let browser = false;
+        let frames = true;
+        relay.setEnabledGetter(() => browser);
+        relay.setFramesEnabledGetter(() => frames);
+        relay.setRichPasteEnabledGetter(() => true);
+        relay.setBackgroundEnabledGetter(() => true);
+        expect([relay.getFramesEnabled(), relay.getRichPasteEnabled(), relay.getBackgroundEnabled()]).toEqual([false, false, false]);
+        browser = true;
+        expect([relay.getFramesEnabled(), relay.getRichPasteEnabled(), relay.getBackgroundEnabled()]).toEqual([true, true, true]);
+        frames = false;
+        expect([relay.getFramesEnabled(), relay.getRichPasteEnabled(), relay.getBackgroundEnabled()]).toEqual([false, false, true]);
+    });
+
     it('sends the default-on cursor overlay policy with each command and follows the live getter', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);

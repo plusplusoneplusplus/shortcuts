@@ -906,16 +906,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     opts.setBrowserControl?.(() => {
         const browserControl = getWsServer()?.browserControl;
         browserControl?.setEnabledGetter(isBrowserControlEnabled);
-        browserControl?.setFramesEnabledGetter(() => (
+        browserControl?.setFramesEnabledGetter(() => ((
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
-        )?.browserControl?.framesEnabled === true);
+        )?.browserControl?.framesEnabled ?? DEFAULT_CONFIG.browserControl.framesEnabled) === true);
         browserControl?.setHumanTakeoverEnabledGetter(() => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.browserControl?.humanTakeoverEnabled === true);
-        browserControl?.setRichPasteEnabledGetter(() => (
+        browserControl?.setRichPasteEnabledGetter(() => ((
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
-        )?.browserControl?.richPasteEnabled === true);
-        browserControl?.setBackgroundEnabledGetter(() => (
+        )?.browserControl?.richPasteEnabled ?? DEFAULT_CONFIG.browserControl.richPasteEnabled) === true);
+        browserControl?.setBackgroundEnabledGetter(() => ((
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
-        )?.browserControl?.backgroundEnabled === true);
+        )?.browserControl?.backgroundEnabled ?? DEFAULT_CONFIG.browserControl.backgroundEnabled) === true);
         browserControl?.setCursorOverlayEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.cursorOverlayEnabled !== false);

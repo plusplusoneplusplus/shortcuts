@@ -8,6 +8,8 @@ import {
 import {
     registerCloneBaseUrls, resetCloneRegistryForTests,
 } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { subscribeActiveChatAttach } from '../../../../../src/server/spa/client/react/features/chat/activeChatAttach';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -257,6 +259,35 @@ describe('PreviewPane', () => {
         expect(editor).toHaveAttribute('data-reveal-line', '2');
         expect(editor).toHaveAttribute('data-reveal-column', '4');
         expect(screen.queryByTestId('preview-markdown')).not.toBeInTheDocument();
+    });
+
+    it('offers Attach as context for a rendered Markdown selection, routed to the clone owner', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-b', baseUrl: 'https://beta.example' }]);
+        const remote = vi.fn(() => true);
+        const sub = subscribeActiveChatAttach('remote:server-b:ws-1', remote);
+        mockExplorerApi.readBlob.mockResolvedValue({ content: '---\nname: x\n---\n# Title\nBody text', encoding: 'utf-8', mimeType: 'text/plain' });
+        try {
+            render(<PreviewPane repoId="ws-1" routingRef="remote:server-b:ws-1" filePath="docs/SKILL.md" fileName="SKILL.md" markdownPreview />);
+            const rendered = await screen.findByTestId('preview-markdown');
+            const body = rendered.querySelector('.md-line[data-line="2"]')!.firstChild!;
+            const range = document.createRange();
+            range.setStart(body, 0);
+            range.setEnd(body, 4);
+            document.getSelection()!.removeAllRanges();
+            document.getSelection()!.addRange(range);
+            act(() => { document.dispatchEvent(new Event('selectionchange')); });
+            fireEvent.click(screen.getByRole('button', { name: 'Attach as context' }));
+            expect(remote).toHaveBeenCalledWith(expect.objectContaining({
+                kind: 'coc.file-selection-context', sourceWorkspaceId: 'ws-1', filePath: 'docs/SKILL.md',
+                range: { start: 5, end: 5 }, snippet: 'Body',
+            }));
+            expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+        } finally {
+            sub.unsubscribe();
+            document.getSelection()!.removeAllRanges();
+            _resetRuntimeConfig();
+        }
     });
 
     it('keeps view choices and edits isolated in two mounted clone-owned tabs', async () => {

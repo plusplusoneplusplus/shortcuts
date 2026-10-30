@@ -1,6 +1,6 @@
 /**
  * Ctrl/Cmd+1–9 switch browser tabs and a held modifier reveals their hints
- * (`features.browserTabShortcuts`, default off).
+ * (`features.browserTabShortcuts`, default on).
  *
  * Numbering rules are unit-tested in `browserTabShortcuts.test.ts`; these cases
  * prove the panel's hints and switching agree with the rendered strip after
@@ -153,7 +153,20 @@ afterEach(() => {
 });
 
 describe('browser tab shortcuts', () => {
-    it('is off by default: no hints, no aria shortcuts, and the keys pass through', () => {
+    it('is on when the flag is absent', () => {
+        native.enabled = true;
+        render(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
+        expect(native.setTabShortcuts).toHaveBeenLastCalledWith(true);
+        const a = openBrowser('a.test');
+        openBrowser('b.test');
+        expect(screen.getByTestId(`unified-panel-tab-${a.id}`).getAttribute('aria-keyshortcuts')).toBe('Control+1');
+        focusChrome();
+        expect(digit(1).defaultPrevented).toBe(true);
+        expect(activeId()).toBe(a.id);
+    });
+
+    it('is off for a saved false: no hints, no aria shortcuts, and the keys pass through', () => {
+        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: false });
         native.enabled = true;
         render(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
         expect(native.setTabShortcuts).toHaveBeenLastCalledWith(false);

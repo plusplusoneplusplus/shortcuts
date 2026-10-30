@@ -37,6 +37,7 @@ import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { ReloadFromDiskButton } from '../../../shared/file-viewer/ReloadFromDiskButton';
 import { UnifiedPanelCloseConfirm } from '../unified-right-panel/UnifiedPanelCloseConfirm';
 import { useMarkdownPreview } from '../../../hooks/ui/useMarkdownPreview';
+import { MarkdownSelectionAttachPill } from '../../../shared/markdown-document/MarkdownSelectionAttachPill';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
 import { LanguageStatusBadge } from '../../language-servers/LanguageStatusBadge';
@@ -189,17 +190,23 @@ export interface FileReloadControl {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-function RenderedMarkdown({ content }: { content: string }) {
+function RenderedMarkdown({ content, selectionContext }: {
+    content: string;
+    selectionContext?: { workspaceId: string; filePath: string; destinationId: string };
+}) {
     const containerRef = useRef<HTMLDivElement>(null);
     const { html } = useMarkdownPreview({ content, containerRef, viewMode: 'review', stripFrontmatter: true });
     return (
         <div className="h-full overflow-auto pt-9" data-testid="preview-markdown-scroll">
-            <div
-                ref={containerRef}
-                className="markdown-body p-4 text-sm text-[#1e1e1e] dark:text-[#cccccc]"
-                data-testid="preview-markdown"
-                dangerouslySetInnerHTML={{ __html: html }}
-            />
+            <div className="relative">
+                <div
+                    ref={containerRef}
+                    className="markdown-body p-4 text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                    data-testid="preview-markdown"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+                {selectionContext && <MarkdownSelectionAttachPill containerRef={containerRef} content={content} {...selectionContext} />}
+            </div>
         </div>
     );
 }
@@ -815,7 +822,11 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                 </div>
             ) : displayBlob ? (
                 <MarkdownFileLinkScope workspaceId={repoId} routingRef={routingRef} sourceFilePath={actualPath}>
-                    {showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
+                    {showRendered ? <RenderedMarkdown content={displayBlob.content} selectionContext={readOnly ? undefined : {
+                        workspaceId: repoId,
+                        filePath: actualPath,
+                        destinationId: routingRef ?? repoId,
+                    }} /> :
                     <FileViewer
                         selectionContext={readOnly ? undefined : {
                             workspaceId: repoId,

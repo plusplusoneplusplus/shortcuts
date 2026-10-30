@@ -3,6 +3,7 @@ import type { editor as MonacoEditor, Selection } from 'monaco-editor';
 import { attachSelectionToChat } from '../../features/chat/activeChatAttach';
 import type { SessionContextAttachmentDragPayload } from '../../features/chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { SELECTION_ACTION_BUTTON_CLASS, SelectionActionsGroup } from '../SelectionActionsGroup';
 
 export interface MonacoSelectionAttachPillProps {
     editor: MonacoEditor.ICodeEditor | null;
@@ -78,19 +79,9 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
     }, [editor, workspaceId, destinationId, buildPayload, enabled, onComment, size]);
 
     if ((!enabled && !onComment) || !position) return null;
-    const buttonClass = "px-2 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500";
     return (
-        <div
-            ref={actionsRef}
-            role="group"
-            aria-label="Selection actions"
-            className="pointer-events-auto absolute z-20 flex flex-wrap w-max rounded-full border border-gray-300 bg-white text-xs text-gray-800 shadow dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            style={position}
-            onPointerDownCapture={event => { event.preventDefault(); event.stopPropagation(); }}
-            onMouseDownCapture={event => { event.preventDefault(); event.stopPropagation(); }}
-            onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPosition(null); }}
-        >
-            {onComment && <button type="button" className={buttonClass} onClick={event => {
+        <SelectionActionsGroup ref={actionsRef} style={position} onDismiss={() => setPosition(null)}>
+            {onComment && <button type="button" className={SELECTION_ACTION_BUTTON_CLASS} onClick={event => {
                 const selection = editor?.getSelection();
                 const model = editor?.getModel();
                 if (!selection || selection.isEmpty() || !model) return;
@@ -98,7 +89,7 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
                 dismissRef.current();
                 onComment(selection, model, { top: rect.bottom + 4, left: rect.left });
             }}>Comment</button>}
-            {enabled && <button type="button" className={buttonClass} onClick={() => {
+            {enabled && <button type="button" className={SELECTION_ACTION_BUTTON_CLASS} onClick={() => {
                 const selection = editor?.getSelection();
                 const model = editor?.getModel();
                 if (!selection || selection.isEmpty() || !model) return;
@@ -107,6 +98,6 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
                 dismissRef.current();
                 attachSelectionToChat(destinationId, payload);
             }}>Attach as context</button>}
-        </div>
+        </SelectionActionsGroup>
     );
 }

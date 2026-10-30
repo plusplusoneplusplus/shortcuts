@@ -51,7 +51,10 @@ workspace-tool, chat-tool and resource sections and shows the tools/resources
 divider. Both flags preserve descriptors, ownership, selection and keyed views. The strip
 accepts only its own native HTML drag session, auto-scrolls overflow near its
 edges and cancels on Escape, drag end, source close or scope/flag changes.
-Transient excursion tabs are excluded. Native HTML dragging does not add touch
+With session-context attachments on, a `file` tab drag also carries a
+working-tree `git-file` pointer (`contextDragPayload`, owner workspace and
+`ownerRoutingRef`, no `text/plain`) that chat composers attach as a File chip;
+reorder and split docking ignore it. Transient excursion tabs are excluded. Native HTML dragging does not add touch
 gestures; keyboard and menu actions remain available.
 `external` is a read-only definition source outside every workspace; its
 resource id is the opaque capability the owning member's host issued, it has no
@@ -641,7 +644,7 @@ open `UnifiedPanelOpenMenu`.
 
 ## Browser-tab number shortcuts
 
-Default-off `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
+Default-on `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
 makes Ctrl+1–9 (Cmd on macOS; top-row digits, no Shift/Alt) switch web
 (`browser`) tabs. `browserTabShortcuts.ts` owns the browser convention over the
 strip's rendered web tabs: 1–8 by position, 9 the last; past nine tabs, tabs

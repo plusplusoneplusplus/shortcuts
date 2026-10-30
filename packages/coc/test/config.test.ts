@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.canvasExtensions).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
@@ -1100,9 +1100,9 @@ timeout: 300
                 '  enabled: true',
                 'browserControl:',
                 '  enabled: true',
-                '  framesEnabled: true',
-                '  richPasteEnabled: true',
-                '  backgroundEnabled: true',
+                '  framesEnabled: false',
+                '  richPasteEnabled: false',
+                '  backgroundEnabled: false',
                 '  navigationApprovalEnabled: false',
                 '  humanTakeoverEnabled: true',
                 '  cursorOverlayEnabled: false',
@@ -1240,7 +1240,7 @@ timeout: 300
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
                 '  binaryFileReveal: true',
-                '  browserTabShortcuts: true',
+                '  browserTabShortcuts: false',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1278,7 +1278,11 @@ timeout: 300
             expect(notFromFile).toEqual([]);
             expect(result.resolved.canvasExtensions.enabled).toBe(true);
             expect(result.resolved.browserControl.enabled).toBe(true);
-            expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
+            // Saved false overrides the default-on frame, rich paste and background flags.
+            expect(result.resolved.browserControl.framesEnabled).toBe(false);
+            expect(result.resolved.browserControl.richPasteEnabled).toBe(false);
+            expect(result.resolved.browserControl.backgroundEnabled).toBe(false);
+            expect(result.resolved.features.browserTabShortcuts).toBe(false);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
             expect(result.resolved.features.teamsOutboundCompliance).toBe(true);
@@ -1497,13 +1501,13 @@ timeout: 300
                   },
                   "approvePermissions": true,
                   "browserControl": {
-                    "backgroundEnabled": false,
+                    "backgroundEnabled": true,
                     "cursorOverlayEnabled": true,
                     "enabled": false,
-                    "framesEnabled": false,
+                    "framesEnabled": true,
                     "humanTakeoverEnabled": false,
                     "navigationApprovalEnabled": true,
-                    "richPasteEnabled": false,
+                    "richPasteEnabled": true,
                   },
                   "canvas": {
                     "enabled": true,
@@ -1561,7 +1565,7 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "binaryFileReveal": false,
                     "botManagedConversations": false,
-                    "browserTabShortcuts": false,
+                    "browserTabShortcuts": true,
                     "canvasHostApis": false,
                     "canvasToolScripts": false,
                     "chatFolders": false,

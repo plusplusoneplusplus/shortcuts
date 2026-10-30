@@ -391,7 +391,7 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
 }
 
 function getPointerContextSummaryMeta(context: ParsedPointerContextBlock): string {
-    if (context.kind === 'git-file') return `${context.revision ?? ''} · ${context.side ?? ''}`;
+    if (context.kind === 'git-file') return [context.revision, context.side].filter(Boolean).join(' · ');
     if (context.kind === 'sentinel-todo') return [context.status, context.type, context.todoItemId].filter(Boolean).join(' · ');
     if (context.kind === 'work-item') return [context.status, context.type, context.workItemId].filter(Boolean).join(' · ');
     if (context.kind === 'commit') return context.shortHash || (context.commitHash ? shortenSessionProcessId(context.commitHash) : '');

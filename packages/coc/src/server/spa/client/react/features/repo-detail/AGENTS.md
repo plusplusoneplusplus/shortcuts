@@ -391,8 +391,11 @@ workspace, repo-relative path and concrete clone route as `destinationId`.
 Right-panel tabs supply their persisted owner route; payloads keep the plain
 server workspace id. The shared `MonacoSelectionAttachPill` reads
 selected text from the live model and routes it through `activeChatAttach` when
-session-context attachments are enabled. Trusted absolute paths and shared
-viewer hosts do not opt in; right-panel file tabs use the same preview host.
+session-context attachments are enabled. Its rendered Markdown view mounts
+`MarkdownSelectionAttachPill` with the same owner identity, attaching the
+selected rendered text with its raw-file line range. Trusted absolute paths,
+read-only workspace previews and shared viewer hosts do not opt in; right-panel
+file tabs use the same preview host.
 
 `MonacoFileEditor` does not hand `value` to `@monaco-editor/react`, which
 silently writes any differing `value` back into the model. It remembers the

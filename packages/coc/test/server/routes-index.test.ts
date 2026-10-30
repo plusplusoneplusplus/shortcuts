@@ -384,17 +384,19 @@ describe('registerAllRoutes', () => {
             socket = { ...makeWsServer(), browserControl: broker };
             expect(getRuntime()).toBe(broker);
             expect(broker.getEnabled()).toBe(false);
-            expect(framesEnabled()).toBe(false);
             (opts.runtimeConfigService!.config as any).browserControl.enabled = true;
             expect(broker.getEnabled()).toBe(true);
-            (opts.runtimeConfigService!.config as any).browserControl.framesEnabled = true;
+            // Absent frame, rich paste and background values mean their default-on policies.
             expect(framesEnabled()).toBe(true);
-            expect(richPasteEnabled()).toBe(false);
-            (opts.runtimeConfigService!.config as any).browserControl.richPasteEnabled = true;
             expect(richPasteEnabled()).toBe(true);
-            expect(backgroundEnabled()).toBe(false);
-            (opts.runtimeConfigService!.config as any).browserControl.backgroundEnabled = true;
             expect(backgroundEnabled()).toBe(true);
+            // Saved false keeps each one off.
+            (opts.runtimeConfigService!.config as any).browserControl.framesEnabled = false;
+            expect(framesEnabled()).toBe(false);
+            (opts.runtimeConfigService!.config as any).browserControl.richPasteEnabled = false;
+            expect(richPasteEnabled()).toBe(false);
+            (opts.runtimeConfigService!.config as any).browserControl.backgroundEnabled = false;
+            expect(backgroundEnabled()).toBe(false);
             // Absent navigationApprovalEnabled means the default-on gate.
             expect(navigationApprovalEnabled()).toBe(true);
             (opts.runtimeConfigService!.config as any).browserControl.navigationApprovalEnabled = false;

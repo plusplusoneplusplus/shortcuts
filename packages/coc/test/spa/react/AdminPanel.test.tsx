@@ -1650,6 +1650,28 @@ describe('AdminPanel', () => {
             expect(screen.getAllByTestId('toggle-html-page-tab-enabled')).toHaveLength(1);
         });
 
+        it.each([
+            ['toggle-browser-frame-control-enabled', 'framesEnabled'],
+            ['toggle-browser-rich-paste-enabled', 'richPasteEnabled'],
+            ['toggle-browser-background-control-enabled', 'backgroundEnabled'],
+            ['toggle-browser-tab-shortcuts-enabled', 'browserTabShortcuts'],
+        ])('shows %s on by default and off when saved false', async (testId, field) => {
+            const saved = (value?: false) => field === 'browserTabShortcuts'
+                ? { browserControl: { enabled: true }, features: value === false ? { [field]: false } : {} }
+                : { browserControl: value === false ? { enabled: true, [field]: false } : { enabled: true } };
+            mockFullConfig(saved());
+            let unmount!: () => void;
+            await act(async () => { ({ unmount } = renderWithProviders()); });
+            await gotoBrowserPage();
+            expect((screen.getByTestId(testId) as HTMLInputElement).checked).toBe(true);
+            unmount();
+
+            mockFullConfig(saved(false));
+            await act(async () => { renderWithProviders(); });
+            await gotoBrowserPage();
+            expect((screen.getByTestId(testId) as HTMLInputElement).checked).toBe(false);
+        });
+
         it('saves only browser feature keys from the Browser page with Ctrl+S, keeping other drafts pending', async () => {
             // An explicit opt-out survives the move and is re-sent unchanged.
             mockFullConfig({ features: { htmlPageTab: false } });
@@ -1671,14 +1693,14 @@ describe('AdminPanel', () => {
             expect(writes[0].url).toContain('/admin/config');
             expect(writes[0].body).toEqual({
                 'browserControl.enabled': true,
-                'browserControl.framesEnabled': false,
-                'browserControl.richPasteEnabled': false,
-                'browserControl.backgroundEnabled': false,
+                'browserControl.framesEnabled': true,
+                'browserControl.richPasteEnabled': true,
+                'browserControl.backgroundEnabled': true,
                 'browserControl.navigationApprovalEnabled': true,
                 'browserControl.humanTakeoverEnabled': false,
                 'browserControl.cursorOverlayEnabled': true,
                 'features.htmlPageTab': false,
-                'features.browserTabShortcuts': false,
+                'features.browserTabShortcuts': true,
                 'features.sensitiveInput': false,
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true));

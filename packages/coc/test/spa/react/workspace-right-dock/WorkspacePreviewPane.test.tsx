@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { PreviewPane } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import {
     readWorkspacePreview, WORKSPACE_PREVIEW_PREFIX, workspacePreviewUrl,
@@ -150,6 +151,25 @@ describe('workspace-authorized read-only PreviewPane', () => {
         expect(screen.getByTestId('mock-monaco')).toHaveAttribute('data-save', 'false');
         fireEvent.click(controls.getByRole('button', { name: 'Rendered' }));
         expect(screen.getByTestId('preview-markdown')).toHaveTextContent('Dock heading');
+    });
+
+    it('offers no Attach as context pill for a read-only rendered Markdown selection', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        mocks.local.request.mockResolvedValue({ type: 'file', content: '# Dock heading\nBody text\n' });
+        try {
+            // A repo-relative path would satisfy the payload checks; only read-only blocks it.
+            render(pane('report.md', { markdownPreview: true, filePath: `${WORKSPACE_PREVIEW_PREFIX}docs/report.md` }));
+            const rendered = await screen.findByTestId('preview-markdown');
+            const range = document.createRange();
+            range.selectNodeContents(rendered);
+            document.getSelection()!.removeAllRanges();
+            document.getSelection()!.addRange(range);
+            act(() => { document.dispatchEvent(new Event('selectionchange')); });
+            expect(screen.queryByRole('button', { name: 'Attach as context' })).toBeNull();
+        } finally {
+            document.getSelection()!.removeAllRanges();
+            _resetRuntimeConfig();
+        }
     });
 
     it('keeps Retry and Download available on preview errors and retries the same owner', async () => {

@@ -372,8 +372,11 @@ export function UnifiedPanelOpenMenu({
             <div className="max-h-[300px] overflow-y-auto py-1" ref={listRef} data-testid="unified-panel-open-menu-list">
                 {items.map((item, index) => {
                     const selected = index === cursor;
+                    // The row owns the foreground so monochrome icons (currentColor
+                    // SVGs, ▶, ±) inherit the theme color instead of the button
+                    // default, which is black and unreadable on the dark popover.
                     const rowClass = cn(
-                        'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs',
+                        'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[#1f1f1f] dark:text-[#cccccc]',
                         selected ? 'bg-[#0078d4]/10 dark:bg-[#0078d4]/25' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#37373d]',
                     );
                     if (item.type === 'file') {

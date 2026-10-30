@@ -368,7 +368,7 @@ export interface RuntimeDashboardConfig {
     panelTabGroupsEnabled: boolean;
     /** "Open in Explorer" under a right-panel file tab's binary placeholder (`features.binaryFileReveal`); defaults off. */
     binaryFileRevealEnabled: boolean;
-    /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults off. */
+    /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults on. */
     browserTabShortcutsEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;

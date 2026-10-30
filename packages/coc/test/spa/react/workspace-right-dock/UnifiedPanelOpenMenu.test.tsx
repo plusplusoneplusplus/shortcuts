@@ -486,6 +486,64 @@ describe('the chat\'s Changes entry', () => {
     });
 });
 
+describe('icon contrast', () => {
+    // jsdom computes no Tailwind, so pin the contract instead: the row sets the
+    // theme foreground (a <button> otherwise falls back to black `buttontext`,
+    // invisible on the dark popover) and the icon span inherits it via
+    // currentColor rather than setting a color of its own.
+    const FOREGROUND = ['text-[#1f1f1f]', 'dark:text-[#cccccc]'];
+    const MONOCHROME = ['terminal', 'work-items', 'pull-requests', 'settings', 'todo'];
+
+    function expectThemedRow(row: HTMLElement) {
+        for (const token of FOREGROUND) expect(row.classList.contains(token)).toBe(true);
+        const icon = row.firstElementChild as HTMLElement;
+        expect(icon.getAttribute('aria-hidden')).not.toBeNull();
+        expect(icon.className).not.toMatch(/(^|\s)(dark:)?text-\[/);
+        for (const svg of Array.from(icon.querySelectorAll('svg'))) {
+            expect(svg.getAttribute('stroke') ?? svg.getAttribute('fill')).toBe('currentColor');
+        }
+    }
+
+    it('gives every monochrome action icon the theme foreground, selected or not', () => {
+        renderMenu({
+            settingsAvailable: true,
+            todoInput: { kind: 'todo', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do' },
+        });
+        for (const action of MONOCHROME) expectThemedRow(screen.getByTestId(`unified-panel-open-${action}`));
+        // Hover moves the cursor; the selected row keeps the foreground too.
+        const settings = screen.getByTestId('unified-panel-open-settings');
+        fireEvent.mouseEnter(settings);
+        expect(settings.className).toContain('bg-[#0078d4]/10');
+        expectThemedRow(settings);
+    });
+
+    it('keeps the foreground on disabled rows of an unavailable picked repo', () => {
+        renderMenu({
+            target: 'ws-gone',
+            targets: [
+                { workspaceId: WS, label: 'root' },
+                { workspaceId: 'ws-gone', label: 'gone', disabled: true },
+            ],
+        });
+        for (const action of ['terminal', 'work-items', 'pull-requests']) {
+            const row = screen.getByTestId(`unified-panel-open-${action}`) as HTMLButtonElement;
+            expect(row.disabled).toBe(true);
+            expectThemedRow(row);
+        }
+    });
+
+    it('applies the same foreground to URL, file and canvas rows', async () => {
+        searchFiles.mockResolvedValue({ results: [{ path: 'src/app.ts', indices: [] }] });
+        listCanvases.mockResolvedValue([{ id: 'c1', title: 'Sketch' }]);
+        renderMenu();
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-canvas-c1')).toBeTruthy());
+        expectThemedRow(screen.getByTestId('unified-panel-open-menu-canvas-c1'));
+        await search('example.com');
+        expectThemedRow(await screen.findByTestId('unified-panel-open-menu-url'));
+        expectThemedRow(await screen.findByTestId('unified-panel-open-menu-file-0'));
+    });
+});
+
 describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
     const todoInput = {
         kind: 'todo' as const, ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do',
