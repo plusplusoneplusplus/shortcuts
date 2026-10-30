@@ -42,6 +42,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
+import { POINTER_CONTEXT_DRAG_MIME, type PointerContextDragPayload } from '../../chat/sessionContextDrag';
 import { getHorizontalDropPosition } from '../repoTabModel';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
@@ -258,6 +259,11 @@ export interface UnifiedPanelTabStripProps {
     onMenuAction?: (action: UnifiedPanelTabMenuAction, tabId: string) => void;
     /** The tab a native drag carries, and `null` once it drops, ends or is cancelled. */
     onTabDragChange?: (tabId: string | null) => void;
+    /**
+     * Chat context a tab drag also carries, so a composer can attach it while
+     * reorder and split docking keep reading the tab id.
+     */
+    contextDragPayload?: (tab: UnifiedPanelTab) => PointerContextDragPayload | null;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
     /**
@@ -298,6 +304,7 @@ export function UnifiedPanelTabStrip({
     fileActionAvailability,
     onMenuAction,
     onTabDragChange,
+    contextDragPayload,
     onOpenMenu,
     trailing,
     leadingControls,
@@ -605,7 +612,10 @@ export function UnifiedPanelTabStrip({
                                     setContextMenu(null);
                                 }
                                 event.dataTransfer?.setData('application/x-coc-panel-tab', tab.id);
-                                if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+                                // No `text/plain`: a tab dropped on an editor must not type into it.
+                                const context = contextDragPayload?.(tab);
+                                if (context) event.dataTransfer?.setData(POINTER_CONTEXT_DRAG_MIME, JSON.stringify(context));
+                                if (event.dataTransfer) event.dataTransfer.effectAllowed = context ? 'copyMove' : 'move';
                             }}
                             onDragEnd={cancelDrag}
                             onDragOver={event => {

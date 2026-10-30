@@ -1,5 +1,6 @@
 import { GIT_FILE_CONTEXT_DRAG_KIND, type GitFileContextDragPayload } from './sessionContextDrag';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
+import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { gitCommitContextScopeError } from './gitCommitContext';
 
 /** Accept immutable commits (or their first parent), never mutable branch names. */
@@ -13,24 +14,41 @@ export function createGitFileContextPayload(value: unknown): GitFileContextDragP
     if (data.kind !== GIT_FILE_CONTEXT_DRAG_KIND || data.version !== 1
         || typeof data.sourceWorkspaceId !== 'string' || !data.sourceWorkspaceId.trim()
         || (data.sourceRoutingRef !== null && typeof data.sourceRoutingRef !== 'string')
-        || !isReviewedFileRevision(data.revision)
-        || (data.side !== 'base' && data.side !== 'head')
+        || (data.side === 'working-tree' ? data.revision !== undefined
+            : (data.side !== 'base' && data.side !== 'head') || !isReviewedFileRevision(data.revision))
         || typeof data.filePath !== 'string' || !data.filePath || data.filePath.includes('\0')
         || data.filePath.startsWith('/') || /^[A-Za-z]:/.test(data.filePath)
         || data.filePath.includes('\\') || data.filePath.split('/').some(part => part === '..' || part === '.')
     ) return null;
-    return {
-        kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1,
+    const base = {
+        kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1 as const,
         sourceWorkspaceId: data.sourceWorkspaceId,
         sourceRoutingRef: data.sourceRoutingRef,
-        filePath: data.filePath, revision: data.revision, side: data.side,
+        filePath: data.filePath,
+    };
+    if (data.side === 'working-tree' || data.revision === undefined) return { ...base, side: 'working-tree', label: data.filePath };
+    return {
+        ...base, revision: data.revision, side: data.side,
         label: `${data.filePath} @ ${data.revision.slice(0, 7)}${data.revision.endsWith('^') ? '^' : ''}`,
     };
 }
 
 export function gitFileContextKey(source: Pick<GitFileContextDragPayload, 'sourceRoutingRef' | 'sourceWorkspaceId' | 'filePath' | 'revision'>): string {
     const remote = parseRemoteCloneKey(source.sourceRoutingRef ?? '');
-    return JSON.stringify(['git-file', remote?.serverId ?? null, source.sourceWorkspaceId, source.revision, source.filePath]);
+    return JSON.stringify(['git-file', remote?.serverId ?? null, source.sourceWorkspaceId, source.revision ?? null, source.filePath]);
+}
+
+/** The open source-tab file a right-panel tab drag carries, or null when its owner is unknown or the path is not repo-relative. */
+export function createWorkingTreeFileContextPayload(tab: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; resourceId: string }): GitFileContextDragPayload | null {
+    const ownerKnown = tab.ownerRoutingRef != null || resolveCloneRoute(tab.ownerWorkspaceId).kind === 'local';
+    return ownerKnown ? createGitFileContextPayload({
+        kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1, sourceWorkspaceId: tab.ownerWorkspaceId,
+        sourceRoutingRef: tab.ownerRoutingRef ?? null, filePath: tab.resourceId, side: 'working-tree',
+    }) : null;
+}
+
+export function gitFileContextDuplicateError(source: Pick<GitFileContextDragPayload, 'side'>): string {
+    return source.side === 'working-tree' ? 'This file is already attached to the message.' : 'This file revision is already attached to the message.';
 }
 
 export function gitFileContextScopeError(source: Pick<GitFileContextDragPayload, 'sourceRoutingRef' | 'sourceWorkspaceId'>, owner?: string | null): string | null {

@@ -81,6 +81,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({}),
     lookupCloneBaseUrl: () => null,
+    resolveCloneRoute: () => ({ kind: 'local' }),
 }));
 // No language document: the fake model only has to carry identity.
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/useLanguageDocument', () => ({
@@ -103,6 +104,7 @@ import {
     sourceSplitScopeKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelSourceSplit';
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { POINTER_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
@@ -212,6 +214,60 @@ afterEach(() => {
     _resetRuntimeConfig();
     vi.unstubAllGlobals();
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+});
+
+describe('source tab drag to chat context', () => {
+    function startTabDrag(tabId: string) {
+        const data = new Map<string, string>();
+        const dataTransfer = { setData: (type: string, value: string) => { data.set(type, value); }, effectAllowed: '' };
+        fireEvent.dragStart(screen.getByTestId(`unified-panel-tab-${tabId}`), { dataTransfer });
+        const raw = data.get(POINTER_CONTEXT_DRAG_MIME);
+        return { context: raw ? JSON.parse(raw) : null, dataTransfer };
+    }
+
+    it('carries a Markdown file tab as context and still docks it to the split', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        const skill = openFile('packages/forge/resources/bundled-skills/delegate/SKILL.md');
+        const other = openFile('src/b.ts');
+        renderPanel();
+        await screen.findByTestId('mock-monaco-textarea');
+
+        const dragged = startTabDrag(skill);
+        expect(dragged.context).toEqual({
+            kind: 'coc.git-file-context', version: 1, sourceWorkspaceId: WS, sourceRoutingRef: null,
+            filePath: 'packages/forge/resources/bundled-skills/delegate/SKILL.md', side: 'working-tree',
+            label: 'packages/forge/resources/bundled-skills/delegate/SKILL.md',
+        });
+        expect(dragged.dataTransfer.effectAllowed).toBe('copyMove');
+        const target = screen.getByTestId('unified-panel-split-drop-target');
+        fireEvent.dragOver(target, { dataTransfer: { dropEffect: 'none' } });
+        fireEvent.drop(target, { dataTransfer: {} });
+        fireEvent.dragEnd(screen.getByTestId(`unified-panel-tab-${skill}`));
+        await waitFor(() => expect(view(skill).dataset.splitPane).toBe('right'));
+        expect(view(other).dataset.splitPane).toBe('left');
+    });
+
+    it('keeps each tab owner distinct and adds nothing for non-file tabs', () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        const memberA = openFile('README.md', { owner: 'member-a' });
+        const memberB = openFile('README.md', { owner: 'member-b', routingRef: 'remote:server-b:member-b' });
+        const term = openTerminal();
+        renderPanel();
+
+        expect(startTabDrag(memberA).context).toMatchObject({ sourceWorkspaceId: 'member-a', sourceRoutingRef: null, filePath: 'README.md' });
+        fireEvent.dragEnd(screen.getByTestId(`unified-panel-tab-${memberA}`));
+        expect(startTabDrag(memberB).context).toMatchObject({ sourceWorkspaceId: 'member-b', sourceRoutingRef: 'remote:server-b:member-b', filePath: 'README.md' });
+        fireEvent.dragEnd(screen.getByTestId(`unified-panel-tab-${memberB}`));
+        const terminal = startTabDrag(term);
+        expect(terminal.context).toBeNull();
+        expect(terminal.dataTransfer.effectAllowed).toBe('move');
+    });
+
+    it('adds no chat context while session-context attachments are off', () => {
+        const a = openFile('src/a.ts');
+        renderPanel();
+        expect(startTabDrag(a).context).toBeNull();
+    });
 });
 
 describe('source split creation (AC-01)', () => {

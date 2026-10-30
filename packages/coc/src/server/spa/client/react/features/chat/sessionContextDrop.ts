@@ -38,7 +38,7 @@ import {
     type SentinelTodoContextDragPayload,
 } from './sessionContextDrag';
 import { sentinelTodoContextScopeError } from './sentinelTodoContext';
-import { createGitFileContextPayload, gitFileContextKey, gitFileContextScopeError } from './gitFileContext';
+import { createGitFileContextPayload, gitFileContextDuplicateError, gitFileContextKey, gitFileContextScopeError } from './gitFileContext';
 import { gitCommitContextKey, gitCommitContextScopeError } from './gitCommitContext';
 import type { SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -711,7 +711,7 @@ function getItemLogicalKey(item: AttachedLogicalContextItem): string {
 }
 
 function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload): string {
-    if (payload.kind === GIT_FILE_CONTEXT_DRAG_KIND) return 'This file revision is already attached to the message.';
+    if (payload.kind === GIT_FILE_CONTEXT_DRAG_KIND) return gitFileContextDuplicateError(payload);
     if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) return 'This to-do is already attached to the message.';
     if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return 'This Ralph session is already attached to the message.';
     if (payload.kind === WORK_ITEM_CONTEXT_DRAG_KIND) return 'This work item is already attached to the message.';
@@ -724,7 +724,7 @@ function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload):
 }
 
 function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
-    if (item.kind === 'git-file') return 'This file revision is already attached to the message.';
+    if (item.kind === 'git-file') return gitFileContextDuplicateError(item);
     if (item.kind === 'sentinel-todo') return 'This to-do is already attached to the message.';
     if (item.kind === 'ralph-session') return 'This Ralph session is already attached to the message.';
     if (item.kind === 'work-item') return 'This work item is already attached to the message.';

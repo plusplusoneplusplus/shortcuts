@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { UnifiedPanelTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
+import { POINTER_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { CANVAS_TAB_COMPRESSION_THRESHOLD, UnifiedPanelCanvasStack } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelCanvasStack';
 import {
     ALL_UNIFIED_TAB_KINDS,
@@ -534,6 +535,34 @@ describe('UnifiedPanelTabStrip', () => {
         fireEvent.dragStart(tabNode(tabs[2]), { dataTransfer });
         fireEvent.drop(tabNode(tabs[1]), { dataTransfer });
         expect(props.onMove).toHaveBeenCalledWith(tabs[2].id, tabs[1].id);
+    });
+
+    it('adds file context to a tab drag while reorder still reads the tab id', () => {
+        const tabs = sampleTabs();
+        const context = { kind: 'coc.git-file-context', version: 1, sourceWorkspaceId: WS, sourceRoutingRef: null,
+            filePath: 'docs/SKILL.md', side: 'working-tree', label: 'docs/SKILL.md' } as const;
+        const contextDragPayload = vi.fn((tab: UnifiedPanelTab) => tab.id === tabs[2].id ? context : null);
+        const props = renderStrip({ tabs, activeId: tabs[1].id, contextDragPayload });
+        const data = new Map<string, string>();
+        const dataTransfer = {
+            setData: (type: string, value: string) => data.set(type, value),
+            getData: (type: string) => data.get(type) ?? '',
+            effectAllowed: '',
+            dropEffect: '',
+        };
+        fireEvent.dragStart(tabNode(tabs[2]), { dataTransfer });
+        expect(JSON.parse(data.get(POINTER_CONTEXT_DRAG_MIME)!)).toEqual(context);
+        expect(data.get('application/x-coc-panel-tab')).toBe(tabs[2].id);
+        // No text flavour: dropping a tab on an editor must not type into it.
+        expect(data.has('text/plain')).toBe(false);
+        expect(dataTransfer.effectAllowed).toBe('copyMove');
+        fireEvent.drop(tabNode(tabs[1]), { dataTransfer });
+        expect(props.onMove).toHaveBeenCalledWith(tabs[2].id, tabs[1].id);
+
+        data.clear();
+        fireEvent.dragStart(tabNode(tabs[1]), { dataTransfer });
+        expect(data.has(POINTER_CONTEXT_DRAG_MIME)).toBe(false);
+        expect(dataTransfer.effectAllowed).toBe('move');
     });
 
     it('reports the dragged tab until the drag ends or is cancelled', () => {

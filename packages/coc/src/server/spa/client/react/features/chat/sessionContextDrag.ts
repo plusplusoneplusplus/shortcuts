@@ -92,13 +92,17 @@ export interface SentinelTodoContextDragPayload extends BasePointerContextDragPa
     todoItemId: string;
 }
 
-/** Whole-file reference to an immutable reviewed Git snapshot, never disk content. */
+/**
+ * Whole-file reference, never file content: an immutable reviewed Git snapshot
+ * (`base`/`head` with `revision`), or an open source tab's current working-tree
+ * file (`working-tree`, no revision).
+ */
 export interface GitFileContextDragPayload extends BasePointerContextDragPayload {
     kind: typeof GIT_FILE_CONTEXT_DRAG_KIND;
     sourceRoutingRef: string | null;
     filePath: string;
-    revision: string;
-    side: 'base' | 'head';
+    revision?: string;
+    side: 'base' | 'head' | 'working-tree';
 }
 
 export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {

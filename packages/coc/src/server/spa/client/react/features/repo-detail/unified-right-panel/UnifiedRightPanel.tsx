@@ -57,7 +57,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -200,6 +200,7 @@ import {
     hasWorkspaceRouteForBaseUrl,
 } from '../../../repos/cloneRegistry';
 import { routingRefForPanelOwner } from './unifiedPanelOwnerRouting';
+import { createWorkingTreeFileContextPayload } from '../../chat/gitFileContext';
 import { ToastContainer, useToast } from '../../../ui/Toast';
 import { copyToClipboard } from '../../../utils/format';
 import {
@@ -2147,6 +2148,8 @@ export function UnifiedRightPanel({
                     })}
                     onMenuAction={handleTabMenuAction}
                     onTabDragChange={handleTabDragChange}
+                    contextDragPayload={tab => tab.kind === 'file' && isSessionContextAttachmentsEnabled()
+                        ? createWorkingTreeFileContextPayload(tab) : null}
                     onOpenMenu={toggleMenu}
                     leadingControls={(
                         <UnifiedPanelRepoPicker
