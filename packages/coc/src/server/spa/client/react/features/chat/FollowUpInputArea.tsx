@@ -1338,6 +1338,8 @@ export function FollowUpInputArea({
                                  Replaces the model picker chip and effort pill. */}
                             {useEffortTierMode && selectedEffortTier && onEffortTierChange && effortTierMap && (
                                 <EffortTierSelector
+                                    workspaceId={attachmentDestinationId ?? browserRoutingRef}
+                                    provider={selectedProvider ?? activeProvider}
                                     tiers={effortTierMap}
                                     selectedTier={selectedEffortTier}
                                     onChange={onEffortTierChange}

@@ -5,9 +5,11 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../../ui/cn';
+import { unifiedTabRepoLabel } from './unifiedTabLabels';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export interface UnifiedPanelTabOverflowMenuProps {
+    hideBrowserRepoLabels?: boolean;
     title: string;
     tabs: readonly UnifiedPanelTab[];
     activeId: string | null;
@@ -30,6 +32,7 @@ export interface UnifiedPanelTabOverflowMenuProps {
 
 export function UnifiedPanelTabOverflowMenu({
     title, tabs, activeId, dirtyIds, errorIds, onActivate, onClose, onCloseMany, trigger,
+    hideBrowserRepoLabels = false,
     testIdPrefix = 'unified-panel-tab-overflow', popupRole = 'listbox', strings = {},
 }: UnifiedPanelTabOverflowMenuProps) {
     const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -175,6 +178,7 @@ export function UnifiedPanelTabOverflowMenu({
                         <div className="px-3 py-5 text-center text-xs text-[#777] dark:text-[#aaa]">{strings.empty ?? 'No matching tabs'}</div>
                     )}
                     {filteredTabs.map((tab, index) => {
+                        const repoLabel = unifiedTabRepoLabel(tab, hideBrowserRepoLabels);
                         const active = tab.id === activeId;
                         const dirty = dirtyIds.has(tab.id);
                         const error = errorIds.has(tab.id);
@@ -197,7 +201,7 @@ export function UnifiedPanelTabOverflowMenu({
                                 {grouped && dirty && <span aria-hidden="true" data-testid={`${testIdPrefix}-dirty-${tab.id}`}>●</span>}
                                 {grouped && error && <span aria-hidden="true" data-testid={`${testIdPrefix}-error-${tab.id}`}>⚠</span>}
                                 <span className="min-w-0 flex-1 truncate">{tab.label}</span>
-                                {tab.repoLabel && <span className="max-w-16 truncate text-[10px] opacity-60">{tab.repoLabel}</span>}
+                                {repoLabel && <span className="max-w-16 truncate text-[10px] opacity-60">{repoLabel}</span>}
                                 <span className="sr-only">
                                     {active ? ' (active)' : ''}{dirty ? ' (unsaved changes)' : ''}{error ? ' (unavailable)' : ''}
                                 </span>

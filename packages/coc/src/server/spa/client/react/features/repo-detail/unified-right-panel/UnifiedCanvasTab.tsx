@@ -33,6 +33,7 @@ import { openUnifiedPanelTab } from './unifiedPanelOpen';
 export interface UnifiedCanvasTabProps {
     /** The clone that owns the canvas — routes content and matches its events. */
     workspaceId: string;
+    routingRef?: string | null;
     /** The panel's own workspace (a group id inside a repo group). */
     scopeWorkspaceId: string;
     /** The tab's `resourceId` — the canvas id. */
@@ -49,7 +50,7 @@ export interface UnifiedCanvasTabProps {
 }
 
 export function UnifiedCanvasTab({
-    workspaceId, scopeWorkspaceId, canvasId, chatId, repoLabel, titleAccessory,
+    workspaceId, routingRef, scopeWorkspaceId, canvasId, chatId, repoLabel, titleAccessory,
     onClose, onDirtyChange, onRegisterSave,
 }: UnifiedCanvasTabProps) {
     const liveEvent = useUnifiedCanvasEvent(workspaceId, canvasId);
@@ -79,6 +80,7 @@ export function UnifiedCanvasTab({
     return (
         <CanvasPanel
             workspaceId={workspaceId}
+            routingRef={routingRef}
             canvasId={canvasId}
             liveEvent={liveEvent}
             onClose={onClose}

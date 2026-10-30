@@ -50,6 +50,7 @@ import { dirtyCloseLabel } from './unifiedDirtyClose';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
+import { unifiedTabRepoLabel } from './unifiedTabLabels';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import { useBrowserTabFavicon } from './browserTabFavicons';
 import {
@@ -67,27 +68,20 @@ import { browserTabAriaKeyShortcut, browserTabShortcutDigits, browserTabShortcut
  * shows only its name on the strip, so its tooltip carries the repo-qualified
  * path that tells same-name files apart.
  */
-export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
+export function unifiedTabTooltip(tab: UnifiedPanelTab, hideBrowserRepoLabels = false): string {
+    const repoLabel = unifiedTabRepoLabel(tab, hideBrowserRepoLabels);
     const base = tab.kind === 'file'
         ? `${tab.label} — ${dirtyCloseLabel(tab)}`
-        : tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+        : repoLabel ? `${tab.label} — ${repoLabel}` : tab.label;
     return tab.preview ? `${base} (preview — double-click to keep open)` : base;
 }
 
-/**
- * Whether the strip draws a repo badge beside the label. Source files show the
- * bare filename; their repo lives in the tooltip and screen-reader text.
- */
 /**
  * Title-independent browser tab sizing: one shared 160px basis that shrinks
  * evenly (equal bases shrink equally) to a 96px floor, then the row scrolls.
  */
 const BROWSER_TAB_SIZE = 'min-w-[96px] max-w-[160px] flex-shrink basis-[160px]';
 const DEFAULT_TAB_SIZE = 'min-w-0 max-w-[180px] flex-shrink-0';
-
-function showsUnifiedTabRepoBadge(tab: Pick<UnifiedPanelTab, 'kind' | 'repoLabel'>): boolean {
-    return !!tab.repoLabel && tab.kind !== 'file';
-}
 
 /** Checklist glyph shared by the To-do tab and the "+" menu's To-do entry. */
 export const TODO_ICON = (
@@ -242,6 +236,8 @@ export interface UnifiedPanelTabStripProps {
      * `hintsVisible` shows the badges while the panel's platform modifier is held.
      */
     browserShortcuts?: { mac: boolean; hintsVisible: boolean } | null;
+    /** Repo-group browser tabs use page names while retaining their owners. */
+    hideBrowserRepoLabels?: boolean;
     groupsEnabled?: boolean;
     foldedGroups?: ReadonlySet<UnifiedTabStripGroup>;
     onToggleGroup?: (group: UnifiedTabStripGroup) => void;
@@ -292,6 +288,7 @@ export function UnifiedPanelTabStrip({
     onMove,
     reorderEnabled: mixedReorderEnabled = false,
     browserShortcuts = null,
+    hideBrowserRepoLabels = false,
     groupsEnabled = false,
     foldedGroups = EMPTY_FOLDED_GROUPS,
     onToggleGroup,
@@ -535,6 +532,8 @@ export function UnifiedPanelTabStrip({
             >
                 {(groupsEnabled ? groups : [{ group: null, shown: stripTabs }]).map(section => {
                     const tabNodes = section.shown.map((tab, index) => {
+                    const repoLabel = unifiedTabRepoLabel(tab, hideBrowserRepoLabels);
+                    const showRepoBadge = !!repoLabel && tab.kind !== 'file';
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
@@ -567,7 +566,7 @@ export function UnifiedPanelTabStrip({
                             aria-selected={isActive}
                             tabIndex={isActive ? 0 : -1}
                             draggable={tab.id !== pinnedId}
-                            title={unifiedTabTooltip(tab)}
+                            title={unifiedTabTooltip(tab, hideBrowserRepoLabels)}
                             data-testid={`unified-panel-tab-${tab.id}`}
                             data-tab-id={tab.id}
                             data-strip-stop={groupsEnabled ? '' : undefined}
@@ -684,12 +683,12 @@ export function UnifiedPanelTabStrip({
                             >
                                 {tab.label}
                             </span>
-                            {showsUnifiedTabRepoBadge(tab) && (
+                            {showRepoBadge && (
                                 <span
                                     className="max-w-[64px] flex-shrink truncate text-[10px] opacity-70"
                                     data-testid={`unified-panel-tab-repo-${tab.id}`}
                                 >
-                                    {tab.repoLabel}
+                                    {repoLabel}
                                 </span>
                             )}
                             {/* Overlays the label's tail just before the close slot (padding 10 +
@@ -704,7 +703,7 @@ export function UnifiedPanelTabStrip({
                                 </kbd>
                             )}
                             <span className="sr-only">
-                                {tab.repoLabel && !showsUnifiedTabRepoBadge(tab) ? ` — ${tab.repoLabel}` : ''}
+                                {repoLabel && !showRepoBadge ? ` — ${repoLabel}` : ''}
                                 {tab.preview ? ' (preview — double-click to keep open)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {hasError ? ' (unavailable)' : ''}
@@ -762,6 +761,7 @@ export function UnifiedPanelTabStrip({
                                 <UnifiedPanelTabOverflowMenu
                                     title={`${TAB_GROUP_LABELS[group]} tabs`}
                                     tabs={section.tabs} activeId={activeId}
+                                    hideBrowserRepoLabels={hideBrowserRepoLabels}
                                     dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
                                     onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
                                     trigger={<button type="button" data-strip-stop data-group-overflow

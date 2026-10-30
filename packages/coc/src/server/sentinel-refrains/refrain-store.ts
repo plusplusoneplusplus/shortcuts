@@ -19,7 +19,7 @@ export const refrainInputSchema = z.object({
     gateScript: z.string().max(32_000).optional(),
 }).strict();
 
-export type RefrainRecord = Omit<SentinelRefrain, 'runs' | 'activeRun' | 'nextRunAt'> & { runCount: number; chatCreated?: boolean };
+export type RefrainRecord = Omit<SentinelRefrain, 'runs' | 'activeRun' | 'latestRun' | 'runHistoryTruncated' | 'nextRunAt'> & { runCount: number; chatCreated?: boolean };
 /** Runtime gate bookkeeping; ticks write it without a revision bump, user edits never set it. */
 export type RefrainGateState = Pick<RefrainRecord, 'gateLastResult' | 'gateConsecutiveFailures' | 'gateLastError' | 'gatePaused'>;
 const FRESH_GATE: RefrainGateState = { gateConsecutiveFailures: 0, gatePaused: false };

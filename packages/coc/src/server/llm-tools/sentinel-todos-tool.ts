@@ -7,6 +7,7 @@
  * trigger service; archiving stays a user action.
  */
 
+import type { SentinelRefrainCommands } from '../sentinel-refrains/refrain-commands';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     MAX_TODO_ITEMS,
@@ -23,7 +24,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelOvertureError, type SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { Trigger } from '../triggers/trigger-types';
-import type { SentinelTodoCategorySet, SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoExternalReference, SentinelOvertureEventInput } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoExternalReference, SentinelOvertureEventInput, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
@@ -51,6 +52,8 @@ export interface SentinelTodosToolDeps {
             | 'attachDashboardReference' | 'categoriesEnabled' | 'getCategories' | 'externalReferencesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
+    /** Late-bound read capability on this executor's server; never routes to another server. */
+    getRefrains?: () => Pick<SentinelRefrainCommands, 'list'> | undefined;
     /** Present when trigger infrastructure is available. */
     triggers?: Pick<SentinelOvertureService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>
         & Partial<Pick<SentinelOvertureService, 'isDateTimeEnabled'>>;
@@ -99,8 +102,16 @@ export interface SentinelTodosArgs {
     categoryId?: string | null;
 }
 
+export interface SentinelTodoRefrainSummary {
+    id: string;
+    name: string;
+    latestRunUnavailable?: true;
+    /** Null means no retained actual run; check latestRunUnavailable before saying never run. */
+    latestRun: { status: SentinelRefrainRun['status']; timestamp: string; jobTurnHref?: string } | null;
+}
+
 export type SentinelTodosResult =
-    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null; categorySet?: SentinelTodoCategorySet }
+    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null; categorySet?: SentinelTodoCategorySet; refrains: { availability: 'available' | 'unavailable'; items: SentinelTodoRefrainSummary[] } }
     | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { trigger: Trigger; removed?: boolean }
     | { triggers: Trigger[] }
@@ -110,10 +121,21 @@ export type SentinelTodosResult =
 /** Statuses Sentinel may only set with a short reviewed reason. */
 const REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs_attention']);
 
+export const SENTINEL_REFRAIN_LIST_GUIDANCE =
+    'When asked to list To-dos, also show the returned refrains in a compact separate latest-run section: name, ' +
+    'latestRun status, timestamp and jobTurnHref when present. Reuse application-generated links unchanged; never invent links. ' +
+    'Null latestRun means never run unless latestRunUnavailable is true (older history has expired); report that as unavailable. ' +
+    'Skipped schedule checks are not execution. A newer queued/running run is the latest run, ' +
+    'not the previous completed result. The timestamp is finish time for terminal runs, start time for running runs, or queue time. ' +
+    'If refrains are unavailable, say so; do not claim there are none or query another server. ' +
+    'Refrain runs are not To-do items or result assessments. Listing never authorizes creating, changing, running or enabling schedules, ' +
+    'accepting results, or posting results into parent chats.';
+
 const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
     'cancels jobs). `list` returns all non-Done unarchived items first, then recent Done items up to 50 total; ' +
     'all active items remain included even above 50 (add `includeArchived: true` for archived history after Done). ' +
+    SENTINEL_REFRAIN_LIST_GUIDANCE + ' ' +
     'Use `offset`/`nextOffset` for older pages, `limit` for an explicit page size, or `itemId` to read an exact older item. `create` needs ' +
     '`title`; normal items also need a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
     'the next phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' Reuse the same ' +
@@ -433,6 +455,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         });
                         return {
                             items: page.items,
+                            refrains: await listRefrainSummaries(deps),
                             ledgerRevision: ledger.revision,
                             archivedCount: ledger.items.filter(item => item.archived).length,
                             total: page.total, hasMore: page.hasMore, nextOffset: page.nextOffset,
@@ -529,4 +552,32 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
         },
     });
     return { tool };
+}
+
+/** Optional read failures must not hide or change the To-do page. */
+async function listRefrainSummaries(deps: SentinelTodosToolDeps): Promise<{
+    availability: 'available' | 'unavailable'; items: SentinelTodoRefrainSummary[];
+}> {
+    try {
+        const commands = deps.getRefrains?.();
+        if (commands) {
+            const jobs = await commands.list(deps.owner);
+            return {
+                availability: 'available',
+                items: jobs.map((job): SentinelTodoRefrainSummary => {
+                    const run = job.latestRun;
+                    return {
+                        id: job.id, name: job.name,
+                        ...(!run && job.runHistoryTruncated ? { latestRunUnavailable: true } : {}),
+                        latestRun: run ? {
+                            status: run.status,
+                            timestamp: run.finishedAt ?? run.startedAt ?? run.createdAt,
+                            ...(run.jobTurnHref ? { jobTurnHref: run.jobTurnHref } : {}),
+                        } : null,
+                    };
+                }),
+            };
+        }
+    } catch { /* Disabled, missing or invalid owners remain unavailable; never fall back. */ }
+    return { availability: 'unavailable', items: [] };
 }

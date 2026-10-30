@@ -8,8 +8,10 @@
  * @vitest-environment jsdom
  */
 import userEvent from '@testing-library/user-event';
+import { useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { CocApiError, type CocClient, type WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoOwnerWorkspace } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoJobOwner';
 
@@ -59,7 +61,13 @@ const fakeClient = {
     events: { connect: (...args: unknown[]) => connect(...args) },
 };
 
+import * as messageApi from '../../../src/server/spa/client/react/api/cocClient';
+import { publishDashboardTopology } from '../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+import { tagRemoteWorkspaces } from '../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
+import { SentinelTodoMessageComposer, type SentinelTodoMessageComposerProps } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoMessageComposer';
+import { captureSentinelTodoMessageTarget } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoMessageContext';
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
+import { SentinelTodoMessageDialog, type SentinelTodoMessageDialogProps } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoMessageDialog';
 import { CodaFindingsContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -78,6 +86,115 @@ import { resetActiveChatAttach, subscribeActiveChatAttach } from '../../../src/s
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
+
+function MessageDialogHarness(props: Partial<SentinelTodoMessageDialogProps>) {
+    const origin = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
+    const [text, setText] = useState('');
+    return <>
+        <button ref={origin} onClick={() => setOpen(true)}>Message Sentinel…</button>
+        {open && <SentinelTodoMessageDialog owner={OWNER} item={item()} sentinelName="Login Sentinel"
+            workspaceLabel="Owning workspace" serverLabel="Owning server" ready text={text} onTextChange={setText}
+            onQueue={() => {}} returnFocusRef={origin} {...props} onClose={() => { props.onClose?.(); setOpen(false); }} />}
+    </>;
+}
+
+describe('Sentinel To-do message dialog surface', () => {
+    it('shows the fixed item and destination, focuses the blank message and restores the opener', async () => {
+        const user = userEvent.setup();
+        render(<MessageDialogHarness />);
+        const opener = screen.getByRole('button', { name: 'Message Sentinel…' });
+        await user.click(opener);
+        const dialog = screen.getByRole('dialog', { name: 'Message Sentinel' });
+        const message = within(dialog).getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+        expect(document.activeElement).toBe(message);
+        expect(message.value).toBe('');
+        expect(dialog.textContent).toContain('i1 · Fix login');
+        expect(dialog.textContent).toContain('Login Sentinel');
+        expect(dialog.textContent).toContain('(queue_sentinel)');
+        expect(dialog.textContent).toContain('Owning workspace');
+        expect(dialog.textContent).toContain('(ws-1)');
+        expect(dialog.textContent).toContain('Owning server');
+        expect(within(dialog).queryByRole('combobox')).toBeNull();
+        expect((within(dialog).getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.activeElement).toBe(opener);
+    });
+
+    it('traps focus, leaves Enter as a newline, ignores the backdrop and submits only nonblank text by button', async () => {
+        const user = userEvent.setup();
+        const onQueue = vi.fn();
+        render(<MessageDialogHarness onQueue={onQueue} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        const message = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+        const queue = screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement;
+        await user.type(message, '  {Enter}  ');
+        expect(queue.disabled).toBe(true);
+        await user.clear(message);
+        await user.type(message, 'Please check{Enter}the login test');
+        expect(message.value).toBe('Please check\nthe login test');
+        expect(onQueue).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(message);
+        await user.tab({ shift: true });
+        expect(document.activeElement).toBe(queue);
+        await user.tab();
+        expect(document.activeElement).toBe(message);
+        for (const shift of [false, true]) {
+            for (let index = 0; index < 4; index++) {
+                await user.tab({ shift });
+                expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+            }
+        }
+        fireEvent.click(screen.getByTestId('dialog-overlay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await user.click(queue);
+        expect(onQueue).toHaveBeenCalledOnce();
+        // The controller alone closes after confirmed admission.
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('blocks queueing while context loads and preserves text with a focused inline failure', async () => {
+        const user = userEvent.setup();
+        const view = render(<MessageDialogHarness loading ready={false} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Keep this draft');
+        expect(screen.getByRole('status').textContent).toBe('Loading attached To-do…');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+        view.rerender(<MessageDialogHarness ready={false} error="Reconnect the owning server and try again." />);
+        const error = screen.getByRole('alert');
+        expect(document.activeElement).toBe(error);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Keep this draft');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('locks editing, repeated submission and dismissal while admission is pending', async () => {
+        const user = userEvent.setup();
+        const onQueue = vi.fn();
+        const onClose = vi.fn();
+        const view = render(<MessageDialogHarness onQueue={onQueue} onClose={onClose} />);
+        await user.click(screen.getByRole('button', { name: 'Message Sentinel…' }));
+        await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Check login');
+        view.rerender(<MessageDialogHarness onQueue={onQueue} onClose={onClose} pending />);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled).toBe(true);
+        expect(screen.getByRole('status').textContent).toBe('Queueing message…');
+        expect(document.activeElement).toBe(screen.getByRole('status'));
+        await user.tab();
+        expect(document.activeElement).toBe(screen.getByRole('status'));
+        await user.click(screen.getByRole('button', { name: 'Queue message' }));
+        await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        await user.keyboard('{Escape}');
+        fireEvent.click(screen.getByTestId('dialog-overlay'));
+        expect(onQueue).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        view.rerender(<MessageDialogHarness onQueue={onQueue} onClose={onClose} error="Queue rejected. Try again." />);
+        expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Check login');
+        expect((screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+});
 
 function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
@@ -841,6 +958,62 @@ describe('UnifiedTodoTab', () => {
         expect(receive).toHaveBeenCalledWith(payload);
         expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
+    });
+
+    it('opens the same row actions by right-click and keyboard without selecting or mutating the item', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const select = within(row).getByRole('button', { pressed: false });
+        const trigger = within(row).getByRole('button', { name: 'More actions' });
+        fireEvent.click(trigger);
+        const labels = screen.getAllByRole('menuitemradio').map(el => el.textContent);
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(fireEvent.contextMenu(row, { clientX: 180, clientY: 120 })).toBe(false);
+        expect(screen.getAllByRole('menuitemradio').map(el => el.textContent)).toEqual(labels);
+        expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(row);
+        for (const gesture of [{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }]) {
+            select.focus();
+            expect(fireEvent.keyDown(select, gesture)).toBe(false);
+            expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true);
+            fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+            expect(document.activeElement).toBe(select);
+            expect(select.getAttribute('aria-pressed')).toBe('false');
+        }
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('preserves native row menus for selected text, links and editors', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const title = within(row).getByText('Fix login');
+        const selection = document.getSelection()!;
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        selection.addRange(range);
+        try {
+            expect(fireEvent.contextMenu(title)).toBe(true);
+            expect(fireEvent.keyDown(title, { key: 'ContextMenu' })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+        } finally {
+            selection.removeAllRanges();
+        }
+        for (const tag of ['a', 'input', 'textarea', 'select', 'div']) {
+            const native = document.createElement(tag);
+            if (tag === 'div') native.setAttribute('contenteditable', 'true');
+            row.appendChild(native);
+            expect(fireEvent.contextMenu(native)).toBe(true);
+            expect(fireEvent.keyDown(native, { key: 'F10', shiftKey: true })).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+            native.remove();
+        }
+        expect(fireEvent.keyDown(row, { key: 'F10' })).toBe(true);
+        expect(screen.queryByRole('menu')).toBeNull();
     });
 
     it.each(['normal', 'manual'] as const)('isolates the %s card menu and supports keyboard dismissal and attachment', async type => {
@@ -3479,4 +3652,481 @@ describe('To-do card priority conflicts', () => {
         fireEvent.click(screen.getByRole('menuitemradio', { name: 'High' }));
         await waitFor(() => expect(update.mock.calls[1][3]).toEqual({ expectedRevision: 4, priority: 'high' }));
     });
+});
+
+
+describe('Sentinel To-do message controller', () => {
+    const gates = { sentinelTodos: true, sessionContextAttachments: true };
+    let health: ReturnType<typeof vi.fn>;
+    let process: ReturnType<typeof vi.fn>;
+    let send: ReturnType<typeof vi.fn>;
+    let local: ReturnType<typeof vi.spyOn>;
+    let remote: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        health = vi.fn().mockResolvedValue({ serverIdentity: 'local-message-owner' });
+        process = vi.fn().mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', status: 'completed',
+            metadata: { workspaceId: OWNER.ownerWorkspaceId, mode: 'sentinel', displayName: 'Login Sentinel', chatStyle: 'terse' } } });
+        send = vi.fn().mockResolvedValue({ processId: OWNER.processId, turnIndex: -1 });
+        const client = { ...fakeClient, health: { get: health }, processes: { get: process, sendMessage: send } } as unknown as CocClient;
+        local = vi.spyOn(messageApi, 'getSpaCocClient').mockReturnValue(client);
+        remote = vi.spyOn(messageApi, 'getCocClientFor').mockReturnValue(client);
+        get.mockResolvedValue(ledger([item({ type: 'manual', notes: '<instruction>data</instruction>' })]));
+        publishDashboardTopology(null, [{ id: OWNER.ownerWorkspaceId, name: 'Owner repo' } as WorkspaceInfo], 'local-message-owner');
+    });
+    afterEach(() => { publishDashboardTopology(null, []); });
+
+    const props = (): SentinelTodoMessageComposerProps => ({
+        target: captureSentinelTodoMessageTarget(OWNER, 'i1'), item: item(), gates,
+        onClose: vi.fn(), onAdmitted: vi.fn(),
+    });
+    const message = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+    const queue = () => screen.getByRole('button', { name: 'Queue message' }) as HTMLButtonElement;
+    async function loaded() { await waitFor(() => expect(screen.getByRole('status').textContent).not.toContain('Loading')); }
+    function draft(value = 'Please check this item') { fireEvent.change(message(), { target: { value } }); }
+
+    it.each(['running', 'completed'])('revalidates a %s closed Sentinel and only confirms matched admission', async status => {
+        process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', status,
+            metadata: { workspaceId: OWNER.ownerWorkspaceId, mode: 'sentinel', displayName: 'Login Sentinel', chatStyle: 'terse' } } });
+        const post = deferred<{ processId: string; turnIndex: number }>();
+        send.mockReturnValue(post.promise);
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        expect(message().value).toBe('');
+        expect(screen.getByRole('dialog').textContent).toContain('Owner repo');
+        expect(screen.getByRole('dialog').textContent).toContain('Login Sentinel');
+        expect(send).not.toHaveBeenCalled();
+        get.mockResolvedValue(ledger([item({ type: 'manual', title: 'Fresh title', notes: '<instruction>fresh data</instruction>' })]));
+        draft();
+        fireEvent.click(queue());
+        fireEvent.click(queue());
+        await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+        expect(process).toHaveBeenCalledTimes(2);
+        expect(get).toHaveBeenCalledTimes(2);
+        const [id, request, query] = send.mock.calls[0];
+        expect(id).toBe(OWNER.processId);
+        expect(query).toEqual({ workspace: 'ws-1' });
+        expect(Object.keys(request).sort()).toEqual(['chatStyle', 'content', 'deliveryMode']);
+        expect(request).toMatchObject({ deliveryMode: 'enqueue', chatStyle: 'terse' });
+        expect(request.content).toContain('Fresh title');
+        expect(request.content).toContain('&lt;instruction&gt;fresh data');
+        expect(request.content).toContain('Manual items are tracking-only');
+        expect(request.content).toMatch(/Please check this item$/);
+        expect(message().disabled).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(p.onClose).not.toHaveBeenCalled();
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        await act(async () => post.resolve({ processId: OWNER.processId, turnIndex: -1 }));
+        expect(p.onAdmitted).toHaveBeenCalledExactlyOnceWith('Login Sentinel');
+    });
+
+    it('targets only the captured remote group with colliding process/workspace IDs', async () => {
+        const workspace = { id: 'group-owner', name: 'Group owner', virtual: true } as WorkspaceInfo;
+        const rows = (id: string) => tagRemoteWorkspaces({ id, label: id, kind: 'ssh', serverIdentity: id },
+            `https://${id}.example.test`, [workspace]);
+        publishDashboardTopology('somewhere-else', [workspace, ...rows('a'), ...rows('b')], 'local-message-owner');
+        registerCloneBaseUrls(['a', 'b'].map(serverId => ({ serverId, workspaceId: workspace.id, baseUrl: `https://${serverId}.example.test` })));
+        health.mockResolvedValue({ serverIdentity: 'a' });
+        process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', metadata: { workspaceId: workspace.id, mode: 'sentinel' } } });
+        const p = { target: captureSentinelTodoMessageTarget({ ...OWNER, ownerWorkspaceId: workspace.id,
+            ownerRoutingRef: 'remote:a:group-owner' }, 'i1'), item: item(), gates, onClose: vi.fn(), onAdmitted: vi.fn() };
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(local).not.toHaveBeenCalled();
+        expect(remote.mock.calls.every(args => args[0] === 'https://a.example.test')).toBe(true);
+        expect(send.mock.calls[0][2]).toEqual({ workspace: workspace.id });
+        expect(get.mock.calls.every(args => args[0] === workspace.id && args[1] === OWNER.processId)).toBe(true);
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('retains text and permits fresh validation after an opening read failed', async () => {
+        get.mockRejectedValueOnce(new Error('Owner unavailable'));
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await screen.findByRole('alert');
+        expect(document.activeElement).toBe(screen.getByRole('alert'));
+        draft('retry this draft');
+        expect(queue().disabled).toBe(false);
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(send.mock.calls[0][1].content).toMatch(/retry this draft$/);
+    });
+
+    it('ignores an opening read from a prior draft and revalidates on send', async () => {
+        const stale = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(stale.promise);
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+        expect(queue().disabled).toBe(true);
+        draft('new draft');
+        await act(async () => stale.resolve(ledger([item({ title: 'Obsolete read' })])));
+        expect(screen.getByRole('dialog').textContent).not.toContain('Obsolete read');
+        expect(message().value).toBe('new draft');
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['sentinelTodos', 'sessionContextAttachments'] as const)('fails closed when %s is disabled live, retaining the draft', async flag => {
+        const p = props();
+        const view = render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        view.rerender(<SentinelTodoMessageComposer {...p} gates={{ ...gates, [flag]: false }} />);
+        expect(message().value).toBe('Please check this item');
+        expect(queue().disabled).toBe(true);
+        fireEvent.click(queue());
+        expect(send).not.toHaveBeenCalled();
+        view.rerender(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+    });
+
+    it('holds a synchronous guard through preflight and retains failed validation for retry', async () => {
+        const validation = deferred<SentinelTodoLedgerResponse>();
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        get.mockReturnValueOnce(validation.promise);
+        fireEvent.click(queue());
+        fireEvent.click(queue());
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        fireEvent.change(message(), { target: { value: 'changed during send' } });
+        expect(message().value).toBe('Please check this item');
+        await act(async () => validation.resolve(ledger([])));
+        expect(screen.getByRole('alert').textContent).toMatch(/missing/);
+        expect(send).not.toHaveBeenCalled();
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        expect(message().value).toBe('Please check this item');
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+    });
+
+    it('retains drafts on confirmed queue rejection and permits explicit retry', async () => {
+        send.mockRejectedValueOnce(new CocApiError({ status: 410, statusText: 'Gone', url: '/message', message: 'Session ended' }));
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        fireEvent.click(queue());
+        expect((await screen.findByRole('alert')).textContent).toMatch(/session has ended/);
+        expect(message().value).toBe('Please check this item');
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('group', { name: 'Confirm duplicate-risk retry' })).toBeNull();
+    });
+
+    it.each(['disconnect', 'invalid acceptance'])('requires a separate explicit duplicate-risk retry after %s', async failure => {
+        if (failure === 'disconnect') send.mockRejectedValueOnce(new Error('Connection lost'));
+        else send.mockResolvedValueOnce({ processId: 'another-sentinel', turnIndex: 1 });
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        fireEvent.click(queue());
+        expect((await screen.findByRole('alert')).textContent).toContain('Delivery is unconfirmed. Retrying may queue a duplicate.');
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        expect(message().value).toBe('Please check this item');
+        expect(send).toHaveBeenCalledTimes(1);
+        fireEvent.click(queue());
+        const confirm = await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+        expect(document.activeElement).toBe(confirm);
+        expect(send).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+        expect(screen.queryByRole('group', { name: 'Confirm duplicate-risk retry' })).toBeNull();
+        expect(message().value).toBe('Please check this item');
+        fireEvent.click(queue());
+        await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+        fireEvent.click(screen.getByRole('button', { name: 'Queue again anyway' }));
+        fireEvent.click(queue());
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(get).toHaveBeenCalledTimes(3);
+    });
+
+    it('invalidates pending context when the server changes and never substitutes a destination', async () => {
+        const stale = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(stale.promise);
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+        draft();
+        act(() => publishDashboardTopology(null, [{ id: OWNER.ownerWorkspaceId, name: 'Replacement' } as WorkspaceInfo], 'replacement'));
+        await act(async () => stale.resolve(ledger([item({ title: 'Stale' })])));
+        fireEvent.click(queue());
+        expect((await screen.findByRole('alert')).textContent).toMatch(/unavailable/);
+        expect(send).not.toHaveBeenCalled();
+        expect(message().value).toBe('Please check this item');
+    });
+
+    it('aborts in-flight preflight when the attachment gate is disabled', async () => {
+        const validation = deferred<SentinelTodoLedgerResponse>();
+        const p = props();
+        const view = render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        get.mockReturnValueOnce(validation.promise);
+        fireEvent.click(queue());
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        const signal = get.mock.calls[1][2].signal as AbortSignal;
+        view.rerender(<SentinelTodoMessageComposer {...p} gates={{ ...gates, sessionContextAttachments: false }} />);
+        expect(signal.aborted).toBe(true);
+        await act(async () => validation.resolve(ledger([item()])));
+        expect(send).not.toHaveBeenCalled();
+        expect(queue().disabled).toBe(true);
+        expect(message().disabled).toBe(false);
+        expect(message().value).toBe('Please check this item');
+    });
+
+    it('does not treat changed text as permission to retry uncertain delivery', async () => {
+        send.mockRejectedValueOnce(new Error('Lost response'));
+        const p = props();
+        render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        fireEvent.click(queue());
+        await screen.findByRole('alert');
+        fireEvent.click(queue());
+        await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+        draft('Edited after uncertainty');
+        expect(screen.queryByRole('group', { name: 'Confirm duplicate-risk retry' })).toBeNull();
+        fireEvent.click(queue());
+        await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+        expect(send).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Queue again anyway' }));
+        await waitFor(() => expect(p.onAdmitted).toHaveBeenCalledTimes(1));
+        expect(send.mock.calls[1][1].content).toMatch(/Edited after uncertainty$/);
+    });
+
+    it('ignores confirmed responses after its host unmounts', async () => {
+        const post = deferred<{ processId: string; turnIndex: number }>();
+        send.mockReturnValue(post.promise);
+        const p = props();
+        const view = render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        fireEvent.click(queue());
+        await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+        view.unmount();
+        await act(async () => post.resolve({ processId: OWNER.processId, turnIndex: 1 }));
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        expect(p.onClose).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('never retargets an existing draft if its host passes a different target', async () => {
+        const p = props();
+        const view = render(<SentinelTodoMessageComposer {...p} />);
+        await loaded();
+        draft();
+        view.rerender(<SentinelTodoMessageComposer {...p} target={captureSentinelTodoMessageTarget({ ...OWNER, processId: 'other-sentinel' }, 'i1')} />);
+        expect(queue().disabled).toBe(true);
+        expect(screen.getByRole('dialog').textContent).toContain(OWNER.processId);
+        expect(message().value).toBe('Please check this item');
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('cancels abandoned reads and ignores late responses after unmount', async () => {
+        const stale = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(stale.promise);
+        const p = props();
+        const view = render(<SentinelTodoMessageComposer {...p} />);
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+        const signal = get.mock.calls[0][2].signal as AbortSignal;
+        view.unmount();
+        expect(signal.aborted).toBe(true);
+        await act(async () => stale.resolve(ledger([item()])));
+        expect(p.onAdmitted).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+    });
+    describe('production Message Sentinel action', () => {
+        beforeEach(() => applyRuntimeConfigPatch({ sentinelEnabled: true, sessionContextAttachmentsEnabled: true }));
+        afterEach(() => act(() => applyRuntimeConfigPatch({ sentinelEnabled: false, sessionContextAttachmentsEnabled: false })));
+
+        async function openFromRow(gesture = 'right-click') {
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            const trigger = within(row).getByTestId('chat-header-overflow-btn');
+            if (gesture === 'overflow') fireEvent.click(trigger);
+            else if (gesture === 'right-click') fireEvent.contextMenu(row, { clientX: 80, clientY: 100 });
+            else {
+                row.focus();
+                fireEvent.keyDown(row, { key: gesture === 'ContextMenu' ? gesture : 'F10', shiftKey: gesture !== 'ContextMenu' });
+            }
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Message Sentinel…' }));
+            const dialog = screen.getByRole('dialog', { name: 'Message Sentinel' });
+            await waitFor(() => expect(within(dialog).getByRole('status').textContent).not.toContain('Loading'));
+            return { row, trigger, dialog };
+        }
+
+        it.each(['right-click', 'ContextMenu', 'Shift+F10', 'overflow'])('opens from %s with closed chat and restores the origin without selecting or navigating', async gesture => {
+            const attach = vi.fn();
+            const { unsubscribe } = subscribeActiveChatAttach(OWNER.ownerWorkspaceId, attach);
+            const hash = window.location.hash;
+            render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="different-viewer" />);
+            const { row, trigger, dialog } = await openFromRow(gesture);
+            expect(document.activeElement).toBe(message());
+            expect(message().value).toBe('');
+            expect(dialog.textContent).toContain('Login Sentinel');
+            expect(dialog.textContent).toContain('i1 · Fix login');
+            expect(screen.getByTestId('sentinel-todo-details').textContent).toContain('Select an item');
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(document.activeElement).toBe(gesture === 'overflow' ? trigger : row);
+            expect(window.location.hash).toBe(hash);
+            expect(attach).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+            expect(send).not.toHaveBeenCalled();
+            unsubscribe();
+        });
+
+        it.each(['running', 'completed'])('closes only on confirmed admission to the %s destination and opens a blank new draft', async status => {
+            process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', status,
+                metadata: { workspaceId: OWNER.ownerWorkspaceId, mode: 'sentinel', displayName: 'Login Sentinel', chatStyle: 'terse' } } });
+            const post = deferred<{ processId: string; turnIndex: number }>();
+            send.mockReturnValueOnce(post.promise);
+            render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="different-viewer" />);
+            await openFromRow();
+            draft();
+            fireEvent.click(queue());
+            fireEvent.click(queue());
+            await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.getByRole('dialog')).toBeTruthy();
+            expect(message().value).toBe('Please check this item');
+            expect(send.mock.calls[0]).toEqual([OWNER.processId, expect.objectContaining({ deliveryMode: 'enqueue', chatStyle: 'terse',
+                content: expect.stringMatching(/Please check this item$/) }), { workspace: OWNER.ownerWorkspaceId }]);
+            expect(send.mock.calls[0][1]).not.toHaveProperty('model');
+            expect(send.mock.calls[0][1]).not.toHaveProperty('provider');
+            expect(send.mock.calls[0][1]).not.toHaveProperty('mode');
+            await act(async () => post.resolve({ processId: OWNER.processId, turnIndex: -1 }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(screen.getByText('Message queued to Login Sentinel').getAttribute('role')).toBe('status');
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+            await openFromRow('overflow');
+            expect(message().value).toBe('');
+            expect(screen.queryByText('Message queued to Login Sentinel')).toBeNull();
+        });
+
+        it.each(['sentinelEnabled', 'sessionContextAttachmentsEnabled'])('subscribes to live %s without discarding a draft', async flag => {
+            act(() => applyRuntimeConfigPatch({ [flag]: false }));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.contextMenu(row);
+            expect(screen.queryByRole('menuitem', { name: 'Message Sentinel…' })).toBeNull();
+            fireEvent.keyDown(document, { key: 'Escape' });
+            act(() => applyRuntimeConfigPatch({ [flag]: true }));
+            await openFromRow();
+            draft('Retained across gate changes');
+            act(() => applyRuntimeConfigPatch({ [flag]: false }));
+            expect(queue().disabled).toBe(true);
+            expect(message().value).toBe('Retained across gate changes');
+            fireEvent.click(queue());
+            expect(send).not.toHaveBeenCalled();
+            act(() => applyRuntimeConfigPatch({ [flag]: true }));
+            await waitFor(() => expect(queue().disabled).toBe(false));
+            expect(message().value).toBe('Retained across gate changes');
+        });
+
+        it('announces capture failure and leaves the current page and ledger untouched', async () => {
+            publishDashboardTopology(null, []);
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.contextMenu(row);
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Message Sentinel…' }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            const alert = screen.getByText('The to-do owning Sentinel is unavailable. Reconnect its server and try again.');
+            expect(alert.textContent).toContain('unavailable');
+            expect(document.activeElement).toBe(alert);
+            expect(send).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+        });
+
+        it('retains the composer after a ledger refresh removes its row and rejects sending the missing item', async () => {
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await openFromRow();
+            draft('Keep after row removal');
+            get.mockResolvedValue(ledger([], 5));
+            act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId,
+                processId: OWNER.processId, ledgerRevision: 5 }));
+            await waitFor(() => expect(screen.queryByTestId('sentinel-todo-row-i1')).toBeNull());
+            expect(message().value).toBe('Keep after row removal');
+            fireEvent.click(queue());
+            await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+            expect(message().value).toBe('Keep after row removal');
+            expect(send).not.toHaveBeenCalled();
+        });
+
+        it.each(['rejection', 'uncertain'])('retains the production draft on %s and only closes on explicit retry acceptance', async failure => {
+            if (failure === 'rejection') send.mockRejectedValueOnce(new CocApiError({ status: 410, statusText: 'Gone', url: '/message', message: 'Session ended' }));
+            else send.mockRejectedValueOnce(new Error('Connection lost'));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await openFromRow();
+            draft('Keep until accepted');
+            fireEvent.click(queue());
+            await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+            expect(message().value).toBe('Keep until accepted');
+            expect(screen.queryByText('Message queued to Login Sentinel')).toBeNull();
+            expect(send).toHaveBeenCalledTimes(1);
+            fireEvent.click(queue());
+            if (failure === 'uncertain') {
+                await screen.findByRole('group', { name: 'Confirm duplicate-risk retry' });
+                expect(send).toHaveBeenCalledTimes(1);
+                fireEvent.click(screen.getByRole('button', { name: 'Queue again anyway' }));
+            }
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            expect(send).toHaveBeenCalledTimes(2);
+            expect(screen.getByText('Message queued to Login Sentinel')).toBeTruthy();
+        });
+
+        it.each(['unchanged', 'replaced route', 'different panel owner'])('keeps the captured remote group with %s and never falls back to a colliding local owner', async change => {
+            const workspace = { id: 'group-owner', name: 'Group owner', virtual: true } as WorkspaceInfo;
+            const rows = (id: string) => tagRemoteWorkspaces({ id, label: id, kind: 'ssh', serverIdentity: id },
+                `https://${id}.example.test`, [workspace]);
+            publishDashboardTopology(null, [workspace, ...rows('a'), ...rows('b')], 'local-message-owner');
+            registerCloneBaseUrls(['a', 'b'].map(serverId => ({ serverId, workspaceId: workspace.id, baseUrl: `https://${serverId}.example.test` })));
+            health.mockResolvedValue({ serverIdentity: 'a' });
+            process.mockResolvedValue({ process: { id: OWNER.processId, type: 'chat', metadata: { workspaceId: workspace.id, mode: 'sentinel' } } });
+            const owner = { ...OWNER, ownerWorkspaceId: workspace.id, ownerRoutingRef: 'remote:a:group-owner' };
+            const view = render(<UnifiedTodoTab owner={owner} scopeWorkspaceId="different-viewer" />);
+            await openFromRow();
+            draft('Keep the original server');
+            expect(local).not.toHaveBeenCalled();
+            expect(remote.mock.calls.every(args => args[0] === 'https://a.example.test')).toBe(true);
+            if (change === 'replaced route') {
+                act(() => registerCloneBaseUrls([{ serverId: 'a', workspaceId: workspace.id, baseUrl: 'https://replacement.example.test' }]));
+                view.rerender(<UnifiedTodoTab owner={owner} scopeWorkspaceId="different-viewer" />);
+            } else if (change === 'different panel owner') {
+                view.rerender(<UnifiedTodoTab owner={{ ...owner, processId: 'another-sentinel', ownerRoutingRef: 'remote:b:group-owner' }} scopeWorkspaceId="different-viewer" />);
+            }
+            expect(message().value).toBe('Keep the original server');
+            fireEvent.click(queue());
+            if (change === 'replaced route') {
+                await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy());
+                expect(send).not.toHaveBeenCalled();
+                expect(message().value).toBe('Keep the original server');
+            } else {
+                await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+                expect(send).toHaveBeenCalledExactlyOnceWith(OWNER.processId, expect.objectContaining({ deliveryMode: 'enqueue' }), { workspace: workspace.id });
+                expect(remote.mock.calls.every(args => args[0] === 'https://a.example.test')).toBe(true);
+                expect(create).not.toHaveBeenCalled();
+                expect(update).not.toHaveBeenCalled();
+            }
+            expect(local).not.toHaveBeenCalled();
+        });
+    });
+
 });

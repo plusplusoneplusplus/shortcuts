@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import { mergeConsecutiveContentChunks, inferParentToolCalls, splitLargePasteTurnContent } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
@@ -1209,6 +1210,76 @@ describe('ConversationTurnBubble — copy button feedback', () => {
         const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
         await act(async () => { fireEvent.click(btn); });
         expect(spy).toHaveBeenCalledWith('');
+    });
+});
+
+describe.each([
+    ['plain text', 'Copy to clipboard', 'copyToClipboard'],
+    ['HTML', 'Copy as HTML', 'copyHtmlToClipboard'],
+] as const)('ConversationTurnBubble copy feedback lifecycle — %s', (_format, title, method) => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.useFakeTimers();
+        vi.spyOn(formatUtils, method).mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    it('clears feedback timers when the bubble unmounts', async () => {
+        const view = render(<ConversationTurnBubble turn={makeTurn()} />, { wrapper: StrictMode });
+        const button = screen.getByTitle(title);
+        await act(async () => { fireEvent.click(button); });
+        expect(button.textContent).toBe('✓');
+        expect(vi.getTimerCount()).toBe(1);
+
+        view.unmount();
+        expect(vi.getTimerCount()).toBe(0);
+        await act(async () => { vi.advanceTimersByTime(1500); });
+    });
+
+    it('does not start feedback after a clipboard write completes past unmount', async () => {
+        let finishCopy!: () => void;
+        vi.mocked(formatUtils[method]).mockReturnValue(new Promise<void>(resolve => { finishCopy = resolve; }));
+        const view = render(<ConversationTurnBubble turn={makeTurn()} />, { wrapper: StrictMode });
+        fireEvent.click(screen.getByTitle(title));
+        view.unmount();
+
+        await act(async () => { finishCopy(); });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('keeps feedback for 1.5 seconds after the latest successful copy', async () => {
+        render(<ConversationTurnBubble turn={makeTurn()} />);
+        const button = screen.getByTitle(title);
+        const originalLabel = button.textContent;
+        await act(async () => { fireEvent.click(button); });
+        await act(async () => { vi.advanceTimersByTime(1000); });
+        await act(async () => { fireEvent.click(button); });
+        expect(vi.getTimerCount()).toBe(1);
+
+        await act(async () => { vi.advanceTimersByTime(500); });
+        expect(button.textContent).toBe('✓');
+        await act(async () => { vi.advanceTimersByTime(1000); });
+        expect(button.textContent).toBe(originalLabel);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('does not start feedback when the clipboard write fails', async () => {
+        const error = new Error('denied');
+        vi.mocked(formatUtils[method]).mockRejectedValue(error);
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        render(<ConversationTurnBubble turn={makeTurn()} />);
+        const button = screen.getByTitle(title);
+        const originalLabel = button.textContent;
+
+        await act(async () => { fireEvent.click(button); });
+        expect(button.textContent).toBe(originalLabel);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('Copy'), error);
     });
 });
 

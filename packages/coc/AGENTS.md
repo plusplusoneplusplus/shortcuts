@@ -615,7 +615,13 @@ references before editing. Paths are package-relative.
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
   Sentinel Mode and Coda are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
+  `getSentinelTodos` runtime capability. Its `list` includes separate compact custom
+  Refrain latest-run summaries through the late-bound, read-only native commands on
+  the owning server. Exact Sentinel/workspace ownership includes repo groups; disabled
+  or failed reads stay unavailable without fallback. Native `latestRun` excludes skips
+  and covers active runs outside the history window; expired history is never called
+  never-run. Reuse generated run links; listing changes no items, assessments or authority.
+  The opt-in `sentinel_jobs` tool reuses the
   REST refrain/Coda command objects (`getSentinelRefrainCommands`), bound to the owning
   Sentinel's attended turns only; gate notices, reviews and automation turns never get it.
   Every tool action, including Coda actions, rechecks live refrain availability and
@@ -676,7 +682,10 @@ references before editing. Paths are package-relative.
   item in `CocApiError.body.current`. Route composition
   shares the native ledger database, publishes the live flag-gated `getSentinelCoda`
   executor capability, and returns `codaReady`; server startup awaits recovery before
-  activating restored queues. Coda ask turns are unattended; enabled shell guards
+  activating restored queues. Manual and scheduled Coda children request `effortTier: 'medium'`
+  through the owning server/workspace queue; shared tier resolution selects the routed
+  provider's configured model and reasoning effort after Auto routing. Queue priority stays low.
+  Coda ask turns are unattended; enabled shell guards
   auto-deny without offering user approval. Coda events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
   Runs persist a caller-supplied child task id before queue admission, so early
@@ -846,6 +855,8 @@ references before editing. Paths are package-relative.
 - Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
   Only supported provider client processes may stay warm.
   CoC send/prewarm/status paths share `warmKey: processId`; cwd is execution context.
+- Skill directories and selected-skill references use host-filesystem paths for
+  the native provider runtime, including Windows UNC paths for WSL repositories.
 - Resume the active provider only. Switches/unbound continuations
   use fresh sessions/bounded handoff via `src/server/executors/continuation-mode.ts`.
   Never pass session IDs across providers.

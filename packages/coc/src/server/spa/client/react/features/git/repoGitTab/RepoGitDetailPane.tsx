@@ -133,6 +133,12 @@ export function RepoGitDetailPane({
         return (
             <WorkingTreeAllFilesDiff
                 workspaceId={workspaceId}
+                attachmentDestinationId={attachmentDestinationId}
+                repoRoot={repoRoot}
+                onFileMissing={onWorkingTreeFileMissing}
+                onDirtyChange={onDetailDirtyChange}
+                onRegisterSave={onDetailRegisterSave}
+                onSaved={onWorkingTreeFileSaved}
                 onFileSelect={onWorkingTreeFileSelect}
                 refreshKey={workingChangesRefreshKey}
             />

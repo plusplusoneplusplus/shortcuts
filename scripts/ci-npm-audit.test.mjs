@@ -9,7 +9,7 @@ import test from "node:test";
 const auditScript = fileURLToPath(new URL("./ci-npm-audit.sh", import.meta.url));
 
 for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"]) {
-    test(`${lockfile} excludes vulnerable redirect and Vite releases, including nested copies`, () => {
+    test(`${lockfile} excludes vulnerable redirect, Vite and re2js releases, including nested copies`, () => {
         const lock = JSON.parse(readFileSync(new URL(lockfile, import.meta.url), "utf8"));
         for (const [path, pkg] of Object.entries(lock.packages)) {
             if (/(^|\/)node_modules\/follow-redirects$/.test(path)) {
@@ -22,6 +22,12 @@ for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"])
                         || (minor === 2 && patch <= 3) || (minor === 3 && patch <= 2);
                     assert.ok(!vulnerable, `${path}: launch-editor injection`);
                 }
+            }
+            if (/(^|\/)node_modules\/re2js$/.test(path)) {
+                const [major, minor, patch] = pkg.version.split(".").map(Number);
+                const vulnerable = major === 2 && minor >= 2
+                    && (minor < 8 || (minor === 8 && patch < 7));
+                assert.ok(!vulnerable, `${path}: quadratic lookbehind matching (GHSA-gg6h-894w-4m9c)`);
             }
         }
     });
@@ -158,15 +164,6 @@ test("locks http-cache-semantics outside the affected range", () => {
         }
     }
     assert.ok(found);
-});
-
-test("locks re2js outside the affected range", () => {
-    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
-    const re2js = lock.packages["node_modules/re2js"];
-    assert.ok(re2js, "re2js must be present in the production dependency graph");
-    const [major, minor, patch] = re2js.version.split(".").map(Number);
-    assert.ok(major > 2 || (major === 2 && (minor > 8 || (minor === 8 && patch >= 7))),
-        `re2js ${re2js.version}: quadratic-time denial of service`);
 });
 
 test("accepts only the reviewed development advisories by default", { skip }, () => {

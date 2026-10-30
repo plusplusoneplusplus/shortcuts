@@ -51,6 +51,8 @@ export interface UseModalJobAiSelectionOptions {
      * Pass this when the available providers should come from a remote target server.
      */
     externalAgentProviders?: AgentSelectorProvider[];
+    /** Exact server that supplied external catalogs; absent owners cannot open local settings. */
+    configurationBaseUrl?: string;
     /**
      * When set, overrides the locally-fetched effort-tier map per provider.
      * Key is the concrete provider id (e.g. 'copilot', 'codex'); value is the
@@ -60,6 +62,9 @@ export interface UseModalJobAiSelectionOptions {
 }
 
 export interface UseModalJobAiSelectionResult {
+    configurationWorkspaceId?: string;
+    configurationBaseUrl?: string;
+    configurationUnavailable?: boolean;
     provider: ChatProvider;
     setProvider: (provider: ChatProvider) => void;
     agentProviders: AgentSelectorProvider[];
@@ -137,6 +142,7 @@ export function useModalJobAiSelection({
     mode = 'ask',
     initialSelection,
     externalAgentProviders,
+    configurationBaseUrl,
     externalEffortTierMap,
 }: UseModalJobAiSelectionOptions): UseModalJobAiSelectionResult {
     const cloneClient = useCocClient(workspaceId);
@@ -361,6 +367,9 @@ export function useModalJobAiSelection({
     }, [autoProviderSelected, effortOverride, provider, selectedEffortTier, tierPayload, useEffortTierMode, validModelOverride]);
 
     return {
+        configurationWorkspaceId: workspaceId,
+        configurationBaseUrl,
+        configurationUnavailable: !configurationBaseUrl && (externalAgentProviders !== undefined || externalEffortTierMap !== undefined),
         provider,
         setProvider,
         agentProviders,
@@ -431,6 +440,10 @@ export function ModalJobAiControls({
             />
             {useEffortTierMode ? (
                 <EffortTierSelector
+                    workspaceId={selection.configurationWorkspaceId}
+                    settingsBaseUrl={selection.configurationBaseUrl}
+                    provider={provider}
+                    configurationUnavailable={selection.configurationUnavailable}
                     tiers={effortTierMap}
                     selectedTier={selectedEffortTier}
                     onChange={setEffortTier}

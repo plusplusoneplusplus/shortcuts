@@ -728,6 +728,7 @@ Origin `/execute`, `/submit-pr`, `/ai-review`, `/resolve-comments` require same-
 | GET/PATCH | `/api/workspaces/:id/seen-state` | Get / update seen state |
 | DELETE | `/api/workspaces/:id/seen-state/:processId` | Clear process seen state |
 | GET | `/api/workspaces/:id/seen-state/count` | Unseen count |
+| GET | `/api/workspaces/:id/history` | Terminal process history (`limit` ≤200, `offset`, `type`) with injected `seenAt`; `unseen=true` pages over rows whose seen stamp differs from their completion time (older servers ignore it and return every row) |
 
 ## LLM Tools
 

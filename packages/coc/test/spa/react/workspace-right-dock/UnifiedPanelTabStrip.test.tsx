@@ -332,9 +332,30 @@ describe('UnifiedPanelTabStrip', () => {
             fireEvent.contextMenu(tabNode(file), { clientX: 20, clientY: 30 });
             expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
                 'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
-                'Copy Path', 'Copy Relative Path', 'Reveal in Explorer',
+                'Copy path', 'Copy Relative Path', 'Reveal in Explorer',
             ]);
             expect(props.onActivate).not.toHaveBeenCalled();
+        });
+
+        it('offers Markdown Copy path through the keyboard menu with file grouping', async () => {
+            const tabs = sampleTabs();
+            const note = { ...tabs[1], kind: 'note' as const, resourceId: 'auto||/owner/file.md' };
+            const props = renderStrip({
+                tabs: [tabs[0], note], activeId: tabs[0].id,
+                fileActionAvailability: () => ({ copyPath: true, copyRelativePath: false, revealInExplorer: false }),
+            });
+            const origin = tabNode(note);
+            origin.focus();
+            fireEvent.keyDown(origin, { key: 'F10', shiftKey: true });
+            const menu = screen.getByRole('menu', { name: 'Tab actions' });
+            fireEvent.keyDown(menu, { key: 'End' });
+            expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Copy path' }));
+            expect(screen.getAllByRole('separator').length).toBeGreaterThan(0);
+            fireEvent.keyDown(menu, { key: 'Enter' });
+            expect(props.onMenuAction).toHaveBeenCalledWith('copy-path', note.id);
+            expect(props.onActivate).not.toHaveBeenCalled();
+            await Promise.resolve();
+            expect(document.activeElement).toBe(origin);
         });
 
         it('offers Keep Open for a preview and dispatches it in place', () => {
@@ -773,6 +794,38 @@ describe('UnifiedPanelTabStrip', () => {
         expect(screen.getByTestId(`unified-panel-tab-repo-${tabs[0].id}`).textContent).toBe('api');
         expect(tabNode(tabs[0]).getAttribute('title')).toBe('Plan — api');
         expect(tabNode(tabs[0]).querySelector('.sr-only')?.textContent).not.toContain('api');
+    });
+
+    it.each([false, true])('hides only browser repo labels in repo groups (grouped tabs: %s)', groupsEnabled => {
+        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'terminal', 'canvas', 'file', 'note'].includes(tab.kind))
+            .map(tab => ({ ...tab, repoLabel: 'Target repo' }));
+        renderStrip({ tabs, hideBrowserRepoLabels: true, groupsEnabled });
+        for (const tab of tabs) {
+            const badge = screen.queryByTestId(`unified-panel-tab-repo-${tab.id}`);
+            if (tab.kind === 'browser') {
+                expect(badge).toBeNull();
+                expect(tabNode(tab).textContent).not.toContain('Target repo');
+                expect(tabNode(tab).getAttribute('title')).toBe(tab.label);
+                expect(screen.getByRole('tab', { name: /^browser/ })).toBe(tabNode(tab));
+                expect(tabNode(tab).querySelector('[data-icon="browser-globe"]')).toBeTruthy();
+            } else if (tab.kind === 'file') {
+                expect(badge).toBeNull();
+                expect(tabNode(tab).querySelector('.sr-only')?.textContent).toContain('Target repo');
+            } else {
+                expect(badge?.textContent).toBe('Target repo');
+                expect(tabNode(tab).getAttribute('title')).toContain('Target repo');
+            }
+        }
+    });
+
+    it('keeps browser repo labels outside repo groups', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'browser', ownerWorkspaceId: WS, resourceId: 'page', label: 'Page', repoLabel: 'Target repo',
+        });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(screen.getByTestId(`unified-panel-tab-repo-${tabs[0].id}`).textContent).toBe('Target repo');
+        expect(tabNode(tabs[0]).getAttribute('title')).toBe('Page — Target repo');
     });
 
     it('gives browser tabs one title-independent width that shrinks to a shared floor', () => {

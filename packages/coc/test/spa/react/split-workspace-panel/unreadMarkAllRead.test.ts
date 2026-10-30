@@ -23,20 +23,23 @@ const groupOptions = () => ({ groupId: 'group-a', baseUrl: 'https://owner.exampl
 beforeEach(() => { vi.clearAllMocks(); patch.mockResolvedValue({}); });
 
 describe('unread preview bulk read', () => {
-    it.each([undefined, 'https://box-a.example', 'https://box-b.example'])('batches all native pages on the exact %s owner with the existing visibility rules', async baseUrl => {
+    it.each([undefined, 'https://box-a.example', 'https://box-b.example'])('asks the exact %s owner for unread pages and writes through that client with the existing visibility rules', async baseUrl => {
         const history = vi.fn()
             .mockResolvedValueOnce({ history: [task('visible'), task('archived', { archived: true }), task('hidden', { mode: 'autopilot' })], hasMore: true })
             .mockResolvedValueOnce({ history: [task('not-loaded'), task('work-item', { workItemId: 'wi' }), task('task', { type: 'run-workflow' })], hasMore: false });
         const options = { ...native(history, baseUrl), excluded: new Set(['autopilot']) };
         await markNativeUnreadRead(options);
-        expect(history.mock.calls).toEqual([['same', { limit: 100, offset: 0 }, { signal: options.signal }], ['same', { limit: 100, offset: 3 }, { signal: options.signal }]]);
+        expect(history.mock.calls).toEqual([
+            ['same', { limit: 100, offset: 0, unseen: true }, { signal: options.signal }],
+            ['same', { limit: 100, offset: 3, unseen: true }, { signal: options.signal }],
+        ]);
         expect(patch).toHaveBeenCalledTimes(1);
         expect(patch).toHaveBeenCalledWith('same', [
             { processId: 'visible', seenAt: completedAt }, { processId: 'not-loaded', seenAt: completedAt },
-        ], { baseUrl }, { signal: options.signal });
+        ], { baseUrl }, { signal: options.signal, client: options.client });
     });
 
-    it('writes only rows whose server seen stamp differs and keys the page-origin owner as local', async () => {
+    it('writes only rows whose server seen stamp differs, even from a server that ignores the unread filter, and keys the page-origin owner as local', async () => {
         const history = vi.fn().mockResolvedValue({ history: [
             task('read', { seenAt: completedAt }), task('stale', { seenAt: '2026-10-22T00:00:00.000Z' }), task('never'),
         ], hasMore: false });

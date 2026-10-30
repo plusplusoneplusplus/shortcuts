@@ -70,7 +70,7 @@ test.beforeAll(async () => {
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'isolated-selection-client', setup(builder) {
             builder.onLoad({ filter: /[/\\]cloneRouting\.ts$/ }, () => ({
-                contents: 'export const useCocClient = ref => { window.sentinelTodoSelectionFixture.clientRefs.push(ref); return window.fakeClient; };', loader: 'ts',
+                contents: 'export const useCocClient = ref => { window.sentinelTodoSelectionFixture.clientRefs.push(ref); return window.fakeClient; }; export const useCloneBaseUrl = () => undefined;', loader: 'ts',
             }));
             builder.onLoad({ filter: /[/\\]ReposContext\.tsx$/ }, () => ({
                 contents: 'export const useReposOptional = () => null;', loader: 'ts',

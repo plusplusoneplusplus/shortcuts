@@ -1,3 +1,4 @@
+import { createRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { ChatHeaderOverflowMenu } from '../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu';
@@ -19,6 +20,60 @@ describe('ChatHeaderOverflowMenu', () => {
             onClick: vi.fn(),
         }));
     }
+
+    it('anchors a row context menu at the pointer, clamps it and cleans up on unmount', () => {
+        const row = createRef<HTMLDivElement>();
+        const items = makeItems(1);
+        const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return this.getAttribute('role') === 'menu'
+                ? { width: 248, height: 100 } as DOMRect
+                : { top: 10, bottom: 30, right: 40 } as DOMRect;
+        });
+        try {
+            const { unmount } = render(<div ref={row} tabIndex={-1}>
+                <ChatHeaderOverflowMenu contextTargetRef={row} items={items} />
+            </div>);
+            const target = row.current!;
+            expect(fireEvent.contextMenu(target, { clientX: 500, clientY: 200 })).toBe(false);
+            const menu = screen.getByRole('menu');
+            expect(menu.style.left).toBe('252px');
+            expect(menu.style.top).toBe('204px');
+            fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+            expect(document.activeElement).toBe(target);
+            expect(fireEvent.contextMenu(target, { clientX: window.innerWidth, clientY: window.innerHeight })).toBe(false);
+            expect(parseFloat(screen.getByRole('menu').style.left) + 248).toBeLessThanOrEqual(window.innerWidth - 8);
+            expect(parseFloat(screen.getByRole('menu').style.top) + 100).toBeLessThanOrEqual(window.innerHeight - 8);
+            unmount();
+            expect(fireEvent.contextMenu(target)).toBe(true);
+            expect(screen.queryByRole('menu')).toBeNull();
+            expect(items[0].onClick).not.toHaveBeenCalled();
+        } finally {
+            measure.mockRestore();
+        }
+    });
+
+    it('does not capture context gestures when a row has no actions', () => {
+        const row = createRef<HTMLDivElement>();
+        render(<div ref={row}><ChatHeaderOverflowMenu contextTargetRef={row} items={[]} /></div>);
+        expect(fireEvent.contextMenu(row.current!)).toBe(true);
+        expect(fireEvent.keyDown(row.current!, { key: 'ContextMenu' })).toBe(true);
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('moves through ordinary actions and radio choices in their displayed order', () => {
+        render(<ChatHeaderOverflowMenu items={[
+            { key: 'choice', label: 'Choice', checked: true, onClick: vi.fn() },
+            { key: 'action', label: 'Action', onClick: vi.fn() },
+        ]} />);
+        fireEvent.keyDown(screen.getByTestId('chat-header-overflow-btn'), { key: 'ArrowDown' });
+        const choice = screen.getByRole('menuitemradio');
+        const action = screen.getByRole('menuitem');
+        expect(document.activeElement).toBe(choice);
+        fireEvent.keyDown(choice, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(action);
+        fireEvent.keyDown(action, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(choice);
+    });
 
     it('renders nothing when items array is empty', () => {
         const { container } = render(<ChatHeaderOverflowMenu items={[]} />);
@@ -88,7 +143,7 @@ describe('ChatHeaderOverflowMenu', () => {
         render(<ChatHeaderOverflowMenu items={items} />);
         fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
         fireEvent.click(screen.getByTestId('overflow-item-item-0'));
-        expect(items[0].onClick).toHaveBeenCalledTimes(1);
+        expect(items[0].onClick).toHaveBeenCalledExactlyOnceWith(screen.getByTestId('chat-header-overflow-btn'));
         expect(screen.queryByTestId('chat-header-overflow-menu')).toBeNull();
     });
 

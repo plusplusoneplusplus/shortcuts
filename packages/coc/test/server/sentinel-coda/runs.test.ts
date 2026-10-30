@@ -1,9 +1,9 @@
-import { SENTINEL_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import * as fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
+import { getDefaultEffortTiers, type CreateTaskInput, type ModelInfo, type QueuedTask, type StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
 import { createSubmitCodaFindingsTool } from '../../../src/server/llm-tools/submit-coda-findings-tool';
 import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
@@ -17,6 +17,9 @@ import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-tod
 import * as config from '../../../src/config';
 import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
 import { resolveChatTurnPolicy } from '../../../src/server/executors/chat-turn-policy-resolver';
+import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
+import type { ChatProvider } from '../../../src/server/tasks/task-types';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_parent' };
@@ -93,34 +96,112 @@ afterEach(() => {
 });
 
 describe('CodaRunService.start', () => {
-    it.each(['manual', 'schedule'] as const)('resolves %s runs to medium without changing owner or model routing', async trigger => {
-        for (const [ledgerOwner, provider, preferredEffort] of [
-            [owner, 'copilot', 'high'], [other, 'codex', 'low'],
-        ] as const) {
-            const settings = { models: { providers: { [provider]: { reasoningEfforts: { 'gpt-5': preferredEffort } } } } };
+    describe.each(['copilot', 'codex', 'claude', 'opencode'] as const)('%s Medium tier', provider => {
+        const configuredModels = { copilot: 'gpt-5', codex: 'gpt-5.5', claude: 'sonnet', opencode: 'anthropic/claude-opus' };
+
+        async function executePreparedChild(
+            getEffortTiersForProvider: (provider: ChatProvider) => StoredEffortTiersMap | undefined,
+            getModelMetadata = async (id: string | undefined): Promise<ModelInfo | undefined> => id
+                ? { id, name: id, supportedReasoningEfforts: ['low', 'medium', 'high'] } : undefined,
+        ) {
+            const store = createMockProcessStore();
+            const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, 'copilot');
+            const resolveDefaultProvider = vi.fn(async () => ({
+                provider, selectedByAuto: true, fallbackUsed: false, warnings: [], decisions: [],
+            }));
+            const executeByTypeFn = vi.fn(async (task: QueuedTask) => {
+                const policy = await resolveChatTurnPolicy({
+                    provider: task.payload.provider as ChatProvider,
+                    requestedModel: task.config.model, requestedEffort: task.config.reasoningEffort,
+                    dataDir: fixture.dataDir, workspaceId: task.payload.workspaceId, defaultModelMode: 'ask',
+                    getModelMetadata,
+                });
+                return { ...policy, effectiveModel: policy.modelId };
+            });
+            const result = await runner.run(childTask(), {
+                cancelledTasks: new Set(), executeFollowUpFn: async () => undefined,
+                executeByTypeFn, getWorkingDirectoryFn: () => fixture.dataDir,
+                resolveDefaultProvider, getEffortTiersForProvider,
+            });
+            return { result, store, resolveDefaultProvider, executeByTypeFn };
+        }
+
+        it.each([
+            ['manual', false], ['schedule', false], ['manual', true], ['schedule', true],
+        ] as const)('resolves %s runs after Auto routing (configured: %s)', async (trigger, configured) => {
+            const ledgerOwner = provider === 'codex' ? other : owner;
+            const expected = configured
+                ? { model: configuredModels[provider], reasoningEffort: 'high' }
+                : getDefaultEffortTiers(provider)!.medium;
+            const settings = { models: { providers: { [provider]: { reasoningEfforts: { [expected.model]: 'low' } } } } };
             vi.spyOn(config, 'loadConfigFile').mockReturnValue(settings);
+            const tiers: StoredEffortTiersMap = {
+                low: { model: 'unused-low-model', reasoningEffort: 'low' },
+                ...(configured ? { medium: expected } : {}),
+            };
+            const tiersBefore = structuredClone(tiers);
+            const getEffortTiersForProvider = vi.fn((selected: ChatProvider) => selected === provider ? tiers : undefined);
             const scheduleBefore = scrubber.getConfig(ledgerOwner);
             const run = await service.start(ledgerOwner, { trigger });
-            const task = enqueued.at(-1)!;
-            expect(task.config).toEqual({ reasoningEffort: 'medium' });
+            const task = enqueued[0];
+            expect(task.config).toEqual({ effortTier: 'medium' });
             expect(task.payload).not.toHaveProperty('provider');
             expect(task.payload).not.toHaveProperty('model');
-            await prepareTaskForEnqueue(task, {});
-            const policyInput = {
-                provider, requestedModel: 'gpt-5', defaultModelMode: 'ask' as const,
-                getModelMetadata: async () => ({ id: 'gpt-5', name: 'GPT-5',
-                    capabilities: { supports: { reasoning_effort: ['low', 'medium', 'high'] } } }),
-            };
-            expect((await resolveChatTurnPolicy({ ...policyInput, requestedEffort: undefined })).reasoningEffort)
-                .toBe(preferredEffort);
-            const policy = await resolveChatTurnPolicy({ ...policyInput, requestedEffort: task.config!.reasoningEffort });
-            expect(policy).toMatchObject({ modelId: 'gpt-5', reasoningEffort: 'medium' });
+            await prepareTaskForEnqueue(task, {
+                getDefaultProvider: () => 'copilot', isAutoProviderRoutingActive: () => true,
+                getEffortTiersForProvider,
+            });
+            expect(task.config).toEqual({ afterEffortTier: 'medium' });
+            expect(getEffortTiersForProvider).not.toHaveBeenCalled();
+
+            const execution = await executePreparedChild(getEffortTiersForProvider);
+            expect(execution.result.success).toBe(true);
+            expect(execution.resolveDefaultProvider).toHaveBeenCalledWith({ forceAuto: true });
+            expect(getEffortTiersForProvider).toHaveBeenCalledExactlyOnceWith(provider);
+            expect(task.config).toEqual({ afterEffortTier: 'medium', ...expected });
+            expect(await execution.executeByTypeFn.mock.results[0].value).toMatchObject({
+                modelId: expected.model, reasoningEffort: expected.reasoningEffort,
+            });
+            const process = await execution.store.getProcess(run.childProcessId!);
+            expect(process?.metadata).toMatchObject({ provider, ...expected, afterEffortTier: 'medium',
+                workspaceId: ledgerOwner.workspaceId, priority: 'low', mode: 'ask' });
             expect(task.repoId).toBe(ledgerOwner.workspaceId);
             expect(task.payload.workspaceId).toBe(ledgerOwner.workspaceId);
             expect(getCodaChildContext(task.payload)).toEqual({ ...ledgerOwner, runId: run.id });
             expect(scrubber.getConfig(ledgerOwner)).toEqual(scheduleBefore);
-            expect(settings.models.providers[provider]?.reasoningEfforts['gpt-5']).toBe(preferredEffort);
-        }
+            expect(tiers).toEqual(tiersBefore);
+            expect(settings.models.providers[provider].reasoningEfforts[expected.model]).toBe('low');
+        });
+
+        it.each(['unknown', 'unsupported'] as const)('preserves strict validation for %s model efforts', async failure => {
+            await service.start(owner, { trigger: 'manual' });
+            await prepareTaskForEnqueue(enqueued[0], { isAutoProviderRoutingActive: () => true });
+            const model = configuredModels[provider];
+            const execution = await executePreparedChild(
+                () => ({ medium: { model, reasoningEffort: 'high' } }),
+                async () => failure === 'unknown' ? undefined : { id: model, name: model, supportedReasoningEfforts: ['low'] },
+            );
+            expect(execution.result.success).toBe(false);
+            expect(execution.result.error?.message).toBe(
+                `Unsupported reasoning effort "high" requested for model "${model}". Supported efforts: ${failure === 'unknown' ? 'unknown' : 'low'}`,
+            );
+            expect(execution.executeByTypeFn).toHaveBeenCalledTimes(1);
+            expect(execution.resolveDefaultProvider).toHaveBeenCalledTimes(1);
+        });
+
+        it('honors a configured Auto reasoning effort without retaining the literal medium pin', async () => {
+            vi.spyOn(config, 'loadConfigFile').mockReturnValue({});
+            await service.start(owner, { trigger: 'manual' });
+            await prepareTaskForEnqueue(enqueued[0], { isAutoProviderRoutingActive: () => true });
+            const model = configuredModels[provider];
+            const execution = await executePreparedChild(
+                () => ({ medium: { model, reasoningEffort: null } }),
+                async () => ({ id: model, name: model, supportedReasoningEfforts: ['low'] }),
+            );
+            expect(execution.result.success).toBe(true);
+            expect(enqueued[0].config).toEqual({ afterEffortTier: 'medium', model });
+            expect(await execution.executeByTypeFn.mock.results[0].value).toMatchObject({ modelId: model, reasoningEffort: 'low' });
+        });
     });
 
     it('cancels a scheduled admission disarmed during snapshot I/O without counting a failure', async () => {
@@ -529,6 +610,16 @@ it('replaces queue subscriptions on reattach and removes them on disposal', asyn
 });
 
 describe('Coda run prompt', () => {
+    it('shares issue and research completion boundaries without adding a todo verdict or write authority', () => {
+        const prompt = buildCodaPrompt({ id: 'run-1' } as Parameters<typeof buildCodaPrompt>[0], '/tmp/snapshot.json');
+        expect(prompt).toContain(SENTINEL_COMPLETION_GUIDANCE);
+        expect(prompt).toContain(SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE);
+        expect(prompt).toContain('If the appropriate ledger state is `todo`, report `unchanged` with that recommendation and the findings/next steps for the parent');
+        expect(prompt).toContain('Coda has no `todo` verdict and never updates the ledger directly');
+        expect(prompt).toContain('This chat is read-only');
+        expect(prompt).toContain('Never auto-apply a status change to them');
+    });
+
     it('introduces the run as Coda and keeps the wire tool name', () => {
         const prompt = buildCodaPrompt({ id: 'run-1' } as Parameters<typeof buildCodaPrompt>[0], '/tmp/snapshot.json');
         expect(prompt).toMatch(/^You are Coda, this Sentinel's built-in to-do review \(run run-1\)\./);

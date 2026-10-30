@@ -29,8 +29,12 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 `getSentinelCoda` is a late-bound executor capability published by route composition
 and gated by `sentinelTodoScrubber`. Ask tasks carrying
 `context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
-from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
-ledger writers and `send_to_conversation` are excluded. Coda turns are unattended:
+from the CoC tool bundle. A missing capability rejects the turn. Manual and scheduled
+children submit `effortTier: 'medium'` through the owning server/workspace queue.
+Shared tier resolution supplies the selected provider's configured model and reasoning
+effort after Auto routing; queue priority remains low and model/effort validation stays strict.
+
+Ordinary chat tools, ledger writers and `send_to_conversation` are excluded. Coda turns are unattended:
 ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
 callbacks, preserving auto-deny with audit reporting. Findings remain pending until
 queue completion; cancellation, failure and timeout apply nothing. Submission must
@@ -173,7 +177,16 @@ Offered to every Sentinel chat (first turn and follow-ups): the route layer
 publishes `getSentinelTodos`, which returns the shared `SentinelTodoService`.
 Not in `LLM_TOOL_REGISTRY`. Standalone executors may omit this server capability.
 The owner is the invoking chat (`workspaceId`, `processId`),
-never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
+never a tool argument, and the service re-proves Sentinel ownership on every call.
+`list` also returns a separate `refrains: { availability, items }` summary, independent
+of To-do filters and pagination. The executor late-binds the owning server's native
+`SentinelRefrainCommands.list`; live gates and exact Sentinel/workspace checks include
+repo groups. Missing, disabled or failed reads report unavailable without fallback.
+Each custom Refrain includes name and latest actual run status/time/generated
+`jobTurnHref` when available. Native `latestRun` excludes skips and includes active
+runs outside the 20-row history view; `runHistoryTruncated` prevents expired actual
+history from being called never-run. Response guidance keeps runs separate from
+To-dos and grants no execution, assessment or parent-chat posting authority. Actions:
 `list` (all unarchived non-Done items first, then recently updated Done within a
 50-item budget; active counts above 50 stay complete. `includeArchived` adds history
 after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining history, `itemId` reads an exact item;

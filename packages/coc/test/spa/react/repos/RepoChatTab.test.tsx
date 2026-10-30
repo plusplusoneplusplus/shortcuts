@@ -2706,7 +2706,9 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         mockMarkSeen.mockClear();
         await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
         expect(mockBatchRead).toHaveBeenCalledWith('ws-1', [{ processId: 'queue_unread', seenAt: '2026-01-01T00:00:00Z' }],
-            { baseUrl: sourceSelectionId ? 'https://rail-owner.example' : undefined }, { signal: expect.any(AbortSignal) });
+            { baseUrl: sourceSelectionId ? 'https://rail-owner.example' : undefined }, { signal: expect.any(AbortSignal), client: expect.anything() });
+        // The write uses the same owner client that listed the rows.
+        expect(mockBatchRead.mock.calls[0][3].client.options?.baseUrl).toBe(sourceSelectionId ? 'https://rail-owner.example' : undefined);
         expect(mockMarkSeen).not.toHaveBeenCalled();
         expect(location.hash).toBe(hash);
         expect(screen.getByRole('link', { name: 'Unread answer' })).toBeTruthy();

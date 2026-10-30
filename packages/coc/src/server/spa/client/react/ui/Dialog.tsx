@@ -48,20 +48,26 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
     const portalContainer = usePortalContainer(open);
     const panelRef = useRef<HTMLDivElement>(null);
 
+    const isTopDialog = () => {
+        const overlays = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="dialog-overlay"]'))
+            .filter(element => element.getAttribute('aria-hidden') !== 'true');
+        return overlays[overlays.length - 1]?.contains(panelRef.current) ?? false;
+    };
+
     useEffect(() => {
         if (!open || hidden || !trapFocus) return;
         const panel = panelRef.current;
         if (!panel) return;
         const previous = returnFocusRef?.current ?? document.activeElement;
         const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]',
+            ':is(button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"])',
         )).filter(element => !element.closest('[hidden], [inert], details:not([open]) > :not(summary)'));
         (panel.querySelector<HTMLElement>('[data-dialog-initial-focus]') ?? focusable()[0] ?? panel).focus();
         const contain = (event: FocusEvent) => {
-            if (!panel.contains(event.target as Node)) (focusable()[0] ?? panel).focus();
+            if (isTopDialog() && !panel.contains(event.target as Node)) (focusable()[0] ?? panel).focus();
         };
         const keydown = (event: KeyboardEvent) => {
-            if (event.key !== 'Tab') return;
+            if (event.key !== 'Tab' || !isTopDialog()) return;
             const elements = focusable();
             const first = elements[0] ?? panel;
             const last = elements[elements.length - 1] ?? panel;
@@ -83,7 +89,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
     useEffect(() => {
         if (!open || hidden) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape' && isTopDialog()) onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);

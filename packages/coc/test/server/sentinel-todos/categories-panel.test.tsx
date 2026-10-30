@@ -17,7 +17,8 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
     ...(await importOriginal<object>()),
     getCocClientForWorkspace: (reference: unknown) => { references.push(reference); return client; },
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains', () => ({
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains', async importOriginal => ({
+    ...(await importOriginal<object>()),
     SentinelRefrains: ({ toolbar, children }: { toolbar: React.ReactNode; children: (scrubber: React.ReactNode) => React.ReactNode }) => <>{toolbar}{children(null)}</>,
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding', async importOriginal => ({

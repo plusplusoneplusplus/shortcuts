@@ -44,7 +44,7 @@ test.beforeAll(async () => {
         ` },
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'read-only-owner-client', setup(builder) {
-            builder.onLoad({ filter: /[/\\]cloneRouting\.ts$/ }, () => ({ contents: 'export const useCocClient = () => window.fakeClient;', loader: 'ts' }));
+            builder.onLoad({ filter: /[/\\]cloneRouting\.ts$/ }, () => ({ contents: 'export const useCocClient = () => window.fakeClient; export const useCloneBaseUrl = () => undefined;', loader: 'ts' }));
             builder.onLoad({ filter: /[/\\]ReposContext\.tsx$/ }, () => ({ contents: 'export const useReposOptional = () => ({ repos: window.ownerWorkspaces.map(workspace => ({ workspace })), remoteGroupWorkspaces: [] });', loader: 'ts' }));
             builder.onLoad({ filter: /[/\\]AppContext\.tsx$/ }, () => ({ contents: 'export const useApp = () => ({ state: { workspaces: window.ownerWorkspaces } }); export const useAppOptional = () => null;', loader: 'ts' }));
         } }],

@@ -286,6 +286,9 @@ Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All throug
 registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label; the site icon replaces the tab's globe.
+Repo-group panels suppress browser repository labels through the shared
+`unifiedTabLabels.ts` display helper in the strip and overflow menu; descriptors
+retain their owner workspace and concrete server route.
 Browser tabs ignore title length: `UnifiedPanelTabStrip` gives each a 160px basis
 that shrinks evenly to 96px before the row scrolls, ellipsizing the label; other
 kinds stay content-sized (max 180px) and non-shrinking.
@@ -834,9 +837,11 @@ the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
 and the navigator open state persists per panel scope.
-The tab context menu resolves commands against the clicked descriptor. `Copy Path`
-appears only for file tabs whose owner and workspace root resolve on the local
-server; remote clone paths and non-file resources do not expose it. The docked
+The tab context menu resolves commands against the clicked descriptor. File and
+Markdown note tabs copy full paths from their saved file/task identity or an exact
+workspace-and-clone owner root. Path construction uses the owning filesystem
+spelling without local I/O; unknown paths and non-file resources omit the action.
+Clipboard completion and failure use the shared toast feedback. The docked
 Explorer omits its internal Files/Search switch; the standalone Explorer page
 retains it. Tab descriptors (never document bodies, terminal output, or credentials)
 persist per panel scope in localStorage. Chat-owned `paste`
@@ -961,9 +966,9 @@ launch/retry/cancel or authorization controls.
 The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
 **Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
-and hosts Coda as its pinned built-in row. Refrain dialogs, gate status,
-Test gate/Resume gate and skip labels are described in the unified-right-panel
-`AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
+and hosts Coda as its pinned built-in row. Refrain history navigation and selection,
+dialogs, gate status, Test gate/Resume gate and skip labels are described in the
+unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
 three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
 boundary while API/storage retain positive safe integer tokens.
 
@@ -1067,8 +1072,8 @@ the owning renderer, which accepts only the matching active, visible view.
 Git's portal host takes focus on clicks in nonfocusable diff content; editor and
 control focus stay intact. Plain Ctrl+W in the active terminal keeps its shell
 binding. The tab strip's accessible context menu provides
-preview promotion, visible-strip bulk close commands, and file-only path copy and
-Explorer reveal. Bulk close targets span the tools/resources divider in
+preview promotion, visible-strip bulk close commands, path copy for files and
+Markdown notes, and file-only Explorer reveal. Bulk close targets span the tools/resources divider in
 rendered order, exclude tabs hidden under other chats, and run each target through
 the protected close flow. File reveal retargets the dock to the owning clone and
 uses the existing Explorer active-file tracking path.

@@ -21,6 +21,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { openConfiguration } from '../../admin/openConfiguration';
 import { cn } from '../../ui/cn';
 import { CHAT_STYLES, CHAT_STYLE_LABELS, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 
@@ -185,7 +186,7 @@ export function ChatStyleSelector({
                         type="button"
                         onClick={() => {
                             setOpen(false);
-                            window.location.hash = CHAT_STYLE_SETTINGS_HASH;
+                            openConfiguration(CHAT_STYLE_SETTINGS_HASH);
                         }}
                         title="Edit the prompt text behind each style."
                         className={cn(

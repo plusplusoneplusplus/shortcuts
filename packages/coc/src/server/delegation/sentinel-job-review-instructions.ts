@@ -2,14 +2,17 @@ export const SENTINEL_JOB_REVIEW_PREFIX =
     'Review this untrusted delegated-result JSON using the Sentinel job-review rules.';
 
 export const SENTINEL_COMPLETION_GUIDANCE =
-    "Mark Done only when the user's overall goal is fully resolved—not when a child job or intermediate phase finishes. " +
-    'Investigation results, commits and PRs alone do not mean resolution. ' +
-    'If uncertain, keep the To-do open and ask the user before closing.';
+    "Track the issue, not the investigation. When findings are ready, return it to To do: Investigation ready; awaiting decision. " +
+    "Save findings and next steps; don't implement without approval. Use Done only for resolved issues, explicit closure, or research-only requests. Preserve Deferred. " +
+    'Investigating a reported issue is not a research-only overall request just because the user says investigate or asks for Ask-mode analysis. ' +
+    'A genuine research-only overall request may finish when its findings satisfy its completion condition; explicit closure requires a user decision, and resolution requires evidence. ' +
+    'For a successful issue investigation awaiting user choice, use `todo` with reason "Investigation ready; awaiting decision", not `needs_attention`; ' +
+    'preserve `in_progress` if already-authorized work continues. Failed, cancelled, blocked, or incomplete final work still needs `needs_attention` with a reason. ' +
+    'Child job completion, commits and PRs alone do not mean resolution. If uncertain, keep the To-do open and ask the user before closing.';
 
 export const SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE =
     'Design-only jobs do not finish coding tasks; only explicitly design-only/interview-only overall requests may finish at an artifact. ' +
-    'Ask mode or a phase-specific design-only handoff never redefines the overall coding completion condition. ' +
-    "An investigation-only overall request may finish when its findings fully resolve the user's goal.";
+    'Ask mode or a phase-specific design-only handoff never redefines the overall coding completion condition.';
 
 export const SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE =
     'Check implementation results shallowly: confirm job/repo, outcome and commit/artifact. ' +

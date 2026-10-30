@@ -283,8 +283,11 @@ resets when switching to a draft key with no saved attachments. Follow-up compos
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
 `AttachedContextPreviews`; their Attach action uses `activeChatAttach` without
-new-chat seed fallback. `sentinelTodoContext.ts` binds each pointer to the parent
-workspace, Sentinel process and concrete server route. Both the ledger and context
+new-chat seed fallback. Row context gestures and the overflow trigger share
+`ChatHeaderOverflowMenu` actions, preserving native selected-text, editor and link
+menus and restoring the originating focus on keyboard dismissal.
+`sentinelTodoContext.ts` binds each pointer to the parent workspace, Sentinel
+process and concrete server route. Both the ledger and context
 attachment flags gate the surface. Remote reads require concrete clone identity;
 unresolved owners never fall through locally.
 
@@ -295,6 +298,38 @@ pointer block: ID, title, type, status, archive state, completion condition, not
 and target repo. Draft changes invalidate pending reads; failed sends retain chips
 and text. Context grants no execution/delegation authority, especially for manual
 tracking. Missing items and unavailable owners surface inline errors.
+
+`SentinelTodoMessageDialog` is a controlled, in-memory composer surface for one
+fixed To-do and ledger owner. Its caller owns the draft, destination labels,
+context readiness and admission. The shared modal traps/restores focus; loading
+blocks submission and pending admission blocks editing and dismissal. Inline
+errors retain text. The surface performs no routing, context reads or message I/O.
+`sentinelTodoMessageContext.ts` captures durable server identity and the concrete
+ledger owner from dashboard topology. Its read-only preparation requires both
+existing gates and verifies health around exact Sentinel process/item reads,
+rejecting replaced, offline or stale destinations. Reads accept cancellation and
+have a ten-second deadline; callers abort on draft changes. It returns current
+escaped context through the shared serializer and never writes ledger or chat state.
+`sentinelTodoMessageAdmission.ts` serializes one dialog's preflight and normal
+queue admission with an in-memory single-flight guard. It preserves recorded
+chat style and leaves model/effort/provider/mode to destination follow-up policy.
+Only a matching process ID and valid turn index confirm admission. Post-dispatch
+transport errors, invalid responses and a thirty-second deadline require explicit
+duplicate-risk confirmation before retry; late responses never revise outcomes.
+`SentinelTodoMessageComposer` binds the surface and helpers to one immutable
+captured target. It retains drafts on failure, cancels stale opening reads on
+text/route/topology changes and revalidates on explicit send. Failed initial
+reads remain retryable. Live gates block admission; synchronous UI locking spans
+preflight through admission. A focused separate confirmation authorizes uncertain
+retry. Only confirmed admission invokes the host success callback. The controller
+is independent of mounted conversations.
+
+`UnifiedTodoTab` hosts it above ledger
+owner/transport remounts, preserving the captured destination and draft through
+row refreshes. One menu action serves context gestures and overflow with origin
+focus restoration. Live default-off `sentinelEnabled` and
+`sessionContextAttachmentsEnabled` gate entry/admission; capture errors and
+confirmed queued notices stay on the current page without changing selections.
 
 ### Session-context attachments
 
@@ -446,6 +481,11 @@ live from Admin to get the separate model picker and reasoning-effort controls.
 tooltips expose the model and effort each tier maps to (empty effort shows as `Auto`) and
 unconfigured options stay disabled with an Admin tooltip. Under Auto, every tier stays
 selectable and tooltips explain that provider and model resolve at scheduling time.
+The shared selector opens the existing server-wide tier editor through
+`admin/openConfiguration.ts`, carrying its exact workspace owner and concrete provider
+(Auto leaves provider selection to Admin). Composers, compact settings, review and modal
+controls retain their drafts and selected tier. Unresolved owners and external catalogs
+without an explicit configuration owner cannot fall back to local settings.
 
 `ChatStyleSelector` renders a `Style: <label>` chip after Effort in both composers when
 `features.chatStyleSelector` is on. Options come from `CHAT_STYLES` / `CHAT_STYLE_LABELS` in

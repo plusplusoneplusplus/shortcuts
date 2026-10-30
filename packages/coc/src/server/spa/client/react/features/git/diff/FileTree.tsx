@@ -20,6 +20,10 @@ import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
 // ----- Types -----
 
 export interface FileChange {
+    /** Optional selection identity for repeated paths in mutable comparisons. */
+    id?: string;
+    /** Comparison label included in accessible row names. */
+    label?: string;
     status: string;
     path: string;
     additions?: number;

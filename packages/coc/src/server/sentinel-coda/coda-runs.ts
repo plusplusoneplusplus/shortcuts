@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { toQueueProcessId, toTaskId, type CreateTaskInput, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
-import { SENTINEL_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { Trigger } from '../triggers/trigger-types';
@@ -386,8 +386,8 @@ function buildChildTask(owner: SentinelTodoOwner, run: CodaRunRecord, snapshotPa
             workspaceId: owner.workspaceId,
             context: { sentinelScrub: context },
         },
-        // Pin only reasoning effort; keep provider/model routing workspace-owned.
-        config: { reasoningEffort: 'medium' },
+        // Resolve both model and effort through the routed provider's Medium tier.
+        config: { effortTier: 'medium' } as CreateTaskInput['config'] & { effortTier: string },
         displayName: `[Coda] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
     };
 }
@@ -402,7 +402,8 @@ export function buildCodaPrompt(run: CodaRunRecord, snapshotPath: string): strin
         '- This chat is read-only. Never edit files, run write commands, or message other chats. The server applies results; you only report them.',
         '- For each item, check its linked jobs, references, PRs and commits in its target repo (use `gh`/`git` read-only commands).',
         '- Verdicts: `done` (completion condition met), `obsolete` (no longer needed or superseded), `in_progress`, `deferred` (intentionally postponed, still open), `needs_attention`, `unchanged` (status still right), `unverified` (evidence could not be checked: give `unverifiedReason`).',
-        '- ' + SENTINEL_COMPLETION_GUIDANCE,
+        '- ' + SENTINEL_COMPLETION_GUIDANCE + ' ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE,
+        '- If the appropriate ledger state is `todo`, report `unchanged` with that recommendation and the findings/next steps for the parent; Coda has no `todo` verdict and never updates the ledger directly.',
         '- If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.',
         '- Never guess. If gh auth fails, a remote server is offline or a repo is missing, use `unverified`.',
         '- Every verdict except `unchanged`/`unverified` needs at least one evidence entry, each with `checkedAt` set to when you checked it.',

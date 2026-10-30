@@ -252,6 +252,8 @@ export interface DeleteWorkspaceHistoryFilters {
 export interface WorkspaceHistoryQuery {
   limit?: number;
   offset?: number;
+  /** Only unread rows (seen stamp differs from completion). Older servers ignore it and return all rows. */
+  unseen?: boolean;
 }
 
 export interface ProcessHistoryItem {

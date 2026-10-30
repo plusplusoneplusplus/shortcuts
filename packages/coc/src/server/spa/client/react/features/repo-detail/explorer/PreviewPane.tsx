@@ -62,6 +62,7 @@ import {
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 import { BinaryRevealAction } from './BinaryRevealAction';
+import { MarkdownFileLinkScope } from '../../../shared/file-path/MarkdownFileLinkScope';
 import { WORKSPACE_PREVIEW_PREFIX, readWorkspacePreview, workspacePreviewClient, workspacePreviewUrl } from '../../../shared/file-viewer/workspacePreview';
 import { resolveLineRange, toLines } from '../../../shared/file-viewer/lineRange';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
@@ -813,37 +814,39 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                     <Button variant="secondary" size="sm" onClick={retry} data-testid="preview-retry-btn">Retry</Button>
                 </div>
             ) : displayBlob ? (
-                showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
-                <FileViewer
-                    selectionContext={readOnly ? undefined : {
-                        workspaceId: repoId,
-                        filePath: actualPath,
-                        destinationId: routingRef ?? repoId,
-                    }}
-                    blob={displayBlob}
-                    fileName={fileName}
-                    onChange={handleEditorChange}
-                    readOnly={viewOnly}
-                    onSave={viewOnly ? undefined : handleSave}
-                    markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
-                    revealLine={revealRetired ? undefined : revealLine}
-                    highlightRange={!revealRetired && endLine !== undefined && displayBlob.encoding === 'utf-8'
-                        ? resolveLineRange(revealLine, endLine, toLines(displayBlob.content).length) : null}
-                    revealColumn={revealColumn}
-                    revealNonce={revealNonce}
-                    markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={mountSharedModel}
-                    codeTestId="monaco-container"
-                    binaryActions={revealBinary ? (
-                        <BinaryRevealAction
-                            key={`${ownerKey}:${actualPath}`}
-                            repoId={repoId}
-                            routingRef={routingRef}
-                            path={actualPath}
-                            available={!readOnly}
-                        />
-                    ) : undefined}
-                />
+                <MarkdownFileLinkScope workspaceId={repoId} routingRef={routingRef} sourceFilePath={actualPath}>
+                    {showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
+                    <FileViewer
+                        selectionContext={readOnly ? undefined : {
+                            workspaceId: repoId,
+                            filePath: actualPath,
+                            destinationId: routingRef ?? repoId,
+                        }}
+                        blob={displayBlob}
+                        fileName={fileName}
+                        onChange={handleEditorChange}
+                        readOnly={viewOnly}
+                        onSave={viewOnly ? undefined : handleSave}
+                        markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
+                        revealLine={revealRetired ? undefined : revealLine}
+                        highlightRange={!revealRetired && endLine !== undefined && displayBlob.encoding === 'utf-8'
+                            ? resolveLineRange(revealLine, endLine, toLines(displayBlob.content).length) : null}
+                        revealColumn={revealColumn}
+                        revealNonce={revealNonce}
+                        markers={languageEnabled ? languageDocument.markers : undefined}
+                        onModelMount={mountSharedModel}
+                        codeTestId="monaco-container"
+                        binaryActions={revealBinary ? (
+                            <BinaryRevealAction
+                                key={`${ownerKey}:${actualPath}`}
+                                repoId={repoId}
+                                routingRef={routingRef}
+                                path={actualPath}
+                                available={!readOnly}
+                            />
+                        ) : undefined}
+                    />}
+                </MarkdownFileLinkScope>
             ) : null}
             {!loading && !error && isOversized && (
                 <div className="absolute bottom-1 left-3 text-xs text-[#848484]" data-testid="preview-oversized">

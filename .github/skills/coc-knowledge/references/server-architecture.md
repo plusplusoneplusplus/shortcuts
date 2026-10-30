@@ -95,6 +95,10 @@ A timing delay is not a readiness boundary.
 dashboard view. Pauses, task delays and implement-plan chain gates remain repo-scoped;
 one repo's gate does not block another repo. Gate and queue-control changes persist
 through queue events. `queue/queue-executor-bridge.ts` wires references before starting its executor.
+`skill-config-resolver.ts` supplies host-filesystem skill directories to the native
+provider runtime and selected-skill file references. WSL repository roots use
+host-readable UNC paths on Windows; global/configured skill paths retain their
+host namespace, independently of the repository's execution context.
 
 ## Executors
 

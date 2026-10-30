@@ -6,7 +6,8 @@
  *
  * Uses the admin-redesign `.aip-*` and `.ar-*` class system. No Tailwind.
  */
-import React, { useMemo } from 'react';
+import { readEffortTierSettingsTarget } from '../../admin/openConfiguration';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { TIER_KEYS, useProviderEffortTiers, type EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { useProviderModels, type AgentProvider, type ProviderModelInfo } from '../../hooks/useProviderModels';
 import { Spinner } from '../../ui';
@@ -31,6 +32,7 @@ function getReasoningEffortOptions(model: ProviderModelInfo | undefined): string
 }
 
 export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSectionProps) {
+    const sectionRef = useRef<HTMLElement>(null);
     const adminServer = useAdminServer();
     const owner = useMemo(() => adminServer.isRemote ? { baseUrl: adminServer.cacheScope, client: adminServer.client } : undefined, [adminServer]);
     const { models, loading: modelsLoading } = useProviderModels(provider, owner);
@@ -38,6 +40,12 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
         tiers, loading, error, saveError, saving, dirty,
         setTier, clearTier, save, cancel, reload,
     } = useProviderEffortTiers(provider, owner?.baseUrl, owner?.client);
+    useEffect(() => {
+        if (!loading && !modelsLoading && !error && readEffortTierSettingsTarget()) {
+            sectionRef.current?.scrollIntoView?.({ block: 'nearest' });
+            sectionRef.current?.focus({ preventScroll: true });
+        }
+    }, [loading, modelsLoading, error]);
     useAdminDirtyGuard(`effort-tiers:${provider}`, { label: `${provider} effort tiers`, dirty, saving, save });
     useAdminSaveShortcut(true, [{ dirty, saving: saving || loading || modelsLoading || error !== null, onSave: save }]);
 
@@ -93,13 +101,13 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
     }
 
     return (
-        <section className="ar-card" data-testid="provider-effort-tiers-section" aria-labelledby="effort-tiers-title">
+        <section ref={sectionRef} tabIndex={-1} className="ar-card" data-testid="provider-effort-tiers-section" aria-labelledby="effort-tiers-title">
             <header className="aip-panel-head">
                 <div>
                     <h3 className="aip-panel-title" id="effort-tiers-title">Effort Tiers</h3>
                     <p className="aip-panel-desc">
                         Map each effort level (Very Low / Low / Medium / High) to a model and optional reasoning effort.
-                        Admins can preconfigure tiers before they are used in chat.
+                        These mappings apply to all workspaces on this server. Changes are saved only with Save changes.
                     </p>
                 </div>
             </header>

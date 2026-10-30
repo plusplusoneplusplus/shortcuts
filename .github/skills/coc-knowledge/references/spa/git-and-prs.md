@@ -86,10 +86,13 @@ compact mode the working-tree header shows `+staged ~modified ?untracked` (or
 `✓ clean`) via `CompactWorkingTreeSummary` with no total file badge, and each
 commit row leads with its short hash before the subject. The working-tree
 header's all-diffs button opens the `working-tree-all` view
-(`WorkingTreeAllFilesDiff`, deep link `working-changes`): staged, unstaged and
-untracked files grouped by section, collapsed rows that lazy-load one file's
-diff (untracked content renders as an all-added diff), and "Open →" into the
-single-file `working-tree-file` view.
+(`WorkingTreeAllFilesDiff`, deep link `working-changes`): the shared `ReviewFiles`
+navigator with one full `WorkingTreeFileDiff`. Stage labels and repository/stage/path
+selection IDs separate partially staged paths in every layout. Untracked text renders
+against an empty base; binary/oversized files retain the preview. The full-diff action
+opens the existing single-file route. Owner/endpoint changes replace the host; refresh
+retains dirty buffers, including files removed from the latest change list. Internal
+navigation uses `useDirtyDetailGuard`; mutable changes omit viewed-state controls.
 
 ### Commit tooltips
 
@@ -150,7 +153,9 @@ a chat's captured changes use `WhisperDiffPanel` (no transport; see
 selection, directory/tree/flat layouts, overview, progress and the narrow drawer.
 `reviewFileTree` supplies sorted compact directory trees. Typed render, row metadata
 and drag capabilities keep Git revision attachments and PR classification/visited
-markers consumer-owned. Each host keys the shell by owner and comparison identity.
+markers consumer-owned. Optional file IDs separate selection from displayed paths;
+mutable hosts can guard navigation and retain selection while an editor is dirty.
+Each host keys the shell by owner and comparison identity.
 Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
 patch/content loaders, comment context and transport; the supplied paths replace
 the source’s fallback file-list loader. PR mobile/patch-only views retain the slim
@@ -245,7 +250,8 @@ Editing: `MonacoFileDiffViewer`'s `editable` prop opens only the modified side, 
 only when `isEditableDiff` holds (working-tree stage, modified model is the real
 on-disk document); the original side, ref-backed sides, commit/PR snapshots, and
 branch-range heads stay read-only. `WorkingTreeFileDiff` enables it for unstaged
-diffs, and for staged diffs only when the disk file equals the index
+diffs and untracked all-added comparisons, and for staged diffs only when the disk
+file equals the index
 (`stagedDiskMatchesIndex`, from an extra unstaged content load; the index side
 then uses the real document URI via `modifiedMatchesWorkingCopy`). Otherwise a
 staged diff stays read-only with a note. Saving never touches the index; Ctrl/Cmd+S (`addSaveCommand`) writes the edited text with

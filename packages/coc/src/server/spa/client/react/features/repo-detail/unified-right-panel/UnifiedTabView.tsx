@@ -279,6 +279,7 @@ export function UnifiedTabView({
         case 'canvas':
             return (
                 <UnifiedCanvasTab
+                    routingRef={tab.ownerRoutingRef}
                     workspaceId={tab.ownerWorkspaceId}
                     scopeWorkspaceId={scopeWorkspaceId}
                     canvasId={tab.resourceId}

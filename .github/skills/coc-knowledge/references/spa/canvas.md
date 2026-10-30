@@ -30,7 +30,7 @@ Inline content remains in the transcript.
 
 `features/canvas/CanvasPanel.tsx` is a composition root gated by `canvas.enabled`
 (`isCanvasEnabled()` in `utils/config.ts`, default on). It owns the public props, the
-workspace-routed `useCocClient(workspaceId)`, fullscreen chrome, and layout, delegating
+owner-routed `useCocClient` (explicit `routingRef` when supplied), fullscreen chrome, and layout, delegating
 the rest:
 
 | Layer | Holds |
@@ -275,7 +275,18 @@ Global delegation in `shared/file-path/file-path-preview.ts` normalizes bare
 `.file-path-link` spans, shared renderer `.md-link` spans, and local Markdown
 `<a href>` anchors into one file-reference path. Bare prose linkification keeps
 terminal punctuation outside the clickable span and its metadata; explicit Markdown
-hrefs and paths inside code or preformatted blocks stay literal.
+hrefs and paths inside code or preformatted blocks stay literal. Forge protects
+explicit Markdown destinations before bare-path matching. Local anchors in rendered
+previews share the delegate; hashes, downloads, external links and modified clicks
+retain their existing handlers.
+
+`MarkdownFileLinkScope` claims the bubbling `coc-open-file-reference` event for
+file/canvas previews before the chat fallback. It binds the displayed file directory
+and concrete owner, reads roots on that server, and uses `resolveChatFileLink` plus
+`openUnifiedPanelTab`. Unmount/owner changes cancel pending reads. The tab store
+activates and reveals repeat ranges without replacing buffers. Non-hosted source
+docks use their existing navigation callback; standalone canvas previews show
+`PreviewPane` in a floating, read-only workspace preview. Errors stay in that surface.
 
 With `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` enabled, user/assistant file clicks and
 portaled tool previews dispatch `coc-open-source-canvas` with originating chat,

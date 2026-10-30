@@ -67,10 +67,10 @@
 .git-review-resizer:hover::after,.git-review-resizer:focus-visible::after,.git-review-resizer.dragging::after{background:#007acc}
 .git-review-resizer:focus-visible{outline:none}
 .git-review-content{display:flex;flex:1;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
-.git-review-content>.file-diff-panel{min-width:0;flex:1}
-.git-review-content [data-testid=file-diff-header]{padding:3px 6px;gap:4px;flex-wrap:wrap}
-.git-review-content [data-testid=file-diff-header]>div{gap:4px;min-width:0;flex-wrap:wrap}
-.git-review-content [data-testid=file-diff-header] button{min-height:26px}
+.git-review-content>:is(.file-diff-panel,.working-tree-file-diff){min-width:0;flex:1}
+.git-review-content :is([data-testid=file-diff-header],[data-testid=working-tree-file-diff-header]){padding:3px 6px;gap:4px;flex-wrap:wrap}
+.git-review-content :is([data-testid=file-diff-header],[data-testid=working-tree-file-diff-header])>div{gap:4px;min-width:0;flex-wrap:wrap}
+.git-review-content :is([data-testid=file-diff-header],[data-testid=working-tree-file-diff-header]) button{min-height:26px}
 .git-review-content [data-testid=file-diff-path]{max-width:100%}
 .git-review-empty{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:12px;color:var(--review-muted)}
 .git-review-empty button{min-height:28px;color:#1674bd}

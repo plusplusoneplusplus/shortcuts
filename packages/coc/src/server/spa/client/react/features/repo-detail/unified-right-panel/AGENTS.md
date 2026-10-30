@@ -97,7 +97,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; other kinds use fixed icons and keep their `repoLabel` badge. The menu model owns per-kind availability, group move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; Browser tabs in repo groups show page titles and favicons without repository labels in the strip, tooltip or overflow rows; `unifiedTabLabels.ts` controls display only and preserves descriptor ownership. Other tabs retain their repository labels. The menu model owns per-kind availability, group move boundaries, file/note absolute paths and visible-order bulk targets. Path copy uses the clicked descriptor's saved path/task root or a workspace root matching both owner id and clone route, without local filesystem resolution; unavailable paths stay hidden and clipboard results use shared toasts. |
 | `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state. |
 | `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
 | `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
@@ -963,10 +963,45 @@ Attach button are copy-drag sources for their owning Sentinel composer. Grips al
 attach on click or keyboard activation; the overflow menu retains Attach. Cards use
 `select-text` with text outside draggable ancestors. Title pointer clicks after a
 card text selection leave details closed; keyboard activation opens details.
-Menu interactions stay isolated from row selection and dragging. Payloads contain
+Row right-click, ContextMenu and Shift+F10 share the overflow actions through
+`ChatHeaderOverflowMenu.contextTargetRef`. Selected text, editors and links keep
+native menus. Escape/Tab restores the originating row or control; menu interactions
+stay isolated from row selection and dragging. Payloads contain
 the stable item reference and owner, not notes or job data; attaching never writes
 the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
+on drop and send (see the composer knowledge reference).
+`SentinelTodoMessageDialog` provides a controlled message surface for a fixed item
+and owner; the caller supplies draft, context readiness, destination labels and
+admission state. It traps/restores focus and retains text through inline failures.
+The component performs no navigation or I/O.
+`SentinelTodoMessageComposer` owns its in-memory draft and one admission instance
+for a fixed captured target. Opening reads are cancelled on draft/route/topology
+changes; explicit send always revalidates. Failed initial reads permit explicit
+retry. Pending admission locks editing/dismissal; uncertain delivery requires a
+separate focused duplicate-risk confirmation. Only confirmed admission reaches
+the host success callback. Live gate changes block admission without dropping text.
+`sentinelTodoMessageContext.ts` captures its concrete ledger route and durable
+server identity from dashboard topology. Its read-only preparation brackets exact
+Sentinel process/item reads with health verification, rejects stale routes and
+owners, and returns the shared escaped context block. Both existing feature gates
+are required; reads have a ten-second deadline and accept caller cancellation.
+Callers abort on draft changes and revalidate before admission.
+`sentinelTodoMessageAdmission.ts` owns one in-memory admission attempt. It guards
+validation and submission synchronously, re-reads the captured context, and uses
+normal enqueue with the raw owning workspace query. Destination follow-up policy
+resolves model/effort/provider/mode; recorded chat style is explicit. Matching
+process ID and an integer turn index (including buffered -1) confirm admission.
+Transport failures, invalid success responses and the thirty-second deadline
+retain uncertainty; retry requires a separate duplicate-risk confirmation action.
+Confirmed rejection permits retry, but cannot clear a prior uncertain attempt.
+`UnifiedTodoTab` hosts the composer above its owner/transport-keyed ledger view.
+One Message Sentinel action serves row context gestures and the overflow menu;
+its originating row/control supplies focus restoration. Live default-off
+`sentinelEnabled` and `sessionContextAttachmentsEnabled` gates control entry and
+admission. The immutable capture survives row refresh/removal and transport
+remounts. Capture errors stay in place; confirmed admission alone clears the draft
+and publishes an accessible queued notice without navigation or selection changes.
+Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
@@ -1062,10 +1097,16 @@ retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
-Refrain history carries run timing
-and a clone-qualified job-turn link; run results stay in the job chat. Model catalogs and effort tiers use
-the same owner client. When the owning server's `effortLevelsEnabled` is on and the
-provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
+
+Hosted Refrain history shares To-do's detail column through `RefrainHistoryHostContext`;
+standalone history measures its own list/detail split with `useContainerWidth`.
+Selection binds a run ID across refreshes and resizing and resets per owner mount.
+Details read the current retained record; pruning reports its absence without
+selecting another run. Exact timing, full errors and clone-qualified job-turn
+links stay read-only; run results stay in the job chat.
+
+Model catalogs and effort tiers use the same owner client. When the owning
+server's `effortLevelsEnabled` is on and the provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
 Autopilot displays a permission warning. The optional Gate script field needs a
 cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged

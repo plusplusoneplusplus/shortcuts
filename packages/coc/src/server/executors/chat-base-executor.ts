@@ -792,6 +792,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const service = this.runtime.getSentinelTodos?.();
         return service ? {
             service, owner: { workspaceId, processId },
+            getRefrains: () => this.runtime.getSentinelRefrainCommands?.()?.jobs,
             triggers: this.runtime.getTriggerInfra?.()?.sentinelOvertures,
         } : undefined;
     }
