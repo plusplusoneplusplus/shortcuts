@@ -20,17 +20,10 @@ export function createGitFileContextPayload(value: unknown): GitFileContextDragP
         || data.filePath.startsWith('/') || /^[A-Za-z]:/.test(data.filePath)
         || data.filePath.includes('\\') || data.filePath.split('/').some(part => part === '..' || part === '.')
     ) return null;
-    const base = {
-        kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1 as const,
-        sourceWorkspaceId: data.sourceWorkspaceId,
-        sourceRoutingRef: data.sourceRoutingRef,
-        filePath: data.filePath,
-    };
-    if (data.side === 'working-tree' || data.revision === undefined) return { ...base, side: 'working-tree', label: data.filePath };
-    return {
-        ...base, revision: data.revision, side: data.side,
-        label: `${data.filePath} @ ${data.revision.slice(0, 7)}${data.revision.endsWith('^') ? '^' : ''}`,
-    };
+    const { sourceWorkspaceId, sourceRoutingRef, filePath, revision, side } = data as GitFileContextDragPayload;
+    const base = { kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1, sourceWorkspaceId, sourceRoutingRef, filePath } as const;
+    if (side === 'working-tree' || revision === undefined) return { ...base, side: 'working-tree', label: filePath };
+    return { ...base, revision, side, label: `${filePath} @ ${revision.slice(0, 7)}${revision.endsWith('^') ? '^' : ''}` };
 }
 
 export function gitFileContextKey(source: Pick<GitFileContextDragPayload, 'sourceRoutingRef' | 'sourceWorkspaceId' | 'filePath' | 'revision'>): string {
