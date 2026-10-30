@@ -230,3 +230,44 @@ describe('selection descriptors', () => {
         });
     });
 });
+
+describe('Extensions entry and drill-in', () => {
+    const board = { extensionKey: 'ws-repo:board', name: 'board', description: 'Sprint board' };
+    const logs = { extensionKey: 'ws-repo:coc-log-tail', name: 'coc-log-tail', description: 'Live CoC logs' };
+    const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', extensionsAvailable: true });
+
+    it('is listed right after New Canvas only when extensions were discovered', () => {
+        expect(ids(actions).slice(ids(actions).indexOf('canvas'), ids(actions).indexOf('canvas') + 2))
+            .toEqual(['canvas', 'extensions']);
+        expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1' }))).not.toContain('extensions');
+    });
+
+    it('is disabled with a reason when no chat is selected', () => {
+        const entry = openMenuActions({ targetWorkspaceId: REPO, chatId: null, extensionsAvailable: true })
+            .find(action => action.id === 'extensions')!;
+        expect(entry).toMatchObject({ disabled: true, disabledReason: expect.stringMatching(/chat/) });
+    });
+
+    it('keeps extensions behind the entry with an empty main query', () => {
+        const items = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board], query: '' });
+        expect(items.some(item => item.type === 'extension')).toBe(false);
+    });
+
+    it('reaches a matching extension by name or description from the main search', () => {
+        const byName = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board, logs], query: 'log' });
+        expect(byName.filter(item => item.type === 'extension').map(item => item.key)).toEqual(['extension:ws-repo:coc-log-tail']);
+        const byDescription = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board, logs], query: 'sprint' });
+        expect(byDescription.filter(item => item.type === 'extension').map(item => item.key)).toEqual(['extension:ws-repo:board']);
+    });
+
+    it('shows Back plus the filtered extensions, and nothing else, in the drill-in', () => {
+        const all = buildOpenMenuItems({ actions, files: [{ path: 'a.ts' }], canvases: [{ id: 'c', title: 'C' }],
+            extensions: [board, logs], query: '', view: 'extensions' });
+        expect(all.map(item => item.key)).toEqual(['back', 'extension:ws-repo:board', 'extension:ws-repo:coc-log-tail']);
+        const filtered = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board, logs], query: 'BOARD', view: 'extensions' });
+        expect(filtered.map(item => item.key)).toEqual(['back', 'extension:ws-repo:board']);
+        expect(firstOpenMenuIndex(all)).toBe(0);
+        expect(isOpenMenuItemEnabled(all[1])).toBe(true);
+    });
+});
+

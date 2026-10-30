@@ -15,6 +15,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 const searchFiles = vi.fn();
 const listCanvases = vi.fn();
 const createCanvas = vi.fn();
+const listExtensions = vi.fn();
+const openExtension = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
@@ -26,6 +28,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
         canvases: {
             list: (...args: unknown[]) => listCanvases(...args),
             create: (...args: unknown[]) => createCanvas(...args),
+            listCopilotExtensions: (...args: unknown[]) => listExtensions(...args),
+            openCopilotExtensionByKey: (...args: unknown[]) => openExtension(...args),
         },
     }),
 }));
@@ -73,6 +77,8 @@ beforeEach(() => {
     searchFiles.mockReset().mockResolvedValue({ results: [] });
     listCanvases.mockReset().mockResolvedValue([]);
     createCanvas.mockReset();
+    listExtensions.mockReset().mockResolvedValue([]);
+    openExtension.mockReset();
     clearUnifiedChatChanges();
     clearUnifiedDiffSources();
 });
@@ -517,3 +523,104 @@ describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
         }
     });
 });
+
+describe('Extensions drill-in', () => {
+    const logTail = { extensionKey: 'ws-1:coc-log-tail', name: 'coc-log-tail', description: 'Live CoC logs' };
+    const board = { extensionKey: 'ws-1:board', name: 'board' };
+
+    it('is absent when nothing is discovered or listing fails', async () => {
+        renderMenu();
+        await waitFor(() => expect(listExtensions).toHaveBeenCalledWith(WS));
+        expect(screen.queryByTestId('unified-panel-open-extensions')).toBeNull();
+        cleanup();
+        listExtensions.mockRejectedValue(new Error('no route'));
+        renderMenu();
+        await vi.advanceTimersByTimeAsync(20);
+        expect(screen.queryByTestId('unified-panel-open-extensions')).toBeNull();
+        expect(screen.getByTestId('unified-panel-open-terminal')).toBeTruthy();
+    });
+
+    it('is disabled without a chat', async () => {
+        listExtensions.mockResolvedValue([logTail]);
+        renderMenu({ chatId: null });
+        const entry = await screen.findByTestId('unified-panel-open-extensions') as HTMLButtonElement;
+        expect(entry.disabled).toBe(true);
+        fireEvent.click(entry);
+        expect(screen.queryByTestId('unified-panel-open-menu-back')).toBeNull();
+    });
+
+    it('drills in on click, opens the picked extension as a chat canvas and closes', async () => {
+        listExtensions.mockResolvedValue([logTail, board]);
+        openExtension.mockResolvedValue({ success: true, canvasId: 'rec-1', instanceId: 'i-1', title: 'CoC logs',
+            extensionKey: logTail.extensionKey, embed: 'canvas://rec-1' });
+        const { onOpenResource, onClose } = renderMenu();
+        fireEvent.click(await screen.findByTestId('unified-panel-open-extensions'));
+        expect(screen.getByTestId('unified-panel-open-menu-back')).toBeTruthy();
+        expect(screen.queryByTestId('unified-panel-open-terminal')).toBeNull();
+        expect(screen.getByTestId('unified-panel-open-menu-extension-ws-1:board')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu-extension-ws-1:coc-log-tail'));
+        await waitFor(() => expect(onOpenResource).toHaveBeenCalled());
+        expect(openExtension).toHaveBeenCalledWith(WS, { processId: 'chat-1', extensionKey: logTail.extensionKey });
+        expect(onOpenResource.mock.calls[0][0]).toMatchObject({
+            kind: 'canvas', resourceId: 'rec-1', chatId: 'chat-1', ownerWorkspaceId: WS, label: 'CoC logs',
+        });
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('filters the drill-in without searching files and steps back with Escape before closing', async () => {
+        listExtensions.mockResolvedValue([logTail, board]);
+        const { onClose } = renderMenu();
+        fireEvent.click(await screen.findByTestId('unified-panel-open-extensions'));
+        await search('board');
+        expect(searchFiles).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('unified-panel-open-menu-extension-ws-1:coc-log-tail')).toBeNull();
+        await search('zzz');
+        expect(screen.getByTestId('unified-panel-open-menu-no-extensions')).toBeTruthy();
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('unified-panel-open-terminal')).toBeTruthy();
+        expect((input as HTMLInputElement).value).toBe('');
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('works from the keyboard: ArrowRight enters, Enter opens, ArrowLeft returns', async () => {
+        listExtensions.mockResolvedValue([logTail]);
+        openExtension.mockResolvedValue({ success: true, canvasId: 'rec-2', instanceId: 'i-2', title: 'CoC logs',
+            extensionKey: logTail.extensionKey, embed: 'canvas://rec-2' });
+        const { onOpenResource } = renderMenu();
+        await screen.findByTestId('unified-panel-open-extensions');
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        await search('extensions');
+        fireEvent.keyDown(input, { key: 'ArrowRight' });
+        expect(screen.getByTestId('unified-panel-open-menu-back')).toBeTruthy();
+        fireEvent.keyDown(input, { key: 'ArrowLeft' });
+        expect(screen.queryByTestId('unified-panel-open-menu-back')).toBeNull();
+        await search('extensions');
+        fireEvent.keyDown(input, { key: 'Enter' });
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ resourceId: 'rec-2' })));
+    });
+
+    it('reaches an extension straight from the main search box', async () => {
+        listExtensions.mockResolvedValue([logTail]);
+        renderMenu();
+        await screen.findByTestId('unified-panel-open-extensions');
+        await search('log');
+        expect(screen.getByTestId('unified-panel-open-menu-extension-ws-1:coc-log-tail')).toBeTruthy();
+    });
+
+    it('keeps the drill-in open with an error when opening fails', async () => {
+        listExtensions.mockResolvedValue([logTail]);
+        openExtension.mockRejectedValue(new Error('boom'));
+        const { onClose } = renderMenu();
+        fireEvent.click(await screen.findByTestId('unified-panel-open-extensions'));
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu-extension-ws-1:coc-log-tail'));
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-extension-error').textContent)
+            .toContain('coc-log-tail'));
+        expect(onClose).not.toHaveBeenCalled();
+    });
+});
+

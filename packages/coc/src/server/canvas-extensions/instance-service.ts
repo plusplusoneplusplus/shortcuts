@@ -86,6 +86,30 @@ export function reopenCanvasExtension(deps: CanvasExtensionInstanceDeps, recordI
     });
 }
 
+/**
+ * The "+" menu opens an extension by key: its first declared canvas, reusing this
+ * chat's saved instance of it (an open one first) so repeated picks focus one panel.
+ */
+export function openCanvasExtensionByKey(deps: CanvasExtensionInstanceDeps, extensionKey: string) {
+    return runCanvasExtensionOperation(deps, async () => {
+        const extensions = await discoverCanvasExtensions({
+            config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
+        });
+        const extension = extensions.find(item => item.extensionKey === extensionKey);
+        if (!extension) throw new Error(`Canvas extension is unavailable: ${extensionKey}`);
+        const [declaration] = await deps.hosts.declarations({ workspaceId: deps.workspaceId, processId: deps.processId }, extension);
+        if (!declaration) throw new Error(`Canvas extension declares no canvas: ${extensionKey}`);
+        const saved = listCanvasExtensionInstances(deps.canvasStore, deps)
+            .filter(({ instance }) => instance.extensionKey === extensionKey && instance.canvasId === declaration.id);
+        const reuse = saved.find(({ instance }) => !instance.closed) ?? saved[0];
+        const opened = await openInstance(deps, {
+            canvasId: `${extensionKey}/${declaration.id}`,
+            ...(reuse ? { instanceId: reuse.instance.instanceId } : {}),
+        });
+        return { ...opened, extensionKey };
+    });
+}
+
 async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasExtensionArgs) {
     const owner = { workspaceId: deps.workspaceId, processId: deps.processId };
     if (typeof args?.canvasId !== 'string' || !args.canvasId.trim()) throw new Error('canvasId must be a non-empty string');
