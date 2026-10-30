@@ -193,15 +193,17 @@ describe('TabFeatureSettingsCard', () => {
         ]);
     });
 
-    it('offers repo groups for reaction execution but not for IC3 own commands', async () => {
+    it('offers repo groups for reaction execution and IC3 own commands', async () => {
         render(<Harness tabs={['teams']} />);
         const reactions = screen.getByTestId('select-teams-reaction-workspace');
         const commands = screen.getByTestId('select-teams-ic3-command-workspace');
         await waitFor(() => expect(reactions).toHaveProperty('disabled', false));
         expect(within(reactions).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
-        expect(within(commands).queryByRole('option', { name: /Team/ })).toBeNull();
+        expect(within(commands).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
         fireEvent.change(reactions, { target: { value: 'group-team' } });
         expect(controller.featureValues['teamsReactionDelegation.workspaceId']).toBe('group-team');
+        fireEvent.change(commands, { target: { value: 'group-team' } });
+        expect(controller.featureValues['teamsIc3OwnCommands.workspaceId']).toBe('group-team');
     });
 
     it('ignores saved rail Git opt-outs in Appearance and runtime updates', () => {
