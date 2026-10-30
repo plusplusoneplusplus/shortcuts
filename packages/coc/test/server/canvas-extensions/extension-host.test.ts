@@ -12,7 +12,8 @@ describe('CanvasExtensionHost with the installed SDK', () => {
 
     beforeEach(async () => {
         // Outside the repository, with spaces: the resolver must supply CoC's SDK over file URLs.
-        root = await fs.mkdtemp(path.join(os.tmpdir(), 'coc canvas host '));
+        // Real path: the child reports process.cwd() resolved (macOS /var -> /private/var).
+        root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'coc canvas host ')));
         const cwd = path.join(root, 'repo');
         const folder = path.join(cwd, '.github', 'extensions', 'counter');
         await fs.mkdir(folder, { recursive: true });
