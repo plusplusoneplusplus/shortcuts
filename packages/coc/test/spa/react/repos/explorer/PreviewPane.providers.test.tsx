@@ -757,6 +757,66 @@ describe('definition identity admission', () => {
         createModel.mockRestore();
     });
 
+    it('drops a late identity failure once the model attachment is disposed', async () => {
+        let rejectIdentity!: (error: Error) => void;
+        let identitySignal: AbortSignal | undefined;
+        mockFileIdentity.mockImplementationOnce((_owner, _path, signal) => {
+            identitySignal = signal;
+            return new Promise((_resolve, reject) => { rejectIdentity = reject; });
+        });
+        const view = renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+        attachment.respond('textDocument/definition', () => [{ uri: 'coc-file://ws-1/src/mixed.ts', range: {
+            start: { line: 11, character: 16 }, end: { line: 11, character: 20 },
+        } }]);
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+        const pending = monacoStub.provider('definition').provideDefinition(monacoStub.model,
+            { lineNumber: 1, column: 3 }, token);
+        const settled = Promise.resolve(pending).catch(() => undefined);
+        await waitFor(() => expect(identitySignal).toBeDefined());
+
+        view.rerender(<PreviewPane repoId="ws-1" filePath="src/b.ts" fileName="b.ts" />);
+        await waitFor(() => expect(identitySignal!.aborted).toBe(true));
+        await act(async () => {
+            rejectIdentity(new Error('Owner identity unavailable.'));
+            await settled;
+        });
+        expect(screen.queryByText('Retry Go to Definition')).toBeNull();
+    });
+
+    it('declines a definition into a repo-group workspace with ambiguous owners', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'member-1', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: 'member-2', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: 'member-2', serverId: 'server-b', baseUrl: 'https://beta.example' },
+        ]);
+        const onNavigate = vi.fn();
+        renderPane({
+            repoId: 'member-1',
+            routingRef: 'remote:server-a:member-1',
+            definitionPreviewOwners: [
+                { workspaceId: 'member-1', routingRef: 'remote:server-a:member-1' },
+                { workspaceId: 'member-2', routingRef: 'remote:server-a:member-2' },
+                { workspaceId: 'member-2', routingRef: 'remote:server-b:member-2' },
+            ],
+            onNavigate,
+        });
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+        attachment.respond('textDocument/definition', () => [{ uri: 'coc-file://member-2/src/shared.ts', range: {
+            start: { line: 8, character: 5 }, end: { line: 8, character: 11 },
+        } }]);
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+        await act(async () => {
+            await expect(monacoStub.provider('definition').provideDefinition(monacoStub.model,
+                { lineNumber: 1, column: 3 }, token)).rejects.toThrow('Definition owner is unavailable');
+        });
+        expect(mockFileIdentity).not.toHaveBeenCalled();
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
+
     it('Peek resolves an alias to the existing dirty model without reading disk again', async () => {
         mockFileIdentity.mockImplementation(async (_owner, path) => path.toLowerCase() === 'src/mixed.ts' ? 'src/Mixed.ts' : path);
         renderPane();

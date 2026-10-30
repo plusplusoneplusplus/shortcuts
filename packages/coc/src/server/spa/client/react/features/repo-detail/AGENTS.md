@@ -494,6 +494,20 @@ this workspace, read whole, not a trusted absolute path — and only then opens 
 language document and registers Monaco providers over its model
 (`features/language-servers/`).
 
+`PreviewPane` itself only composes and renders. `explorer/filePreviewIdentity.ts`
+is the pure per-file policy: kind/path, owner and buffer keys, read-only
+forcing, the read/write transport (writes hold the `explorerDirtyStore` save
+lock), and the definition-owner map, which drops repo-group workspace ids
+supplied by more than one owner. `useFilePreviewSession.ts` owns the buffer,
+Explorer dirty publication, the clean baseline (only the written text becomes
+clean; edits made during a write stay dirty), save/discard/reload, Markdown
+raw/rendered mode, reveal retirement and the owner registrations
+(`FilePreviewHostBridge`). `usePreviewModelAttachment.ts` builds one
+`attachmentScope` per Monaco model mount; every model-attached resource
+registers its release there, and disposal aborts the scope first so late
+identity or definition results cannot publish UI or navigation. Add a new
+per-model resource to that scope, never a separate cleanup.
+
 Editable Explorer and definition opens resolve directory spelling through the
 owning repo's `file-identity` endpoint before creating state. `FileOpenQueue`
 serializes resolution and publication; existing aliases reuse their buffer key,
