@@ -136,6 +136,13 @@ optional package description and a SHA-256 hash of entry bytes and package metad
 Discovery never imports code; malformed optional JSON is ignored, while unexpected
 filesystem errors propagate.
 
+This repository ships `.github/extensions/coc-log-tail`, a single-file extension that
+tails `<dataDir>/logs/coc-service.ndjson` and `coc-desktop.log` (it finds `dataDir`
+from `COPILOT_HOME`, not the cwd), serves a filterable SSE log view, and sends a
+chosen line with nearby lines through `session.send`. Keep such extensions single-file:
+the content hash covers only `extension.mjs` and `package.json`.
+`test/server/canvas-extensions/coc-log-tail.test.ts` runs it through the real host.
+
 `extension-host.ts` provides the flag-gated stdio runtime. It starts
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
 conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's

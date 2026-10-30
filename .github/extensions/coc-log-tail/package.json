@@ -1,0 +1,6 @@
+{
+  "name": "coc-log-tail",
+  "private": true,
+  "type": "module",
+  "description": "Live CoC server and desktop logs with filters; send a log line with nearby lines into the chat."
+}
