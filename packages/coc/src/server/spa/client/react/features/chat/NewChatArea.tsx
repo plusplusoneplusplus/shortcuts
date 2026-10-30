@@ -1397,6 +1397,8 @@ export function InitialChatComposer({
         if (useEffortTierMode) {
             return (
                 <EffortTierSelector
+                    workspaceId={routeId}
+                    provider={selectedProvider}
                     tiers={effortTierMap}
                     selectedTier={selectedEffortTier}
                     onChange={handleEffortTierChange}

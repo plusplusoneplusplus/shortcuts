@@ -42,6 +42,7 @@ import {
     isContainerMode,
     isServersEnabled,
 } from '../utils/config';
+import { readEffortTierSettingsTarget } from './openConfiguration';
 import { getServerEndpoint } from '../utils/serverRegistry';
 
 // ── Transport seam ──────────────────────────────────────────────────────────
@@ -345,7 +346,9 @@ export function AdminTargetProvider({ children }: { children: ReactNode }) {
     // Anchored to the connected server and read once per open, so selecting a
     // remote (or saving its features) cannot remove the selector mid-session.
     const [enabled] = useState(() => isAdminMachineSwitchEnabled() && isDesktopShell() && !isContainerMode());
-    if (!enabled) return <>{children}</>;
+    if (!enabled) return readEffortTierSettingsTarget()?.baseUrl
+        ? <div role="alert" className="p-4">Configure tiers on the owning server. Remote Admin is unavailable in this client.</div>
+        : <>{children}</>;
     return <EnabledAdminTargetProvider>{children}</EnabledAdminTargetProvider>;
 }
 
@@ -372,12 +375,13 @@ function EnabledAdminTargetProvider({ children }: { children: ReactNode }) {
 
     const [session, setSession] = useState<Session>(() => {
         const controller = new AbortController();
+        const owner = readEffortTierSettingsTarget()?.baseUrl;
         return {
             id: 0,
-            key: CONNECTED_MACHINE_KEY,
-            phase: 'ready',
+            key: owner ? `endpoint:${owner}` : CONNECTED_MACHINE_KEY,
+            phase: owner ? 'loading' : 'ready',
             error: null,
-            access: connectedAccess(makeHooks(controller, connectedMachine().label)),
+            access: owner ? unavailableAccess('Owning server') : connectedAccess(makeHooks(controller, connectedMachine().label)),
             controller,
         };
     });
@@ -413,7 +417,7 @@ function EnabledAdminTargetProvider({ children }: { children: ReactNode }) {
             fail('This machine', 'The connected server could not list registered machines.');
             return;
         }
-        const server = list.find(s => remoteMachineKey(s.id) === key);
+        const server = list.find(s => remoteMachineKey(s.id) === key || (key.startsWith('endpoint:') && trimSlash(getServerEndpoint(s) ?? '') === trimSlash(key.slice(9))));
         if (!server) {
             fail('This machine', 'This machine is no longer registered on the connected server.');
             return;
@@ -444,7 +448,7 @@ function EnabledAdminTargetProvider({ children }: { children: ReactNode }) {
         }
         if (!isCurrent()) return;
         setSession(prev => prev.id === id
-            ? { ...prev, phase: 'ready', error: null, access: remoteAccess(endpoint, label, probeHooks, serversEnabled) }
+            ? { ...prev, key: remoteMachineKey(server.id), phase: 'ready', error: null, access: remoteAccess(endpoint, label, probeHooks, serversEnabled) }
             : prev);
     }, [listServers, makeHooks]);
 
@@ -463,6 +467,13 @@ function EnabledAdminTargetProvider({ children }: { children: ReactNode }) {
         setSession({ id, key, phase: 'loading', error: null, access: unavailableAccess(label), controller });
         void resolveRemote(id, key, controller);
     }, [machines, makeHooks, resolveRemote]);
+
+    useEffect(() => {
+        const initial = sessionRef.current;
+        if (initial.id === 0 && initial.phase === 'loading') {
+            void resolveRemote(initial.id, initial.key, initial.controller);
+        }
+    }, [resolveRemote]);
 
     const commitSelectRef = useRef(commitSelect);
     commitSelectRef.current = commitSelect;

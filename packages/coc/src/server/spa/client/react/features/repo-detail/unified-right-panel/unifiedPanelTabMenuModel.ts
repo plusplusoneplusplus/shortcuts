@@ -1,6 +1,8 @@
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
+import { parseNoteResourceId } from './unifiedNoteTabs';
 import { isGroupBoundaryMove, stripGroupForKind } from './unifiedPanelTabGroups';
 
 export type UnifiedPanelBulkCloseAction =
@@ -123,12 +125,12 @@ export function unifiedPanelTabMenuItems(
                 disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others-in-group', dirtyIds).length === 0 },
         );
     }
+    if (fileActions.copyPath && (tab.kind === 'file' || tab.kind === 'note')) {
+        items.push({ action: 'copy-path', label: 'Copy path', group: 'file', disabled: false });
+    }
     if (tab.kind === 'file') {
         if (fileActions.openToSide) {
             items.push({ action: 'open-to-side', label: 'Open to the Right', group: 'file', disabled: false });
-        }
-        if (fileActions.copyPath) {
-            items.push({ action: 'copy-path', label: 'Copy Path', group: 'file', disabled: false });
         }
         items.push(
             {
@@ -158,20 +160,32 @@ export function unifiedPanelAbsoluteFilePath(
     tab: UnifiedPanelTab,
     workspaceRootPath: string | null | undefined,
 ): string | null {
-    if (tab.kind !== 'file' || typeof tab.ownerRoutingRef === 'string') return null;
-    if (tab.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
-        return tab.resourceId.slice(WORKSPACE_PREVIEW_PREFIX.length) || null;
+    if (tab.kind === 'note') {
+        const resource = parseNoteResourceId(tab.resourceId);
+        if (!resource) return null;
+        // Tasks paths are relative to their saved task root, which can differ
+        // from the workspace root. Never guess a default tasks directory.
+        return absoluteFilePath(resource.notePath,
+            resource.fetchMode === 'tasks' ? resource.notesRoot : workspaceRootPath);
     }
-    if (tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)) {
-        const trustedPath = tab.resourceId.slice(TRUSTED_PATH_PREFIX.length);
-        return trustedPath || null;
+    if (tab.kind !== 'file') return null;
+    for (const prefix of [WORKSPACE_PREVIEW_PREFIX, TRUSTED_PATH_PREFIX]) {
+        if (tab.resourceId.startsWith(prefix)) {
+            const path = tab.resourceId.slice(prefix.length);
+            return isAbsolutePath(path) ? path : null;
+        }
     }
-    const root = workspaceRootPath?.trim();
-    if (!root) return null;
-    const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/';
-    const normalizedRoot = root.replace(/[\\/]+$/, '');
-    const relative = tab.resourceId.replace(/^[\\/]+/, '').replace(/[\\/]/g, separator);
-    return `${normalizedRoot}${separator}${relative}`;
+    return absoluteFilePath(tab.resourceId, workspaceRootPath);
+}
+
+/** Pure path arithmetic on the owner's filesystem spelling; never local I/O. */
+function absoluteFilePath(path: string, root: string | null | undefined): string | null {
+    if (!path || path.includes('\0')) return null;
+    if (isAbsolutePath(path)) return path;
+    if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(path) || path.startsWith('~')) return null;
+    if (!root || !isAbsolutePath(root)) return null;
+    const resolved = resolveRelativePath(root.replace(/\\/g, '/'), path.replace(/\\/g, '/'));
+    return root.includes('\\') && !root.includes('/') ? resolved.replace(/\//g, '\\') : resolved;
 }
 
 export function unifiedPanelFileActionAvailability(
@@ -179,7 +193,11 @@ export function unifiedPanelFileActionAvailability(
     workspaceRootPath: string | null | undefined,
 ): UnifiedPanelFileActionAvailability {
     if (tab.kind !== 'file') {
-        return { copyPath: false, copyRelativePath: false, revealInExplorer: false };
+        return {
+            copyPath: unifiedPanelAbsoluteFilePath(tab, workspaceRootPath) !== null,
+            copyRelativePath: false,
+            revealInExplorer: false,
+        };
     }
     const relativePath = unifiedPanelRelativeFilePath(tab);
     return {

@@ -21,6 +21,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage, resetSpaCocClientForTests
 import { useMemoryV2Api } from '../../../../src/server/spa/client/react/features/memory/memoryV2Api';
 import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { LogsView } from '../../../../src/server/spa/client/react/features/logs/LogsView';
+import { Dialog } from '../../../../src/server/spa/client/react/ui/Dialog';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { useAdminFeatureSettings } from '../../../../src/server/spa/client/react/admin/useAdminFeatureSettings';
 import { DASHBOARD_CONFIG_UPDATED_EVENT } from '../../../../src/server/spa/client/react/utils/config';
@@ -44,6 +45,7 @@ function server(id: string, label: string, url: string, extra: Record<string, un
 }
 
 beforeEach(() => {
+    window.location.hash = '';
     calls = [];
     registry = [server('a', 'build-box', A), server('b', 'build-box', B), server('c', 'laptop', 'http://127.0.0.1:5003', { kind: 'ssh', host: 'laptop', status: 'offline', effectiveUrl: undefined, localPort: 5003 })];
     routes = {
@@ -460,4 +462,51 @@ describe('Admin shell integration', () => {
         expect(patches).not.toHaveBeenCalled();
         window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, patches);
     });
+});
+
+
+describe('owner-scoped Configure tiers entry', () => {
+    it('mounts configuration only on the exact registered owner and performs no writes', async () => {
+        window.location.hash = `#admin/agents?section=effort-tiers&owner=${encodeURIComponent(B)}`;
+        render(<Shell><ConfigProbe /></Shell>);
+        expect(await screen.findByText('remote-b|remote')).toBeTruthy();
+        expect(calls.some(call => call.url === '/api/admin/config')).toBe(false);
+        expect(calls.every(call => call.method === 'GET')).toBe(true);
+        expect(screen.getByTestId('admin-machine-select')).toHaveValue('server:b');
+    });
+
+    it('keeps an unknown owner unavailable without mounting local configuration', async () => {
+        window.location.hash = '#admin/agents?section=effort-tiers&owner=https%3A%2F%2Funknown.example';
+        render(<Shell><ConfigProbe /></Shell>);
+        await screen.findByText(/no longer registered/);
+        expect(screen.queryByTestId('probe')).toBeNull();
+        expect(calls.some(call => call.url === '/api/admin/config')).toBe(false);
+    });
+
+    it('does not bypass the remote Admin feature gate', () => {
+        (window as any).__DASHBOARD_CONFIG__.adminMachineSwitchEnabled = false;
+        window.location.hash = `#admin/agents?section=effort-tiers&owner=${encodeURIComponent(B)}`;
+        render(<Shell><ConfigProbe /></Shell>);
+        expect(screen.getByRole('alert')).toHaveTextContent('Remote Admin is unavailable');
+        expect(screen.queryByTestId('probe')).toBeNull();
+        expect(calls).toEqual([]);
+    });
+});
+
+
+it('closing tier configuration with Escape keeps the underlying modal and draft', () => {
+    const outerClose = vi.fn();
+    const adminClose = vi.fn();
+    render(<>
+        <Dialog open onClose={outerClose} title="Review" trapFocus>
+            <textarea aria-label="Review draft" defaultValue="Unsent review" />
+        </Dialog>
+        <Dialog open onClose={adminClose} title="Configure" trapFocus>
+            <button>Tier editor</button>
+        </Dialog>
+    </>);
+    fireEvent.keyDown(screen.getByText('Tier editor'), { key: 'Escape' });
+    expect(adminClose).toHaveBeenCalledTimes(1);
+    expect(outerClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Review draft')).toHaveValue('Unsent review');
 });

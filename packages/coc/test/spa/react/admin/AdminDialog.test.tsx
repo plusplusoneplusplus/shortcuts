@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { mockViewport } from '../../helpers/viewport-mock';
 import { renderWithProviders } from '../../react/test-utils';
@@ -172,4 +172,15 @@ describe('AdminDialog borderless frame', () => {
         expect(onClose).toHaveBeenCalled();
         unmount();
     });
+});
+
+
+it('opening tier configuration does not write onboarding or configuration settings', async () => {
+    window.location.hash = '#admin/agents?section=effort-tiers&provider=codex';
+    const fetchMock = vi.mocked(fetch);
+    const view = renderWithProviders(<AdminDialog open onClose={vi.fn()} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.every(([, options]) => (options?.method ?? 'GET') === 'GET')).toBe(true);
+    view.unmount();
+    window.location.hash = '';
 });

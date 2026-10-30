@@ -78,7 +78,7 @@ describe('noteTabInput — what a note link opens', () => {
 
     it('keeps a task note task-relative so the tasks adapter can load it', () => {
         const result = input({ fullPath: '/repos/main/.vscode/tasks/t1/goal.md', wsId: 'ws-1' });
-        expect(result?.resourceId).toBe('tasks||t1/goal.md');
+        expect(result?.resourceId).toBe('tasks|/repos/main/.vscode/tasks|t1/goal.md');
         expect(result?.label).toBe('goal.md');
     });
 

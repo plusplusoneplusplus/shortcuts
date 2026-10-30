@@ -54,6 +54,30 @@ describe('UnifiedPanelTabOverflowMenu', () => {
         expect(screen.queryByRole('listbox')).toBeNull();
     });
 
+    it('omits browser repos while retaining same-title owners and other resource labels', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        for (const owner of ['one', 'two']) {
+            state = openTab(state, {
+                kind: 'browser', ownerWorkspaceId: owner, ownerRoutingRef: `remote:server:${owner}`,
+                resourceId: 'page', label: 'Same page', repoLabel: `Repo ${owner}`,
+            });
+        }
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: 'one', resourceId: 'terminal', label: 'Shell', repoLabel: 'Repo one' });
+        const tabs = visibleTabs(state, 'chat');
+        const browsers = tabs.filter(tab => tab.kind === 'browser');
+        const { props } = renderMenu({ tabs, activeId: null, dirtyIds: new Set(), errorIds: new Set(), hideBrowserRepoLabels: true });
+        fireEvent.click(screen.getByRole('button', { name: '+2' }));
+        expect(screen.getAllByRole('option', { name: 'Same page' })).toHaveLength(2);
+        expect(screen.getByRole('option', { name: /Shell.*Repo one/ })).toBeTruthy();
+        for (const tab of browsers) {
+            const row = screen.getByTestId(`unified-panel-tab-overflow-row-${tab.id}`);
+            expect(row.textContent).not.toContain(tab.repoLabel);
+        }
+        fireEvent.click(within(screen.getByTestId(`unified-panel-tab-overflow-row-${browsers[1].id}`)).getByRole('option'));
+        expect(props.onActivate).toHaveBeenCalledWith(browsers[1].id);
+        expect(browsers.map(tab => tab.ownerRoutingRef)).toEqual(['remote:server:one', 'remote:server:two']);
+    });
+
     it('searches the full saved list by label and repository without changing bulk close targets', () => {
         const { props } = renderMenu();
         fireEvent.click(screen.getByRole('button', { name: '+2' }));

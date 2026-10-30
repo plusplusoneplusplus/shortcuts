@@ -273,6 +273,7 @@ function getInitialSelections(value: RalphGrillSetup): AgentSelectionState {
 }
 
 function RalphGrillAgentTierRow({
+    workspaceId,
     role,
     label,
     focus,
@@ -285,6 +286,7 @@ function RalphGrillAgentTierRow({
     disabled,
     testIdPrefix,
 }: {
+    workspaceId?: string;
     role: RalphGrillAgentRole;
     label: string;
     focus: string;
@@ -341,6 +343,7 @@ function RalphGrillAgentTierRow({
                     Effort tier
                     {resolution.hasTierMode ? (
                         <EffortTierSelector
+                            workspaceId={workspaceId} provider={provider}
                             tiers={resolution.tiers}
                             selectedTier={selectedTier}
                             onChange={(tier) => onChange({ ...selection, effortTier: tier })}
@@ -364,6 +367,7 @@ function RalphGrillAgentTierRow({
 }
 
 function RalphGrillAgentCompactRow({
+    workspaceId,
     role,
     label,
     focus,
@@ -378,6 +382,7 @@ function RalphGrillAgentCompactRow({
     disabled,
     testIdPrefix,
 }: {
+    workspaceId?: string;
     role: RalphGrillAgentRole;
     label: string;
     focus: string;
@@ -455,6 +460,7 @@ function RalphGrillAgentCompactRow({
                     data-testid={`${testIdPrefix}-agent-${role}-editor`}
                 >
                     <RalphGrillAgentTierRow
+                        workspaceId={workspaceId}
                         role={role}
                         label={label}
                         focus={focus}
@@ -618,6 +624,7 @@ export function RalphGrillSetupPanel({
                         const selection = selections[agent.role];
                         return (
                             <RalphGrillAgentCompactRow
+                                workspaceId={workspaceId}
                                 key={agent.role}
                                 role={agent.role}
                                 label={agent.label}

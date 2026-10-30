@@ -17,7 +17,7 @@ test.beforeAll(async () => {
             import { applyRuntimeConfigPatch } from './src/server/spa/client/react/utils/config';
             import { registerCloneBaseUrls } from './src/server/spa/client/react/repos/cloneRegistry';
             const state = window.jobsFixture;
-            const policy = { sentinelEnabled: true, sentinelTodoJobsEnabled: state.enabled, sentinelTodoScrubberEnabled: true };
+            const policy = { sentinelEnabled: true, sentinelTodoJobsEnabled: state.enabled, sentinelTodoScrubberEnabled: true, effortLevelsEnabled: state.tiers };
             const diagnostic = 'Unsupported reasoning effort "medium" requested. ' + 'long-unbroken-diagnostic/'.repeat(80) + '\\nFull error ending';
             const jobs = state.seeded ? [
                 { id: 'seed-1', name: 'New stable revision release', enabled: false, runs: [] },
@@ -48,7 +48,7 @@ test.beforeAll(async () => {
             window.fakeClient = {
                 request: async () => ({ features: policy }),
                 triggers: { listSentinelTodo: async () => [], sentinelTodoCapabilities: async () => ({ dateTime: false }) },
-                agentProviders: { getEffortTiers: async () => ({ effortTiers: {}, defaults: {} }) },
+                agentProviders: { getEffortTiers: async () => ({ effortTiers: state.tiers ? { medium: { model: 'test-model', reasoningEffort: '', source: 'config' } } : {}, defaults: {} }) },
                 events: { connect: options => { state.listeners.push(options); return { close() { state.listeners = state.listeners.filter(listener => listener !== options); } }; } },
                 sentinelTodos: {
                     get: async () => ({ revision: 1, items: [item] }),
@@ -90,7 +90,7 @@ test.beforeAll(async () => {
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'jobs-fixture-client', setup(builder) {
             builder.onLoad({ filter: /[/\\]cloneRouting\.ts$/ }, () => ({
-                contents: 'export const useCocClient = ref => { window.jobsFixture.refs.push(ref); return window.fakeClient; };', loader: 'ts',
+                contents: 'export const useCocClient = ref => { window.jobsFixture.refs.push(ref); return window.fakeClient; }; export const useCloneBaseUrl = () => undefined;', loader: 'ts',
             }));
             builder.onLoad({ filter: /[/\\]useProviderModels\.ts$/ }, () => ({
                 contents: 'export const useProviderModels = () => ({ models: [{ id: "test-model", name: "Test model", enabled: true }], loading: false, error: null, reload() {} });', loader: 'ts',
@@ -105,7 +105,7 @@ test.beforeAll(async () => {
     });
     script = result.outputFiles[0].text;
 });
-async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false, history = false, hosted = false } = {}) {
+async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false, history = false, hosted = false, tiers = false } = {}) {
     await page.route('http://jobs.fixture.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
     await page.routeWebSocket(/.*/, () => {});
     await page.goto('http://jobs.fixture.test/');
@@ -115,7 +115,7 @@ async function mount(page: Page, { dark = false, width = 800, enabled = true, re
         <div id="fixture" style="width:${width}px;height:820px;margin:8px"></div></body></html>`);
     await page.evaluate(values => {
         Object.assign(window, { jobsFixture: { ...values, calls: [], refs: [], listeners: [] } });
-    }, { enabled, remote, seeded, history, hosted });
+    }, { enabled, remote, seeded, history, hosted, tiers });
     await page.addStyleTag({ content: css });
     await page.addScriptTag({ content: script });
     if (!seeded || hosted) {
@@ -182,6 +182,32 @@ test('remote owner routes job creation to its own workspace and Sentinel', async
     expect(calls).toContainEqual(['create', 'ws-owner', 'queue_sentinel']);
     expect(calls.every(call => call[1] === 'ws-owner' && call[2] === 'queue_sentinel')).toBe(true);
 });
+for (const remote of [false, true]) {
+    test(`Configure tiers preserves the refrain draft and targets its ${remote ? 'remote' : 'local'} owner`, async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+        await mount(page, { remote, tiers: true });
+        await page.getByRole('button', { name: 'New refrain' }).click();
+        const dialog = page.getByRole('dialog', { name: 'New refrain', exact: true });
+        await dialog.getByLabel('Name', { exact: true }).fill('Tier audit');
+        await dialog.getByLabel('Instructions').fill('Keep this draft.');
+        await dialog.getByLabel('Provider', { exact: true }).selectOption('codex');
+        await dialog.getByRole('button', { name: 'Effort tier: Medium', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Configure tiers…', exact: true }).click();
+        const destination = new URL(page.url());
+        expect(destination.hash.split('?')[0]).toBe('#admin/agents');
+        const params = new URLSearchParams(destination.hash.split('?')[1]);
+        expect(params.get('section')).toBe('effort-tiers');
+        expect(params.get('provider')).toBe('codex');
+        expect(params.get('owner')).toBe(remote ? 'https://owner.example.test' : null);
+        await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Tier audit');
+        await expect(dialog.getByLabel('Instructions')).toHaveValue('Keep this draft.');
+        const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[][] } }).jobsFixture.calls);
+        expect(calls.some(call => ['create', 'update', 'start'].includes(String(call[0])))).toBe(false);
+        expect(errors).toEqual([]);
+    });
+}
 test('gated job requires a schedule and shows Test gate results inline at 320px', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });

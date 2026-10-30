@@ -33,6 +33,7 @@ import {
     type WorkspaceLike,
 } from '../../../shared/markdown-review/resolveMarkdownReviewTarget';
 import type { SourceCanvasFileRef } from '../../chat/source-canvas/types';
+import { isAbsolutePath } from '../../../utils/path-resolution';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { getRemoteCloneKey } from '../../../repos/cloneIdentity';
@@ -109,6 +110,15 @@ export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null
 
     const workspace = workspaces.find(ws => ws.id === target.wsId);
     const repoLabel = target.wsId === scopeWorkspaceId ? undefined : workspace?.name;
+    // The resolver may shorten a known absolute task path. Retain that root
+    // with the descriptor so file actions never have to guess it on restore.
+    const displayPath = target.displayPath.replace(/\\/g, '/');
+    const notesRoot = target.taskRootPath ?? (
+        target.fetchMode === 'tasks' && isAbsolutePath(displayPath)
+            && displayPath.endsWith('/' + target.filePath)
+            ? displayPath.slice(0, -target.filePath.length - 1)
+            : undefined
+    );
 
     return {
         kind: 'note',
@@ -121,7 +131,7 @@ export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null
         chatId: null,
         resourceId: noteResourceId({
             fetchMode: target.fetchMode,
-            ...(target.taskRootPath ? { notesRoot: target.taskRootPath } : {}),
+            ...(notesRoot ? { notesRoot } : {}),
             notePath: target.filePath,
         }),
         label: resourcePathName(target.filePath) || resourcePathName(target.displayPath),

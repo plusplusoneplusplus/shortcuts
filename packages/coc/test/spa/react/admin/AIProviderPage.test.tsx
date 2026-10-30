@@ -103,7 +103,7 @@ function quotaType(overrides: {
 }
 
 describe('AIProviderPage', () => {
-    beforeEach(() => { vi.clearAllMocks(); });
+    beforeEach(() => { vi.clearAllMocks(); window.location.hash = ''; });
 
     it.each(['ctrlKey', 'metaKey'] as const)('%s saves routing only while that draft card is visible', async (modifier) => {
         const { props } = renderPage({ dirty: true });
@@ -123,6 +123,15 @@ describe('AIProviderPage', () => {
         fireEvent.click(screen.getByTestId('aip-subtab-routing'));
         press();
         expect(props.onSave).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens the tier editor for the requested provider without saving or changing defaults', async () => {
+        window.location.hash = '#admin/agents?section=effort-tiers&provider=codex';
+        const { props } = renderPage();
+        await screen.findByTestId('mock-effort-tiers');
+        expect(screen.getByTestId('mock-provider-models-section')).toHaveAttribute('data-provider', 'codex');
+        expect(props.setDefaultProvider).not.toHaveBeenCalled();
+        expect(props.onSave).not.toHaveBeenCalled();
     });
 
     // ────────────── Page structure ──────────────

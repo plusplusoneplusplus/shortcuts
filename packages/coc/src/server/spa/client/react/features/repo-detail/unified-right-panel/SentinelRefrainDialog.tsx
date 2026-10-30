@@ -79,7 +79,8 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
                     </select></div>
                 {tierMode ? <div><span id={`${id}-tier`}>Effort tier</span>
                     <div role="group" aria-labelledby={`${id}-tier`}>
-                        <EffortTierSelector tiers={tiers} selectedTier={selectedTier} disabled={busy || tiersLoading}
+                        <EffortTierSelector
+                            settingsBaseUrl={baseUrl} provider={draft.provider} tiers={tiers} selectedTier={selectedTier} disabled={busy || tiersLoading}
                             onChange={tier => update('effortTier', tier)} data-testid="sentinel-refrain-effort-tier" />
                     </div></div> : <>
                 <div><label htmlFor={`${id}-model`}>Model</label>

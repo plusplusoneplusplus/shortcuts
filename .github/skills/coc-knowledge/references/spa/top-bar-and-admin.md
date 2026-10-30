@@ -163,7 +163,11 @@ the connected server. A "Configure machine" `<select>` in the Admin top bar list
 the connected server first, then the connected server's registry
 (`servers.list()`, never the target's). Rows show credential-free connection
 hints for duplicate labels and status text. Selection is in-memory only: every
-dialog mount starts on the connected server, and embedded-route navigation keeps it.
+dialog mount starts on the connected server unless an effort-tier configuration link
+specifies an owner endpoint. That entry resolves the exact registered machine before
+mounting settings and keeps the normal health/identity and feature gates. Unsupported
+remote or container entries show an unavailable state. Embedded-route navigation retains
+the selected target.
 
 Server-owned Admin code reads `useAdminServer()`: `client`, `apiBase`/`rawApiBase`,
 `resolveUrl`, `fetch`, `isRemote`, `cacheScope`, `label` and target `serversEnabled`.

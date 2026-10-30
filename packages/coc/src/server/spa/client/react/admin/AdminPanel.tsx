@@ -6,6 +6,7 @@
  * scoped under `.admin-redesign`).
  */
 
+import { readEffortTierSettingsTarget } from './openConfiguration';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
@@ -148,7 +149,7 @@ export function AdminPanel() {
 
     useEffect(() => {
         // Onboarding progress belongs to this desktop's dashboard, not the target.
-        if (!adminServer.isRemote && !state.onboardingProgress?.settingsVisited) {
+        if (!readEffortTierSettingsTarget() && !adminServer.isRemote && !state.onboardingProgress?.settingsVisited) {
             void updateOnboarding({ settingsVisited: true }).catch(() => { });
         }
     }, []);

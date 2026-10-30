@@ -1093,3 +1093,22 @@ describe('Sentinel suggestion activation', () => {
         expect(onSend).not.toHaveBeenCalled();
     });
 });
+
+
+describe('follow-up Configure tiers', () => {
+    it('uses the pending provider and leaves the tier and draft untouched', () => {
+        const props = makeProps({
+            followUpInput: 'Unsent follow-up', activeProvider: 'copilot', selectedProvider: 'codex',
+            useEffortTierMode: true, selectedEffortTier: 'medium', onEffortTierChange: vi.fn(),
+            effortTierMap: { medium: { model: 'm', reasoningEffort: 'high', source: 'config' } },
+        });
+        render(<FollowUpInputArea {...props} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-configure'));
+        expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=codex');
+        expect(props.onSend).not.toHaveBeenCalled();
+        expect(props.setFollowUpInput).not.toHaveBeenCalled();
+        expect(props.onEffortTierChange).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-effort-tier-selector')).toHaveAttribute('data-tier-value', 'medium');
+    });
+});

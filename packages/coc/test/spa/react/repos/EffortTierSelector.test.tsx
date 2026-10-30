@@ -3,10 +3,17 @@
  * picker used by the chat composer when effort tier mode is enabled.
  */
 /* @vitest-environment jsdom */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EffortTierSelector } from '../../../../src/server/spa/client/react/features/chat/EffortTierSelector';
 import type { LocalEffortTiersMap } from '../../../../src/server/spa/client/react/hooks/useProviderEffortTiers';
+
+import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
+
+afterEach(() => { registerCloneBaseUrls([]); window.location.hash = ''; });
 
 const tiers: LocalEffortTiersMap = {
     'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
@@ -101,5 +108,67 @@ describe('EffortTierSelector', () => {
                 'Effort tier: High',
             );
         });
+    });
+});
+
+
+describe('Configure tiers action', () => {
+    it('opens the existing editor without changing the tier, draft, or submitting a form', () => {
+        const onChange = vi.fn();
+        const onSubmit = vi.fn();
+        render(<form onSubmit={onSubmit}>
+            <textarea defaultValue="Keep my unsent draft" aria-label="Draft" />
+            <EffortTierSelector tiers={tiers} selectedTier="medium" provider="codex" workspaceId="one" onChange={onChange} />
+        </form>);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        expect(screen.getAllByRole('option')).toHaveLength(4);
+        const configure = screen.getByRole('button', { name: 'Configure tiers…' });
+        expect(configure.closest('[role="listbox"]')).toBeNull();
+        fireEvent.click(configure);
+        expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=codex');
+        expect(onChange).not.toHaveBeenCalled();
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(screen.getByLabelText('Draft')).toHaveValue('Keep my unsent draft');
+        expect(screen.getByTestId('effort-tier-selector')).toHaveAttribute('data-tier-value', 'medium');
+        expect(screen.queryByTestId('effort-tier-menu')).toBeNull();
+        expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveFocus();
+    });
+
+    it('supports keyboard navigation, Escape, and Enter activation without selecting a tier', async () => {
+        const onChange = vi.fn();
+        render(<EffortTierSelector tiers={{ medium: tiers.medium }} selectedTier="medium" provider="copilot" onChange={onChange} compact mobileTapTarget />);
+        const trigger = screen.getByTestId('effort-tier-trigger-btn');
+        fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+        expect(screen.getByTestId('effort-tier-option-medium')).toHaveFocus();
+        fireEvent.keyDown(document.activeElement!, { key: 'End' });
+        expect(screen.getByTestId('effort-tier-configure')).toHaveFocus();
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        expect(trigger).toHaveFocus();
+        expect(screen.queryByTestId('effort-tier-menu')).toBeNull();
+        await userEvent.keyboard('{ArrowDown}{End}{Enter}');
+        expect(window.location.hash).toBe('#admin/agents?section=effort-tiers&provider=copilot');
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('uses the exact owner context for colliding workspace IDs and keeps Auto provider-neutral', () => {
+        registerCloneBaseUrls([{ workspaceId: 'same', serverId: 'other', baseUrl: 'https://other.example' }]);
+        render(<WorkspaceOwnerContext.Provider value={{ workspaceId: 'same', selectionId: 'owner', baseUrl: 'https://owner.example' }}>
+            <EffortTierSelector tiers={tiers} selectedTier="medium" workspaceId="same" provider="auto" onChange={vi.fn()} autoProviderMode />
+        </WorkspaceOwnerContext.Provider>);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-configure'));
+        const query = new URLSearchParams(window.location.hash.split('?')[1]);
+        expect(query.get('owner')).toBe('https://owner.example');
+        expect(query.has('provider')).toBe(false);
+    });
+
+    it('does not fall back locally for an unresolved remote or externally unavailable configuration', () => {
+        const props = { tiers, selectedTier: 'medium' as const, provider: 'codex', onChange: vi.fn() };
+        const view = render(<EffortTierSelector {...props} workspaceId={buildRemoteCloneKey('missing', 'same')} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        expect(screen.getByTestId('effort-tier-configure')).toBeDisabled();
+        view.rerender(<EffortTierSelector {...props} configurationUnavailable />);
+        fireEvent.click(screen.getByTestId('effort-tier-configure'));
+        expect(window.location.hash).toBe('');
     });
 });
