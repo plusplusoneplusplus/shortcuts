@@ -222,7 +222,9 @@ Each pane's `PreviewPane` keeps its own selection, scroll and owner routing.
 The same file in both panes is one tab and one `PreviewPane` buffer: it
 publishes its Monaco model (`onModelShare`), and `UnifiedSourceMirror` creates
 a second editor on that model, following its read-only state and saving
-through the tab's registered save. Equal paths from different owners or clones
+through the tab's registered save. Its selections attach as chat context with
+the `selectionContext` published alongside the model, so read-only previews
+publish none and get no pill. Equal paths from different owners or clones
 are different tabs and buffers.
 
 ## File navigation history

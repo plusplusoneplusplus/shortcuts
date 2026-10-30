@@ -391,7 +391,8 @@ workspace, repo-relative path and concrete clone route as `destinationId`.
 Right-panel tabs supply their persisted owner route; payloads keep the plain
 server workspace id. The shared `MonacoSelectionAttachPill` reads
 selected text from the live model and routes it through `activeChatAttach` when
-session-context attachments are enabled. Its rendered Markdown view mounts
+session-context attachments are enabled; file editors keep it in view for
+selections ending at or below the bottom edge. Its rendered Markdown view mounts
 `MarkdownSelectionAttachPill` with the same owner identity, attaching the
 selected rendered text with its raw-file line range. Trusted absolute paths,
 read-only workspace previews and shared viewer hosts do not opt in; right-panel

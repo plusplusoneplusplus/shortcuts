@@ -30,11 +30,35 @@ export { getMonacoLanguage } from './monacoLanguage';
 /** The `monaco` namespace `@monaco-editor/react` hands to `onMount`. */
 export type MonacoNamespace = Parameters<OnMount>[1];
 
+/** Owner identity a repository host gives an editor for selection attachments. */
+export interface EditorSelectionContext {
+    workspaceId: string;
+    filePath: string;
+    /** Concrete owner route; defaults to `workspaceId`. */
+    destinationId?: string;
+}
+
 /** What a host is given when a model becomes available in this editor. */
 export interface EditorModelMountContext {
     editor: monacoEditor.IStandaloneCodeEditor;
     monaco: MonacoNamespace;
     model: monacoEditor.ITextModel;
+    /** The editor's selection-attachment identity, so another view of the model attaches the same way. */
+    selectionContext?: EditorSelectionContext;
+}
+
+/** File-selection payload for a Monaco selection, without a trailing line that has no selected characters. */
+export function createEditorFileSelectionPayload(context: EditorSelectionContext, selection: Selection, model: monacoEditor.ITextModel) {
+    return createFileSelectionContextPayload({
+        sourceWorkspaceId: context.workspaceId,
+        filePath: context.filePath,
+        range: {
+            start: selection.startLineNumber,
+            end: selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
+                ? selection.endLineNumber - 1 : selection.endLineNumber,
+        },
+        snippet: model.getValueInRange(selection),
+    });
 }
 
 export type EditorNavigationReason = 'user' | 'navigation' | 'jump' | 'programmatic';
@@ -156,7 +180,7 @@ export interface EditorHighlightRange {
 
 export interface MonacoFileEditorProps {
     /** Only repository preview hosts opt into selection attachments. */
-    selectionContext?: { workspaceId: string; filePath: string; destinationId?: string };
+    selectionContext?: EditorSelectionContext;
     value: string;
     language: string | null;
     /**
@@ -315,6 +339,10 @@ export function MonacoFileEditor({
     const modelListenerRef = useRef<{ dispose(): void } | null>(null);
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
+    // Published with the model; a host keys its views by file identity, so
+    // a mounted editor's attachment identity does not change under it.
+    const selectionContextRef = useRef(selectionContext);
+    selectionContextRef.current = selectionContext;
     // Texts reported through `onChange` that have not come back as `value` yet.
     const unechoedRef = useRef<string[]>([]);
     const applyingValueRef = useRef(false);
@@ -500,7 +528,7 @@ export function MonacoFileEditor({
         if (!mounted || !onModelMount) return;
         const model = mounted.editor.getModel();
         if (!model) return;
-        const cleanup = onModelMount({ editor: mounted.editor, monaco: mounted.monaco, model });
+        const cleanup = onModelMount({ editor: mounted.editor, monaco: mounted.monaco, model, selectionContext: selectionContextRef.current });
         return () => { cleanup?.(); };
     }, [mounted, modelGeneration, onModelMount]);
 
@@ -536,16 +564,7 @@ export function MonacoFileEditor({
     const contextFilePath = selectionContext?.filePath;
     const buildSelectionPayload = useCallback((selection: Selection, model: monacoEditor.ITextModel) => {
         if (!contextWorkspaceId || !contextFilePath) return null;
-        return createFileSelectionContextPayload({
-            sourceWorkspaceId: contextWorkspaceId,
-            filePath: contextFilePath,
-            range: {
-                start: selection.startLineNumber,
-                end: selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
-                    ? selection.endLineNumber - 1 : selection.endLineNumber,
-            },
-            snippet: model.getValueInRange(selection),
-        });
+        return createEditorFileSelectionPayload({ workspaceId: contextWorkspaceId, filePath: contextFilePath }, selection, model);
     }, [contextWorkspaceId, contextFilePath]);
 
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
@@ -558,6 +577,7 @@ export function MonacoFileEditor({
                     workspaceId={selectionContext.workspaceId}
                     destinationId={selectionContext.destinationId}
                     buildPayload={buildSelectionPayload}
+                    keepInView
                 />
             )}
             {dimensions && (

@@ -6,6 +6,7 @@ import { MonacoFileEditor as ExplorerEditor } from '../../../../../src/server/sp
 
 const stub = vi.hoisted(() => ({ enabled: true, mounted: false, focused: true, empty: true, endColumn: 4,
     position: { top: 60, left: 120, height: 18 } as { top: number; left: number; height: number } | null,
+    start: null as { top: number; left: number; height: number } | null,
     events: {} as Record<string, () => void>, disposals: [] as ReturnType<typeof vi.fn>[], route: vi.fn(), snippet: 'unsaved text\nmore',
 }));
 function listen(event: string, handler: () => void) {
@@ -18,9 +19,10 @@ vi.mock('@monaco-editor/react', () => ({ default: ({ onMount }: any) => {
         queueMicrotask(() => onMount({
             getModel: () => ({ getValue: () => 'disk text', getValueInRange: () => stub.snippet }),
             getSelection: () => ({ startLineNumber: 24, endLineNumber: 35, endColumn: stub.endColumn,
-                isEmpty: () => stub.empty, getEndPosition: () => ({ lineNumber: 35, column: stub.endColumn }) }),
+                isEmpty: () => stub.empty, getStartPosition: () => ({ lineNumber: 24, column: 1 }),
+                getEndPosition: () => ({ lineNumber: 35, column: stub.endColumn }) }),
             hasWidgetFocus: () => stub.focused,
-            getScrolledVisiblePosition: () => stub.position,
+            getScrolledVisiblePosition: (position: { lineNumber: number }) => position.lineNumber === 24 && stub.start ? stub.start : stub.position,
             getLayoutInfo: () => ({ width: 500, height: 300, contentLeft: 40, contentWidth: 450 }),
             onDidChangeCursorSelection: (cb: () => void) => listen('selection', cb),
             onDidScrollChange: (cb: () => void) => listen('scroll', cb),
@@ -39,7 +41,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/activeChatAtta
 beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(stub, { enabled: true, mounted: false, focused: true, empty: true, endColumn: 4,
-        position: { top: 60, left: 120, height: 18 }, events: {}, disposals: [], snippet: 'unsaved text\nmore' });
+        position: { top: 60, left: 120, height: 18 }, start: null, events: {}, disposals: [], snippet: 'unsaved text\nmore' });
 });
 afterEach(cleanup);
 async function mount(Component = MonacoFileEditor, selectionContext?: { workspaceId: string; filePath: string; destinationId?: string }) {
@@ -87,13 +89,28 @@ describe.each([['shared', MonacoFileEditor], ['explorer shim', ExplorerEditor]] 
         expect(screen.queryByRole('button')).toBeNull(); select(); expect(screen.getByRole('button')).toBeTruthy();
     });
 });
-it('hides on collapse, scrolling out of view, layout clipping, and blur', async () => {
+it('hides on collapse, an unrendered or off-screen selection, and blur', async () => {
     await mount(MonacoFileEditor, context); select();
     act(() => { stub.empty = true; stub.events.selection(); }); expect(screen.queryByRole('button')).toBeNull(); select();
     act(() => { stub.position = null; stub.events.scroll(); }); expect(screen.queryByRole('button')).toBeNull();
-    act(() => { stub.position = { top: 290, left: 100, height: 18 }; stub.events.layout(); }); expect(screen.queryByRole('button')).toBeNull();
-    act(() => { stub.position = { top: 60, left: 120, height: 18 }; stub.events.scroll(); }); expect(screen.getByRole('button')).toBeTruthy();
+    // The whole selection is above, or below, the viewport.
+    act(() => { stub.position = { top: -40, left: 100, height: 18 }; stub.events.scroll(); }); expect(screen.queryByRole('button')).toBeNull();
+    act(() => { stub.start = { top: 320, left: 40, height: 18 }; stub.position = { top: 400, left: 100, height: 18 }; stub.events.scroll(); });
+    expect(screen.queryByRole('button')).toBeNull();
+    act(() => { stub.start = null; stub.position = { top: 60, left: 120, height: 18 }; stub.events.scroll(); }); expect(screen.getByRole('button')).toBeTruthy();
     await act(async () => { stub.focused = false; stub.events.blur(); await Promise.resolve(); }); expect(screen.queryByRole('button')).toBeNull();
+});
+// Regression: a selection ending at the bottom edge, the last lines of a file
+// (no scroll beyond the last line) or below the viewport (Ctrl+A) had no pill.
+it('keeps the pill reachable for selections ending at or below the bottom edge', async () => {
+    await mount(MonacoFileEditor, context); select();
+    const actions = () => screen.getByRole('group', { name: 'Selection actions' });
+    act(() => { stub.position = { top: 262, left: 100, height: 18 }; stub.events.layout(); });
+    expect(actions().style.top).toBe('232px');
+    act(() => { stub.start = { top: -500, left: 40, height: 18 }; stub.position = { top: 900, left: 100, height: 18 }; stub.events.scroll(); });
+    expect(actions().style.top).toBe('268px');
+    fireEvent.click(screen.getByRole('button', { name: 'Attach as context' }));
+    expect(stub.route).toHaveBeenCalledWith('repo-A', expect.objectContaining({ filePath: 'src/status.rs', range: { start: 24, end: 35 } }));
 });
 it('retains the pill when keyboard focus moves to it', async () => {
     await mount(MonacoFileEditor, context); select(); const pill = screen.getByRole('button');
@@ -118,4 +135,12 @@ it('rejects whitespace-only text and cleans up listeners', async () => {
     const view = await mount(MonacoFileEditor, context); stub.snippet = '  \n'; select(); expect(screen.queryByRole('button')).toBeNull();
     expect(stub.events.focus).toEqual(expect.any(Function));
     view.unmount(); expect(stub.disposals.every(dispose => dispose.mock.calls.length === 1)).toBe(true);
+});
+it('publishes its attachment identity with the model so a split mirror attaches the same way', async () => {
+    const onModelMount = vi.fn();
+    render(<MonacoFileEditor value="disk text" language="rust" selectionContext={{ ...context, destinationId: 'remote:server-a:repo-A' }} onModelMount={onModelMount} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(onModelMount).toHaveBeenCalledWith(expect.objectContaining({
+        selectionContext: { workspaceId: 'repo-A', filePath: 'src/status.rs', destinationId: 'remote:server-a:repo-A' },
+    }));
 });
