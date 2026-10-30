@@ -347,7 +347,7 @@ describe('executeFollowUp — skill configuration', () => {
     });
 
     // 11 ----------------------------------------------------------------------
-    it.runIf(process.platform === 'win32')('translates WSL UNC repo-local skills to Linux paths for the SDK', async () => {
+    it.runIf(process.platform === 'win32')('passes host-readable WSL UNC repo-local skill paths to the SDK', async () => {
         const workDir = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
         const hostSkillsDir = String.raw`\\wsl$\Ubuntu\home\tester\repo\.github\skills`;
 
@@ -363,11 +363,11 @@ describe('executeFollowUp — skill configuration', () => {
         await executor.executeFollowUp('proc-s11', 'follow up');
 
         const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callOpts.skillDirectories).toContain('/home/tester/repo/.github/skills');
+        expect(callOpts.skillDirectories).toContain(hostSkillsDir);
     });
 
     // 12 ----------------------------------------------------------------------
-    it('translates global Windows skill directories for WSL-backed sessions', async () => {
+    it('preserves host global skill directories for WSL-backed sessions', async () => {
         const dataDir = String.raw`C:\Users\tester\.coc`;
         const globalSkillsDir = path.join(dataDir, 'skills');
         const workDir = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
@@ -384,11 +384,11 @@ describe('executeFollowUp — skill configuration', () => {
         await executor.executeFollowUp('proc-s12', 'follow up');
 
         const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callOpts.skillDirectories).toContain('/mnt/c/Users/tester/.coc/skills');
+        expect(callOpts.skillDirectories).toContain(globalSkillsDir);
     });
 
     // 13 ----------------------------------------------------------------------
-    it.runIf(process.platform === 'win32')('resolves bare Linux working directories for host probing once workspace is identified', async () => {
+    it.runIf(process.platform === 'win32')('returns host-readable skill paths for bare Linux working directories once workspace is identified', async () => {
         const workDir = '/home/tester/repo';
         const hostSkillsDir = String.raw`\\wsl$\Ubuntu\home\tester\repo\.github\skills`;
         const wsId = 'ws-linux-root';
@@ -408,7 +408,7 @@ describe('executeFollowUp — skill configuration', () => {
 
         const { resolveSkillConfig } = await import('../../src/server/executors/skill-config-resolver');
         const skillConfig = await resolveSkillConfig(store, undefined, wsId, workDir);
-        expect(skillConfig.skillDirectories).toContain('/home/tester/repo/.github/skills');
+        expect(skillConfig.skillDirectories).toContain(hostSkillsDir);
         expect(skillConfig.disabledSkills).toEqual(['impl']);
     });
 });

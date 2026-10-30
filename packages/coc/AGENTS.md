@@ -855,6 +855,8 @@ references before editing. Paths are package-relative.
 - Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
   Only supported provider client processes may stay warm.
   CoC send/prewarm/status paths share `warmKey: processId`; cwd is execution context.
+- Skill directories and selected-skill references use host-filesystem paths for
+  the native provider runtime, including Windows UNC paths for WSL repositories.
 - Resume the active provider only. Switches/unbound continuations
   use fresh sessions/bounded handoff via `src/server/executors/continuation-mode.ts`.
   Never pass session IDs across providers.
