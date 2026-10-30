@@ -87,14 +87,15 @@ describe('output folder and prompt', () => {
 });
 
 describe('buildSchedulePromptTask', () => {
-    it('builds the autopilot chat payload', () => {
-        expect(buildSchedulePromptTask(ctx(makeSchedule()))).toEqual({
+    it.each([REPO_ID, 'ws-other'])('builds the autopilot chat payload for %s', repoId => {
+        expect(buildSchedulePromptTask({ ...ctx(makeSchedule()), repoId, run: { ...makeRun(), repoId } })).toEqual({
             type: 'chat',
             priority: 'normal',
             payload: {
                 kind: 'chat',
                 mode: 'autopilot',
-                prompt: `Output folder: ~/.coc/repos/${REPO_ID}/tasks\n\nFollow the instruction nightly.md.`,
+                workspaceId: repoId,
+                prompt: `Output folder: ~/.coc/repos/${repoId}/tasks\n\nFollow the instruction nightly.md.`,
                 provider: undefined,
                 context: {
                     files: ['nightly.md'],
@@ -105,7 +106,7 @@ describe('buildSchedulePromptTask', () => {
             },
             config: { model: undefined },
             displayName: '[Schedule] Nightly',
-            repoId: REPO_ID,
+            repoId,
         });
     });
 
@@ -113,7 +114,7 @@ describe('buildSchedulePromptTask', () => {
         const task = buildSchedulePromptTask(
             ctx(makeSchedule({ mode: 'ask', provider: 'claude' }), 'claude-opus-5'),
         );
-        expect(task.payload).toMatchObject({ mode: 'ask', provider: 'claude' });
+        expect(task.payload).toMatchObject({ mode: 'ask', provider: 'claude', workspaceId: REPO_ID });
         expect(task.config).toEqual({ model: 'claude-opus-5' });
     });
 
