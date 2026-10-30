@@ -27,8 +27,9 @@ describe('IC3 Ask queue admission', () => {
     const tasks = () => bridge.createAggregateQueueFacade().getAll();
     beforeEach(async () => {
         vi.spyOn(configModule, 'loadConfigFile').mockReturnValue({});
-        // Real path: repo-group member dirs are resolved (macOS /var -> /private/var).
-        directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ic3-launch-')));
+        // Native real path, matching repo-group member resolution
+        // (macOS /var -> /private/var, Windows RUNNER~1 -> runneradmin).
+        directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ic3-launch-')));
         store = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
         sdk = createMockSDKService({
             listModelsResult: [{
