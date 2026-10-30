@@ -53,6 +53,16 @@ export interface RenderOptions {
     htmlEmbedEnabled?: boolean;
 }
 
+const FRONTMATTER_PATTERN = /^---\n[\s\S]*?\n---\n*/;
+
+/**
+ * Raw-file lines `stripFrontmatter` removes, so a rendered `data-line` plus
+ * this offset is the line in the original file.
+ */
+export function strippedFrontmatterLineCount(content: string): number {
+    return (content.match(FRONTMATTER_PATTERN)?.[0].split('\n').length ?? 1) - 1;
+}
+
 /**
  * Convert markdown content to HTML using forge's rendering primitives.
  *
@@ -66,7 +76,7 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
     let text = content;
 
     if (options?.stripFrontmatter) {
-        text = text.replace(/^---\n[\s\S]*?\n---\n*/, '');
+        text = text.replace(FRONTMATTER_PATTERN, '');
     }
 
     // -- Pre-parse structural blocks so we can replace them in-place --------

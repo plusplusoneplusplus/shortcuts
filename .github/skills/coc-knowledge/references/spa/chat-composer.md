@@ -365,6 +365,15 @@ to the pill; payloads retain the plain server workspace id.
 selection, layout, scroll, blur and focus, reads the live model, and routes
 file-selection payloads through `activeChatAttach`. Refocus restores retained
 selections; attached selections stay dismissed until selection or model changes.
+
+Rendered Markdown in a writable `PreviewPane` mounts
+`shared/markdown-document/MarkdownSelectionAttachPill` with the same owner
+identity. It shares the `SelectionActionsGroup` shell with the Monaco pill,
+follows `selectionchange` inside the preview and attaches the selected rendered
+text as a file-selection payload. `markdownPreviewSelectionLines` maps
+`md-line[data-line]` markers (plus `strippedFrontmatterLineCount`) to raw-file
+lines; code blocks and tables resolve to their own source lines. Attached
+selections stay dismissed until the selection, content or owner changes.
 `ChatDetail` passes its `sourceSelectionId`
 as `attachmentDestinationId` to both follow-up layouts. `FollowUpInputArea`
 subscribes by that owner identity, falling back to its workspace id when omitted;
