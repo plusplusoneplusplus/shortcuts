@@ -383,7 +383,7 @@ never enter handoff state persistence. Runtime state and optional notes stay in 
 
 ### Background browser control
 
-With default-off `browserControl.backgroundEnabled` (runtime flag
+With default-on `browserControl.backgroundEnabled` (runtime flag
 `browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
 switching workspace keeps every scope with an active turn retained: the relay
 retains it before rebinding, advertises it in `background`, and runs its commands
@@ -442,7 +442,7 @@ close/dispose, and shows server prompts as `BrowserNavigationApprovalCard`
 (Allow once / Always allow / Deny) inline in the conversation, or floating when
 that chat is not mounted. Manual navigation, iframes and file previews never ask.
 
-With default-off `browserControl.framesEnabled`, a main-owned per-view registry
+With default-on `browserControl.framesEnabled`, a main-owned per-view registry
 maps opaque frame handles to default-world contexts and private OOPIF sessions.
 Electron debugger events and WebView2 native event receivers supply lifecycle
 invalidation; candidate OOPIFs require an authenticated embedding in the selected
@@ -464,7 +464,7 @@ pending results. Frame state is memory-only. With the flag off, existing control
 semantics remain unchanged and frame subscriptions/sessions are absent.
 
 `paste_html(ref, html, text, replaceClipboard?)` requires both frame control and
-default-off `browserControl.richPasteEnabled` on the owning server. The main-process
+default-on `browserControl.richPasteEnabled` on the owning server. The main-process
 clipboard barrier serializes writes across owners/workspaces/engines. It refuses
 nonempty clipboards unless replacement is explicit, never reads old contents,
 and leaves supplied HTML/plain formats in place. The ref must identify the focused
@@ -763,7 +763,7 @@ Restores reopen the last URL and title through `browserOpenInput` with a fresh
 view id and drop entries whose owner is no longer a target; native hosts forward
 source-qualified `onReopenClosedRequested` like the add-tab request. Each
 keypress restores at most one tab; repeats restore nothing.
-Default-off `features.browserTabShortcuts` adds Ctrl/Cmd+1–9 web-tab
+Default-on `features.browserTabShortcuts` adds Ctrl/Cmd+1–9 web-tab
 switching (1–8 by visible strip position, 9 the last; other tab kinds are not
 numbered) with the Ctrl/Cmd+T focus ownership. Holding the platform modifier
 reveals trailing, aria-hidden `Ctrl+N`/`⌘N` pills overlaid on the label tail;

@@ -717,7 +717,7 @@ Each tool factory owns a stable controlling-turn ID, independent of remembered
 conversation selection. Targeted relay/main activity carries it through follow-ups
 and terminal cleanup. Relay errors and malformed results remain visible failures.
 
-Default-off `browserControl.framesEnabled` adds `frames(offset?)` and explicit
+Default-on `browserControl.framesEnabled` adds `frames(offset?)` and explicit
 `frame` targeting for read/eval/text-wait/press/scroll. Ordinary snapshots include
 bounded frame boundaries and committed origins; refs route input to their owning
 frame/document. Snapshot baselines include document/frame scope. The server sends
@@ -726,7 +726,8 @@ missing capabilities fail explicitly. Frame inventories and contexts are transie
 never browser preferences or process metadata. See desktop control in `spa/shell.md`.
 
 `paste_html(ref, html, text, replaceClipboard?)` is gated by owning-server
-`browserControl.richPasteEnabled` plus frame control, both default off. HTML and
+`browserControl.richPasteEnabled` plus frame control, both default on; a saved
+`false` for either disables it. HTML and
 plain text together are limited to 128000 characters. The desktop requires the
 focused editable ref and its existing selection, writes both OS clipboard formats,
 and sends trusted paste without DOM insertion. Nonempty clipboard replacement
@@ -735,7 +736,7 @@ clipboard, and old contents are never read or returned. Delivery acknowledgement
 does not establish editor persistence. Unknown outcomes must not auto-retry.
 
 Every browser action is limited to 60s across the desktop queue, view host and
-server relay; `wait` and text-wait deadlines use the same bound. Default-off
+server relay; `wait` and text-wait deadlines use the same bound. Default-on
 `browserControl.backgroundEnabled` lets one desktop window keep serving each
 workspace that has an active control turn after the window switches workspace.
 Commands reach only that turn's retained owner/session-key scope and run on the

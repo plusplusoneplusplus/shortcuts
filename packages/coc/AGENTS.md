@@ -43,7 +43,7 @@ references before editing. Paths are package-relative.
   installation or trust prompts. Never expose activation URLs or
   executable paths through a renderer launch API, logs or persisted launch records.
 - Browser rich paste requires owning-server `browserControl.richPasteEnabled`
-  and frame control. Relay the policy separately from model arguments and require
+  (default on) and frame control. Absent values use these defaults; saved `false` wins. Relay the policy separately from model arguments and require
   desktop `richPasteSupported`; reject unsupported clients without fallback.
   Native clipboard contents stay desktop-local; results acknowledge delivery,
   not editor persistence, and never echo the payload.
@@ -529,13 +529,13 @@ references before editing. Paths are package-relative.
   removes screenshots best effort with logged failures. Keep screenshots machine-local:
   wipe through the snapshot registry and exclude from export/import.
   Never load browser config per turn.
-  `browserControl.framesEnabled` is independently default-off and live. Carry
+  `browserControl.framesEnabled` is default-on, live and needs browser control. Carry
   its owning-server policy outside model arguments through the scoped relay;
   older/missing desktop frame capability fails explicitly. Frame boundaries and
   committed origins label bounded snapshots/reads; delta baselines include
   document/frame identity. Frame refs and contexts remain transient, never
   process metadata, profile settings or new storage.
-  `browserControl.backgroundEnabled` is independently default-off and live.
+  `browserControl.backgroundEnabled` is default-on, live and needs browser control.
   The relay keeps per-socket background workspace sets only while it is on,
   rejects only a dropped workspace's calls, and lets the owning socket pause a
   call's 60s timer with `browser-command-waiting` while its Switch back notice

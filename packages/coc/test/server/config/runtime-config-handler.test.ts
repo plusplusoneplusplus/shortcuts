@@ -115,7 +115,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect((result.features as Record<string, unknown>).vimNavigationEnabled).toBe(false);
         expect(result.features.panelTabReorderingEnabled).toBe(true);
         expect(result.features.panelTabGroupsEnabled).toBe(false);
-        expect(result.features.browserTabShortcutsEnabled).toBe(false);
+        expect(result.features.browserTabShortcutsEnabled).toBe(true);
         expect(result.features.explorerDeleteEnabled).toBe(true);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
         expect(result.features.railManualRefreshEnabled).toBe(true);

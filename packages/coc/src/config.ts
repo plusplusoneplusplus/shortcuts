@@ -410,7 +410,7 @@ export interface CLIConfig {
         panelTabGroups?: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
         binaryFileReveal?: boolean;
-        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
+        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
@@ -861,7 +861,7 @@ export interface ResolvedCLIConfig {
         panelTabGroups: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
         binaryFileReveal: boolean;
-        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
+        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
@@ -1082,7 +1082,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true },
+    browserControl: { enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true },
     teamsIc3OwnCommands: { workspaceId: '' },
     teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
     teamsOutboundCompliance: { prompt: '' },
@@ -1197,7 +1197,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelTabReordering: true,
         panelTabGroups: false,
         binaryFileReveal: false,
-        browserTabShortcuts: false,
+        browserTabShortcuts: true,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

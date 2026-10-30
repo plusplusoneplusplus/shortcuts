@@ -641,7 +641,7 @@ open `UnifiedPanelOpenMenu`.
 
 ## Browser-tab number shortcuts
 
-Default-off `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
+Default-on `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
 makes Ctrl+1–9 (Cmd on macOS; top-row digits, no Shift/Alt) switch web
 (`browser`) tabs. `browserTabShortcuts.ts` owns the browser convention over the
 strip's rendered web tabs: 1–8 by position, 9 the last; past nine tabs, tabs

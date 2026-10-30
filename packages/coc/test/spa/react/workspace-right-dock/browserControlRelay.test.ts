@@ -561,6 +561,7 @@ describe('SPA browser socket relay', () => {
         });
 
         it('cancels on switch and never retains with the flag off', async () => {
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: false });
             const h = harness(undefined, true);
             const retainScope = withRetain(h);
             await h.relay.update('w'); h.relay.onOpen();

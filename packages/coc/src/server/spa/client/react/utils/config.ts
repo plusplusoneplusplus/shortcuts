@@ -366,9 +366,9 @@ export function isBinaryFileRevealEnabled(): boolean {
     return getConfig().binaryFileRevealEnabled === true;
 }
 
-/** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); off unless the server says on. */
+/** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); on unless the server says off. */
 export function isBrowserTabShortcutsEnabled(): boolean {
-    return getConfig().browserTabShortcutsEnabled === true;
+    return getConfig().browserTabShortcutsEnabled !== false;
 }
 
 /** Rendered Markdown in unified right-panel file tabs (`features.markdownPanelPreview`); on unless the server says off. */
@@ -541,9 +541,9 @@ export function isBrowserControlEnabled(): boolean {
     return isFeatureEnabled('browserControlEnabled');
 }
 
-/** Keep browser control for workspaces with active turns after the window switches away. */
+/** Keep browser control for workspaces with active turns after the window switches away; on unless the server says off. */
 export function isBrowserBackgroundControlEnabled(): boolean {
-    return isFeatureEnabled('browserBackgroundControlEnabled');
+    return getConfig().browserBackgroundControlEnabled !== false;
 }
 
 export function isMcpOauthEnabled(): boolean {

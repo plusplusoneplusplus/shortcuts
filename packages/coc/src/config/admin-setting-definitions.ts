@@ -842,7 +842,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'browserControl.framesEnabled', default: false, runtime: 'live', runtimeFlag: 'browserFrameControlEnabled',
+        key: 'browserControl.framesEnabled', default: true, runtime: 'live', runtimeFlag: 'browserFrameControlEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 11, label: 'Browser frame control',
             hint: 'Include and target nested browser frames when browser control is enabled.',
@@ -850,7 +850,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'browserControl.richPasteEnabled', default: false, runtime: 'live', runtimeFlag: 'browserRichPasteEnabled',
+        key: 'browserControl.richPasteEnabled', default: true, runtime: 'live', runtimeFlag: 'browserRichPasteEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 12, label: 'Browser rich paste',
             hint: 'Allow bounded HTML and plain-text clipboard paste into an already focused editable selection. Requires frame control. Clipboard contents are not restored.',
@@ -858,7 +858,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'browserControl.backgroundEnabled', default: false, runtime: 'live', runtimeFlag: 'browserBackgroundControlEnabled',
+        key: 'browserControl.backgroundEnabled', default: true, runtime: 'live', runtimeFlag: 'browserBackgroundControlEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 13, label: 'Background browser control',
             hint: 'Keep browser control working for a workspace while the desktop window shows another workspace. Actions run on the hidden tab without switching or taking focus.',
@@ -1450,10 +1450,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.browserTabShortcuts', default: false, runtime: 'live', runtimeFlag: 'browserTabShortcutsEnabled',
+        key: 'features.browserTabShortcuts', default: true, runtime: 'live', runtimeFlag: 'browserTabShortcutsEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 20, label: 'Browser tab shortcuts', badge: 'experimental',
-            hint: 'Ctrl+1–8 (Cmd on macOS) switch to that right-panel browser tab and Ctrl+9 to the last one. Hold the key to show each tab\'s shortcut. Disabled by default.',
+            hint: 'Ctrl+1–8 (Cmd on macOS) switch to that right-panel browser tab and Ctrl+9 to the last one. Hold the key to show each tab\'s shortcut.',
             testId: 'toggle-browser-tab-shortcuts-enabled',
         },
     }),

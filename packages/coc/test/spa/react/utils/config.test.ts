@@ -19,6 +19,7 @@ import {
     isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPanelTabGroupsEnabled,
+    isBrowserBackgroundControlEnabled,
     isBrowserTabShortcutsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
@@ -357,17 +358,22 @@ describe('removed Notes / panel-Settings availability accessors', () => {
     });
 });
 
+describe('background browser control runtime flag', () => {
+    it('defaults on and turns off only for an explicit false', () => {
+        expect(isBrowserBackgroundControlEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ browserBackgroundControlEnabled: false });
+        expect(isBrowserBackgroundControlEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+        expect(isBrowserBackgroundControlEnabled()).toBe(true);
+    });
+});
+
 describe('browser tab shortcuts runtime flag', () => {
-    it('defaults off, rejects non-true values and follows live updates', () => {
-        expect(isBrowserTabShortcutsEnabled()).toBe(false);
-        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
-            configurable: true,
-            value: { features: { browserTabShortcutsEnabled: 'true' } },
-        });
-        expect(isBrowserTabShortcutsEnabled()).toBe(false);
-        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true });
+    it('defaults on, turns off only for an explicit false and follows live updates', () => {
         expect(isBrowserTabShortcutsEnabled()).toBe(true);
         applyRuntimeConfigPatch({ browserTabShortcutsEnabled: false });
         expect(isBrowserTabShortcutsEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true });
+        expect(isBrowserTabShortcutsEnabled()).toBe(true);
     });
 });
