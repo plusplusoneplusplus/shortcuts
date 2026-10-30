@@ -30,6 +30,9 @@ Three different workspace ids, kept apart on purpose:
 Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned,
 `file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
+Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
+drops it from tab identity but records the active tab under that chat's scope,
+so a note link clicked in a hosted chat selects that note (`noteTabInput`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the

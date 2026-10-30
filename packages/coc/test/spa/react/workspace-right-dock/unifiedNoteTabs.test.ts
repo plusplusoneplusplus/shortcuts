@@ -16,7 +16,7 @@ import {
     noteTabInput,
     parseNoteResourceId,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedNoteTabs';
-import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { activeTabId, EMPTY_UNIFIED_PANEL, openTab, unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import type { WorkspaceLike } from '../../../../src/server/spa/client/react/shared/markdown-review/resolveMarkdownReviewTarget';
 
 const WORKSPACES: WorkspaceLike[] = [
@@ -24,11 +24,12 @@ const WORKSPACES: WorkspaceLike[] = [
     { id: 'ws-2', name: 'member-repo', rootPath: '/repos/member' },
 ];
 
-function input(fileRef: Record<string, unknown>, scopeWorkspaceId = 'ws-1') {
+function input(fileRef: Record<string, unknown>, scopeWorkspaceId = 'ws-1', chatId: string | null = null) {
     return noteTabInput({
         fileRef: fileRef as never,
         workspaces: WORKSPACES,
         scopeWorkspaceId,
+        chatId,
     });
 }
 
@@ -100,5 +101,23 @@ describe('noteTabInput — what a note link opens', () => {
     it('declines when no workspace owns the path, so the caller keeps the docked canvas', () => {
         expect(input({ fullPath: '/elsewhere/n.md' })).toBeNull();
         expect(input({ fullPath: '' })).toBeNull();
+    });
+
+    it('activates each clicked note in the clicking chat while keeping the tab workspace-owned', () => {
+        // Regression: a note input without the chat recorded the active tab for
+        // the workspace scope, so a hosted chat kept showing its first note.
+        const first = input({ fullPath: '/repos/main/notes/139.plan.md', wsId: 'ws-1' }, 'ws-1', 'chat-A')!;
+        const second = input({ fullPath: '/repos/main/notes/140.plan.md', wsId: 'ws-1' }, 'ws-1', 'chat-A')!;
+        expect(first.chatId).toBe('chat-A');
+
+        let state = openTab(EMPTY_UNIFIED_PANEL, first);
+        state = openTab(state, second);
+        expect(state.workspaceTabs.map(tab => tab.chatId)).toEqual([null, null]);
+        expect(activeTabId(state, 'chat-A')).toBe(state.workspaceTabs[1].id);
+
+        // Re-clicking the already-open first note selects it again.
+        state = openTab(state, first);
+        expect(state.workspaceTabs).toHaveLength(2);
+        expect(activeTabId(state, 'chat-A')).toBe(state.workspaceTabs[0].id);
     });
 });

@@ -36,7 +36,7 @@ import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/reac
 import { clearUnifiedChatCanvasActions, getUnifiedChatCanvasActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
 import { clearUnifiedChatChanges, getUnifiedChatChanges, getUnifiedChatChangesEntry } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
-import { closeTab, openTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { activeTabId, closeTab, openTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
 // ── Hoisted mock state ──────────────────────────────────────────────────────
@@ -838,6 +838,51 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab.ownerWorkspaceId).toBe(WS_ID);
         expect(tab.resourceId).toBe('auto||/repos/main/notes/n.md');
         expect(tab.line).toBe(3);
+    });
+
+    it('selects the latest clicked note, including one that is already open', async () => {
+        // Regression: note tabs are workspace-owned, and the open used to record
+        // its active id for the workspace scope only, so a hosted chat kept the
+        // first note on screen when a second plan link was clicked.
+        renderHostedChat('task-A');
+        const activeResource = () => {
+            const state = readUnifiedPanelState(WS_ID);
+            return visibleTabs(state, 'task-A').find(tab => tab.id === activeTabId(state, 'task-A'))?.resourceId;
+        };
+        const first = { filePath: '/repos/main/notes/139.plan.md', wsId: WS_ID, kind: 'note', chatId: 'task-A' };
+        const second = { filePath: '/repos/main/notes/140.plan.md', wsId: WS_ID, kind: 'note', chatId: 'task-A' };
+
+        dispatchSourceLink(first);
+        await waitFor(() => expect(activeResource()).toBe('auto||/repos/main/notes/139.plan.md'));
+        dispatchSourceLink(second);
+        await waitFor(() => expect(activeResource()).toBe('auto||/repos/main/notes/140.plan.md'));
+        dispatchSourceLink(first);
+        await waitFor(() => expect(activeResource()).toBe('auto||/repos/main/notes/139.plan.md'));
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(2);
+    });
+
+    it('lets a later note click win over an earlier link that is still resolving', async () => {
+        renderHostedChat('task-A');
+        let finish: (value: Response) => void = () => {};
+        fetchMock.mockImplementation(async (url: string) => url.includes('/files/preview')
+            ? new Promise<Response>(resolve => { finish = resolve; })
+            : jsonResponse({}));
+        const listener = vi.fn();
+        window.addEventListener('coc-open-panel-directory', listener);
+        try {
+            dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir', chatId: 'task-A' });
+            await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/files/preview'))).toBe(true));
+            dispatchSourceLink({ filePath: '/repos/main/notes/140.plan.md', wsId: WS_ID, kind: 'note', chatId: 'task-A' });
+            await waitFor(() => {
+                const state = readUnifiedPanelState(WS_ID);
+                expect(activeTabId(state, 'task-A')).toBe(visibleTabs(state, 'task-A')[0]?.id);
+                expect(visibleTabs(state, 'task-A')[0]?.resourceId).toBe('auto||/repos/main/notes/140.plan.md');
+            });
+            await act(async () => finish(jsonResponse({ type: 'directory', path: '/repos/main/src', resolvedWorkspaceId: WS_ID })));
+            expect(listener).not.toHaveBeenCalled();
+        } finally {
+            window.removeEventListener('coc-open-panel-directory', listener);
+        }
     });
 
     it('routes folders to the hosted Explorer and outside-root files to read-only tabs', async () => {
