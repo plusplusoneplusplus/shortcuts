@@ -959,6 +959,10 @@ references before editing. Paths are package-relative.
   workspace/chat/canvas changes isolate state. Panel opening stays owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
+  Chat and shared Markdown previews render attribute-free `<br>`, `<br/>` and
+  `<br />` in cells through `src/server/spa/client/shared/htmlLineBreaks.ts`;
+  keep escaped/code markup literal and arbitrary HTML escaped. Preserve cell formatting
+  before table upgrade.
   Cover actual column widths and overflow with the Kusto browser regression suite.
 - Native CLI stores are read-only with parameterized filters/path-safe IDs.
   Only explicit import bridges to chats; unavailable stores return typed states.

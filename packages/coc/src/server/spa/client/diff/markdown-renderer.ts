@@ -31,6 +31,7 @@ import type { CommentSelection } from '@plusplusoneplusplus/forge/editor/types';
 
 import { matchMathAtStart } from '../shared/math/mathTokenizer';
 import { renderMath } from '../shared/math/renderMath';
+import { protectInlineHtmlLineBreaks } from '../shared/htmlLineBreaks';
 
 // highlight.js is loaded via CDN; declared globally in the HTML template.
 declare const hljs: {
@@ -409,8 +410,9 @@ function buildHighlightFn(): ((code: string, language: string) => string) | unde
  */
 function applyInlineMarkdownFromLine(text: string): string {
     const protectedLine = protectLineMath(text);
-    const result = applyMarkdownHighlighting(protectedLine.text, 0, false, null);
-    return restoreLineMath(result.html, protectedLine.restores);
+    const protectedBreaks = protectInlineHtmlLineBreaks(protectedLine.text);
+    const result = applyMarkdownHighlighting(protectedBreaks.text, 0, false, null);
+    return restoreLineMath(result.html, [...protectedLine.restores, ...protectedBreaks.restores]);
 }
 
 export function reconstructTableMarkdown(table: ParsedTable): string {

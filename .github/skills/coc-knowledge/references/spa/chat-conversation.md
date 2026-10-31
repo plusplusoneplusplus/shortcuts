@@ -106,8 +106,12 @@ queued/running compaction and OpenCode states disable the action; runtime suppor
 use the shared toast. Owner changes revoke retained actions and delayed results.
 
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
-assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
-escaped and never injected); the raw toggle shows literal source. Local markdown anchors
+assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks).
+`shared/htmlLineBreaks.ts` permits only attribute-free `<br>`, `<br/>` and `<br />`
+HTML tokens. Shared `renderMarkdownToHtml` table cells use its Marked-token protection
+before Forge inline formatting; Notes rich editing already parses and saves cell
+breaks. Escapes, code and other raw HTML remain literal in chat and previews, including
+interactive table upgrades. The raw toggle shows literal source. Local markdown anchors
 (relative, absolute, Windows, `file:`) get `md-local-file-link--html|--source`, which CSS
 renders as a trailing browser/code icon; external and other-scheme links stay plain. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
