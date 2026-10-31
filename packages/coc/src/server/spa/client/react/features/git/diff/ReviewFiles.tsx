@@ -8,6 +8,8 @@ import { writePointerContextDragData } from '../../chat/sessionContextDrag';
 import type { GitFileContextDragPayload } from '../../chat/sessionContextDrag';
 import { buildFileTree, type FileTreeNode } from './reviewFileTree';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
+import { ReviewContentSearchPanel, type ReviewContentSearchPanelProps } from './ReviewContentSearchPanel';
+import { useDiffContentSearchEnabled } from '../../../hooks/feature-flags/useDiffContentSearchEnabled';
 import './git-file-review.css';
 
 export const NAV_DEFAULT_WIDTH = 262, NAV_MIN_WIDTH = 180, NAV_MAX_WIDTH = 560, NAV_CONTENT_MIN = 320, NAV_KEY_STEP = 16;
@@ -27,6 +29,9 @@ export interface ReviewRowMenuAnchor { x: number; y: number; row: HTMLElement }
 export interface ReviewFilesProps {
     /** Hosts key this component by the complete owner and comparison identity. */
     identity: string;
+    /** Hosts own/dispose the controller and replace it on owner, comparison or refresh changes.
+     * Omit for surfaces such as chat diffs that do not support full-content review search. */
+    contentSearch?: Omit<ReviewContentSearchPanelProps, 'inputRef'>;
     /** Mutable comparisons can guard navigation while an editor holds unsaved text. */
     beforeNavigate?: (proceed: () => void) => void;
     retainSelection?: boolean;
@@ -56,7 +61,14 @@ export interface ReviewFilesProps {
 }
 
 export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    identity, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
+    identity, contentSearch, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
+    const contentSearchEnabled = useDiffContentSearchEnabled();
+    const canSearch = contentSearchEnabled && !!contentSearch;
+    const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
+    const searching = canSearch && navigatorMode === 'search';
+    const contentSearchRef = useRef<HTMLInputElement>(null);
+    useEffect(() => { if (!canSearch) setNavigatorMode('files'); }, [canSearch]);
+    useEffect(() => { if (searching) contentSearchRef.current?.focus(); }, [searching]);
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -132,7 +144,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     useEffect(() => {
         if (!drawer) return;
         const previous = document.activeElement as HTMLElement | null;
-        searchRef.current?.focus();
+        (searching ? contentSearchRef : searchRef).current?.focus();
         return () => { (drawerTrigger.current ?? previous)?.focus(); };
     }, [drawer]);
     useEffect(() => {
@@ -219,6 +231,10 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
                 <span className="git-review-wide">{overview ? 'Read diff' : 'Overview'}</span>
             </button>
+            {canSearch && <button type="button" className="git-review-icon" aria-label="Search review contents" title="Search review contents"
+                aria-pressed={searching} onClick={() => { setNavigatorMode('search'); setDrawer(true); contentSearchRef.current?.focus(); }}>
+                <span aria-hidden="true">⌕</span><span className="git-review-wide">Search</span>
+            </button>}
             <div className="git-review-file-nav" role="group" aria-label="File navigation">
                 <button type="button" aria-label="Previous file" title="Previous file" disabled={index <= 0} onClick={() => select(reviewFileKey(ordered[index - 1]))}>←</button>
                 <span className="git-review-muted" title={selected && !overview ? selected.path : undefined} data-testid="git-review-file-index">{selected && !overview ? `${index + 1}/${ordered.length}` : `${visible.length} files`}</span>
@@ -244,7 +260,12 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     if (menu) return;
                     if (event.key === 'Escape' && drawer) { event.preventDefault(); setDrawer(false); }
                     if (drawer && event.key === 'Tab') {
-                        const controls = navRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select');
+                        const controls = Array.from(navRef.current?.querySelectorAll<HTMLElement>('button, input, select, summary') ?? [])
+                            .filter(control => {
+                                const details = control.closest('details');
+                                return !control.closest('[hidden]') && !control.matches(':disabled')
+                                    && (!details || details.open || control.tagName === 'SUMMARY');
+                            });
                         const first = controls?.[0], last = controls?.[controls.length - 1];
                         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
                         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -259,6 +280,15 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                         select(path, 'first', false); buttons[next].focus();
                     }
                 }}>
+                {canSearch && <div className="git-review-filter-row" role="group" aria-label="Review navigator">
+                    <button type="button" aria-pressed={!searching} onClick={() => setNavigatorMode('files')}>Files</button>
+                    <button type="button" aria-pressed={searching} onClick={() => setNavigatorMode('search')}>Search</button>
+                    {searching && <button type="button" className="git-review-drawer-trigger" aria-label="Close search navigator" onClick={() => setDrawer(false)}>×</button>}
+                </div>}
+                {canSearch && <div hidden={!searching} style={{ display: searching ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
+                    <ReviewContentSearchPanel key={identity} {...contentSearch!} inputRef={contentSearchRef} />
+                </div>}
+                <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
                     <div className="git-review-filter-title"><strong>Changed files</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
                     <div className="git-review-filter-row" role="group" aria-label="File list view">
@@ -277,6 +307,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     </button>{!collapsed.has(group.directory) && group.files.map(file => row(file))}
                 </section>)}{!loading && !visible.length && <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}<button type="button" onClick={clear}>Clear filters</button></div>}</div>
                 {reviewEnabled && <div className="git-review-progress">{viewedCount} / {files.length} viewed · {visible.length} shown<progress aria-label="Files viewed" value={viewedCount} max={files.length || 1} /></div>}
+                </div>
             </aside>
             <div className={`git-review-resizer${navSize.isDragging ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" tabIndex={0}
                 aria-label="Resize changed files list" aria-controls={navId} aria-valuemin={NAV_MIN_WIDTH} aria-valuemax={navMax} aria-valuenow={navWidth}

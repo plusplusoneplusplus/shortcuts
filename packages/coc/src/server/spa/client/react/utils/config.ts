@@ -79,6 +79,8 @@ interface DashboardConfig {
     gitCrossCloneCherryPickEnabled?: boolean;
     /** Whether diff headers offer searchable changed-file navigation (feature flag, default on). */
     diffFilePickerEnabled?: boolean;
+    /** Full-content search within multi-file reviews (feature flag, default off). */
+    diffContentSearchEnabled?: boolean;
     /**
      * Whether opt-in Git worktree execution is enabled (feature flag). Doubles
      * as the target-server capability signal exposed via GET /api/config/runtime.
@@ -629,6 +631,11 @@ export function isGitCrossCloneCherryPickEnabled(): boolean {
 /** Searchable changed-file navigation from diff headers (`features.diffFilePicker`); on unless the server says off. */
 export function isDiffFilePickerEnabled(): boolean {
     return getConfig().diffFilePickerEnabled !== false;
+}
+
+/** Full-content review search is opt-in (`features.diffContentSearch`). */
+export function isDiffContentSearchEnabled(): boolean {
+    return getConfig().diffContentSearchEnabled === true;
 }
 
 /**

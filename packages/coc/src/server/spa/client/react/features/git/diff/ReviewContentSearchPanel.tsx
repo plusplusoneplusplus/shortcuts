@@ -34,6 +34,7 @@ function MatchSnippet({ match }: { match: ReviewContentMatch }) {
 
 /** Review-local controls and results. The loader and navigation stay host-owned. */
 export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: ReviewContentSearchPanelProps) {
+    useEffect(() => () => controller.stop(), [controller]);
     const [query, setQuery] = useState('');
     const [modes, setModes] = useState<ContentSearchModes>(DEFAULT_CONTENT_SEARCH_MODES);
     const [side, setSide] = useState<ReviewSearchSideFilter>('both');

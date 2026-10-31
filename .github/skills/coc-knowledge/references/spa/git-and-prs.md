@@ -233,8 +233,13 @@ comparisons and mutable refreshes.
 compiles include globs before dispatch, and renders file-grouped side/line matches,
 highlighted snippets, progress, Stop, skips and retryable errors. Row activation
 and query Enter send the exact file ID and side-local match coordinates to the
-host. Hosts own controller disposal and key the panel by review identity. The panel
-is available for feature-gated review-shell integration.
+host. `ReviewFiles` accepts an optional `contentSearch` capability with that controller
+and navigation callback. The live, default-off `useDiffContentSearchEnabled` hook
+gates its Files/Search switch and toolbar action. Switching modes retains panel
+controls and cached reads independently of file-list filters. Disabling the flag
+unmounts the panel and stops new dispatch; hosts own controller disposal and must
+replace it on owner, comparison or mutable refresh changes. The panel is keyed by
+review identity. Hosts without the capability keep their file navigator.
 
 ### Shared file diff sources
 
