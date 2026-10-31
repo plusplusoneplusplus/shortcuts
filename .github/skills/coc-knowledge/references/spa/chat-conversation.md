@@ -8,7 +8,7 @@ tool calls. Chat list and lens: [chat.md](chat.md). Composer:
 
 ### Owner-scoped history paging
 
-The owning server's live default-off `chatHistoryPagingEnabled` capability selects
+The owning server's live default-on `chatHistoryPagingEnabled` capability selects
 `useChatHistoryPaging` for every `ChatDetail` mode, including Notes, groups and popouts.
 Local runtime patches and owner config/reconnect notifications refresh capability reads;
 unresolved remote selections cannot hydrate locally.

@@ -171,9 +171,11 @@ export class FileProcessStore implements ProcessStore {
     async getProcessHistory(id: string, workspaceId?: string, options?: ProcessHistoryOptions): Promise<{ process: AIProcess; page: ConversationTurnsPage } | undefined> {
         validateProcessHistoryOptions(options);
         await this.writeQueue;
-        const owner = workspaceId ?? await this.findWorkspaceIdForProcess(id);
-        if (owner === undefined) return undefined;
-        const entry = await this.readProcessFile(owner, id);
+        const dir = workspaceId ?? await this.findWorkspaceIdForProcess(id);
+        if (dir === undefined) return undefined;
+        const entry = await this.readProcessFile(dir, id);
+        // A looked-up directory is '_default' for ownerless processes; the stored entry holds the real owner.
+        const owner = workspaceId ?? entry?.workspaceId;
         if (!entry || entry.workspaceId !== owner) return undefined;
         const process = deserializeProcess(entry.process);
         if ((process.metadata?.workspaceId ?? '') !== owner) return undefined;

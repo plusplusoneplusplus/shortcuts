@@ -118,15 +118,15 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `botManagedConversations` | off | Live integration-control identification gate, independent of AI provider, Teams relay, and bridge observability; runtime capability `botManagedConversationsEnabled` |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
-| `canvasToolScripts` | off | Canvas `host.runScript` (below) |
+| `canvasToolScripts` | on | Canvas `host.runScript` (below); effective only while `canvasHostApis` (off by default) and `toolScripting` are on |
 | `toolScriptingMcp` | off | Live MCP opt-in for tool scripts; Admin → Features places it beside Tool scripting with `features.toolScripting` as its dependency |
 | `chatStyleSelector` | on | Chat Style chip (below) |
 | `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`terse`\|`structured`); style new conversations start on (below) |
 | `chatProviderSwitching` | off | Concrete provider changes between idle Ask/Autopilot follow-up turns (below) |
-| `chatHistoryPaging` | off | Live chat-history paging capability, exposed as `chatHistoryPagingEnabled` in owning-server runtime config |
+| `chatHistoryPaging` | on | Live chat-history paging capability, exposed as `chatHistoryPagingEnabled` in owning-server runtime config; absent values are on, explicit `false` disables; remote owners that omit the flag stay off |
 | `autoAgentProviderRouting` | off | Auto provider routing; edited from Admin -> AI Provider |
 
-`features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected. `features.canvasToolScripts` (live) additionally enables `host.runScript`, which also requires `features.canvasHostApis` and `features.toolScripting`.
+`features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected. `features.canvasToolScripts` (live, default on; absent is on, explicit `false` disables) additionally enables `host.runScript`, which also requires `features.canvasHostApis` and `features.toolScripting`.
 
 `features.chatStyleSelector` (Admin -> Configure -> Chat -> Features, live, `absentFallback` false, runtime flag `chatStyleSelectorEnabled`) adds a Style chip — Default / Human / Direct / Terse / Structured — beside Effort in new-chat and follow-up composers, for Ask, Autopilot, note-chat, commit-chat, and follow-ups. It controls presentation only, never provider, model, effort, tools, or permission mode. The instruction is prepended to the user message (not the system message) and stays visible in the stored turn; `Default` injects nothing, and a block is emitted only when the picked style differs from `process.metadata.chatStyle`. Enforcement is two-sided: the SPA hides the chip and omits `chatStyle`, and the server checks the live flag per turn (`getChatStyleSelectorEnabled` for new chats, `chatStyleSelectorEnabled` on the route's live flags for follow-ups).
 

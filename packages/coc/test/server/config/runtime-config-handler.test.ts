@@ -118,7 +118,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.panelTabCategoriesEnabled).toBe(false);
         expect(result.features.browserTabShortcutsEnabled).toBe(true);
         expect(result.features.explorerDeleteEnabled).toBe(true);
-        expect(result.features.chatHistoryPagingEnabled).toBe(false);
+        expect(result.features.chatHistoryPagingEnabled).toBe(true);
         expect(result.features.railManualRefreshEnabled).toBe(true);
         expect(result.features.railStatusActionsEnabled).toBe(true);
     });
@@ -147,13 +147,13 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.railStatusActionsEnabled).toBe(!enabled);
     });
 
-    it('exposes chat history paging only when the owning-server flag is explicitly enabled', () => {
-        expect(buildRuntimeFeatureFlags({}).chatHistoryPagingEnabled).toBe(false);
-        expect(DEFAULT_CONFIG.features.chatHistoryPaging).toBe(false);
+    it('exposes chat history paging by default unless the owning-server flag is explicitly false', () => {
+        expect(buildRuntimeFeatureFlags({}).chatHistoryPagingEnabled).toBe(true);
+        expect(DEFAULT_CONFIG.features.chatHistoryPaging).toBe(true);
         const svc = createMockRuntimeConfigService({
-            features: { ...DEFAULT_CONFIG.features, chatHistoryPaging: true },
+            features: { ...DEFAULT_CONFIG.features, chatHistoryPaging: false },
         });
-        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.chatHistoryPagingEnabled).toBe(true);
+        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.chatHistoryPagingEnabled).toBe(false);
     });
 
     it('exposes explicit false for default-on UI flags without a restart', () => {

@@ -88,7 +88,7 @@ await coc.processes.sendMessage(processId, {
 
 ### Process history
 
-When the owning server enables `features.chatHistoryPaging`, an explicit
+When the owning server enables `features.chatHistoryPaging` (default on), an explicit
 `turnsLimit` bounds the initial history. Unparameterized detail reads retain
 the full response. Older pages use an exclusive turn-index cursor; page metadata
 includes `historyRevision` for detecting edits and rewinds.

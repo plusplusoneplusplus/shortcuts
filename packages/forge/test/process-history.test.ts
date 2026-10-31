@@ -92,6 +92,18 @@ describe.each(['sqlite', 'file'] as const)('%s history pages', kind => {
         expect(await store.getProcessHistory('history')).toBeDefined();
     });
 
+    it('finds an ownerless process without a workspace hint, as getProcess does', async () => {
+        const store = await createStore(kind);
+        const { workspaceId: _owner, ...metadata } = processFixture(2).metadata!;
+        await store.addProcess({ ...processFixture(2), metadata });
+        expect(await store.getProcess('history')).toBeDefined();
+        const history = await store.getProcessHistory('history');
+        expect(history?.process.id).toBe('history');
+        expect(history?.page.totalTurns).toBe(2);
+        expect(await store.getProcessHistory('history', '')).toBeDefined();
+        expect(await store.getProcessHistory('history', 'ws-a')).toBeUndefined();
+    });
+
     it.each([
         { limit: 0 }, { limit: -1 }, { limit: 201 }, { limit: 1.5 }, { limit: NaN }, { limit: Infinity },
         { beforeTurnIndex: -1 }, { beforeTurnIndex: 0.5 }, { beforeTurnIndex: Number.MAX_SAFE_INTEGER + 1 },

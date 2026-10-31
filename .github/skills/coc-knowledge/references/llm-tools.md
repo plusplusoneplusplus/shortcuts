@@ -675,7 +675,7 @@ There is deliberately no `host.fetch` (CoC's own API is on unauthenticated loopb
 `CanvasHost.complete()` / `runScript()` in the iframe. Async capabilities and `host.complete`
 are gated on `features.canvasHostApis` (off by default): with the flag off an async capability
 404s from the route and errors from the tool, while sync capabilities are untouched.
-`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts`.
+`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts` (both on by default).
 
 `extension_canvas` also accepts `files: [{ path, content, encoding? }]` (max 20/call) — data
 written into the canvas's read-only `files/` directory that the artifact reads back with

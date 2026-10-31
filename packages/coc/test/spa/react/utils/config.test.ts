@@ -21,6 +21,7 @@ import {
     isPanelTabGroupsEnabled,
     isPanelTabCategoriesEnabled,
     isBrowserBackgroundControlEnabled,
+    isBinaryFileRevealEnabled,
     isBrowserTabShortcutsEnabled,
     isChatScopedBrowserTabsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
@@ -45,6 +46,7 @@ describe.each([
     ['markdownPanelPreviewEnabled', isMarkdownPanelPreviewEnabled],
     ['panelSourceSplitEnabled', isPanelSourceSplitEnabled],
     ['schedulerDelayHintEnabled', isSchedulerDelayHintEnabled],
+    ['binaryFileRevealEnabled', isBinaryFileRevealEnabled],
 ] as const)('%s default-on behavior', (flag, isEnabled) => {
     it('enables an absent setting with or without bootstrap config', () => {
         expect(isEnabled()).toBe(true);

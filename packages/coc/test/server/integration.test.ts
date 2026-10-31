@@ -223,7 +223,7 @@ describe('Server Integration', () => {
                 const res = await request(`${url}/api/config/runtime`);
                 expect(res.status).toBe(200);
                 const { features } = JSON.parse(res.body);
-                expect(features.chatHistoryPagingEnabled).toBe(false);
+                expect(features.chatHistoryPagingEnabled).toBe(true);
                 expect(features.browserControlEnabled).toBe(false);
             }
         });

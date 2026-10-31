@@ -372,9 +372,9 @@ export function isPanelTabCategoriesEnabled(): boolean {
     return getConfig().panelTabCategoriesEnabled === true;
 }
 
-/** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); off unless the server says on. */
+/** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); on unless the server says off. */
 export function isBinaryFileRevealEnabled(): boolean {
-    return getConfig().binaryFileRevealEnabled === true;
+    return getConfig().binaryFileRevealEnabled !== false;
 }
 
 /** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); on unless the server says off. */

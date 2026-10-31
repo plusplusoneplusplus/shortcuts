@@ -65,10 +65,12 @@ describe('unified Markdown file-tab opt-in', () => {
 describe('unified file-tab binary Open in Explorer gate', () => {
     beforeEach(() => _resetRuntimeConfig());
 
-    it('defaults off and follows live features.binaryFileReveal changes for the same owner', () => {
+    it('defaults on and follows live features.binaryFileReveal changes for the same owner', () => {
         render(<UnifiedTabView tab={{ ...file, resourceId: 'assets/blob.bin', label: 'blob.bin' }}
             scopeWorkspaceId="ws-group" onClose={vi.fn()} />);
         const view = screen.getByTestId('panel-file');
+        expect(view).toHaveAttribute('data-reveal-binary', 'true');
+        act(() => applyRuntimeConfigPatch({ binaryFileRevealEnabled: false }));
         expect(view).toHaveAttribute('data-reveal-binary', 'false');
         act(() => applyRuntimeConfigPatch({ binaryFileRevealEnabled: true }));
         expect(view).toHaveAttribute('data-reveal-binary', 'true');

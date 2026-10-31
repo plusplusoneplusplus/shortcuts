@@ -43,8 +43,8 @@ describe('extension_canvas in buildChatToolBundle gets the owner script runner',
             uiHtml: '<div></div>',
             tools: ['query_pull_request'],
         } as never, invocation as never) as { canvasId: string };
-        const ran = await extension.handler!({ canvasId: built.canvasId, capability: 'refresh' } as never, invocation as never) as { state: string };
-        return { runner, state: JSON.parse(ran.state) };
+        const ran = await extension.handler!({ canvasId: built.canvasId, capability: 'refresh' } as never, invocation as never) as { state?: string };
+        return { runner, ran, state: ran.state === undefined ? undefined : JSON.parse(ran.state) };
     }
 
     it('runs host.runScript as the canvas owner when all three flags are on', async () => {
@@ -55,9 +55,22 @@ describe('extension_canvas in buildChatToolBundle gets the owner script runner',
         }));
     });
 
-    it("rejects 'disabled' while features.canvasToolScripts is off", async () => {
+    it('runs host.runScript with only canvasHostApis set, since canvasToolScripts defaults on', async () => {
         const { runner, state } = await runRefresh('  canvasHostApis: true\n');
+        expect(state).toEqual({ out: { n: 3 } });
+        expect(runner).toHaveBeenCalledOnce();
+    });
+
+    it("rejects 'disabled' when features.canvasToolScripts is explicitly false", async () => {
+        const { runner, state } = await runRefresh('  canvasHostApis: true\n  canvasToolScripts: false\n');
         expect(state).toEqual({ code: 'disabled' });
+        expect(runner).not.toHaveBeenCalled();
+    });
+
+    it('never runs the script while canvasHostApis keeps its default off', async () => {
+        const { runner, ran, state } = await runRefresh('  canvasToolScripts: true\n');
+        expect(state).toBeUndefined();
+        expect(JSON.stringify(ran)).toMatch(/host api|canvasHostApis|async/i);
         expect(runner).not.toHaveBeenCalled();
     });
 });

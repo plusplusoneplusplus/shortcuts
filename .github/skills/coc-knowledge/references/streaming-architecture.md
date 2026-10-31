@@ -67,7 +67,7 @@ including processes with empty turns.
 
 ### Paged conversation snapshots
 
-The default-off live `features.chatHistoryPaging` gate selects bounded
+The default-on live `features.chatHistoryPaging` gate selects bounded
 `getProcessHistory(processId, workspaceId, { limit: PAGE_TURNS })` reads on connect
 and after `requestFlush`. Enabled snapshots contain the latest 30 turns (31 when
 pairing requires it), `totalTurns`, `oldestTurnIndex`, `hasMore`, and

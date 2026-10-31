@@ -69,6 +69,12 @@ describe('isCanvasToolScriptsEnabled', () => {
         expect(isCanvasToolScriptsEnabled({ ...ON, canvasToolScripts: false })).toBe(false);
         expect(isCanvasToolScriptsEnabled(undefined)).toBe(false);
     });
+
+    it('treats an absent canvasToolScripts or toolScripting as on, but never an absent canvasHostApis', () => {
+        expect(isCanvasToolScriptsEnabled({ canvasHostApis: true })).toBe(true);
+        expect(isCanvasToolScriptsEnabled({ toolScripting: true, canvasToolScripts: true })).toBe(false);
+        expect(isCanvasToolScriptsEnabled({})).toBe(false);
+    });
 });
 
 describe('createCanvasRunScriptFactory', () => {

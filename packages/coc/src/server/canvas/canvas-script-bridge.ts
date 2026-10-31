@@ -40,7 +40,7 @@ export interface CanvasToolScriptFlags {
 export function isCanvasToolScriptsEnabled(features: CanvasToolScriptFlags | undefined): boolean {
     return features?.canvasHostApis === true
         && (features.toolScripting ?? DEFAULT_CONFIG.features.toolScripting) === true
-        && features.canvasToolScripts === true;
+        && (features.canvasToolScripts ?? DEFAULT_CONFIG.features.canvasToolScripts) === true;
 }
 
 const READ_ONLY_TOOL_NAMES = new Set(LLM_TOOL_REGISTRY.filter(tool => tool.readOnly === true).map(tool => tool.name));
