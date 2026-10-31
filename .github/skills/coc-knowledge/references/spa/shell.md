@@ -347,6 +347,13 @@ view overlay contracts, ignores stale replies, and dismisses on owner/visibility
 changes. Web dashboards and older desktops show explicit unavailability. The
 feature needs updated desktop main/preload and SPA; no experimental flag applies.
 
+`test/e2e/html-download.e2e.test.ts` exercises local Blob/data exports through
+real sandboxed Electron handles, native mouse/keyboard input and the registered
+SPA bridge. Its main-only chooser substitute selects temporary destinations;
+saved-byte hashes cover Unicode, binary, empty and 101 MiB files. Build desktop
+first; CI requires `COC_DESKTOP_E2E=1`, and Linux requires a display and working
+Chromium sandbox. Native dialog UI and modal revocation require separate validation.
+
 ### Desktop browser control
 
 `shared/file-path/browser-control-relay.ts` attaches to existing local/clone
