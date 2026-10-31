@@ -258,6 +258,13 @@ file inventories and refreshed combined patches replace its controller. A mobile
 result temporarily uses `FileDiffPanel` for exact-side navigation and Classic's
 Editor fallback; ordinary file navigation restores the slim mobile renderer.
 
+`PrReviewContent` supplies the pop-out layout and `PopOutFilePanel` with the same
+optional search capability. The rail retains its classification/priority/viewed
+controls in Files mode and query/cache in Search mode. Repeated result activation
+uses explicit navigation rather than the rail's toggle-selection action. Source,
+detail and diff loads retain the concrete clone owner; owner, endpoint, PR, origin,
+base/head and file inventory changes revoke the controller and target.
+
 `FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
 objects reveal the side-local line/column after that file's models load, overriding
 hunk navigation. Old-side Editor jumps select split layout so the original buffer

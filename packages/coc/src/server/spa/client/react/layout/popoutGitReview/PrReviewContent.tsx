@@ -16,7 +16,8 @@ import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { PrChatPanel } from '../../features/git/commits/PrChatPanel';
 import { ReviewChatPlacementFrame } from '../../features/git/reviewChat/ReviewChatPlacementFrame';
-import { FileDiffPanel } from '../../features/git/diff/FileDiffPanel';
+import { FileDiffPanel, type ReviewContentSearchTarget } from '../../features/git/diff/FileDiffPanel';
+import { useReviewContentSearchController } from '../../features/git/diff/useReviewContentSearchController';
 import { createPrDiffSource } from '../../features/git/diff/diffSource';
 import { parseDiffFileList } from '../../features/git/diff/UnifiedDiffViewer';
 import { useReviewChatPresentation } from '../../features/git/hooks/useReviewChatPresentation';
@@ -72,9 +73,25 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
     });
 
     const endpoint = useCloneBaseUrl(attachmentDestinationId ?? workspaceId);
-    const model = usePopOutReviewModel({ files: fileList, progress, classification,
-        diffIdentity: JSON.stringify([workspaceId, attachmentDestinationId, endpoint, progressOriginId, repoId, prId, headSha]),
-    });
+    const identity = JSON.stringify([workspaceId, attachmentDestinationId, endpoint, progressOriginId, repoId, prId, pr?.baseSha, headSha]);
+    const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: identity });
+    const source = useMemo(() => createPrDiffSource(workspaceId, repoId, prId, {
+        originId: progressOriginId, baseSha: pr?.baseSha, headSha, files: fileList.map(file => file.path), title: prTitle,
+        routingTarget: attachmentDestinationId === workspaceId ? null : attachmentDestinationId,
+    }), [workspaceId, repoId, prId, progressOriginId, pr?.baseSha, headSha, fileList, prTitle, attachmentDestinationId]);
+    const fetchFileContent = source.fetchFileContent;
+    const controller = useReviewContentSearchController(identity, fileList.map(file => ({ id: file.path, path: file.path })),
+        fetchFileContent ? file => fetchFileContent(file.path) : undefined);
+    const [contentSearchTarget, setContentSearchTarget] = useState<ReviewContentSearchTarget>();
+    useEffect(() => setContentSearchTarget(undefined), [controller]);
+    useEffect(() => {
+        setContentSearchTarget(current => current?.filePath === model.selectedFilePath ? current : undefined);
+    }, [model.selectedFilePath]);
+    const reviewModel = { ...model,
+        handleFileSelect: (path: string) => { setContentSearchTarget(undefined); model.handleFileSelect(path); },
+        handleNavigateToFile: (path: string, target: 'first' | 'last') => { setContentSearchTarget(undefined); model.handleNavigateToFile(path, target); },
+        handleBack: () => { setContentSearchTarget(undefined); model.handleBack(); },
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -84,7 +101,7 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
         setHeadSha(undefined);
         setFileList([]);
         setError(null);
-        const client = getCocClientForWorkspace(workspaceId);
+        const client = getCocClientForWorkspace(attachmentDestinationId === workspaceId ? null : attachmentDestinationId ?? workspaceId);
 
         Promise.all([
             client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<PullRequest>,
@@ -103,9 +120,7 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
             .catch((err: Error) => { if (!cancelled) setError(err.message); })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [repoId, prId, progressOriginId, workspaceId]);
-
-    const filePaths = fileList.map(f => f.path);
+    }, [repoId, prId, progressOriginId, workspaceId, attachmentDestinationId, endpoint]);
 
     if (loading) {
         return (
@@ -158,9 +173,14 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
                 onToggleChat={chat.toggleChat}
             />
             <PopOutReviewLayout
+                identity={identity}
+                contentSearch={controller ? { controller, onOpenMatch: (file, match) => {
+                    model.handleNavigateToFile(file.path, 'first');
+                    setContentSearchTarget({ ...match, filePath: file.path });
+                } } : undefined}
                 workspaceId={workspaceId}
                 files={fileList}
-                model={model}
+                model={reviewModel}
                 progress={progress}
                 classification={classification}
                 renderDiff={filePath => (
@@ -169,14 +189,10 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
                         workspaceId={workspaceId}
                         attachmentDestinationId={attachmentDestinationId}
                         filePath={filePath}
-                        source={createPrDiffSource(workspaceId, repoId, prId, {
-                            originId: progressOriginId,
-                            headSha,
-                            files: filePaths,
-                            title: prTitle,
-                        })}
+                        source={source}
+                        contentSearchTarget={contentSearchTarget}
                         showSourceLabel={false}
-                        {...popOutDiffPanelProps(model, filePath, { progress, classification })}
+                        {...popOutDiffPanelProps(reviewModel, filePath, { progress, classification })}
                     />
                 )}
                 overview={(

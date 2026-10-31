@@ -15,8 +15,11 @@ import type { FileChange } from '../../features/git/diff/FileTree';
 import type { UseClassificationReturn } from '../../features/git/diff/useClassification';
 import type { UsePrReviewProgressReturn } from '../../features/git/diff/usePrReviewProgress';
 import type { PopOutReviewModel } from './usePopOutReviewModel';
+import type { ReviewContentSearchPanelProps } from '../../features/git/diff/ReviewContentSearchPanel';
 
 export interface PopOutReviewLayoutProps {
+    identity?: string;
+    contentSearch?: Omit<ReviewContentSearchPanelProps, 'inputRef'>;
     workspaceId: string;
     files: FileChange[];
     model: PopOutReviewModel;
@@ -31,6 +34,7 @@ export interface PopOutReviewLayoutProps {
 }
 
 export function PopOutReviewLayout({
+    identity, contentSearch,
     workspaceId,
     files,
     model,
@@ -46,6 +50,9 @@ export function PopOutReviewLayout({
     return (
         <div className="flex flex-1 min-h-0">
             <PopOutFilePanel
+                key={identity}
+                identity={identity}
+                contentSearch={contentSearch}
                 workspaceId={workspaceId}
                 onDisplayOrderChange={model.setDisplayedPaths}
                 files={files}
