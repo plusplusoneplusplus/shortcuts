@@ -228,6 +228,17 @@ timeout: 300
             expect(() => loadConfigFile(configPath)).toThrow('Failed to parse');
         });
 
+        it.each([true, false])('rejects duplicate feature keys even when the second value is %s', value => {
+            const configPath = path.join(tmpDir, 'duplicate-feature.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  diffContentSearch: true',
+                `  diffContentSearch: ${value}`,
+            ].join('\n'));
+
+            expect(() => loadConfigFile(configPath)).toThrow('duplicated mapping key');
+        });
+
         it('should throw for invalid parallel value (string)', () => {
             const configPath = path.join(tmpDir, 'bad-parallel.yaml');
             fs.writeFileSync(configPath, 'parallel: "not-a-number"\n');
@@ -1185,7 +1196,6 @@ timeout: 300
                 '  focusedDiff: true',
                 '  diffContentSearch: true',
                 '  diffFilePicker: false',
-                '  diffContentSearch: true',
                 '  gitCrossCloneCherryPick: true',
                 '  gitWorktreeExecution: true',
                 '  teamsAiAnswerRelay: true',
@@ -1280,6 +1290,7 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+            expect(result.resolved.features.diffContentSearch).toBe(true);
             expect(result.resolved.canvasExtensions.enabled).toBe(true);
             expect(result.resolved.browserControl.enabled).toBe(true);
             // Saved false overrides the default-on frame, rich paste and background flags.
