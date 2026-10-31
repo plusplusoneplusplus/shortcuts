@@ -241,6 +241,15 @@ unmounts the panel and stops new dispatch; hosts own controller disposal and mus
 replace it on owner, comparison or mutable refresh changes. The panel is keyed by
 review identity. Hosts without the capability keep their file navigator.
 
+`FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
+objects reveal the side-local line/column after that file's models load, overriding
+hunk navigation. Old-side Editor jumps select split layout so the original buffer
+is visible; identical snapshots also open an editor when a target exists. Classic
+maps source lines through `createDiffLineIndexResolver`, reveals virtualized rows
+and highlights the match. Search targets bypass hunk classification filters;
+lines outside the displayed patch offer Editor with the same target. Hosts clear
+targets on ordinary navigation; later definition jumps supersede search jumps.
+
 ### Shared file diff sources
 
 `features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with

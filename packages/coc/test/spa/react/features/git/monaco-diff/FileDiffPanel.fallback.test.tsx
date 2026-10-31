@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { forwardRef } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import type { GitFileDiffContentResponse } from '@plusplusoneplusplus/coc-client';
 import type { DiffComment } from '../../../../../../src/server/spa/client/comments/diff-comment-types';
 import type { DiffSource } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
 import { createFakeDiffEditor, type FakeDiffEditor } from './fakeDiffEditorAdapter';
+import type { UnifiedDiffViewerHandle, UnifiedDiffViewerProps } from '../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 let preference: 'monaco' | 'legacy';
 let viewMode: 'unified' | 'split';
@@ -13,13 +14,16 @@ let comments: DiffComment[];
 const useComments = vi.fn();
 const usePatch = vi.fn();
 const requestFullDiff = vi.fn();
-let classicProps: { diff: string; comments: DiffComment[] } | null;
+const scrollClassicLine = vi.fn();
+const setEngine = vi.fn((engine: 'monaco' | 'legacy') => { preference = engine; });
+const setView = vi.fn((mode: 'unified' | 'split') => { viewMode = mode; });
+let classicProps: UnifiedDiffViewerProps | null;
 
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
-    useDiffEngine: () => [preference, vi.fn()],
+    useDiffEngine: () => [preference, setEngine],
 }));
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useDiffViewMode', () => ({
-    useDiffViewMode: () => [viewMode, vi.fn()],
+    useDiffViewMode: () => [viewMode, setView],
 }));
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useFileDiff', () => ({
     useFileDiff: (...args: unknown[]) => {
@@ -52,10 +56,12 @@ vi.mock('../../../../../../src/server/spa/client/react/layout/ThemeProvider', ()
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useCommitChatPresentation', () => ({
     useCommitChatPresentation: () => ({ chatOpen: false }),
 }));
-vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
-    UnifiedDiffViewer: forwardRef<HTMLDivElement, { diff: string; comments: DiffComment[] }>((props, ref) => {
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    UnifiedDiffViewer: forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>((props, ref) => {
+        useImperativeHandle(ref, classicHandle);
         classicProps = props;
-        return <div ref={ref} data-testid="classic-viewer">{props.diff}{props.comments.map(c => c.comment).join(' ')}</div>;
+        return <div data-testid="classic-viewer">{props.diff}{props.comments?.map(c => c.comment).join(' ')}</div>;
     }),
     HunkNavButtons: () => null,
 }));
@@ -63,9 +69,10 @@ vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/DiffMin
     DiffMiniMap: () => null,
 }));
 vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer', () => ({
-    SideBySideDiffViewer: forwardRef<HTMLDivElement, { diff: string; comments: DiffComment[] }>((props, ref) => {
+    SideBySideDiffViewer: forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>((props, ref) => {
+        useImperativeHandle(ref, classicHandle);
         classicProps = props;
-        return <div ref={ref} data-testid="classic-split-viewer">{props.diff}</div>;
+        return <div data-testid="classic-split-viewer">{props.diff}</div>;
     }),
 }));
 
@@ -83,11 +90,20 @@ vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unif
     openUnifiedPanelTab,
 }));
 
-import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import { FileDiffPanel, type ReviewContentSearchTarget } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import {
     getDiffDefinitionReturn, resetDiffDefinitionReturns, returnToDiffDefinitionOrigin,
 } from '../../../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
 import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+
+function classicHandle(): UnifiedDiffViewerHandle {
+    return {
+        scrollLineIntoView: scrollClassicLine,
+        scrollToNextHunk: () => false, scrollToPrevHunk: () => false,
+        getHunkCount: () => 0, getCurrentHunkIndex: () => -1, scrollToHunk: () => {},
+        scrollToFile: () => {},
+    };
+}
 
 function content(extra: Partial<GitFileDiffContentResponse> = {}): GitFileDiffContentResponse {
     return {
@@ -143,6 +159,113 @@ beforeEach(() => {
     classicProps = null;
     fakes = [];
     currentCodeMounts.length = 0;
+});
+
+describe('review content match navigation', () => {
+    const match = (extra: Partial<ReviewContentSearchTarget> = {}): ReviewContentSearchTarget => ({
+        filePath: 'src/a.ts', side: 'new', line: 1, startColumn: 3, endColumn: 6, text: 'after', ...extra,
+    });
+    const panel = (source: DiffSource, target: ReviewContentSearchTarget | null, filePath = 'src/a.ts') => (
+        <FileDiffPanel workspaceId="ws-a" filePath={filePath} source={source}
+            createDiffEditor={createEditor} initialHunkTarget="first" contentSearchTarget={target} />
+    );
+
+    it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s reveals the new-side UTF-16 column without hunk navigation', async kind => {
+        const source = makeSource(kind);
+        const target = match();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, target)); });
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 1, column: 3 }]);
+        act(() => { fakes[0].finishDiff([{ originalStartLineNumber: 1, originalEndLineNumber: 1, modifiedStartLineNumber: 1, modifiedEndLineNumber: 1 }]); });
+        expect(fakes[0].adapter.revealModifiedLine).not.toHaveBeenCalled();
+        view.rerender(panel(source, target));
+        expect(fakes[0].revealedPositions).toHaveLength(1);
+        view.rerender(panel(source, { ...target }));
+        expect(fakes[0].revealedPositions).toHaveLength(2);
+    });
+
+    it('makes the old editor visible before revealing a match outside the changed hunks', async () => {
+        const source = makeSource('commit');
+        const target = match({ side: 'old', line: 17, startColumn: 5 });
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, target)); });
+        expect(setView).toHaveBeenCalledWith('split');
+        view.rerender(panel(source, target));
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 17, column: 5 }]);
+        expect(fakes[0].options.at(-1)?.renderSideBySide).toBe(true);
+    });
+
+    it('does not reveal a target in retained prior models while the selected file is loading', async () => {
+        let resolveNext!: (value: GitFileDiffContentResponse) => void;
+        const loader = vi.fn(async () => content()).mockImplementationOnce(async () => content())
+            .mockImplementationOnce(() => new Promise(resolve => { resolveNext = resolve; }));
+        const source = makeSource('branch-range', loader);
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, null)); });
+        const target = match({ filePath: 'src/b.ts', line: 4 });
+        await act(async () => { view.rerender(panel(source, target, 'src/b.ts')); });
+        expect(fakes[0].revealedPositions).toEqual([]);
+        await act(async () => { resolveNext(content({ path: 'src/b.ts' })); });
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 4, column: 3 }]);
+        view.rerender(panel(source, target, 'src/a.ts'));
+        expect(fakes[0].revealedPositions).toHaveLength(1);
+    });
+
+    it.each(['unified', 'split'] as const)('Classic %s maps the matching side to the exact patch index and highlights it', async mode => {
+        preference = 'legacy';
+        viewMode = mode;
+        const source = makeSource('commit');
+        const target = match({ side: 'old', startColumn: 2, endColumn: 4 });
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, target)); });
+        expect(scrollClassicLine).toHaveBeenLastCalledWith(1);
+        expect(classicProps?.matchRangesByLine?.get(1)).toEqual([{ start: 1, end: 3, active: true }]);
+        expect(screen.queryByTestId('search-outside-patch')).toBeNull();
+        view.rerender(panel(source, match()));
+        expect(scrollClassicLine).toHaveBeenLastCalledWith(2);
+        expect(classicProps?.matchRangesByLine?.get(2)).toEqual([{ start: 2, end: 5, active: true }]);
+        view.rerender(panel(source, null));
+        expect(classicProps?.matchRangesByLine?.size).toBe(0);
+        expect(source.fetchFileContent).not.toHaveBeenCalled();
+    });
+
+    it('offers Editor for a line outside the Classic patch and then reveals that same target', async () => {
+        preference = 'legacy';
+        const source = makeSource('pull-request');
+        const target = match({ line: 20 });
+        await act(async () => { render(panel(source, target)); });
+        expect(screen.getByTestId('search-outside-patch').textContent).toContain('NEW line 20');
+        expect(scrollClassicLine).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open in Editor view' })); });
+        expect(setEngine).toHaveBeenCalledWith('monaco');
+        expect(screen.queryByTestId('search-outside-patch')).toBeNull();
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 20, column: 3 }]);
+    });
+
+    it('does not let a consumed search jump override later definition navigation', async () => {
+        const source = { ...makeSource('commit'), supportsCurrentCodeDefinitions: true };
+        const target = match();
+        await act(async () => { render(panel(source, target)); });
+        act(() => { currentCodeMounts.at(-1)!.onNavigate({ workspaceId: 'ws-a', path: 'src/a.ts', line: 7, column: 2 }); });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 7, column: 2 });
+    });
+
+    it('reveals unchanged contents in a rename-only review instead of showing an empty editor', async () => {
+        const source = makeSource('commit', vi.fn(async () => content({
+            base: { content: 'same\n', ref: 'base', exists: true },
+            head: { content: 'same\n', ref: 'head', exists: true },
+        })));
+        const target = match({ startColumn: 1, text: 'same' });
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, null)); });
+        expect(screen.getByTestId('file-diff-editor-empty')).toBeTruthy();
+        await act(async () => { view.rerender(panel(source, target)); });
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 1, column: 1 }]);
+        await act(async () => { view.rerender(panel(source, null)); });
+        expect(screen.getByTestId('file-diff-editor-empty')).toBeTruthy();
+        expect(fakes[0].disposals).toBe(1);
+    });
 });
 
 describe('historical definition surfaces', () => {

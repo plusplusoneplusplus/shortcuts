@@ -110,7 +110,7 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     /** Language document store; tests inject one. Defaults to the workspace's. */
     languageStore?: LanguageDocumentStore;
     /**
-     * A position to reveal in the current models (a definition jump). Each new
+     * A position to reveal in the current models (definition or search). Each new
      * object reveals once; hosts pass it only once its file's models are shown.
      */
     revealTarget?: DiffEditorPosition | null;
@@ -172,7 +172,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         const [commentDiff, setCommentDiff] = useState<MonacoDiffCommentState | null>(null);
         const commentLayerRef = useRef<MonacoDiffCommentLayerHandle>(null);
         const [failed, setFailed] = useState(false);
-        const identical = original === modified;
+        const identical = original === modified && !revealTarget;
         const showCommentLayer = !!(
             renderCommentThread || onAddComment || onAskAI || onCopyAsContext || diffSelectionDragSource
         );
