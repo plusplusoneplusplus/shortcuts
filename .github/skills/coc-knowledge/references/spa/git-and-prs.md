@@ -199,6 +199,15 @@ order before review updates. Hide-viewed retains a marked last file without wrap
 failed async toggles and superseded owner/selection completions cannot navigate.
 PR progress keeps its existing local update and debounced persistence lifecycle.
 
+### Review content matching
+
+`features/git/diff/reviewContentSearch.ts` compiles browser-side queries for
+full old/new text independently of patch hunks. It shares Explorer's query-mode
+type, uses Unicode whole-word boundaries, and evaluates regexes per source line.
+Matches carry side, one-based line and UTF-16 columns, and the full line text;
+matching has no size or result caps. Null denotes an absent side. Compilation
+returns a query error for invalid regexes. The helper owns no loading or UI state.
+
 ### Shared file diff sources
 
 `features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with
