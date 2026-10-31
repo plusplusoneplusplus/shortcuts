@@ -610,13 +610,12 @@ code` on mount but skips anything inside `.code-block-container`, since forge's
 `renderCodeBlock` already highlighted it and wraps lines in `.code-line`/`.line-number` spans
 that `hljs.highlightElement` would flatten.
 
-AI-response `MarkdownView`s (turn bubbles, Whisper groups, task-complete, compaction
-summaries, Quick Ask answers, comment AI replies) pass `tableWrapToggle`: upgraded
+AI-response and rendered Markdown-canvas `MarkdownView`s pass `tableWrapToggle`: upgraded
 `InteractiveTable`s get a per-table "Wrap text" toolbar toggle (`aria-pressed`, default off).
 `MarkdownView` holds the wrapped set keyed by table portal id, because every `html` change
 remounts the portals. Wrapped tables drop the length-weighted `<colgroup>` for auto layout
 with a 4rem column floor. Static tables already wrap via `.markdown-body` and get no toggle;
-Kusto and standalone viewers leave the prop off.
+file viewers leave the prop off. Kusto uses the same `InteractiveTable` control directly.
 
 ### Threads
 

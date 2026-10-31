@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { CanvasBodyRenderer } from '../../../src/server/spa/client/react/features/canvas/components/CanvasBodyRenderer';
 import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
@@ -33,8 +33,8 @@ function renderCanvas(content: string, options: { hosted?: boolean; routingRef?:
     render(options.hosted === false ? body : <UnifiedPanelHostProvider host={host}>{body}</UnifiedPanelHostProvider>);
 }
 
-function click(text: string, init: MouseEventInit = {}) {
-    const link = screen.getByText(text);
+function click(text: string | HTMLElement, init: MouseEventInit = {}) {
+    const link = typeof text === 'string' ? screen.getByText(text) : text;
     // Stop jsdom navigation for anything the code under test leaves alone.
     const guard = (event: Event) => event.preventDefault();
     window.addEventListener('click', guard);
@@ -80,6 +80,31 @@ describe('canvas web links open in the panel browser tab', () => {
     it('routes keyboard activation (a click with no pointer detail) the same way', () => {
         renderCanvas('[Docs](https://example.com/docs)');
         expect(click('Docs', { detail: 0 }).prevented).toBe(true);
+        expect(events).toHaveLength(1);
+    });
+
+    it('keeps owner-qualified browser routing on links inside a wrapped interactive table', () => {
+        renderCanvas([
+            '| Link | Count |',
+            '| --- | ---: |',
+            '| [Docs](https://example.com/docs) | 1 |',
+            '| second | 2 |',
+            '| third | 3 |',
+            '| fourth | 4 |',
+            '| fifth | 5 |',
+        ].join('\n'));
+        const table = screen.getByTestId('canvas-panel-preview').querySelector<HTMLElement>('.interactive-table')!;
+        const wrap = within(table).getByRole('button', { name: 'Wrap text' });
+        fireEvent.click(wrap);
+        expect(wrap).toHaveAttribute('aria-pressed', 'true');
+        expect(events).toHaveLength(0);
+        const docs = within(table).getByRole('link', { name: 'Docs' });
+        expect(click(docs).prevented).toBe(true);
+        expect(events).toEqual([{
+            url: 'https://example.com/docs',
+            owner: { scopeWorkspaceId: 'group', workspaceId: 'member', routingRef: ROUTE, chatId: 'chat-1' },
+        }]);
+        expect(click(docs, { ctrlKey: true }).prevented).toBe(false);
         expect(events).toHaveLength(1);
     });
 

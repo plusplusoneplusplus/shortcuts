@@ -219,7 +219,11 @@ export function CanvasBodyRenderer({
                 onCopy={handlePreviewCopy}
             >
                 {previewMarkdown.trim()
-                    ? <MarkdownView html={previewHtml} />
+                    ? <MarkdownView
+                        key={JSON.stringify({ workspaceId, routingRef, canvasId })}
+                        html={previewHtml}
+                        tableWrapToggle
+                    />
                     : <span className="italic text-[#848484]">Empty canvas.</span>}
             </div>
         </MarkdownFileLinkScope>

@@ -61,7 +61,11 @@ normal unified-panel model.
 ### Editing and conflicts
 
 Markdown canvases toggle between Preview (`chatMarkdownToHtml` with canvas embeds and
-SVG fences enabled, hydrated by `MarkdownView`) and Edit (plain textarea).
+SVG fences enabled, hydrated by `MarkdownView` with `tableWrapToggle`) and Edit (plain
+textarea). Tables share response [wrapping controls and styles](chat-conversation.md).
+The viewer is keyed by workspace, routing ref and canvas id; content/history revisions
+retain per-table wrap choices, while owner/document changes or remount reset them.
+Wrapping is display-only and never triggers autosave.
 Edits autosave debounced through `client.canvases.save(...)` carrying `expectedRevision`;
 HTTP 409 surfaces a conflict, and a live AI update arriving over unsaved local edits is
 held rather than clobbering the draft. The header revision chip steps through the canvas
