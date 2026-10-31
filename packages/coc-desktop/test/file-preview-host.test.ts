@@ -5,7 +5,8 @@ import { ElectronFilePreviewHost, HTML_PAGE_PARTITION } from '../src/file-previe
 import { htmlPageFileUrl } from '../src/html-page-policy';
 
 const mocks = vi.hoisted(() => ({
-    owner: { id: 1 },
+    owner: undefined as any,
+    owners: new Map<number, any>(),
     profile: {},
     trusted: true,
     guest: undefined as any,
@@ -18,8 +19,8 @@ const mocks = vi.hoisted(() => ({
     fromPartition: vi.fn(),
 }));
 vi.mock('electron', () => ({
-    BrowserWindow: { fromWebContents: () => ({ webContents: mocks.owner, isDestroyed: () => false }) },
-    webContents: { fromId: () => mocks.owner },
+    BrowserWindow: { fromWebContents: (owner: any) => ({ webContents: owner, isDestroyed: () => false, isFocused: owner.isFocused }) },
+    webContents: { fromId: (id: number) => mocks.owners.get(id) },
     session: { fromPartition: mocks.fromPartition },
     shell: { openExternal: mocks.openExternal },
 }));
@@ -31,21 +32,31 @@ vi.mock('../src/browser-webview-guard', () => ({
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.trusted = true;
+    mocks.owner = makeOwner(1);
+    mocks.owners.clear();
+    mocks.owners.set(1, mocks.owner);
     mocks.fromPartition.mockReturnValue(mocks.profile);
     mocks.authorize.mockImplementation((_owner, src, _profile, attach, expire) => {
         mocks.attach = attach;
         mocks.expire = expire;
         return { embed: 'webview', src, partition: 'file-token', adopt: mocks.adopt, dispose: mocks.revoke };
     });
-    mocks.guest = Object.assign(new EventEmitter(), {
-        id: 2, isDestroyed: vi.fn(() => false),
+    mocks.guest = makeGuest(mocks.owner);
+});
+
+function makeOwner(id: number) {
+    return Object.assign(new EventEmitter(), { id, isDestroyed: vi.fn(() => false), isFocused: vi.fn(() => true) });
+}
+function makeGuest(owner: any, id = 2) {
+    return Object.assign(new EventEmitter(), {
+        id, isDestroyed: vi.fn(() => false), isFocused: vi.fn(() => true), hostWebContents: owner,
         getURL: vi.fn(() => htmlPageFileUrl(path.resolve('preview/index.html'))),
         getTitle: () => 'Preview', isLoading: () => false,
         navigationHistory: { canGoBack: () => true, canGoForward: () => false, goBack: vi.fn() },
         setWindowOpenHandler: vi.fn(), loadURL: vi.fn().mockResolvedValue(undefined),
         reload: vi.fn(), stop: vi.fn(), focus: vi.fn(), close: vi.fn(),
     });
-});
+}
 
 async function create() {
     const host = new ElectronFilePreviewHost();
@@ -192,5 +203,204 @@ describe('HTML preview native close shortcut', () => {
         } finally {
             vi.unstubAllGlobals();
         }
+    });
+});
+
+const bounds = { x: 0, y: 0, width: 200, height: 100 };
+function click(guest = mocks.guest) {
+    guest.emit('before-mouse-event', {}, { type: 'mouseDown', button: 'left' });
+    guest.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'left' });
+}
+function key(patch = {}, guest = mocks.guest) {
+    guest.emit('before-input-event', {}, {
+        key: 'Enter', type: 'keyDown', isAutoRepeat: false, control: false, meta: false, alt: false, ...patch,
+    });
+}
+async function downloadable() {
+    const result = await create();
+    await result.view.setBounds(bounds);
+    mocks.attach!(mocks.guest);
+    mocks.guest.emit('did-navigate', {}, htmlPageFileUrl(result.request.path));
+    return { ...result, guest: mocks.guest, owner: mocks.owner };
+}
+
+describe('HTML preview owner-bound native download admission', () => {
+    it('rejects input before a document commits and while the preview is hidden', async () => {
+        const { host, view, request } = await create();
+        await view.setBounds(bounds);
+        mocks.attach!(mocks.guest);
+        click();
+        expect(host.requestDownload(mocks.guest, 'data:,')).toBeUndefined();
+        mocks.guest.emit('did-navigate', {}, htmlPageFileUrl(request.path));
+        expect(host.requestDownload(mocks.guest, 'data:,')).toBeUndefined();
+        await view.setBounds(null);
+        click();
+        key();
+        await view.setBounds(bounds);
+        expect(host.requestDownload(mocks.guest, 'data:,')).toBeUndefined();
+        click();
+        expect(host.requestDownload(mocks.guest, 'data:,')!.approve()).toBe(true);
+        await host.dispose();
+    });
+
+    it('requires native input in a committed document and consumes it once', async () => {
+        const { host, guest } = await downloadable();
+        expect(host.requestDownload(guest, 'data:,private')).toBeUndefined();
+        guest.emit('ipc-message', {}, 'user-gesture', true);
+        guest.emit('console-message', {}, 'click');
+        expect(host.requestDownload(guest, 'data:,private')).toBeUndefined();
+        click();
+        const pending = host.requestDownload(guest, 'blob:null/id')!;
+        expect(pending).toBeDefined();
+        expect(host.requestDownload(guest, 'data:,second')).toBeUndefined();
+        click();
+        expect(pending.approve()).toBe(true);
+        expect(pending.approve()).toBe(false);
+        expect(host.requestDownload(guest, 'data:,second')).toBeUndefined();
+        await host.dispose();
+        expect(pending.signal.aborted).toBe(false);
+    });
+
+    it.each([{ key: 'Enter', type: 'keyDown' }, { key: ' ', type: 'keyUp' }])('admits keyboard activation %j', async input => {
+        const { host, guest } = await downloadable();
+        key(input);
+        expect(host.requestDownload(guest, 'data:,')!.approve()).toBe(true);
+        await host.dispose();
+    });
+
+    it.each([
+        { key: 'Tab' }, { key: 'a' }, { key: ' ', type: 'keyDown' }, { type: 'keyUp' },
+        { control: true }, { meta: true }, { alt: true }, { isAutoRepeat: true },
+    ])('ignores non-activation input %j', async input => {
+        const { host, guest } = await downloadable();
+        key(input);
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        await host.dispose();
+    });
+
+    it('ignores right clicks, unpaired releases, cancelled input and unfocused guests', async () => {
+        const { host, guest } = await downloadable();
+        guest.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'left' });
+        guest.emit('before-mouse-event', {}, { type: 'mouseDown', button: 'right' });
+        guest.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'right' });
+        guest.emit('before-input-event', { defaultPrevented: true }, { key: 'Enter', type: 'keyDown' });
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        mocks.owner.isFocused.mockReturnValue(false);
+        click();
+        key();
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        mocks.owner.isFocused.mockReturnValue(true);
+        guest.isFocused.mockReturnValue(false);
+        click();
+        key();
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        await host.dispose();
+    });
+
+    it.each(['hide', 'reload', 'navigate', 'crash', 'load-failed', 'close', 'guest-destroyed', 'owner-destroyed', 'owner-navigate'])
+    ('revokes pending approval on %s and rejects late approval', async action => {
+        const { host, view, guest, owner } = await downloadable();
+        click();
+        const pending = host.requestDownload(guest, 'data:,')!;
+        if (action === 'hide') { await view.setBounds(null); await view.setBounds(bounds); }
+        if (action === 'reload') await view.nav('reload');
+        if (action === 'navigate') guest.emit('did-start-navigation', { url: htmlPageFileUrl(path.resolve('preview/other.html')), isMainFrame: true, isSameDocument: false });
+        if (action === 'crash') guest.emit('render-process-gone', {}, { reason: 'crashed' });
+        if (action === 'load-failed') guest.emit('did-fail-load', {}, -6, 'unavailable', '', true);
+        if (action === 'close') await view.close();
+        if (action === 'guest-destroyed') guest.emit('destroyed');
+        if (action === 'owner-destroyed') owner.emit('destroyed');
+        if (action === 'owner-navigate') owner.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+        expect(pending.signal.aborted).toBe(true);
+        expect(pending.approve()).toBe(false);
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        await host.dispose();
+        expect(owner.listenerCount('destroyed')).toBe(0);
+        expect(owner.listenerCount('did-start-navigation')).toBe(0);
+    });
+
+    it('requires fresh input after reload and discards old document approval', async () => {
+        const { host, view, guest, request } = await downloadable();
+        click();
+        const old = host.requestDownload(guest, 'data:,old')!;
+        await view.nav('reload');
+        click();
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        guest.emit('did-navigate', {}, htmlPageFileUrl(request.path));
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        click();
+        const fresh = host.requestDownload(guest, 'data:,new')!;
+        expect(old.approve()).toBe(false);
+        expect(fresh.approve()).toBe(true);
+        await host.dispose();
+    });
+
+    it('recovers a stopped navigation with fresh intent and keeps blocked file navigation isolated', async () => {
+        const { host, guest } = await downloadable();
+        click();
+        const pending = host.requestDownload(guest, 'data:,')!;
+        guest.emit('did-start-navigation', { url: htmlPageFileUrl(path.resolve('preview/other.html')), isMainFrame: true, isSameDocument: false });
+        guest.emit('did-stop-loading');
+        expect(pending.approve()).toBe(false);
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        click();
+        guest.emit('did-start-navigation', { url: htmlPageFileUrl(path.resolve('outside.html')), isMainFrame: true, isSameDocument: false });
+        expect(host.requestDownload(guest, 'data:,')!.approve()).toBe(true);
+        // Even a forged completion cannot make an out-of-policy document eligible.
+        guest.emit('did-navigate', {}, htmlPageFileUrl(path.resolve('outside.html')));
+        click();
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        await host.dispose();
+    });
+
+    it('preserves intent for download targets, same-document navigation and subframes', async () => {
+        const { host, guest } = await downloadable();
+        click();
+        for (const details of [
+            { url: 'blob:null/id', isMainFrame: true, isSameDocument: false },
+            { url: 'data:,', isMainFrame: true, isSameDocument: false },
+            { url: 'file:///child.html', isMainFrame: false, isSameDocument: false },
+            { url: 'file:///preview.html#hash', isMainFrame: true, isSameDocument: true },
+        ]) guest.emit('did-start-navigation', details);
+        const event = { preventDefault: vi.fn() };
+        guest.emit('will-navigate', event, 'blob:null/id');
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(host.requestDownload(guest, 'data:,')!.approve()).toBe(true);
+        await host.dispose();
+    });
+
+    it.each([1, 9])('isolates repeated view names and workspace labels under owner %s', async ownerId => {
+        const first = await downloadable();
+        const owner = ownerId === 1 ? first.owner : makeOwner(ownerId);
+        mocks.owners.set(ownerId, owner);
+        const secondRequest = { ...first.request, ownerId, sessionKey: 'remote-b:workspace' };
+        const second = await first.host.create(secondRequest, first.sink);
+        const secondGuest = makeGuest(owner, 3);
+        mocks.attach!(secondGuest);
+        await second.setBounds(bounds);
+        secondGuest.emit('did-navigate', {}, htmlPageFileUrl(first.request.path));
+        click(first.guest);
+        expect(first.host.requestDownload(secondGuest, 'data:,private')).toBeUndefined();
+        expect(first.host.requestDownload({ ...first.guest } as any, 'data:,private')).toBeUndefined();
+        const pending = first.host.requestDownload(first.guest, 'data:,private')!;
+        await second.close();
+        expect(pending.approve()).toBe(true);
+        await first.host.dispose();
+    });
+
+    it('revokes unused mouse intent across hiding and validates owner at approval', async () => {
+        const { host, view, guest } = await downloadable();
+        guest.emit('before-mouse-event', {}, { type: 'mouseDown', button: 'left' });
+        await view.setBounds(null);
+        await view.setBounds(bounds);
+        guest.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'left' });
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        click();
+        const pending = host.requestDownload(guest, 'data:,')!;
+        mocks.trusted = false;
+        expect(host.requestDownload(guest, 'data:,')).toBeUndefined();
+        expect(pending.approve()).toBe(false);
+        expect(pending.signal.aborted).toBe(true);
+        await host.dispose();
     });
 });
