@@ -422,6 +422,9 @@ is foreground again, waiting requests re-run. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
 errors return unchanged. With the flag off, switching cancels active agent work;
 human takeover retains its private pause until explicit Return or termination.
+A scope update that resolves to the already-bound routing ref (for example switching
+chats in the same workspace) is a no-op: no capability clear, rebind or cancellation,
+so the foreground turn keeps running.
 
 ### AI cursor overlay
 

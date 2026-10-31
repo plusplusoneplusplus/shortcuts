@@ -352,9 +352,14 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             selectedRef = selected;
             const ref = getBrowserControlScope()?.routingRef ?? selected;
             if (!control || disposed) return;
-            const version = ++revision;
             const clone = parseRemoteCloneKey(ref);
             const matches = ref && (baseUrl ? clone && lookupCloneBaseUrl(ref) === baseUrl : !clone);
+            // Another conversation on the bound scope (e.g. a chat switch) keeps its turns and in-flight commands.
+            if (matches && ref === routingRef) {
+                panelScopes.set(ref, getBrowserControlScope()?.panelScope ?? ref);
+                return;
+            }
+            const version = ++revision;
             // Retain the turns being switched away from before the desktop rebinds its foreground scope.
             retainControlled(matches ? ref : null);
             cancelPending(false);
