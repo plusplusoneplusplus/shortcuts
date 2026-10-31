@@ -890,6 +890,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.demoRecordingEnabled', default: false, runtime: 'live', runtimeFlag: 'browserDemoRecordingEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 17, label: 'Record browser demos',
+            hint: 'Show Record in desktop browser tabs to capture a reviewed, action-only demo for the current chat. Typed values, screenshots and video are never captured; nothing is sent until you choose Send.',
+            badge: 'experimental', testId: 'toggle-browser-demo-recording-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',

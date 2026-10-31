@@ -47,6 +47,7 @@ interface DashboardConfig {
     browserRichPasteEnabled?: boolean;
     browserHumanTakeoverEnabled?: boolean;
     browserCursorOverlayEnabled?: boolean;
+    browserDemoRecordingEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
     browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled?: boolean;
@@ -555,6 +556,11 @@ export function isKustoEnabled(): boolean {
 
 export function isBrowserControlEnabled(): boolean {
     return isFeatureEnabled('browserControlEnabled');
+}
+
+/** Returns true when the default-off desktop browser demo recorder is enabled. */
+export function isBrowserDemoRecordingEnabled(): boolean {
+    return getConfig().browserDemoRecordingEnabled === true;
 }
 
 /** Keep browser control for workspaces with active turns after the window switches away; on unless the server says off. */
