@@ -199,14 +199,26 @@ order before review updates. Hide-viewed retains a marked last file without wrap
 failed async toggles and superseded owner/selection completions cannot navigate.
 PR progress keeps its existing local update and debounced persistence lifecycle.
 
-### Review content matching
+### Review content search
 
 `features/git/diff/reviewContentSearch.ts` compiles browser-side queries for
 full old/new text independently of patch hunks. It shares Explorer's query-mode
 type, uses Unicode whole-word boundaries, and evaluates regexes per source line.
 Matches carry side, one-based line and UTF-16 columns, and the full line text;
 matching has no size or result caps. Null denotes an absent side. Compilation
-returns a query error for invalid regexes. The helper owns no loading or UI state.
+returns a query error for invalid regexes.
+
+`reviewContentSearchController.ts` owns a single review's transient content cache
+and subscribable snapshots. Hosts supply owner/comparison-scoped file IDs and an
+existing per-call clone-routed paired-content loader. Searches lazily run four
+reads at a time, cache successful reads and skip outcomes across query changes, and
+report completed attempts among included files. Stop prevents further dispatch;
+in-flight reads settle into the cache. Binary/oversized responses become skips;
+load failures remain errors until explicit Retry.
+
+Queries and side/include filters apply to the latest replies. Disposal clears
+state and suppresses late results;
+replacing the controller isolates owners, comparisons and mutable refreshes.
 
 ### Shared file diff sources
 
