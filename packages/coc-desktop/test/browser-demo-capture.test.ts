@@ -95,6 +95,15 @@ describe('browser demo capture script', () => {
         expect(sent()[0]).toMatchObject({ kind: 'type', label: 'Email' });
     });
 
+    it('excludes editable/control roots and their descendants from referenced labels', () => {
+        document.body.innerHTML = '<div id="draft" contenteditable="true"><span id="nested">private draft value</span></div>'
+            + '<textarea id="area">private area value</textarea><select id="choice"><option>private selection value</option></select>'
+            + '<button aria-labelledby="draft nested area choice">Continue</button>';
+        document.querySelector('button')!.click();
+        expect(sent()[0].label).toBe('Continue');
+        expect(JSON.stringify(sent())).not.toContain('private');
+    });
+
     it('marks password and secret fields sensitive', () => {
         document.body.innerHTML = '<input type="password" aria-label="Password"><input name="api_token" aria-label="Key">';
         for (const input of document.querySelectorAll('input')) {
@@ -175,6 +184,18 @@ describe('demo capture queue', () => {
 });
 
 describe('demo redaction', () => {
+    it.each(['sk-abcdefghijklmnopqrstuvwxyz', 'ghp_abcdefghijklmnopqrstuvwxyz', 'github_pat_abcdefghijklmnopqrstuvwxyz', 'xoxb-abcdefghijklmnopqrstuvwxyz'])(
+        'redacts alphabetic credential %s from every captured metadata surface', credential => {
+            expect(redactDemoText(`Key ${credential}`)).toBe('Key [token]');
+            expect(redactDemoUrl(`https://fixture.test/reset/${credential}?${credential}=ignored#/${credential}`))
+                .not.toContain(credential);
+            expect(redactDemoUrl(`https://fixture.test/reset/${encodeURIComponent(`Key ${credential}`)}`))
+                .toBe('https://fixture.test/reset/{id}');
+            expect(JSON.stringify(sanitizeDemoObservation(JSON.stringify({
+                kind: 'click', role: credential, label: credential, url: `https://fixture.test/${credential}`,
+            })))).not.toContain(credential);
+        });
+
     it('removes credentials, query values, token fragments and opaque path segments', () => {
         expect(redactDemoUrl('https://user:pw@example.com/a/b?q=secret&page=2#access_token=abc')).toBe('https://example.com/a/b?q=…&page=…');
         expect(redactDemoUrl('https://x.test/users/550e8400-e29b-41d4-a716-446655440000/files/1234567')).toBe('https://x.test/users/{id}/files/{id}');

@@ -67,6 +67,7 @@ function browserDemoCapture(drain: string, limit: number): void {
     };
     const textOf = (element: Element): string => {
         // Labels may wrap their control; never read a control's own text.
+        if (element.closest('input,select,textarea,[contenteditable]')) return '';
         const copy = element.cloneNode(true) as Element;
         for (const control of Array.from(copy.querySelectorAll('input,select,textarea,[contenteditable]'))) control.remove();
         return clean(copy.textContent);
@@ -165,12 +166,16 @@ export function buildBrowserDemoCaptureSource(): string {
 }
 
 const KINDS = new Set<BrowserDemoActionKind>(['click', 'type', 'toggle', 'select', 'file', 'submit', 'key']);
+const ROLES = new Set(['button', 'link', 'textbox', 'combobox', 'checkbox', 'radio', 'switch', 'tab',
+    'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'treeitem', 'label', 'generic']);
 const MAX_LABEL = 120;
+const KNOWN_CREDENTIAL = /\b(?:(?:sk-|gh[pousr]_|github_pat_|xox[baprs]-|AKIA)[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/;
 
 /** Hide identifiers a label, title or URL could carry: emails, long numbers and token-like runs. */
 export function redactDemoText(value: string, maximum = MAX_LABEL): string {
     return value.replace(/[\u0000-\u001f\u007f]+/g, ' ')
         .replace(/[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/g, '[email]')
+        .replace(new RegExp(KNOWN_CREDENTIAL.source, 'g'), '[token]')
         .replace(/\+?\d[\d -]{6,}\d/g, '[number]')
         .replace(/\b(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{24,}\b/g, '[token]')
         .replace(/\s+/g, ' ').trim().slice(0, maximum);
@@ -189,13 +194,14 @@ export function redactDemoUrl(value: string): string | undefined {
     const path = url.pathname.split('/').map(segment => {
         let decoded = segment;
         try { decoded = decodeURIComponent(segment); } catch { /* keep the raw segment */ }
-        return SECRET_SEGMENT.test(decoded) || /@/.test(decoded) ? '{id}' : segment;
+        return SECRET_SEGMENT.test(decoded) || KNOWN_CREDENTIAL.test(decoded) || /@/.test(decoded) ? '{id}' : segment;
     }).join('/');
-    const names = [...new Set([...url.searchParams.keys()])].slice(0, 12).map(name => encodeURIComponent(name.slice(0, 40)));
+    const names = [...new Set([...url.searchParams.keys()])].slice(0, 12).map(name => encodeURIComponent(redactDemoText(name, 40)));
     const query = names.length ? `?${names.map(name => `${name}=…`).join('&')}` : '';
     // Client routes (#/inbox) are page context; anything with parameters may be a token.
-    const hash = /^#\/[\w\-/.]*$/.test(url.hash) && !url.hash.split('/').some(segment => SECRET_SEGMENT.test(segment)) ? url.hash : '';
-    return `${url.protocol}//${url.host}${path}${query}${hash}`.slice(0, 400);
+    const hash = /^#\/[\w\-/.]*$/.test(url.hash) && !url.hash.split('/').some(segment => SECRET_SEGMENT.test(segment) || KNOWN_CREDENTIAL.test(segment)) ? url.hash : '';
+    const host = url.host.split('.').map(part => SECRET_SEGMENT.test(part) || KNOWN_CREDENTIAL.test(part) ? 'redacted' : part).join('.');
+    return `${url.protocol}//${host}${path}${query}${hash}`.slice(0, 400);
 }
 
 export interface BrowserDemoAction {
@@ -219,7 +225,7 @@ export function sanitizeDemoObservation(payload: unknown): BrowserDemoAction | u
     const url = typeof value.url === 'string' ? redactDemoUrl(value.url) : undefined;
     if (!url) return undefined;
     const sensitive = value.sensitive === true;
-    const role = typeof value.role === 'string' && /^[a-z][a-z-]{0,31}$/.test(value.role) ? value.role : 'generic';
+    const role = typeof value.role === 'string' && ROLES.has(value.role) ? value.role : 'generic';
     const label = typeof value.label === 'string' ? redactDemoText(value.label) : '';
     const action: BrowserDemoAction = { kind: value.kind as BrowserDemoActionKind, role, label, url };
     if (sensitive) action.sensitive = true;
