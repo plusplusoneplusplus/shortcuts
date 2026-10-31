@@ -1,6 +1,6 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { desktopBrowserBridge, type BrowserDemoCommand, type BrowserDemoState } from './browser-bridge';
-import { getBrowserDemoForOwner, getBrowserDemoForView, runBrowserDemoCommand, subscribeBrowserDemos } from './browser-demo';
+import { getBrowserDemoForOwner, getBrowserDemoForView, isBrowserDemoChatInView, runBrowserDemoCommand, subscribeBrowserDemos } from './browser-demo';
 import { isBrowserDemoRecordingEnabled } from '../../utils/config';
 
 export interface BrowserDemoStripProps {
@@ -13,6 +13,8 @@ export interface BrowserDemoStripProps {
     viewId: string;
     /** A web page is open in the tab, so recording can start. */
     ready: boolean;
+    /** The tab is the selected, visible one: a recording counts switching to it. */
+    active?: boolean;
     /** Open the review for a stopped demo; absent until review is available. */
     onReview?: (state: BrowserDemoState) => void;
 }
@@ -27,7 +29,7 @@ const PAUSE_TEXT: Record<string, string> = {
  * Record controls and the recording indicator. They live in the SPA toolbar, never in
  * page content, so pages cannot spoof or hide them.
  */
-export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, ready, onReview }: BrowserDemoStripProps) {
+export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, ready, active, onReview }: BrowserDemoStripProps) {
     const demo = useSyncExternalStore(subscribeBrowserDemos,
         useCallback(() => getBrowserDemoForView(routingRef, viewId), [routingRef, viewId]), () => null);
     const owner = workspaceId && processId ? { workspaceId, processId, routingRef } : null;
@@ -36,6 +38,12 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
     const [error, setError] = useState<{ viewId: string; text: string } | null>(null);
     const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
+    const inView = useSyncExternalStore(subscribeBrowserDemos,
+        () => demo ? isBrowserDemoChatInView(demo.owner.processId) : false, () => false);
+    const recordingHere = active && demo?.status === 'recording' ? demo.id : null;
+    useEffect(() => {
+        if (recordingHere) void runBrowserDemoCommand({ action: 'switch', viewId });
+    }, [recordingHere, viewId]);
     const enabled = isBrowserDemoRecordingEnabled();
     // A running recording stays controllable even if the setting turns off mid-way.
     if (!demo && !enabled) return null;
@@ -100,7 +108,9 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
             <button type="button" className={button} onClick={() => setConfirmDiscard(null)}>Keep</button>
         </> : <>
             {demo.status === 'recording' && <button type="button" className={button} disabled={pending} onClick={() => { void run({ action: 'pause', id: demo.id, reason: 'user' }); }}>Pause</button>}
-            {demo.status === 'paused' && <button type="button" className={button} disabled={pending} onClick={() => { void run({ action: 'resume', id: demo.id }); }}>Resume</button>}
+            {demo.status === 'paused' && <button type="button" className={button} disabled={pending || (demo.pauseReason === 'scope' && !inView)}
+                title={demo.pauseReason === 'scope' && !inView ? 'Open the recording chat to continue.' : undefined}
+                onClick={() => { void run({ action: 'resume', id: demo.id }); }}>Resume</button>}
             {demo.status !== 'stopped' && <button type="button" className={button} disabled={pending} onClick={() => {
                 void run({ action: 'stop', id: demo.id }).then(ok => { if (ok && onReview) onReview(demo); });
             }}>Stop</button>}

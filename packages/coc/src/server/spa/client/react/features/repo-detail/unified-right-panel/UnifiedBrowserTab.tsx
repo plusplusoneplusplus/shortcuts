@@ -250,7 +250,7 @@ export function UnifiedBrowserTab({
             />
             <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
             {bridge && <BrowserDemoStrip workspaceId={workspaceId} processId={chatId ?? null} routingRef={sessionKey} viewId={viewId}
-                ready={opened && Boolean(url) && page?.sourceKind !== 'file'} />}
+                ready={opened && Boolean(url) && page?.sourceKind !== 'file'} active={active && visible} />}
         </div>
     );
 

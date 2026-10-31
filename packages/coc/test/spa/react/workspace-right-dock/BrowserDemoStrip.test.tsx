@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserDemoStrip } from '../../../../src/server/spa/client/react/shared/file-path/BrowserDemoStrip';
 import {
-    getBrowserDemoForOwner, isBrowserDemoCapturing, resetBrowserDemosForTest, runBrowserDemoCommand,
+    getBrowserDemoForOwner, isBrowserDemoCapturingChat, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
@@ -47,8 +47,9 @@ describe('browser demo record controls', () => {
         await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'start', owner, viewId: 'one' }));
         expect(await screen.findByText('Recording demo · 0 steps · 1 tab')).toBeTruthy();
         expect(screen.getByTestId('browser-demo-strip').dataset.status).toBe('recording');
-        expect(isBrowserDemoCapturing('w', 'chat-1')).toBe(true);
-        expect(isBrowserDemoCapturing('w', 'chat-2')).toBe(false);
+        expect(isBrowserDemoCapturingChat('chat-1')).toBe(true);
+        expect(isBrowserDemoCapturingChat('queue_chat-1')).toBe(true);
+        expect(isBrowserDemoCapturingChat('chat-2')).toBe(false);
     });
 
     it('stays hidden when the setting is off and no recording exists', () => {
@@ -165,5 +166,45 @@ describe('browser demo record controls', () => {
         await expect(runBrowserDemoCommand({ action: 'stop', id: 'x' })).resolves.toEqual({ ok: false, reason: 'handshake-failed', message: 'ipc down' });
         mock.hasDemo = false;
         await expect(runBrowserDemoCommand({ action: 'list' })).resolves.toMatchObject({ ok: false, reason: 'engine-unsupported' });
+    });
+
+    it('reports switching to a recorded tab only while it records and is active', async () => {
+        const view = render(<BrowserDemoStrip workspaceId="w" processId="chat-1" routingRef="clone:w" viewId="one" ready active={false} />);
+        push(state());
+        expect(mock.command).not.toHaveBeenCalledWith({ action: 'switch', viewId: 'one' });
+        view.rerender(<BrowserDemoStrip workspaceId="w" processId="chat-1" routingRef="clone:w" viewId="one" ready active />);
+        await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'switch', viewId: 'one' }));
+        const switches = () => mock.command.mock.calls.filter(([command]) => command.action === 'switch').length;
+        push(state({ stepCount: 4 }));
+        expect(switches()).toBe(1);
+        push(state({ status: 'paused', pauseReason: 'user' }));
+        push(state());
+        await waitFor(() => expect(switches()).toBe(2));
+    });
+
+    it('pauses a recording when the window leaves its chat and keeps Resume until the chat is back', async () => {
+        const release = setBrowserDemoViewingChat('queue_chat-1');
+        mount();
+        push(state());
+        expect(mock.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
+        act(() => { setBrowserDemoViewingChat('chat-2'); });
+        await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' }));
+        push(state({ status: 'paused', pauseReason: 'scope' }));
+        expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(true);
+        act(() => { setBrowserDemoViewingChat('chat-1'); });
+        expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(false);
+        release();
+    });
+
+    it('pauses on panel unmount only when no panel takes the scope back in the same tick', async () => {
+        mount();
+        push(state());
+        const release = setBrowserDemoViewingChat('chat-1');
+        release();
+        const again = setBrowserDemoViewingChat('chat-1');
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect(mock.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
+        again();
+        await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' }));
     });
 });

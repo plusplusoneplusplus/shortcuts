@@ -30,6 +30,7 @@ import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { BrowserModePill } from './BrowserModePill';
+import { useBrowserDemoCapturingChat } from '../../shared/file-path/browser-demo';
 import { useBrowserToolEnabled } from './hooks/useBrowserMode';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { ContextAutoCompact } from '../../ui/ContextUsagePopover';
@@ -372,6 +373,8 @@ export function FollowUpInputArea({
         return () => { contextOwnerRef.current = ''; todoReadEpoch.current += 1; };
     }, [contextOwnerKey]);
     function onSend(content?: string, mode?: DeliveryMode): Promise<void> {
+        // The recording note below says why; the draft stays in the composer.
+        if (demoCapturing) return Promise.resolve();
         if (pendingTodoReads.current.size > 0) {
             setSessionContextDropError('Wait for the to-do context to finish loading before sending.');
             return Promise.resolve();
@@ -419,6 +422,8 @@ export function FollowUpInputArea({
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const commitContextOwner = useCommitContextOwner(activeWorkspaceId, attachmentDestinationId);
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
+    // A chat recording a browser demo takes no AI input until the user stops recording.
+    const demoCapturing = useBrowserDemoCapturingChat(activeProcessId);
     const browserWorkspaceId = browserOwner?.workspaceId ?? activeWorkspaceId;
     const browserRoutingRef = browserOwner?.routingRef ?? activeWorkspaceId;
     const browserEnabled = useBrowserToolEnabled(browserRoutingRef);
@@ -1161,6 +1166,12 @@ export function FollowUpInputArea({
             )}
             {sessionContextDropError && (
                 <div role="alert" className="text-xs text-[#f14c4c]" data-testid="follow-up-session-context-error">{sessionContextDropError}</div>
+            )}
+            {demoCapturing && (
+                <div role="status" className="flex items-center gap-1.5 text-xs text-[#616161] dark:text-[#9d9d9d]" data-testid="follow-up-demo-recording">
+                    <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-[#d13438]" />
+                    Recording a browser demo for this chat. Stop recording in the browser tab to send.
+                </div>
             )}
             {pendingContextReads > 0 && (
                 <div role="status" className="text-xs text-[#616161] dark:text-[#9d9d9d]">Loading to-do context…</div>

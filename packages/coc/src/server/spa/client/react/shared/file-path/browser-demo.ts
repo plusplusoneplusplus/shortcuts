@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { desktopBrowserBridge, type BrowserDemoCommand, type BrowserDemoCommandResult, type BrowserDemoOwner, type BrowserDemoState, type DesktopBrowserDemo } from './browser-bridge';
 
 /**
@@ -28,6 +29,7 @@ function attach(): DesktopBrowserDemo | undefined {
         if (!result.ok || !result.drafts) return;
         for (const state of result.drafts) states.set(state.id, state);
         notify();
+        if (viewing) pauseOutOfScope();
     }).catch(() => undefined);
     return demo;
 }
@@ -53,16 +55,63 @@ export function getBrowserDemoForOwner(owner: BrowserDemoOwner): BrowserDemoStat
     return null;
 }
 
-/** Whether a chat is recording or paused: its AI browser input stays blocked. */
-export function isBrowserDemoCapturing(workspaceId: string, processId: string): boolean {
-    for (const state of states.values()) {
-        if (state.owner.workspaceId === workspaceId && state.owner.processId === processId && state.status !== 'stopped') return true;
-    }
+const bareProcessId = (id: string) => id.startsWith('queue_') ? id.slice(6) : id;
+
+/**
+ * Whether a recording or paused demo belongs to this conversation. Composers know a chat by
+ * its process id in either queue form, so this matches both.
+ */
+export function isBrowserDemoCapturingChat(processId: string | null | undefined): boolean {
+    if (!processId) return false;
+    const id = bareProcessId(processId);
+    for (const state of states.values()) if (state.status !== 'stopped' && bareProcessId(state.owner.processId) === id) return true;
     return false;
+}
+
+export function useBrowserDemoCapturingChat(processId: string | null | undefined): boolean {
+    return useSyncExternalStore(subscribeBrowserDemos, () => isBrowserDemoCapturingChat(processId), () => false);
 }
 
 export function listBrowserDemos(): BrowserDemoState[] {
     return [...states.values()];
+}
+
+let viewing: { token: number; chatId: string | null } | null = null;
+let nextViewingToken = 1;
+
+/** Pause recordings whose chat is not the one this window shows; nothing records for another scope. */
+function pauseOutOfScope(): void {
+    const chat = viewing?.chatId ? bareProcessId(viewing.chatId) : null;
+    for (const state of states.values()) {
+        if (state.status === 'recording' && bareProcessId(state.owner.processId) !== chat) {
+            void runBrowserDemoCommand({ action: 'pause', id: state.id, reason: 'scope' });
+        }
+    }
+}
+
+/**
+ * The right panel reports the chat it shows. Leaving the recording chat or its workspace
+ * pauses the recording; the user resumes it explicitly. Returns the release for unmount,
+ * which waits a tick so a remount in the same scope does not pause.
+ */
+export function setBrowserDemoViewingChat(chatId: string | null): () => void {
+    const token = nextViewingToken++;
+    viewing = { token, chatId };
+    notify();
+    pauseOutOfScope();
+    return () => {
+        setTimeout(() => {
+            if (viewing?.token !== token) return;
+            viewing = null;
+            notify();
+            pauseOutOfScope();
+        }, 0);
+    };
+}
+
+/** Whether this window shows `processId`'s chat, so its paused recording may resume. */
+export function isBrowserDemoChatInView(processId: string): boolean {
+    return Boolean(viewing?.chatId) && bareProcessId(viewing!.chatId!) === bareProcessId(processId);
 }
 
 /** Run one recorder command; failures, including a missing host, come back as values. */
@@ -85,6 +134,7 @@ export async function runBrowserDemoCommand(command: BrowserDemoCommand): Promis
 }
 
 export function resetBrowserDemosForTest(): void {
+    viewing = null;
     attached?.off();
     attached = null;
     states.clear();

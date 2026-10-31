@@ -136,6 +136,7 @@ import {
     OPEN_BROWSER_URL_EVENT,
     type OpenBrowserUrlDetail,
 } from '../../../shared/file-path/browser-bridge';
+import { setBrowserDemoViewingChat } from '../../../shared/file-path/browser-demo';
 import { desktopHtmlPageBridge, HTML_PAGE_VIEW_PREFIX, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -307,6 +308,8 @@ export function UnifiedRightPanel({
     useEffect(() => {
         if (pinnedId !== null) activate(pinnedId);
     }, [pinnedId, activate]);
+    // Leaving the chat that records a browser demo pauses the recording.
+    useEffect(() => setBrowserDemoViewingChat(chatId ?? null), [chatId]);
 
     // Expanded covers the workspace row; only an open panel can be expanded, and
     // closing the panel drops the flag so the next open starts at its own width.
