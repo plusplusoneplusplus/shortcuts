@@ -41,14 +41,17 @@ function installExport(spec) {
         : 'data:' + spec.mime + (spec.percent ? ',' + encodeURIComponent(new TextDecoder().decode(bytes))
             : ';base64,' + btoa(String.fromCharCode(...bytes)));
     window.__trustedActivations = [];
-    document.getElementById('export').onclick = event => {
-        window.__trustedActivations.push(event.isTrusted);
+    window.__exportNow = () => {
         const a = document.createElement('a');
         a.href = url;
         a.download = spec.name;
         document.body.append(a);
         a.click(); // A click-handler-created anchor must retain native intent.
         a.remove();
+    };
+    document.getElementById('export').onclick = event => {
+        window.__trustedActivations.push(event.isTrusted);
+        window.__exportNow();
     };
     window.__releaseExport = () => { if (spec.kind === 'blob') URL.revokeObjectURL(url); };
 }
@@ -66,6 +69,7 @@ app.whenReady().then(async () => {
     await main.loadURL(spaUrl);
     await main.webContents.executeJavaScript(fixtureScript);
     const spa = js => main.webContents.executeJavaScript(js);
+    await spa('window.__downloadNotices = 0; window.cocDesktop.browser.onDownload(() => window.__downloadNotices++)');
     // A file remains Electron even when the requested URL-tab engine is WebView2.
     const opened = await spa(`window.__browser.open('export', {kind:'file',path:${JSON.stringify(file)}}, 'workspace-export', 'webview2')`);
     if (!opened.ok) throw new Error('Preview open failed');
@@ -73,6 +77,22 @@ app.whenReady().then(async () => {
     const guest = webContents.fromId(await spa("window.__webviews.get('export').getWebContentsId()"));
     await waitFor(async () => guest.getURL() === pathToFileURL(file).href && !guest.isLoadingMainFrame()
         && await guest.executeJavaScript("document.readyState === 'complete' && document.title === 'Local export'"), 'preview document');
+    const activate = async input => {
+        main.focus();
+        await spa("window.__browser.focus('export')");
+        await waitFor(() => main.isFocused() && guest.isFocused(), 'native guest focus');
+        // Native main-process input, never executeJavaScript(..., true), DOM
+        // event dispatch, gate calls or fabricated EventEmitter input hooks.
+        if (input === 'keyboard') {
+            await guest.executeJavaScript("document.getElementById('export').focus()");
+            guest.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+            guest.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+        } else {
+            const point = await guest.executeJavaScript("(()=>{const r=document.getElementById('export').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
+            guest.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+            guest.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+        }
+    };
     const originalUrl = guest.getURL();
     emit('isolation', {
         engine: opened.engine, sourceKind: opened.sourceKind,
@@ -96,6 +116,57 @@ app.whenReady().then(async () => {
     const outputDir = path.join(root, 'chosen-folder');
     fs.mkdirSync(outputDir);
     try {
+        // A real file document attempts exports at load and from a timer before
+        // any native input; synthetic DOM activation then tries the same path.
+        stage = 'unsolicited';
+        let unsolicitedDialogs = 0;
+        const rejectedNative = [];
+        const observeRejected = event => rejectedNative.push(event.defaultPrevented);
+        guest.session.on('will-download', observeRejected);
+        dialog.showSaveDialogSync = () => { unsolicitedDialogs++; return undefined; };
+        fs.writeFileSync(file, '<!doctype html><title>Local export</title><body><script>('
+            + installExport.toString() + ')(' + JSON.stringify(cases[0]) + ');'
+            + 'window.__attempts=[];addEventListener("load",()=>{'
+            + 'window.__attempts.push("load");window.__exportNow();'
+            + 'setTimeout(()=>{window.__attempts.push("timer");window.__exportNow()},100)})</script>');
+        try {
+            await guest.loadFile(file);
+            await waitFor(async () => !guest.isLoadingMainFrame()
+                && await guest.executeJavaScript('window.__attempts?.length === 2'), 'unsolicited attempts');
+            await guest.executeJavaScript("document.getElementById('export').click()");
+            // Allow Chromium's asynchronous will-download callbacks to settle.
+            await sleep(500);
+            const query = await spa('window.cocDesktop.browser.downloads.query()');
+            if (!query.ok) throw new Error('Download query failed');
+            emit('unsolicited', {
+                dialogs: unsolicitedDialogs, entries: query.entries.length,
+                attempts: await guest.executeJavaScript('window.__attempts'),
+                trusted: await guest.executeJavaScript('window.__trustedActivations'),
+                nativeRejections: rejectedNative,
+                files: fs.readdirSync(outputDir), previewUsable: guest.getURL() === originalUrl,
+            });
+        } finally {
+            guest.session.removeListener('will-download', observeRejected);
+            await guest.executeJavaScript('window.__releaseExport()');
+        }
+
+        stage = 'cancel';
+        let cancelDialogs = 0;
+        dialog.showSaveDialogSync = () => { cancelDialogs++; return undefined; };
+        await guest.executeJavaScript(`(${installExport.toString()})(${JSON.stringify(cases[0])})`);
+        await activate('keyboard');
+        const cancelled = await waitFor(async () => {
+            const query = await spa('window.cocDesktop.browser.downloads.query()');
+            if (!query.ok) throw new Error('Download query failed');
+            return query.entries.find(entry => entry.state === 'cancelled');
+        }, 'cancelled download');
+        seen.add(cancelled.id);
+        emit('cancel', {
+            dialogs: cancelDialogs, state: cancelled.state, notices: await spa('window.__downloadNotices'),
+            files: fs.readdirSync(outputDir), previewUsable: guest.getURL() === originalUrl,
+        });
+        await guest.executeJavaScript('window.__releaseExport()');
+
         for (const spec of cases) {
             stage = spec.id;
             const destination = path.join(outputDir, 'renamed-' + spec.id + '.saved');
@@ -105,20 +176,7 @@ app.whenReady().then(async () => {
                 return destination;
             };
             await guest.executeJavaScript(`(${installExport.toString()})(${JSON.stringify(spec)})`);
-            main.focus();
-            await spa("window.__browser.focus('export')");
-            await waitFor(() => main.isFocused() && guest.isFocused(), 'native guest focus');
-            // Native main-process input, never executeJavaScript(..., true), DOM
-            // event dispatch, gate calls or fabricated EventEmitter input hooks.
-            if (spec.input === 'keyboard') {
-                await guest.executeJavaScript("document.getElementById('export').focus()");
-                guest.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
-                guest.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
-            } else {
-                const point = await guest.executeJavaScript("(()=>{const r=document.getElementById('export').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
-                guest.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
-                guest.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
-            }
+            await activate(spec.input);
             const record = await waitFor(async () => {
                 const result = await spa('window.cocDesktop.browser.downloads.query()');
                 if (!result.ok) throw new Error('Download query failed');
@@ -144,6 +202,46 @@ app.whenReady().then(async () => {
                 trusted: await guest.executeJavaScript('window.__trustedActivations'),
             });
             await guest.executeJavaScript('window.__releaseExport()');
+        }
+
+        // Pause the original handle after the production will-download listener
+        // approves it, then destroy its source before resuming. No URL replay.
+        stage = 'approved-close';
+        const destination = path.join(outputDir, 'after-close.saved');
+        const closeBytes = 8 * 1024 * 1024;
+        let closeDialogs = 0;
+        let retained;
+        const retainApproved = (_event, item, source) => {
+            if (source !== guest) return;
+            item.pause();
+            retained = item;
+        };
+        const profile = guest.session;
+        dialog.showSaveDialogSync = () => { closeDialogs++; return destination; };
+        profile.on('will-download', retainApproved);
+        try {
+            await guest.executeJavaScript(`(${installExport.toString()})(${JSON.stringify({ ...cases[0], large: 8 * 1024 * 1024, bytes: [] })})`);
+            await activate('mouse');
+            await waitFor(() => retained, 'approved native handle');
+            const pausedBeforeClose = retained.isPaused();
+            await spa("window.__browser.close('export')");
+            await waitFor(() => guest.isDestroyed(), 'source closed');
+            retained.resume();
+            const record = await waitFor(async () => {
+                const query = await spa('window.cocDesktop.browser.downloads.query()');
+                if (!query.ok) throw new Error('Download query failed');
+                const entry = query.entries.find(value => !seen.has(value.id));
+                if (entry && ['failed', 'cancelled', 'interrupted'].includes(entry.state)) throw new Error('Closed source transfer failed');
+                return entry?.state === 'completed' ? entry : undefined;
+            }, 'closed source completion');
+            emit('approved-close', {
+                dialogs: closeDialogs, sourceDestroyed: guest.isDestroyed(), pausedBeforeClose, state: record.state,
+                savedSize: fs.statSync(destination).size, expectedSize: closeBytes,
+                actualHash: await digestFile(destination), expectedHash: createHash('sha256').update(Buffer.alloc(closeBytes, 90)).digest('hex'),
+                fileAvailable: record.fileAvailable,
+            });
+        } finally {
+            profile.removeListener('will-download', retainApproved);
         }
     } finally {
         dialog.showSaveDialogSync = originalChooser;

@@ -60,11 +60,39 @@ describe.skipIf(skip)('HTML preview downloads (real sandboxed Electron)', () => 
 
     it('finishes all local transfers with sandboxed Electron despite requesting WebView2', () => {
         expect(result.code, result.raw).toBe(0);
-        expect([...result.steps.keys()], result.raw).toEqual(['isolation', ...cases]);
+        expect([...result.steps.keys()], result.raw).toEqual(['isolation', 'unsolicited', 'cancel', ...cases, 'approved-close']);
         expect(result.steps.get('isolation')).toMatchObject({
             engine: 'electron', sourceKind: 'file', persistent: false,
             preferences: { sandbox: true, contextIsolation: true }, bridge: 'undefined', node: 'undefined',
         });
+    });
+
+    it('rejects load, timer and synthetic activation before a chooser or write', () => {
+        const record = result.steps.get('unsolicited');
+        expect(record, result.raw).toMatchObject({
+            dialogs: 0, entries: 0, attempts: ['load', 'timer'], trusted: [false],
+            files: [], previewUsable: true,
+        });
+        // Require native requests to reach the main admission boundary, not just
+        // a browser-level refusal that would leave the production gate untested.
+        expect(record!.nativeRejections).toEqual(expect.arrayContaining([true]));
+        expect((record!.nativeRejections as boolean[]).every(Boolean)).toBe(true);
+    });
+
+    it('cancels Save As without a write, allowing the following fresh-input retry', () => {
+        expect(result.steps.get('cancel'), result.raw).toMatchObject({
+            dialogs: 1, state: 'cancelled', notices: 0, files: [], previewUsable: true,
+        });
+        expect(result.steps.get('blob-csv'), result.raw).toMatchObject({ state: 'completed', trusted: [true] });
+    });
+
+    it('finishes an approved original native transfer after source destruction', () => {
+        const record = result.steps.get('approved-close');
+        expect(record, result.raw).toMatchObject({
+            dialogs: 1, sourceDestroyed: true, pausedBeforeClose: true, state: 'completed', fileAvailable: true,
+        });
+        expect(record!.savedSize).toBe(record!.expectedSize);
+        expect(record!.actualHash).toBe(record!.expectedHash);
     });
 
     it.each(cases)('saves exact bytes and preserves the preview: %s', id => {
