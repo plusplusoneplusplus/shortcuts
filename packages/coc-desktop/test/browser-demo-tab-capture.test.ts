@@ -134,7 +134,7 @@ describe('BrowserDemoTabCapture', () => {
         await capture.poll();
         expect(out.actions).toEqual([{ kind: 'type', role: 'textbox', label: 'Email', url: 'https://x.test/?token=…' }]);
         expect(JSON.stringify(out.actions)).not.toContain('hunter2');
-        expect(out.gaps).toEqual(['rate-limit', 'capture-failed']);
+        expect(out.gaps).toEqual(['capture-failed', 'rate-limit', 'capture-failed']);
         hostile = false;
         await capture.stop();
     });
@@ -159,6 +159,35 @@ describe('BrowserDemoTabCapture', () => {
         Reflect.deleteProperty(window, BROWSER_DEMO_DRAIN);
         await capture.poll();
         expect(out.gaps).toEqual(['capture-failed']);
+        await capture.stop();
+    });
+
+    it('reports document replacement as a gap even when the fresh document already has the script', async () => {
+        let doc = 'first';
+        const { view } = fakeView({ evaluateOverride: () => ({ result: { value: { doc, items: [], dropped: 0 } } }) });
+        const out = sink();
+        const capture = new BrowserDemoTabCapture(view, out.target, 60_000);
+        await capture.start();
+        doc = 'next';
+        await capture.poll();
+        await capture.poll();
+        expect(out.gaps).toEqual(['capture-failed']);
+        await capture.stop();
+    });
+
+    it('drops queued actions across a pause/resume boundary before enabling collection again', async () => {
+        const { view } = fakeView();
+        const out = sink();
+        const capture = new BrowserDemoTabCapture(view, out.target, 60_000);
+        await capture.start();
+        capture.setEnabled(false);
+        document.querySelector('button')!.click();
+        capture.setEnabled(true);
+        await capture.poll();
+        expect(out.actions).toEqual([]);
+        document.querySelector('button')!.click();
+        await capture.poll();
+        expect(out.actions).toHaveLength(1);
         await capture.stop();
     });
 

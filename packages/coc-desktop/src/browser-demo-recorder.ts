@@ -67,6 +67,7 @@ interface Demo {
     captures: Map<string, BrowserDemoCapture>;
     pending: Map<string, { openerViewId: string; timer: ReturnType<typeof setTimeout> }>;
     pauseReason?: BrowserDemoPauseReason;
+    stopping?: boolean;
 }
 
 export function validBrowserDemoOwner(value: unknown): value is BrowserDemoOwner {
@@ -100,18 +101,23 @@ export class BrowserDemoRecorders {
         const source = this.source(ownerId, viewId, owner);
         const demo: Demo = { ownerId, session: new BrowserDemoSession(randomUUID(), { ...owner }, this.options.now), captures: new Map(), pending: new Map() };
         demo.session.addTab(viewId, source.view.snapshot());
-        await this.capture(demo, viewId, source, true);
-        // Another start for the same owner may have won while this handshake was in flight.
-        if ([...this.demos.values()].some(other => other.ownerId === ownerId && sameOwner(other.session.owner, owner))) {
-            await demo.captures.get(viewId)?.stop(false);
-            throw new BrowserDemoError('busy', 'A demo is already being recorded or reviewed for this chat.');
-        }
+        // Reserve ownership before the handshake, so AI input and another start cannot race it.
         this.demos.set(demo.session.id, demo);
-        return this.emit(demo);
+        try {
+            await this.capture(demo, viewId, source, true);
+            if (this.demos.get(demo.session.id) !== demo || this.options.lookup(ownerId, viewId)?.view !== source.view) {
+                throw new BrowserDemoError('not-found', 'The browser tab closed while the demo was starting.');
+            }
+            return this.emit(demo);
+        } catch (error) {
+            if (this.demos.get(demo.session.id) === demo) await this.release(ownerId, demo.session.id);
+            throw error;
+        }
     }
 
     pause(ownerId: number, id: unknown, reason: BrowserDemoPauseReason = 'user'): BrowserDemoState {
         const demo = this.demo(ownerId, id);
+        if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         if (demo.session.state === 'recording') {
             demo.session.pause();
             demo.pauseReason = reason;
@@ -123,6 +129,7 @@ export class BrowserDemoRecorders {
     /** Continue a paused recording, or reopen a stopped draft so new steps append after reviewed ones. */
     async resume(ownerId: number, id: unknown): Promise<BrowserDemoState> {
         const demo = this.demo(ownerId, id);
+        if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         const reopened = demo.session.state === 'stopped';
         demo.session.resume();
         demo.pauseReason = undefined;
@@ -140,15 +147,25 @@ export class BrowserDemoRecorders {
     /** Stop capturing; the draft stays in memory for review until it is sent or discarded. */
     async stop(ownerId: number, id: unknown): Promise<BrowserDemoSnapshot> {
         const demo = this.demo(ownerId, id);
+        if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
+        demo.stopping = true;
         this.clearPending(demo);
-        const captures = [...demo.captures.values()];
-        demo.captures.clear();
-        // Keep the final click: drain before freezing the session.
-        await Promise.allSettled(captures.map(capture => capture.stop(true)));
-        demo.pauseReason = undefined;
-        const snapshot = demo.session.stop();
-        if (this.demos.get(demo.session.id) === demo) this.emit(demo);
-        return snapshot;
+        const captures = [...demo.captures.entries()];
+        try {
+            // Keep registrations alive until the final actions pass through their sinks.
+            const results = await Promise.allSettled(captures.map(([, capture]) => capture.stop(true)));
+            for (const [index, [viewId, capture]] of captures.entries()) {
+                if (demo.captures.get(viewId) !== capture) continue;
+                demo.captures.delete(viewId);
+                if (results[index].status === 'rejected') demo.session.gap(viewId, 'capture-failed');
+            }
+            demo.pauseReason = undefined;
+            const snapshot = demo.session.stop();
+            if (this.demos.get(demo.session.id) === demo) this.emit(demo);
+            return snapshot;
+        } finally {
+            demo.stopping = false;
+        }
     }
 
     draft(ownerId: number, id: unknown): BrowserDemoSnapshot {
@@ -169,6 +186,7 @@ export class BrowserDemoRecorders {
     /** Explicitly add another tab of the same owner to an active recording. */
     async addTab(ownerId: number, id: unknown, viewId: unknown): Promise<BrowserDemoState> {
         const demo = this.demo(ownerId, id);
+        if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         if (!isValidBrowserViewId(viewId)) throw new BrowserDemoError('invalid', 'Invalid browser tab.');
         if (demo.session.state === 'stopped') throw new BrowserDemoError('busy', 'Resume the recording before adding tabs.');
         if (this.member(ownerId, viewId)) throw new BrowserDemoError('busy', 'This tab is already part of a demo recording.');
@@ -191,7 +209,7 @@ export class BrowserDemoRecorders {
      */
     reserveChild(ownerId: number, openerViewId: string, viewId = `browser-${randomUUID()}`): string | undefined {
         const demo = this.member(ownerId, openerViewId);
-        if (!demo || demo.session.state === 'stopped' || demo.pending.size >= 16) return undefined;
+        if (!demo || demo.stopping || demo.session.state === 'stopped' || demo.pending.size >= 16) return undefined;
         const timer = setTimeout(() => {
             if (!demo.pending.delete(viewId) || this.demos.get(demo.session.id) !== demo) return;
             demo.session.gap(openerViewId, 'tab-not-opened');
@@ -219,7 +237,7 @@ export class BrowserDemoRecorders {
     /** A captured tab opened a popup window: the popup is captured too. */
     async popupOpened(ownerId: number, openerViewId: string, popupViewId: string, view: Pick<BrowserHostedView, 'cdp' | 'snapshot'>): Promise<void> {
         const demo = this.member(ownerId, openerViewId);
-        if (!demo || demo.session.state === 'stopped') return;
+        if (!demo || demo.stopping || demo.session.state === 'stopped') return;
         await this.adopt(demo, popupViewId, { view, sessionKey: demo.session.owner.routingRef, sourceKind: 'url' }, openerViewId);
     }
 
@@ -286,6 +304,7 @@ export class BrowserDemoRecorders {
     }
 
     private async adopt(demo: Demo, viewId: string, source: BrowserDemoTabSource, openerViewId: string): Promise<void> {
+        if (demo.stopping || demo.session.state === 'stopped') return;
         if (!demo.session.addTab(viewId, source.view.snapshot(), openerViewId)) { this.emit(demo); return; }
         await this.capture(demo, viewId, source).catch(() => {});
         if (demo.session.state === 'paused') demo.captures.get(viewId)?.setEnabled(false);

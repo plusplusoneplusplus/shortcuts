@@ -8,7 +8,7 @@ const click: BrowserDemoAction = { kind: 'click', role: 'button', label: 'Save',
 
 interface FakeCapture extends BrowserDemoCapture { sink: BrowserDemoTabSink; enabled: boolean; stopped?: boolean; flushed?: boolean }
 
-function harness(options: { failStart?: (viewId: string) => Error | undefined; pendingTabMs?: number } = {}) {
+function harness(options: { failStart?: (viewId: string) => Error | undefined; pendingTabMs?: number; startWait?: Promise<void> } = {}) {
     const tabs = new Map<string, BrowserDemoTabSource & { ownerId: number }>();
     const captures = new Map<string, FakeCapture>();
     const send = vi.fn();
@@ -27,7 +27,7 @@ function harness(options: { failStart?: (viewId: string) => Error | undefined; p
             const viewId = viewOf.get(view)!;
             const capture: FakeCapture = {
                 sink, enabled: true,
-                start: async () => { const error = options.failStart?.(viewId); if (error) throw error; },
+                start: async () => { await options.startWait; const error = options.failStart?.(viewId); if (error) throw error; },
                 setEnabled: enabled => { capture.enabled = enabled; },
                 stop: async flush => { capture.stopped = true; capture.flushed = flush; },
             };
@@ -42,6 +42,21 @@ function harness(options: { failStart?: (viewId: string) => Error | undefined; p
 afterEach(() => vi.useRealTimers());
 
 describe('BrowserDemoRecorders start and ownership', () => {
+    it('reserves a starting owner and revokes a late handshake when its window closes', async () => {
+        let finish!: () => void;
+        const startWait = new Promise<void>(resolve => { finish = resolve; });
+        const h = harness({ startWait });
+        h.addTab('t1');
+        const starting = h.recorders.start(1, owner, 't1');
+        expect(h.recorders.capturing(owner.workspaceId, owner.processId)).toBe(true);
+        await expect(h.recorders.start(1, owner, 't1')).rejects.toMatchObject({ reason: 'busy' });
+        await h.recorders.closeOwner(1);
+        h.tabs.clear();
+        finish();
+        await expect(starting).rejects.toMatchObject({ reason: 'not-found' });
+        expect(h.recorders.unsent()).toEqual([]);
+        expect(h.captures.get('t1')!.stopped).toBe(true);
+    });
     it('refuses unknown, foreign, file, busy and engine-less tabs without registering a draft', async () => {
         const h = harness();
         h.addTab('foreign', { sessionKey: 'ws-b' });
@@ -95,6 +110,39 @@ describe('BrowserDemoRecorders start and ownership', () => {
 });
 
 describe('BrowserDemoRecorders capture lifecycle', () => {
+    it('rejects mutations while Stop drains its captures', async () => {
+        const h = harness();
+        h.addTab('t1');
+        h.addTab('t2');
+        const { id } = await h.recorders.start(1, owner, 't1');
+        let finish!: () => void;
+        h.captures.get('t1')!.stop = () => new Promise<void>(resolve => { finish = resolve; });
+        const stopping = h.recorders.stop(1, id);
+        expect(() => h.recorders.pause(1, id)).toThrow('finishing');
+        await expect(h.recorders.resume(1, id)).rejects.toMatchObject({ reason: 'busy' });
+        await expect(h.recorders.addTab(1, id, 't2')).rejects.toMatchObject({ reason: 'busy' });
+        expect(h.recorders.reserveChild(1, 't1')).toBeUndefined();
+        finish();
+        await stopping;
+    });
+
+    it('accepts final flushed actions before stopping and reports failed flushes honestly', async () => {
+        const h = harness();
+        h.addTab('t1');
+        h.addTab('t2');
+        const { id } = await h.recorders.start(1, owner, 't1');
+        await h.recorders.addTab(1, id, 't2');
+        h.captures.get('t1')!.stop = async flush => {
+            if (flush) h.captures.get('t1')!.sink.actions([click]);
+        };
+        h.captures.get('t2')!.stop = async () => { throw new Error('Capture transport gone'); };
+        const draft = await h.recorders.stop(1, id);
+        expect(draft.steps).toContainEqual(expect.objectContaining({ type: 'action', action: click }));
+        expect(draft.steps).toContainEqual(expect.objectContaining({ type: 'gap', viewId: 't2', reason: 'capture-failed' }));
+        h.captures.get('t1')!.sink.actions([click]);
+        expect(h.recorders.draft(1, id).steps).toHaveLength(draft.steps.length);
+    });
+
     it('records actions, sends only counts and ids in live state, and returns the redacted draft on stop', async () => {
         const h = harness();
         h.addTab('t1');

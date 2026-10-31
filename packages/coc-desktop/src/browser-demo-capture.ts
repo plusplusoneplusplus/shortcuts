@@ -43,7 +43,10 @@ function browserDemoCapture(drain: string, limit: number): void {
     let active = true;
     const doc = Math.random().toString(36).slice(2, 12);
     scope[drain] = (enabled?: boolean): BrowserDemoDrain => {
-        if (typeof enabled === 'boolean') active = enabled;
+        if (typeof enabled === 'boolean' && active !== enabled) {
+            active = enabled;
+            dirty = new WeakSet<Element>();
+        }
         const result = { doc, items: queue.splice(0), dropped };
         dropped = 0;
         return result;
@@ -52,7 +55,7 @@ function browserDemoCapture(drain: string, limit: number): void {
         if (!active) return;
         if (queue.length < limit) queue.push(payload); else dropped++;
     };
-    const dirty = new WeakSet<Element>();
+    let dirty = new WeakSet<Element>();
     const clean = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     const editable = (element: Element): boolean => {
         if (element.localName === 'textarea') return true;
@@ -116,14 +119,15 @@ function browserDemoCapture(drain: string, limit: number): void {
         send(JSON.stringify(observation));
     };
     const flush = (element: Element) => {
-        if (!dirty.has(element)) return;
         dirty.delete(element);
-        report('type', element);
     };
     const options = { capture: true, passive: true };
     window.addEventListener('input', event => {
         const element = event.composedPath()[0];
-        if (event.isTrusted && element instanceof Element && editable(element)) dirty.add(element);
+        if (active && event.isTrusted && element instanceof Element && editable(element) && !dirty.has(element)) {
+            dirty.add(element);
+            report('type', element);
+        }
     }, options);
     window.addEventListener('focusout', event => {
         const element = event.composedPath()[0];

@@ -39,6 +39,7 @@ export class BrowserDemoTabCapture {
     private polling?: Promise<void>;
     private generation = 0;
     private enabled = true;
+    private discardQueued = false;
     private readonly docs = new Map<string, string>();
     private readonly reportedFrames = new Set<string>();
     private readonly source = buildBrowserDemoCaptureSource();
@@ -62,13 +63,17 @@ export class BrowserDemoTabCapture {
             if (error instanceof BrowserDemoUnavailableError) throw error;
             throw new BrowserDemoUnavailableError('handshake-failed', `The demo recorder could not start in this tab: ${error instanceof Error ? error.message : String(error)}`);
         }
-        if (generation !== this.generation) return;
+        if (generation !== this.generation) {
+            await this.stop(false);
+            return;
+        }
         this.timer = setInterval(() => { void this.poll(); }, this.pollMs);
         this.timer.unref?.();
     }
 
     /** Paused documents stop queueing; anything queued meanwhile is drained and dropped. */
     setEnabled(enabled: boolean): void {
+        if (this.enabled !== enabled) this.discardQueued = true;
         this.enabled = enabled;
     }
 
@@ -77,7 +82,7 @@ export class BrowserDemoTabCapture {
         if (!cdp || !this.timer) return Promise.resolve();
         if (this.polling) return this.polling;
         const generation = this.generation;
-        this.polling = this.pollFrames(cdp, generation).finally(() => { this.polling = undefined; });
+        this.polling = this.collect(cdp, generation).finally(() => { this.polling = undefined; });
         return this.polling;
     }
 
@@ -87,7 +92,7 @@ export class BrowserDemoTabCapture {
         this.timer = undefined;
         const cdp = this.view.cdp?.bind(this.view);
         await this.polling?.catch(() => {});
-        if (flush && cdp) await this.pollFrames(cdp, this.generation);
+        if (flush && cdp) await this.collect(cdp, this.generation);
         const generation = ++this.generation;
         if (!cdp) return;
         const scriptId = this.scriptId;
@@ -96,6 +101,14 @@ export class BrowserDemoTabCapture {
         // Documents that stay open keep the script but stop queueing.
         const frames = await this.frames(cdp).catch(() => [] as Frame[]);
         for (const frame of frames) await this.drainFrame(cdp, frame, false, generation, false).catch(() => {});
+    }
+
+    private async collect(cdp: Cdp, generation: number): Promise<void> {
+        if (this.discardQueued) {
+            this.discardQueued = false;
+            await this.pollFrames(cdp, generation, false);
+        }
+        await this.pollFrames(cdp, generation);
     }
 
     private async pollFrames(cdp: Cdp, generation: number, enabled: boolean = this.enabled): Promise<void> {
@@ -149,7 +162,8 @@ export class BrowserDemoTabCapture {
             return reply?.result?.value;
         };
         let value = await evaluate(drainExpression(enabled));
-        if (value === null || value === undefined) {
+        const lostScript = value === null || value === undefined;
+        if (lostScript) {
             // A document this tab already drained lost its script: actions there may be missing.
             if (this.docs.has(frame.id) && generation === this.generation && deliver) this.sink.gap('capture-failed');
             await evaluate(this.source);
@@ -158,6 +172,9 @@ export class BrowserDemoTabCapture {
         const drained = parseDrain(value);
         if (!drained) throw new Error('The recorder returned an invalid reply.');
         if (generation !== this.generation || !deliver) return true;
+        if (enabled && !lostScript && this.docs.has(frame.id) && this.docs.get(frame.id) !== drained.doc) {
+            this.sink.gap('capture-failed');
+        }
         this.docs.set(frame.id, drained.doc);
         if (!enabled) return true;
         const actions: BrowserDemoAction[] = [];

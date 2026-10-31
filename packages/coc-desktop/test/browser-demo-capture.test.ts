@@ -75,6 +75,15 @@ describe('browser demo capture script', () => {
         expect(JSON.stringify(sent())).not.toContain('secret');
     });
 
+    it('reports typing existence while the field remains focused, without values or repeated keystroke reports', () => {
+        document.body.innerHTML = '<input aria-label="Search">';
+        const input = document.querySelector('input')!;
+        type(input, 'private input value');
+        type(input, 'private input value with more typing');
+        expect(sent()).toEqual([expect.objectContaining({ kind: 'type', label: 'Search' })]);
+        expect(JSON.stringify(sent())).not.toContain('private');
+    });
+
     it('never labels an editable field by its contents', () => {
         document.body.innerHTML = '<div contenteditable="true">typed private note</div><textarea>draft text</textarea>';
         const [editor, area] = [document.querySelector('div')!, document.querySelector('textarea')!];
