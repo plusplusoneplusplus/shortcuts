@@ -69,6 +69,50 @@ const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 describe('SPA browser socket relay', () => {
+    it('keeps an in-flight command and its turn when the selection repeats the bound scope', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.control.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'turn' } });
+        h.send.mockClear();
+        await h.relay.update('w');
+        expect(h.control.bindScope).toHaveBeenCalledTimes(1);
+        expect(h.control.cancel).not.toHaveBeenCalled();
+        expect(h.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-capability-clear' }));
+        resolve({ tabs: [] }); await tick();
+        expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
+        h.relay.dispose();
+    });
+    it('keeps the turn when switching between conversations that publish the same scope', async () => {
+        const h = harness(undefined, true);
+        const first = renderHook(() => useBrowserControlScope('w'));
+        await h.relay.update('w'); h.relay.onOpen();
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.control.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'turn' } });
+        h.send.mockClear(); h.control.bindScope.mockClear();
+        first.unmount();
+        renderHook(() => useBrowserControlScope('w'));
+        await tick();
+        expect(h.control.bindScope).not.toHaveBeenCalled();
+        expect(h.control.cancel).not.toHaveBeenCalled();
+        expect(h.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-capability-clear' }));
+        resolve({ tabs: [] }); await tick();
+        expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
+        h.relay.dispose();
+    });
+    it('still rebinds and cancels foreground work when the scope changes', async () => {
+        const h = harness();
+        await h.relay.update('w'); h.relay.onOpen();
+        h.control.execute.mockImplementationOnce(() => new Promise(() => {}));
+        h.relay.onMessage({ type: 'browser-command', request });
+        await h.relay.update('other');
+        expect(h.control.bindScope).toHaveBeenLastCalledWith('other', 'other');
+        expect(h.control.cancel).toHaveBeenCalledWith('r');
+        expect(h.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-capability-clear' }));
+        h.relay.dispose();
+    });
     it.each([false, true])('requires a rich-paste-capable desktop: %s', async modern => {
         const h = harness(undefined, modern);
         await h.relay.update('w');
