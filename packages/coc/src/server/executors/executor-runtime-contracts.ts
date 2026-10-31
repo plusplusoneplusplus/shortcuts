@@ -261,6 +261,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getTurnPerformanceStore'
     | 'getToolInventoryStore'
     | 'getGlobalSystemPrompt'
+    | 'getChatStyleSelectorEnabled'
     | 'resolveAiServiceForProvider'
     | 'getAskUserQuestionRelay'
     | 'inFlightTurns'

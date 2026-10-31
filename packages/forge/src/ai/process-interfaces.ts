@@ -556,6 +556,8 @@ export interface PendingMessage {
     provider?: SupportedProvider;
     /** Interaction mode when the message was queued */
     mode?: string;
+    /** Presentation style accepted with this message; validated by the chat server. */
+    chatStyle?: string;
     /**
      * Processed SDK attachments (image / text / binary file references) that
      * accompany this follow-up. File paths are runtime-local and only valid

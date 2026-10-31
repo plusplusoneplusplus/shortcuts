@@ -28,7 +28,7 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { MirrorAttachmentError } from '../messaging/sentinel-mirror-attachments';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
-import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
+import { recordedChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
 import { isChatStyle, type ChatStyle, type ConversationToolInventoryResponse } from '@plusplusoneplusplus/coc-client';
@@ -1361,15 +1361,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 );
             }
 
-            // Chat style for this turn. The block is injected here — before the
-            // delivery service persists the user turn — so the stored message
-            // carries it and the transcript shows it (AC-05). Gated server-side
-            // so an older client cannot force injection, and skipped for Ralph
-            // conversations, which are out of scope.
+            // Admission records the selector, not provider context. The executor
+            // decides injection after any queued compaction and decorates the
+            // accepted user turn with the exact block sent to the model.
+            const followUpPreviousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
+            const followUpMode = await resolveFollowUpMode(store, id, fields.mode);
             const styleGateOpen = ctx.getLiveFeatureFlags?.().chatStyleSelectorEnabled === true
-                && normalizeChatMode(proc.metadata?.mode) !== 'ralph';
+                && followUpMode !== 'ralph';
             const recordedStyle = recordedChatStyle(proc.metadata as Record<string, unknown> | undefined);
-            const injectStyle = styleGateOpen && shouldInjectChatStyle(fields.chatStyle, recordedStyle);
             // The recorded style is updated on every in-scope turn, including
             // the turns that inject nothing, so switching to Default is a real
             // state and not a gap. Only an actual change needs a write.
@@ -1387,34 +1386,25 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 metadataUpdate = { ...proc.metadata,
                     ...metadataUpdate, browserMode: true } as typeof metadataUpdate;
             }
-            const applyStyle = (text: string): string =>
-                injectStyle ? prependChatStyleBlock(text, fields.chatStyle) : text;
-
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
-            const messageContent = applyStyle(body.content as string);
+            const messageContent = body.content as string;
             // Every follow-up routes through FollowUpExecutor, which sends the
             // mode directive only on the turns where the model provably lacks
-            // it — so the stored turn discloses it on exactly those turns and
-            // the transcript matches. Innermost, keeping the style block as
-            // the outermost prefix (AC-05).
-            const followUpPreviousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
+            // it. The executor adds any style block outside this display prefix.
             // Resolved through the shared resolver so this path honours the
             // same rules as the programmatic enqueuers — in particular, a
             // terminal conversation mode (sentinel) ignores `fields.mode`.
-            const followUpMode = await resolveFollowUpMode(store, id, fields.mode);
-            const displayContent = applyStyle(
-                prependSelectedSkillsDirective(
-                    prependChatModeDirective(
-                        body.content as string,
-                        buildFollowUpChatModeDisplayBlock({
-                            mode: followUpMode,
-                            previousMode: followUpPreviousMode,
-                            process: proc,
-                        }),
-                    ),
-                    fields.selectedSkillNames,
+            const displayContent = prependSelectedSkillsDirective(
+                prependChatModeDirective(
+                    body.content as string,
+                    buildFollowUpChatModeDisplayBlock({
+                        mode: followUpMode,
+                        previousMode: followUpPreviousMode,
+                        process: proc,
+                    }),
                 ),
+                fields.selectedSkillNames,
             );
             // Measured against what the user actually typed — the style block is
             // server-injected and must not tip a message over the paste threshold.
@@ -1425,7 +1415,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 mirrorContent: body.content as string,
                 mirrorUploads: { attachments: body.attachments, images: body.images },
                 displayContent,
-                ...(messageContentWithContext ? { contentWithContext: applyStyle(messageContentWithContext) } : {}),
+                ...(messageContentWithContext ? { contentWithContext: messageContentWithContext } : {}),
+                ...(styleGateOpen ? { chatStyle: fields.chatStyle } : {}),
                 ...(attachments ? { attachments } : {}),
                 ...(validatedImages ? { images: validatedImages } : {}),
                 ...(imageTempDir ? { imageTempDir } : {}),

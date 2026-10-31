@@ -23,6 +23,7 @@ import {
     type FollowUpMessageInput,
 } from '../../src/server/processes/process-message-delivery-service';
 import { ProcessOperationAdmission } from '../../src/server/processes/process-operation-admission';
+import { buildChatStyleBlock, buildChatStyleContext } from '../../src/server/executors/chat-style-prompt';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
@@ -455,6 +456,46 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(store.appendConversationTurn).toHaveBeenCalledOnce();
         expect(result.turnIndex).toBe(0);
         expect(result.events.map(e => e.kind)).toEqual(['message-queued', 'message-steering']);
+    });
+
+    it.each(['human', 'default'] as const)('buffers a style switch to %s instead of steering in-flight output', async chatStyle => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn().mockResolvedValue(true),
+        };
+        const proc = makeProc({ status: 'running', metadata: { chatStyle: 'direct' } });
+        const result = await makeService(store, bridge).deliver(proc, makeInput({ deliveryMode: 'immediate', chatStyle }));
+        expect(result.path).toBe('buffered');
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(store.pending[0].chatStyle).toBe(chatStyle);
+        expect(store.pending[0].content).toBe('hello');
+    });
+
+    it('keeps stable style steering while carrying the selection on queued and direct turns', async () => {
+        const block = buildChatStyleBlock('direct')!;
+        const proc = makeProc({
+            sdkSessionId: 'native-session', status: 'running',
+            metadata: { chatStyle: 'direct', chatStyleContext: buildChatStyleContext('direct', block, 0) },
+            conversationTurns: [{ role: 'user', content: `${block}\n\nfirst`, turnIndex: 0, timestamp: new Date(), timeline: [] }],
+        });
+        const store = makeStore(proc.conversationTurns);
+        const bridge = { enqueue: vi.fn().mockResolvedValue('queued'),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn().mockResolvedValue(true) };
+        expect((await makeService(store, bridge).deliver(proc, makeInput({ deliveryMode: 'immediate', chatStyle: 'direct' }))).path)
+            .toBe('steered');
+        expect(bridge.steerProcess).toHaveBeenCalledOnce();
+        bridge.findTaskByProcessId.mockReturnValue(undefined);
+        await makeService(store, bridge).deliver({ ...proc, status: 'completed' }, makeInput({ chatStyle: 'human' }));
+        expect(bridge.enqueue.mock.calls[0][0].payload.chatStyle).toBe('human');
+        const directStore = makeStore();
+        const executeFollowUp = vi.fn().mockImplementation(async () => {
+            expect(directStore.turns).toHaveLength(1);
+        });
+        await makeService(directStore, { executeFollowUp }).deliver(makeProc(), makeInput({ chatStyle: 'direct' }));
+        expect(executeFollowUp.mock.calls[0][11]).toMatchObject({ chatStyle: 'direct', historyCutoffTurnIndex: 0 });
     });
 
     it('buffers when steering fails for an immediate delivery', async () => {

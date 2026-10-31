@@ -128,7 +128,33 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 
 `features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected. `features.canvasToolScripts` (live, default on; absent is on, explicit `false` disables) additionally enables `host.runScript`, which also requires `features.canvasHostApis` and `features.toolScripting`.
 
-`features.chatStyleSelector` (Admin -> Configure -> Chat -> Features, live, `absentFallback` false, runtime flag `chatStyleSelectorEnabled`) adds a Style chip — Default / Human / Direct / Terse / Structured — beside Effort in new-chat and follow-up composers, for Ask, Autopilot, note-chat, commit-chat, and follow-ups. It controls presentation only, never provider, model, effort, tools, or permission mode. The instruction is prepended to the user message (not the system message) and stays visible in the stored turn; `Default` injects nothing, and a block is emitted only when the picked style differs from `process.metadata.chatStyle`. Enforcement is two-sided: the SPA hides the chip and omits `chatStyle`, and the server checks the live flag per turn (`getChatStyleSelectorEnabled` for new chats, `chatStyleSelectorEnabled` on the route's live flags for follow-ups).
+### Chat styles
+
+`features.chatStyleSelector` (Admin -> Configure -> Chat -> Features, live,
+`absentFallback` false, runtime flag `chatStyleSelectorEnabled`) gates style selection
+and injection. Styles affect presentation only, never provider, model, effort,
+tools or permissions. Initial Ask, Autopilot, note-chat and commit-chat turns inject
+non-default styles. Ralph, classification, task generation, note creation,
+resolve-comments, replication, Dreams and workflows remain excluded from initial injection;
+non-Ralph follow-ups use the shared follow-up executor.
+
+`chat-style-prompt.ts` resolves built-ins and live admin prompt overrides. Like mode
+directives, a stable native follow-up skips an unchanged block. A missing execution
+marker, history rebuild/provider switch, style/prompt change, or completed manual/automatic
+CoC compaction restores it. Mode and style share transcript/metadata compaction detection;
+invisible provider-side compaction supplies neither signal.
+
+Admission records `metadata.chatStyle` and carries the accepted selection through
+queued/pending messages. The executor rechecks the live gate and compaction at execution,
+then prefixes the outgoing user turn once. Successful delivery decorates the exact stored
+turn and records `metadata.chatStyleContext`: style, resolved block, accepted turn index,
+observed transcript boundary and injection time, independently of later selector changes.
+Initial lifecycle seeds this context after successful execution. Style changes buffer
+rather than steer in-flight output.
+
+`Default` emits no block or reset instruction, even after compaction; it remains a
+recorded selection. Disabled injection emits nothing. Style instructions stay out of
+the active system prefix and use existing model turns and provider/session ownership.
 
 `features.defaultChatStyle` (same card, shown under the Chat style selector toggle via `dependsOn`, live, runtime flag `defaultChatStyle`) picks which style new conversations start on. It is server-wide — there is no per-workspace or per-user override. `default` keeps the historical behavior of adding no style instruction.
 
@@ -139,7 +165,8 @@ The setting is both a SPA seed and a server-side fallback, so an API caller or a
 - Follow-ups pass the value into `normalizeFollowUpInput(body, provider, defaultChatStyle)`.
 - An explicit `chatStyle: 'default'` always wins and injects nothing.
 
-The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a new conversation has recorded nothing, so comparing against the configured default would make it equal to itself and never inject on turn 1.
+First-turn injection depends on the resolved non-default block, not comparison with
+the configured default; a server default of Direct injects on the initial turn.
 
 `features.chatProviderSwitching` (Admin -> Configure -> Chat -> Features, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
 

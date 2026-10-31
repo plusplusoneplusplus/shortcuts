@@ -46,6 +46,7 @@ import {
     TaskDefs,
 } from '../tasks/task-types';
 import { tagBlock } from './prompt-tags';
+import { hasCompactionSince } from './conversation-context-invalidation';
 import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 /** Tag wrapping the per-turn mode directive on the user message. */
@@ -394,18 +395,7 @@ export function shouldInjectChatModeDirective(check: ChatModeInjectionCheck): bo
     if (lastProse !== expectedProse) return true;
     if (check.checkInstructionDrift && last.instructions !== expectedInstructions) return true;
 
-    for (let i = lastInjectedIndex + 1; i < turns.length; i++) {
-        if (turns[i]?.role === 'assistant' && turns[i]?.displayOnly === true) return true;
-    }
-
-    const compaction = check.compaction;
-    if (compaction?.state === 'completed' && compaction.completedAt) {
-        const completedMs = Date.parse(compaction.completedAt);
-        const injectedMs = toEpochMs(turns[lastInjectedIndex].timestamp);
-        if (Number.isFinite(completedMs) && (injectedMs === undefined || completedMs > injectedMs)) return true;
-    }
-
-    return false;
+    return hasCompactionSince(turns, lastInjectedIndex, turns[lastInjectedIndex].timestamp, check.compaction);
 }
 
 /**
@@ -499,12 +489,6 @@ export function parseChatModeMarker(marker: string): ParsedChatModeMarker {
         return { prose: note, proseBase: note, instructions: body.slice(note.length + 2) || undefined };
     }
     return { instructions: body || undefined };
-}
-
-/** Epoch millis for a turn timestamp (a `Date` in memory, an ISO string once serialized). */
-function toEpochMs(timestamp: unknown): number | undefined {
-    const ms = timestamp instanceof Date ? timestamp.getTime() : Date.parse(String(timestamp));
-    return Number.isFinite(ms) ? ms : undefined;
 }
 
 // ============================================================================

@@ -204,6 +204,7 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
                     ],
                     skillNames: ['impl'],
                     mode: 'autopilot',
+                    chatStyle: 'direct',
                     model: 'gpt-5-mini',
                     createdAt: new Date().toISOString(),
                 },
@@ -222,6 +223,7 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
         expect(payload.processId).toBe('proc-drain');
         expect(payload.prompt).toBe('attached');
         expect(payload.mode).toBe('autopilot');
+        expect(payload.chatStyle).toBe('direct');
         expect(payload.model).toBe('gpt-5-mini');
         expect(payload.attachments).toEqual([fakeAttachment]);
         expect(payload.imageTempDir).toBe('/tmp/coc-attach-x');

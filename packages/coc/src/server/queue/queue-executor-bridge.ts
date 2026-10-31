@@ -1261,6 +1261,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                     ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                     ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
+                    ...(nextMsg.chatStyle ? { chatStyle: nextMsg.chatStyle } : {}),
                     // Cutoff for a reconstructed continuation: the index the
                     // deferred user turn just landed on, so history is quoted
                     // strictly before the message being drained.

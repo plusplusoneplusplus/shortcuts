@@ -15,6 +15,7 @@ export function pendingMessageTask(proc: AIProcess, message: PendingMessage): Cr
             ...(message.resumeSessionId ? { resumeSessionId: message.resumeSessionId } : {}),
             ...(message.relayRequestId ? { relayRequestId: message.relayRequestId } : {}),
             ...(message.provider ? { provider: message.provider } : {}),
+            ...(message.chatStyle ? { chatStyle: message.chatStyle } : {}),
             ...(message.model ? { model: message.model } : {}),
             ...(message.mode ? { mode: message.mode } : {}),
             ...(message.reasoningEffort ? { reasoningEffort: message.reasoningEffort } : {}),
