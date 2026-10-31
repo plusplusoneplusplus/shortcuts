@@ -17,7 +17,7 @@ export interface BrowserDemoTab {
     closed?: true;
 }
 
-export type BrowserDemoGapReason = 'paused' | 'rate-limit' | 'step-limit' | 'tab-limit' | 'capture-failed' | 'tab-crashed';
+export type BrowserDemoGapReason = 'paused' | 'rate-limit' | 'step-limit' | 'tab-limit' | 'capture-failed' | 'frame-unavailable' | 'tab-crashed';
 
 export type BrowserDemoStep = { id: number; at: number; viewId: string } & (
     | { type: 'action'; action: BrowserDemoAction }

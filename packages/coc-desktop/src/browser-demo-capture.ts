@@ -1,11 +1,22 @@
 /**
- * Task demonstration capture. The page script runs in a private isolated world and reports
- * trusted user actions through a binding only that world can see; it never reads typed values.
- * Everything it sends is untrusted until `sanitizeDemoObservation` accepts it in main.
+ * Task demonstration capture. The page script runs in a private isolated world and queues
+ * trusted user actions in that world, where main drains them with `Runtime.evaluate`; page
+ * scripts cannot see or feed the queue, and it never reads typed values. Everything it hands
+ * over is untrusted until `sanitizeDemoObservation` accepts it in main.
  */
 
 export const BROWSER_DEMO_WORLD = 'coc-demo-recorder';
-export const BROWSER_DEMO_BINDING = '__cocDemoRecord';
+export const BROWSER_DEMO_DRAIN = '__cocDemoDrain';
+/** Pending reports per document between drains; the rest are counted as dropped. */
+export const BROWSER_DEMO_QUEUE_LIMIT = 100;
+
+/** What one drain returns from a document's isolated world. */
+export interface BrowserDemoDrain {
+    /** Random per-document id, so main can tell a fresh document from one it already drained. */
+    doc: string;
+    items: string[];
+    dropped: number;
+}
 
 export type BrowserDemoActionKind = 'click' | 'type' | 'toggle' | 'select' | 'file' | 'submit' | 'key';
 
@@ -23,12 +34,24 @@ export interface BrowserDemoObservation {
 }
 
 /** Keep this function self-contained: its compiled source runs inside the URL guest. */
-function browserDemoCapture(binding: string): void {
+function browserDemoCapture(drain: string, limit: number): void {
     const scope = window as unknown as Record<string, unknown>;
     if (scope.__cocDemoInstalled) return;
     scope.__cocDemoInstalled = true;
-    const send = scope[binding] as ((payload: string) => void) | undefined;
-    if (typeof send !== 'function') return;
+    const queue: string[] = [];
+    let dropped = 0;
+    let active = true;
+    const doc = Math.random().toString(36).slice(2, 12);
+    scope[drain] = (enabled?: boolean): BrowserDemoDrain => {
+        if (typeof enabled === 'boolean') active = enabled;
+        const result = { doc, items: queue.splice(0), dropped };
+        dropped = 0;
+        return result;
+    };
+    const send = (payload: string) => {
+        if (!active) return;
+        if (queue.length < limit) queue.push(payload); else dropped++;
+    };
     const dirty = new WeakSet<Element>();
     const clean = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     const editable = (element: Element): boolean => {
@@ -89,7 +112,7 @@ function browserDemoCapture(binding: string): void {
     const report = (kind: BrowserDemoActionKind, element: Element, extra: Partial<BrowserDemoObservation> = {}) => {
         const observation: BrowserDemoObservation = { kind, role: role(element), label: label(element), url: location.href, ...extra };
         if (sensitive(element)) observation.sensitive = true;
-        try { send(JSON.stringify(observation)); } catch { /* the recorder detached */ }
+        send(JSON.stringify(observation));
     };
     const flush = (element: Element) => {
         if (!dirty.has(element)) return;
@@ -138,7 +161,7 @@ function browserDemoCapture(binding: string): void {
 }
 
 export function buildBrowserDemoCaptureSource(): string {
-    return `(${browserDemoCapture.toString()})(${JSON.stringify(BROWSER_DEMO_BINDING)})`;
+    return `(${browserDemoCapture.toString()})(${JSON.stringify(BROWSER_DEMO_DRAIN)}, ${BROWSER_DEMO_QUEUE_LIMIT})`;
 }
 
 const KINDS = new Set<BrowserDemoActionKind>(['click', 'type', 'toggle', 'select', 'file', 'submit', 'key']);
@@ -185,7 +208,7 @@ export interface BrowserDemoAction {
     key?: 'Enter' | 'Escape' | 'Tab';
 }
 
-/** Validate and redact one binding payload; `undefined` drops it. */
+/** Validate and redact one queued payload; `undefined` drops it. */
 export function sanitizeDemoObservation(payload: unknown): BrowserDemoAction | undefined {
     if (typeof payload !== 'string' || payload.length > 4096) return undefined;
     let raw: unknown;

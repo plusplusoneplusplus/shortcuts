@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BROWSER_DEMO_BINDING, buildBrowserDemoCaptureSource, redactDemoText, redactDemoUrl, sanitizeDemoObservation, type BrowserDemoObservation } from '../src/browser-demo-capture';
+import { BROWSER_DEMO_DRAIN, BROWSER_DEMO_QUEUE_LIMIT, buildBrowserDemoCaptureSource, redactDemoText, redactDemoUrl, sanitizeDemoObservation, type BrowserDemoObservation } from '../src/browser-demo-capture';
 
-let sent: BrowserDemoObservation[];
+let received: BrowserDemoObservation[];
+/** Drain the world queue the way main does and return everything reported so far. */
+function sent(): BrowserDemoObservation[] {
+    const drain = (window as unknown as Record<string, () => { items: string[] }>)[BROWSER_DEMO_DRAIN];
+    received.push(...drain().items.map(item => JSON.parse(item) as BrowserDemoObservation));
+    return received;
+}
 let trusted: boolean;
 const realAdd = window.addEventListener.bind(window);
 const added: [string, EventListener][] = [];
@@ -25,17 +31,16 @@ function install() {
 }
 
 beforeEach(() => {
-    sent = [];
+    received = [];
     trusted = true;
     document.body.innerHTML = '';
-    (window as unknown as Record<string, unknown>)[BROWSER_DEMO_BINDING] = (payload: string) => sent.push(JSON.parse(payload));
     install();
 });
 
 afterEach(() => {
     for (const [type, listener] of added.splice(0)) window.removeEventListener(type, listener, { capture: true });
     Reflect.deleteProperty(window, '__cocDemoInstalled');
-    Reflect.deleteProperty(window, BROWSER_DEMO_BINDING);
+    Reflect.deleteProperty(window, BROWSER_DEMO_DRAIN);
 });
 
 function type(element: HTMLElement, value: string) {
@@ -47,8 +52,8 @@ describe('browser demo capture script', () => {
     it('records a button click by its accessible label and role', () => {
         document.body.innerHTML = '<button aria-label="Create issue"><span>+</span></button>';
         document.querySelector('span')!.click();
-        expect(sent).toEqual([expect.objectContaining({ kind: 'click', role: 'button', label: 'Create issue' })]);
-        expect(sent[0].url).toBe(location.href);
+        expect(sent()).toEqual([expect.objectContaining({ kind: 'click', role: 'button', label: 'Create issue' })]);
+        expect(sent()[0].url).toBe(location.href);
     });
 
     it('ignores untrusted script-generated events', () => {
@@ -57,7 +62,7 @@ describe('browser demo capture script', () => {
         document.querySelector('button')!.click();
         type(document.querySelector('input')!, 'x');
         document.querySelector('input')!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        expect(sent).toEqual([]);
+        expect(sent()).toEqual([]);
     });
 
     it('reports that a field was typed into without its value', () => {
@@ -66,8 +71,8 @@ describe('browser demo capture script', () => {
         type(input, 'my secret query');
         type(input, 'my secret query 2');
         input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        expect(sent).toEqual([expect.objectContaining({ kind: 'type', role: 'textbox', label: 'Search' })]);
-        expect(JSON.stringify(sent)).not.toContain('secret');
+        expect(sent()).toEqual([expect.objectContaining({ kind: 'type', role: 'textbox', label: 'Search' })]);
+        expect(JSON.stringify(sent())).not.toContain('secret');
     });
 
     it('never labels an editable field by its contents', () => {
@@ -78,8 +83,8 @@ describe('browser demo capture script', () => {
         editor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         type(area, 'draft text 2');
         area.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        expect(sent.map(item => item.kind)).toEqual(['type', 'type']);
-        expect(JSON.stringify(sent)).not.toMatch(/private|draft/);
+        expect(sent().map(item => item.kind)).toEqual(['type', 'type']);
+        expect(JSON.stringify(sent())).not.toMatch(/private|draft/);
     });
 
     it('drops a wrapped control and its value from a label', () => {
@@ -87,7 +92,7 @@ describe('browser demo capture script', () => {
         const input = document.querySelector('input')!;
         type(input, 'me@example.com');
         input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        expect(sent[0]).toMatchObject({ kind: 'type', label: 'Email' });
+        expect(sent()[0]).toMatchObject({ kind: 'type', label: 'Email' });
     });
 
     it('marks password and secret fields sensitive', () => {
@@ -96,8 +101,8 @@ describe('browser demo capture script', () => {
             type(input, 'hunter2');
             input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         }
-        expect(sent).toEqual([expect.objectContaining({ sensitive: true }), expect.objectContaining({ sensitive: true })]);
-        expect(JSON.stringify(sent)).not.toContain('hunter2');
+        expect(sent()).toEqual([expect.objectContaining({ sensitive: true }), expect.objectContaining({ sensitive: true })]);
+        expect(JSON.stringify(sent())).not.toContain('hunter2');
     });
 
     it('records toggles with state, selects and files without values', () => {
@@ -107,12 +112,12 @@ describe('browser demo capture script', () => {
         expect(box.checked).toBe(true);
         document.querySelector('select')!.dispatchEvent(new Event('change', { bubbles: true }));
         document.querySelector('input[type=file]')!.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(sent).toEqual([
+        expect(sent()).toEqual([
             expect.objectContaining({ kind: 'toggle', role: 'checkbox', label: 'Remember', checked: true }),
             expect.objectContaining({ kind: 'select', role: 'combobox', label: 'Country' }),
             expect.objectContaining({ kind: 'file', label: 'Upload' }),
         ]);
-        expect(JSON.stringify(sent)).not.toContain('Iceland');
+        expect(JSON.stringify(sent())).not.toContain('Iceland');
     });
 
     it('flushes typing before Enter and form submit', () => {
@@ -122,23 +127,50 @@ describe('browser demo capture script', () => {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         type(input, 'bob');
         document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true }));
-        expect(sent.map(item => item.kind)).toEqual(['type', 'key', 'type', 'submit']);
-        expect(sent[3]).toMatchObject({ role: 'generic', label: 'Login' });
+        expect(sent().map(item => item.kind)).toEqual(['type', 'key', 'type', 'submit']);
+        expect(sent()[3]).toMatchObject({ role: 'generic', label: 'Login' });
     });
 
     it('ignores plain keystrokes and clicks on non-interactive content', () => {
         document.body.innerHTML = '<p>Hello</p>';
         document.querySelector('p')!.click();
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-        expect(sent).toEqual([]);
+        expect(sent()).toEqual([]);
     });
 
     it('installs once per document', () => {
         window.eval(buildBrowserDemoCaptureSource());
         document.body.innerHTML = '<a href="#x">Next</a>';
         document.querySelector('a')!.click();
-        expect(sent).toHaveLength(1);
-        expect(sent[0]).toMatchObject({ role: 'link', label: 'Next' });
+        expect(sent()).toHaveLength(1);
+        expect(sent()[0]).toMatchObject({ role: 'link', label: 'Next' });
+    });
+});
+
+describe('demo capture queue', () => {
+    const drain = () => (window as unknown as Record<string, () => { doc: string; items: string[]; dropped: number }>)[BROWSER_DEMO_DRAIN]();
+
+    it('keeps one document id, empties on drain and counts overflow as dropped', () => {
+        document.body.innerHTML = '<button>Go</button>';
+        const button = document.querySelector('button')!;
+        for (let index = 0; index < BROWSER_DEMO_QUEUE_LIMIT + 3; index++) button.click();
+        const first = drain();
+        expect(first.items).toHaveLength(BROWSER_DEMO_QUEUE_LIMIT);
+        expect(first.dropped).toBe(3);
+        const second = drain();
+        expect(second).toEqual({ doc: first.doc, items: [], dropped: 0 });
+    });
+
+    it('stops queueing while disabled and resumes when enabled again', () => {
+        document.body.innerHTML = '<button>Go</button>';
+        const button = document.querySelector('button')!;
+        const queue = (window as unknown as Record<string, (enabled?: boolean) => { items: string[] }>)[BROWSER_DEMO_DRAIN];
+        queue(false);
+        button.click();
+        expect(queue().items).toEqual([]);
+        queue(true);
+        button.click();
+        expect(queue().items).toHaveLength(1);
     });
 });
 
