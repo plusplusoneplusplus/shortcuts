@@ -631,7 +631,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
 
             const formatted = [...byFile.entries()].flatMap(([filePath, cs]) =>
                 cs.map(c =>
-                    `[${filePath}:${c.selection.diffLineStart}] ${c.comment}`
+                    `[${filePath}${c.selection ? `:${c.selection.diffLineStart}` : ''}] ${c.comment}`
                     + (c.selectedText ? ` (code: \`${c.selectedText.slice(0, 100)}\`)` : '')
                 )
             );

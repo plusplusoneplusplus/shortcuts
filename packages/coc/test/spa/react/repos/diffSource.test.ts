@@ -731,6 +731,29 @@ describe('focused review source lifetimes', () => {
         expect(mockedRequestForWorkspace).not.toHaveBeenCalled();
     });
 
+    it('pins PR content to its exact clone, retains origin metadata and invalidates a changed base', async () => {
+        const owner = 'remote:one:ws1';
+        registerCloneBaseUrls([
+            { workspaceId: 'ws1', cloneKey: owner, baseUrl: 'https://one.example' },
+            { workspaceId: 'ws1', cloneKey: 'remote:two:ws1', baseUrl: 'https://two.example' },
+        ]);
+        const client = getCocClientForWorkspace(owner);
+        const content = vi.spyOn(client.pullRequests, 'getFileDiffContentForOrigin').mockResolvedValue(fileContent);
+        const source = createPrDiffSource('ws1', 'provider-qualified-repo', '42', {
+            originId: 'origin-1', routingTarget: owner, baseSha: 'base-one', headSha: 'head',
+        });
+        await source.fetchFileContent?.('src/foo.ts');
+        expect(mockedGetCocClientForWorkspace).toHaveBeenLastCalledWith(owner);
+        expect(content).toHaveBeenCalledWith('origin-1', '42', 'src/foo.ts', { workspaceId: 'ws1', repoId: 'provider-qualified-repo' });
+        expect(source.fileContextRefs).toEqual({ baseRef: 'base-one', headRef: 'head' });
+        expect(source.cacheKey).not.toBe(createPrDiffSource('ws1', 'provider-qualified-repo', '42', {
+            originId: 'origin-1', baseSha: 'base-two', headSha: 'head',
+        }).cacheKey);
+        resetCloneRegistryForTests();
+        expect(() => source.fetchFileContent?.('src/foo.ts')).toThrow('owner is unavailable');
+        content.mockRestore();
+    });
+
 });
 
 describe('current-code definition support', () => {

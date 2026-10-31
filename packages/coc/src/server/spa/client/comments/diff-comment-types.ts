@@ -27,6 +27,18 @@ export function getDiffCommentCategory(comment: DiffComment): DiffCommentCategor
     return resolveCommentCategory(comment.category, comment.comment);
 }
 
+/** A diff comment on the whole file rather than lines of it. */
+export function isFileDiffComment(comment: DiffComment): boolean {
+    return comment.scope === 'file';
+}
+
+/** A line/range diff comment: the ones diff viewers place on lines. */
+export type LineDiffComment = DiffComment & { selection: NonNullable<DiffComment['selection']> };
+
+export function isLineDiffComment(comment: DiffComment): comment is LineDiffComment {
+    return !isFileDiffComment(comment) && !!comment.selection;
+}
+
 /**
  * A single comment on a diff in the web UI.
  */
@@ -35,8 +47,10 @@ export interface DiffComment {
     id: string;
     /** Identifies the diff (repository, file, and ref range) this comment belongs to */
     context: import('@plusplusoneplusplus/forge/editor/types').DiffCommentContext;
-    /** Selection range within the rendered diff */
-    selection: import('@plusplusoneplusplus/forge/editor/types').DiffCommentSelection;
+    /** `'file'` marks a whole-file comment: no selection and empty `selectedText`. */
+    scope?: 'file';
+    /** Selection range within the rendered diff; absent for file-level comments */
+    selection?: import('@plusplusoneplusplus/forge/editor/types').DiffCommentSelection;
     selectedText: string;
     /** User's comment content */
     comment: string;

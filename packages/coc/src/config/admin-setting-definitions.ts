@@ -1000,6 +1000,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.diffContentSearch', default: false, runtime: 'live', runtimeFlag: 'diffContentSearchEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 55, label: 'Diff content search',
+            hint: 'Search the old and new contents of changed files in commit, branch, pull request and working changes reviews.',
+            testId: 'toggle-diff-content-search-enabled',
+        },
+    }),
+    bool({
         key: 'features.sessionContextAttachments', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
         ui: {
             tab: 'chat', group: 'review', order: 30, label: 'Session context attachments', badge: 'experimental',
@@ -1455,6 +1463,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'browser', group: 'browserPages', order: 20, label: 'Browser tab shortcuts', badge: 'experimental',
             hint: 'Ctrl+1–8 (Cmd on macOS) switch to that right-panel browser tab and Ctrl+9 to the last one. Hold the key to show each tab\'s shortcut.',
             testId: 'toggle-browser-tab-shortcuts-enabled',
+        },
+    }),
+    bool({
+        key: 'features.chatScopedBrowserTabs', default: false, runtime: 'live', runtimeFlag: 'chatScopedBrowserTabsEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 30, label: 'Conversation browser tabs', badge: 'experimental',
+            hint: 'Web pages opened in a conversation show in the right panel only while that conversation is selected. Switching away hides them without closing them; pages opened with no conversation selected stay visible everywhere. Disabled by default.',
+            testId: 'toggle-chat-scoped-browser-tabs-enabled',
         },
     }),
 

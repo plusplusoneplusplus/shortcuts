@@ -1,6 +1,7 @@
 import { parseTargetHref } from '../../../../../../shared/sentinel-target-reference';
 import { Marked } from 'marked';
 import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
+import { htmlLineBreakMarkedExtension } from '../../../../shared/htmlLineBreaks';
 import { linkifyFilePaths, parseFilePathRef } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
@@ -186,7 +187,7 @@ function createChatMarked(
                 return `<img data-local-path="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
             },
         },
-    }).use(mathMarkedExtension);
+    }).use(mathMarkedExtension, htmlLineBreakMarkedExtension);
     if (canvasEmbedEnabled) {
         // Tokenize prose only: code spans/fences and link attributes stay literal.
         marked.use({ extensions: [{

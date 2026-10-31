@@ -20,6 +20,8 @@ import { PrFilesPanel } from '../../../../../src/server/spa/client/react/feature
 import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
 import type { DiffSource } from '../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
+import { ReviewContentSearchController } from '../../../../../src/server/spa/client/react/features/git/diff/reviewContentSearchController';
 let engine: 'legacy' | 'monaco' = 'legacy';
 vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
     useDiffEngine: () => [engine, vi.fn()],
@@ -153,13 +155,70 @@ beforeEach(() => {
     });
     putReviewProgressMock.mockResolvedValue(undefined);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: false })); vi.restoreAllMocks(); });
 
 function fileRows() {
     return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
 }
 
 describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
+    it.each([false, true])('opens full-content matches on the exact side with mobile=%s', async isMobile => {
+        const load = vi.fn(async (path: string) => ({
+            path, fileName: path, language: 'typescript', binary: false, tooLarge: false,
+            base: { exists: true, ref: 'base', content: 'old target\nunchanged target' },
+            head: { exists: true, ref: 'head', content: 'new target\nunchanged target' },
+        }));
+        const source = { ...makeSource(), fetchFileContent: load };
+        render(<PrFilesPanel files={parsedFiles} diffText={diffText} workspaceId="ws-1" diffSource={source} isMobile={isMobile} />);
+        expect(screen.queryByRole('button', { name: 'Search review contents' })).toBeNull();
+        expect(load).not.toHaveBeenCalled();
+        act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: true }));
+        fireEvent.change(screen.getByLabelText('Search changed files by name or path'), { target: { value: 'absent' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'target' } });
+        await act(async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); });
+        expect(load).toHaveBeenCalledTimes(2);
+        fireEvent.click(screen.getByRole('button', { name: 'two.ts, OLD line 2, column 11' }));
+        expect(lastPanelProps.filePath).toBe('two.ts');
+        expect(lastPanelProps.contentSearchTarget).toMatchObject({ filePath: 'two.ts', side: 'old', line: 2, startColumn: 11, endColumn: 17 });
+        const previous = lastPanelProps.contentSearchTarget;
+        fireEvent.click(screen.getByRole('button', { name: 'two.ts, OLD line 2, column 11' }));
+        expect(lastPanelProps.contentSearchTarget).not.toBe(previous);
+        fireEvent.click(screen.getByRole('button', { name: 'two.ts, NEW line 1, column 5' }));
+        expect(lastPanelProps.contentSearchTarget.side).toBe('new');
+        expect((screen.getByTestId('review-content-search-input') as HTMLInputElement).value).toBe('target');
+        fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+        fireEvent.click(fileRows().find(row => row.dataset.filePath === 'one.ts')!);
+        if (!isMobile) expect(lastPanelProps.contentSearchTarget).toBeUndefined();
+        else expect(screen.getByTestId('pr-diff-panel')).toBeInTheDocument();
+    });
+
+    it.each(['head', 'base', 'endpoint', 'refresh'] as const)('revokes loaded content when the PR %s changes', async change => {
+        act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: true }));
+        const load = vi.fn(async () => ({
+            path: 'one.ts', fileName: 'one.ts', language: 'typescript', binary: false, tooLarge: false,
+            base: { exists: true, ref: 'base', content: 'target' }, head: { exists: true, ref: 'head', content: 'target' },
+        }));
+        const source = { ...makeSource(), fetchFileContent: load, fileContextRefs: { baseRef: 'base', headRef: 'head' } };
+        const initial = { files: parsedFiles, diffText, workspaceId: 'ws-1', diffSource: source, headSha: 'head' };
+        const dispose = vi.spyOn(ReviewContentSearchController.prototype, 'dispose');
+        const view = render(<PrFilesPanel {...initial} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'target' } });
+        await act(async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); });
+        view.rerender(<PrFilesPanel {...initial} {...(
+            change === 'head' ? { headSha: 'next-head' }
+                : change === 'base' ? { diffSource: { ...source, fileContextRefs: { baseRef: 'next-base', headRef: 'head' } } }
+                    : change === 'endpoint' ? { attachmentDestinationId: 'another-owner' }
+                        : { diffText: `${diffText}\n ` }
+        )} />);
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(lastPanelProps.contentSearchTarget).toBeUndefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'target' } });
+        await act(async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); });
+        expect(load).toHaveBeenCalledTimes(4);
+    });
     it('keeps local and colliding remote owners distinct across mounted owner and file changes', () => {
         const props = { files: parsedFiles, diffText, workspaceId: 'ws-1', diffSource: makeSource() };
         const view = render(<PrFilesPanel {...props} attachmentDestinationId="ws-1" />);

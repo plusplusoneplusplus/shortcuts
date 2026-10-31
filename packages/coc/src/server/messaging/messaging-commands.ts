@@ -68,6 +68,8 @@ export interface MessagingCommandContext {
     topicQueue?: LocalTopicQueue;
     /** Clock for topic ages; `Date.now` by default. */
     now?: () => number;
+    /** Optional connector-only display section; undefined scope means remote data. */
+    topicListSupplement?: (workspaces: readonly { id: string; name?: string }[] | undefined, verbose?: boolean) => Promise<string>;
 }
 
 const plain = (text: string) => text;
@@ -165,7 +167,10 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
     if (command.type === 'list-remotes') return listRemotesReply(ctx.remotes, ctx.remoteRefs, format);
     const now = ctx.now?.() ?? Date.now();
     if (command.type === 'list-topics' && command.args) {
-        return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format, { verbose: command.verbose, now });
+        return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format, {
+            verbose: command.verbose, now,
+            supplement: ctx.topicListSupplement ? () => ctx.topicListSupplement!(undefined, command.verbose) : undefined,
+        });
     }
 
     const workspaces = await ctx.store.getWorkspaces();
@@ -196,8 +201,9 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
     }
 
     if (command.type === 'list-topics') {
-        return localTopicsReply(ctx.store, workspaces, ctx.localTopics, format,
+        const topics = await localTopicsReply(ctx.store, workspaces, ctx.localTopics, format,
             id => resolveChatWorkspace(workspaces, ctx.selection.repoId())?.id === id ? ctx.selection.topicId(id) : null, now, command.verbose, '', ctx.topicQueue);
+        return ctx.topicListSupplement ? `${topics}\n\n${await ctx.topicListSupplement(workspaces, command.verbose)}` : topics;
     }
     if (command.type === 'select-topic') {
         const topic = await resolveLocalTopic(ctx.store, workspaces, ctx.localTopics, command.args, now, ctx.topicQueue);

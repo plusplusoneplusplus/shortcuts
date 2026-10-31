@@ -554,7 +554,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                                 {(() => {
                                     if (!leftLine || leftLine.originalIndex === null) return <span className="w-4 h-4" />;
                                     const all = (lineCommentMap.get(leftLine.originalIndex) ?? []).filter(c => c.status !== 'orphaned');
-                                    const lc = all.filter(c => c.selection.side === 'removed' || c.selection.side === 'context');
+                                    const lc = all.filter(c => c.selection?.side === 'removed' || c.selection?.side === 'context');
                                     if (lc.length === 0) return <span className="w-4 h-4" />;
                                     return (
                                         <button
@@ -620,7 +620,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                                 {(() => {
                                     if (!rightLine || rightLine.originalIndex === null) return <span className="w-4 h-4" />;
                                     const all = (lineCommentMap.get(rightLine.originalIndex) ?? []).filter(c => c.status !== 'orphaned');
-                                    const lc = all.filter(c => c.selection.side === 'added' || c.selection.side === 'context');
+                                    const lc = all.filter(c => c.selection?.side === 'added' || c.selection?.side === 'context');
                                     if (lc.length === 0) return <span className="w-4 h-4" />;
                                     return (
                                         <button

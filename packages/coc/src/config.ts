@@ -314,6 +314,8 @@ export interface CLIConfig {
         gitCrossCloneCherryPick?: boolean;
         /** Searchable changed-file navigation from diff headers. Enabled by default. */
         diffFilePicker?: boolean;
+        /** Full-content search across changed files in multi-file reviews. Disabled by default. */
+        diffContentSearch?: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
@@ -412,6 +414,8 @@ export interface CLIConfig {
         binaryFileReveal?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
+        /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
+        chatScopedBrowserTabs?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -773,6 +777,8 @@ export interface ResolvedCLIConfig {
         gitCrossCloneCherryPick: boolean;
         /** Searchable changed-file navigation from diff headers. Enabled by default. */
         diffFilePicker: boolean;
+        /** Full-content search across changed files in multi-file reviews. Disabled by default. */
+        diffContentSearch: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
@@ -863,6 +869,8 @@ export interface ResolvedCLIConfig {
         binaryFileReveal: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
+        /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
+        chatScopedBrowserTabs: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -1143,6 +1151,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCommitLookup: false,
         gitCrossCloneCherryPick: true,
         diffFilePicker: true,
+        diffContentSearch: false,
         sessionContextAttachments: true,
         commitChatLens: true,
         commitChatLensDormantMode: 'ghost',
@@ -1198,6 +1207,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelTabGroups: false,
         binaryFileReveal: false,
         browserTabShortcuts: true,
+        chatScopedBrowserTabs: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

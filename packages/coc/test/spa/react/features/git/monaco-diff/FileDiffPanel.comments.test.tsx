@@ -449,6 +449,27 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         expect(cardOf('c1')).toBeTruthy();
     });
 
+    it('shows file-level comments above the diff in both engines, never on a line, and reveals them from the sidebar', async () => {
+        const source = makeSource(kind);
+        stored = [comment(source, 'c1'), comment(source, 'f1', { scope: 'file', selection: undefined, selectedText: '', comment: 'whole file note' })];
+        await mount(source);
+        const strip = () => screen.getByRole('region', { name: 'File comments' });
+        expect(within(strip()).getByTestId('comment-card-f1').textContent).toContain('whole file note');
+        expect(within(strip()).queryByTestId('comment-card-c1')).toBeNull();
+        expect(zoneOf('c1')).toBeTruthy();
+        expect([...fake().zones.values()].some(z => z.domNode.querySelector('[data-comment-id="f1"]'))).toBe(false);
+        expect(screen.getByTestId('toggle-comments-btn').textContent).toContain('2');
+
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        fireEvent.click(within(screen.getByTestId('comment-sidebar')).getByTestId('comment-card-f1'));
+        expect(strip().querySelector('[data-file-comment-id="f1"]')!.classList.contains('ring-2')).toBe(true);
+        expect(fake().revealedLines).toEqual([]);
+
+        await toggleEngine('legacy');
+        expect(within(strip()).getByTestId('comment-card-f1')).toBeTruthy();
+        expect(screen.getAllByTestId('comment-card-f1')).toHaveLength(2); // strip + sidebar, no line marker
+    });
+
     it('keeps lost anchors accessible and recovers legacy selections through diffCoords', async () => {
         const source = makeSource(kind);
         stored = [

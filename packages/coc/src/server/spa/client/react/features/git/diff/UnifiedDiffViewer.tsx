@@ -695,6 +695,7 @@ export function HunkNavButtons({ onPrev, onNext }: { onPrev: () => void; onNext:
 export function buildLineCommentMap(comments: DiffComment[]): Map<number, DiffComment[]> {
     const map = new Map<number, DiffComment[]>();
     for (const c of comments) {
+        if (!c.selection) continue; // whole-file comments are not on a line
         const { diffLineStart, diffLineEnd } = c.selection;
         for (let i = diffLineStart; i <= diffLineEnd; i++) {
             const existing = map.get(i);

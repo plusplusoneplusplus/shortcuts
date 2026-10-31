@@ -6,7 +6,13 @@ import { ReviewFiles } from '../diff/ReviewFiles';
 import { reviewFileKey } from '../diff/gitReviewFiles';
 import { useDirtyDetailGuard } from '../repoGitTab/useDirtyDetailGuard';
 import { WorkingTreeFileDiff, type WorkingTreeFileDiffProps } from './WorkingTreeFileDiff';
-import { hasMultipleRepos, relDisplayPath, type WorkingTreeChange } from './WorkingTree';
+import { workingTreeCommentContext } from './workingTreeCommentContext';
+import { hasMultipleRepos, relDisplayPath, repoRelative, type WorkingTreeChange } from './WorkingTree';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
+import { useFileCommentComposer } from '../diff/fileCommentComposer';
+import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
+import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
@@ -46,6 +52,8 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const [selected, setSelected] = useState<WorkingTreeChange>();
     const [dirty, setDirty] = useState(false);
     const guard = useDirtyDetailGuard(selected?.filePath ?? null);
+    const panelHost = useUnifiedPanelHost();
+    const fileComment = useFileCommentComposer();
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
         guard.onDirtyChange(value);
@@ -74,18 +82,44 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
         additions: change.additions, deletions: change.deletions,
     })), [retainedChanges, multiRepo]);
     const byKey = useMemo(() => new Map(retainedChanges.map(c => [changeKey(c), c])), [retainedChanges]);
+    const identity = JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, 'working-tree']);
+    const searchFiles = useMemo(() => files.map(({ id, path, label }) => ({ id, path, label })), [files]);
+    const controller = useReviewContentSearchController(identity, searchFiles, file => {
+        const change = byKey.get(file.id)!;
+        return client.git.getWorkingTreeFileContent(workspaceId, change.filePath, change.stage);
+    }, JSON.stringify([refreshKey, attempt]));
+    const [contentSearchTarget, setContentSearchTarget] = useState<ReviewContentSearchTarget>();
+    useEffect(() => { setContentSearchTarget(undefined); }, [controller]);
     const retry = () => setAttempt(value => value + 1);
     return <>
-        <ReviewFiles identity={JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, 'working-tree'])}
+        <ReviewFiles identity={identity}
             files={files} reviewEnabled={false} retainSelection={dirty}
             beforeNavigate={proceed => guard.guard(proceed)()}
-            onSelect={key => setSelected(byKey.get(key))}
+            onSelect={key => { setContentSearchTarget(undefined); setSelected(byKey.get(key)); }}
+            contentSearch={controller ? { controller, onOpenMatch: (file, match) => {
+                const change = byKey.get(file.id);
+                if (change) setContentSearchTarget({ ...match, filePath: change.filePath });
+            } } : undefined}
             loading={!loaded && !error} error={!loaded ? error : undefined} onRetry={retry}
             header={{ identity: <strong className="git-review-title">All Working Changes</strong>,
                 actions: selected ? [{ id: 'open-file', label: 'Open full diff', icon: '↗',
                     onClick: guard.guard(() => onFileSelect(selected.filePath, selected.stage)) }] : [], below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}
             rowDetails={file => <span className="git-review-muted">{file.label}</span>}
+            rowMenu={(file, anchor) => {
+                const change = byKey.get(reviewFileKey(file));
+                const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
+                return change ? [openFileMenuItem(file, () => openChangedFileSource({
+                    path: props.repoRoot ? repoRelative(change.filePath, props.repoRoot) : change.filePath, workspaceId,
+                    ownerRoutingRef: ownerRoute, panelHost,
+                })), fileComment.menuItem(anchor, {
+                    // The same context and owner route WorkingTreeFileDiff uses for this file's comments.
+                    workspaceId, routingTarget: attachmentDestinationId === undefined ? undefined : ownerRoute,
+                    context: workingTreeCommentContext(workspaceId, change.filePath, change.stage),
+                    unavailableReason: 'Untracked files have no comments',
+                    displayPath: file.path,
+                })] : [];
+            }}
             renderEmpty={<div className="git-review-empty" data-testid="working-tree-all-files-empty">{files.length ? 'No matching files.' : 'No working-tree changes'}</div>}
             renderFile={({ file, paths, select, target }) => {
                 const change = byKey.get(reviewFileKey(file))!;
@@ -93,6 +127,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                 const stageChanges = paths.map(key => byKey.get(key)!).filter(c => c.stage === change.stage);
                 return <WorkingTreeFileDiff {...props} key={changeKey(change)}
                     filePath={change.filePath} stage={change.stage} untrackedAsDiff initialHunkTarget={target}
+                    contentSearchTarget={contentSearchTarget}
                     refreshKey={(refreshKey ?? 0) + attempt}
                     workingTreeFiles={stageChanges.map(c => c.filePath)}
                     onNavigateToFile={(path, hunk) => {
@@ -102,6 +137,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     onDirtyChange={onDirtyChange} onRegisterSave={onRegisterSave} />;
             }}
         />
+        {fileComment.composer}
         {guard.dialog}
     </>;
 }

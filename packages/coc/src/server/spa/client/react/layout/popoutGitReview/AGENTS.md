@@ -27,7 +27,10 @@ here.
   metadata through `useCommitReviewFiles` and uses `GitFileReview`; branch review
   uses `BranchRangeOverview` with the same navigator and focused file panel.
   Both retain concrete owner routing and session-local viewed state. PR review
-  uses `PopOutReviewLayout` and its origin-persisted review progress.
+  uses `PopOutReviewLayout` and its origin-persisted review progress. Its optional
+  default-off content search uses the existing owner-routed paired loader and
+  review-local controller; the file rail retains Files/Search controls and
+  forwards exact-side targets to `FileDiffPanel`.
   Commit review passes `useCommitReviewHeader` (title/SHA, Classify split button,
   chat action, collapsed `CommitInfoHeader` details) into the `GitFileReview`
   single-row toolbar; PR descriptions use

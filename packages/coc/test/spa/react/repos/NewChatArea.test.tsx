@@ -155,6 +155,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
     isGitWorktreeExecutionEnabled: () => false,
+    isDiffContentSearchEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {

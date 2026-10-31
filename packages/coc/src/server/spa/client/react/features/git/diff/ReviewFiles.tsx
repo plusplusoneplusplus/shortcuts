@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { useReviewFileNavigation } from './useReviewFileNavigation';
 import { STATUS_LABELS, type FileChange } from './FileTree';
 import { filterReviewFiles, groupReviewFiles, reviewFileKey, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
@@ -7,6 +7,10 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { writePointerContextDragData } from '../../chat/sessionContextDrag';
 import type { GitFileContextDragPayload } from '../../chat/sessionContextDrag';
 import { buildFileTree, type FileTreeNode } from './reviewFileTree';
+import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
+import { ReviewContentSearchPanel, type ReviewContentSearchPanelProps } from './ReviewContentSearchPanel';
+import { useDiffContentSearchEnabled } from '../../../hooks/feature-flags/useDiffContentSearchEnabled';
+import { useReviewContentSearchShortcut } from './useReviewContentSearchShortcut';
 import './git-file-review.css';
 
 export const NAV_DEFAULT_WIDTH = 262, NAV_MIN_WIDTH = 180, NAV_MAX_WIDTH = 560, NAV_CONTENT_MIN = 320, NAV_KEY_STEP = 16;
@@ -21,9 +25,14 @@ export interface ReviewFileRenderContext {
     target: 'first' | 'last';
     toggleViewed: () => void;
 }
+export interface ReviewRowMenuAnchor { x: number; y: number; row: HTMLElement }
+
 export interface ReviewFilesProps {
     /** Hosts key this component by the complete owner and comparison identity. */
     identity: string;
+    /** Hosts own/dispose the controller and replace it on owner, comparison or refresh changes.
+     * Omit for surfaces such as chat diffs that do not support full-content review search. */
+    contentSearch?: Omit<ReviewContentSearchPanelProps, 'inputRef'>;
     /** Mutable comparisons can guard navigation while an editor holds unsaved text. */
     beforeNavigate?: (proceed: () => void) => void;
     retainSelection?: boolean;
@@ -44,11 +53,28 @@ export interface ReviewFilesProps {
     renderEmpty?: ReactNode;
     rowDetails?: (file: ReviewFile) => ReactNode;
     rowDrag?: (file: ReviewFile) => GitFileContextDragPayload | null;
+    /**
+     * Right-click (or Menu key / Shift+F10) actions for the clicked row; selection is unchanged.
+     * `anchor` is where the menu opens and the row to return focus to.
+     */
+    rowMenu?: (file: ReviewFile, anchor: ReviewRowMenuAnchor) => ContextMenuItem[];
     isFileDimmed?: (path: string) => boolean;
 }
 
 export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    identity, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, isFileDimmed }: ReviewFilesProps) {
+    identity, contentSearch, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
+    const contentSearchEnabled = useDiffContentSearchEnabled();
+    const canSearch = contentSearchEnabled && !!contentSearch;
+    const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
+    const searching = canSearch && navigatorMode === 'search';
+    const contentSearchRef = useRef<HTMLInputElement>(null);
+    const reviewRef = useRef<HTMLDivElement>(null);
+    useReviewContentSearchShortcut(reviewRef, canSearch, () => {
+        setNavigatorMode('search'); setDrawer(true);
+        contentSearchRef.current?.focus(); contentSearchRef.current?.select();
+    });
+    useEffect(() => { if (!canSearch) setNavigatorMode('files'); }, [canSearch]);
+    useEffect(() => { if (searching) contentSearchRef.current?.focus(); }, [searching]);
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -62,6 +88,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const [drawer, setDrawer] = useState(false);
     const [viewMode, setViewMode] = useState<'groups' | 'tree' | 'flat'>(defaultView);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+    const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number; row: HTMLElement; keyboard: boolean } | null>(null);
     const drawerTrigger = useRef<HTMLButtonElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const navRef = useRef<HTMLElement>(null);
@@ -123,7 +150,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     useEffect(() => {
         if (!drawer) return;
         const previous = document.activeElement as HTMLElement | null;
-        searchRef.current?.focus();
+        (searching ? contentSearchRef : searchRef).current?.focus();
         return () => { (drawerTrigger.current ?? previous)?.focus(); };
     }, [drawer]);
     useEffect(() => {
@@ -135,6 +162,15 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
+    const openContentMatch: ReviewContentSearchPanelProps['onOpenMatch'] = (file, match) => {
+        const proceed = () => {
+            clear();
+            setSelection(file.id); setTarget('first'); setOverview(false); setDrawer(false);
+            onSelect?.(file.id, 'first');
+            contentSearch?.onOpenMatch(file, match);
+        };
+        if (beforeNavigate) beforeNavigate(proceed); else proceed();
+    };
     function updateViewed(path: string) {
         if (hideViewed && path === (selected && reviewFileKey(selected)) && !viewed.has(path) && index === ordered.length - 1) setRetainedPath(path);
         if (onToggleReviewed) return onToggleReviewed(path);
@@ -157,7 +193,18 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             data-session-context-source={payload ? 'true' : undefined}
             data-session-context-kind={payload ? 'git-file' : undefined}
             onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
-            onClick={() => select(reviewFileKey(file))} data-file-path={reviewFileKey(file)}>
+            onClick={() => select(reviewFileKey(file))} data-file-path={reviewFileKey(file)}
+            aria-haspopup={rowMenu ? 'menu' : undefined}
+            onContextMenu={rowMenu ? event => {
+                event.preventDefault(); event.stopPropagation();
+                // Keyboard-generated events carry no pointer position; anchor those to the row.
+                openMenu(file, event.currentTarget, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null);
+            } : undefined}
+            onKeyDown={rowMenu ? event => {
+                if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                event.preventDefault(); event.stopPropagation();
+                openMenu(file, event.currentTarget, null);
+            } : undefined}>
             <span className={`git-review-status status-${code}`} title={STATUS_LABELS[code] ?? file.status}>{code}</span>
             <span className="git-review-file-name"><strong>{name}</strong><small>{file.oldPath ? `${file.oldPath} → ${directory}` : directory}</small></span>
             <span className="git-review-counts"><span className="git-review-add">{file.additions == null ? '' : `+${file.additions}`}</span><span className="git-review-del">{file.deletions == null ? '' : `−${file.deletions}`}</span></span>
@@ -165,6 +212,21 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             {viewed.has(reviewFileKey(file)) && <span aria-label="Viewed" className="git-review-add">✓</span>}
         </button>;
     }
+    function openMenu(file: ReviewFile, row: HTMLElement, at: { x: number; y: number } | null) {
+        const rect = row.getBoundingClientRect();
+        const point = at ?? { x: rect.left, y: rect.bottom };
+        const items = rowMenu?.(file, { ...point, row });
+        if (!items?.length) return;
+        setMenu({ items, row, keyboard: !at, ...point });
+    }
+    function closeMenu() {
+        if (menu?.keyboard) menu.row.focus();
+        setMenu(null);
+    }
+    // A keyboard-opened menu takes focus so arrows and Enter reach its items.
+    useLayoutEffect(() => {
+        if (menu?.keyboard) document.querySelector<HTMLElement>('[data-testid="context-menu"] [role="menuitem"]:not([disabled])')?.focus();
+    }, [menu]);
     function toggleDirectory(directory: string) {
         setCollapsed(previous => { const next = new Set(previous); if (next.has(directory)) next.delete(directory); else next.add(directory); return next; });
     }
@@ -177,13 +239,17 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 </button>{!collapsed.has(node.path) && treeRows(node.children, depth + 1)}
             </section>);
     }
-    return <div className="git-file-review" data-testid="git-file-review">
+    return <div ref={reviewRef} className="git-file-review" data-testid="git-file-review" data-review-content-search={canSearch ? 'true' : undefined}>
         <GitReviewToolbar header={header} progress={reviewEnabled ? { viewed: viewedCount, total: files.length } : undefined}>
             <button type="button" className="git-review-drawer-trigger" ref={drawerTrigger} aria-expanded={drawer} aria-controls={navId} onClick={() => setDrawer(value => !value)}>Files · {files.length}</button>
             <button type="button" className="git-review-icon" aria-pressed={overview} aria-label={overview ? 'Read diff' : 'Overview'} title={overview ? 'Read diff' : 'Overview'} onClick={() => { const proceed = () => setOverview(value => !value); if (beforeNavigate) beforeNavigate(proceed); else proceed(); }}>
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
                 <span className="git-review-wide">{overview ? 'Read diff' : 'Overview'}</span>
             </button>
+            {canSearch && <button type="button" className="git-review-icon" aria-label="Search review contents" title="Search review contents"
+                aria-pressed={searching} onClick={() => { setNavigatorMode('search'); setDrawer(true); contentSearchRef.current?.focus(); }}>
+                <span aria-hidden="true">⌕</span><span className="git-review-wide">Search</span>
+            </button>}
             <div className="git-review-file-nav" role="group" aria-label="File navigation">
                 <button type="button" aria-label="Previous file" title="Previous file" disabled={index <= 0} onClick={() => select(reviewFileKey(ordered[index - 1]))}>←</button>
                 <span className="git-review-muted" title={selected && !overview ? selected.path : undefined} data-testid="git-review-file-index">{selected && !overview ? `${index + 1}/${ordered.length}` : `${visible.length} files`}</span>
@@ -205,9 +271,16 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             {drawer && <button type="button" className="git-review-scrim" aria-label="Close file navigator" onClick={() => setDrawer(false)} />}
             <aside id={navId} ref={navRef} className={`git-review-nav${drawer ? ' open' : ''}`} aria-label="Changed files"
                 onKeyDown={event => {
+                    // Menu items portal to the body but bubble here through React.
+                    if (menu) return;
                     if (event.key === 'Escape' && drawer) { event.preventDefault(); setDrawer(false); }
                     if (drawer && event.key === 'Tab') {
-                        const controls = navRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select');
+                        const controls = Array.from(navRef.current?.querySelectorAll<HTMLElement>('button, input, select, summary') ?? [])
+                            .filter(control => {
+                                const details = control.closest('details');
+                                return !control.closest('[hidden]') && !control.matches(':disabled')
+                                    && (!details || details.open || control.tagName === 'SUMMARY');
+                            });
                         const first = controls?.[0], last = controls?.[controls.length - 1];
                         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
                         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -222,6 +295,15 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                         select(path, 'first', false); buttons[next].focus();
                     }
                 }}>
+                {canSearch && <div className="git-review-filter-row" role="group" aria-label="Review navigator">
+                    <button type="button" aria-pressed={!searching} onClick={() => setNavigatorMode('files')}>Files</button>
+                    <button type="button" aria-pressed={searching} onClick={() => setNavigatorMode('search')}>Search</button>
+                    {searching && <button type="button" className="git-review-drawer-trigger" aria-label="Close search navigator" onClick={() => setDrawer(false)}>×</button>}
+                </div>}
+                {canSearch && <div hidden={!searching} style={{ display: searching ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
+                    <ReviewContentSearchPanel key={identity} {...contentSearch!} onOpenMatch={openContentMatch} inputRef={contentSearchRef} />
+                </div>}
+                <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
                     <div className="git-review-filter-title"><strong>Changed files</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
                     <div className="git-review-filter-row" role="group" aria-label="File list view">
@@ -240,11 +322,13 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     </button>{!collapsed.has(group.directory) && group.files.map(file => row(file))}
                 </section>)}{!loading && !visible.length && <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}<button type="button" onClick={clear}>Clear filters</button></div>}</div>
                 {reviewEnabled && <div className="git-review-progress">{viewedCount} / {files.length} viewed · {visible.length} shown<progress aria-label="Files viewed" value={viewedCount} max={files.length || 1} /></div>}
+                </div>
             </aside>
             <div className={`git-review-resizer${navSize.isDragging ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" tabIndex={0}
                 aria-label="Resize changed files list" aria-controls={navId} aria-valuemin={NAV_MIN_WIDTH} aria-valuemax={navMax} aria-valuenow={navWidth}
                 title="Drag to resize · double-click to reset" data-testid="git-review-resizer"
                 onMouseDown={navSize.handleMouseDown} onTouchStart={navSize.handleTouchStart} onDoubleClick={navSize.resetWidth} onKeyDown={resizeNav} />
+            {menu && <ContextMenu position={{ x: menu.x, y: menu.y }} items={menu.items} onClose={closeMenu} />}
             <main className="git-review-content" aria-label="Focused file diff">
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
                     <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories {reviewEnabled ? `· ${viewedCount} viewed` : ''} <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>

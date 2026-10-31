@@ -42,6 +42,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isSessionContextAttachmentsEnabled: () => flags.enabled,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
+    isDiffContentSearchEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {

@@ -13,7 +13,9 @@
  *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
  *     to the workspace and stay visible across chat switches; file, canvas,
  *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
- *     no chat is selected). See `scopeForKind`.
+ *     no chat is selected). See `scopeForKind`. A `browser` tab is filed with
+ *     the workspace but may name an owning conversation (`browserChatId`); it
+ *     is then visible only from that chat, and hidden elsewhere without closing.
  *  2. **One tab per resource per scope.** Ids are derived from kind + scope +
  *     owning clone + canonical resource id, so opening the same file twice
  *     focuses one tab, while the same relative path in two repo-group members —
@@ -200,6 +202,13 @@ export interface UnifiedPanelTab {
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
     /**
+     * A `file` tab's latest request to show its raw source editor instead of a
+     * rendered document view. Each request mints a new value, so re-opening a
+     * tab the user switched to Rendered shows the source again. Persisted, so a
+     * restored tab keeps its raw view; the global preview setting is untouched.
+     */
+    rawSource?: number;
+    /**
      * True on the section's single *preview* tab — VS Code's italic slot. A
      * preview tab is a normal tab in every respect except that the next
      * single click in the file tree reuses its slot instead of opening a
@@ -230,6 +239,13 @@ export interface UnifiedPanelTab {
     browserUrl?: string;
     /** A page-requested tab inherits its opener's engine rather than the current default. */
     browserEngine?: 'electron' | 'webview2';
+    /**
+     * The conversation that owns a `browser` tab (`features.chatScopedBrowserTabs`).
+     * The tab stays in `workspaceTabs` with its workspace id, but only that
+     * chat's view shows it; other views retain it hidden. Absent for a
+     * workspace-global page. Fixed when the tab is created.
+     */
+    browserChatId?: string;
 }
 
 export interface UnifiedPanelState {
@@ -298,8 +314,11 @@ function escapePart(part: string): string {
  */
 export function visibleTabs(state: UnifiedPanelState, chatId: string | null, applyOrder = true): readonly UnifiedPanelTab[] {
     const chatOwned = state.chatTabs[chatId ?? WORKSPACE_SCOPE_KEY] ?? [];
-    const defaults = chatOwned.length === 0 ? state.workspaceTabs : [
-        ...state.workspaceTabs,
+    const workspaceTabs = state.workspaceTabs.some(tab => !visibleBrowserTab(tab, chatId))
+        ? state.workspaceTabs.filter(tab => visibleBrowserTab(tab, chatId))
+        : state.workspaceTabs;
+    const defaults = chatOwned.length === 0 ? workspaceTabs : [
+        ...workspaceTabs,
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'tools'),
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'resources'),
     ];
@@ -319,6 +338,28 @@ export function visibleTabs(state: UnifiedPanelState, chatId: string | null, app
         else ordered.splice(previewIndex, 0, tab);
     }
     return ordered;
+}
+
+/** A workspace tab is visible from every chat unless it is a page owned by another conversation. */
+function visibleBrowserTab(tab: UnifiedPanelTab, chatId: string | null): boolean {
+    return tab.browserChatId === undefined || tab.browserChatId === chatId;
+}
+
+/**
+ * Drop every page's conversation owner, so all pages show in every chat again.
+ * Used when `features.chatScopedBrowserTabs` turns off; retains the state
+ * reference when no page has an owner.
+ */
+export function releaseBrowserChatOwners(state: UnifiedPanelState): UnifiedPanelState {
+    if (!state.workspaceTabs.some(tab => tab.browserChatId !== undefined)) return state;
+    return {
+        ...state,
+        workspaceTabs: state.workspaceTabs.map(tab => {
+            if (tab.browserChatId === undefined) return tab;
+            const { browserChatId: _owner, ...rest } = tab;
+            return rest;
+        }),
+    };
 }
 
 /**
@@ -393,6 +434,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.column === b.column
         && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
+        && a.rawSource === b.rawSource
         && a.preview === b.preview
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
         && a.gitMemberId === b.gitMemberId
@@ -400,7 +442,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
         && a.htmlPageId === b.htmlPageId
         && a.browserUrl === b.browserUrl
-        && a.browserEngine === b.browserEngine;
+        && a.browserEngine === b.browserEngine
+        && a.browserChatId === b.browserChatId;
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
@@ -535,6 +578,8 @@ export interface OpenUnifiedTabInput {
     column?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
+    /** `file` tabs: show the raw source editor rather than a rendered view. */
+    rawSource?: true;
     /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
     gitView?: PersistedGitView;
     gitMemberId?: string;
@@ -542,10 +587,18 @@ export interface OpenUnifiedTabInput {
     /** A `browser` tab's initial URL; absent opens a blank tab. */
     browserUrl?: string;
     browserEngine?: 'electron' | 'webview2';
+    /** The conversation that owns a new `browser` tab; an existing tab keeps its owner. */
+    browserChatId?: string;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
 let revealSequence = 0;
+/** Source of `rawSource`. Seeded by the clock so restored values never repeat. */
+let rawSourceSequence = 0;
+function nextRawSource(): number {
+    rawSourceSequence = Math.max(rawSourceSequence + 1, Date.now());
+    return rawSourceSequence;
+}
 
 /** The reveal fields a tab already holds, nonce included, so re-focusing it
  * neither forgets the position nor asks for a fresh reveal. */
@@ -618,24 +671,31 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
+        ...(input.kind === 'file' && input.rawSource ? { rawSource: nextRawSource() } : {}),
         ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
         ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
         ...(input.kind === 'browser' && input.browserUrl ? { browserUrl: input.browserUrl } : {}),
         ...(input.kind === 'browser' && input.browserEngine ? { browserEngine: input.browserEngine } : {}),
+        ...(input.kind === 'browser' && input.browserChatId ? { browserChatId: input.browserChatId } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
     if (index >= 0) {
         const existing = list[index];
+        // A page's owning conversation never changes: an agent re-revealing it
+        // from its own turn, or any other re-open, keeps the original owner.
+        const { browserChatId: _requestedOwner, ...reopened } = opened;
         const merged: UnifiedPanelTab = {
-            ...opened,
+            ...reopened,
+            ...(existing.browserChatId === undefined ? {} : { browserChatId: existing.browserChatId }),
             ...(input.workPath === undefined && existing.workPath !== undefined ? { workPath: existing.workPath } : {}),
             // Keep the existing reveal position — and its nonce — when this open
             // supplied none, so re-focusing a tab neither forgets where it was
             // pointed nor scrolls it back there. The column travels with its
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
+            ...(opened.rawSource === undefined && existing.rawSource !== undefined ? { rawSource: existing.rawSource } : {}),
             ...(opened.gitView === undefined && existing.gitView !== undefined && opened.gitMemberId === existing.gitMemberId
                 ? { gitView: existing.gitView } : {}),
             ...(existing.notesView === undefined ? {} : { notesView: existing.notesView }),
@@ -648,6 +708,36 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
     }
 
     return withActive(withList(state, scopeKey, scope, nextList), input.chatId ?? WORKSPACE_SCOPE_KEY, id);
+}
+
+/**
+ * Open a new tab and place it directly after `besideId` in the order the strip
+ * shows: the per-view order when `mixedOrder` is on, otherwise the tab's own
+ * section. A missing `besideId` leaves the ordinary `openTab` placement.
+ */
+export function openTabBeside(
+    state: UnifiedPanelState,
+    chatId: string | null,
+    input: OpenUnifiedTabInput,
+    besideId: string,
+    mixedOrder: boolean,
+): UnifiedPanelState {
+    const opened = openTab(state, input);
+    const id = unifiedTabId(input);
+    if (mixedOrder) {
+        const order = visibleTabs(opened, chatId).filter(tab => tab.id !== id);
+        const index = order.findIndex(tab => tab.id === besideId);
+        return index < 0 ? opened : moveVisibleTab(opened, chatId, id, order[index + 1]?.id ?? null);
+    }
+    const tab = findTab(opened, id);
+    if (tab === null) return opened;
+    const list = (scopeForKind(tab.kind) === 'workspace'
+        ? opened.workspaceTabs
+        : opened.chatTabs[scopeKeyFor(tab.kind, tab.chatId)] ?? []).filter(entry => entry.id !== id);
+    const index = list.findIndex(entry => entry.id === besideId);
+    if (index < 0) return opened;
+    const next = list[index + 1];
+    return moveTab(opened, id, next && displayGroupForKind(next.kind) === displayGroupForKind(tab.kind) ? next.id : null);
 }
 
 /**
@@ -1078,6 +1168,8 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
             }
             : {}),
         ...(value.symbolCandidate === true ? { symbolCandidate: true } : {}),
+        ...(kind === 'file' && typeof value.rawSource === 'number' && Number.isFinite(value.rawSource) && value.rawSource > 0
+            ? { rawSource: value.rawSource } : {}),
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),

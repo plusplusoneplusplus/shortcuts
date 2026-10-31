@@ -87,6 +87,8 @@ export interface NoteTabInputArgs {
     /** The panel's own workspace (a group id in a repo group); only for repo labelling. */
     scopeWorkspaceId: string;
     sourceSelectionId?: string;
+    /** The chat the link was clicked in; the opened tab becomes active there. */
+    chatId: string | null;
 }
 
 /**
@@ -126,9 +128,10 @@ export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null
         // the clicked container's hint (a group member's root wins).
         ownerWorkspaceId: target.wsId,
         ownerRoutingRef: getRemoteCloneKey(workspace) ?? null,
-        // Workspace-owned: `openTab` ignores this for a note, and passing the
-        // chat id would only misrepresent the ownership at the call site.
-        chatId: null,
+        // A note tab stays workspace-owned (`openTab` drops the chat from its
+        // identity), but the clicking chat is the scope it becomes active in;
+        // without it a hosted chat would keep showing its previous tab.
+        chatId: args.chatId,
         resourceId: noteResourceId({
             fetchMode: target.fetchMode,
             ...(notesRoot ? { notesRoot } : {}),

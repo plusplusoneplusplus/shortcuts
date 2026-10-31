@@ -10,7 +10,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
-import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
@@ -36,7 +35,7 @@ function get(url: string): Promise<{ status: number; json: () => any }> {
 }
 
 function makeRepo(prefix: string): { root: string; git: (...a: string[]) => string; write: (rel: string, c: string | Buffer) => void } {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(process.cwd(), `.${prefix}`)));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf-8' });
     const write = (rel: string, content: string | Buffer) => {
         const abs = path.join(root, rel);
@@ -69,6 +68,8 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
         repoA.write('crlf.txt', 'one\r\ntwo\r\n');
         repoA.write('img.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00]));
         repoA.write('old.ts', 'renamed body\n');
+        repoA.write('gone.txt', 'deleted HEAD\n');
+        repoA.write('loose-old.ts', 'unstaged rename needle\n');
         repoA.git('add', '-A');
         repoA.git('commit', '-q', '-m', 'init');
         repoA.write('src/foo.ts', 'const a = 2;\n');
@@ -77,6 +78,15 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
         repoA.write('crlf.txt', 'one\r\ntwo\r\nthree\r\n');
         repoA.write('img.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
         repoA.git('mv', 'old.ts', 'new.ts');
+        repoA.write('new.ts', 'renamed body\nunstaged edit\n');
+        fs.renameSync(path.join(repoA.root, 'loose-old.ts'), path.join(repoA.root, 'loose-new.ts'));
+        repoA.git('add', '-N', 'loose-new.ts');
+        repoA.write('added.ts', 'added index\n');
+        repoA.write('staged-only.txt', 'staged only\n');
+        repoA.write('gone.txt', 'deleted index\n');
+        repoA.git('add', 'added.ts', 'gone.txt', 'staged-only.txt');
+        repoA.write('added.ts', 'added disk\n');
+        fs.unlinkSync(path.join(repoA.root, 'gone.txt'));
         repoA.write('untracked.md', '# new\n');
 
         // Repo B: same relative path, different content.
@@ -105,14 +115,14 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
 
     beforeEach(() => gitCache.clear());
 
-    it('returns both sides of an unstaged file with head.ref WORKTREE', async () => {
+    it('returns index/disk sides for a real partially-staged file', async () => {
         const res = await get(url(WS_A, 'src/foo.ts', 'unstaged'));
         expect(res.status).toBe(200);
         const data = res.json();
         expect(data.path).toBe('src/foo.ts');
         expect(data.fileName).toBe('foo.ts');
         expect(data.language).toBe('ts');
-        expect(data.base).toEqual({ content: 'const a = 1;\n', ref: repoA.git('rev-parse', 'HEAD').trim(), exists: true });
+        expect(data.base).toEqual({ content: 'const a = 2;\n', ref: 'INDEX', exists: true });
         expect(data.head).toEqual({ content: 'const a = 3;\n', ref: 'WORKTREE', exists: true });
         expect(data.binary).toBe(false);
         expect(data.tooLarge).toBe(false);
@@ -122,6 +132,14 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
         const data = (await get(url(WS_A, 'src/foo.ts', 'staged'))).json();
         expect(data.head).toEqual({ content: 'const a = 2;\n', ref: 'INDEX', exists: true });
         expect(data.base.content).toBe('const a = 1;\n');
+    });
+
+    it('reads the original index path for an unstaged rename', async () => {
+        const response = await get(url(WS_A, 'loose-new.ts', 'unstaged'));
+        expect(response.status).toBe(200);
+        const data = response.json();
+        expect(data.base).toEqual({ content: 'unstaged rename needle\n', ref: 'INDEX', exists: true });
+        expect(data.head).toEqual({ content: 'unstaged rename needle\n', ref: 'WORKTREE', exists: true });
     });
 
     it('accepts the absolute path the change list reports', async () => {
@@ -149,6 +167,27 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
         const data = (await get(url(WS_A, 'new.ts', 'staged'))).json();
         expect(data.base).toMatchObject({ content: 'renamed body\n', exists: true });
         expect(data.head).toMatchObject({ content: 'renamed body\n', exists: true, ref: 'INDEX' });
+    });
+
+    it('reads unstaged edits after a staged rename against the new index path', async () => {
+        const res = await get(url(WS_A, 'new.ts', 'unstaged'));
+        expect(res.status).toBe(200);
+        expect(res.json().base).toEqual({ content: 'renamed body\n', exists: true, ref: 'INDEX' });
+        expect(res.json().head).toEqual({ content: 'renamed body\nunstaged edit\n', exists: true, ref: 'WORKTREE' });
+    });
+
+    it('reads unstaged edits to a staged addition without a HEAD blob', async () => {
+        const res = await get(url(WS_A, 'added.ts', 'unstaged'));
+        expect(res.status).toBe(200);
+        expect(res.json().base).toEqual({ content: 'added index\n', exists: true, ref: 'INDEX' });
+        expect(res.json().head).toEqual({ content: 'added disk\n', exists: true, ref: 'WORKTREE' });
+    });
+
+    it('reads an unstaged deletion from the modified index, not HEAD', async () => {
+        const res = await get(url(WS_A, 'gone.txt', 'unstaged'));
+        expect(res.status).toBe(200);
+        expect(res.json().base).toEqual({ content: 'deleted index\n', exists: true, ref: 'INDEX' });
+        expect(res.json().head).toEqual({ content: '', exists: false, ref: 'WORKTREE' });
     });
 
     it('serves an untracked file against an empty base', async () => {
@@ -183,7 +222,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/content', () => {
 
     it('returns 404 when the file is changed only in another stage', async () => {
         expect((await get(url(WS_A, 'untracked.md', 'staged'))).status).toBe(404);
-        expect((await get(url(WS_A, 'new.ts', 'unstaged'))).status).toBe(404);
+        expect((await get(url(WS_A, 'staged-only.txt', 'unstaged'))).status).toBe(404);
     });
 
     it('returns 400 for a missing or unknown stage', async () => {

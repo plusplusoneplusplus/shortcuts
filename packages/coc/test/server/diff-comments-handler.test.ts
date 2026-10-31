@@ -759,6 +759,23 @@ describe('Diff Comments REST API', () => {
             expect(res.status).toBe(400);
         });
 
+        it('creates a file-level comment with no selection and stores it with the file', async () => {
+            const { selection: _s, selectedText: _t, ...rest } = makePostBody({ filePath: 'src/whole.ts' });
+            const res = await postJSON(collectionUrl(), { ...rest, scope: 'file' });
+            expect(res.status).toBe(201);
+            const created = JSON.parse(res.body).comment;
+            expect(created).toMatchObject({ scope: 'file', selectedText: '', comment: 'Needs review', status: 'open' });
+            expect(created).not.toHaveProperty('selection');
+            const key = new DiffCommentsManager(tmpDir).hashContext(rest.context);
+            const listed = JSON.parse((await getJSON(storageKeyUrl(key))).body).comments;
+            expect(listed).toEqual([expect.objectContaining({ id: created.id, scope: 'file' })]);
+        });
+
+        it('rejects a file-level comment that carries a selection, and unknown scopes', async () => {
+            expect((await postJSON(collectionUrl(), { ...makePostBody(), scope: 'file' })).status).toBe(400);
+            expect((await postJSON(collectionUrl(), { ...makePostBody(), scope: 'line' })).status).toBe(400);
+        });
+
         it('returns 400 when selectedText is missing', async () => {
             const data = makePostBody();
             delete (data as any).selectedText;

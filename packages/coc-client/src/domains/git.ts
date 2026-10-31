@@ -97,7 +97,9 @@ export interface GitDiffCommentTotalsQuery {
 
 export interface GitCreateDiffCommentRequest {
   context: unknown;
-  selection: unknown;
+  /** `'file'` creates a whole-file comment; it then has no selection. */
+  scope?: 'file';
+  selection?: unknown;
   selectedText: string;
   comment: string;
   status?: string;

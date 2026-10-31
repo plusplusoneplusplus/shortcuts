@@ -6,7 +6,7 @@
  * card produce the same text.
  */
 
-import type { DiffComment } from '../../comments/diff-comment-types';
+import { isLineDiffComment, type DiffComment } from '../../comments/diff-comment-types';
 
 /** The file and ref range the comments belong to. */
 export interface DiffCommentPromptContext {
@@ -22,8 +22,10 @@ export function formatDiffCommentsPrompt(
     const commentsBlock = comments
         .map((c, i) =>
             `### Comment ${i + 1} (id: ${c.id}, status: ${c.status})\n` +
-            `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
-            `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
+            (isLineDiffComment(c)
+                ? `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
+                  `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n`
+                : `Location: whole file\n`) +
             `Comment: ${c.comment}`
         )
         .join('\n\n');
@@ -52,8 +54,9 @@ export type ReviewCommentScope =
     | { kind: 'working-tree' }
     | { kind: 'branch-range'; label: string };
 
-/** Human-readable file location of a diff comment, e.g. `new lines 12–14`. */
+/** Human-readable file location of a diff comment, e.g. `new lines 12–14` or `whole file`. */
 export function diffCommentLocation(comment: DiffComment): string {
+    if (!isLineDiffComment(comment)) return 'whole file';
     const s = comment.selection;
     const removed = s.side === 'removed';
     const start = removed ? s.oldLineStart : s.newLineStart;
@@ -92,7 +95,9 @@ export function groupDiffCommentsByFile<T extends DiffComment>(comments: readonl
         list.push(c);
         byFile.set(c.context.filePath, list);
     }
-    const line = (c: DiffComment) => c.selection.newLineStart ?? c.selection.oldLineStart ?? c.selection.diffLineStart;
+    // Whole-file comments sort before line comments.
+    const line = (c: DiffComment) => isLineDiffComment(c)
+        ? c.selection.newLineStart ?? c.selection.oldLineStart ?? c.selection.diffLineStart : -1;
     return [...byFile.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([filePath, list]) => [filePath, [...list].sort((a, b) => line(a) - line(b))]);

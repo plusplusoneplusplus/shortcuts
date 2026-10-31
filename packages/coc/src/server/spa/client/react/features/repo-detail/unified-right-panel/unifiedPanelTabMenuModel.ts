@@ -4,6 +4,7 @@ import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
 import { parseNoteResourceId } from './unifiedNoteTabs';
 import { isGroupBoundaryMove, stripGroupForKind } from './unifiedPanelTabGroups';
+import { canDuplicateBrowserTab } from './unifiedBrowserTabs';
 
 export type UnifiedPanelBulkCloseAction =
     | 'close-others'
@@ -17,6 +18,7 @@ export type UnifiedPanelTabMenuAction =
     | 'move-left'
     | 'move-right'
     | 'keep-open'
+    | 'duplicate'
     | 'close'
     | UnifiedPanelBulkCloseAction
     | 'copy-path'
@@ -27,7 +29,7 @@ export type UnifiedPanelTabMenuAction =
 export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
     label: string;
-    group: 'keep-open' | 'close' | 'file' | 'move';
+    group: 'keep-open' | 'browser' | 'close' | 'file' | 'move';
     disabled: boolean;
 }
 
@@ -90,6 +92,10 @@ export function unifiedPanelTabMenuItems(
     }
     if (tab.preview) {
         items.push({ action: 'keep-open', label: 'Keep Open', group: 'keep-open', disabled: false });
+    }
+    // Only web tabs duplicate; file and HTML previews keep their own open rules.
+    if (tab.kind === 'browser') {
+        items.push({ action: 'duplicate', label: 'Duplicate', group: 'browser', disabled: !canDuplicateBrowserTab(tab) });
     }
     items.push(
         { action: 'close', label: 'Close', group: 'close', disabled: false },

@@ -18,9 +18,13 @@ export interface InlineCommentPopupProps {
     position: { top: number; left: number };
     onSubmit: (text: string, category: TaskCommentCategory) => void;
     onCancel: () => void;
+    /** What the comment is about, shown above the textarea and used as the dialog name. */
+    label?: string;
+    /** Save failure; the draft stays so the user can retry. */
+    error?: string | null;
 }
 
-export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineCommentPopupProps) {
+export function InlineCommentPopup({ position, onSubmit, onCancel, label, error }: InlineCommentPopupProps) {
     const [text, setText] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<TaskCommentCategory>('general');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,8 +60,10 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
 
     const popupContent = (
         <>
+            {label && <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] break-all" data-testid="comment-popup-label">{label}</div>}
             {/* Textarea */}
             <textarea
+                aria-label={label}
                 ref={textareaRef}
                 className="w-full p-2 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-none flex-1 min-h-[60px]"
                 placeholder="Add your comment…"
@@ -92,6 +98,8 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
                 })}
             </div>
 
+            {error && <div role="alert" className="text-xs text-[#f14c4c]" data-testid="comment-popup-error">{error}</div>}
+
             {/* Actions */}
             <div className="flex justify-end gap-1">
                 <Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>
@@ -105,7 +113,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     if (isMobile) {
         return (
             <BottomSheet isOpen={true} onClose={onCancel}>
-                <div className="p-4 flex flex-col gap-2" data-testid="inline-comment-popup">
+                <div className="p-4 flex flex-col gap-2" data-testid="inline-comment-popup" role={label ? 'dialog' : undefined} aria-label={label}>
                     {popupContent}
                 </div>
             </BottomSheet>
@@ -118,6 +126,8 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
             className="fixed z-[10003] min-w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col overflow-hidden resize"
             style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="inline-comment-popup"
+            role={label ? 'dialog' : undefined}
+            aria-label={label}
         >
             {/* Drag handle */}
             <div

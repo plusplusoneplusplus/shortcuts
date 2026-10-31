@@ -152,9 +152,14 @@ export interface DiffComment {
     id: string;
     /** The diff context this comment belongs to. */
     context: DiffCommentContext;
-    /** Selection range within the rendered diff. */
-    selection: DiffCommentSelection;
-    /** The actual selected text. */
+    /**
+     * `'file'` marks a comment on the whole file of `context`, with no
+     * selection or selected text. Absent means a line/range comment.
+     */
+    scope?: 'file';
+    /** Selection range within the rendered diff. Absent for file-level comments. */
+    selection?: DiffCommentSelection;
+    /** The actual selected text. Empty for file-level comments. */
     selectedText: string;
     /** User's comment content. */
     comment: string;

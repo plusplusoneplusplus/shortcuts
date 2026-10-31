@@ -27,9 +27,13 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned
+(a `browser` tab may also name an owning chat; see "Browser tabs"),
 `file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
+Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
+drops it from tab identity but records the active tab under that chat's scope,
+so a note link clicked in a hosted chat selects that note (`noteTabInput`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
@@ -219,7 +223,9 @@ Each pane's `PreviewPane` keeps its own selection, scroll and owner routing.
 The same file in both panes is one tab and one `PreviewPane` buffer: it
 publishes its Monaco model (`onModelShare`), and `UnifiedSourceMirror` creates
 a second editor on that model, following its read-only state and saving
-through the tab's registered save. Equal paths from different owners or clones
+through the tab's registered save. Its selections attach as chat context with
+the `selectionContext` published alongside the model, so read-only previews
+publish none and get no pill. Equal paths from different owners or clones
 are different tabs and buffers.
 
 ## File navigation history
@@ -624,6 +630,13 @@ The tab context menu opens from right-click, the Context Menu key, or Shift+F10,
 keeps keyboard focus inside enabled actions, clamps to the viewport, and restores
 focus to its originating tab on dismissal. Every kind exposes the close group;
 preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
+Web (`browser`) tabs add Duplicate; HTML previews and other kinds never offer it.
+`duplicateBrowserTabInput` copies owner, route, repo label, title, engine pin and
+the committed URL into a fresh `browserOpenInput` (new view id, so no guest,
+control session or page history carries over) for the viewing chat; it is
+disabled when the URL no longer normalizes as http(s). `openBeside` places the
+copy directly after the source in the strip's order (`openTabBeside`), selects it
+and focuses its strip tab.
 Reveal retargets the dock to the file owner, selects Explorer mode, opens the tree,
 and relies on `activeFilePath` tracking to expand and highlight the row without
 changing the active tab.
@@ -745,6 +758,18 @@ owner when opened — that owner is the tab's routing identity, and a later
 target switch never retargets it. Tabs are workspace-owned, so they stay
 across chat switches, and `browser` is an ephemeral kind: neither the tab, its
 URL, nor its selection reaches storage, so a restart starts with none.
+Default-off `features.chatScopedBrowserTabs` adds a conversation owner
+(`browserChatId`): `browserOpenInput` files a tab opened with a selected chat
+under that chat (agent reveals use their `processId`), and `visibleTabs` hides it
+from every other chat and from the no-chat view. The descriptor stays in
+`workspaceTabs`; re-opens never change the owner. Hidden tabs leave the mounted
+set, so their Electron hosts hide in the same commit and the guest, history and
+scroll come back when the chat is selected again; only explicit close or engine
+cleanup closes them. Tabs opened with no chat stay workspace-global. Duplicate,
+popup (`onNewTab`, found even when its opener is hidden) and reopen-closed copies
+keep the source's owner. Turning the flag off releases every owner
+(`releaseBrowserChatOwners`). Browser-control scope, background layout and
+human takeover remain per workspace and unchanged.
 `updateBrowserTab` follows the page's URL and label without activating the tab.
 AI browser control uses the same session-only descriptors and imperative
 `openUnifiedPanelTab` seam, so commands can reveal a collapsed or unmounted dock.

@@ -14,7 +14,9 @@ import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
-import { FileDiffPanel } from '../git/diff/FileDiffPanel';
+import { FileDiffPanel, type ReviewContentSearchTarget } from '../git/diff/FileDiffPanel';
+import { useReviewContentSearchController } from '../git/diff/useReviewContentSearchController';
+import { reviewFileKey } from '../git/diff/gitReviewFiles';
 import { useFileDiffEngineState } from '../git/hooks/useFileDiffEngineState';
 import { ReviewFiles, type ReviewFileRenderContext } from '../git/diff/ReviewFiles';
 import { useCloneBaseUrl } from '../../repos/cloneRouting';
@@ -267,7 +269,8 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 /** Reset all transient selection, classification and progress on exact owner/comparison changes. */
 export function PrFilesPanel(props: PrFilesPanelProps) {
     const endpoint = useCloneBaseUrl(props.attachmentDestinationId ?? props.diffSource?.routingTarget ?? props.workspaceId);
-    const identity = JSON.stringify([props.workspaceId, props.attachmentDestinationId, endpoint, props.diffSource?.cacheKey, props.headSha, props.reviewPersistence, props.classificationKey]);
+    const identity = JSON.stringify([props.workspaceId, props.attachmentDestinationId, endpoint, props.diffSource?.routingTarget,
+        props.diffSource?.cacheKey, props.diffSource?.fileContextRefs, props.headSha, props.reviewPersistence, props.classificationKey]);
     return <PrFilesBody key={identity} {...props} identity={identity} />;
 }
 
@@ -287,6 +290,11 @@ function PrFilesBody({
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
     const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
+    const [contentSearchTarget, setContentSearchTarget] = useState<ReviewContentSearchTarget>();
+    const fetchFileContent = diffSource?.fetchFileContent;
+    const controller = useReviewContentSearchController(identity, files.map(file => ({ id: reviewFileKey(file), path: file.path })),
+        fetchFileContent ? file => fetchFileContent(file.path) : undefined, diffText);
+    useEffect(() => setContentSearchTarget(undefined), [controller]);
     const { classificationEnabled, onDiffEngineChange } = useFileDiffEngineState(
         !isMobile && diffSource && workspaceId && activePath
             ? `${workspaceId}\u0000${diffSource.cacheKey}\u0000${activePath}` : null,
@@ -317,7 +325,7 @@ function PrFilesBody({
 
     // Desktop renders the shared FileDiffPanel (full review chrome); mobile
     // keeps the slim viewer so the stacked layout stays light.
-    const useSharedPanel = !isMobile && !!diffSource && !!workspaceId;
+    const useSharedPanel = (!isMobile || !!contentSearchTarget) && !!diffSource && !!workspaceId;
 
     const classificationReady = classification?.state.status === 'ready';
     function renderDiff({ file, paths, select, target, toggleViewed }: ReviewFileRenderContext) {
@@ -326,7 +334,7 @@ function PrFilesBody({
                 <FileDiffPanel key={`pr-${diffSource.cacheKey}-${file.path}`} workspaceId={workspaceId}
                     attachmentDestinationId={attachmentDestinationId} filePath={file.path}
                     source={{ ...diffSource, files: paths, fetchFileList: undefined }} showSourceLabel={false} onNavigateToFile={select}
-                    initialHunkTarget={target} onDiffEngineChange={onDiffEngineChange}
+                    initialHunkTarget={target} contentSearchTarget={contentSearchTarget} onDiffEngineChange={onDiffEngineChange}
                     headerActions={<PrPopOutButton filePath={file.path} onPopOut={onPopOut} />}
                     isReviewed={isReviewed(file.path)} onToggleReviewed={toggleViewed}
                     getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
@@ -338,7 +346,9 @@ function PrFilesBody({
             hasFiles={files.length > 0} onPopOut={onPopOut} />;
     }
     return <div className="flex h-full min-h-0 min-w-0 flex-1" data-testid="pr-files-panel">
-        <ReviewFiles identity={identity} files={files} defaultView="tree" selectedPath={activePath} onSelect={setActivePath}
+        <ReviewFiles identity={identity} files={files} defaultView="tree" selectedPath={activePath}
+            onSelect={path => { setContentSearchTarget(undefined); setActivePath(path); }}
+            contentSearch={controller && workspaceId ? { controller, onOpenMatch: (file, match) => setContentSearchTarget({ ...match, filePath: file.path }) } : undefined}
             reviewedFiles={reviewProgress.state.reviewedFiles} onToggleReviewed={toggleReviewed}
             header={{ below: classification ? <ClassificationFilterBar classification={classification} aiSelection={aiSelection} /> : undefined }}
             isFileDimmed={classification?.isFileDimmed}

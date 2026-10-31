@@ -29,7 +29,7 @@ import type { GitWorkingTreeFileContentResponse } from '@plusplusoneplusplus/coc
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
-import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons, computeDiffLines } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
 import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
@@ -41,12 +41,16 @@ import { useDiffEngine } from '../hooks/useDiffEngine';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
 import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
 import type { DiffEditorPosition } from '../diff/monacoDiffController';
+import { createDiffLineIndexResolver } from '../diff/diffCoords';
+import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 import type { DiffDefinitionNavigate } from '../diff/diffLanguageMount';
 import { resolveDiffDefinitionRoute } from '../diff/diffDefinitionRoute';
 import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { FileLevelComments, revealFileComment, splitFileComments } from '../diff/FileLevelComments';
+import { workingTreeCommentContext } from './workingTreeCommentContext';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
@@ -81,6 +85,8 @@ export interface WorkingTreeFileDiffProps {
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
     /** When set, auto-scrolls to the first or last hunk after the diff loads. */
     initialHunkTarget?: 'first' | 'last';
+    /** A new object jumps once; ordinary navigation clears it in the review host. */
+    contentSearchTarget?: ReviewContentSearchTarget | null;
     /**
      * Called once when the untracked file turns out to no longer exist on disk
      * (the working-tree list was stale). Lets the owner refresh the change list
@@ -139,11 +145,13 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, untrackedAsDiff = false, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, untrackedAsDiff = false, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const previewUntracked = stage === 'untracked' && !untrackedAsDiff;
     const [untrackedPreviewFallback, setUntrackedPreviewFallback] = useState(false);
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
+    const patchContentKey = JSON.stringify([workspaceId, stage, filePath]);
+    const [loadedPatchKey, setLoadedPatchKey] = useState<string>();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [truncated, setTruncated] = useState(false);
@@ -221,6 +229,27 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // Classic renders for the legacy engine and when the editor cannot show this file.
     const classicActive = engineSelection.engine === 'legacy';
     const fallbackReason = engineSelection.engine === 'legacy' ? engineSelection.fallback : null;
+    const [dismissedSearchTarget, setDismissedSearchTarget] = useState<ReviewContentSearchTarget | null>(null);
+    const searchTarget = contentSearchTarget !== dismissedSearchTarget && contentSearchTarget?.filePath === filePath
+        ? contentSearchTarget : null;
+    const searchLayoutTargetRef = useRef<ReviewContentSearchTarget | null>(null);
+    useEffect(() => {
+        if (!showEditor || searchLayoutTargetRef.current === searchTarget) return;
+        searchLayoutTargetRef.current = searchTarget;
+        if (searchTarget?.side === 'old') setViewMode('split');
+    }, [searchTarget, showEditor, setViewMode]);
+    const classicSearchLine = useMemo(() => {
+        if (!searchTarget || !classicActive || loading || error || loadedPatchKey !== patchContentKey) return undefined;
+        return createDiffLineIndexResolver(computeDiffLines((diff ?? '').split('\n')))(searchTarget.side, searchTarget.line);
+    }, [searchTarget, classicActive, loading, error, diff, loadedPatchKey, patchContentKey]);
+    const classicMatchRanges = useMemo(() => searchTarget && classicSearchLine !== undefined
+        ? new Map([[classicSearchLine, [{ start: searchTarget.startColumn - 1, end: searchTarget.endColumn - 1, active: true }]]])
+        : undefined, [searchTarget, classicSearchLine]);
+    useEffect(() => {
+        if (classicSearchLine !== undefined) viewerRef.current?.scrollLineIntoView(classicSearchLine);
+    }, [searchTarget, classicSearchLine, viewMode]);
+    const searchOutsidePatch = searchTarget && classicActive && !loading && !error
+        && loadedPatchKey === patchContentKey && classicSearchLine === undefined;
 
     // Editing the modified (disk) side. `savedText` is what the last successful
     // save wrote; `editedText` the editor's text after the latest edit.
@@ -329,6 +358,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // The working tree is not a review, so another changed file opens in Explorer too.
     const panelHost = useUnifiedPanelHost();
     const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
+    const editorRevealTarget = useMemo<DiffEditorPosition | null>(() => searchTarget && showEditor
+        && (searchTarget.side !== 'old' || viewMode === 'split')
+        ? { side: searchTarget.side === 'old' ? 'original' : 'modified', line: searchTarget.line, column: searchTarget.startColumn }
+        : definitionReveal, [searchTarget, showEditor, viewMode, definitionReveal]);
     const [definitionBack, setDefinitionBack] = useState<DiffEditorPosition[]>([]);
     // A return from Explorer may land after this diff unmounted.
     const mountedRef = useRef(true);
@@ -343,6 +376,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: [], target, side });
         if (!route) return false;
+        setDismissedSearchTarget(contentSearchTarget ?? null);
         if (route.kind === 'same-file') {
             const origin = monacoViewerRef.current?.capturePosition(route.side);
             if (origin) setDefinitionBack(stack => [...stack, origin].slice(-50));
@@ -356,17 +390,18 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             route, workspaceId, ownerRoutingRef: ownerRoute, panelHost,
             returnTo: {
                 label: `${stage === 'staged' ? 'Staged' : 'Unstaged'} · ${relativePath.split('/').pop()}`,
-                restore: () => { if (mountedRef.current && origin) setDefinitionReveal(origin); },
+                restore: () => { if (mountedRef.current && origin) { setDismissedSearchTarget(contentSearchTarget ?? null); setDefinitionReveal(origin); } },
             },
         });
-    }, [workspaceId, relativePath, ownerRoute, panelHost, stage]);
+    }, [workspaceId, relativePath, ownerRoute, panelHost, stage, contentSearchTarget]);
 
     const goBackFromDefinition = useCallback(() => {
         const origin = definitionBack[definitionBack.length - 1];
         if (!origin) return;
+        setDismissedSearchTarget(contentSearchTarget ?? null);
         setDefinitionBack(stack => stack.slice(0, -1));
         setDefinitionReveal(origin);
-    }, [definitionBack]);
+    }, [definitionBack, contentSearchTarget]);
     const handleDefinitionBackKey = useCallback((event: React.KeyboardEvent) => {
         if (!definitionBack.length || event.key !== 'ArrowLeft' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         event.preventDefault();
@@ -389,7 +424,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const hasScrolledRef = useRef(false);
     useEffect(() => {
         // The Monaco viewer applies initialHunkTarget itself once its diff is computed.
-        if (!initialHunkTarget || !diff || loading || !classicActive || hasScrolledRef.current) return;
+        if (searchTarget || !initialHunkTarget || !diff || loading || !classicActive || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -403,20 +438,19 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading, classicActive]);
+    }, [searchTarget, initialHunkTarget, diff, loading, classicActive]);
 
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, destinationId: attachmentDestinationId, filePath: relativePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
         [workspaceId, attachmentDestinationId, relativePath, stage],
     );
 
-    const diffContext = stage !== 'untracked'
-        ? { repositoryId: workspaceId, filePath, oldRef: stage === 'staged' ? 'HEAD' : 'INDEX', newRef: 'working-tree' as const }
-        : null;
+    const diffContext = workingTreeCommentContext(workspaceId, filePath, stage);
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
+    const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     const patchGeneration = useRef(0);
     useEffect(() => () => { patchGeneration.current++; }, []);
@@ -436,13 +470,14 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             : cloneClient.git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full });
         request.then(data => {
             if (generation !== patchGeneration.current) return;
+            setLoadedPatchKey(patchContentKey);
             setDiff(data.diff ?? ''); setTruncated(!!data.truncated); setTotalLines(data.totalLines ?? 0); setError(null);
         }).catch(err => {
             if (generation !== patchGeneration.current) return;
             if (stage === 'untracked' && err.status === 404) handlePreviewNotFound();
             setError(err.message || 'Failed to load diff');
         }).finally(() => { if (generation === patchGeneration.current) setLoading(false); });
-    }, [workspaceId, filePath, stage, previewUntracked, cloneClient, handlePreviewNotFound]);
+    }, [workspaceId, filePath, stage, previewUntracked, cloneClient, handlePreviewNotFound, patchContentKey]);
 
     useEffect(() => {
         setFullRequested(false);
@@ -517,6 +552,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (revealFileComment(scrollContainerRef.current, comment as DiffComment)) return;
         if (showEditor) {
             monacoViewerRef.current?.revealComment(comment.id);
             return;
@@ -646,8 +682,17 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             File has unstaged changes — edit it in the Unstaged diff.
                         </div>
                     )}
+                    <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
+                    {searchOutsidePatch && (
+                        <div className="flex items-center gap-2 px-4 py-2 text-xs" role="status" data-testid="search-outside-patch">
+                            <span>{searchTarget.side.toUpperCase()} line {searchTarget.line} is outside the displayed diff.</span>
+                            <Button variant="secondary" size="sm" onClick={() => { retryEditor(); setDiffEngine('monaco'); }}>
+                                Open in Editor view
+                            </Button>
+                        </div>
                     )}
                     {stage === 'untracked' && fileMissing ? (
                         <div
@@ -686,7 +731,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             historicalDefinitions
                             routingRef={ownerRoute}
                             onNavigateDefinition={handleNavigateDefinition}
-                            revealTarget={definitionReveal}
+                            revealTarget={editorRevealTarget}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
                             editedText={editedText}
@@ -694,10 +739,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             original={editorSides.base.content}
                             modified={editorSides.head.content}
                             viewMode={viewMode}
-                            initialHunkTarget={initialHunkTarget}
+                            initialHunkTarget={searchTarget || definitionReveal ? undefined : initialHunkTarget}
                             onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                             onEditorError={handleEditorError}
-                            comments={comments}
+                            comments={lineComments}
                             renderCommentThread={renderCommentThread}
                             onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                             onAskAI={handleAskAIDiff}
@@ -724,7 +769,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     fileName={filePath}
                                     enableComments={stage !== 'untracked'}
                                     showLineNumbers
-                                    comments={comments}
+                                    matchRangesByLine={classicMatchRanges}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}
@@ -740,7 +786,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     fileName={filePath}
                                     enableComments={stage !== 'untracked'}
                                     showLineNumbers
-                                    comments={comments}
+                                    matchRangesByLine={classicMatchRanges}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}

@@ -89,7 +89,10 @@ header's all-diffs button opens the `working-tree-all` view
 (`WorkingTreeAllFilesDiff`, deep link `working-changes`): the shared `ReviewFiles`
 navigator with one full `WorkingTreeFileDiff`. Stage labels and repository/stage/path
 selection IDs separate partially staged paths in every layout. Untracked text renders
-against an empty base; binary/oversized files retain the preview. The full-diff action
+against an empty base; binary/oversized files retain the preview. Paired content
+and Classic patches compare HEAD/index for staged files and index/disk for unstaged
+files. Rename base paths follow the requested stage, so staged rename metadata
+cannot redirect an unstaged index read to the old HEAD path. The full-diff action
 opens the existing single-file route. Owner/endpoint changes replace the host; refresh
 retains dirty buffers, including files removed from the latest change list. Internal
 navigation uses `useDirtyDetailGuard`; mutable changes omit viewed-state controls.
@@ -156,6 +159,21 @@ and drag capabilities keep Git revision attachments and PR classification/visite
 markers consumer-owned. Optional file IDs separate selection from displayed paths;
 mutable hosts can guard navigation and retain selection while an editor is dirty.
 Each host keys the shell by owner and comparison identity.
+Optional `rowMenu(file, anchor)` items open from right-click, Menu key or
+Shift+F10 on the clicked row without changing selection; `anchor` carries the
+menu point and the row for focus return. Commit/branch (`GitFileReview`) and
+working-tree hosts supply **Open file** (`changedFileSource.ts`): the row's
+current working copy as a raw-source file tab for the diff's owner and clone
+route, or the owner's Explorer deep link without a panel. Renames open the new
+path; deletions disable the action. They also supply **Comment**
+(`fileCommentComposer.tsx`): the shared `InlineCommentPopup` composes a
+file-level comment on that row's file — the source's `commentContext(path)`
+(working tree: `workingTreeCommentContext`, none for untracked rows) posted
+through the source's owner route with `scope: 'file'` and no selection.
+Renames use the new path; deletions keep their path. Save failures keep the
+draft and show the error; save or cancel returns focus to the row. A saved
+comment posts `git-review-comments-updated` on the pop-out channel so open
+`useDiffComments` / `useReviewComments` views re-read.
 Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
 patch/content loaders, comment context and transport; the supplied paths replace
 the source’s fallback file-list loader. PR mobile/patch-only views retain the slim
@@ -184,16 +202,107 @@ order before review updates. Hide-viewed retains a marked last file without wrap
 failed async toggles and superseded owner/selection completions cannot navigate.
 PR progress keeps its existing local update and debounced persistence lifecycle.
 
+### Review content search
+
+`features/git/diff/reviewContentSearch.ts` compiles browser-side queries for
+full old/new text independently of patch hunks. It shares Explorer's query-mode
+type, uses Unicode whole-word boundaries, and evaluates regexes per source line.
+Matches carry side, one-based line and UTF-16 columns, and the full line text;
+matching has no size or result caps. Null denotes an absent side. Compilation
+returns a query error for invalid regexes.
+
+`reviewContentSearchGlob.ts` shares Explorer's comma-separated include parsing
+and compiles browser-only path predicates before content loads. Empty includes
+accept all files; patterns are ORed, case-sensitive and include dotfiles. `*`,
+`?`, character classes and whole-segment `**` are supported. Bare patterns match
+filenames at any depth; slash-containing or `/`/`./`-prefixed patterns are rooted
+at the review. File paths normalize Windows separators. Invalid classes/escapes
+return an error without a predicate.
+
+`reviewContentSearchController.ts` owns a single review's transient content cache
+and subscribable snapshots. Hosts supply owner/comparison-scoped file IDs and an
+existing per-call clone-routed paired-content loader. Searches lazily run four
+reads at a time, cache successful reads and skip outcomes across query changes, and
+report completed attempts among included files. Stop prevents further dispatch;
+in-flight reads settle into the cache. Binary/oversized responses become skips;
+load failures remain errors until explicit Retry.
+
+Queries and side/include filters apply to the latest replies. Disposal clears
+state and suppresses late results; replacing the controller isolates owners,
+comparisons and mutable refreshes.
+
+`ReviewContentSearchPanel.tsx` subscribes to that controller and reuses Explorer's
+`SearchBar` for query modes. It owns transient query/side/include controls,
+compiles include globs before dispatch, and renders file-grouped side/line matches,
+highlighted snippets, progress, Stop, skips and retryable errors. Row activation
+and query Enter send the exact file ID and side-local match coordinates to the
+host. `ReviewFiles` accepts an optional `contentSearch` capability with that controller
+and navigation callback. The live, default-off `useDiffContentSearchEnabled` hook
+gates its Files/Search switch and toolbar action. Switching modes retains panel
+controls and cached reads independently of file-list filters. Result activation
+uses the navigation guard, clears file-list filters, selects the exact file ID and
+leaves overview before calling the host; the search query remains intact. Disabling the flag
+unmounts the panel and stops new dispatch; hosts own controller disposal and must
+replace it on owner, comparison or mutable refresh changes. The panel is keyed by
+review identity. Hosts without the capability keep their file navigator.
+
+`GitFileReview` supplies this capability for inline and pop-out commit and branch
+reviews. Its controller uses the source's existing paired-content loader
+with per-call clone routing. Concrete owner, endpoint, comparison, source key and
+resolved refs scope the host; changed file IDs replace and dispose the controller
+without resetting file filters. Equivalent metadata rerenders reuse the cache.
+Each activation forwards a fresh file-qualified target to `FileDiffPanel`; ordinary
+selection and external file routes clear it. Controlled route echoes preserve it.
+
+`PrFilesPanel` owns the same controller and target for inline PR files. Its identity
+includes owner/endpoint, source refs, head, origin-qualified progress and classification.
+`useReviewContentSearchController` shares effect-owned cache/disposal lifetimes;
+file inventories and refreshed combined patches replace its controller. A mobile
+result temporarily uses `FileDiffPanel` for exact-side navigation and Classic's
+Editor fallback; ordinary file navigation restores the slim mobile renderer.
+
+`PrReviewContent` supplies the pop-out layout and `PopOutFilePanel` with the same
+optional search capability. The rail retains its classification/priority/viewed
+controls in Files mode and query/cache in Search mode. Repeated result activation
+uses explicit navigation rather than the rail's toggle-selection action. Source,
+detail and diff loads retain the concrete clone owner; owner, endpoint, PR, origin,
+base/head and file inventory changes revoke the controller and target.
+
+`WorkingTreeAllFilesDiff` supplies stage/repository/path IDs and readable stage
+labels to the controller, loading through the owner's existing working-content
+API. Refresh/retry and inventory changes revoke cached replies without replacing
+dirty editors. Result navigation uses the dirty guard before forwarding targets
+to `WorkingTreeFileDiff`; both engines reveal the matching side, and Classic
+offers Editor for lines outside its current patch. Loaded-patch keys exclude
+retained stale patches from coordinate resolution.
+
+`useReviewContentSearchShortcut` tags enabled review roots and captures
+Ctrl/Cmd+Shift+F before Monaco; the repo-wide shortcut yields only inside the
+innermost enabled review. Repeating it focuses/selects the retained query. F3 and
+Shift+F3 traverse file-ordered old/new matches, wrap and continue from clicked
+results even in Files mode. The panel handles cancelable root-local step events;
+empty/invalid searches leave F3 untouched. Owner changes and unmount remove handlers.
+
+`FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
+objects reveal the side-local line/column after that file's models load, overriding
+hunk navigation. Old-side Editor jumps select split layout so the original buffer
+is visible; identical snapshots also open an editor when a target exists. Classic
+maps source lines through `createDiffLineIndexResolver`, reveals virtualized rows
+and highlights the match. Search targets bypass hunk classification filters;
+lines outside the displayed patch offer Editor with the same target. Hosts clear
+targets on ordinary navigation; later definition jumps supersede search jumps.
+
 ### Shared file diff sources
 
 `features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with
 patch URLs plus an optional paired-content loader. Each loader resolves
-`getCocClientForWorkspace(workspaceId)` when called, so a remote clone route that
+its owner client when called, so a remote clone route that
 becomes available after source construction is honored. Branch-range loaders carry
 the selected base mode. PR loaders use the origin-scoped content API with workspace
 and repo clone-selection metadata, and the source cache identity includes the head SHA. Commit and branch factories
 accept an optional concrete `routingTarget` separately from the raw workspace
-payload; explicit null selects page origin and unresolved remote owners fail.
+payload; PR factories also accept it and include optional base SHA in cache/ref
+identity. Explicit null selects page origin and unresolved remote owners fail.
 `useFileDiff` aborts superseded reads and rejects delayed generations; patch cache
 keys include owner endpoint, and abandoned requests cannot populate the cache.
 
@@ -276,6 +385,15 @@ keeps the shared language document on the editor's text: edits go out as
 `didChange`, the buffer is marked saved once the editor matches disk again (save or
 dropped edits), and unmounting with unsaved edits puts disk text back. A buffer that
 diverged elsewhere (unsaved explorer edit) is never written; features stay off.
+
+File-level comments (`scope: 'file'`, no `selection`, empty `selectedText`)
+never reach line viewers: `FileDiffPanel` and `WorkingTreeFileDiff` split them
+off with `splitFileComments` and show them as `CommentCard`s in a "File
+comments" region above the diff in both engines; sidebar clicks reveal that
+card. Counts, the sidebar and CRUD include them; prompts and
+`diffCommentLocation` call them `whole file` and sort them before line
+comments. The diff-comments POST accepts `scope: 'file'` only without a
+selection.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
