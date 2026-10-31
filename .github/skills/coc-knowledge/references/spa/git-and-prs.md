@@ -208,6 +208,14 @@ Matches carry side, one-based line and UTF-16 columns, and the full line text;
 matching has no size or result caps. Null denotes an absent side. Compilation
 returns a query error for invalid regexes.
 
+`reviewContentSearchGlob.ts` shares Explorer's comma-separated include parsing
+and compiles browser-only path predicates before content loads. Empty includes
+accept all files; patterns are ORed, case-sensitive and include dotfiles. `*`,
+`?`, character classes and whole-segment `**` are supported. Bare patterns match
+filenames at any depth; slash-containing or `/`/`./`-prefixed patterns are rooted
+at the review. File paths normalize Windows separators. Invalid classes/escapes
+return an error without a predicate.
+
 `reviewContentSearchController.ts` owns a single review's transient content cache
 and subscribable snapshots. Hosts supply owner/comparison-scoped file IDs and an
 existing per-call clone-routed paired-content loader. Searches lazily run four
