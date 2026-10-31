@@ -9,7 +9,7 @@
  * `jsonrpc: "2.0"` envelope.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { PassThrough, Writable } from 'node:stream';
@@ -90,6 +90,33 @@ describe('CodexSDKService.getAccountQuota — app-server stdio RPC', () => {
         // Default: no unpacked native binary (dev / global install) → the code
         // falls back to `<node> codex.js`. Tests override for packaged builds.
         mockResolveCodexExec.mockReturnValue(undefined);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('keeps the quota RPC bounded to 10 seconds and cleans up on timeout', async () => {
+        vi.useFakeTimers();
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+        const svc = new CodexSDKService();
+        const promise = svc.getAccountQuota();
+        const rejected = expect(promise).rejects.toThrow('Codex app-server stdio RPC timed out');
+        await flushMicrotasks();
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(child.kill).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await rejected;
+
+        expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+        expect(vi.getTimerCount()).toBe(0);
+        expect(child.listenerCount('exit')).toBe(0);
+        expect(child.listenerCount('error')).toBe(0);
+        expect(child.stdout.listenerCount('data')).toBe(0);
+        expect(child.stderr.listenerCount('data')).toBe(0);
+        svc.dispose();
     });
 
     it('starts the app-server over stdio and returns mapped quota without daemon start', async () => {
