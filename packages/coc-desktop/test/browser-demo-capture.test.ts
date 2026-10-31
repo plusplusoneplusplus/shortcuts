@@ -193,6 +193,12 @@ describe('demo capture queue', () => {
 });
 
 describe('demo redaction', () => {
+    it('redacts opaque alphabetic identifiers without requiring a known prefix or digits', () => {
+        const opaque = 'abcdefghijklmnopqrstuvwxyzabcdef';
+        expect(redactDemoText(`Account ${opaque}`)).toBe('Account [token]');
+        expect(redactDemoUrl(`https://${opaque}.fixture.test:8443/${opaque}`))
+            .toBe('https://redacted.fixture.test:8443/{id}');
+    });
     it.each(['sk-abcdefghijklmnopqrstuvwxyz', 'ghp_abcdefghijklmnopqrstuvwxyz', 'github_pat_abcdefghijklmnopqrstuvwxyz', 'xoxb-abcdefghijklmnopqrstuvwxyz'])(
         'redacts alphabetic credential %s from every captured metadata surface', credential => {
             expect(redactDemoText(`Key ${credential}`)).toBe('Key [token]');
@@ -222,7 +228,7 @@ describe('demo redaction', () => {
         expect(redactDemoText('Card 4111 1111 1111 1111')).toBe('Card [number]');
         expect(redactDemoText('key ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3')).toBe('key [token]');
         expect(redactDemoText('Save\n\tchanges')).toBe('Save changes');
-        expect(redactDemoText('x'.repeat(500))).toHaveLength(120);
+        expect(redactDemoText('safe '.repeat(500))).toHaveLength(120);
     });
 });
 

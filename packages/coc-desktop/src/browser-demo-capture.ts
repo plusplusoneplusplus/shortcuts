@@ -181,11 +181,11 @@ export function redactDemoText(value: string, maximum = MAX_LABEL): string {
         .replace(/[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/g, '[email]')
         .replace(new RegExp(KNOWN_CREDENTIAL.source, 'g'), '[token]')
         .replace(/\+?\d[\d -]{6,}\d/g, '[number]')
-        .replace(/\b(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{24,}\b/g, '[token]')
+        .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[token]')
         .replace(/\s+/g, ' ').trim().slice(0, maximum);
 }
 
-const SECRET_SEGMENT = /^(?:[0-9a-f]{16,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=.*\d)[A-Za-z0-9_\-]{24,}|\d{6,})$/i;
+const SECRET_SEGMENT = /^(?:[0-9a-f]{16,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9_-]{24,}|\d{6,})$/i;
 
 /**
  * Credential-free URL: no user info, query values or fragment parameters, and opaque path
@@ -204,7 +204,8 @@ export function redactDemoUrl(value: string): string | undefined {
     const query = names.length ? `?${names.map(name => `${name}=…`).join('&')}` : '';
     // Client routes (#/inbox) are page context; anything with parameters may be a token.
     const hash = /^#\/[\w\-/.]*$/.test(url.hash) && !url.hash.split('/').some(segment => SECRET_SEGMENT.test(segment) || KNOWN_CREDENTIAL.test(segment)) ? url.hash : '';
-    const host = url.host.split('.').map(part => SECRET_SEGMENT.test(part) || KNOWN_CREDENTIAL.test(part) ? 'redacted' : part).join('.');
+    const hostname = url.hostname.split('.').map(part => SECRET_SEGMENT.test(part) || KNOWN_CREDENTIAL.test(part) ? 'redacted' : part).join('.');
+    const host = `${hostname}${url.port ? `:${url.port}` : ''}`;
     return `${url.protocol}//${host}${path}${query}${hash}`.slice(0, 400);
 }
 

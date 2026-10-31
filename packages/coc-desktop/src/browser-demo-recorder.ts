@@ -211,7 +211,12 @@ export class BrowserDemoRecorders {
      */
     reserveChild(ownerId: number, openerViewId: string, viewId = `browser-${randomUUID()}`): string | undefined {
         const demo = this.member(ownerId, openerViewId);
-        if (!demo || demo.stopping || demo.session.state === 'stopped' || demo.pending.size >= 16) return undefined;
+        if (!demo || demo.stopping || demo.session.state === 'stopped') return undefined;
+        if (demo.pending.size >= 16) {
+            demo.session.gap(openerViewId, 'tab-limit');
+            this.emit(demo);
+            return undefined;
+        }
         const timer = setTimeout(() => {
             if (!demo.pending.delete(viewId) || this.demos.get(demo.session.id) !== demo) return;
             demo.session.gap(openerViewId, 'tab-not-opened');

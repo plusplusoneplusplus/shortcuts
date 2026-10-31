@@ -42,6 +42,15 @@ function harness(options: { failStart?: (viewId: string) => Error | undefined; p
 afterEach(() => vi.useRealTimers());
 
 describe('BrowserDemoRecorders start and ownership', () => {
+    it('reports the pending-child bound instead of silently omitting excess tabs', async () => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        for (let index = 0; index < 16; index++) expect(h.recorders.reserveChild(1, 'root')).toBeTruthy();
+        expect(h.recorders.reserveChild(1, 'root')).toBeUndefined();
+        expect(h.recorders.draft(1, id).steps.at(-1)).toMatchObject({ type: 'gap', reason: 'tab-limit' });
+        await h.recorders.release(1, id);
+    });
     it('reserves a starting owner and revokes a late handshake when its window closes', async () => {
         let finish!: () => void;
         const startWait = new Promise<void>(resolve => { finish = resolve; });

@@ -167,6 +167,13 @@ export class BrowserDemoSession {
     }
 
     private push(viewId: string, step: StepInput): void {
+        if (this.steps.length >= BROWSER_DEMO_LIMITS.steps) {
+            this.incomplete = true;
+            if (this.steps.length === BROWSER_DEMO_LIMITS.steps) {
+                this.steps.push({ type: 'gap', reason: 'step-limit', id: this.nextId++, at: this.now(), viewId });
+            }
+            return;
+        }
         this.steps.push({ ...step, id: this.nextId++, at: this.now(), viewId } as BrowserDemoStep);
     }
 }

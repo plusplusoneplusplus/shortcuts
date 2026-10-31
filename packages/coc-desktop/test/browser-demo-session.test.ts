@@ -10,6 +10,17 @@ function session(clock = { now: 0 }) {
 }
 
 describe('BrowserDemoSession', () => {
+    it('bounds lifecycle gaps as well as actions, retaining one terminal limit marker', () => {
+        const demo = session();
+        demo.addTab('root', { url: 'https://fixture.test/', title: 'Fixture' });
+        for (let index = 0; index < BROWSER_DEMO_LIMITS.steps * 2; index++) {
+            demo.pause();
+            demo.resume();
+        }
+        expect(demo.snapshot().steps).toHaveLength(BROWSER_DEMO_LIMITS.steps + 1);
+        expect(demo.snapshot().steps.at(-1)).toMatchObject({ type: 'gap', reason: 'step-limit' });
+        expect(demo.snapshot().incomplete).toBe(true);
+    });
     it('tracks recursive descendants with opener lineage and ignores unrelated tabs', () => {
         const demo = session();
         expect(demo.addTab('root', { url: 'https://a.test/?t=secret', title: 'A' })).toBe(true);
