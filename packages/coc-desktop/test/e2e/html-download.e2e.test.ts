@@ -112,7 +112,8 @@ describe.skipIf(skip)('HTML preview downloads (real sandboxed Electron)', () => 
         expect(suggestion).toBeTruthy();
         expect(suggestion).not.toMatch(/[/\\<>:"|?*\x00-\x1f\x7f]/);
         expect(suggestion).not.toMatch(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i);
-        expect(suggestion).toBe(record!.filename);
+        // Completion names the user's selected destination, not the suggestion.
+        expect(record!.filename).toBe(`renamed-${id}.saved`);
         if (id === 'blob-csv') expect(suggestion).toBe('雪.csv');
         if (id === 'data-csv') expect(suggestion).toBe('Unicode.csv');
         if (id === 'blob-empty') expect(record!.savedSize).toBe(0);
