@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import { StrictMode } from 'react';
 import { BrowserDemoReview } from '../../../../src/server/spa/client/react/shared/file-path/BrowserDemoReview';
 import { listBrowserDemos, resetBrowserDemosForTest, runBrowserDemoCommand } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 import {
@@ -115,6 +116,12 @@ describe('browser demo attachment', () => {
 });
 
 describe('browser demo review', () => {
+    it('loads the stopped action list through React Strict Mode effect replay', async () => {
+        await runBrowserDemoCommand({ action: 'list' });
+        render(<StrictMode><BrowserDemoReview demoId="demo-1" client={client()} onClose={vi.fn()} /></StrictMode>);
+        expect(await screen.findAllByTestId('browser-demo-review-step')).toHaveLength(6);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
     it('edits stay local and survive closing and reopening the review; nothing is sent before Send', async () => {
         const { unmount } = await mount();
         fireEvent.click(screen.getByRole('button', { name: 'Remove step 2' }));

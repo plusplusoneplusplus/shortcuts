@@ -30,11 +30,12 @@ const PAUSE_TEXT: Record<string, string> = {
  * page content, so pages cannot spoof or hide them.
  */
 export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, ready, active, onReview }: BrowserDemoStripProps) {
-    const demo = useSyncExternalStore(subscribeBrowserDemos,
+    const viewDemo = useSyncExternalStore(subscribeBrowserDemos,
         useCallback(() => getBrowserDemoForView(routingRef, viewId), [routingRef, viewId]), () => null);
     const owner = workspaceId && processId ? { workspaceId, processId, routingRef } : null;
     const ownerDemo = useSyncExternalStore(subscribeBrowserDemos,
         useCallback(() => owner ? getBrowserDemoForOwner(owner) : null, [workspaceId, processId, routingRef]), () => null);
+    const demo = viewDemo ?? (ownerDemo?.status === 'stopped' ? ownerDemo : null);
     const [error, setError] = useState<{ viewId: string; text: string } | null>(null);
     const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
     const [pending, setPending] = useState(false);

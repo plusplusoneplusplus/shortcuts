@@ -5,6 +5,7 @@ import {
     getBrowserDemoForOwner, isBrowserDemoCapturingChat, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { getBrowserDemoEdits, setBrowserDemoEdits } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo-review';
 
 const mock = vi.hoisted(() => ({
     flag: true,
@@ -40,6 +41,34 @@ beforeEach(() => {
 afterEach(() => { cleanup(); resetBrowserDemosForTest(); });
 
 describe('browser demo record controls', () => {
+    it('recovers a stopped demo from another tab without adding unrelated pages', () => {
+        const onReview = vi.fn();
+        mount({ viewId: 'new-tab', onReview });
+        push(state({ status: 'stopped', viewIds: [] }));
+        fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+        expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ id: 'demo-1' }));
+        expect(mock.command.mock.calls.map(([command]) => command.action)).not.toContain('add-tab');
+        cleanup();
+        mount({ viewId: 'new-tab', processId: 'other-chat' });
+        expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
+    });
+
+    it.each(['discard', 'sent'] as const)('deletes review annotations when %s happens outside the review dialog', async action => {
+        mount();
+        push(state({ status: 'stopped' }));
+        setBrowserDemoEdits('demo-1', { removed: [1], notes: { 2: 'Example explanation' }, examples: {}, message: 'Explain' });
+        await runBrowserDemoCommand({ action, id: 'demo-1' });
+        expect(getBrowserDemoEdits('demo-1')).toEqual({ removed: [], notes: {}, examples: {}, message: '' });
+    });
+
+    it('deletes annotations when the owning desktop reports that a demo ended', () => {
+        mount();
+        push(state({ status: 'stopped' }));
+        setBrowserDemoEdits('demo-1', { removed: [], notes: { 2: 'Example explanation' }, examples: {}, message: 'Explain' });
+        push(state({ ended: 'discarded' }));
+        expect(getBrowserDemoEdits('demo-1').notes).toEqual({});
+    });
+
     it.each(['recording', 'paused', 'stopped'] as const)('warns before unloading an unsent %s demo and clears the guard on discard', async status => {
         mount();
         push(state({ status }));
@@ -101,7 +130,7 @@ describe('browser demo record controls', () => {
         cleanup();
         mount({ viewId: 'two' });
         push(state({ status: 'stopped', viewIds: ['one'] }));
-        expect(screen.getByRole('button', { name: 'Record demo' }).title).toContain('Review or discard');
+        expect(screen.getByText('Demo ready to review · 0 steps · 1 tab')).toBeTruthy();
     });
 
     it('reports an older desktop explicitly instead of hiding the feature', () => {

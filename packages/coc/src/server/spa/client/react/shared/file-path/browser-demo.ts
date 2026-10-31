@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { desktopBrowserBridge, type BrowserDemoCommand, type BrowserDemoCommandResult, type BrowserDemoOwner, type BrowserDemoState, type DesktopBrowserDemo } from './browser-bridge';
+import { clearBrowserDemoEdits } from './browser-demo-review';
 
 /**
  * This window's live browser demo states, mirrored from desktop main. Main
@@ -31,7 +32,10 @@ const notify = () => {
 };
 
 function apply(state: BrowserDemoState): void {
-    if (state.ended) states.delete(state.id);
+    if (state.ended) {
+        states.delete(state.id);
+        clearBrowserDemoEdits(state.id);
+    }
     else states.set(state.id, state);
     notify();
 }
@@ -148,8 +152,12 @@ export async function runBrowserDemoCommand(command: BrowserDemoCommand): Promis
         // result does not see the recording state that main's state event replaces later.
         const stopped = command.action === 'stop' ? states.get(command.id) : undefined;
         if (stopped && stopped.status !== 'stopped') apply({ ...stopped, status: 'stopped', pauseReason: undefined });
-        if ((command.action === 'discard' || command.action === 'sent') && states.delete(command.id)) notify();
+        if (command.action === 'discard' || command.action === 'sent') {
+            clearBrowserDemoEdits(command.id);
+            if (states.delete(command.id)) notify();
+        }
     } else if (result.reason === 'not-found' && 'id' in command && states.delete(command.id)) {
+        clearBrowserDemoEdits(command.id);
         notify();
     }
     return result;

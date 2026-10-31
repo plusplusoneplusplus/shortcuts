@@ -44,7 +44,10 @@ export function BrowserDemoReview({ demoId, client, onClose }: BrowserDemoReview
     const [pending, setPending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mounted = useRef(true);
-    useEffect(() => () => { mounted.current = false; }, []);
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
 
     const load = useCallback(() => {
         setLoadError(null);
