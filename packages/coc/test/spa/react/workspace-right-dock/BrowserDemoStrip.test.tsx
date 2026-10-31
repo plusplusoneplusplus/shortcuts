@@ -40,6 +40,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); resetBrowserDemosForTest(); });
 
 describe('browser demo record controls', () => {
+    it.each(['recording', 'paused', 'stopped'] as const)('warns before unloading an unsent %s demo and clears the guard on discard', async status => {
+        mount();
+        push(state({ status }));
+        const event = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+        await runBrowserDemoCommand({ action: 'discard', id: 'demo-1' });
+        const cleared = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(cleared);
+        expect(cleared.defaultPrevented).toBe(false);
+    });
+
+    it('removes the unload guard on Send and keeps warnings after panel unmount', async () => {
+        const view = mount();
+        push(state({ status: 'stopped' }));
+        view.unmount();
+        const event = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+        await runBrowserDemoCommand({ action: 'sent', id: 'demo-1' });
+        const cleared = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(cleared);
+        expect(cleared.defaultPrevented).toBe(false);
+    });
+
     it('starts a recording for the exact tab owner and shows the recording indicator', async () => {
         mock.command.mockImplementation(async (command: { action: string }) => command.action === 'start' ? { ok: true, state: state() } : { ok: true, drafts: [] });
         mount();

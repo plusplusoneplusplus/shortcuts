@@ -9,8 +9,26 @@ import { desktopBrowserBridge, type BrowserDemoCommand, type BrowserDemoCommandR
 const states = new Map<string, BrowserDemoState>();
 const listeners = new Set<() => void>();
 let attached: { demo: DesktopBrowserDemo; off: () => void } | null = null;
+let unloadGuardAttached = false;
 
-const notify = () => { for (const listener of listeners) listener(); };
+function beforeUnload(event: BeforeUnloadEvent): void {
+    if (!states.size) return;
+    event.preventDefault();
+    event.returnValue = 'Unsent browser demos will be discarded.';
+}
+
+const notify = () => {
+    if (typeof window !== 'undefined') {
+        if (states.size && !unloadGuardAttached) {
+            window.addEventListener('beforeunload', beforeUnload);
+            unloadGuardAttached = true;
+        } else if (!states.size && unloadGuardAttached) {
+            window.removeEventListener('beforeunload', beforeUnload);
+            unloadGuardAttached = false;
+        }
+    }
+    for (const listener of listeners) listener();
+};
 
 function apply(state: BrowserDemoState): void {
     if (state.ended) states.delete(state.id);
@@ -143,4 +161,6 @@ export function resetBrowserDemosForTest(): void {
     attached = null;
     states.clear();
     listeners.clear();
+    if (unloadGuardAttached) window.removeEventListener('beforeunload', beforeUnload);
+    unloadGuardAttached = false;
 }

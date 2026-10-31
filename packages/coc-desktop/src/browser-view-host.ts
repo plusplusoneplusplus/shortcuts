@@ -73,14 +73,45 @@ function ownWindow(sender: WebContents): BrowserWindow | null {
     return window && !window.isDestroyed() && window.webContents === sender ? window : null;
 }
 
+function confirmDiscardBrowserDemos(window?: BrowserWindow): boolean {
+    const drafts = manager?.demos.unsent(window?.webContents.id) ?? [];
+    if (!drafts.length) return true;
+    const options = {
+        type: 'warning' as const, title: 'Unsent browser demos',
+        message: `Discard ${drafts.length === 1 ? 'the unsent browser demo' : `${drafts.length} unsent browser demos`}?`,
+        detail: 'Recordings and review edits are kept only in memory. Closing, reloading or quitting deletes them. Cancel to return and send or discard them yourself.',
+        buttons: ['Cancel', 'Discard demos and continue'], defaultId: 0, cancelId: 0, noLink: true,
+    };
+    return (window ? dialog.showMessageBoxSync(window, options) : dialog.showMessageBoxSync(options)) === 1;
+}
+
+/** Check every owning window before shutdown disposes its memory-only demos. */
+export function confirmBrowserDemoQuit(): boolean {
+    return confirmDiscardBrowserDemos();
+}
+
 function wireOwner(window: BrowserWindow): void {
     const id = window.webContents.id;
     if (owners.has(id)) { return; }
     owners.set(id, window);
     const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
+    let closeApproved = false;
+    window.on('close', event => {
+        closeApproved = false;
+        if (!manager?.demos.unsent(id).length) return;
+        closeApproved = confirmDiscardBrowserDemos(window);
+        if (!closeApproved) event.preventDefault();
+    });
+    window.webContents.on('will-prevent-unload', event => {
+        const approved = closeApproved;
+        closeApproved = false;
+        if (approved || manager?.demos.unsent(id).length && confirmDiscardBrowserDemos(window)) {
+            event.preventDefault();
+        }
+    });
     // Reload closes guests without emitting onClosed into the next SPA document.
     window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) { cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
+        if (isMainFrame && !isInPlace) { closeApproved = false; cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
     });
     window.webContents.on('render-process-gone', () => {
         cancelControl(id);
