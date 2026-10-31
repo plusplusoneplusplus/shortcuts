@@ -19,7 +19,9 @@
  * (test/e2e/html-page.e2e.test.ts) covers native guest behavior.
  */
 
-import { BrowserWindow, type WebContents, session, shell, webContents } from 'electron';
+import { app, BrowserWindow, dialog, type WebContents, session, shell, webContents } from 'electron';
+import { manageElectronDownload } from './electron-downloads';
+import { type BrowserDownloadStore } from './browser-downloads';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost, type FileViewRequest } from './browser-host-contract';
 import type { BrowserViewState } from './browser-view-policy';
 import { classifyHtmlPageNavigation, classifyHtmlPageWindowOpen, htmlPageFileUrl, type HtmlPageBounds } from './html-page-policy';
@@ -238,6 +240,55 @@ function setBounds(entry: FileEntry, bounds: HtmlPageBounds | null): void {
 
 export class ElectronFilePreviewHost implements FilePreviewHost {
     private readonly entries = new Set<FileEntry>();
+    private downloadSession?: Electron.Session;
+
+    constructor(private readonly downloads?: BrowserDownloadStore) {}
+
+    private readonly willDownload = (event: Electron.Event, item: Electron.DownloadItem, guest?: WebContents) => {
+        const entry = [...this.entries].find(value => value.contents === guest);
+        const approval = guest && this.requestDownload(guest, item.getURL());
+        // Reject before Chromium can show its default dialog or choose a path.
+        if (!entry || !approval) { event.preventDefault(); return; }
+        const fail = (error: string) => {
+            if (!entry.closed && !approval.signal.aborted && entry.shown && !entry.owner.isDestroyed()
+                && isBrowserEmbedder(entry.owner)) {
+                entry.sink.download({ viewId: entry.viewId, url: 'Local or private source', ok: false, error });
+            }
+        };
+        const owner = BrowserWindow.fromWebContents(entry.owner);
+        if (!this.downloads || !owner || owner.isDestroyed()) {
+            event.preventDefault();
+            fail('Download management is unavailable.');
+            approval.cancel();
+            return;
+        }
+        try {
+            if (manageElectronDownload(this.downloads, item, app.getPath('downloads'), {
+                ...approval,
+                chooseDestination: defaultPath => dialog.showSaveDialogSync(owner, {
+                    title: 'Save As', defaultPath,
+                    // Native overwrite confirmation; Linux portals need the explicit hint.
+                    properties: ['showOverwriteConfirmation', 'createDirectory'],
+                }),
+            })) return;
+            event.preventDefault();
+            // Adapter retires the lease on rejected admission; this notice has no private result.
+            if (!entry.closed && entry.shown && !entry.owner.isDestroyed() && isBrowserEmbedder(entry.owner)) {
+                entry.sink.download({ viewId: entry.viewId, url: 'Local or private source', ok: false,
+                    error: 'Too many active downloads or desktop is shutting down.' });
+            }
+        } catch {
+            event.preventDefault();
+            fail('Unable to start the download. Try Download again.');
+            approval.cancel();
+        }
+    };
+
+    private installDownloads(profile: Electron.Session): void {
+        if (this.downloadSession) return;
+        this.downloadSession = profile;
+        profile.on('will-download', this.willDownload);
+    }
 
     async create(request: FileViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView> {
         const sender = webContents.fromId(request.ownerId);
@@ -247,8 +298,10 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
             throw new BrowserHostError('no-window', 'Preview window is closed.');
         }
         const entry: FileEntry = { owner: sender, sessionKey: request.sessionKey, shown: false, viewId: request.viewId, filePath: request.path, sink, closed: false };
+        const profile = session.fromPartition(HTML_PAGE_PARTITION);
+        this.installDownloads(profile);
         entry.authorization = authorizeBrowserWebview(
-            sender.id, htmlPageFileUrl(request.path), session.fromPartition(HTML_PAGE_PARTITION),
+            sender.id, htmlPageFileUrl(request.path), profile,
             guest => {
                 entry.contents = guest;
                 wireView(entry);
@@ -324,5 +377,7 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
 
     async dispose(): Promise<void> {
         for (const entry of [...this.entries]) { this.destroy(entry); }
+        this.downloadSession?.removeListener('will-download', this.willDownload);
+        this.downloadSession = undefined;
     }
 }

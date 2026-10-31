@@ -163,7 +163,7 @@ Local `.html`/`.htm` previews are `file` sources hosted as Electron webview gues
 
 `file-preview-host.ts` binds `file-preview-download-gate.ts` to each committed document. Focused native primary mouse activation and Enter/Space input record five-second, single-use intent; file views expose no agent control/CDP path. Main-only `requestDownload(guest, url)` captures exact guest, owner, concrete workspace/server session and document identity. Its approval lease expires after 60 seconds and requires native Save As validation by the caller; it grants no filesystem capability.
 
-Hiding, reload, allowed file navigation, failure, crash and guest/owner teardown revoke pending approval. Cancelled navigation restores a gate requiring fresh input. Approval rejects stale documents and invalid owners; approved transfers remain independent. The native download handle and Save As integration are separate from host admission. Navigation policy, sandboxing and guest privileges remain unchanged.
+Hiding, reload, allowed file navigation, failure, crash and guest/owner teardown revoke pending approval. Cancelled navigation restores a gate requiring fresh input. Approval rejects stale documents and invalid owners; approved transfers remain independent. The HTML-session `will-download` hook admits the exact guest before passing its original handle to the shared Downloads store. An owner-attached synchronous native Save As chooses the path with overwrite confirmation; the lease is revalidated before `setSavePath`. Unowned or unauthorized requests are cancelled before any default dialog. Admission/unavailable-management notices contain only a safe source label and reach the captured owner. Host disposal removes the session listener. Navigation policy, sandboxing and guest privileges remain unchanged.
 
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
@@ -327,7 +327,8 @@ Its optional main-only approval handoff admits the handle before a synchronous
 native destination chooser, then revalidates the captured lease before `setSavePath`
 inside `will-download`. Pending revocation cancels the item; approved transfers
 detach from the source signal. Terminal disposal retires authorization and listeners.
-The preview host's admission lease and this native handoff require caller wiring.
+`file-preview-host.ts` supplies the preview lease and native chooser;
+`browser-view-host.ts` supplies the shared store to both Electron hosts.
 Pause/resume require live engine capability, and Open/Show require a completed,
 unchanged regular file. Clear/remove affect records only. Source navigation or
 close does not own the session's download handles. ClickOnce interception runs

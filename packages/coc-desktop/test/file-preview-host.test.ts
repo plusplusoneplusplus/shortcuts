@@ -7,7 +7,9 @@ import { htmlPageFileUrl } from '../src/html-page-policy';
 const mocks = vi.hoisted(() => ({
     owner: undefined as any,
     owners: new Map<number, any>(),
-    profile: {},
+    profile: undefined as any,
+    saveDialog: vi.fn(),
+    manage: vi.fn(),
     trusted: true,
     guest: undefined as any,
     attach: undefined as undefined | ((guest: any) => void),
@@ -19,11 +21,14 @@ const mocks = vi.hoisted(() => ({
     fromPartition: vi.fn(),
 }));
 vi.mock('electron', () => ({
+    app: { getPath: () => path.resolve('desktop-downloads') },
+    dialog: { showSaveDialogSync: mocks.saveDialog },
     BrowserWindow: { fromWebContents: (owner: any) => ({ webContents: owner, isDestroyed: () => false, isFocused: owner.isFocused }) },
     webContents: { fromId: (id: number) => mocks.owners.get(id) },
     session: { fromPartition: mocks.fromPartition },
     shell: { openExternal: mocks.openExternal },
 }));
+vi.mock('../src/electron-downloads', () => ({ manageElectronDownload: mocks.manage }));
 vi.mock('../src/browser-webview-guard', () => ({
     isBrowserEmbedder: () => mocks.trusted,
     authorizeBrowserWebview: mocks.authorize,
@@ -32,6 +37,7 @@ vi.mock('../src/browser-webview-guard', () => ({
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.trusted = true;
+    mocks.profile = new EventEmitter();
     mocks.owner = makeOwner(1);
     mocks.owners.clear();
     mocks.owners.set(1, mocks.owner);
@@ -58,8 +64,8 @@ function makeGuest(owner: any, id = 2) {
     });
 }
 
-async function create() {
-    const host = new ElectronFilePreviewHost();
+async function create(downloads?: any) {
+    const host = new ElectronFilePreviewHost(downloads);
     const sink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(),
         openMenuRequested: vi.fn(), closed: vi.fn(),
@@ -216,8 +222,8 @@ function key(patch = {}, guest = mocks.guest) {
         key: 'Enter', type: 'keyDown', isAutoRepeat: false, control: false, meta: false, alt: false, ...patch,
     });
 }
-async function downloadable() {
-    const result = await create();
+async function downloadable(downloads?: any) {
+    const result = await create(downloads);
     await result.view.setBounds(bounds);
     mocks.attach!(mocks.guest);
     mocks.guest.emit('did-navigate', {}, htmlPageFileUrl(result.request.path));
@@ -402,5 +408,137 @@ describe('HTML preview owner-bound native download admission', () => {
         expect(pending.approve()).toBe(false);
         expect(pending.signal.aborted).toBe(true);
         await host.dispose();
+    });
+});
+
+
+describe('HTML session native download routing', () => {
+    const store = { installationWide: true };
+    function request(guest = mocks.guest, url = 'data:text/csv,private') {
+        const event = { preventDefault: vi.fn() };
+        const item = { getURL: () => url };
+        mocks.profile.emit('will-download', event, item, guest);
+        return { event, item };
+    }
+
+    it.each(['data:text/csv,private', 'blob:file:///private-id'])('passes the original %s handle and captured owner to native Save As', async url => {
+        const { host, owner } = await downloadable(store);
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            expect(approval.chooseDestination(path.resolve('desktop-downloads', 'export.csv'))).toBe(path.resolve('chosen', 'renamed.csv'));
+            expect(approval.approve()).toBe(true);
+            return true;
+        });
+        mocks.saveDialog.mockReturnValue(path.resolve('chosen', 'renamed.csv'));
+        click();
+        const { item, event } = request(mocks.guest, url);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(mocks.manage).toHaveBeenCalledWith(store, item, path.resolve('desktop-downloads'), expect.any(Object));
+        expect(mocks.saveDialog).toHaveBeenCalledWith(expect.objectContaining({ webContents: owner }), {
+            title: 'Save As', defaultPath: path.resolve('desktop-downloads', 'export.csv'),
+            properties: ['showOverwriteConfirmation', 'createDirectory'],
+        });
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.manage).toHaveBeenCalledTimes(1);
+        await host.dispose();
+    });
+
+    it('blocks load/timer, unowned, stale-document and unsupported requests before the adapter', async () => {
+        const { host, view } = await downloadable(store);
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        click();
+        expect(request(makeGuest(mocks.owner, 999)).event.preventDefault).toHaveBeenCalledOnce();
+        expect(request(mocks.guest, 'https://example.test/private').event.preventDefault).toHaveBeenCalledOnce();
+        await view.nav('reload');
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.manage).not.toHaveBeenCalled();
+        expect(mocks.saveDialog).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+
+    it('reports unavailable management only to the captured owner without private URLs', async () => {
+        const { host, sink } = await downloadable();
+        click();
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(sink.download).toHaveBeenCalledWith({ viewId: 'html-page:one', url: 'Local or private source', ok: false,
+            error: 'Download management is unavailable.' });
+        expect(mocks.saveDialog).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+
+    it('reports rejected store admission without opening a dialog or replaying the request', async () => {
+        const { host, sink } = await downloadable(store);
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => { approval.cancel(); return false; });
+        click();
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(sink.download).toHaveBeenCalledWith(expect.objectContaining({ error: 'Too many active downloads or desktop is shutting down.' }));
+        expect(mocks.saveDialog).not.toHaveBeenCalled();
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.manage).toHaveBeenCalledTimes(1);
+        await host.dispose();
+    });
+
+    it('revokes a lease when the source hides during the chooser and discards a late destination', async () => {
+        const { host, view, sink } = await downloadable(store);
+        mocks.saveDialog.mockImplementation(() => { view.setBounds(null); return path.resolve('late.csv'); });
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            approval.chooseDestination(path.resolve('suggestion.csv'));
+            expect(approval.signal.aborted).toBe(true);
+            expect(approval.approve()).toBe(false);
+            return true;
+        });
+        click();
+        request();
+        expect(sink.download).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+
+    it('passes quiet native cancellation to the adapter and requires fresh input to retry', async () => {
+        const { host, sink } = await downloadable(store);
+        mocks.saveDialog.mockReturnValue(undefined);
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            expect(approval.chooseDestination(path.resolve('export.csv'))).toBeUndefined();
+            approval.cancel();
+            return true;
+        });
+        click();
+        request();
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.manage).toHaveBeenCalledTimes(1);
+        key();
+        request();
+        expect(mocks.manage).toHaveBeenCalledTimes(2);
+        expect(sink.download).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+
+    it('cancels unexpected adapter errors with brief feedback and no diagnostic disclosure', async () => {
+        const { host, sink } = await downloadable(store);
+        mocks.manage.mockImplementation(() => { throw new Error('private data and destination'); });
+        click();
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(sink.download).toHaveBeenCalledWith({ viewId: 'html-page:one', url: 'Local or private source', ok: false,
+            error: 'Unable to start the download. Try Download again.' });
+        expect(request().event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.manage).toHaveBeenCalledTimes(1);
+        await host.dispose();
+    });
+
+    it('preserves approved transfers after source closure and removes its session listener on disposal', async () => {
+        const { host, view, request: first } = await downloadable(store);
+        const second = await host.create(first, { state: vi.fn() } as any);
+        expect(mocks.profile.listenerCount('will-download')).toBe(1);
+        let signal: AbortSignal | undefined;
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            signal = approval.signal;
+            expect(approval.approve()).toBe(true);
+            return true;
+        });
+        key();
+        request();
+        await view.close();
+        expect(signal?.aborted).toBe(false);
+        await second.close();
+        await host.dispose();
+        expect(mocks.profile.listenerCount('will-download')).toBe(0);
     });
 });

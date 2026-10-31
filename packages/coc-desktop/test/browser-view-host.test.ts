@@ -10,6 +10,7 @@ import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_
 
 const mocks = vi.hoisted(() => ({
     downloads: undefined as BrowserDownloadStore | undefined,
+    previewDownloads: undefined as BrowserDownloadStore | undefined,
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], views: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
     menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })),
@@ -42,7 +43,10 @@ vi.mock('../src/webview2-browser-host', async () => {
     const { ElectronBrowserHost } = await import('../src/electron-browser-host');
     return { WebView2BrowserHost: class extends ElectronBrowserHost { engine = 'webview2' as any; } };
 });
-vi.mock('../src/file-preview-host', () => ({ ElectronFilePreviewHost: class { dispose = async () => {}; } }));
+vi.mock('../src/file-preview-host', () => ({ ElectronFilePreviewHost: class {
+    constructor(downloads?: BrowserDownloadStore) { mocks.previewDownloads = downloads; }
+    dispose = async () => {};
+} }));
 
 let host: typeof import('../src/browser-view-host');
 let dir: string;
@@ -75,6 +79,10 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('shares the installation download store with URL tabs and HTML previews', () => {
+        expect(mocks.downloads).toBeDefined();
+        expect(mocks.previewDownloads).toBe(mocks.downloads);
+    });
     it('keeps ClickOnce default-off and accepts preference changes only from registered main frames', async () => {
         const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
         const preferences = await invoke(policy.BROWSER_PREFERENCES_GET_CHANNEL, spa.event);
