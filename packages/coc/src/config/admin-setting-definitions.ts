@@ -1000,6 +1000,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.diffContentSearch', default: false, runtime: 'live', runtimeFlag: 'diffContentSearchEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 55, label: 'Diff content search',
+            hint: 'Search the old and new contents of changed files in commit, branch, pull request and working changes reviews.',
+            testId: 'toggle-diff-content-search-enabled',
+        },
+    }),
+    bool({
         key: 'features.sessionContextAttachments', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
         ui: {
             tab: 'chat', group: 'review', order: 30, label: 'Session context attachments', badge: 'experimental',

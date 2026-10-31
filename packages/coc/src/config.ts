@@ -314,6 +314,8 @@ export interface CLIConfig {
         gitCrossCloneCherryPick?: boolean;
         /** Searchable changed-file navigation from diff headers. Enabled by default. */
         diffFilePicker?: boolean;
+        /** Full-content search across changed files in multi-file reviews. Disabled by default. */
+        diffContentSearch?: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
@@ -775,6 +777,8 @@ export interface ResolvedCLIConfig {
         gitCrossCloneCherryPick: boolean;
         /** Searchable changed-file navigation from diff headers. Enabled by default. */
         diffFilePicker: boolean;
+        /** Full-content search across changed files in multi-file reviews. Disabled by default. */
+        diffContentSearch: boolean;
         /** Drag/drop session-context attachments in chat composers. Disabled by default. */
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
@@ -1147,6 +1151,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitCommitLookup: false,
         gitCrossCloneCherryPick: true,
         diffFilePicker: true,
+        diffContentSearch: false,
         sessionContextAttachments: true,
         commitChatLens: true,
         commitChatLensDormantMode: 'ghost',
