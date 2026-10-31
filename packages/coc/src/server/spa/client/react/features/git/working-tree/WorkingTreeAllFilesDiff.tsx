@@ -6,9 +6,11 @@ import { ReviewFiles } from '../diff/ReviewFiles';
 import { reviewFileKey } from '../diff/gitReviewFiles';
 import { useDirtyDetailGuard } from '../repoGitTab/useDirtyDetailGuard';
 import { WorkingTreeFileDiff, type WorkingTreeFileDiffProps } from './WorkingTreeFileDiff';
+import { workingTreeCommentContext } from './workingTreeCommentContext';
 import { hasMultipleRepos, relDisplayPath, repoRelative, type WorkingTreeChange } from './WorkingTree';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
+import { useFileCommentComposer } from '../diff/fileCommentComposer';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
@@ -49,6 +51,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const [dirty, setDirty] = useState(false);
     const guard = useDirtyDetailGuard(selected?.filePath ?? null);
     const panelHost = useUnifiedPanelHost();
+    const fileComment = useFileCommentComposer();
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
         guard.onDirtyChange(value);
@@ -89,12 +92,19 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     onClick: guard.guard(() => onFileSelect(selected.filePath, selected.stage)) }] : [], below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}
             rowDetails={file => <span className="git-review-muted">{file.label}</span>}
-            rowMenu={file => {
+            rowMenu={(file, anchor) => {
                 const change = byKey.get(reviewFileKey(file));
+                const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
                 return change ? [openFileMenuItem(file, () => openChangedFileSource({
                     path: props.repoRoot ? repoRelative(change.filePath, props.repoRoot) : change.filePath, workspaceId,
-                    ownerRoutingRef: attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null, panelHost,
-                }))] : [];
+                    ownerRoutingRef: ownerRoute, panelHost,
+                })), fileComment.menuItem(anchor, {
+                    // The same context and owner route WorkingTreeFileDiff uses for this file's comments.
+                    workspaceId, routingTarget: attachmentDestinationId === undefined ? undefined : ownerRoute,
+                    context: workingTreeCommentContext(workspaceId, change.filePath, change.stage),
+                    unavailableReason: 'Untracked files have no comments',
+                    displayPath: file.path,
+                })] : [];
             }}
             renderEmpty={<div className="git-review-empty" data-testid="working-tree-all-files-empty">{files.length ? 'No matching files.' : 'No working-tree changes'}</div>}
             renderFile={({ file, paths, select, target }) => {
@@ -112,6 +122,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     onDirtyChange={onDirtyChange} onRegisterSave={onRegisterSave} />;
             }}
         />
+        {fileComment.composer}
         {guard.dialog}
     </>;
 }

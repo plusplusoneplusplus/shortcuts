@@ -20,6 +20,7 @@ import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { FileLevelComments, revealFileComment, splitFileComments } from './FileLevelComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
@@ -252,6 +253,7 @@ export function FileDiffPanel({
         clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
         resolveWithAI, fixWithAI,
     } = useDiffComments(workspaceId, diffContext, source.routingTarget);
+    const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     // ── Cross-file navigation ──
     const [fetchedFiles, setFetchedFiles] = useState<{ key: string; files: string[] } | null>(null);
@@ -408,6 +410,7 @@ export function FileDiffPanel({
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (revealFileComment(scrollContainerRef.current, comment as DiffComment)) return;
         if (showEditor) {
             monacoViewerRef.current?.revealComment(comment.id);
             return;
@@ -682,6 +685,7 @@ export function FileDiffPanel({
                     data-testid="file-diff-section"
                     tabIndex={-1}
                 >
+                    <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
@@ -702,7 +706,7 @@ export function FileDiffPanel({
                                 revealTarget={editorRevealTarget}
                                 onNavigateDefinition={handleNavigateDefinition}
                                 onLinesReady={showEditor ? (lines) => { setDiffLines(lines); runRelocation(lines); } : undefined}
-                                comments={showEditor ? comments : []}
+                                comments={showEditor ? lineComments : []}
                                 renderCommentThread={renderCommentThread}
                                 onAddComment={handleAddComment}
                                 onAskAI={handleAskAIDiff}
@@ -747,7 +751,7 @@ export function FileDiffPanel({
                                     fileName={filePath}
                                     enableComments
                                     showLineNumbers
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={handleAddComment}
                                     onAskAI={handleAskAIDiff}
@@ -768,7 +772,7 @@ export function FileDiffPanel({
                                        raw git preamble is dropped (split mode
                                        drops it too). */
                                     hideFileHeaders
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={handleAddComment}
                                     onAskAI={handleAskAIDiff}

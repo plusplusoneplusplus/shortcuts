@@ -18,7 +18,10 @@ const files = [
     { path: 'packages/coc-desktop/test/e2e/html-download.e2e.test.ts', status: 'M', additions: 2, deletions: 1 },
     { path: 'docs/README.md', status: 'D', additions: 0, deletions: 5 },
 ];
-const source = { files: [], cacheKey: 'commit:abc', label: 'Commit abc' } as unknown as DiffSource;
+const source = {
+    files: [], cacheKey: 'commit:abc', label: 'Commit abc',
+    commentContext: (filePath: string) => ({ repositoryId: 'ws', filePath, oldRef: 'abc^', newRef: 'abc' }),
+} as unknown as DiffSource;
 const props = { workspaceId: 'ws', attachmentDestinationId: 'remote:one:ws', comparisonKey: 'abc', files, source };
 const host = { workspaceId: 'group-1', chatId: 'chat-1', routingRef: null };
 const nav = () => screen.getByRole('complementary', { name: 'Changed files' });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDiffCommentPrompt, formatDiffCommentsPrompt, formatReviewCommentsPrompt, groupDiffCommentsByFile } from '../../../../src/server/spa/client/react/utils/diffCommentPrompt';
+import { diffCommentLocation, formatDiffCommentPrompt, formatDiffCommentsPrompt, formatReviewCommentsPrompt, groupDiffCommentsByFile } from '../../../../src/server/spa/client/react/utils/diffCommentPrompt';
 import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 function makeComment(overrides: Partial<DiffComment> = {}): DiffComment {
@@ -97,5 +97,23 @@ describe('groupDiffCommentsByFile', () => {
         });
         const groups = groupDiffCommentsByFile([at('z', 'z.ts', 1), at('a9', 'a.ts', 9), at('a1', 'a.ts', 1)]);
         expect(groups.map(([file, list]) => [file, list.map(c => c.id)])).toEqual([['a.ts', ['a1', 'a9']], ['z.ts', ['z']]]);
+    });
+});
+
+describe('file-level comments', () => {
+    const fileComment = makeComment({ id: 'f1', scope: 'file', selection: undefined, selectedText: '', comment: 'Split this file' });
+
+    it('formats as the whole file with no line or selected code', () => {
+        const prompt = formatDiffCommentPrompt(fileComment);
+        expect(prompt).toContain('### Comment 1 (id: f1, status: open)\nLocation: whole file\nComment: Split this file');
+        expect(prompt).not.toContain('Lines');
+        expect(prompt).not.toContain('Selected code');
+        expect(diffCommentLocation(fileComment)).toBe('whole file');
+    });
+
+    it('sorts before line comments of the same file in review prompts', () => {
+        const prompt = formatReviewCommentsPrompt({ kind: 'commit', hash: 'abc123' }, [makeComment({ id: 'l1' }), fileComment]);
+        expect(prompt.indexOf('id: f1')).toBeLessThan(prompt.indexOf('id: l1'));
+        expect(prompt).toContain('File: src/a.ts\nLocation: whole file\nComment:\nSplit this file');
     });
 });

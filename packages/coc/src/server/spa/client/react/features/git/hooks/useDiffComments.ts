@@ -13,7 +13,7 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { getGitReviewClient } from '../diff/diffSource';
 import { cloneWsUrl } from '../../../api/wsUrl';
-import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
+import { isLineDiffComment, type DiffComment, type DiffCommentContext, type DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../../../utils/relocateDiffAnchor';
 import { formatDiffCommentsPrompt } from '../../../utils/diffCommentPrompt';
@@ -320,7 +320,7 @@ export function useDiffComments(
 
     const runRelocation = useCallback(async (lines: DiffLine[]): Promise<void> => {
         for (const comment of commentsRef.current) {
-            if (!comment.anchor) continue;
+            if (!comment.anchor || !isLineDiffComment(comment)) continue;
 
             const newIndex = relocateDiffAnchor(comment, lines);
 

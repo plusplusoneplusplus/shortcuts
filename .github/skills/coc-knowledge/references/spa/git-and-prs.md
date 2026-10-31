@@ -156,12 +156,21 @@ and drag capabilities keep Git revision attachments and PR classification/visite
 markers consumer-owned. Optional file IDs separate selection from displayed paths;
 mutable hosts can guard navigation and retain selection while an editor is dirty.
 Each host keys the shell by owner and comparison identity.
-Optional `rowMenu` items open from right-click, Menu key or Shift+F10 on the
-clicked row without changing selection. Commit/branch (`GitFileReview`) and
+Optional `rowMenu(file, anchor)` items open from right-click, Menu key or
+Shift+F10 on the clicked row without changing selection; `anchor` carries the
+menu point and the row for focus return. Commit/branch (`GitFileReview`) and
 working-tree hosts supply **Open file** (`changedFileSource.ts`): the row's
 current working copy as a raw-source file tab for the diff's owner and clone
 route, or the owner's Explorer deep link without a panel. Renames open the new
-path; deletions disable the action.
+path; deletions disable the action. They also supply **Comment**
+(`fileCommentComposer.tsx`): the shared `InlineCommentPopup` composes a
+file-level comment on that row's file — the source's `commentContext(path)`
+(working tree: `workingTreeCommentContext`, none for untracked rows) posted
+through the source's owner route with `scope: 'file'` and no selection.
+Renames use the new path; deletions keep their path. Save failures keep the
+draft and show the error; save or cancel returns focus to the row. A saved
+comment posts `git-review-comments-updated` on the pop-out channel so open
+`useDiffComments` / `useReviewComments` views re-read.
 Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
 patch/content loaders, comment context and transport; the supplied paths replace
 the source’s fallback file-list loader. PR mobile/patch-only views retain the slim
@@ -282,6 +291,15 @@ keeps the shared language document on the editor's text: edits go out as
 `didChange`, the buffer is marked saved once the editor matches disk again (save or
 dropped edits), and unmounting with unsaved edits puts disk text back. A buffer that
 diverged elsewhere (unsaved explorer edit) is never written; features stay off.
+
+File-level comments (`scope: 'file'`, no `selection`, empty `selectedText`)
+never reach line viewers: `FileDiffPanel` and `WorkingTreeFileDiff` split them
+off with `splitFileComments` and show them as `CommentCard`s in a "File
+comments" region above the diff in both engines; sidebar clicks reveal that
+card. Counts, the sidebar and CRUD include them; prompts and
+`diffCommentLocation` call them `whole file` and sort them before line
+comments. The diff-comments POST accepts `scope: 'file'` only without a
+selection.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

@@ -305,6 +305,20 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
         view.unmount();
     });
 
+    it('shows a file-level comment above the diff and reveals it from the sidebar, never as a line thread', async () => {
+        hooks.comments = [comment('c1'), comment('f1', { scope: 'file', selection: undefined, selectedText: '', comment: 'whole file note' })];
+        const view = await renderEditor();
+        const strip = screen.getByRole('region', { name: 'File comments' });
+        expect(within(strip).getByTestId('comment-card-f1').textContent).toContain('whole file note');
+        expect(zoneOf('c1')).toBeTruthy();
+        expect(zoneOf('f1')).toBeUndefined();
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        act(() => { fireEvent.click(within(screen.getByTestId('comment-sidebar')).getByTestId('comment-card-f1')); });
+        expect(strip.querySelector('[data-file-comment-id="f1"]')!.classList.contains('ring-2')).toBe(true);
+        expect(fake().revealedLines).toEqual([]);
+        view.unmount();
+    });
+
     it('switching to Classic removes every zone; switching back re-adds each thread once', async () => {
         const view = await renderEditor();
         const firstEditor = fake();

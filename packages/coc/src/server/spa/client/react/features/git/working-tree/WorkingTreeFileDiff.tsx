@@ -47,6 +47,8 @@ import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { FileLevelComments, revealFileComment, splitFileComments } from '../diff/FileLevelComments';
+import { workingTreeCommentContext } from './workingTreeCommentContext';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
@@ -410,13 +412,12 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         [workspaceId, attachmentDestinationId, relativePath, stage],
     );
 
-    const diffContext = stage !== 'untracked'
-        ? { repositoryId: workspaceId, filePath, oldRef: stage === 'staged' ? 'HEAD' : 'INDEX', newRef: 'working-tree' as const }
-        : null;
+    const diffContext = workingTreeCommentContext(workspaceId, filePath, stage);
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
+    const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     const patchGeneration = useRef(0);
     useEffect(() => () => { patchGeneration.current++; }, []);
@@ -517,6 +518,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (revealFileComment(scrollContainerRef.current, comment as DiffComment)) return;
         if (showEditor) {
             monacoViewerRef.current?.revealComment(comment.id);
             return;
@@ -646,6 +648,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             File has unstaged changes — edit it in the Unstaged diff.
                         </div>
                     )}
+                    <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
@@ -697,7 +700,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             initialHunkTarget={initialHunkTarget}
                             onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                             onEditorError={handleEditorError}
-                            comments={comments}
+                            comments={lineComments}
                             renderCommentThread={renderCommentThread}
                             onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                             onAskAI={handleAskAIDiff}
@@ -724,7 +727,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     fileName={filePath}
                                     enableComments={stage !== 'untracked'}
                                     showLineNumbers
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}
@@ -740,7 +743,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                     fileName={filePath}
                                     enableComments={stage !== 'untracked'}
                                     showLineNumbers
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={stage === 'untracked' ? undefined : handleAddComment}
                                     onAskAI={handleAskAIDiff}

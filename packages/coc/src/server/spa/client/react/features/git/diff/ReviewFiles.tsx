@@ -22,6 +22,8 @@ export interface ReviewFileRenderContext {
     target: 'first' | 'last';
     toggleViewed: () => void;
 }
+export interface ReviewRowMenuAnchor { x: number; y: number; row: HTMLElement }
+
 export interface ReviewFilesProps {
     /** Hosts key this component by the complete owner and comparison identity. */
     identity: string;
@@ -45,8 +47,11 @@ export interface ReviewFilesProps {
     renderEmpty?: ReactNode;
     rowDetails?: (file: ReviewFile) => ReactNode;
     rowDrag?: (file: ReviewFile) => GitFileContextDragPayload | null;
-    /** Right-click (or Menu key / Shift+F10) actions for the clicked row; selection is unchanged. */
-    rowMenu?: (file: ReviewFile) => ContextMenuItem[];
+    /**
+     * Right-click (or Menu key / Shift+F10) actions for the clicked row; selection is unchanged.
+     * `anchor` is where the menu opens and the row to return focus to.
+     */
+    rowMenu?: (file: ReviewFile, anchor: ReviewRowMenuAnchor) => ContextMenuItem[];
     isFileDimmed?: (path: string) => boolean;
 }
 
@@ -181,10 +186,11 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         </button>;
     }
     function openMenu(file: ReviewFile, row: HTMLElement, at: { x: number; y: number } | null) {
-        const items = rowMenu?.(file);
-        if (!items?.length) return;
         const rect = row.getBoundingClientRect();
-        setMenu({ items, row, keyboard: !at, ...(at ?? { x: rect.left, y: rect.bottom }) });
+        const point = at ?? { x: rect.left, y: rect.bottom };
+        const items = rowMenu?.(file, { ...point, row });
+        if (!items?.length) return;
+        setMenu({ items, row, keyboard: !at, ...point });
     }
     function closeMenu() {
         if (menu?.keyboard) menu.row.focus();

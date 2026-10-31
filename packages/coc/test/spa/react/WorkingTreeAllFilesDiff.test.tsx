@@ -8,6 +8,10 @@ const h = vi.hoisted(() => ({
     endpoint: undefined as string | undefined,
     unresolved: false,
     panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(), openTab: vi.fn(),
+    createComment: vi.fn(), reviewClientFor: vi.fn(),
+}));
+vi.mock('../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
+    getGitReviewClient: (...args: unknown[]) => { h.reviewClientFor(...args); return { git: { createDiffComment: h.createComment } }; },
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', () => ({
     openUnifiedPanelTab: h.openTab,
@@ -94,6 +98,28 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         expect(current().stage).toBe('staged');
         fireEvent.contextMenu(within(nav()).getByRole('button', { name: /gone\.ts/ }), { clientX: 5, clientY: 5 });
         expect(within(screen.getByTestId('context-menu')).getByRole('menuitem', { name: /Open file/ })).toBeDisabled();
+    });
+    it('saves a file-level comment on the right-clicked change for its stage and owner, and disables untracked files', async () => {
+        h.createComment.mockResolvedValue({ comment: { id: 'c1' } });
+        render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:b:ws-1" />);
+        await screen.findByTestId('full-working-diff');
+        expect(current().stage).toBe('staged');
+        const menuItem = (name: RegExp) => within(screen.getByTestId('context-menu')).getByRole('menuitem', { name });
+        fireEvent.contextMenu(row('Untracked'), { clientX: 5, clientY: 5 });
+        expect(menuItem(/Comment/)).toBeDisabled();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.contextMenu(row('Unstaged'), { clientX: 5, clientY: 5 });
+        fireEvent.click(menuItem(/Comment/));
+        const dialog = screen.getByRole('dialog', { name: 'Comment on file a.ts' });
+        fireEvent.change(within(dialog).getByTestId('comment-textarea'), { target: { value: 'Whole file note' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: /Submit/ }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(h.reviewClientFor).toHaveBeenCalledWith('ws-1', 'remote:b:ws-1');
+        expect(h.createComment).toHaveBeenCalledWith('ws-1', {
+            context: { repositoryId: 'ws-1', filePath: '/repo/a.ts', oldRef: 'INDEX', newRef: 'working-tree' },
+            scope: 'file', selectedText: '', comment: 'Whole file note', category: 'general',
+        });
+        expect(current().stage).toBe('staged');
     });
     it('keeps repeated display paths from different repository roots selectable in the tree', async () => {
         h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [

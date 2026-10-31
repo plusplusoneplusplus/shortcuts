@@ -13,6 +13,7 @@ import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from './changedFileSource';
+import { useFileCommentComposer } from './fileCommentComposer';
 
 type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment' | 'createDiffEditor'> & {
     comparisonKey: string;
@@ -34,6 +35,7 @@ export function GitFileReview(props: Props) {
     const endpoint = useCloneBaseUrl(props.source.routingTarget === null ? undefined : props.source.routingTarget ?? props.workspaceId);
     const sourceOwner = useCommitContextOwner(props.workspaceId, props.attachmentDestinationId);
     const panelHost = useUnifiedPanelHost();
+    const fileComment = useFileCommentComposer();
     // Same owner route as FileDiffPanel's path link and definition jumps.
     const ownerRoutingRef = props.source.routingTarget === undefined
         ? (props.attachmentDestinationId === props.workspaceId ? null : props.attachmentDestinationId) : props.source.routingTarget;
@@ -41,7 +43,7 @@ export function GitFileReview(props: Props) {
     if (props.source.routingTarget && resolveCloneRoute(props.source.routingTarget).kind === 'unresolved-remote') {
         return <div role="alert" className="git-review-empty">Git review owner is unavailable</div>;
     }
-    return <ReviewFiles {...props} key={identity} identity={identity}
+    return <><ReviewFiles {...props} key={identity} identity={identity}
         rowDrag={file => {
             const side = reviewFileStatus(file.status) === 'D' ? 'base' : 'head';
             const refs = props.source.fileContextRefs;
@@ -54,10 +56,13 @@ export function GitFileReview(props: Props) {
                 revision: side === 'base' ? refs.baseRef : refs.headRef, side,
             }) : null;
         }}
-        rowMenu={file => [openFileMenuItem(file, () => openChangedFileSource({
+        rowMenu={(file, anchor) => [openFileMenuItem(file, () => openChangedFileSource({
             path: file.path, workspaceId: props.workspaceId, ownerRoutingRef, panelHost,
-        }))]}
-        renderFile={context => <GitReviewDiff {...props} context={context} />} />;
+        })), fileComment.menuItem(anchor, {
+            // The same context and owner route FileDiffPanel uses for this file's comments.
+            workspaceId: props.workspaceId, routingTarget: props.source.routingTarget, context: props.source.commentContext(file.path),
+        })]}
+        renderFile={context => <GitReviewDiff {...props} context={context} />} />{fileComment.composer}</>;
 }
 
 function GitReviewDiff({ context, ...props }: Props & { context: ReviewFileRenderContext }) {
