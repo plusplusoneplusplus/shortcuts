@@ -57,7 +57,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isPanelTabCategoriesEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -266,6 +266,7 @@ export function UnifiedRightPanel({
     const { toasts, addToast, removeToast } = useToast();
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
+    const [categoriesEnabled, setCategoriesEnabled] = useState(() => isPanelTabCategoriesEnabled());
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
     const [chatScopedBrowserTabs, setChatScopedBrowserTabs] = useState(() => isChatScopedBrowserTabsEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
@@ -275,6 +276,7 @@ export function UnifiedRightPanel({
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
             setGroupsEnabled(isPanelTabGroupsEnabled());
+            setCategoriesEnabled(isPanelTabCategoriesEnabled());
             setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
             setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
@@ -286,7 +288,7 @@ export function UnifiedRightPanel({
         state, tabs, activeId, active, pinnedId, open, openBeside, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
-    } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
+    } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled || categoriesEnabled);
     // With `features.chatScopedBrowserTabs` off, every page shows in every chat again.
     useEffect(() => {
         if (!chatScopedBrowserTabs) updateUnifiedPanelState(workspaceId, releaseBrowserChatOwners);
@@ -406,7 +408,7 @@ export function UnifiedRightPanel({
     }, [tabs, mountedIds, retainedScope]);
     // A collapsed canvas burst: the active canvas carries the switcher chip in
     // its own header, next to the title (the strip shows it otherwise).
-    const stackedCanvasTabs = useMemo(() => groupsEnabled ? [] : compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId, groupsEnabled]);
+    const stackedCanvasTabs = useMemo(() => groupsEnabled || categoriesEnabled ? [] : compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId, groupsEnabled, categoriesEnabled]);
 
     const targetOptions = targets ?? dock.targets;
     const targetLabel = useMemo(
@@ -870,25 +872,31 @@ export function UnifiedRightPanel({
         });
     }, [chatId, open]);
 
-    // A web link clicked in a chat opens as a new browser tab owned by the dock target.
+    // A web link clicked in a chat opens as a new browser tab owned by the dock
+    // target; a link in a resource (a canvas) names its own owner and scope.
     useEffect(() => {
         const onOpenUrl = (event: Event) => {
             const detail = (event as CustomEvent<OpenBrowserUrlDetail>).detail;
             if (!detail || detail.handled || !desktopBrowserBridge()) return;
+            const owner = detail.owner;
+            if (owner && owner.scopeWorkspaceId !== workspaceId) return;
             const normalized = normalizeBrowserUrl(detail.url);
             if (!normalized.ok) return;
             detail.handled = true;
+            const ownerWorkspaceId = owner ? owner.workspaceId : target;
+            const ownerRoutingRef = owner ? owner.routingRef : targetRoutingRef;
+            const repoLabel = owner ? targetOptions.find(option => option.workspaceId === ownerWorkspaceId)?.label : targetLabel;
             open(browserOpenInput({
-                ownerWorkspaceId: target,
-                ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
-                chatId,
-                ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
+                ownerWorkspaceId,
+                ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
+                chatId: owner ? owner.chatId : chatId,
+                ...(ownerWorkspaceId !== workspaceId && repoLabel ? { repoLabel } : {}),
             }, normalized.url));
             setWorkspaceDockOpen(workspaceId, true);
         };
         window.addEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
         return () => window.removeEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
-    }, [chatId, open, target, targetLabel, targetRoutingRef, workspaceId]);
+    }, [chatId, open, target, targetLabel, targetOptions, targetRoutingRef, workspaceId]);
 
     useEffect(() => {
         const onOpenPage = (event: Event) => {
@@ -2164,6 +2172,7 @@ export function UnifiedRightPanel({
                     reorderEnabled={reorderEnabled}
                     browserShortcuts={browserTabShortcutsEnabled ? { mac: browserTabShortcutsMac(), hintsVisible: tabHintsVisible } : null}
                     groupsEnabled={groupsEnabled}
+                    categoriesEnabled={categoriesEnabled}
                     foldedGroups={foldedGroups}
                     onToggleGroup={group => toggleGroupFolded(workspaceId, group)}
                     reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}

@@ -71,7 +71,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
-| `canvas-extension-tools.ts` | `list_canvas_capabilities`, `open_canvas`, `invoke_canvas_action`, `close_canvas` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
+| `canvas-extension-tools.ts` | `list_canvas_capabilities`, `manage_canvas` (`action: "open" \| "close"`), `invoke_canvas_action` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
 | `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
@@ -675,7 +675,7 @@ There is deliberately no `host.fetch` (CoC's own API is on unauthenticated loopb
 `CanvasHost.complete()` / `runScript()` in the iframe. Async capabilities and `host.complete`
 are gated on `features.canvasHostApis` (off by default): with the flag off an async capability
 404s from the route and errors from the tool, while sync capabilities are untouched.
-`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts`.
+`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts` (both on by default).
 
 `extension_canvas` also accepts `files: [{ path, content, encoding? }]` (max 20/call) — data
 written into the canvas's read-only `files/` directory that the artifact reads back with

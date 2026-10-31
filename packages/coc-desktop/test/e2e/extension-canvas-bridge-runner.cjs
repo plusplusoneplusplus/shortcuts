@@ -63,7 +63,8 @@ app.whenReady().then(async () => {
             assert.notEqual(result.resultType, 'failure', result.textResultForLlm);
             return result;
         }
-        const opened = await tool('open_canvas', {
+        const opened = await tool('manage_canvas', {
+            action: 'open',
             canvasId: 'workspace:interactive/counter', instanceId: 'saved-instance', input: { count: 5 },
         });
         assert.equal(opened.success, true);

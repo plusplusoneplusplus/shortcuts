@@ -396,7 +396,7 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
-        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Enabled by default; still needs `canvasHostApis` and `toolScripting`. */
         canvasToolScripts?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
@@ -410,7 +410,9 @@ export interface CLIConfig {
         panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
         panelTabGroups?: boolean;
-        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        /** One right-panel chip per tab category, each with its own tab menu. Disabled by default; wins over `panelTabGroups`. */
+        panelTabCategories?: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Enabled by default. */
         binaryFileReveal?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
@@ -422,7 +424,7 @@ export interface CLIConfig {
         chatStyleSelector?: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
         chatProviderSwitching?: boolean;
-        /** Load chat history in turn-count pages. Disabled by default. */
+        /** Load chat history in turn-count pages. Enabled by default. */
         chatHistoryPaging?: boolean;
         /** Compact delegated-result cards in chat. Presentation only, disabled by default. */
         sentinelResultCards?: boolean;
@@ -851,7 +853,7 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
-        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Enabled by default; still needs `canvasHostApis` and `toolScripting`. */
         canvasToolScripts: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
@@ -865,7 +867,9 @@ export interface ResolvedCLIConfig {
         panelSourceSplit: boolean;
         panelTabReordering: boolean;
         panelTabGroups: boolean;
-        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        /** One right-panel chip per tab category, each with its own tab menu. Disabled by default; wins over `panelTabGroups`. */
+        panelTabCategories: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Enabled by default. */
         binaryFileReveal: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
@@ -877,7 +881,7 @@ export interface ResolvedCLIConfig {
         chatStyleSelector: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
         chatProviderSwitching: boolean;
-        /** Load chat history in turn-count pages. Disabled by default. */
+        /** Load chat history in turn-count pages. Enabled by default. */
         chatHistoryPaging: boolean;
         sentinelResultCards: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
@@ -1197,7 +1201,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
-        canvasToolScripts: false,
+        canvasToolScripts: true,
         sensitiveInput: false,
         explorerEditorTabs: true,
         explorerDelete: true,
@@ -1205,13 +1209,14 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelSourceSplit: true,
         panelTabReordering: true,
         panelTabGroups: false,
-        binaryFileReveal: false,
+        panelTabCategories: false,
+        binaryFileReveal: true,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,
-        chatHistoryPaging: false,
+        chatHistoryPaging: true,
         sentinelResultCards: true,
         defaultChatStyle: 'default',
         chatStylePrompts: {},

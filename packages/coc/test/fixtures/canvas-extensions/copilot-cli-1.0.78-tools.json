@@ -16,7 +16,7 @@
   "cocOwned": [
     "bash", "read_bash", "stop_bash", "list_bash", "view", "create", "edit",
     "web_fetch", "skill", "sql", "read_agent", "list_agents", "write_agent",
-    "grep", "glob", "task", "list_canvas_capabilities", "open_canvas",
-    "invoke_canvas_action", "close_canvas"
+    "grep", "glob", "task", "list_canvas_capabilities", "manage_canvas",
+    "invoke_canvas_action"
   ]
 }

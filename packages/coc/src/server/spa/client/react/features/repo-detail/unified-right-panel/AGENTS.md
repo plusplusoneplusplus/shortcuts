@@ -46,6 +46,11 @@ Folded groups retain the active and pinned tabs. Fold state belongs to the panel
 scope, not the chat, in `unified-right-panel:<scope>:groups`. Searchable overflow
 menus expose the full group and preserve dirty/error marks and guarded bulk closing.
 Drag, Alt+Arrow and menu moves stay within the kind group.
+Default-off `features.panelTabCategories` overrides groups with one chip per
+nonempty kind group: the active tab, else the group's last-used tab (strip
+memory), else its newest tab. One click on a chip switches categories; a
+multi-tab chip's own searchable menu lists the whole group and closes others
+around the chip's tab. Kind-group move, keyboard-stop and boundary rules match groups.
 
 With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
 workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
@@ -105,7 +110,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
 | `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; Browser tabs in repo groups show page titles and favicons without repository labels in the strip, tooltip or overflow rows; `unifiedTabLabels.ts` controls display only and preserves descriptor ownership. Other tabs retain their repository labels. The menu model owns per-kind availability, group move boundaries, file/note absolute paths and visible-order bulk targets. Path copy uses the clicked descriptor's saved path/task root or a workspace root matching both owner id and clone route, without local filesystem resolution; unavailable paths stay hidden and clipboard results use shared toasts. |
-| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state. |
+| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, priority slots, category chip selection (`categoryStripTabs`), hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state. |
 | `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
 | `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
@@ -581,7 +586,7 @@ Images retain MIME/encoding; CSV is text, not a table viewer. Preview failures,
 oversized content, and binary blobs offer an owner-routed Download action.
 Concrete unresolved remote routes fail visibly without local fallback.
 
-Default-off `features.binaryFileReveal` (Admin → Appearance, editor files) makes
+Default-on `features.binaryFileReveal` (Admin → Appearance, editor files; explicit `false` hides it) makes
 `UnifiedTabView` pass `revealBinary` to `PreviewPane`. Only the binary placeholder
 renders `BinaryRevealAction`, which sends the exact workspace id, repo-relative
 path and clone route to `explorerApi.reveal` (the owning server's OS file-manager

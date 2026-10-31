@@ -110,7 +110,7 @@ describe('buildChatTurnContext', () => {
         const close = vi.fn();
         mockBuildMemoryV2Addon.mockResolvedValue(mockActiveMemoryAddon);
         mockBuildChatToolBundle.mockReturnValue(makeBundleResult({
-            tools: [{ name: 'open_canvas' }], mcpScope: { close },
+            tools: [{ name: 'manage_canvas' }], mcpScope: { close },
         }));
         await expect(buildChatTurnContext({
             store: makeStore(), dataDir: '/mock/data', workspaceId: 'fixture-ws',

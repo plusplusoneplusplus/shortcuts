@@ -897,22 +897,55 @@ describe('Features card UI metadata', () => {
         })).panelTabGroupsEnabled).toBe(true);
     });
 
-    it('exposes binary-file Open in Explorer as a live, experimental default-off Appearance toggle', () => {
-        const def = getAdminSettingDefinition('features.binaryFileReveal')!;
+    it('exposes panel tab categories as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.panelTabCategories')!;
         expect(def.value).toEqual({ kind: 'boolean' });
         expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('panelTabCategoriesEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', order: 46, badge: 'experimental',
+            testId: 'toggle-panel-tab-categories-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.panelTabCategories).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).panelTabCategoriesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).panelTabCategoriesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { panelTabCategories: true },
+        })).panelTabCategoriesEnabled).toBe(true);
+    });
+
+    it('exposes binary-file Open in Explorer as a live, experimental default-on Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.binaryFileReveal')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(true);
+        expect(def.absentFallback).toBeUndefined();
+        expect(def.ui?.hint).toContain('Enabled by default');
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('binaryFileRevealEnabled');
         expect(def.ui).toMatchObject({
             tab: 'appearance', group: 'editorFiles', badge: 'experimental',
             testId: 'toggle-binary-file-reveal-enabled',
         });
-        expect(DEFAULT_CONFIG.features.binaryFileReveal).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).binaryFileRevealEnabled).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).binaryFileRevealEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.binaryFileReveal).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).binaryFileRevealEnabled).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).binaryFileRevealEnabled).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { binaryFileReveal: true },
-        })).binaryFileRevealEnabled).toBe(true);
+            features: { binaryFileReveal: false },
+        })).binaryFileRevealEnabled).toBe(false);
+    });
+
+    it.each(['features.chatHistoryPaging', 'features.canvasToolScripts'])('defaults experimental %s on and keeps explicit false', key => {
+        const def = getAdminSettingDefinition(key)!;
+        const name = key.slice('features.'.length);
+        expect(def.default).toBe(true);
+        expect(def.absentFallback).toBeUndefined();
+        expect(def.runtime).toBe('live');
+        expect(def.ui).toMatchObject({ badge: 'experimental' });
+        expect(def.ui?.hint).toContain('Enabled by default');
+        expect((DEFAULT_CONFIG.features as Record<string, unknown>)[name]).toBe(true);
+        expect(readAdminSettingValue(def, {})).toBe(true);
+        expect(readAdminSettingValue(def, { features: { [name]: false } })).toBe(false);
     });
 
     it('exposes Sentinel To-do inline Notes editing as a live, experimental default-off Sentinel toggle', () => {
@@ -1060,6 +1093,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.panelTabGroups': 'appearance',
+        'features.panelTabCategories': 'appearance',
         'features.binaryFileReveal': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',

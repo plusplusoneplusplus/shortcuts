@@ -90,7 +90,11 @@ component; do not grow `CanvasPanel.tsx` back.
   canvas records or the existing `canvas-updated` tab-opening path. Browser control,
   history and the browser manager never own installed-extension guests.
 - **Markdown embeds use the shared viewer.** `CanvasBodyRenderer` enables canvas
-  markers only for Markdown previews. `MarkdownView` mounts owner-routed
+  markers only for Markdown previews and opts into `MarkdownView`'s response-table
+  wrapping. Reuse its per-table control, portal cleanup and shared `InteractiveTable`
+  styles; never save wrapping into canvas content. Key the viewer by workspace,
+  routing ref and canvas id so owner/document changes reset display state while
+  content/history revisions retain it. `MarkdownView` mounts owner-routed
   `CanvasEmbed` viewers; code examples and Edit text stay literal. Embedded
   documents show source without expanding nested references; Kusto shows saved
   results without running queries.

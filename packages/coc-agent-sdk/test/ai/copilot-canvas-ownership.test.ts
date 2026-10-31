@@ -16,7 +16,7 @@ describe('CoC canvas ownership', () => {
                     : vi.fn().mockResolvedValue(session),
                 stop: vi.fn(),
             };
-            const tools = ['list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas']
+            const tools = ['list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action']
                 .map(name => ({ name, handler: vi.fn() }));
             const runner = new RequestRunner(
                 async () => ({ available: true }),

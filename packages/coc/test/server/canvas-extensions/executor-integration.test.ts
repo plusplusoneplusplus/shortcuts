@@ -132,7 +132,7 @@ describe('canvas extensions in executor turn contexts', () => {
             const bridge = createBridgeHandlers({ transport: createHttpTransport(env.COC_LLM_TOOLS_ENDPOINT, env.COC_LLM_TOOLS_TOKEN) });
             const response = await bridge.handleMessage({ id: 1, method: 'tools/list' });
             expect((response!.result as any).tools.map((tool: any) => tool.name)).toEqual(names);
-            const opened = await tools.find(tool => tool.name === 'open_canvas')!.handler({ canvasId: 'workspace-1:counter/counter', instanceId: 'bridge-instance' }) as any;
+            const opened = await tools.find(tool => tool.name === 'manage_canvas')!.handler({ action: 'open', canvasId: 'workspace-1:counter/counter', instanceId: 'bridge-instance' }) as any;
             expect(opened.success).toBe(true);
             const error = await bridge.handleMessage({ id: 2, method: 'tools/call', params: {
                 name: 'invoke_canvas_action', arguments: { instanceId: 'bridge-instance', actionName: 'error' },

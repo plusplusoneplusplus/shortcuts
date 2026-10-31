@@ -228,6 +228,17 @@ timeout: 300
             expect(() => loadConfigFile(configPath)).toThrow('Failed to parse');
         });
 
+        it.each([true, false])('rejects duplicate feature keys even when the second value is %s', value => {
+            const configPath = path.join(tmpDir, 'duplicate-feature.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  diffContentSearch: true',
+                `  diffContentSearch: ${value}`,
+            ].join('\n'));
+
+            expect(() => loadConfigFile(configPath)).toThrow('duplicated mapping key');
+        });
+
         it('should throw for invalid parallel value (string)', () => {
             const configPath = path.join(tmpDir, 'bad-parallel.yaml');
             fs.writeFileSync(configPath, 'parallel: "not-a-number"\n');
@@ -1240,6 +1251,7 @@ timeout: 300
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
+                '  panelTabCategories: true',
                 '  binaryFileReveal: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
@@ -1278,6 +1290,7 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+            expect(result.resolved.features.diffContentSearch).toBe(true);
             expect(result.resolved.canvasExtensions.enabled).toBe(true);
             expect(result.resolved.browserControl.enabled).toBe(true);
             // Saved false overrides the default-on frame, rich paste and background flags.
@@ -1295,7 +1308,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'panelTabCategories', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1566,13 +1579,13 @@ timeout: 300
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
-                    "binaryFileReveal": false,
+                    "binaryFileReveal": true,
                     "botManagedConversations": false,
                     "browserTabShortcuts": true,
                     "canvasHostApis": false,
-                    "canvasToolScripts": false,
+                    "canvasToolScripts": true,
                     "chatFolders": false,
-                    "chatHistoryPaging": false,
+                    "chatHistoryPaging": true,
                     "chatProviderSwitching": false,
                     "chatScopedBrowserTabs": false,
                     "chatStylePrompts": {},
@@ -1593,6 +1606,7 @@ timeout: 300
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
                     "panelSourceSplit": true,
+                    "panelTabCategories": false,
                     "panelTabGroups": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
@@ -1857,6 +1871,7 @@ timeout: 300
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
                   "features.panelSourceSplit": "default",
+                  "features.panelTabCategories": "default",
                   "features.panelTabGroups": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",

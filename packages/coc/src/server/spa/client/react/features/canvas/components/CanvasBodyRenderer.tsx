@@ -19,6 +19,8 @@ import { useCallback, useMemo } from 'react';
 import type { Canvas, CanvasVersion } from '@plusplusoneplusplus/coc-client';
 import { MarkdownFileLinkScope } from '../../../shared/file-path/MarkdownFileLinkScope';
 import { MarkdownView } from '../../../shared/MarkdownView';
+import { panelBrowserLinkFromClick, requestPanelBrowserTab } from '../../../shared/file-path/browser-bridge';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { chatMarkdownToHtml } from '../../chat/conversation/markdownHtml';
 import { copySelectionWithInlineImages } from '../../../utils/format';
 import { MonacoFileEditor } from '../../repo-detail/explorer/MonacoFileEditor';
@@ -107,6 +109,24 @@ export function CanvasBodyRenderer({
         }
     }, [notify]);
 
+    // A plain click on a web link opens a browser tab in the hosting right
+    // panel, owned by this canvas's clone and the chat the panel shows. Without
+    // a panel or desktop browser view, the link keeps its normal behavior.
+    const panelHost = useUnifiedPanelHost();
+    const handlePreviewClick = useCallback((e: React.MouseEvent) => {
+        if (!panelHost) return;
+        const link = panelBrowserLinkFromClick(e.nativeEvent);
+        // Absolute links back into the dashboard keep their app behavior.
+        if (!link || link.origin === window.location.origin) return;
+        const opened = requestPanelBrowserTab(link.getAttribute('href')!, {
+            scopeWorkspaceId: panelHost.workspaceId,
+            workspaceId,
+            ...(routingRef === undefined ? {} : { routingRef }),
+            chatId: panelHost.chatId,
+        });
+        if (opened) e.preventDefault();
+    }, [panelHost, workspaceId, routingRef]);
+
     const handleEditorSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
         const text = target.value.substring(target.selectionStart ?? 0, target.selectionEnd ?? 0).trim();
@@ -194,11 +214,16 @@ export function CanvasBodyRenderer({
                 className="canvas-mermaid-preview text-xs p-3"
                 data-testid="canvas-panel-preview"
                 onMouseUp={handlePreviewMouseUp}
+                onClick={handlePreviewClick}
                 onContextMenu={handlePreviewContextMenu}
                 onCopy={handlePreviewCopy}
             >
                 {previewMarkdown.trim()
-                    ? <MarkdownView html={previewHtml} />
+                    ? <MarkdownView
+                        key={JSON.stringify({ workspaceId, routingRef, canvasId })}
+                        html={previewHtml}
+                        tableWrapToggle
+                    />
                     : <span className="italic text-[#848484]">Empty canvas.</span>}
             </div>
         </MarkdownFileLinkScope>

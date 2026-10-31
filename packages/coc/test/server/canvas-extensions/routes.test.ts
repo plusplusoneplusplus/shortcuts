@@ -128,8 +128,8 @@ describe('persisted canvas extension reopening routes', () => {
     it('reopens a tool-closed instance with its original input and serializes with agent operations', async () => {
         const canvas = saved();
         await post(canvas.id);
-        const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'close_canvas')!;
-        await close.handler({ instanceId: 'saved-instance' });
+        const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'manage_canvas')!;
+        await close.handler({ action: 'close', instanceId: 'saved-instance' });
         expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, canvas.id)!).closed).toBe(true);
         const responses = await Promise.all([post(canvas.id), post(canvas.id)]);
         expect(responses.map(response => response.status)).toEqual([200, 200]);
@@ -172,8 +172,8 @@ describe('persisted canvas extension reopening routes', () => {
         const pending = post(canvas.id);
         try {
             await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
-            const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'close_canvas')!;
-            const closed = close.handler({ instanceId: 'saved-instance' });
+            const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'manage_canvas')!;
+            const closed = close.handler({ action: 'close', instanceId: 'saved-instance' });
             release();
             expect((await pending).status).toBe(200);
             expect(await closed).toEqual({ success: true, instanceId: 'saved-instance' });
@@ -324,8 +324,8 @@ describe('persisted canvas extension reopening routes', () => {
 
         it('reopens a closed instance instead of creating another record', async () => {
             const canvas = saved();
-            const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'close_canvas')!;
-            await close.handler({ instanceId: 'saved-instance' });
+            const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'manage_canvas')!;
+            await close.handler({ action: 'close', instanceId: 'saved-instance' });
             const opened = await (await openByKey({ processId: owner.processId, extensionKey: 'repo-a:counter' })).json();
             expect(opened).toMatchObject({ canvasId: canvas.id, instanceId: 'saved-instance' });
             expect(await (await fetch(opened.url)).json()).toEqual({ count: 7 });

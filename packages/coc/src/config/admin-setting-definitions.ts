@@ -1340,10 +1340,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.chatHistoryPaging', default: false, runtime: 'live', runtimeFlag: 'chatHistoryPagingEnabled',
+        key: 'features.chatHistoryPaging', default: true, runtime: 'live', runtimeFlag: 'chatHistoryPagingEnabled',
         ui: {
             tab: 'chat', group: 'aiModes', order: 47, label: 'Chat history paging', badge: 'experimental',
-            hint: 'Open chats on the latest turns and load earlier messages automatically when scrolling up. Disabled by default.',
+            hint: 'Open chats on the latest turns and load earlier messages automatically when scrolling up. Enabled by default.',
             testId: 'toggle-chat-history-paging-enabled',
         },
     }),
@@ -1442,10 +1442,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.binaryFileReveal', default: false, runtime: 'live', runtimeFlag: 'binaryFileRevealEnabled',
+        key: 'features.panelTabCategories', default: false, runtime: 'live', runtimeFlag: 'panelTabCategoriesEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 46, label: 'Panel tab categories', badge: 'experimental',
+            hint: 'Show one right-panel chip per category (Tools, Files, Web, Canvas). Each chip shows the tab last used in that category, so one click switches between, say, a web page and a source file; its menu lists the rest. Overrides Panel tab groups. Disabled by default.',
+            testId: 'toggle-panel-tab-categories-enabled',
+        },
+    }),
+    bool({
+        key: 'features.binaryFileReveal', default: true, runtime: 'live', runtimeFlag: 'binaryFileRevealEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 47, label: 'Open binary files in Explorer', badge: 'experimental',
-            hint: 'Adds an "Open in Explorer" button to a right-panel file tab that cannot preview a binary file. It shows the file in the owning server\'s system file manager and never opens the file. Disabled by default.',
+            hint: 'Adds an "Open in Explorer" button to a right-panel file tab that cannot preview a binary file. It shows the file in the owning server\'s system file manager and never opens the file. Enabled by default.',
             testId: 'toggle-binary-file-reveal-enabled',
         },
     }),
@@ -1483,10 +1491,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.canvasToolScripts', default: false, runtime: 'live',
+        key: 'features.canvasToolScripts', default: true, runtime: 'live',
         ui: {
             group: 'review', order: 63.5, label: 'Canvas tool scripts', badge: 'experimental',
-            hint: 'Lets an async canvas capability call host.runScript to run a tool script as the chat that owns the canvas. Only read-only tools the canvas declares are available. Needs Canvas host APIs and Tool Scripting. Disabled by default.',
+            hint: 'Lets an async canvas capability call host.runScript to run a tool script as the chat that owns the canvas. Only read-only tools the canvas declares are available. Needs Canvas host APIs and Tool Scripting. Enabled by default.',
             testId: 'toggle-canvas-tool-scripts-enabled',
         },
     }),

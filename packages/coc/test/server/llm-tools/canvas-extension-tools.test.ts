@@ -41,7 +41,7 @@ describe('canvas extension tool factories and persistence', () => {
         return result;
     }
     async function open(count = 5, instanceId = 'instance-1') {
-        const result = await call('open_canvas', { canvasId: qualifiedId, instanceId, input: { count } });
+        const result = await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId, input: { count } });
         expect(result.success).toBe(true);
         return result;
     }
@@ -67,8 +67,8 @@ describe('canvas extension tool factories and persistence', () => {
         fs.rmSync(root, { recursive: true, force: true });
     });
 
-    it('exposes four lazy fixed tools and lists real SDK declarations with qualified IDs', async () => {
-        expect(tools().map(tool => tool.name)).toEqual(['list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas']);
+    it('exposes three lazy fixed tools and lists real SDK declarations with qualified IDs', async () => {
+        expect(tools().map(tool => tool.name)).toEqual(['list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action']);
         expect(startHost).not.toHaveBeenCalled();
         expect(await call('list_canvas_capabilities')).toMatchObject({ success: true, canvases: [{
             id: qualifiedId, extensionKey: 'workspace-1:counter', displayName: 'Counter',
@@ -90,7 +90,7 @@ describe('canvas extension tool factories and persistence', () => {
         expect(await call('list_canvas_capabilities', {}, sibling)).toEqual(refreshed);
         expect(startHost).toHaveBeenCalledTimes(2);
         await open();
-        await call('open_canvas', { canvasId: qualifiedId, instanceId: 'sibling-instance' }, sibling);
+        await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'sibling-instance' }, sibling);
         expect(startHost).toHaveBeenCalledTimes(3);
         expect(startHost.mock.calls.map(([options]) => options.processId)).toEqual([
             owner.processId, owner.processId, sibling.processId,
@@ -119,14 +119,14 @@ describe('canvas extension tool factories and persistence', () => {
     });
     it('closes the server idempotently and reopens the saved record with its original input', async () => {
         const opened = await open();
-        expect(await call('close_canvas', { instanceId: opened.instanceId })).toEqual({ success: true, instanceId: opened.instanceId });
+        expect(await call('manage_canvas', { action: 'close', instanceId: opened.instanceId })).toEqual({ success: true, instanceId: opened.instanceId });
         expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!).closed).toBe(true);
         await expect(fetch(opened.url)).rejects.toThrow();
         expect(await call('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' }))
             .toMatchObject({ success: false, error: { message: expect.stringContaining('closed') } });
-        await call('close_canvas', { instanceId: opened.instanceId });
+        await call('manage_canvas', { action: 'close', instanceId: opened.instanceId });
         expect(emitProcessEvent).toHaveBeenCalledTimes(2);
-        const reopened = await call('open_canvas', { canvasId: qualifiedId, instanceId: opened.instanceId });
+        const reopened = await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: opened.instanceId });
         expect(reopened).toMatchObject({ success: true, canvasId: opened.canvasId, instanceId: opened.instanceId });
         expect(await (await fetch(reopened.url)).json()).toEqual({ count: 5 });
         expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
@@ -151,20 +151,20 @@ describe('canvas extension tool factories and persistence', () => {
         expect(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)?.content).toBe('{}');
     });
     it('does not restore closed instances after restart', async () => {
-        const opened = await open(); await call('close_canvas', { instanceId: opened.instanceId });
+        const opened = await open(); await call('manage_canvas', { action: 'close', instanceId: opened.instanceId });
         await hosts.dispose(); hosts = registry();
         expect(loadCanvasExtensionInstances(canvasStore, owner, 'workspace-1:counter')).toEqual([]);
-        await call('close_canvas', { instanceId: opened.instanceId });
+        await call('manage_canvas', { action: 'close', instanceId: opened.instanceId });
         expect(startHost).toHaveBeenCalledTimes(1);
     });
     it('serializes concurrent opens across factories into one record and generates IDs when omitted', async () => {
         const args = { canvasId: qualifiedId, instanceId: 'same', input: { count: 3 } };
-        const results = await Promise.all([call('open_canvas', args), call('open_canvas', args)]);
+        const results = await Promise.all([call('manage_canvas', { action: 'open', ...args }), call('manage_canvas', { action: 'open', ...args })]);
         expect(results.every(result => result.success)).toBe(true);
         expect(results[0].canvasId).toBe(results[1].canvasId);
         expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
-        const a = await call('open_canvas', { canvasId: qualifiedId });
-        const b = await call('open_canvas', { canvasId: qualifiedId });
+        const a = await call('manage_canvas', { action: 'open', canvasId: qualifiedId });
+        const b = await call('manage_canvas', { action: 'open', canvasId: qualifiedId });
         expect(a.success && b.success).toBe(true); expect(a.instanceId).not.toBe(b.instanceId);
         expect(startHost).toHaveBeenCalledTimes(1);
     });
@@ -172,9 +172,9 @@ describe('canvas extension tool factories and persistence', () => {
         await open();
         const sibling = { ...owner, processId: 'sibling' };
         expect(await call('invoke_canvas_action', { instanceId: 'instance-1', actionName: 'increment' }, sibling)).toMatchObject({ success: false });
-        expect(await call('close_canvas', { instanceId: 'instance-1' }, { ...owner, workspaceId: 'foreign' })).toMatchObject({ success: false });
+        expect(await call('manage_canvas', { action: 'close', instanceId: 'instance-1' }, { ...owner, workspaceId: 'foreign' })).toMatchObject({ success: false });
         expect(loadCanvasExtensionInstances(canvasStore, sibling, 'workspace-1:counter')).toEqual([]);
-        const second = await call('open_canvas', { canvasId: qualifiedId, instanceId: 'instance-1', input: { count: 9 } }, sibling);
+        const second = await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'instance-1', input: { count: 9 } }, sibling);
         expect(second.success).toBe(true); expect(await (await fetch(second.url)).json()).toEqual({ count: 9 });
         expect(startHost.mock.calls.map(([opts]) => opts.processId)).toEqual([owner.processId, sibling.processId]);
     });
@@ -182,10 +182,10 @@ describe('canvas extension tool factories and persistence', () => {
         const folder = path.join(root, 'home', '.copilot', 'extensions', 'global-counter');
         fs.mkdirSync(folder, { recursive: true });
         fs.copyFileSync(path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs'), path.join(folder, 'extension.mjs'));
-        const result = await call('open_canvas', { canvasId: 'global:global-counter/counter', instanceId: 'global' });
+        const result = await call('manage_canvas', { action: 'open', canvasId: 'global:global-counter/counter', instanceId: 'global' });
         expect(result.success).toBe(true); expect(startHost.mock.calls[0][0].extension.cwd).toBe(folder);
         expect(canvasStore.getCanvas(owner.workspaceId, result.canvasId)?.processId).toBe(owner.processId);
-        expect(await call('open_canvas', { canvasId: qualifiedId, instanceId: 'global' }))
+        expect(await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'global' }))
             .toMatchObject({ success: false, error: { message: expect.stringContaining('another canvas') } });
     });
     it('opens member extensions in group conversations while preserving member cwd and group storage', async () => {
@@ -201,7 +201,7 @@ describe('canvas extension tool factories and persistence', () => {
         const scope = { ...owner, workspaceId: group.id };
         const result = await call('list_canvas_capabilities', {}, scope);
         expect(result.canvases.map((canvas: any) => canvas.id)).toEqual([qualifiedId, 'workspace-2:counter/counter']);
-        const opened = await call('open_canvas', { canvasId: 'workspace-2:counter/counter', instanceId: 'member' }, scope);
+        const opened = await call('manage_canvas', { action: 'open', canvasId: 'workspace-2:counter/counter', instanceId: 'member' }, scope);
         expect(opened.success).toBe(true);
         expect(canvasStore.getCanvas(group.id, opened.canvasId)).toMatchObject({ ...scope, type: 'copilot-extension' });
         expect(canvasStore.listCanvases('workspace-2')).toEqual([]);
@@ -210,7 +210,7 @@ describe('canvas extension tool factories and persistence', () => {
     it('closes a newly opened instance when its durable write fails', async () => {
         const close = vi.spyOn(CanvasExtensionHost.prototype, 'close');
         vi.spyOn(canvasStore, 'createCanvas').mockImplementationOnce(() => { throw new Error('Disk full'); });
-        expect(await call('open_canvas', { canvasId: qualifiedId, instanceId: 'unpersisted' }))
+        expect(await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'unpersisted' }))
             .toMatchObject({ success: false, error: { message: 'Disk full' } });
         expect(close).toHaveBeenCalledExactlyOnceWith({ canvasId: 'counter', instanceId: 'unpersisted' });
         expect(canvasStore.listCanvases(owner.workspaceId)).toEqual([]);
@@ -236,14 +236,35 @@ describe('canvas extension tool factories and persistence', () => {
         }
         expect(processStore.getWorkspaces).not.toHaveBeenCalled(); expect(startHost).not.toHaveBeenCalled();
     });
+    it('validates manage_canvas action and per-action parameters before touching runtimes or records', async () => {
+        for (const args of [{}, { action: 'reopen', canvasId: qualifiedId }, { action: 'OPEN', canvasId: qualifiedId }]) {
+            expect(await call('manage_canvas', args)).toEqual({
+                success: false, error: { code: 'canvas-extension-error', message: 'action must be "open" or "close"' },
+            });
+        }
+        expect(await call('manage_canvas', { action: 'open' })).toMatchObject({
+            success: false, error: { message: 'canvasId must be a non-empty string' },
+        });
+        const opened = await open();
+        expect(await call('manage_canvas', { action: 'close', instanceId: opened.instanceId, canvasId: qualifiedId }))
+            .toMatchObject({ success: false, error: { message: 'canvasId is not supported for action "close"' } });
+        expect(await call('manage_canvas', { action: 'close', instanceId: opened.instanceId, input: {} }))
+            .toMatchObject({ success: false, error: { message: 'input is not supported for action "close"' } });
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!).closed).not.toBe(true);
+        expect(await call('manage_canvas', { action: 'close', instanceId: 'missing' }))
+            .toMatchObject({ success: false, error: { message: 'Unknown canvas instance: missing' } });
+        expect(startHost).toHaveBeenCalledTimes(1);
+    });
     it('rejects malformed arguments, unknown canvases and removed extensions without extra records', async () => {
         for (const args of [{}, { canvasId: 'unknown/counter' }, { canvasId: qualifiedId, input: [] }, { canvasId: qualifiedId, instanceId: '' }]) {
-            expect(await call('open_canvas', args)).toMatchObject({ success: false });
+            expect(await call('manage_canvas', { action: 'open', ...args })).toMatchObject({ success: false });
         }
         expect(await call('invoke_canvas_action', { instanceId: 'unknown', actionName: 'increment' })).toMatchObject({ success: false });
-        expect(await call('close_canvas', {})).toMatchObject({ success: false });
+        expect(await call('manage_canvas', { action: 'close' })).toMatchObject({
+            success: false, error: { message: 'instanceId must be a non-empty string' },
+        });
         expect(startHost).not.toHaveBeenCalled();
-        expect(await call('open_canvas', { canvasId: 'workspace-1:counter/undeclared' })).toMatchObject({ success: false });
+        expect(await call('manage_canvas', { action: 'open', canvasId: 'workspace-1:counter/undeclared' })).toMatchObject({ success: false });
         expect(canvasStore.listCanvases(owner.workspaceId)).toEqual([]);
         const opened = await open(); fs.rmSync(path.join(repo, '.github', 'extensions'), { recursive: true });
         expect(await call('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' }))

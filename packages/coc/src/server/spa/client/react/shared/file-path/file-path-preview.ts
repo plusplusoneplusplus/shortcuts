@@ -7,7 +7,7 @@
 
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
-import { findLinkHandler, openLink } from '../../utils/link-handler';
+import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
@@ -20,7 +20,7 @@ import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 import { getLocalFileLinkKind } from '../../features/chat/conversation/markdownHtml';
 import { isAbsolutePath } from '../../utils/path-resolution';
 import { isHtmlPageTabEnabled } from '../../utils/config';
-import { requestPanelBrowserTab } from './browser-bridge';
+import { panelBrowserLinkFromClick, requestPanelBrowserTab } from './browser-bridge';
 import { desktopHtmlPageBridge, type DesktopHtmlPageBridge, type OpenHtmlPageDetail } from './html-page-bridge';
 import {
     isExternalFileReferenceHref,
@@ -475,17 +475,6 @@ function findChatAnchorForHint(target: EventTarget | null): HTMLAnchorElement | 
  * tab may open. Links a configured link handler owns (Teams, OneNote, …)
  * stay with that handler.
  */
-function findChatWebAnchor(target: EventTarget | null): HTMLAnchorElement | null {
-    if (!(target instanceof HTMLElement)) return null;
-    const link = target.closest<HTMLAnchorElement>('a[href]');
-    if (!link || !link.closest('.chat-message')) return null;
-    if (link.hasAttribute('download')) return null;
-    const href = link.getAttribute('href') || '';
-    if (!/^https?:\/\//i.test(href)) return null;
-    if (findLinkHandler(href, getLinkHandlersConfig())) return null;
-    return link;
-}
-
 function readMarkdownHref(link: HTMLElement): string {
     return link.getAttribute('data-href') || link.getAttribute('href') || '';
 }
@@ -960,10 +949,8 @@ function initFilePathPreviewDelegation(): void {
     // Chat web links open in the right panel's browser tab when the desktop app
     // can host one; otherwise (or with a modifier key) the browser default runs.
     document.body.addEventListener('click', (event) => {
-        const me = event as MouseEvent;
-        if (me.defaultPrevented || me.ctrlKey || me.metaKey || me.shiftKey || me.altKey || me.button !== 0) return;
-        const link = findChatWebAnchor(event.target);
-        if (!link) return;
+        const link = panelBrowserLinkFromClick(event as MouseEvent);
+        if (!link?.closest('.chat-message')) return;
         if (!requestPanelBrowserTab(link.getAttribute('href')!)) return;
         event.preventDefault();
         event.stopPropagation();

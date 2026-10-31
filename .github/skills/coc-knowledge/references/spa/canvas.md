@@ -61,7 +61,11 @@ normal unified-panel model.
 ### Editing and conflicts
 
 Markdown canvases toggle between Preview (`chatMarkdownToHtml` with canvas embeds and
-SVG fences enabled, hydrated by `MarkdownView`) and Edit (plain textarea).
+SVG fences enabled, hydrated by `MarkdownView` with `tableWrapToggle`) and Edit (plain
+textarea). Tables share response [wrapping controls and styles](chat-conversation.md).
+The viewer is keyed by workspace, routing ref and canvas id; content/history revisions
+retain per-table wrap choices, while owner/document changes or remount reset them.
+Wrapping is display-only and never triggers autosave.
 Edits autosave debounced through `client.canvases.save(...)` carrying `expectedRevision`;
 HTTP 409 surfaces a conflict, and a live AI update arriving over unsaved local edits is
 held rather than clobbering the draft. The header revision chip steps through the canvas
@@ -189,8 +193,11 @@ when any extension tool survives preference filtering. The live flag is independ
 `canvas.enabled`; disabled, browser-only, Coda and native PR review turns omit both
 extension tools and catalog. Tool assembly and catalog discovery never start children.
 
-`llm-tools/canvas-extension-tools.ts` provides four provider-neutral factories with a
-live gate before discovery, owner reads or runtime calls. `open_canvas` persists a
+`llm-tools/canvas-extension-tools.ts` provides three provider-neutral factories with a
+live gate before discovery, owner reads or runtime calls. `manage_canvas` takes a
+required `action`: `open` needs a qualified `canvasId` (optional `instanceId` reopens a
+saved instance, optional `input`); `close` needs `instanceId`, rejects `canvasId`/`input`
+and keeps the saved record. Invalid actions fail after the live gate. Open persists a
 `copilot-extension` record in the conversation workspace, with extension key, declared
 canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
 The shared notifier emits both WebSocket and process updates on open/close. A closed
@@ -400,6 +407,14 @@ hrefs and paths inside code or preformatted blocks stay literal. Forge protects
 explicit Markdown destinations before bare-path matching. Local anchors in rendered
 previews share the delegate; hashes, downloads, external links and modified clicks
 retain their existing handlers.
+
+Plain clicks (and keyboard activation) on HTTP(S) web links open a panel browser tab
+through `requestPanelBrowserTab` (`OPEN_BROWSER_URL_EVENT`) on the desktop. Chat links
+(`.chat-message`) use the dock target as owner. Markdown canvas previews send an explicit
+owner: the canvas clone and route plus the hosting panel's scope and chat; only the panel
+with that scope takes it. Modified clicks, downloads, link-handler URLs, same-origin app
+URLs, non-HTTP schemes, no hosting panel or no desktop browser view keep the default
+`target="_blank"` behavior.
 
 `MarkdownFileLinkScope` claims the bubbling `coc-open-file-reference` event for
 file/canvas previews before the chat fallback. It binds the displayed file directory

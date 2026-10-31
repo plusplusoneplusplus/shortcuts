@@ -1,4 +1,6 @@
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
+import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
+import { findLinkHandler } from '../../utils/link-handler';
 
 /** Reply to `browser.open` / `browser.navigate`. */
 export type BrowserEngine = 'electron' | 'webview2';
@@ -218,8 +220,24 @@ export interface BrowserControlActivityEvent {
 /** Event a chat web-link click sends to ask the right panel for a browser tab. */
 export const OPEN_BROWSER_URL_EVENT = 'coc-open-browser-url';
 
+/**
+ * Explicit owner of a requested browser tab, for links shown in a resource
+ * (a canvas) rather than the selected chat. Only the panel whose scope is
+ * `scopeWorkspaceId` takes the request.
+ */
+export interface OpenBrowserUrlOwner {
+    scopeWorkspaceId: string;
+    /** The concrete clone that owns the resource. */
+    workspaceId: string;
+    routingRef?: string | null;
+    /** The conversation the resource is linked to. */
+    chatId: string | null;
+}
+
 export interface OpenBrowserUrlDetail {
     url: string;
+    /** Absent for chat links: the panel's dock target owns the tab. */
+    owner?: OpenBrowserUrlOwner;
     /** Set by the panel that opened the tab. */
     handled?: boolean;
 }
@@ -229,11 +247,27 @@ export interface OpenBrowserUrlDetail {
  * when there is no desktop browser view or no panel took it, so the caller
  * keeps its normal link behavior.
  */
-export function requestPanelBrowserTab(url: string): boolean {
+export function requestPanelBrowserTab(url: string, owner?: OpenBrowserUrlOwner): boolean {
     if (!desktopBrowserBridge()) return false;
-    const detail: OpenBrowserUrlDetail = { url };
+    const detail: OpenBrowserUrlDetail = { url, ...(owner ? { owner } : {}) };
     window.dispatchEvent(new CustomEvent(OPEN_BROWSER_URL_EVENT, { detail }));
     return detail.handled === true;
+}
+
+/**
+ * The http(s) anchor a plain primary click should open in a panel browser
+ * tab, or null when the link keeps its normal handling: modified clicks,
+ * downloads, other schemes, and URLs a configured link handler owns.
+ */
+export function panelBrowserLinkFromClick(event: MouseEvent): HTMLAnchorElement | null {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return null;
+    if (!(event.target instanceof Element)) return null;
+    const link = event.target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || link.hasAttribute('download')) return null;
+    const href = link.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(href)) return null;
+    if (findLinkHandler(href, getLinkHandlersConfig())) return null;
+    return link;
 }
 
 export function desktopBrowserBridge(): DesktopBrowserBridge | undefined {

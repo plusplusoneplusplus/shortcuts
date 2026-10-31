@@ -11,7 +11,7 @@ export type CanvasExtensionToolsDeps = CanvasExtensionInstanceDeps;
 export type { CanvasExtensionRuntime } from '../canvas-extensions/instance-service';
 
 interface InvokeArgs { instanceId: string; actionName: string; input?: Record<string, unknown> }
-interface CloseArgs { instanceId: string }
+type ManageArgs = { action: 'open' | 'close' } & Partial<OpenCanvasExtensionArgs>;
 
 function requiredString(value: unknown, name: string): asserts value is string {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
@@ -67,12 +67,28 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
                 return { success: true, canvases };
             }),
         }),
-        defineTool<OpenCanvasExtensionArgs>('open_canvas', {
-            description: 'Open an installed canvas by its qualified canvasId. Supply instanceId to reopen an existing instance.',
+        defineTool<ManageArgs>('manage_canvas', {
+            description: 'Open or close an installed canvas instance. action "open" needs a qualified canvasId '
+                + '(from list_canvas_capabilities) and takes optional input; supply instanceId to reopen a saved instance. '
+                + 'action "close" needs instanceId; the saved record remains available to reopen.',
             parameters: { type: 'object', properties: {
+                action: { type: 'string', enum: ['open', 'close'] },
                 canvasId: { type: 'string' }, input: { type: 'object' }, instanceId: { type: 'string' },
-            }, required: ['canvasId'] },
-            handler: toolResult(args => openCanvasExtension(deps, args)),
+            }, required: ['action'] },
+            handler: toolResult(async args => args?.action === 'open'
+                ? openCanvasExtension(deps, args as OpenCanvasExtensionArgs)
+                : runCanvasExtensionOperation(deps, async () => {
+                    if (args?.action !== 'close') throw new Error('action must be "open" or "close"');
+                    for (const name of ['canvasId', 'input'] as const) {
+                        if (args[name] !== undefined) throw new Error(`${name} is not supported for action "close"`);
+                    }
+                    const { canvas, instance } = findInstance(args.instanceId as string);
+                    if (!instance.closed) {
+                        await deps.hosts.close(owner, await extensionFor(instance.extensionKey), instance.instanceId);
+                        persistCanvasExtensionInstance(deps, { ...instance, closed: true }, canvas);
+                    }
+                    return { success: true, instanceId: instance.instanceId };
+                })),
         }),
         defineTool<InvokeArgs>('invoke_canvas_action', {
             description: 'Invoke a declared action on an open canvas instance.',
@@ -83,21 +99,9 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
                 requiredString(args?.actionName, 'actionName');
                 validateInput(args.input);
                 const { instance } = findInstance(args.instanceId);
-                if (instance.closed) throw new Error('Canvas instance is closed; reopen it with open_canvas');
+                if (instance.closed) throw new Error('Canvas instance is closed; reopen it with manage_canvas action "open"');
                 const result = await deps.hosts.invoke(owner, await extensionFor(instance.extensionKey), args);
                 return { success: true, result };
-            }),
-        }),
-        defineTool<CloseArgs>('close_canvas', {
-            description: 'Close a canvas instance. Its saved record remains available to reopen.',
-            parameters: { type: 'object', properties: { instanceId: { type: 'string' } }, required: ['instanceId'] },
-            handler: guarded(async args => {
-                const { canvas, instance } = findInstance(args?.instanceId);
-                if (!instance.closed) {
-                    await deps.hosts.close(owner, await extensionFor(instance.extensionKey), instance.instanceId);
-                    persistCanvasExtensionInstance(deps, { ...instance, closed: true }, canvas);
-                }
-                return { success: true, instanceId: instance.instanceId };
             }),
         }),
     ] as Tool<unknown>[];

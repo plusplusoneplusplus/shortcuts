@@ -548,7 +548,7 @@ describe('installed canvas extension live settings', () => {
     let baseUrl: string;
     let tmpDir: string;
     let enabled: boolean;
-    const names = ['list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas'];
+    const names = ['list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action'];
 
     beforeAll(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-extension-settings-'));
@@ -585,9 +585,9 @@ describe('installed canvas extension live settings', () => {
                     expect(tools.some((t: any) => t.name === 'write_canvas')).toBe(false);
                     if (value) {
                         expect(tools.find((t: any) => t.name === 'list_canvas_capabilities').params).toEqual([]);
-                        expect(tools.find((t: any) => t.name === 'open_canvas').params).toContainEqual({
-                            name: 'input', type: '{...}', required: false,
-                        });
+                        const manage = tools.find((t: any) => t.name === 'manage_canvas').params;
+                        expect(manage).toContainEqual({ name: 'action', type: 'string', required: true });
+                        expect(manage).toContainEqual({ name: 'input', type: '{...}', required: false });
                     }
                 }
             }
@@ -598,15 +598,15 @@ describe('installed canvas extension live settings', () => {
         enabled = true;
         const repo = `${baseUrl}/api/workspaces/repo/llm-tools-config`;
         const group = `${baseUrl}/api/workspaces/group-demo/llm-tools-config`;
-        await request(repo, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: ['open_canvas'] }) });
+        await request(repo, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: ['manage_canvas'] }) });
         await request(group, { method: 'PUT', body: JSON.stringify({ disabledLlmTools: [] }) });
-        expect((await request(repo)).json().disabledLlmTools).toEqual(['open_canvas']);
+        expect((await request(repo)).json().disabledLlmTools).toEqual(['manage_canvas']);
         expect((await request(group)).json().disabledLlmTools).toEqual([]);
         enabled = false;
         const hidden = (await request(repo)).json();
         expect(hidden.tools.some((t: any) => names.includes(t.name))).toBe(false);
-        expect(hidden.disabledLlmTools).toEqual(['open_canvas']);
+        expect(hidden.disabledLlmTools).toEqual(['manage_canvas']);
         enabled = true;
-        expect((await request(repo)).json().disabledLlmTools).toEqual(['open_canvas']);
+        expect((await request(repo)).json().disabledLlmTools).toEqual(['manage_canvas']);
     });
 });

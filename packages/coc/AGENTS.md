@@ -226,7 +226,7 @@ references before editing. Paths are package-relative.
   Sends queue, never steer; ephemeral queries reuse canvas completion with the active
   conversation provider/model, denied permissions and ambient MCP, and add no turn.
   Preserve live owner/flag checks during admission and before returning model answers.
-  `llm-tools/canvas-extension-tools.ts` provides four live-gated factories;
+  `llm-tools/canvas-extension-tools.ts` provides three live-gated factories (open/close share `manage_canvas`);
   their registry metadata and schema summaries use an independent default-off
   `canvasExtensionsEnabled` gate in live GET/PUT workspace tool settings. Keep
   this gate separate from `canvas.enabled`. The server supplies shared host, store,
