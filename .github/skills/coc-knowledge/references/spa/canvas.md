@@ -404,6 +404,14 @@ explicit Markdown destinations before bare-path matching. Local anchors in rende
 previews share the delegate; hashes, downloads, external links and modified clicks
 retain their existing handlers.
 
+Plain clicks (and keyboard activation) on HTTP(S) web links open a panel browser tab
+through `requestPanelBrowserTab` (`OPEN_BROWSER_URL_EVENT`) on the desktop. Chat links
+(`.chat-message`) use the dock target as owner. Markdown canvas previews send an explicit
+owner: the canvas clone and route plus the hosting panel's scope and chat; only the panel
+with that scope takes it. Modified clicks, downloads, link-handler URLs, same-origin app
+URLs, non-HTTP schemes, no hosting panel or no desktop browser view keep the default
+`target="_blank"` behavior.
+
 `MarkdownFileLinkScope` claims the bubbling `coc-open-file-reference` event for
 file/canvas previews before the chat fallback. It binds the displayed file directory
 and concrete owner, reads roots on that server, and uses `resolveChatFileLink` plus

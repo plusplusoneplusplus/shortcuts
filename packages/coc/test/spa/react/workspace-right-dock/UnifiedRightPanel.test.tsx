@@ -929,6 +929,27 @@ describe('UnifiedRightPanel', () => {
             expect(browserTabs()).toHaveLength(2);
         });
 
+        it('opens a canvas web link under the canvas owner and only in its own panel scope', async () => {
+            renderPanel({ workspaceId: 'group', chatId: 'chat-1', targets: [
+                { workspaceId: 'member', label: 'Member repo' } as any,
+            ] });
+            const owner = { scopeWorkspaceId: 'group', workspaceId: 'member', routingRef: 'remote:server-b:member', chatId: 'chat-1' };
+            const send = (detail: { url: string; owner: typeof owner; handled: boolean }) => {
+                act(() => { window.dispatchEvent(new CustomEvent('coc-open-browser-url', { detail })); });
+                return detail;
+            };
+            // Another panel's canvas: left for that panel.
+            expect(send({ url: 'https://example.com/', owner: { ...owner, scopeWorkspaceId: WS }, handled: false }).handled).toBe(false);
+            expect(readUnifiedPanelState('group').workspaceTabs).toHaveLength(0);
+
+            expect(send({ url: 'https://example.com/docs', owner, handled: false }).handled).toBe(true);
+            expect(readUnifiedPanelState('group').workspaceTabs).toEqual([expect.objectContaining({
+                kind: 'browser', ownerWorkspaceId: 'member', ownerRoutingRef: 'remote:server-b:member',
+                repoLabel: 'Member repo', browserUrl: 'https://example.com/docs',
+            })]);
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(expect.any(String), 'https://example.com/docs', 'remote:server-b:member', undefined));
+        });
+
         it('ignores chat web links without the desktop browser view', () => {
             delete (window as { cocDesktop?: unknown }).cocDesktop;
             renderPanel({ chatId: 'chat-1' });

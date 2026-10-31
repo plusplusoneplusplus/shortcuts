@@ -872,25 +872,31 @@ export function UnifiedRightPanel({
         });
     }, [chatId, open]);
 
-    // A web link clicked in a chat opens as a new browser tab owned by the dock target.
+    // A web link clicked in a chat opens as a new browser tab owned by the dock
+    // target; a link in a resource (a canvas) names its own owner and scope.
     useEffect(() => {
         const onOpenUrl = (event: Event) => {
             const detail = (event as CustomEvent<OpenBrowserUrlDetail>).detail;
             if (!detail || detail.handled || !desktopBrowserBridge()) return;
+            const owner = detail.owner;
+            if (owner && owner.scopeWorkspaceId !== workspaceId) return;
             const normalized = normalizeBrowserUrl(detail.url);
             if (!normalized.ok) return;
             detail.handled = true;
+            const ownerWorkspaceId = owner ? owner.workspaceId : target;
+            const ownerRoutingRef = owner ? owner.routingRef : targetRoutingRef;
+            const repoLabel = owner ? targetOptions.find(option => option.workspaceId === ownerWorkspaceId)?.label : targetLabel;
             open(browserOpenInput({
-                ownerWorkspaceId: target,
-                ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
-                chatId,
-                ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
+                ownerWorkspaceId,
+                ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
+                chatId: owner ? owner.chatId : chatId,
+                ...(ownerWorkspaceId !== workspaceId && repoLabel ? { repoLabel } : {}),
             }, normalized.url));
             setWorkspaceDockOpen(workspaceId, true);
         };
         window.addEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
         return () => window.removeEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
-    }, [chatId, open, target, targetLabel, targetRoutingRef, workspaceId]);
+    }, [chatId, open, target, targetLabel, targetOptions, targetRoutingRef, workspaceId]);
 
     useEffect(() => {
         const onOpenPage = (event: Event) => {
