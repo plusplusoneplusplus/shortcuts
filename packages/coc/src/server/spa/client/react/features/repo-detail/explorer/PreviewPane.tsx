@@ -83,6 +83,11 @@ export interface PreviewPaneProps {
      * value; it re-runs the editor's reveal so the line re-centres.
      */
     revealNonce?: number;
+    /**
+     * Each new value asks for the raw source editor over a rendered Markdown
+     * view, for this pane only; the toggle stays available.
+     */
+    rawSource?: number;
     /** Shows that this location came from the fuzzy repository symbol index. */
     symbolCandidate?: boolean;
     onClose?: () => void;
@@ -166,7 +171,7 @@ function RenderedMarkdown({ content, selectionContext }: {
     );
 }
 
-export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealBinary = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, ...host }: PreviewPaneProps) {
+export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealBinary = false, revealLine, endLine, revealColumn, revealNonce, rawSource, symbolCandidate, onClose, ...host }: PreviewPaneProps) {
     const identity = useMemo(
         () => resolveFilePreviewIdentity({ workspaceId: repoId, routingRef, editingScope, filePath }),
         [repoId, routingRef, editingScope, filePath],
@@ -180,6 +185,7 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
         fileName,
         markdownPreview,
         reveal: { line: revealLine, endLine, column: revealColumn, nonce: revealNonce },
+        rawSource,
         host,
     });
     const {

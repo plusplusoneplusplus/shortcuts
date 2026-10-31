@@ -202,6 +202,13 @@ export interface UnifiedPanelTab {
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
     /**
+     * A `file` tab's latest request to show its raw source editor instead of a
+     * rendered document view. Each request mints a new value, so re-opening a
+     * tab the user switched to Rendered shows the source again. Persisted, so a
+     * restored tab keeps its raw view; the global preview setting is untouched.
+     */
+    rawSource?: number;
+    /**
      * True on the section's single *preview* tab — VS Code's italic slot. A
      * preview tab is a normal tab in every respect except that the next
      * single click in the file tree reuses its slot instead of opening a
@@ -427,6 +434,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.column === b.column
         && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
+        && a.rawSource === b.rawSource
         && a.preview === b.preview
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
         && a.gitMemberId === b.gitMemberId
@@ -570,6 +578,8 @@ export interface OpenUnifiedTabInput {
     column?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
+    /** `file` tabs: show the raw source editor rather than a rendered view. */
+    rawSource?: true;
     /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
     gitView?: PersistedGitView;
     gitMemberId?: string;
@@ -583,6 +593,12 @@ export interface OpenUnifiedTabInput {
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
 let revealSequence = 0;
+/** Source of `rawSource`. Seeded by the clock so restored values never repeat. */
+let rawSourceSequence = 0;
+function nextRawSource(): number {
+    rawSourceSequence = Math.max(rawSourceSequence + 1, Date.now());
+    return rawSourceSequence;
+}
 
 /** The reveal fields a tab already holds, nonce included, so re-focusing it
  * neither forgets the position nor asks for a fresh reveal. */
@@ -655,6 +671,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
+        ...(input.kind === 'file' && input.rawSource ? { rawSource: nextRawSource() } : {}),
         ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
         ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
@@ -678,6 +695,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // pointed nor scrolls it back there. The column travels with its
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
+            ...(opened.rawSource === undefined && existing.rawSource !== undefined ? { rawSource: existing.rawSource } : {}),
             ...(opened.gitView === undefined && existing.gitView !== undefined && opened.gitMemberId === existing.gitMemberId
                 ? { gitView: existing.gitView } : {}),
             ...(existing.notesView === undefined ? {} : { notesView: existing.notesView }),
@@ -1150,6 +1168,8 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
             }
             : {}),
         ...(value.symbolCandidate === true ? { symbolCandidate: true } : {}),
+        ...(kind === 'file' && typeof value.rawSource === 'number' && Number.isFinite(value.rawSource) && value.rawSource > 0
+            ? { rawSource: value.rawSource } : {}),
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),

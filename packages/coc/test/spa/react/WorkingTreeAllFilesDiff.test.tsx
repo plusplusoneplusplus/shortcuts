@@ -7,7 +7,10 @@ const h = vi.hoisted(() => ({
     client: { git: { getWorkingTreeChanges: vi.fn(), listDiffComments: vi.fn() } },
     endpoint: undefined as string | undefined,
     unresolved: false,
-    panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(),
+    panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(), openTab: vi.fn(),
+}));
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', () => ({
+    openUnifiedPanelTab: h.openTab,
 }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => h.client, useCloneBaseUrl: () => h.endpoint,
@@ -31,6 +34,7 @@ vi.mock('../../../src/server/spa/client/react/features/git/working-tree/WorkingT
 }));
 import { WorkingTreeAllFilesDiff } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff';
 import { WorkingTree } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTree';
+import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 const ROOT = '/repo';
 function change(rel: string, stage: 'staged' | 'unstaged' | 'untracked', status = 'M') {
@@ -76,6 +80,20 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         expect(current()).toMatchObject({ stage: 'staged', initialHunkTarget: 'last' });
         fireEvent.click(row('Untracked'));
         expect(current()).toMatchObject({ stage: 'untracked', filePath: '/repo/new.txt' });
+    });
+    it('opens the right-clicked change as a raw repo-relative source tab for its owner, and disables deletions', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [...CHANGES, change('gone.ts', 'unstaged', 'D')] });
+        render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: null }}>
+            <WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:b:ws-1" /></UnifiedPanelHostProvider>);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.contextMenu(row('Untracked'), { clientX: 5, clientY: 5 });
+        fireEvent.click(within(screen.getByTestId('context-menu')).getByRole('menuitem', { name: /Open file/ }));
+        expect(h.openTab).toHaveBeenCalledWith('ws-1', expect.objectContaining({
+            kind: 'file', ownerWorkspaceId: 'ws-1', ownerRoutingRef: 'remote:b:ws-1', resourceId: 'new.txt', rawSource: true,
+        }));
+        expect(current().stage).toBe('staged');
+        fireEvent.contextMenu(within(nav()).getByRole('button', { name: /gone\.ts/ }), { clientX: 5, clientY: 5 });
+        expect(within(screen.getByTestId('context-menu')).getByRole('menuitem', { name: /Open file/ })).toBeDisabled();
     });
     it('keeps repeated display paths from different repository roots selectable in the tree', async () => {
         h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [

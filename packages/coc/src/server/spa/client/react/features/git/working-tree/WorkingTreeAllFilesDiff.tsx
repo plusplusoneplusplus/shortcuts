@@ -6,7 +6,9 @@ import { ReviewFiles } from '../diff/ReviewFiles';
 import { reviewFileKey } from '../diff/gitReviewFiles';
 import { useDirtyDetailGuard } from '../repoGitTab/useDirtyDetailGuard';
 import { WorkingTreeFileDiff, type WorkingTreeFileDiffProps } from './WorkingTreeFileDiff';
-import { hasMultipleRepos, relDisplayPath, type WorkingTreeChange } from './WorkingTree';
+import { hasMultipleRepos, relDisplayPath, repoRelative, type WorkingTreeChange } from './WorkingTree';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
@@ -46,6 +48,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const [selected, setSelected] = useState<WorkingTreeChange>();
     const [dirty, setDirty] = useState(false);
     const guard = useDirtyDetailGuard(selected?.filePath ?? null);
+    const panelHost = useUnifiedPanelHost();
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
         guard.onDirtyChange(value);
@@ -86,6 +89,13 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     onClick: guard.guard(() => onFileSelect(selected.filePath, selected.stage)) }] : [], below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}
             rowDetails={file => <span className="git-review-muted">{file.label}</span>}
+            rowMenu={file => {
+                const change = byKey.get(reviewFileKey(file));
+                return change ? [openFileMenuItem(file, () => openChangedFileSource({
+                    path: props.repoRoot ? repoRelative(change.filePath, props.repoRoot) : change.filePath, workspaceId,
+                    ownerRoutingRef: attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null, panelHost,
+                }))] : [];
+            }}
             renderEmpty={<div className="git-review-empty" data-testid="working-tree-all-files-empty">{files.length ? 'No matching files.' : 'No working-tree changes'}</div>}
             renderFile={({ file, paths, select, target }) => {
                 const change = byKey.get(reviewFileKey(file))!;

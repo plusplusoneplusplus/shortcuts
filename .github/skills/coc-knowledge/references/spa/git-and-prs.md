@@ -156,6 +156,12 @@ and drag capabilities keep Git revision attachments and PR classification/visite
 markers consumer-owned. Optional file IDs separate selection from displayed paths;
 mutable hosts can guard navigation and retain selection while an editor is dirty.
 Each host keys the shell by owner and comparison identity.
+Optional `rowMenu` items open from right-click, Menu key or Shift+F10 on the
+clicked row without changing selection. Commit/branch (`GitFileReview`) and
+working-tree hosts supply **Open file** (`changedFileSource.ts`): the row's
+current working copy as a raw-source file tab for the diff's owner and clone
+route, or the owner's Explorer deep link without a panel. Renames open the new
+path; deletions disable the action.
 Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
 patch/content loaders, comment context and transport; the supplied paths replace
 the source’s fallback file-list loader. PR mobile/patch-only views retain the slim

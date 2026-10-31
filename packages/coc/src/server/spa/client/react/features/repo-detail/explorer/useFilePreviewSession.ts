@@ -80,11 +80,13 @@ export interface PreviewReveal {
     nonce?: number;
 }
 
-export function useFilePreviewSession({ identity, fileName, markdownPreview, reveal, host }: {
+export function useFilePreviewSession({ identity, fileName, markdownPreview, reveal, rawSource, host }: {
     identity: FilePreviewIdentity;
     fileName: string;
     markdownPreview: boolean;
     reveal: PreviewReveal;
+    /** A new value asks for the raw editor (see `PreviewPaneProps.rawSource`). */
+    rawSource?: number;
     host: FilePreviewHostBridge;
 }) {
     const { workspaceId, routingRef, editingScope, path, ownerKey, readOnly } = identity;
@@ -149,7 +151,8 @@ export function useFilePreviewSession({ identity, fileName, markdownPreview, rev
     // ── Markdown raw/rendered mode ──────────────────────────────────────────
     const canPreviewMarkdown = markdownPreview && identity.kind !== 'trusted' && !isOversized
         && displayBlob?.encoding === 'utf-8' && /\.(md|markdown)$/i.test(fileName);
-    const [rawMarkdown, setRawMarkdownState] = useState(reveal.line !== undefined);
+    const startsRaw = reveal.line !== undefined || rawSource !== undefined;
+    const [rawMarkdown, setRawMarkdownState] = useState(startsRaw);
     // The mode the pane is heading to, set before React renders it. A model
     // mount that React flushes while the raw editor is being left must not
     // spend the snapshot saved for the way back.
@@ -165,8 +168,13 @@ export function useFilePreviewSession({ identity, fileName, markdownPreview, rev
         setRawMarkdown(true);
     }, [reveal.line, reveal.column, reveal.nonce, setRawMarkdown]);
     useEffect(() => {
+        if (rawSource === undefined) return;
         rawViewStateRef.current = null;
-        setRawMarkdown(reveal.line !== undefined);
+        setRawMarkdown(true);
+    }, [rawSource, setRawMarkdown]);
+    useEffect(() => {
+        rawViewStateRef.current = null;
+        setRawMarkdown(startsRaw);
     }, [workspaceId, routingRef, path, setRawMarkdown]);
     const showRendered = canPreviewMarkdown && !rawMarkdown;
     /** Restores the raw editor view saved when the reader left for Rendered. */

@@ -11,6 +11,8 @@ import { GIT_FILE_CONTEXT_DRAG_KIND } from '../../chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openChangedFileSource, openFileMenuItem } from './changedFileSource';
 
 type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment' | 'createDiffEditor'> & {
     comparisonKey: string;
@@ -31,6 +33,10 @@ type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' 
 export function GitFileReview(props: Props) {
     const endpoint = useCloneBaseUrl(props.source.routingTarget === null ? undefined : props.source.routingTarget ?? props.workspaceId);
     const sourceOwner = useCommitContextOwner(props.workspaceId, props.attachmentDestinationId);
+    const panelHost = useUnifiedPanelHost();
+    // Same owner route as FileDiffPanel's path link and definition jumps.
+    const ownerRoutingRef = props.source.routingTarget === undefined
+        ? (props.attachmentDestinationId === props.workspaceId ? null : props.attachmentDestinationId) : props.source.routingTarget;
     const identity = JSON.stringify([props.attachmentDestinationId ?? props.workspaceId, props.workspaceId, props.comparisonKey, props.source.cacheKey, props.source.routingTarget, endpoint]);
     if (props.source.routingTarget && resolveCloneRoute(props.source.routingTarget).kind === 'unresolved-remote') {
         return <div role="alert" className="git-review-empty">Git review owner is unavailable</div>;
@@ -48,6 +54,9 @@ export function GitFileReview(props: Props) {
                 revision: side === 'base' ? refs.baseRef : refs.headRef, side,
             }) : null;
         }}
+        rowMenu={file => [openFileMenuItem(file, () => openChangedFileSource({
+            path: file.path, workspaceId: props.workspaceId, ownerRoutingRef, panelHost,
+        }))]}
         renderFile={context => <GitReviewDiff {...props} context={context} />} />;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { useReviewFileNavigation } from './useReviewFileNavigation';
 import { STATUS_LABELS, type FileChange } from './FileTree';
 import { filterReviewFiles, groupReviewFiles, reviewFileKey, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
@@ -7,6 +7,7 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { writePointerContextDragData } from '../../chat/sessionContextDrag';
 import type { GitFileContextDragPayload } from '../../chat/sessionContextDrag';
 import { buildFileTree, type FileTreeNode } from './reviewFileTree';
+import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import './git-file-review.css';
 
 export const NAV_DEFAULT_WIDTH = 262, NAV_MIN_WIDTH = 180, NAV_MAX_WIDTH = 560, NAV_CONTENT_MIN = 320, NAV_KEY_STEP = 16;
@@ -44,11 +45,13 @@ export interface ReviewFilesProps {
     renderEmpty?: ReactNode;
     rowDetails?: (file: ReviewFile) => ReactNode;
     rowDrag?: (file: ReviewFile) => GitFileContextDragPayload | null;
+    /** Right-click (or Menu key / Shift+F10) actions for the clicked row; selection is unchanged. */
+    rowMenu?: (file: ReviewFile) => ContextMenuItem[];
     isFileDimmed?: (path: string) => boolean;
 }
 
 export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    identity, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, isFileDimmed }: ReviewFilesProps) {
+    identity, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -62,6 +65,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const [drawer, setDrawer] = useState(false);
     const [viewMode, setViewMode] = useState<'groups' | 'tree' | 'flat'>(defaultView);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+    const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number; row: HTMLElement; keyboard: boolean } | null>(null);
     const drawerTrigger = useRef<HTMLButtonElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const navRef = useRef<HTMLElement>(null);
@@ -157,7 +161,18 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             data-session-context-source={payload ? 'true' : undefined}
             data-session-context-kind={payload ? 'git-file' : undefined}
             onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
-            onClick={() => select(reviewFileKey(file))} data-file-path={reviewFileKey(file)}>
+            onClick={() => select(reviewFileKey(file))} data-file-path={reviewFileKey(file)}
+            aria-haspopup={rowMenu ? 'menu' : undefined}
+            onContextMenu={rowMenu ? event => {
+                event.preventDefault(); event.stopPropagation();
+                // Keyboard-generated events carry no pointer position; anchor those to the row.
+                openMenu(file, event.currentTarget, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null);
+            } : undefined}
+            onKeyDown={rowMenu ? event => {
+                if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                event.preventDefault(); event.stopPropagation();
+                openMenu(file, event.currentTarget, null);
+            } : undefined}>
             <span className={`git-review-status status-${code}`} title={STATUS_LABELS[code] ?? file.status}>{code}</span>
             <span className="git-review-file-name"><strong>{name}</strong><small>{file.oldPath ? `${file.oldPath} → ${directory}` : directory}</small></span>
             <span className="git-review-counts"><span className="git-review-add">{file.additions == null ? '' : `+${file.additions}`}</span><span className="git-review-del">{file.deletions == null ? '' : `−${file.deletions}`}</span></span>
@@ -165,6 +180,20 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             {viewed.has(reviewFileKey(file)) && <span aria-label="Viewed" className="git-review-add">✓</span>}
         </button>;
     }
+    function openMenu(file: ReviewFile, row: HTMLElement, at: { x: number; y: number } | null) {
+        const items = rowMenu?.(file);
+        if (!items?.length) return;
+        const rect = row.getBoundingClientRect();
+        setMenu({ items, row, keyboard: !at, ...(at ?? { x: rect.left, y: rect.bottom }) });
+    }
+    function closeMenu() {
+        if (menu?.keyboard) menu.row.focus();
+        setMenu(null);
+    }
+    // A keyboard-opened menu takes focus so arrows and Enter reach its items.
+    useLayoutEffect(() => {
+        if (menu?.keyboard) document.querySelector<HTMLElement>('[data-testid="context-menu"] [role="menuitem"]:not([disabled])')?.focus();
+    }, [menu]);
     function toggleDirectory(directory: string) {
         setCollapsed(previous => { const next = new Set(previous); if (next.has(directory)) next.delete(directory); else next.add(directory); return next; });
     }
@@ -205,6 +234,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             {drawer && <button type="button" className="git-review-scrim" aria-label="Close file navigator" onClick={() => setDrawer(false)} />}
             <aside id={navId} ref={navRef} className={`git-review-nav${drawer ? ' open' : ''}`} aria-label="Changed files"
                 onKeyDown={event => {
+                    // Menu items portal to the body but bubble here through React.
+                    if (menu) return;
                     if (event.key === 'Escape' && drawer) { event.preventDefault(); setDrawer(false); }
                     if (drawer && event.key === 'Tab') {
                         const controls = navRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select');
@@ -245,6 +276,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 aria-label="Resize changed files list" aria-controls={navId} aria-valuemin={NAV_MIN_WIDTH} aria-valuemax={navMax} aria-valuenow={navWidth}
                 title="Drag to resize · double-click to reset" data-testid="git-review-resizer"
                 onMouseDown={navSize.handleMouseDown} onTouchStart={navSize.handleTouchStart} onDoubleClick={navSize.resetWidth} onKeyDown={resizeNav} />
+            {menu && <ContextMenu position={{ x: menu.x, y: menu.y }} items={menu.items} onClose={closeMenu} />}
             <main className="git-review-content" aria-label="Focused file diff">
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
                     <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories {reviewEnabled ? `· ${viewedCount} viewed` : ''} <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>

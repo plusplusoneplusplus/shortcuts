@@ -249,6 +249,24 @@ describe('PreviewPane', () => {
         expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
     });
 
+    it('opens a raw-source request in Raw, keeps the toggle, and returns to Raw on a new request', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: '# Header\nline two', encoding: 'utf-8', mimeType: 'text/plain',
+        });
+        const { rerender } = render(<PreviewPane repoId="r1" filePath="README.md" fileName="README.md"
+            markdownPreview rawSource={1} />);
+        expect(await screen.findByTestId('mock-monaco-editor')).toHaveAttribute('data-value', '# Header\nline two');
+        expect(screen.queryByTestId('preview-markdown')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Rendered' }));
+        expect(screen.getByTestId('preview-markdown')).toBeInTheDocument();
+        rerender(<PreviewPane repoId="r1" filePath="README.md" fileName="README.md" markdownPreview rawSource={1} />);
+        expect(screen.getByTestId('preview-markdown')).toBeInTheDocument();
+        rerender(<PreviewPane repoId="r1" filePath="README.md" fileName="README.md" markdownPreview rawSource={2} />);
+        expect(await screen.findByTestId('mock-monaco-editor')).toBeInTheDocument();
+        expect(screen.queryByTestId('preview-markdown')).not.toBeInTheDocument();
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
+    });
+
     it('opens line-targeted Markdown in Raw on first load', async () => {
         mockExplorerApi.readBlob.mockResolvedValue({
             content: '# Header\nline two', encoding: 'utf-8', mimeType: 'text/plain',

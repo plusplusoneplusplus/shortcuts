@@ -1303,3 +1303,33 @@ describe('git tab kind', () => {
         expect(parsePersistedGitView(null)).toBeNull();
     });
 });
+
+describe('unifiedPanelTabsModel — raw source requests', () => {
+    const raw: OpenUnifiedTabInput = {
+        kind: 'file', ownerWorkspaceId: WS, ownerRoutingRef: 'remote:server-b:repo-a', chatId: CHAT_1,
+        resourceId: 'docs/README.md', label: 'README.md', rawSource: true,
+    };
+
+    it('mints a request per raw open, keeps it on a plain re-open, and dedups to one tab', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, raw);
+        const first = visibleTabs(state, CHAT_1)[0].rawSource;
+        expect(first).toBeGreaterThan(0);
+        state = openTab(state, { ...raw, rawSource: undefined });
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(1);
+        expect(visibleTabs(state, CHAT_1)[0].rawSource).toBe(first);
+        state = openTab(state, raw);
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(1);
+        expect(visibleTabs(state, CHAT_1)[0].rawSource).toBeGreaterThan(first!);
+    });
+
+    it('applies only to file tabs and leaves plain opens without a request', () => {
+        expect(visibleTabs(openTab(EMPTY_UNIFIED_PANEL, { ...raw, rawSource: undefined }), CHAT_1)[0].rawSource).toBeUndefined();
+        expect(visibleTabs(openTab(EMPTY_UNIFIED_PANEL, { ...raw, kind: 'note' }), CHAT_1)[0].rawSource).toBeUndefined();
+    });
+
+    it('persists the request so a restored tab keeps its raw view', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, raw);
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+        expect(visibleTabs(restored, CHAT_1)[0].rawSource).toBe(visibleTabs(state, CHAT_1)[0].rawSource);
+    });
+});
