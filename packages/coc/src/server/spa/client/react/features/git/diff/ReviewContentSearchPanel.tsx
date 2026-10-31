@@ -133,7 +133,9 @@ export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: 
             <div className="min-h-0 flex-1 overflow-auto">
                 {valid && matched.map(entry => (
                     <details key={entry.file.id} open className="border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <summary className="cursor-pointer break-all px-2 py-1 font-medium">{entry.file.path} ({entry.matches.length})</summary>
+                        <summary className="cursor-pointer break-all px-2 py-1 font-medium">
+                            {entry.file.path} ({entry.matches.length}){entry.file.label && <span className="text-[#848484]"> · {entry.file.label}</span>}
+                        </summary>
                         {entry.matches.map((match, index) => (
                             <button
                                 type="button"

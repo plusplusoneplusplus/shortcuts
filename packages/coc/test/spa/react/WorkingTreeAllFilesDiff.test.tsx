@@ -4,11 +4,15 @@ import { act, render, screen, fireEvent, waitFor, within } from '@testing-librar
 import React, { useEffect } from 'react';
 
 const h = vi.hoisted(() => ({
-    client: { git: { getWorkingTreeChanges: vi.fn(), listDiffComments: vi.fn() } },
+    client: { git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileContent: vi.fn(), listDiffComments: vi.fn() } },
     endpoint: undefined as string | undefined,
     unresolved: false,
+    searchEnabled: false,
     panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(), openTab: vi.fn(),
     createComment: vi.fn(), reviewClientFor: vi.fn(),
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useDiffContentSearchEnabled', () => ({
+    useDiffContentSearchEnabled: () => h.searchEnabled,
 }));
 vi.mock('../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
     getGitReviewClient: (...args: unknown[]) => { h.reviewClientFor(...args); return { git: { createDiffComment: h.createComment } }; },
@@ -50,10 +54,15 @@ const row = (stage: string) => within(nav()).getByRole('button', { name: new Reg
 const current = () => h.panel.mock.calls.at(-1)![0];
 const props = { workspaceId: 'ws-1', attachmentDestinationId: 'ws-1', repoRoot: ROOT, onFileSelect: vi.fn() };
 beforeEach(() => {
-    vi.clearAllMocks(); h.endpoint = undefined; h.unresolved = false;
+    vi.clearAllMocks(); h.endpoint = undefined; h.unresolved = false; h.searchEnabled = false;
     h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: CHANGES });
     h.client.git.listDiffComments.mockResolvedValue({ comments: [] });
     h.save.mockResolvedValue(true);
+    h.client.git.getWorkingTreeFileContent.mockReset().mockImplementation(async (_workspace, path, stage) => ({
+        path, fileName: path.split('/').pop(), binary: false, tooLarge: false,
+        base: { content: stage === 'staged' ? 'HEAD needle\n' : 'INDEX needle\n', ref: stage === 'staged' ? 'HEAD' : 'INDEX', exists: stage !== 'untracked' },
+        head: { content: stage === 'staged' ? 'INDEX needle\n' : 'DISK needle\n', ref: stage === 'staged' ? 'INDEX' : 'WORKTREE', exists: true },
+    }));
 });
 
 describe('WorkingTreeAllFilesDiff shared review', () => {
@@ -203,6 +212,220 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         expect((await screen.findByRole('alert')).textContent).toContain('boom');
         fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
         expect(await screen.findByTestId('working-tree-all-files-empty')).toBeTruthy();
+    });
+});
+
+describe('working changes full-content search', () => {
+    const searchInput = () => screen.getByTestId('review-content-search-input');
+    async function openSearch() {
+        await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        return searchInput();
+    }
+    it('is default-off and performs no full-content reads before a nonempty query', async () => {
+        const view = render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        expect(screen.queryByRole('button', { name: 'Search review contents' })).toBeNull();
+        h.searchEnabled = true;
+        view.rerender(<WorkingTreeAllFilesDiff {...props} />);
+        await openSearch();
+        expect(h.client.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
+    });
+    it('searches HEAD/index, index/disk and untracked new only, with stage-qualified result activation', async () => {
+        h.searchEnabled = true;
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        expect(h.client.git.getWorkingTreeFileContent.mock.calls).toEqual([
+            ['ws-1', '/repo/a.ts', 'staged'], ['ws-1', '/repo/a.ts', 'unstaged'], ['ws-1', '/repo/new.txt', 'untracked'],
+        ]);
+        const summaries = screen.getByRole('region', { name: 'Review content search' }).querySelectorAll('details');
+        expect(summaries).toHaveLength(3);
+        expect(Array.from(summaries, group => group.querySelector('summary')?.textContent)).toEqual([
+            'a.ts (2) · Staged', 'a.ts (2) · Unstaged', 'new.txt (1) · Untracked',
+        ]);
+        expect(summaries[0].textContent).toContain('HEAD needle');
+        expect(summaries[0].textContent).toContain('INDEX needle');
+        expect(summaries[1].textContent).toContain('INDEX needle');
+        expect(summaries[1].textContent).toContain('DISK needle');
+        expect(summaries[2].querySelectorAll('button')).toHaveLength(1);
+        fireEvent.click(within(summaries[1]).getByRole('button', { name: /OLD line 1, column 7/ }));
+        expect(current()).toMatchObject({ stage: 'unstaged', filePath: '/repo/a.ts',
+            contentSearchTarget: { filePath: '/repo/a.ts', side: 'old', line: 1, startColumn: 7, endColumn: 13 } });
+        const target = current().contentSearchTarget;
+        fireEvent.click(within(summaries[1]).getByRole('button', { name: /OLD line 1/ }));
+        expect(current().contentSearchTarget).not.toBe(target);
+        fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+        fireEvent.click(row('Staged'));
+        expect(current().contentSearchTarget).toBeUndefined();
+    });
+    it('steps F3 across staged old/new and unstaged old on the same path with exact-side targets', async () => {
+        h.searchEnabled = true;
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        const step = (shiftKey = false) => fireEvent.keyDown(screen.getByTestId('full-working-diff'), { key: 'F3', shiftKey });
+        step();
+        expect(current()).toMatchObject({ stage: 'staged', filePath: '/repo/a.ts',
+            contentSearchTarget: { filePath: '/repo/a.ts', side: 'old', line: 1, startColumn: 6, endColumn: 12 } });
+        const stagedOld = current().contentSearchTarget;
+        step();
+        expect(current()).toMatchObject({ stage: 'staged', filePath: '/repo/a.ts',
+            contentSearchTarget: { filePath: '/repo/a.ts', side: 'new', line: 1, startColumn: 7, endColumn: 13 } });
+        step();
+        expect(current()).toMatchObject({ stage: 'unstaged', filePath: '/repo/a.ts',
+            contentSearchTarget: { filePath: '/repo/a.ts', side: 'old', line: 1, startColumn: 7, endColumn: 13 } });
+        expect(current().contentSearchTarget).not.toBe(stagedOld);
+        step(true);
+        expect(current()).toMatchObject({ stage: 'staged', contentSearchTarget: { side: 'new', line: 1, startColumn: 7 } });
+        step(true);
+        expect(current()).toMatchObject({ stage: 'staged', contentSearchTarget: { side: 'old', line: 1, startColumn: 6 } });
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(3);
+        expect((searchInput() as HTMLInputElement).value).toBe('needle');
+    });
+    it('bypasses file-list filters, preserves search state and reuses cached reads across controls', async () => {
+        h.searchEnabled = true;
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.change(screen.getByPlaceholderText('Search files or path…'), { target: { value: 'new.txt' } });
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'A' } });
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        fireEvent.click(screen.getAllByRole('button', { name: /a.ts, OLD line/ })[0]);
+        expect(current().stage).toBe('staged');
+        expect((screen.getByPlaceholderText('Search files or path…') as HTMLInputElement).value).toBe('');
+        expect((screen.getByLabelText('Change status filter') as HTMLSelectElement).value).toBe('all');
+        expect((searchInput() as HTMLInputElement).value).toBe('needle');
+        fireEvent.change(screen.getByLabelText('Search side'), { target: { value: 'new' } });
+        fireEvent.change(screen.getByLabelText('Files to include'), { target: { value: '*.ts' } });
+        fireEvent.change(searchInput(), { target: { value: 'INDEX' } });
+        await screen.findByText('Searched 2 of 2 files');
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(3);
+    });
+    it('guards result navigation without losing the buffer or target on cancel/failed save', async () => {
+        h.searchEnabled = true;
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        fireEvent.click(screen.getByText('Edit buffer'));
+        const result = screen.getByRole('button', { name: /new.txt, NEW line/ });
+        fireEvent.click(result);
+        expect(current().stage).toBe('staged');
+        expect(current().contentSearchTarget).toBeUndefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        h.save.mockResolvedValue(false);
+        fireEvent.click(result);
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await screen.findByText('Could not save the file. Your changes are still in the editor.');
+        expect(current().stage).toBe('staged');
+        fireEvent.click(screen.getByRole('button', { name: "Don't Save" }));
+        expect(current()).toMatchObject({ stage: 'untracked', contentSearchTarget: { side: 'new', filePath: '/repo/new.txt' } });
+    });
+    it('limits concurrent reads to four and caches across query edits', async () => {
+        h.searchEnabled = true;
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: Array.from({ length: 7 }, (_, i) => change(`${i}.ts`, 'unstaged')) });
+        const finish: Array<(data: any) => void> = [];
+        h.client.git.getWorkingTreeFileContent.mockImplementation(() => new Promise(resolve => finish.push(resolve)));
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await waitFor(() => expect(finish).toHaveLength(4));
+        fireEvent.change(searchInput(), { target: { value: 'fresh' } });
+        expect(finish).toHaveLength(4);
+        const response = { binary: false, tooLarge: false, base: { exists: false }, head: { content: 'fresh', exists: true } };
+        await act(async () => { finish[0](response); });
+        expect(finish).toHaveLength(5);
+        await act(async () => { finish.slice(1).forEach(resolve => resolve(response)); });
+        await act(async () => { finish.slice(5).forEach(resolve => resolve(response)); });
+        await screen.findByText('Searched 7 of 7 files');
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(7);
+    });
+    it('invalidates search caches/targets on refresh without remounting dirty editors', async () => {
+        h.searchEnabled = true;
+        const view = render(<WorkingTreeAllFilesDiff {...props} refreshKey={0} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        fireEvent.click(screen.getAllByRole('button', { name: /a.ts, OLD line/ })[0]);
+        fireEvent.click(screen.getByText('Edit buffer'));
+        const mounts = h.mount.mock.calls.length;
+        view.rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={1} />);
+        await waitFor(() => expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(6));
+        expect(current().contentSearchTarget).toBeUndefined();
+        expect(current().refreshKey).toBe(1);
+        expect(h.mount).toHaveBeenCalledTimes(mounts);
+        expect(h.unmount).not.toHaveBeenCalled();
+    });
+    it('ignores late replies after owner/endpoint replacement and starts fresh controls/cache', async () => {
+        h.searchEnabled = true;
+        let finish!: (data: any) => void;
+        h.client.git.getWorkingTreeFileContent.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const view = render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await waitFor(() => expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(3));
+        h.endpoint = 'https://other.test';
+        view.rerender(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:other:ws-1" />);
+        await openSearch();
+        expect((searchInput() as HTMLInputElement).value).toBe('');
+        await act(async () => { finish({ base: { exists: false }, head: { content: 'stale needle', exists: true } }); });
+        expect(screen.queryByText(/stale needle/)).toBeNull();
+        fireEvent.change(searchInput(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(6);
+        view.unmount();
+    });
+    it('distinguishes same-display-path matches from separate repositories', async () => {
+        h.searchEnabled = true;
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            change('a.ts', 'staged'), { ...change('a.ts', 'staged'), repositoryRoot: '/other', filePath: '/other/a.ts' },
+        ] });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 2 of 2 files');
+        const repeated = screen.getAllByRole('button', { name: /repo\/a.ts, NEW line/ });
+        expect(repeated).toHaveLength(2);
+        fireEvent.click(repeated[1]);
+        expect(current()).toMatchObject({ filePath: '/other/a.ts', stage: 'staged', contentSearchTarget: { filePath: '/other/a.ts' } });
+        expect(h.client.git.getWorkingTreeFileContent.mock.calls.map(call => call[1])).toEqual(['/repo/a.ts', '/other/a.ts']);
+    });
+    it('shows skips and retryable failures through the actual search panel', async () => {
+        h.searchEnabled = true;
+        h.client.git.getWorkingTreeFileContent.mockResolvedValueOnce({ binary: true }).mockRejectedValueOnce(new Error('read failed'))
+            .mockResolvedValueOnce({ tooLarge: true });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        expect(screen.getByRole('region', { name: 'Skipped' }).textContent).toContain('Binary file');
+        expect(screen.getByRole('region', { name: 'Skipped' }).textContent).toContain('Over server size limit');
+        expect(screen.getByRole('region', { name: 'Errors' }).textContent).toContain('read failed');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry a.ts' }));
+        await screen.findByRole('button', { name: /a.ts, NEW line/ });
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(4);
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenLastCalledWith('ws-1', '/repo/a.ts', 'unstaged');
+    });
+    it('replaces the searchable file inventory after a refresh without retaining missing result rows', async () => {
+        h.searchEnabled = true;
+        const view = render(<WorkingTreeAllFilesDiff {...props} refreshKey={0} />);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await screen.findByText('Searched 3 of 3 files');
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('fresh.ts', 'unstaged')] });
+        view.rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={1} />);
+        await screen.findByText('Searched 1 of 1 files');
+        expect(screen.queryByRole('button', { name: /new.txt, NEW line/ })).toBeNull();
+        expect(screen.getByRole('button', { name: /fresh.ts, NEW line/ })).toBeTruthy();
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenLastCalledWith('ws-1', '/repo/fresh.ts', 'unstaged');
+    });
+    it('does not schedule remaining reads after unmount, including StrictMode effect replay', async () => {
+        h.searchEnabled = true;
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: Array.from({ length: 8 }, (_, i) => change(`${i}.ts`, 'unstaged')) });
+        const finish: Array<(value: any) => void> = [];
+        h.client.git.getWorkingTreeFileContent.mockImplementation(() => new Promise(resolve => finish.push(resolve)));
+        const view = render(<React.StrictMode><WorkingTreeAllFilesDiff {...props} /></React.StrictMode>);
+        fireEvent.change(await openSearch(), { target: { value: 'needle' } });
+        await waitFor(() => expect(finish).toHaveLength(4));
+        view.unmount();
+        await act(async () => {
+            finish.forEach(resolve => resolve({ base: { exists: false }, head: { content: 'late needle', exists: true } }));
+        });
+        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(4);
     });
 });
 

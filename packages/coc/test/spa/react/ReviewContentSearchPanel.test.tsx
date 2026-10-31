@@ -14,7 +14,7 @@ function content(old = 'old target', next = 'new target'): GitFileDiffContentRes
 }
 const files = [{ id: 'staged:a', path: 'src/a.ts' }, { id: 'unstaged:a', path: 'src/a.ts' }, { id: 'b', path: 'readme.md' }];
 const controllers: ReviewContentSearchController[] = [];
-function mount(load: (file: ReviewSearchFile) => Promise<GitFileDiffContentResponse> = vi.fn(async () => content()), entries = files) {
+function mount(load: (file: ReviewSearchFile) => Promise<GitFileDiffContentResponse> = vi.fn(async () => content()), entries: ReviewSearchFile[] = files) {
     const controller = new ReviewContentSearchController(entries, load);
     controllers.push(controller);
     const onOpenMatch = vi.fn();
@@ -30,6 +30,15 @@ function query(value: string) {
 afterEach(() => { cleanup(); controllers.forEach(controller => controller.dispose()); controllers.length = 0; });
 
 describe('ReviewContentSearchPanel', () => {
+    it('distinguishes staged and unstaged groups sharing the same displayed path', async () => {
+        mount(vi.fn(async () => content()), [
+            { id: 'staged:a', path: 'a.ts', label: 'Staged' },
+            { id: 'unstaged:a', path: 'a.ts', label: 'Unstaged' },
+        ]);
+        query('target'); await settle();
+        const summaries = screen.getByRole('region', { name: 'Review content search' }).querySelectorAll('summary');
+        expect(Array.from(summaries).map(summary => summary.textContent)).toEqual(['a.ts (2) · Staged', 'a.ts (2) · Unstaged']);
+    });
     it('loads only after a query and groups both sides with highlighted snippets and exact navigation coordinates', async () => {
         const { load, onOpenMatch } = mount(vi.fn(async () => content('unchanged\nold target', 'target new')));
         await settle();

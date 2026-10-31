@@ -268,6 +268,14 @@ uses explicit navigation rather than the rail's toggle-selection action. Source,
 detail and diff loads retain the concrete clone owner; owner, endpoint, PR, origin,
 base/head and file inventory changes revoke the controller and target.
 
+`WorkingTreeAllFilesDiff` supplies stage/repository/path IDs and readable stage
+labels to the controller, loading through the owner's existing working-content
+API. Refresh/retry and inventory changes revoke cached replies without replacing
+dirty editors. Result navigation uses the dirty guard before forwarding targets
+to `WorkingTreeFileDiff`; both engines reveal the matching side, and Classic
+offers Editor for lines outside its current patch. Loaded-patch keys exclude
+retained stale patches from coordinate resolution.
+
 `useReviewContentSearchShortcut` tags enabled review roots and captures
 Ctrl/Cmd+Shift+F before Monaco; the repo-wide shortcut yields only inside the
 innermost enabled review. Repeating it focuses/selects the retained query. F3 and

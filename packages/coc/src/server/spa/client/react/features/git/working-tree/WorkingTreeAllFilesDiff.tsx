@@ -11,6 +11,8 @@ import { hasMultipleRepos, relDisplayPath, repoRelative, type WorkingTreeChange 
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
 import { useFileCommentComposer } from '../diff/fileCommentComposer';
+import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
+import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
@@ -80,12 +82,24 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
         additions: change.additions, deletions: change.deletions,
     })), [retainedChanges, multiRepo]);
     const byKey = useMemo(() => new Map(retainedChanges.map(c => [changeKey(c), c])), [retainedChanges]);
+    const identity = JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, 'working-tree']);
+    const searchFiles = useMemo(() => files.map(({ id, path, label }) => ({ id, path, label })), [files]);
+    const controller = useReviewContentSearchController(identity, searchFiles, file => {
+        const change = byKey.get(file.id)!;
+        return client.git.getWorkingTreeFileContent(workspaceId, change.filePath, change.stage);
+    }, JSON.stringify([refreshKey, attempt]));
+    const [contentSearchTarget, setContentSearchTarget] = useState<ReviewContentSearchTarget>();
+    useEffect(() => { setContentSearchTarget(undefined); }, [controller]);
     const retry = () => setAttempt(value => value + 1);
     return <>
-        <ReviewFiles identity={JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, 'working-tree'])}
+        <ReviewFiles identity={identity}
             files={files} reviewEnabled={false} retainSelection={dirty}
             beforeNavigate={proceed => guard.guard(proceed)()}
-            onSelect={key => setSelected(byKey.get(key))}
+            onSelect={key => { setContentSearchTarget(undefined); setSelected(byKey.get(key)); }}
+            contentSearch={controller ? { controller, onOpenMatch: (file, match) => {
+                const change = byKey.get(file.id);
+                if (change) setContentSearchTarget({ ...match, filePath: change.filePath });
+            } } : undefined}
             loading={!loaded && !error} error={!loaded ? error : undefined} onRetry={retry}
             header={{ identity: <strong className="git-review-title">All Working Changes</strong>,
                 actions: selected ? [{ id: 'open-file', label: 'Open full diff', icon: '↗',
@@ -113,6 +127,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                 const stageChanges = paths.map(key => byKey.get(key)!).filter(c => c.stage === change.stage);
                 return <WorkingTreeFileDiff {...props} key={changeKey(change)}
                     filePath={change.filePath} stage={change.stage} untrackedAsDiff initialHunkTarget={target}
+                    contentSearchTarget={contentSearchTarget}
                     refreshKey={(refreshKey ?? 0) + attempt}
                     workingTreeFiles={stageChanges.map(c => c.filePath)}
                     onNavigateToFile={(path, hunk) => {

@@ -11,6 +11,7 @@ import {
 export interface ReviewSearchFile {
     id: string;
     path: string;
+    label?: string;
 }
 
 export type ReviewSearchFileState =

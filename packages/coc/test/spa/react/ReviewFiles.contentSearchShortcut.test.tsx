@@ -75,12 +75,15 @@ describe('review-scoped search keyboard ownership', () => {
         fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'target' } });
         await settle();
         const input = screen.getByTestId('review-content-search-input');
+        const group = screen.getByRole('region', { name: 'Review content search' }).querySelector('details')!;
+        group.open = false;
         for (const [file, side] of [['a', 'old'], ['a', 'new'], ['b', 'old'], ['b', 'new'], ['a', 'old']]) {
             const event = new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true });
             fireEvent(input, event);
             expect(event.defaultPrevented).toBe(true);
             expect(onOpenMatch).toHaveBeenLastCalledWith(expect.objectContaining({ id: file }), expect.objectContaining({ side }));
         }
+        expect(group.open).toBe(true);
         fireEvent.keyDown(input, { key: 'F3', shiftKey: true });
         expect(onOpenMatch).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'b' }), expect.objectContaining({ side: 'new' }));
         fireEvent.click(screen.getByRole('button', { name: 'a.ts, OLD line 1, column 5' }));
