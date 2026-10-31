@@ -6,6 +6,7 @@ import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
 import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
+import { BrowserDemoStrip } from '../../../shared/file-path/BrowserDemoStrip';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
@@ -29,6 +30,8 @@ export interface UnifiedBrowserTabProps {
     viewId: string;
     /** The tab's concrete routing owner; profile sharing is installation-wide. */
     sessionKey: string;
+    /** The conversation a demo recorded in this tab belongs to; null when there is none. */
+    chatId?: string | null;
     /** The tab's current URL; absent for a blank tab. */
     url?: string;
     relatedEngine?: BrowserEngine;
@@ -56,7 +59,7 @@ export interface UnifiedBrowserTabProps {
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    workspaceId, routingRef, tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
+    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [error, setError] = useState<string | null>(null);
@@ -246,6 +249,8 @@ export function UnifiedBrowserTab({
                 onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
             <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
+            {bridge && <BrowserDemoStrip workspaceId={workspaceId} processId={chatId ?? null} routingRef={sessionKey} viewId={viewId}
+                ready={opened && Boolean(url) && page?.sourceKind !== 'file'} />}
         </div>
     );
 

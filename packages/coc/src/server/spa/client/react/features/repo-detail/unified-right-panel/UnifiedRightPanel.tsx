@@ -2352,6 +2352,7 @@ export function UnifiedRightPanel({
                                         tabId={tab.id}
                                         viewId={tab.resourceId}
                                         sessionKey={browserSessionKey(tab)}
+                                        chatId={tab.browserChatId ?? (tab.ownerWorkspaceId === workspaceId ? chatId ?? null : null)}
                                         url={tab.browserUrl}
                                         relatedEngine={tab.browserEngine}
                                         active={tab.id === activeId}
