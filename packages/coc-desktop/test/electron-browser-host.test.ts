@@ -2,6 +2,9 @@ import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElectronBrowserHost } from '../src/electron-browser-host';
 import type { BrowserEventSink } from '../src/browser-host-contract';
+import { BrowserHostManager } from '../src/browser-host-manager';
+import { BrowserDemoTabCapture } from '../src/browser-demo-tab-capture';
+import { BROWSER_VIEW_NEW_TAB_CHANNEL } from '../src/browser-view-policy';
 
 const mocks = vi.hoisted(() => ({
     visible: false,
@@ -752,13 +755,68 @@ describe('Electron successful history events', () => {
         handlers.get('did-frame-finish-load')!({}, false);
         handlers.get('did-frame-finish-load')!({}, true);
         handlers.get('page-title-updated')!({}, 'Popup title');
-        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup');
+        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup', expect.stringMatching(/^browser-popout-/));
         expect(sink.titleUpdated).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup title');
         expect(sink.state).not.toHaveBeenCalled();
         expect(sink.documentCommitted).not.toHaveBeenCalled();
         expect(sink.documentTitleUpdated).not.toHaveBeenCalled();
         expect(sink.navigationStarted).not.toHaveBeenCalled();
         await hosted.close();
+    });
+
+    it('preserves actual popup navigation, focus and recursive opener lineage through the host manager', async () => {
+        const start = vi.spyOn(BrowserDemoTabCapture.prototype, 'start').mockResolvedValue();
+        const stop = vi.spyOn(BrowserDemoTabCapture.prototype, 'stop').mockResolvedValue();
+        const host = new ElectronBrowserHost('profile');
+        const send = vi.fn();
+        const manager = new BrowserHostManager({
+            hosts: { electron: host, webview2: { engine: 'webview2', availability: vi.fn(), create: vi.fn(), clearData: vi.fn(), dispose: vi.fn() } },
+            fileHost: { create: vi.fn(), dispose: vi.fn() },
+            history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
+            getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
+        });
+        const popup = (id: number, url: string) => {
+            const events = new EventEmitter();
+            const contents = { ...mocks.contents, id, getURL: () => url, getTitle: () => 'Popup',
+                on: events.on.bind(events), once: events.once.bind(events), removeListener: events.removeListener.bind(events),
+                setWindowOpenHandler: vi.fn() };
+            let destroyed = false;
+            const win = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => destroyed,
+                destroy: () => { destroyed = true; win.emit('closed'); }, show: vi.fn(), focus: vi.fn() });
+            return { events, contents, win };
+        };
+        try {
+            manager.bindControlScope(7, 'workspace', 'workspace');
+            await manager.open(7, 'tab', 'https://example.test/', 'workspace');
+            const { id } = await manager.demos.start(7, { workspaceId: 'workspace', processId: 'demo-chat', routingRef: 'workspace' }, 'tab');
+            const first = popup(90, 'https://popup.test/');
+            mocks.handlers.get('did-create-window')![0](first.win);
+            await Promise.resolve();
+            let draft = manager.demos.draft(7, id);
+            const firstId = draft.tabs.find(tab => tab.url === 'https://popup.test/')!.viewId;
+            first.events.emit('did-navigate', {}, 'https://popup.test/final', 200);
+            first.events.emit('did-frame-finish-load', {}, true);
+            first.win.emit('focus');
+            const second = popup(91, 'https://nested.test/');
+            first.events.emit('did-create-window', second.win);
+            await Promise.resolve();
+            draft = manager.demos.draft(7, id);
+            expect(draft.tabs.find(tab => tab.viewId === 'tab')!.url).toBe('https://example.test/');
+            expect(draft.tabs.find(tab => tab.viewId === firstId)!.url).toBe('https://popup.test/final');
+            expect(draft.tabs.find(tab => tab.url === 'https://nested.test/')!.openerViewId).toBe(firstId);
+            expect(draft.steps).toContainEqual(expect.objectContaining({ type: 'switch', viewId: firstId }));
+            const handler = first.contents.setWindowOpenHandler.mock.calls[0][0];
+            expect(handler({ url: 'https://child.test/', disposition: 'background-tab' })).toEqual({ action: 'deny' });
+            const request = send.mock.calls.filter(([, channel]) => channel === BROWSER_VIEW_NEW_TAB_CHANNEL).at(-1)![2];
+            expect(request).toMatchObject({ openerViewId: 'tab', url: 'https://child.test/', viewId: expect.stringMatching(/^browser-/) });
+            await manager.open(7, request.viewId, 'https://child.test/', 'workspace');
+            await Promise.resolve();
+            expect(manager.demos.draft(7, id).tabs.find(tab => tab.viewId === request.viewId)!.openerViewId).toBe(firstId);
+        } finally {
+            await manager.dispose();
+            start.mockRestore();
+            stop.mockRestore();
+        }
     });
 });
 

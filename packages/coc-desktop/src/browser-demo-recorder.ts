@@ -299,6 +299,9 @@ export class BrowserDemoRecorders {
         const source = this.options.lookup(ownerId, viewId);
         if (!source || source.sessionKey !== owner.routingRef) throw new BrowserDemoError('not-found', 'Browser tab not found for this chat.');
         if (source.sourceKind !== 'url') throw new BrowserDemoError('file-preview', 'Local HTML previews cannot be recorded.');
+        if (source.view.snapshot().engine === 'webview2') {
+            throw new BrowserDemoError('engine-unsupported', 'Demo recording is unavailable in WebView2 because it cannot preserve popup opener lineage. Use an Electron browser tab.');
+        }
         if (source.busy) throw new BrowserDemoError('busy', source.busy);
         return source;
     }

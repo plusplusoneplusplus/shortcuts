@@ -816,9 +816,12 @@ export class BrowserHostManager {
                 entry.committedPage = { ...entry.committedPage, title };
                 if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
             },
-            visited: (url, title) => {
+            visited: (url, title, sourceViewId) => {
                 if (!entry.closed && entry.sourceKind === 'url') {
-                    this.demos.navigated(entry.ownerId, entry.viewId, url, title);
+                    const source = sourceViewId ? this.entry(entry.ownerId, sourceViewId) : entry;
+                    if (source && !source.closed && source.sessionKey === entry.sessionKey) {
+                        this.demos.navigated(entry.ownerId, source.viewId, url, title);
+                    }
                     void this.options.history.recordVisit(entry.engine, url, title)
                         .catch(error => console.error('[coc-desktop] Browser history save failed:', error));
                 }
@@ -829,8 +832,10 @@ export class BrowserHostManager {
                         .catch(error => console.error('[coc-desktop] Browser history title save failed:', error));
                 }
             },
-            newTab: target => {
+            newTab: (target, openerViewId) => {
                 if (!entry.closed && validateBrowserUrl(target).ok) {
+                    const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
+                    if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                     let viewId: string | undefined;
                     if (entry.takeover?.paused) {
                         if (this.pendingHumanTabs.size >= 128) return;
@@ -838,7 +843,7 @@ export class BrowserHostManager {
                         this.pendingHumanTabs.set(JSON.stringify([entry.ownerId, viewId]), { sessionKey: entry.sessionKey, control: entry.takeover });
                     }
                     // A recorded tab's child joins the recording under the id the SPA opens it with.
-                    viewId = this.demos.reserveChild(entry.ownerId, entry.viewId, viewId) ?? viewId;
+                    viewId = this.demos.reserveChild(entry.ownerId, opener.viewId, viewId) ?? viewId;
                     this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}) });
                 }
             },
@@ -861,8 +866,10 @@ export class BrowserHostManager {
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
-            controlPopoutOpened: (viewId, view) => {
+            controlPopoutOpened: (viewId, view, openerViewId) => {
                 if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
+                if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                 const popout: Entry = {
                     ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
                     sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
@@ -874,7 +881,7 @@ export class BrowserHostManager {
                     return view.cdp!(method, params);
                 });
                 this.owners.get(entry.ownerId)?.set(viewId, popout);
-                void this.demos.popupOpened(entry.ownerId, entry.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
+                void this.demos.popupOpened(entry.ownerId, opener.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
             },
             controlPopoutClosed: viewId => {
                 const popout = this.entry(entry.ownerId, viewId);
@@ -887,8 +894,12 @@ export class BrowserHostManager {
                 this.owners.get(entry.ownerId)?.delete(viewId);
                 void this.demos.tabClosed(entry.ownerId, viewId);
             },
-            controlFocused: () => {
-                if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+            controlFocused: sourceViewId => {
+                if (!entry.closed && entry.sourceKind === 'url') {
+                    const source = sourceViewId ? this.entry(entry.ownerId, sourceViewId) : entry;
+                    if (source && !source.closed && source.sessionKey === entry.sessionKey) this.demos.switched(entry.ownerId, source.viewId);
+                    this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+                }
             },
             controlStopRequested: (viewId, turnId) => {
                 const popout = this.entry(entry.ownerId, viewId);

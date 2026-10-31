@@ -84,6 +84,17 @@ describe('BrowserDemoRecorders start and ownership', () => {
         expect(h.recorders.capturing(owner.workspaceId, owner.processId)).toBe(false);
     });
 
+    it('reports WebView2 recording unavailable even when its CDP transport works', async () => {
+        const h = harness();
+        h.addTab('wv2', { view: { cdp: vi.fn(), snapshot: () => ({
+            viewId: 'wv2', engine: 'webview2', url: 'https://fixture.test/', title: 'Fixture',
+            canGoBack: false, canGoForward: false, loading: false,
+        }) } });
+        expect(await runBrowserDemoCommand(h.recorders, 1, { action: 'start', owner, viewId: 'wv2' }))
+            .toMatchObject({ ok: false, reason: 'engine-unsupported', message: expect.stringContaining('popup opener lineage') });
+        expect(h.recorders.unsent()).toEqual([]);
+    });
+
     it('allows one draft per concrete owner, separate drafts for other chats, and a bounded total', async () => {
         const h = harness();
         for (let index = 0; index <= BROWSER_DEMO_MAX_DRAFTS; index++) h.addTab(`t${index}`);

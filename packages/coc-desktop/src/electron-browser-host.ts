@@ -236,11 +236,13 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
             };
         }
         if (decision === 'tab') {
-            send(entry, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, url });
+            const opener = popoutByContents.get(wc.id);
+            if (!entry.closed) entry.sink.newTab(url, ...(opener ? [opener] : []));
         }
         return { action: 'deny' };
     });
     wc.on('did-create-window', (popup) => {
+        const openerViewId = popoutByContents.get(wc.id);
         entry.popups.add(popup);
         const viewId = `browser-popout-${randomUUID()}`;
         const contents = popup.webContents;
@@ -249,7 +251,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
         const cdp = entry.sink.controlPopoutOpened ? new ElectronBrowserCdp(contents) : undefined;
         const setControlActivity = browserPopupChrome(popup, turnId => entry.sink.controlStopRequested?.(viewId, turnId));
         contents.setZoomFactor(entry.pageZoom / 100);
-        popup.on('focus', () => entry.sink.controlFocused?.());
+        popup.on('focus', () => entry.sink.controlFocused?.(viewId));
         entry.sink.controlPopoutOpened?.(viewId, {
             snapshot: () => ({
                 viewId, engine: 'electron', url: contents.isDestroyed() ? '' : contents.getURL(),
@@ -274,7 +276,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
             setPageZoom: percent => contents.setZoomFactor(percent / 100),
             setBounds: () => {},
             close: () => { if (!popup.isDestroyed()) popup.close(); },
-        });
+        }, ...(openerViewId ? [openerViewId] : []));
         popup.once('closed', () => {
             popoutByContents.delete(contentsId);
             cdp?.dispose();
@@ -338,7 +340,8 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
         successfulUrl = pendingUrl;
         pendingUrl = undefined;
         if (wc === entry.contents) entry.sink.documentCommitted?.(successfulUrl, wc.getTitle());
-        entry.sink.visited?.(successfulUrl, wc.getTitle());
+        const sourceViewId = popoutByContents.get(wc.id);
+        entry.sink.visited?.(successfulUrl, wc.getTitle(), ...(sourceViewId ? [sourceViewId] : []));
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
         if (!live() || !isMainFrame || !validateBrowserUrl(url).ok) { return; }
@@ -347,7 +350,8 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
         if (!successfulUrl) { return; }
         successfulUrl = url;
         if (wc === entry.contents) entry.sink.documentCommitted?.(url, wc.getTitle());
-        entry.sink.visited?.(url, wc.getTitle());
+        const sourceViewId = popoutByContents.get(wc.id);
+        entry.sink.visited?.(url, wc.getTitle(), ...(sourceViewId ? [sourceViewId] : []));
     });
     wc.on('page-title-updated', (_event, title) => {
         if (live() && successfulUrl) {
