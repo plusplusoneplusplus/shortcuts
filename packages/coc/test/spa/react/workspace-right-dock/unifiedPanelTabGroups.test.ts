@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    groupStripTabs, isGroupBoundaryMove, stripGroupForKind,
+    categoryStripTabs, groupStripTabs, isGroupBoundaryMove, stripGroupForKind,
     type GroupStripTabsOptions, type UnifiedTabStripGroup,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
 import type { UnifiedPanelTab, UnifiedTabKind } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -121,5 +121,48 @@ describe('isGroupBoundaryMove', () => {
         for (const id of ['t', 'w', 'c', 'missing']) expect(isGroupBoundaryMove(tabs, 'f', id)).toBe(true);
         expect(isGroupBoundaryMove(tabs, 'missing', 'f')).toBe(true);
         expect(isGroupBoundaryMove([], 'missing', 'missing')).toBe(true);
+    });
+});
+
+describe('categoryStripTabs', () => {
+    const mixed = [tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), tab('f3'), tab('t1', 'terminal')];
+    const chip = (models: ReturnType<typeof categoryStripTabs>, group: UnifiedTabStripGroup) =>
+        models.find(model => model.group === group)?.shown.map(item => item.id);
+
+    it('returns one chip per nonempty category in fixed order', () => {
+        const models = categoryStripTabs(mixed, {});
+        expect(models.map(model => model.group)).toEqual(['tools', 'files', 'web']);
+        expect(models.every(model => model.shown.length === 1)).toBe(true);
+        expect(models.find(model => model.group === 'files')?.tabs.map(item => item.id)).toEqual(['f1', 'f2', 'f3']);
+    });
+
+    it('shows the active tab in its own category', () => {
+        const models = categoryStripTabs(mixed, { activeId: 'f2', lastUsedIds: { files: 'f1' } });
+        expect(chip(models, 'files')).toEqual(['f2']);
+        expect(models.find(model => model.group === 'files')?.hasActive).toBe(true);
+        expect(models.find(model => model.group === 'web')?.hasActive).toBe(false);
+    });
+
+    it('keeps the last-used tab on inactive chips so one click returns to it', () => {
+        const models = categoryStripTabs(mixed, { activeId: 'w2', lastUsedIds: { files: 'f1', web: 'w1' } });
+        expect(chip(models, 'files')).toEqual(['f1']);
+        expect(chip(models, 'web')).toEqual(['w2']);
+    });
+
+    it('falls back to the newest tab when nothing was used or the used tab closed', () => {
+        expect(chip(categoryStripTabs(mixed, {}), 'files')).toEqual(['f3']);
+        expect(chip(categoryStripTabs(mixed, { lastUsedIds: { files: 'gone' } }), 'files')).toEqual(['f3']);
+    });
+
+    it('lists every other tab as hidden and summarizes their dirty and error marks', () => {
+        const files = categoryStripTabs(mixed, {
+            activeId: 'f1', lastUsedIds: { web: 'w1' }, dirtyIds: new Set(['f1', 'f3']), errorIds: new Set(['w1']),
+        });
+        const model = files.find(entry => entry.group === 'files')!;
+        expect(model.hidden.map(item => item.id)).toEqual(['f2', 'f3']);
+        expect(model.hiddenDirty).toBe(true);
+        expect(files.find(entry => entry.group === 'web')).toMatchObject({ hiddenError: false });
+        expect(categoryStripTabs(mixed, { lastUsedIds: { web: 'w2' }, errorIds: new Set(['w1']) })
+            .find(entry => entry.group === 'web')).toMatchObject({ hiddenError: true });
     });
 });

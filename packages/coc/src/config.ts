@@ -410,6 +410,8 @@ export interface CLIConfig {
         panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
         panelTabGroups?: boolean;
+        /** One right-panel chip per tab category, each with its own tab menu. Disabled by default; wins over `panelTabGroups`. */
+        panelTabCategories?: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
         binaryFileReveal?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
@@ -865,6 +867,8 @@ export interface ResolvedCLIConfig {
         panelSourceSplit: boolean;
         panelTabReordering: boolean;
         panelTabGroups: boolean;
+        /** One right-panel chip per tab category, each with its own tab menu. Disabled by default; wins over `panelTabGroups`. */
+        panelTabCategories: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
         binaryFileReveal: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
@@ -1205,6 +1209,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelSourceSplit: true,
         panelTabReordering: true,
         panelTabGroups: false,
+        panelTabCategories: false,
         binaryFileReveal: false,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
