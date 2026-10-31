@@ -13,7 +13,9 @@
  *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
  *     to the workspace and stay visible across chat switches; file, canvas,
  *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
- *     no chat is selected). See `scopeForKind`.
+ *     no chat is selected). See `scopeForKind`. A `browser` tab is filed with
+ *     the workspace but may name an owning conversation (`browserChatId`); it
+ *     is then visible only from that chat, and hidden elsewhere without closing.
  *  2. **One tab per resource per scope.** Ids are derived from kind + scope +
  *     owning clone + canonical resource id, so opening the same file twice
  *     focuses one tab, while the same relative path in two repo-group members —
@@ -230,6 +232,13 @@ export interface UnifiedPanelTab {
     browserUrl?: string;
     /** A page-requested tab inherits its opener's engine rather than the current default. */
     browserEngine?: 'electron' | 'webview2';
+    /**
+     * The conversation that owns a `browser` tab (`features.chatScopedBrowserTabs`).
+     * The tab stays in `workspaceTabs` with its workspace id, but only that
+     * chat's view shows it; other views retain it hidden. Absent for a
+     * workspace-global page. Fixed when the tab is created.
+     */
+    browserChatId?: string;
 }
 
 export interface UnifiedPanelState {
@@ -298,8 +307,11 @@ function escapePart(part: string): string {
  */
 export function visibleTabs(state: UnifiedPanelState, chatId: string | null, applyOrder = true): readonly UnifiedPanelTab[] {
     const chatOwned = state.chatTabs[chatId ?? WORKSPACE_SCOPE_KEY] ?? [];
-    const defaults = chatOwned.length === 0 ? state.workspaceTabs : [
-        ...state.workspaceTabs,
+    const workspaceTabs = state.workspaceTabs.some(tab => !visibleBrowserTab(tab, chatId))
+        ? state.workspaceTabs.filter(tab => visibleBrowserTab(tab, chatId))
+        : state.workspaceTabs;
+    const defaults = chatOwned.length === 0 ? workspaceTabs : [
+        ...workspaceTabs,
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'tools'),
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'resources'),
     ];
@@ -319,6 +331,28 @@ export function visibleTabs(state: UnifiedPanelState, chatId: string | null, app
         else ordered.splice(previewIndex, 0, tab);
     }
     return ordered;
+}
+
+/** A workspace tab is visible from every chat unless it is a page owned by another conversation. */
+function visibleBrowserTab(tab: UnifiedPanelTab, chatId: string | null): boolean {
+    return tab.browserChatId === undefined || tab.browserChatId === chatId;
+}
+
+/**
+ * Drop every page's conversation owner, so all pages show in every chat again.
+ * Used when `features.chatScopedBrowserTabs` turns off; retains the state
+ * reference when no page has an owner.
+ */
+export function releaseBrowserChatOwners(state: UnifiedPanelState): UnifiedPanelState {
+    if (!state.workspaceTabs.some(tab => tab.browserChatId !== undefined)) return state;
+    return {
+        ...state,
+        workspaceTabs: state.workspaceTabs.map(tab => {
+            if (tab.browserChatId === undefined) return tab;
+            const { browserChatId: _owner, ...rest } = tab;
+            return rest;
+        }),
+    };
 }
 
 /**
@@ -400,7 +434,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
         && a.htmlPageId === b.htmlPageId
         && a.browserUrl === b.browserUrl
-        && a.browserEngine === b.browserEngine;
+        && a.browserEngine === b.browserEngine
+        && a.browserChatId === b.browserChatId;
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
@@ -542,6 +577,8 @@ export interface OpenUnifiedTabInput {
     /** A `browser` tab's initial URL; absent opens a blank tab. */
     browserUrl?: string;
     browserEngine?: 'electron' | 'webview2';
+    /** The conversation that owns a new `browser` tab; an existing tab keeps its owner. */
+    browserChatId?: string;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -623,13 +660,18 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
         ...(input.kind === 'browser' && input.browserUrl ? { browserUrl: input.browserUrl } : {}),
         ...(input.kind === 'browser' && input.browserEngine ? { browserEngine: input.browserEngine } : {}),
+        ...(input.kind === 'browser' && input.browserChatId ? { browserChatId: input.browserChatId } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
     if (index >= 0) {
         const existing = list[index];
+        // A page's owning conversation never changes: an agent re-revealing it
+        // from its own turn, or any other re-open, keeps the original owner.
+        const { browserChatId: _requestedOwner, ...reopened } = opened;
         const merged: UnifiedPanelTab = {
-            ...opened,
+            ...reopened,
+            ...(existing.browserChatId === undefined ? {} : { browserChatId: existing.browserChatId }),
             ...(input.workPath === undefined && existing.workPath !== undefined ? { workPath: existing.workPath } : {}),
             // Keep the existing reveal position — and its nonce — when this open
             // supplied none, so re-focusing a tab neither forgets where it was

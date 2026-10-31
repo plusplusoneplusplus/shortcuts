@@ -57,7 +57,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -191,11 +191,13 @@ import {
 } from './unifiedDirtyClose';
 import { OPEN_PANEL_DIRECTORY_EVENT, type OpenPanelDirectoryDetail } from './resolveChatFileLink';
 import {
+    releaseBrowserChatOwners,
     unifiedTabId,
     type OpenUnifiedPreviewTabInput,
     type OpenUnifiedTabInput,
     type UnifiedPanelTab,
 } from './unifiedPanelTabsModel';
+import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { getRepoGroup } from '../../../repos/repoGroupService';
 import {
     activateWorkspaceRouteForBaseUrl,
@@ -265,6 +267,7 @@ export function UnifiedRightPanel({
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
+    const [chatScopedBrowserTabs, setChatScopedBrowserTabs] = useState(() => isChatScopedBrowserTabsEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
@@ -273,6 +276,7 @@ export function UnifiedRightPanel({
             setReorderEnabled(isPanelTabReorderingEnabled());
             setGroupsEnabled(isPanelTabGroupsEnabled());
             setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
+            setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -283,6 +287,10 @@ export function UnifiedRightPanel({
         updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
+    // With `features.chatScopedBrowserTabs` off, every page shows in every chat again.
+    useEffect(() => {
+        if (!chatScopedBrowserTabs) updateUnifiedPanelState(workspaceId, releaseBrowserChatOwners);
+    }, [chatScopedBrowserTabs, workspaceId]);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
     // reveal the panel themselves, and a user may explicitly keep an empty panel
@@ -840,20 +848,24 @@ export function UnifiedRightPanel({
         [updateBrowser],
     );
 
-    // A page's new-window link opens as another browser tab with the opener's owner,
-    // so it shares the opener's site session even if the dock target moved since.
+    // A page's new-window link opens as another browser tab with the opener's owner
+    // and conversation, so it shares the opener's site session even if the dock
+    // target moved since. An opener hidden in another conversation still counts.
+    const workspaceTabsRef = useRef(state.workspaceTabs);
+    workspaceTabsRef.current = state.workspaceTabs;
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
         return bridge.onNewTab(({ openerViewId, viewId, url, engine }) => {
-            const opener = tabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
+            const opener = workspaceTabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
             const normalized = normalizeBrowserUrl(url);
             if (!opener || !normalized.ok) return;
             open({ ...browserOpenInput({
                 ownerWorkspaceId: opener.ownerWorkspaceId,
                 ownerRoutingRef: opener.ownerRoutingRef,
-                chatId,
+                chatId: opener.browserChatId ?? chatId,
                 repoLabel: opener.repoLabel,
+                browserChatId: opener.browserChatId ?? null,
             }, normalized.url), ...(viewId ? { resourceId: viewId } : {}), browserEngine: engine });
         });
     }, [chatId, open]);

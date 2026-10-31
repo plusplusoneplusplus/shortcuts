@@ -412,6 +412,8 @@ export interface CLIConfig {
         binaryFileReveal?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
+        /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
+        chatScopedBrowserTabs?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -863,6 +865,8 @@ export interface ResolvedCLIConfig {
         binaryFileReveal: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
+        /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
+        chatScopedBrowserTabs: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -1198,6 +1202,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelTabGroups: false,
         binaryFileReveal: false,
         browserTabShortcuts: true,
+        chatScopedBrowserTabs: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

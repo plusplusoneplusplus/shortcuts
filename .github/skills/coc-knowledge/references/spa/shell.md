@@ -800,6 +800,18 @@ owning window. Other windows and HTML previews keep the keys.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
+### Conversation-owned web tabs
+
+Default-off `features.chatScopedBrowserTabs` gives a `browser` tab an owning
+conversation (`browserChatId`) when it opens with a selected chat: `+`, Ctrl/Cmd+T,
+chat links, history and agent reveals (`processId`). The tab stays in
+`workspaceTabs`, so ids, close, lookup and engine cleanup are unchanged;
+`visibleTabs` shows it only from that chat. Hidden tabs unmount their views, so
+Electron hosts hide in the same commit and remounts reattach the retained guest.
+Tabs opened with no chat stay workspace-global. Duplicate, popup and Ctrl/Cmd+Shift+T
+copies keep the source's owner; turning the flag off releases every owner.
+Browser-control scope and background layout stay per workspace, not per chat.
+
 The desktop three-column layout keeps the flexible middle pane usable by sharing
 the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.
 The right-panel maximum reserves that width, both resize handles, and 360px for

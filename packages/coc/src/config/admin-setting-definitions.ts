@@ -1457,6 +1457,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-browser-tab-shortcuts-enabled',
         },
     }),
+    bool({
+        key: 'features.chatScopedBrowserTabs', default: false, runtime: 'live', runtimeFlag: 'chatScopedBrowserTabsEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 30, label: 'Conversation browser tabs', badge: 'experimental',
+            hint: 'Web pages opened in a conversation show in the right panel only while that conversation is selected. Switching away hides them without closing them; pages opened with no conversation selected stay visible everywhere. Disabled by default.',
+            testId: 'toggle-chat-scoped-browser-tabs-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',

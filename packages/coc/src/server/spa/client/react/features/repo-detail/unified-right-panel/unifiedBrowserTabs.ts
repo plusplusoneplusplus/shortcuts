@@ -7,11 +7,17 @@
  * opened. That identity governs routing; each engine's persistent sign-ins are
  * shared installation-wide. Changing the dock target never retargets a tab.
  *
+ * With `features.chatScopedBrowserTabs` on, a tab opened while a conversation
+ * is selected belongs to that conversation (`browserChatId`) and shows only in
+ * its view; a tab opened with no conversation stays workspace-global. Copies
+ * of a tab (duplicate, popup, reopen) keep the source's owner exactly.
+ *
  * URL handling is deliberately narrow: only http(s) is accepted, a bare domain
  * gets `https://` (loopback hosts get `http://`), and arbitrary text is rejected
  * rather than turned into a search query.
  */
 
+import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
 import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export type BrowserUrlResult =
@@ -133,10 +139,19 @@ export interface BrowserOpenContext {
     ownerRoutingRef?: string | null;
     chatId: string | null;
     repoLabel?: string;
+    /**
+     * The owning conversation, copied from a source tab; `null` keeps the copy
+     * workspace-global. Omitted, the selected `chatId` owns the tab when
+     * `features.chatScopedBrowserTabs` is on.
+     */
+    browserChatId?: string | null;
 }
 
 /** A new browser tab, blank or pointed at an already-normalized URL. */
 export function browserOpenInput(context: BrowserOpenContext, url?: string): OpenUnifiedTabInput {
+    const owner = context.browserChatId !== undefined
+        ? context.browserChatId
+        : isChatScopedBrowserTabsEnabled() ? context.chatId : null;
     return {
         kind: 'browser',
         ownerWorkspaceId: context.ownerWorkspaceId,
@@ -146,6 +161,7 @@ export function browserOpenInput(context: BrowserOpenContext, url?: string): Ope
         label: browserLabelForUrl(url),
         ...(context.repoLabel ? { repoLabel: context.repoLabel } : {}),
         ...(url ? { browserUrl: url } : {}),
+        ...(owner ? { browserChatId: owner } : {}),
     };
 }
 
@@ -167,7 +183,8 @@ export function canDuplicateBrowserTab(tab: UnifiedPanelTab): boolean {
  * A fresh, independent copy of a browser tab: same owner scope, engine pin and
  * committed http(s) URL, with a new view id so no live guest, control session
  * or page history carries over. `chatId` is the viewing chat, which selects the
- * copy there, as a page-requested tab does. Null when `canDuplicateBrowserTab` is false.
+ * copy there, as a page-requested tab does; the copy keeps the source's owning
+ * conversation. Null when `canDuplicateBrowserTab` is false.
  */
 export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | null): OpenUnifiedTabInput | null {
     const normalized = tab.browserUrl ? normalizeBrowserUrl(tab.browserUrl) : null;
@@ -179,6 +196,7 @@ export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | 
             ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
             chatId,
             ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
+            browserChatId: tab.browserChatId ?? null,
         }, url),
         label: tab.label,
         ...(tab.browserEngine ? { browserEngine: tab.browserEngine } : {}),

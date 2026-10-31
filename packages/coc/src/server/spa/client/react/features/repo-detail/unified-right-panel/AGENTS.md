@@ -27,7 +27,8 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned
+(a `browser` tab may also name an owning chat; see "Browser tabs"),
 `file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
 Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
@@ -757,6 +758,18 @@ owner when opened — that owner is the tab's routing identity, and a later
 target switch never retargets it. Tabs are workspace-owned, so they stay
 across chat switches, and `browser` is an ephemeral kind: neither the tab, its
 URL, nor its selection reaches storage, so a restart starts with none.
+Default-off `features.chatScopedBrowserTabs` adds a conversation owner
+(`browserChatId`): `browserOpenInput` files a tab opened with a selected chat
+under that chat (agent reveals use their `processId`), and `visibleTabs` hides it
+from every other chat and from the no-chat view. The descriptor stays in
+`workspaceTabs`; re-opens never change the owner. Hidden tabs leave the mounted
+set, so their Electron hosts hide in the same commit and the guest, history and
+scroll come back when the chat is selected again; only explicit close or engine
+cleanup closes them. Tabs opened with no chat stay workspace-global. Duplicate,
+popup (`onNewTab`, found even when its opener is hidden) and reopen-closed copies
+keep the source's owner. Turning the flag off releases every owner
+(`releaseBrowserChatOwners`). Browser-control scope, background layout and
+human takeover remain per workspace and unchanged.
 `updateBrowserTab` follows the page's URL and label without activating the tab.
 AI browser control uses the same session-only descriptors and imperative
 `openUnifiedPanelTab` seam, so commands can reveal a collapsed or unmounted dock.

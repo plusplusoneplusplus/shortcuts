@@ -21,6 +21,7 @@ import {
     isPanelTabGroupsEnabled,
     isBrowserBackgroundControlEnabled,
     isBrowserTabShortcutsEnabled,
+    isChatScopedBrowserTabsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
@@ -365,6 +366,16 @@ describe('background browser control runtime flag', () => {
         expect(isBrowserBackgroundControlEnabled()).toBe(false);
         applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
         expect(isBrowserBackgroundControlEnabled()).toBe(true);
+    });
+});
+
+describe('conversation browser tabs runtime flag', () => {
+    it('defaults off, turns on only for an explicit true and follows live updates', () => {
+        expect(isChatScopedBrowserTabsEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: true });
+        expect(isChatScopedBrowserTabsEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: false });
+        expect(isChatScopedBrowserTabsEnabled()).toBe(false);
     });
 });
 

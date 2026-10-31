@@ -139,6 +139,8 @@ interface DashboardConfig {
     binaryFileRevealEnabled?: boolean;
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
     browserTabShortcutsEnabled?: boolean;
+    /** Whether right-panel web pages belong to the conversation that opened them. Default false. */
+    chatScopedBrowserTabsEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
     explorerDeleteEnabled?: boolean;
     /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
@@ -369,6 +371,11 @@ export function isBinaryFileRevealEnabled(): boolean {
 /** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); on unless the server says off. */
 export function isBrowserTabShortcutsEnabled(): boolean {
     return getConfig().browserTabShortcutsEnabled !== false;
+}
+
+/** Right-panel web pages owned by the conversation that opened them (`features.chatScopedBrowserTabs`); off unless the server says on. */
+export function isChatScopedBrowserTabsEnabled(): boolean {
+    return getConfig().chatScopedBrowserTabsEnabled === true;
 }
 
 /** Rendered Markdown in unified right-panel file tabs (`features.markdownPanelPreview`); on unless the server says off. */
