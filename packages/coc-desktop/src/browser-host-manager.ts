@@ -13,6 +13,7 @@ import { BrowserHumanTakeover } from './browser-human-takeover';
 import { BrowserControlQueue } from './browser-control-queue';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
+import { BrowserDemoRecorders } from './browser-demo-recorder';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
@@ -71,6 +72,8 @@ interface TakeoverTurn {
     selected?: Entry;
 }
 
+export const BROWSER_DEMO_RECORDING_ERROR = 'recording-active: the user is recording a browser demo for this chat';
+
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failed) { throw failed.reason; }
@@ -112,7 +115,21 @@ export class BrowserHostManager {
     /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
     private readonly tabShortcutOwners = new Set<number>();
 
-    constructor(private readonly options: BrowserManagerOptions) {}
+    /** Task-demonstration drafts; recorded chats and tabs refuse AI control while capturing. */
+    readonly demos: BrowserDemoRecorders;
+
+    constructor(private readonly options: BrowserManagerOptions) {
+        this.demos = new BrowserDemoRecorders({
+            send: options.send,
+            lookup: (ownerId, viewId) => {
+                const entry = this.entry(ownerId, viewId);
+                if (!entry?.view || entry.closed) return undefined;
+                const busy = entry.activity ? 'An AI browser turn is using this tab.'
+                    : entry.takeover?.paused ? 'Finish the human takeover in this tab first.' : undefined;
+                return { view: entry.view, sessionKey: entry.sessionKey, sourceKind: entry.sourceKind, ...(busy ? { busy } : {}) };
+            },
+        });
+    }
 
     finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
         for (const item of this.takeovers.values()) if (item.ownerId === ownerId
@@ -348,6 +365,7 @@ export class BrowserHostManager {
 
     async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
+        if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
         const key = this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey);
         let item = this.takeovers.get(key);
@@ -441,7 +459,8 @@ export class BrowserHostManager {
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
         // Background reveals publish the tab without raising the window or changing its selection.
         const background = scope.background ? { background: true } : {};
-        let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef);
+        // Tabs another chat is recording stay out of reach, reads included.
+        let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef).filter(entry => !this.demos.recordingTab(entry.ownerId, entry.viewId));
         const command = request.command;
         if (command.action === 'tabs') {
             const tabs: BrowserControlTab[] = [];
@@ -697,6 +716,8 @@ export class BrowserHostManager {
         }
         entry.ready = Promise.resolve().then(() => create(entry));
         if (entry.sourceKind === 'url') {
+            void entry.ready.then(() => this.demos.tabReady(init.ownerId, init.viewId), () => this.demos.tabClosed(init.ownerId, init.viewId))
+                .catch(error => console.error('[coc-desktop] Browser demo tab capture failed:', error));
             entry.control = new BrowserControlQueue((method, params, sessionId) => {
                 if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
                 if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
@@ -772,6 +793,7 @@ export class BrowserHostManager {
                 if (entry.closed) return;
                 if (state.error) entry.committedPage = undefined;
                 if (state.errorCode === 'runtime-crashed') {
+                    this.demos.crashed(entry.ownerId, entry.viewId);
                     entry.takeover?.stop('Browser runtime crashed during human takeover');
                     this.clearControlEntry(entry, false);
                     entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
@@ -796,6 +818,7 @@ export class BrowserHostManager {
             },
             visited: (url, title) => {
                 if (!entry.closed && entry.sourceKind === 'url') {
+                    this.demos.navigated(entry.ownerId, entry.viewId, url, title);
                     void this.options.history.recordVisit(entry.engine, url, title)
                         .catch(error => console.error('[coc-desktop] Browser history save failed:', error));
                 }
@@ -814,6 +837,8 @@ export class BrowserHostManager {
                         viewId = `browser-${randomUUID()}`;
                         this.pendingHumanTabs.set(JSON.stringify([entry.ownerId, viewId]), { sessionKey: entry.sessionKey, control: entry.takeover });
                     }
+                    // A recorded tab's child joins the recording under the id the SPA opens it with.
+                    viewId = this.demos.reserveChild(entry.ownerId, entry.viewId, viewId) ?? viewId;
                     this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}) });
                 }
             },
@@ -849,6 +874,7 @@ export class BrowserHostManager {
                     return view.cdp!(method, params);
                 });
                 this.owners.get(entry.ownerId)?.set(viewId, popout);
+                void this.demos.popupOpened(entry.ownerId, entry.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
             },
             controlPopoutClosed: viewId => {
                 const popout = this.entry(entry.ownerId, viewId);
@@ -859,6 +885,7 @@ export class BrowserHostManager {
                 this.pruneNavigationChecks();
                 popout.control?.cancel(new Error('Browser popout closed'));
                 this.owners.get(entry.ownerId)?.delete(viewId);
+                void this.demos.tabClosed(entry.ownerId, viewId);
             },
             controlFocused: () => {
                 if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
@@ -1120,6 +1147,7 @@ export class BrowserHostManager {
         entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
+        void this.demos.tabClosed(entry.ownerId, entry.viewId);
         if (notify) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: entry.viewId, engine: entry.engine }); }
         // Startup is allowed to finish; create() then closes the partial view itself.
         const view = await entry.ready.catch(error => {
@@ -1130,6 +1158,8 @@ export class BrowserHostManager {
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        // Drafts go synchronously; the window's tab map must clear in this tick too, or a reload's reopen reuses it.
+        const demos = this.demos.closeOwner(ownerId);
         for (const [key, item] of this.takeovers) if (item.ownerId === ownerId) { item.control.stop('Browser owner window disconnected'); this.takeovers.delete(key); }
         for (const key of this.pendingHumanTabs.keys()) if (JSON.parse(key)[0] === ownerId) this.pendingHumanTabs.delete(key);
         this.finishControl(ownerId);
@@ -1139,7 +1169,7 @@ export class BrowserHostManager {
         this.retainedScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);
-        const results = await Promise.allSettled([...entries?.values() ?? []].map(entry => this.closeEntry(entry)));
+        const results = await Promise.allSettled([demos, ...[...entries?.values() ?? []].map(entry => this.closeEntry(entry))]);
         throwRejected(results);
     }
 

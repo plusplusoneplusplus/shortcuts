@@ -12,17 +12,19 @@ export interface BrowserDemoTab {
     /** 1-based order of capture, shown as "Tab N" in review. */
     index: number;
     openerViewId?: string;
+    /** The user added an existing tab explicitly instead of opening it from a captured one. */
+    addedByUser?: true;
     url: string;
     title: string;
     closed?: true;
 }
 
-export type BrowserDemoGapReason = 'paused' | 'rate-limit' | 'step-limit' | 'tab-limit' | 'capture-failed' | 'frame-unavailable' | 'tab-crashed';
+export type BrowserDemoGapReason = 'paused' | 'rate-limit' | 'step-limit' | 'tab-limit' | 'capture-failed' | 'frame-unavailable' | 'tab-crashed' | 'tab-not-opened';
 
 export type BrowserDemoStep = { id: number; at: number; viewId: string } & (
     | { type: 'action'; action: BrowserDemoAction }
     | { type: 'navigate'; url: string; title: string }
-    | { type: 'tab-opened'; openerViewId?: string; url: string }
+    | { type: 'tab-opened'; openerViewId?: string; addedByUser?: true; url: string }
     | { type: 'switch' }
     | { type: 'tab-closed' }
     | { type: 'gap'; reason: BrowserDemoGapReason }
@@ -70,18 +72,22 @@ export class BrowserDemoSession {
         return [...this.tabs.values()].filter(tab => !tab.closed).map(tab => tab.viewId);
     }
 
-    /** Add the starting tab, or a tab whose opener is already captured. Returns false when it is not added. */
-    addTab(viewId: string, page: { url: string; title: string }, openerViewId?: string): boolean {
+    /**
+     * Add the starting tab, a tab whose opener is already captured, or (`addedByUser`) an existing
+     * tab the user chose explicitly. Returns false when it is not added.
+     */
+    addTab(viewId: string, page: { url: string; title: string }, openerViewId?: string, addedByUser = false): boolean {
         if (this.status === 'stopped' || this.tabs.has(viewId)) return false;
         if (openerViewId !== undefined && !this.hasTab(openerViewId)) return false;
         if (this.tabs.size >= BROWSER_DEMO_LIMITS.tabs) {
-            this.gap(openerViewId ?? viewId, 'tab-limit');
+            this.gap(openerViewId ?? this.activeViewId ?? viewId, 'tab-limit');
             return false;
         }
         const url = redactDemoUrl(page.url) ?? '';
-        this.tabs.set(viewId, { viewId, index: this.tabs.size + 1, ...(openerViewId ? { openerViewId } : {}), url, title: redactDemoText(page.title) });
-        this.push(viewId, { type: 'tab-opened', ...(openerViewId ? { openerViewId } : {}), url });
-        if (openerViewId === undefined) this.activeViewId = viewId;
+        const lineage = { ...(openerViewId ? { openerViewId } : {}), ...(addedByUser ? { addedByUser: true as const } : {}) };
+        this.tabs.set(viewId, { viewId, index: this.tabs.size + 1, ...lineage, url, title: redactDemoText(page.title) });
+        this.push(viewId, { type: 'tab-opened', ...lineage, url });
+        if (this.activeViewId === undefined) this.activeViewId = viewId;
         return true;
     }
 
@@ -130,8 +136,9 @@ export class BrowserDemoSession {
         if (viewId) this.push(viewId, { type: 'gap', reason: 'paused' });
     }
 
+    /** Continue a paused capture, or reopen a stopped one so new steps append after the reviewed ones. */
     resume(): void {
-        if (this.status === 'paused') this.status = 'recording';
+        if (this.status !== 'recording') this.status = 'recording';
     }
 
     stop(): BrowserDemoSnapshot {

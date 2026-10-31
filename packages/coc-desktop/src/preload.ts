@@ -28,6 +28,8 @@ const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
 const BROWSER_CONTROL_TAKEOVER_CHANNEL = 'coc-desktop:browser-control-takeover';
 const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-takeover-state';
+const BROWSER_DEMO_COMMAND_CHANNEL = 'coc-desktop:browser-demo-command';
+const BROWSER_DEMO_STATE_CHANNEL = 'coc-desktop:browser-demo-state';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
@@ -302,6 +304,16 @@ const browser = {
             ipcRenderer.on(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
             return () => ipcRenderer.removeListener(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
         },
+    },
+    /**
+     * Task-demonstration recording. Commands are owner-checked in main and fail as values;
+     * `onState` carries counts and tab ids only, `draft`/`stop` return the redacted step list.
+     */
+    demo: {
+        supported: true,
+        command: (command: import('./browser-demo-recorder').BrowserDemoCommand): Promise<import('./browser-demo-recorder').BrowserDemoCommandResult> =>
+            ipcRenderer.invoke(BROWSER_DEMO_COMMAND_CHANNEL, command),
+        onState: (callback: (state: import('./browser-demo-recorder').BrowserDemoState) => void) => subscribe(BROWSER_DEMO_STATE_CHANNEL, callback),
     },
     downloads: {
         query: (): Promise<{ ok: true; entries: DownloadRecord[]; storageError: string | null; engines: Record<string, { managed: boolean; message: string }> } | BrowserHistoryFailure> => ipcRenderer.invoke(DOWNLOADS_QUERY_CHANNEL),

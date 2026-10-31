@@ -3,6 +3,7 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
+import { BROWSER_DEMO_COMMAND_CHANNEL, runBrowserDemoCommand } from './browser-demo-recorder';
 import { ControlDeadline } from './browser-control-queue';
 import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
@@ -228,6 +229,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         if (action === 'policy') return manager!.setHumanTakeoverEnabled(event.sender.id, identity.routingRef, note === true);
         return manager!.humanTakeover(event.sender.id, identity, action, note);
+    });
+    ipcMain.handle(BROWSER_DEMO_COMMAND_CHANNEL, (event, command: unknown) => {
+        if (!historyWindow(event)) return { ok: false, reason: 'not-found', message: 'Browser demos require a registered SPA main frame.' };
+        return runBrowserDemoCommand(manager!.demos, event.sender.id, command);
     });
     ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
