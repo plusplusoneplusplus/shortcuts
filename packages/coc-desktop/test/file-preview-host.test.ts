@@ -465,6 +465,107 @@ describe('HTML session native download routing', () => {
         await host.dispose();
     });
 
+    it('reports expired native input once, blocks the handle and requires a fresh action', async () => {
+        const { host, sink } = await downloadable(store);
+        vi.useFakeTimers();
+        try {
+            expect(request().event.preventDefault).toHaveBeenCalledOnce();
+            expect(sink.download).not.toHaveBeenCalled();
+            click();
+            vi.advanceTimersByTime(5_000);
+            expect(request().event.preventDefault).toHaveBeenCalledOnce();
+            expect(sink.download).toHaveBeenCalledExactlyOnceWith({
+                viewId: 'html-page:one', url: 'Local or private source', ok: false,
+                error: 'Download permission expired. Activate Download again to save the file.',
+            });
+            expect(request().event.preventDefault).toHaveBeenCalledOnce();
+            expect(sink.download).toHaveBeenCalledOnce();
+            expect(mocks.manage).not.toHaveBeenCalled();
+            expect(mocks.saveDialog).not.toHaveBeenCalled();
+            mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+                expect(approval.approve()).toBe(true);
+                return true;
+            });
+            key();
+            expect(request().event.preventDefault).not.toHaveBeenCalled();
+            expect(mocks.manage).toHaveBeenCalledOnce();
+            expect(sink.download).toHaveBeenCalledOnce();
+        } finally {
+            await host.dispose();
+            expect(vi.getTimerCount()).toBe(0);
+            vi.useRealTimers();
+        }
+    });
+
+    it.each(['close', 'reload', 'document', 'hide', 'owner', 'guest', 'reparent', 'unregistered'])('discards expired input feedback after %s invalidates its source', async change => {
+        const { host, view, sink, guest, owner, request: source } = await downloadable(store);
+        vi.useFakeTimers();
+        try {
+            click();
+            vi.advanceTimersByTime(5_000);
+            if (change === 'close') await view.close();
+            if (change === 'reload') await view.nav('reload');
+            if (change === 'document') guest.emit('did-navigate', {}, htmlPageFileUrl(source.path));
+            if (change === 'hide') { await view.setBounds(null); await view.setBounds(bounds); }
+            if (change === 'owner') owner.isDestroyed.mockReturnValue(true);
+            if (change === 'guest') guest.isDestroyed.mockReturnValue(true);
+            if (change === 'reparent') guest.hostWebContents = makeOwner(99);
+            if (change === 'unregistered') mocks.trusted = false;
+            expect(request(guest).event.preventDefault).toHaveBeenCalledOnce();
+            expect(sink.download).not.toHaveBeenCalled();
+            expect(mocks.manage).not.toHaveBeenCalled();
+            expect(mocks.saveDialog).not.toHaveBeenCalled();
+        } finally {
+            await host.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it('keeps expiry notices with their exact owner across repeated preview labels and server scopes', async () => {
+        const first = await downloadable(store);
+        const owner = makeOwner(10);
+        mocks.owners.set(owner.id, owner);
+        const guest = makeGuest(owner, 20);
+        const sink = { state: vi.fn(), download: vi.fn() };
+        const source = { ...first.request, ownerId: owner.id, sessionKey: 'remote-b:workspace' };
+        const second = await first.host.create(source, sink as any);
+        await second.setBounds(bounds);
+        mocks.attach!(guest);
+        guest.emit('did-navigate', {}, htmlPageFileUrl(source.path));
+        vi.useFakeTimers();
+        try {
+            click(first.guest);
+            vi.advanceTimersByTime(5_000);
+            expect(request(guest).event.preventDefault).toHaveBeenCalledOnce();
+            expect(first.sink.download).not.toHaveBeenCalled();
+            expect(sink.download).not.toHaveBeenCalled();
+            expect(request(first.guest).event.preventDefault).toHaveBeenCalledOnce();
+            expect(first.sink.download).toHaveBeenCalledOnce();
+            expect(sink.download).not.toHaveBeenCalled();
+            expect(mocks.manage).not.toHaveBeenCalled();
+        } finally {
+            await first.host.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it('still prevents the default download if expiry notice delivery fails', async () => {
+        const { host, sink } = await downloadable(store);
+        vi.useFakeTimers();
+        try {
+            click();
+            vi.advanceTimersByTime(5_000);
+            sink.download.mockImplementation(() => { throw new Error('renderer closed'); });
+            expect(request().event.preventDefault).toHaveBeenCalledOnce();
+            expect(request().event.preventDefault).toHaveBeenCalledOnce();
+            expect(sink.download).toHaveBeenCalledOnce();
+            expect(mocks.manage).not.toHaveBeenCalled();
+        } finally {
+            await host.dispose();
+            vi.useRealTimers();
+        }
+    });
+
     it('reports rejected store admission without opening a dialog or replaying the request', async () => {
         const { host, sink } = await downloadable(store);
         mocks.manage.mockImplementation((_store, _item, _directory, approval) => { approval.cancel(); return false; });

@@ -43,13 +43,46 @@ describe('HTML preview download admission', () => {
 
     it('expires async generation intent and requires a fresh action', () => {
         const { gate, scope } = fixture();
+        const expired = vi.fn();
+        expect(gate.request(scope, 'blob:null/id', expired)).toBeUndefined();
+        expect(expired).not.toHaveBeenCalled();
         gate.recordUserAction(scope);
         vi.advanceTimersByTime(5_000);
-        expect(gate.request(scope, 'blob:null/id')).toBeUndefined();
+        expect(gate.request(scope, 'blob:null/id', expired)).toBeUndefined();
+        expect(expired).toHaveBeenCalledOnce();
+        expect(gate.request(scope, 'data:,repeat', expired)).toBeUndefined();
+        expect(expired).toHaveBeenCalledOnce();
         gate.recordUserAction(scope);
         vi.advanceTimersByTime(4_999);
-        const pending = gate.request(scope, 'blob:null/id')!;
+        const pending = gate.request(scope, 'blob:null/id', expired)!;
         expect(pending.approve(scope)).toBe(true);
+        expect(expired).toHaveBeenCalledOnce();
+    });
+
+    it('rejects foreign identities and unsupported targets without consuming expiry feedback', () => {
+        const { gate, scope } = fixture();
+        const expired = vi.fn();
+        gate.recordUserAction(scope);
+        vi.advanceTimersByTime(5_000);
+        for (const patch of [{ ownerId: 9 }, { sessionKey: 'other:workspace' }, { viewId: 'other' }, { guestId: 9 }, { document: {} }]) {
+            expect(gate.request({ ...scope, ...patch }, 'data:,private', expired)).toBeUndefined();
+        }
+        expect(gate.request(scope, 'https://example.test/private', expired)).toBeUndefined();
+        expect(expired).not.toHaveBeenCalled();
+        expect(gate.request(scope, 'data:,private', expired)).toBeUndefined();
+        expect(expired).toHaveBeenCalledOnce();
+    });
+
+    it.each(['hide', 'close'])('discards expiry feedback on %s', change => {
+        const { gate, scope } = fixture();
+        const expired = vi.fn();
+        gate.recordUserAction(scope);
+        vi.advanceTimersByTime(5_000);
+        if (change === 'hide') gate.setVisible(false);
+        else gate.close();
+        gate.setVisible(true);
+        expect(gate.request(scope, 'data:,private', expired)).toBeUndefined();
+        expect(expired).not.toHaveBeenCalled();
     });
 
     it.each([

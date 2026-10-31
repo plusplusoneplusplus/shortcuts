@@ -350,7 +350,14 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
             || entry.owner.isDestroyed() || !isBrowserEmbedder(entry.owner)) return undefined;
         const download = entry.downloads;
         if (!download) return undefined;
-        const pending = download.gate.request(download.scope, url);
+        const pending = download.gate.request(download.scope, url, () => {
+            // The gate validates visibility and document identity, and consumes the
+            // expired action before notifying. Never let delivery enable a download.
+            try {
+                entry.sink.download({ viewId: entry.viewId, url: 'Local or private source', ok: false,
+                    error: 'Download permission expired. Activate Download again to save the file.' });
+            } catch { /* The owning renderer may be tearing down. */ }
+        });
         if (!pending) return undefined;
         return {
             signal: pending.signal,

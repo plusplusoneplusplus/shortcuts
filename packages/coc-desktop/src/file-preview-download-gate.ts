@@ -63,11 +63,17 @@ export class FilePreviewDownloadGate {
     }
 
     /** Admission consumes one action; rejects other schemes without enabling navigation. */
-    request(scope: FilePreviewDownloadScope, url: string): PendingFilePreviewDownload | undefined {
-        if (!this.matches(scope) || this.pending || this.intentUntil <= performance.now()) return undefined;
+    request(scope: FilePreviewDownloadScope, url: string, onIntentExpired?: () => void): PendingFilePreviewDownload | undefined {
+        if (!this.matches(scope) || this.pending || !this.intentUntil) return undefined;
         // Inspect only the scheme: data URLs can contain arbitrarily large native payloads.
         if (!/^(?:blob|data):/i.test(url)) return undefined;
+        const expired = this.intentUntil <= performance.now();
+        // Consume expired intent too: unsolicited repeats must not spam the owner.
         this.intentUntil = 0;
+        if (expired) {
+            onIntentExpired?.();
+            return undefined;
+        }
         const abort = new AbortController();
         const deadline = performance.now() + SAVE_APPROVAL_MS;
         const retire = () => {
