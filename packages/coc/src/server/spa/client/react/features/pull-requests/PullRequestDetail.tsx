@@ -274,10 +274,12 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
         () => createPrDiffSource(workspaceId, String(repoId), String(prId), {
             originId,
             headSha,
+            baseSha: pr?.baseSha,
+            routingTarget: attachmentDestinationId === workspaceId ? null : attachmentDestinationId,
             files: diffFilePaths,
             title: pr?.title,
         }),
-        [workspaceId, repoId, prId, originId, headSha, diffFilePaths, pr?.title],
+        [workspaceId, repoId, prId, originId, headSha, pr?.baseSha, diffFilePaths, pr?.title, attachmentDestinationId],
     );
     // Same persistence key the pop-out review window uses, so reviewed/visited
     // state is shared between the two surfaces rather than duplicated.

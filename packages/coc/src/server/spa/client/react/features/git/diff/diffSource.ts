@@ -373,6 +373,8 @@ export function createPrDiffSource(
     options: {
         originId: string;
         headSha?: string;
+        baseSha?: string;
+        routingTarget?: string | null;
         files?: string[];
         title?: string;
     },
@@ -381,9 +383,11 @@ export function createPrDiffSource(
     // Resolve the client per call, like the other factories above: the clone
     // registry fills in asynchronously, so resolving once at construction can
     // permanently capture the local page-origin client for a remote clone.
-    const client = () => getCocClientForWorkspace(workspaceId);
+    const client = () => getGitReviewClient(workspaceId, options.routingTarget);
 
     return {
+        routingTarget: options.routingTarget,
+        ...(options.baseSha && options.headSha ? { fileContextRefs: { baseRef: options.baseSha, headRef: options.headSha } } : {}),
         label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
@@ -425,7 +429,7 @@ export function createPrDiffSource(
 
         supportsTruncation: false,
 
-        cacheKey: `pr:${options.originId}:${prId}${options.headSha ? `:${options.headSha}` : ''}`,
+        cacheKey: `pr:${options.originId}:${prId}${options.headSha ? `:${options.headSha}` : ''}${options.baseSha ? `:base:${options.baseSha}` : ''}`,
 
         async fetchFileList(): Promise<string[]> {
             const diff = await client().pullRequests.getDiffForOrigin(options.originId, prId, originOptions);

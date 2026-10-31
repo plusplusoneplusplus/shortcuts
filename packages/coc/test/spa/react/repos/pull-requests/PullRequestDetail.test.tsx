@@ -16,6 +16,7 @@ const configMocks = vi.hoisted(() => ({
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isComposerWordHintEnabled: () => false,
     isDiffFilePickerEnabled: () => true,
+    isDiffContentSearchEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',
@@ -517,6 +518,11 @@ describe('tabs', () => {
     });
 
     it.each(['repo-1', 'remote:one:repo-1', 'remote:two:repo-1'])('passes owner %s through the real Files panel', async destination => {
+        const { registerCloneBaseUrls } = await import('../../../../../src/server/spa/client/react/repos/cloneRegistry');
+        registerCloneBaseUrls([
+            { workspaceId: 'repo-1', cloneKey: 'remote:one:repo-1', baseUrl: 'https://one.example' },
+            { workspaceId: 'repo-1', cloneKey: 'remote:two:repo-1', baseUrl: 'https://two.example' },
+        ]);
         mockFetchDetail(makePr(), [], SAMPLE_DIFF);
         await act(async () => { await renderDetail({ attachmentDestinationId: destination }); });
         await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());

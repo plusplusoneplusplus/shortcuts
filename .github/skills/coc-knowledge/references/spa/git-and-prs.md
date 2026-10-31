@@ -251,6 +251,13 @@ without resetting file filters. Equivalent metadata rerenders reuse the cache.
 Each activation forwards a fresh file-qualified target to `FileDiffPanel`; ordinary
 selection and external file routes clear it. Controlled route echoes preserve it.
 
+`PrFilesPanel` owns the same controller and target for inline PR files. Its identity
+includes owner/endpoint, source refs, head, origin-qualified progress and classification.
+`useReviewContentSearchController` shares effect-owned cache/disposal lifetimes;
+file inventories and refreshed combined patches replace its controller. A mobile
+result temporarily uses `FileDiffPanel` for exact-side navigation and Classic's
+Editor fallback; ordinary file navigation restores the slim mobile renderer.
+
 `FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
 objects reveal the side-local line/column after that file's models load, overriding
 hunk navigation. Old-side Editor jumps select split layout so the original buffer
@@ -264,12 +271,13 @@ targets on ordinary navigation; later definition jumps supersede search jumps.
 
 `features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with
 patch URLs plus an optional paired-content loader. Each loader resolves
-`getCocClientForWorkspace(workspaceId)` when called, so a remote clone route that
+its owner client when called, so a remote clone route that
 becomes available after source construction is honored. Branch-range loaders carry
 the selected base mode. PR loaders use the origin-scoped content API with workspace
 and repo clone-selection metadata, and the source cache identity includes the head SHA. Commit and branch factories
 accept an optional concrete `routingTarget` separately from the raw workspace
-payload; explicit null selects page origin and unresolved remote owners fail.
+payload; PR factories also accept it and include optional base SHA in cache/ref
+identity. Explicit null selects page origin and unresolved remote owners fail.
 `useFileDiff` aborts superseded reads and rejects delayed generations; patch cache
 keys include owner endpoint, and abandoned requests cannot populate the cache.
 

@@ -160,6 +160,7 @@ export interface PullRequest {
     commentCount?: number;
     /** SHA of the PR head commit (used as classification cache key). */
     headSha?: string;
+    baseSha?: string;
     /** Real diff stats enriched by the server for list/detail queue metadata. */
     diffStats?: PullRequestDiffStats;
     /** Auto-merge configuration and state. */
