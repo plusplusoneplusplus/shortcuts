@@ -139,6 +139,33 @@ describe('POST /api/processes/:id/message', () => {
     // Success path
     // ========================================================================
 
+    it.each(['completed', 'running'] as const)('retains the entire sent demo in owner history across file cleanup (parent=%s)', async status => {
+        await store.addProcess({ id: 'demo-history', type: 'chat', status, startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'demo-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        const markdown = '# Browser demonstration\n' + 'Clicked the Billing link; typed value omitted.\n'.repeat(1400);
+        const name = 'browser-demo-fixture.md';
+        const response = await postJSON(`${baseUrl}/api/processes/demo-history/message?workspace=demo-owner`, {
+            content: 'Explain the reviewed demo', browserDemo: { inputAllowed: false },
+            attachments: [{ name, mimeType: 'text/markdown', size: Buffer.byteLength(markdown),
+                dataUrl: `data:text/markdown;base64,${Buffer.from(markdown).toString('base64')}` }],
+        });
+        expect(response.status).toBe(202);
+        const proc = await store.getProcess('demo-history', 'demo-owner');
+        const queued = status === 'running' ? proc!.pendingMessages![0]
+            : vi.mocked(mockBridge.enqueue).mock.calls[0][0].payload;
+        const savedPath = queued.attachments![0].path;
+        expect(fs.readFileSync(savedPath, 'utf8')).toBe(markdown);
+        expect(status === 'running' ? queued.content : queued.prompt).toContain(savedPath);
+        const persisted = status === 'running' ? proc!.pendingMessages![0].displayContent : proc!.conversationTurns![0].content;
+        expect(persisted).toContain(markdown);
+        fs.rmSync(path.dirname(savedPath), { recursive: true, force: true });
+        const reloaded = await new FileProcessStore({ dataDir }).getProcess('demo-history', 'demo-owner');
+        expect(status === 'running' ? reloaded!.pendingMessages![0].displayContent : reloaded!.conversationTurns![0].content)
+            .toContain(markdown);
+        expect(await store.getProcess('demo-history', 'other-owner')).toBeUndefined();
+    });
+
     it('routes demo restrictions to the exact owner and rejects invalid grants', async () => {
         await store.addProcess({ id: 'demo-chat', type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: '', fullPrompt: '', sdkSessionId: 'demo-session',

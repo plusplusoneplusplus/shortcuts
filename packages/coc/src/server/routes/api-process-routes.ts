@@ -1342,6 +1342,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 fileAttachmentMeta,
             } = processMessageAttachments(body, tempDir);
             const attachments: Attachment[] | undefined = processedAttachments.length > 0 ? processedAttachments : undefined;
+            // Retain reviewed demos in user history while the provider receives ordinary file-path context.
+            const demoHistoryContext = fields.browserDemo ? processedAttachments
+                .filter(attachment => attachment.type === 'file' && fileAttachmentMeta?.some(meta =>
+                    meta.category === 'text' && meta.name === attachment.displayName))
+                .map(attachment => `\n\n## Reviewed browser demo: ${attachment.displayName}\n\n${fs.readFileSync(attachment.path, 'utf8')}`)
+                .join('') : '';
 
             // Append text file contents to the message for AI context
             const messageContentWithContext = textContext
@@ -1405,7 +1411,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     }),
                 ),
                 fields.selectedSkillNames,
-            );
+            ) + demoHistoryContext;
             // Measured against what the user actually typed — the style block is
             // server-injected and must not tip a message over the paste threshold.
             const isPasteExternalized = (body.content as string).length > PASTE_THRESHOLD;

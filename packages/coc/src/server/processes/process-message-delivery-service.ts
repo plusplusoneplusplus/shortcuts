@@ -700,7 +700,7 @@ export class ProcessMessageDeliveryService {
                 ...requestCorrelation,
                 ...scheduling,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
-                content: input.content,
+                content: input.browserDemo ? input.contentWithContext ?? input.content : input.content,
                 displayContent: input.displayContent,
                 ...(input.images ? { images: input.images } : {}),
                 ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
