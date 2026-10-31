@@ -225,8 +225,16 @@ in-flight reads settle into the cache. Binary/oversized responses become skips;
 load failures remain errors until explicit Retry.
 
 Queries and side/include filters apply to the latest replies. Disposal clears
-state and suppresses late results;
-replacing the controller isolates owners, comparisons and mutable refreshes.
+state and suppresses late results; replacing the controller isolates owners,
+comparisons and mutable refreshes.
+
+`ReviewContentSearchPanel.tsx` subscribes to that controller and reuses Explorer's
+`SearchBar` for query modes. It owns transient query/side/include controls,
+compiles include globs before dispatch, and renders file-grouped side/line matches,
+highlighted snippets, progress, Stop, skips and retryable errors. Row activation
+and query Enter send the exact file ID and side-local match coordinates to the
+host. Hosts own controller disposal and key the panel by review identity. The panel
+is available for feature-gated review-shell integration.
 
 ### Shared file diff sources
 
