@@ -160,6 +160,9 @@ Results/state identify the retained engine and `sourceKind`; `sessionKey` identi
 ### HTML page (file) views
 
 Local `.html`/`.htm` previews are `file` sources hosted as Electron webview guests by `file-preview-host.ts`, independent of engine preferences and browser-data cleanup. They have no preload, use the isolated in-memory `coc-html-page` session, and follow `html-page-policy.ts`. Only pending, main-validated exact file URLs pass the attachment guard. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+
+`file-preview-download-gate.ts` defines a main-only admission primitive, separate from the host's native download wiring. Each gate captures owner, concrete session key, view, guest and document identity. A desktop-recorded action lasts five seconds and admits one Blob/data request; pending approval expires after 60 seconds. Hiding or closing revokes pending approval, while approved transfers remain independent. The caller must validate trusted input and native Save As; page claims cannot establish either.
+
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
 SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab`, the toolbar classes in `NativeViewTab.tsx`, and `NativeViewNavButtons` (one rounded back/forward/reload-or-stop capsule labelled Page navigation); their Electron placeholders register with the same persistent guest layer. The browser address input and the HTML toolbar's read-only path share one pill style.
