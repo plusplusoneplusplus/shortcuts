@@ -323,6 +323,11 @@ never restores live handles or offers retry/resume for interrupted transfers.
 
 `electron-downloads.ts` retains Chromium's original transfer and native Save dialog,
 including overwrite selection; the renderer supplies only managed IDs and actions.
+Its optional main-only approval handoff admits the handle before a synchronous
+native destination chooser, then revalidates the captured lease before `setSavePath`
+inside `will-download`. Pending revocation cancels the item; approved transfers
+detach from the source signal. Terminal disposal retires authorization and listeners.
+The preview host's admission lease and this native handoff require caller wiring.
 Pause/resume require live engine capability, and Open/Show require a completed,
 unchanged regular file. Clear/remove affect records only. Source navigation or
 close does not own the session's download handles. ClickOnce interception runs
