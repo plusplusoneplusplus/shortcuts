@@ -37,9 +37,9 @@ const names = [...CANVAS_EXTENSION_LLM_TOOL_NAMES];
 const owner = { workspaceId: 'workspace-1', processId: 'conversation-1' };
 const actions = [
     { name: 'list_canvas_capabilities', arguments: {} },
-    { name: 'open_canvas', arguments: { canvasId: 'workspace-1:counter/counter', instanceId: 'counter-instance' } },
+    { name: 'manage_canvas', arguments: { action: 'open', canvasId: 'workspace-1:counter/counter', instanceId: 'counter-instance' } },
     { name: 'invoke_canvas_action', arguments: { instanceId: 'counter-instance', actionName: 'increment' } },
-    { name: 'close_canvas', arguments: { instanceId: 'counter-instance' } },
+    { name: 'manage_canvas', arguments: { action: 'close', instanceId: 'counter-instance' } },
 ];
 
 describe('Copilot native canvas loader ownership', () => {

@@ -189,8 +189,11 @@ when any extension tool survives preference filtering. The live flag is independ
 `canvas.enabled`; disabled, browser-only, Coda and native PR review turns omit both
 extension tools and catalog. Tool assembly and catalog discovery never start children.
 
-`llm-tools/canvas-extension-tools.ts` provides four provider-neutral factories with a
-live gate before discovery, owner reads or runtime calls. `open_canvas` persists a
+`llm-tools/canvas-extension-tools.ts` provides three provider-neutral factories with a
+live gate before discovery, owner reads or runtime calls. `manage_canvas` takes a
+required `action`: `open` needs a qualified `canvasId` (optional `instanceId` reopens a
+saved instance, optional `input`); `close` needs `instanceId`, rejects `canvasId`/`input`
+and keeps the saved record. Invalid actions fail after the live gate. Open persists a
 `copilot-extension` record in the conversation workspace, with extension key, declared
 canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
 The shared notifier emits both WebSocket and process updates on open/close. A closed

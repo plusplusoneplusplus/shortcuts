@@ -149,21 +149,15 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'open_canvas',
-        label: 'Open Canvas',
-        description: 'Opens an installed canvas or reopens a saved instance.',
+        name: 'manage_canvas',
+        label: 'Manage Canvas',
+        description: 'Opens an installed canvas (or reopens a saved instance) and closes canvas instances while keeping their saved records.',
         enabledByDefault: true,
     },
     {
         name: 'invoke_canvas_action',
         label: 'Invoke Canvas Action',
         description: 'Invokes a declared action on an open canvas instance.',
-        enabledByDefault: true,
-    },
-    {
-        name: 'close_canvas',
-        label: 'Close Canvas',
-        description: 'Closes a canvas instance while keeping its saved record.',
         enabledByDefault: true,
     },
     {
@@ -218,7 +212,7 @@ export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_
 
 /** Installed-extension tools, independently gated by `canvasExtensions.enabled`. */
 export const CANVAS_EXTENSION_LLM_TOOL_NAMES = [
-    'list_canvas_capabilities', 'open_canvas', 'invoke_canvas_action', 'close_canvas',
+    'list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action',
 ] as const;
 
 /** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */

@@ -247,8 +247,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, four installed-extension tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 13);
+        // Wakeup, three canvas tools, three installed-extension tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 12);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {
@@ -322,9 +322,9 @@ describe('installed canvas extension registry gating', () => {
 
     it('honors explicit workspace overrides after feature filtering', () => {
         const tools = [...getEffectiveLlmToolRegistry({ canvasExtensionsEnabled: true })];
-        const filtered = filterDisabledLlmTools(tools, ['open_canvas']);
-        expect(filtered.map(t => t.name)).not.toContain('open_canvas');
-        for (const name of CANVAS_EXTENSION_LLM_TOOL_NAMES.filter(name => name !== 'open_canvas')) {
+        const filtered = filterDisabledLlmTools(tools, ['manage_canvas']);
+        expect(filtered.map(t => t.name)).not.toContain('manage_canvas');
+        for (const name of CANVAS_EXTENSION_LLM_TOOL_NAMES.filter(name => name !== 'manage_canvas')) {
             expect(filtered.map(t => t.name)).toContain(name);
         }
         const disabledFeature = [...getEffectiveLlmToolRegistry()];
