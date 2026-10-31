@@ -236,10 +236,20 @@ and query Enter send the exact file ID and side-local match coordinates to the
 host. `ReviewFiles` accepts an optional `contentSearch` capability with that controller
 and navigation callback. The live, default-off `useDiffContentSearchEnabled` hook
 gates its Files/Search switch and toolbar action. Switching modes retains panel
-controls and cached reads independently of file-list filters. Disabling the flag
+controls and cached reads independently of file-list filters. Result activation
+uses the navigation guard, clears file-list filters, selects the exact file ID and
+leaves overview before calling the host; the search query remains intact. Disabling the flag
 unmounts the panel and stops new dispatch; hosts own controller disposal and must
 replace it on owner, comparison or mutable refresh changes. The panel is keyed by
 review identity. Hosts without the capability keep their file navigator.
+
+`GitFileReview` supplies this capability for inline and pop-out commit and branch
+reviews. Its controller uses the source's existing paired-content loader
+with per-call clone routing. Concrete owner, endpoint, comparison, source key and
+resolved refs scope the host; changed file IDs replace and dispose the controller
+without resetting file filters. Equivalent metadata rerenders reuse the cache.
+Each activation forwards a fresh file-qualified target to `FileDiffPanel`; ordinary
+selection and external file routes clear it. Controlled route echoes preserve it.
 
 `FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
 objects reveal the side-local line/column after that file's models load, overriding

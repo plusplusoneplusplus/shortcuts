@@ -93,6 +93,24 @@ describe('shared review content search capability', () => {
         expect(onOpenMatch).toHaveBeenLastCalledWith(files[0], expect.objectContaining({ side: 'old', line: 1 }));
     });
 
+    it('guards result navigation and only clears file filters after the guard proceeds', async () => {
+        enabled(); const view = setup();
+        let proceed!: () => void;
+        const onSelect = vi.fn();
+        view.rerender(<ReviewFiles {...view.props} beforeNavigate={next => { proceed = next; }} onSelect={onSelect} />);
+        fireEvent.change(screen.getByLabelText('Search changed files by name or path'), { target: { value: 'absent' } });
+        search(); await settle();
+        fireEvent.click(screen.getAllByRole('button', { name: 'a.ts, NEW line 1, column 5' })[1]);
+        expect(view.onOpenMatch).not.toHaveBeenCalled();
+        expect(onSelect).not.toHaveBeenCalled();
+        expect((screen.getByLabelText('Search changed files by name or path') as HTMLInputElement).value).toBe('absent');
+        act(() => proceed());
+        expect(onSelect).toHaveBeenLastCalledWith('unstaged:a', 'first');
+        expect(view.onOpenMatch).toHaveBeenCalledWith(files[1], expect.objectContaining({ side: 'new' }));
+        expect((screen.getByLabelText('Search changed files by name or path') as HTMLInputElement).value).toBe('');
+        expect((screen.getByTestId('review-content-search-input') as HTMLInputElement).value).toBe('target');
+    });
+
     it('stops dispatch on live disable and removes hidden search controls and query state', async () => {
         enabled();
         let release!: (content: GitFileDiffContentResponse) => void;

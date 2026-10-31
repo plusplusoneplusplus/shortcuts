@@ -156,6 +156,15 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
+    const openContentMatch: ReviewContentSearchPanelProps['onOpenMatch'] = (file, match) => {
+        const proceed = () => {
+            clear();
+            setSelection(file.id); setTarget('first'); setOverview(false); setDrawer(false);
+            onSelect?.(file.id, 'first');
+            contentSearch?.onOpenMatch(file, match);
+        };
+        if (beforeNavigate) beforeNavigate(proceed); else proceed();
+    };
     function updateViewed(path: string) {
         if (hideViewed && path === (selected && reviewFileKey(selected)) && !viewed.has(path) && index === ordered.length - 1) setRetainedPath(path);
         if (onToggleReviewed) return onToggleReviewed(path);
@@ -286,7 +295,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     {searching && <button type="button" className="git-review-drawer-trigger" aria-label="Close search navigator" onClick={() => setDrawer(false)}>×</button>}
                 </div>}
                 {canSearch && <div hidden={!searching} style={{ display: searching ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
-                    <ReviewContentSearchPanel key={identity} {...contentSearch!} inputRef={contentSearchRef} />
+                    <ReviewContentSearchPanel key={identity} {...contentSearch!} onOpenMatch={openContentMatch} inputRef={contentSearchRef} />
                 </div>}
                 <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
