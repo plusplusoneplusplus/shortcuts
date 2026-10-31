@@ -1417,6 +1417,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 displayContent,
                 ...(messageContentWithContext ? { contentWithContext: messageContentWithContext } : {}),
                 ...(styleGateOpen ? { chatStyle: fields.chatStyle } : {}),
+                ...(fields.browserDemo ? { browserDemo: fields.browserDemo } : {}),
                 ...(attachments ? { attachments } : {}),
                 ...(validatedImages ? { images: validatedImages } : {}),
                 ...(imageTempDir ? { imageTempDir } : {}),

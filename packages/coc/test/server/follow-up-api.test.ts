@@ -139,6 +139,22 @@ describe('POST /api/processes/:id/message', () => {
     // Success path
     // ========================================================================
 
+    it('routes demo restrictions to the exact owner and rejects invalid grants', async () => {
+        await store.addProcess({ id: 'demo-chat', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'demo-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=other-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: false } })).status).toBe(404);
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=demo-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: true } })).status).toBe(400);
+        expect(mockBridge.enqueue).not.toHaveBeenCalled();
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=demo-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: false } })).status).toBe(202);
+        expect(vi.mocked(mockBridge.enqueue).mock.calls[0][0].payload).toMatchObject({
+            workspaceId: 'demo-owner', processId: 'demo-chat', context: { browserDemo: { inputAllowed: false } },
+        });
+    });
+
     it('admits two remote directory follow-ups through the real scoped route and preserves destination mode/provider', async () => {
         await store.addProcess({
             id: 'remote-child', type: 'chat', status: 'running', startTime: new Date(),

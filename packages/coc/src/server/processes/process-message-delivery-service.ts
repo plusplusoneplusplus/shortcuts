@@ -60,6 +60,7 @@ export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
  * route assembles separately.
  */
 export interface NormalizedFollowUpFields {
+    browserDemo?: { inputAllowed: false };
     /** Interaction mode override; legacy `plan` normalizes to Ask, `ralph` is dropped. */
     mode?: string;
     /** Delivery mode; defaults to `enqueue` when absent. */
@@ -171,11 +172,19 @@ export function normalizeFollowUpInput(
         return { ok: false, error: `Invalid chatStyle: must be one of ${CHAT_STYLES.join(', ')}` };
     }
     const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : defaultChatStyle;
+    if (body.browserDemo !== undefined && (
+        !body.browserDemo || typeof body.browserDemo !== 'object' || Array.isArray(body.browserDemo)
+        || !('inputAllowed' in body.browserDemo) || body.browserDemo.inputAllowed !== false
+        || Object.keys(body.browserDemo).length !== 1
+    )) {
+        return { ok: false, error: 'Invalid browserDemo: expected { inputAllowed: false }' };
+    }
 
     return {
         ok: true,
         value: {
             chatStyle,
+            ...(body.browserDemo !== undefined ? { browserDemo: { inputAllowed: false as const } } : {}),
             ...(mode ? { mode } : {}),
             deliveryMode,
             ...(selectedSkillNames ? { selectedSkillNames } : {}),
@@ -243,6 +252,7 @@ export interface FollowUpMessageInput {
     selectedSkillNames?: string[];
     mode?: string;
     chatStyle?: ChatStyle;
+    browserDemo?: { inputAllowed: false };
     model?: string;
     effort?: ReasoningEffort;
     deliveryMode: 'immediate' | 'enqueue';
@@ -651,6 +661,7 @@ export class ProcessMessageDeliveryService {
             ? { relayRequestId: input.relayRequestId }
             : {};
         const reviewContext = {
+            ...(input.browserDemo ? { browserDemo: input.browserDemo } : {}),
             ...(input.sentinelRemoteResultReview ? { sentinelRemoteResultReview: true } : {}),
             ...(input.sentinelPrOutcomeReview ? {
                 sentinelPrOutcomeReview: true,
@@ -702,7 +713,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.turnSource || input.sentinelRemoteResultReview ? { context: { ...input.turnSource, ...reviewContext } } : {}),
+                ...(input.turnSource || Object.keys(reviewContext).length ? { context: { ...input.turnSource, ...reviewContext } } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -725,7 +736,7 @@ export class ProcessMessageDeliveryService {
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
                 if (compactionPending) {
                     await bufferAsPendingMessage();
-                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && !styleNeedsTurn && this.bridge.steerProcess) {
+                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && !styleNeedsTurn && !input.browserDemo && this.bridge.steerProcess) {
                     const steered = await this.bridge.steerProcess(id, input.content);
                     if (!steered) {
                         // Steering failed (no active SDK session); buffer for server-side drain.
@@ -765,7 +776,7 @@ export class ProcessMessageDeliveryService {
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                             readonly: input.sentinelPrOutcomeReview ? true : (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
-                            ...(input.turnSource || input.sentinelRemoteResultReview || input.selectedSkillNames?.length ? { context: {
+                            ...(input.turnSource || Object.keys(reviewContext).length || input.selectedSkillNames?.length ? { context: {
                                 ...input.turnSource,
                                 ...reviewContext,
                                 ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),
@@ -847,6 +858,7 @@ export class ProcessMessageDeliveryService {
                 input.resumeSessionId, {
                     ...(input.provider ? { requestedProvider: input.provider } : {}),
                     ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
+                    ...(input.browserDemo ? { browserDemo: input.browserDemo } : {}),
                     historyCutoffTurnIndex: turnIndex,
                 }).catch(() => {
                 }).finally(() => {

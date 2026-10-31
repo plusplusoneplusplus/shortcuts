@@ -47,6 +47,12 @@ references before editing. Paths are package-relative.
   desktop `richPasteSupported`; reject unsupported clients without fallback.
   Native clipboard contents stay desktop-local; results acknowledge delivery,
   not editor persistence, and never echo the payload.
+- Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
+  through exact-owner admission, buffered drain and follow-up execution. Never steer
+  them into an active turn. The accepted turn's browser tool binds this restriction
+  outside model arguments; the relay rejects input, navigation, evaluation and
+  takeover requests before desktop dispatch. Read-only actions remain available.
+  Keep this policy out of conversation metadata so later explicit tasks remain independent.
 - Separate **storage origin** from **execution workspace**. Work items, plans/versions,
   changes, bindings, PR provider state, classification, and review progress use
   `/api/origins/:originId/...` and `*ForOrigin` methods. Concrete `workspaceId` selects

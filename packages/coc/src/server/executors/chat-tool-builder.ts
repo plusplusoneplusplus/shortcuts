@@ -88,6 +88,7 @@ export interface ChatToolBundleOptions {
     kustoRuntime?: KustoToolsRuntime;
     canvasExtensionRuntime?: CanvasExtensionRuntime;
     browserRuntime?: BrowserControlRuntime;
+    browserInputAllowed?: boolean;
     browserState?: BrowserToolStateStore;
     /** Turn abort signal, shared by `browser` and `run_tool_script`. */
     browserSignal?: AbortSignal;
@@ -177,7 +178,8 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
     const addons: ToolAddon[] = [];
     if (!options.sentinelPrOutcomeReview && options.browserRuntime?.getEnabled() && options.browserState && options.workspaceId && options.processId) {
         const deps = { workspaceId: options.workspaceId, processId: options.processId,
-            runtime: options.browserRuntime, stateStore: options.browserState };
+            runtime: options.browserRuntime, stateStore: options.browserState,
+            inputAllowed: options.browserInputAllowed };
         const tool = createBrowserTool({ ...deps, signal: options.browserSignal });
         addons.push({
             tools: [tool],

@@ -82,6 +82,7 @@ export function BrowserDemoReview({ demoId, client, onClose }: BrowserDemoReview
             await client.processes.sendMessage(draft.owner.processId, {
                 content: browserDemoMessageContent(edits, attachment),
                 deliveryMode: 'enqueue',
+                browserDemo: { inputAllowed: false },
                 attachments: [{ name: attachment.name, mimeType: 'text/markdown', size: new TextEncoder().encode(attachment.markdown).length,
                     dataUrl: toDataUrl(attachment.markdown) }],
             }, { workspace: draft.owner.workspaceId });

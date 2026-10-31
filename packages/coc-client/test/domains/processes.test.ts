@@ -3,6 +3,18 @@ import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../.
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('sends reviewed demo context and its input restriction to the exact owner', async () => {
+    const adapter = createMockAdapter({ processId: 'demo-chat', turnIndex: 0 });
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    const body = { content: 'Explain the reviewed demo', deliveryMode: 'enqueue' as const,
+      browserDemo: { inputAllowed: false as const },
+      attachments: [{ name: 'demo.md', mimeType: 'text/markdown', size: 4, dataUrl: 'data:text/markdown;base64,ZGVtbw==' }] };
+    await client.sendMessage('demo/chat', body, { workspace: 'demo-owner' });
+    expect(adapter.calls).toEqual([{ path: '/processes/demo%2Fchat/message', options: {
+      method: 'POST', body, query: { workspace: 'demo-owner' },
+    } }]);
+  });
+
   it('passes cancellation and owner filters to index-only summary reads', async () => {
     const adapter = createMockAdapter({ summaries: [], total: 0, limit: 200, offset: 0 });
     const client = new ProcessesClient(adapter, new CocClient().options);

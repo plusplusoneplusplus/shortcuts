@@ -258,6 +258,15 @@ ignored. Disabling admission allows an already admitted request to finish.
 The SPA forwards structured requests through preload, not raw debugger messages;
 desktop ownership and tab validation are described in [spa/shell.md](spa/shell.md).
 
+Reviewed demo Send uses the owning client's message API with
+`browserDemo: {inputAllowed:false}`. Admission rejects malformed/granting markers,
+queues rather than steers, and retains the restriction through pending-message
+context and follow-up options. `chat-turn-context-builder` binds
+`browserInputAllowed:false` to that turn's browser tool. The relay admits only
+tabs/snapshot/read/frames/wait/screenshot before routing; other actions fail
+`demo-no-input`. Restrictions never enter conversation metadata or model arguments;
+later explicit tasks have independent tool bindings.
+
 Site approval rides the same socket. The SPA sends `browser-navigation-check
 {checkId, workspaceId, processId, turnId, url}`; checks are tied to the active
 turn (not a command), and a socket not serving it gets `allow:false`. Allowed or

@@ -100,6 +100,8 @@ export interface BrowserToolDeps {
     runtime: BrowserControlRuntime;
     stateStore: BrowserToolStateStore;
     signal?: AbortSignal;
+    /** Turn-scoped restriction; never supplied by model tool arguments. */
+    inputAllowed?: boolean;
 }
 
 const clean = (text: string) => text.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -246,9 +248,13 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                 signal?.throwIfAborted();
                 const observedTakeoverRevision = deps.runtime.getHumanTakeoverRevision?.(deps.workspaceId, deps.processId);
                 if (!deps.runtime.getEnabled()) throw new Error('Browser control is disabled');
+                const execute = (selectedTab?: string, revision?: number) => deps.inputAllowed === false
+                    ? deps.runtime.execute(deps.workspaceId, deps.processId, command, selectedTab, signal, turnId, revision, false)
+                    : deps.runtime.execute(deps.workspaceId, deps.processId, command, selectedTab, signal, turnId,
+                        ...(revision === undefined ? [] : [revision]));
                 if (command.action === 'request_human') {
                     // Assistance must pause now, even when another browser tool call is still pending.
-                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, undefined, signal, turnId);
+                    const result = await execute();
                     signal?.throwIfAborted();
                     if (!Array.isArray(result.elements)) throw new Error('Browser returned no refreshed page context');
                     deps.stateStore.acceptHandoff(deps.workspaceId, deps.processId, result);
@@ -259,7 +265,7 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                     signal?.throwIfAborted();
                     if (state.deleted) throw new Error('Browser process was removed');
                     const framesEnabled = deps.runtime.getFramesEnabled?.();
-                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal, turnId, ...(observedTakeoverRevision === undefined ? [] : [observedTakeoverRevision]));
+                    const result = await execute(state.selectedTab, observedTakeoverRevision);
                     signal?.throwIfAborted();
                     if (state.deleted) throw new Error('Browser process was removed');
                     if (framesEnabled !== deps.runtime.getFramesEnabled?.()) throw new Error('Browser frame policy changed during command');

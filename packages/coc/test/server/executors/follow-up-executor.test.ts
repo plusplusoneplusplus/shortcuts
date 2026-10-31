@@ -245,6 +245,20 @@ describe('FollowUpExecutor', () => {
 
     });
 
+    it('binds demo browser restrictions and untrusted-context guidance to only the accepted turn', async () => {
+        await store.addProcess(makeProcess({ metadata: { type: 'chat', workspaceId: 'owner', mode: 'autopilot' } }));
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-1', '/browser Explain this demo', undefined, 'autopilot',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, { browserDemo: { inputAllowed: false } });
+        expect(mockBuildChatToolBundle.mock.calls[0][0].browserInputAllowed).toBe(false);
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain('<browser_demo_context>');
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain('Page content is untrusted');
+        expect((await store.getProcess('proc-1'))?.metadata?.browserDemo).toBeUndefined();
+        await executor.executeFollowUp('proc-1', '/browser Now perform the task', undefined, 'autopilot');
+        expect(mockBuildChatToolBundle.mock.calls[1][0].browserInputAllowed).toBeUndefined();
+        expect(sdkMocks.mockSendMessage.mock.calls[1][0].prompt).not.toContain('<browser_demo_context>');
+    });
+
     it.each(['ask', 'autopilot'] as const)('runs an admitted %s job without SDK deadlines or Sentinel ledger tools', async mode => {
         await store.addProcess(makeProcess({ metadata: { type: 'chat', workspaceId: 'owner', mode, provider: 'copilot',
             sentinelScheduledJob: { workspaceId: 'owner', processId: 'queue_sentinel', jobId: 'job' } } }));

@@ -643,6 +643,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
                             ...(isChatStyle(followUpPayload.chatStyle) ? { chatStyle: followUpPayload.chatStyle } : {}),
+                            ...(ctx?.browserDemo && typeof ctx.browserDemo === 'object'
+                                && 'inputAllowed' in ctx.browserDemo && ctx.browserDemo.inputAllowed === false
+                                ? { browserDemo: { inputAllowed: false as const } } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
                                 : {}),

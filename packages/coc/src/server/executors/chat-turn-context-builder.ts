@@ -84,6 +84,7 @@ export interface ChatTurnContextInput {
     /** Owner-bound script runner behind canvas `host.runScript`. */
     ownerScriptRunner?: OwnerScriptRunner;
     browserRuntime?: BrowserControlRuntime;
+    browserInputAllowed?: boolean;
     browserState?: BrowserToolStateStore;
     browserSignal?: AbortSignal;
     browserActivation?: boolean;
@@ -251,6 +252,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         canvasExtensionRuntime: input.browserOnly ? undefined : input.canvasExtensionRuntime,
         ownerScriptRunner: input.ownerScriptRunner,
         browserRuntime: input.browserRuntime,
+        browserInputAllowed: input.browserInputAllowed,
         browserState: input.browserState,
         browserSignal: input.browserSignal,
         createPullRequest: input.createPullRequest,

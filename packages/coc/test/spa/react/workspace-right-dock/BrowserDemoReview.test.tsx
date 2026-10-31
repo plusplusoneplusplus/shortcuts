@@ -154,6 +154,7 @@ describe('browser demo review', () => {
         const [processId, request, query] = sendMessage.mock.calls[0];
         expect(processId).toBe('chat-1');
         expect(query).toEqual({ workspace: 'ws-remote' });
+        expect(request.browserDemo).toEqual({ inputAllowed: false });
         expect(request.content).toMatch(/^Explain this flow\n\nBrowser demo attached \(6 steps, 2 tabs\)/);
         expect(request.attachments).toHaveLength(1);
         expect(request.attachments[0].mimeType).toBe('text/markdown');
