@@ -79,6 +79,8 @@ describe('pop-out PR full-content search', () => {
         act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: true }));
         search(); await settle();
         expect(mocks.content).toHaveBeenCalledTimes(2);
+        fireEvent.keyDown(screen.getByTestId('review-content-search-input'), { key: 'F3' });
+        expect(latest().contentSearchTarget?.side).toBe('old');
         expect(mocks.content).toHaveBeenCalledWith('origin-1', '7', 'two.ts', { workspaceId: 'ws', repoId: 'provider-repo' });
         const result = screen.getByRole('button', { name: 'two.ts, OLD line 1, column 5' });
         fireEvent.click(result);
@@ -98,6 +100,8 @@ describe('pop-out PR full-content search', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Editor navigation' }));
         expect(latest().filePath).toBe('one.ts');
         expect(latest().contentSearchTarget).toBeUndefined();
+        fireEvent.keyDown(screen.getByTestId('focused-diff'), { key: 'f', ctrlKey: true, shiftKey: true });
+        expect(document.activeElement).toBe(screen.getByTestId('review-content-search-input'));
         fireEvent.keyDown(screen.getByTestId('review-content-search-input'), { key: 'Enter' });
         expect(latest().contentSearchTarget).toBeDefined();
         fireEvent.click(screen.getByRole('button', { name: 'Back to files' }));

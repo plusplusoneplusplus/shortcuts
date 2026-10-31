@@ -136,6 +136,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isChatStyleSelectorEnabled: () => false,
     getDefaultChatStyle: () => 'default',
     isCommitChatLensEnabled: () => false,
+    isDiffContentSearchEnabled: () => false,
     getCommitChatLensDormantMode: () => 'ghost' as const,
 }));
 

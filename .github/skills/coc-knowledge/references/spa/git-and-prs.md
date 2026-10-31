@@ -265,6 +265,13 @@ uses explicit navigation rather than the rail's toggle-selection action. Source,
 detail and diff loads retain the concrete clone owner; owner, endpoint, PR, origin,
 base/head and file inventory changes revoke the controller and target.
 
+`useReviewContentSearchShortcut` tags enabled review roots and captures
+Ctrl/Cmd+Shift+F before Monaco; the repo-wide shortcut yields only inside the
+innermost enabled review. Repeating it focuses/selects the retained query. F3 and
+Shift+F3 traverse file-ordered old/new matches, wrap and continue from clicked
+results even in Files mode. The panel handles cancelable root-local step events;
+empty/invalid searches leave F3 untouched. Owner changes and unmount remove handlers.
+
 `FileDiffPanel.contentSearchTarget` accepts a file-qualified match object. New
 objects reveal the side-local line/column after that file's models load, overriding
 hunk navigation. Old-side Editor jumps select split layout so the original buffer

@@ -9,6 +9,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { ReviewContentSearchPanel, type ReviewContentSearchPanelProps } from './ReviewContentSearchPanel';
 import { useDiffContentSearchEnabled } from '../../../hooks/feature-flags/useDiffContentSearchEnabled';
+import { REVIEW_SEARCH_OPEN_EVENT } from './useReviewContentSearchShortcut';
 import {
     FileTreeView,
     FlatFileList,
@@ -100,9 +101,16 @@ export function PopOutFilePanel({
     const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
     const searching = canSearch && navigatorMode === 'search';
     const inputRef = useRef<HTMLInputElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
     useEffect(() => { if (!canSearch) setNavigatorMode('files'); }, [canSearch]);
     useEffect(() => { if (searching && !collapsed) inputRef.current?.focus(); }, [searching, collapsed]);
-    const openSearch = () => { setNavigatorMode('search'); setCollapsed(false); inputRef.current?.focus(); };
+    const openSearch = () => { setNavigatorMode('search'); setCollapsed(false); inputRef.current?.focus(); inputRef.current?.select(); };
+    useEffect(() => {
+        const root = panelRef.current?.closest('[data-review-content-search="true"]');
+        if (!root || !canSearch) return;
+        root.addEventListener(REVIEW_SEARCH_OPEN_EVENT, openSearch);
+        return () => root.removeEventListener(REVIEW_SEARCH_OPEN_EVENT, openSearch);
+    }, [canSearch, collapsed, identity]);
     const { mode, setMode } = useFilesViewMode(workspaceId);
     const { width, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 280,
@@ -162,7 +170,7 @@ export function PopOutFilePanel({
 
     if (collapsed) {
         return (
-            <div className="flex flex-col items-center py-2 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ width: 36 }} data-testid="popout-file-panel-collapsed">
+            <div ref={panelRef} className="flex flex-col items-center py-2 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ width: 36 }} data-testid="popout-file-panel-collapsed">
                 <button
                     onClick={toggleCollapse}
                     className="text-xs text-[#616161] dark:text-[#999] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] rounded px-1 py-0.5"
@@ -180,6 +188,7 @@ export function PopOutFilePanel({
     return (
         <>
             <div
+                ref={panelRef}
                 className="flex flex-col flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] overflow-hidden"
                 style={{ width }}
                 data-testid="popout-file-panel"

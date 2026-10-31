@@ -9,6 +9,7 @@
  */
 import { useEffect } from 'react';
 import { focusedMonacoSelection } from '../../../shared/monaco/focusedSelection';
+import { reviewContentSearchOwner } from '../../git/diff/useReviewContentSearchShortcut';
 import {
     contentSearchOwner,
     contentSearchShortcut,
@@ -45,7 +46,7 @@ export function useContentSearchShortcut(options: ContentSearchShortcutOptions):
     useEffect(() => {
         if (scope === null) return;
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.defaultPrevented) return;
+            if (event.defaultPrevented || event.isComposing || reviewContentSearchOwner(event.target)) return;
             if (contentSearchShortcut(event) === null) return;
             const outcome = contentSearchOwner({
                 scope,

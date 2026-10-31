@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { RefObject } from 'react';
 import { SearchBar } from '../../repo-detail/explorer/SearchBar';
 import { DEFAULT_CONTENT_SEARCH_MODES, type ContentSearchModes } from '../../repo-detail/explorer/types';
 import type { ReviewContentMatch, ReviewSearchSideFilter } from './reviewContentSearch';
 import type { ReviewContentSearchController, ReviewSearchFile } from './reviewContentSearchController';
 import { compileReviewContentInclude } from './reviewContentSearchGlob';
+import { REVIEW_SEARCH_STEP_EVENT } from './useReviewContentSearchShortcut';
 
 export interface ReviewContentSearchPanelProps {
     /** The host owns and disposes this controller, and keys the panel by review identity. */
@@ -39,6 +40,9 @@ export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: 
     const [modes, setModes] = useState<ContentSearchModes>(DEFAULT_CONTENT_SEARCH_MODES);
     const [side, setSide] = useState<ReviewSearchSideFilter>('both');
     const [include, setInclude] = useState('');
+    const sectionRef = useRef<HTMLElement>(null);
+    const [active, setActive] = useState<string | null>(null);
+    useEffect(() => setActive(null), [controller, query, modes, side, include]);
     const compiledInclude = useMemo(() => compileReviewContentInclude(include), [include]);
     const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 
@@ -56,9 +60,37 @@ export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: 
     const count = matched.reduce((total, entry) => total + entry.matches.length, 0);
     const valid = query.length > 0 && !snapshot.error && compiledInclude.error === null;
     const toggle = (key: keyof ContentSearchModes) => setModes(current => ({ ...current, [key]: !current[key] }));
+    const matchKey = (file: ReviewSearchFile, match: ReviewContentMatch) =>
+        JSON.stringify([file.id, match.side, match.line, match.startColumn, match.endColumn]);
+    const activate = (file: ReviewSearchFile, match: ReviewContentMatch) => {
+        setActive(matchKey(file, match));
+        onOpenMatch(file, match);
+    };
+    useEffect(() => {
+        const root = sectionRef.current?.closest('[data-review-content-search="true"]');
+        if (!root) return;
+        const step = (event: Event) => {
+            if (!valid || count === 0 || !(event instanceof CustomEvent)) return;
+            const matches = matched.flatMap(entry => entry.matches.map(match => ({ file: entry.file, match })));
+            const index = matches.findIndex(item => matchKey(item.file, item.match) === active);
+            const nextIndex = index < 0 ? (event.detail ? matches.length - 1 : 0)
+                : (index + (event.detail ? -1 : 1) + matches.length) % matches.length;
+            event.preventDefault();
+            const next = matches[nextIndex];
+            activate(next.file, next.match);
+        };
+        root.addEventListener(REVIEW_SEARCH_STEP_EVENT, step);
+        return () => root.removeEventListener(REVIEW_SEARCH_STEP_EVENT, step);
+    }, [valid, count, snapshot, active, onOpenMatch]);
+    useEffect(() => {
+        const row = sectionRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+        const group = row?.closest('details');
+        if (group) group.open = true;
+        if (!sectionRef.current?.closest('[hidden]')) row?.scrollIntoView?.({ block: 'nearest' });
+    }, [active]);
 
     return (
-        <section aria-label="Review content search" className="flex min-h-0 flex-1 flex-col text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+        <section ref={sectionRef} aria-label="Review content search" className="flex min-h-0 flex-1 flex-col text-xs text-[#1e1e1e] dark:text-[#cccccc]">
             <SearchBar
                 value={query}
                 onChange={setQuery}
@@ -74,7 +106,7 @@ export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: 
                 ]}
                 onSubmit={() => {
                     const first = matched[0];
-                    if (valid && first) onOpenMatch(first.file, first.matches[0]);
+                    if (valid && first) activate(first.file, first.matches[0]);
                 }}
             />
             {snapshot.error && <p role="alert" className="px-2 text-[#c72e0f]">{snapshot.error}</p>}
@@ -106,7 +138,8 @@ export function ReviewContentSearchPanel({ controller, onOpenMatch, inputRef }: 
                             <button
                                 type="button"
                                 key={`${match.side}:${match.line}:${match.startColumn}:${index}`}
-                                onClick={() => onOpenMatch(entry.file, match)}
+                                onClick={() => activate(entry.file, match)}
+                                aria-current={active === matchKey(entry.file, match) ? 'true' : undefined}
                                 aria-label={`${entry.file.path}, ${match.side.toUpperCase()} line ${match.line}, column ${match.startColumn}`}
                                 className="flex w-full items-baseline gap-2 overflow-hidden px-2 py-1 text-left hover:bg-[#e8e8e8] focus:bg-[#e8e8e8] dark:hover:bg-[#37373d] dark:focus:bg-[#37373d]"
                             >

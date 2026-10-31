@@ -10,6 +10,7 @@ import { buildFileTree, type FileTreeNode } from './reviewFileTree';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ReviewContentSearchPanel, type ReviewContentSearchPanelProps } from './ReviewContentSearchPanel';
 import { useDiffContentSearchEnabled } from '../../../hooks/feature-flags/useDiffContentSearchEnabled';
+import { useReviewContentSearchShortcut } from './useReviewContentSearchShortcut';
 import './git-file-review.css';
 
 export const NAV_DEFAULT_WIDTH = 262, NAV_MIN_WIDTH = 180, NAV_MAX_WIDTH = 560, NAV_CONTENT_MIN = 320, NAV_KEY_STEP = 16;
@@ -67,6 +68,11 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
     const searching = canSearch && navigatorMode === 'search';
     const contentSearchRef = useRef<HTMLInputElement>(null);
+    const reviewRef = useRef<HTMLDivElement>(null);
+    useReviewContentSearchShortcut(reviewRef, canSearch, () => {
+        setNavigatorMode('search'); setDrawer(true);
+        contentSearchRef.current?.focus(); contentSearchRef.current?.select();
+    });
     useEffect(() => { if (!canSearch) setNavigatorMode('files'); }, [canSearch]);
     useEffect(() => { if (searching) contentSearchRef.current?.focus(); }, [searching]);
     const [query, setQuery] = useState('');
@@ -233,7 +239,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 </button>{!collapsed.has(node.path) && treeRows(node.children, depth + 1)}
             </section>);
     }
-    return <div className="git-file-review" data-testid="git-file-review">
+    return <div ref={reviewRef} className="git-file-review" data-testid="git-file-review" data-review-content-search={canSearch ? 'true' : undefined}>
         <GitReviewToolbar header={header} progress={reviewEnabled ? { viewed: viewedCount, total: files.length } : undefined}>
             <button type="button" className="git-review-drawer-trigger" ref={drawerTrigger} aria-expanded={drawer} aria-controls={navId} onClick={() => setDrawer(value => !value)}>Files · {files.length}</button>
             <button type="button" className="git-review-icon" aria-pressed={overview} aria-label={overview ? 'Read diff' : 'Overview'} title={overview ? 'Read diff' : 'Overview'} onClick={() => { const proceed = () => setOverview(value => !value); if (beforeNavigate) beforeNavigate(proceed); else proceed(); }}>
