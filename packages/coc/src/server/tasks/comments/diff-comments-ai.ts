@@ -62,12 +62,14 @@ export { DEFAULT_AI_COMMANDS };
  */
 export function renderCommentBlock(comment: DiffComment, index: number): string {
     let block = `### Comment ${index + 1}`;
-    if (comment.selection?.diffLineStart != null) {
+    if (comment.scope === 'file') {
+        block += ' (Whole file)';
+    } else if (comment.selection?.diffLineStart != null) {
         block += ` (Diff line ${comment.selection.diffLineStart})`;
     }
     block += '\n\n';
     block += `- **ID**: \`${comment.id}\`\n`;
-    block += `- **Selected Text**: "${comment.selectedText}"\n`;
+    if (comment.scope !== 'file') block += `- **Selected Text**: "${comment.selectedText}"\n`;
     block += `- **Comment**: "${comment.comment}"\n`;
     const author = comment.author?.trim();
     if (author) {
@@ -134,12 +136,14 @@ export function buildMultiFileBatchResolvePrompt(
         file.openComments.forEach((c, commentIdx) => {
             // Use ##### heading for individual comments within a file
             let block = `##### Comment ${commentIdx + 1}`;
-            if (c.selection?.diffLineStart != null) {
+            if (c.scope === 'file') {
+                block += ' (Whole file)';
+            } else if (c.selection?.diffLineStart != null) {
                 block += ` (Diff line ${c.selection.diffLineStart})`;
             }
             block += '\n\n';
             block += `- **ID**: \`${c.id}\`\n`;
-            block += `- **Selected Text**: "${c.selectedText}"\n`;
+            if (c.scope !== 'file') block += `- **Selected Text**: "${c.selectedText}"\n`;
             block += `- **Comment**: "${c.comment}"\n`;
             const author = c.author?.trim();
             if (author) {

@@ -57,7 +57,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -121,7 +121,9 @@ import { panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
-import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import {
+    browserLabelForUrl, browserOpenInput, browserSessionKey, duplicateBrowserTabInput, normalizeBrowserUrl,
+} from './unifiedBrowserTabs';
 import {
     closedBrowserTabScopeKey,
     popClosedBrowserTab,
@@ -189,11 +191,13 @@ import {
 } from './unifiedDirtyClose';
 import { OPEN_PANEL_DIRECTORY_EVENT, type OpenPanelDirectoryDetail } from './resolveChatFileLink';
 import {
+    releaseBrowserChatOwners,
     unifiedTabId,
     type OpenUnifiedPreviewTabInput,
     type OpenUnifiedTabInput,
     type UnifiedPanelTab,
 } from './unifiedPanelTabsModel';
+import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { getRepoGroup } from '../../../repos/repoGroupService';
 import {
     activateWorkspaceRouteForBaseUrl,
@@ -263,6 +267,7 @@ export function UnifiedRightPanel({
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
+    const [chatScopedBrowserTabs, setChatScopedBrowserTabs] = useState(() => isChatScopedBrowserTabsEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
@@ -271,16 +276,21 @@ export function UnifiedRightPanel({
             setReorderEnabled(isPanelTabReorderingEnabled());
             setGroupsEnabled(isPanelTabGroupsEnabled());
             setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
+            setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
     const {
-        state, tabs, activeId, active, pinnedId, open, openPreview, previewToReplace, promote, activate, close, move,
+        state, tabs, activeId, active, pinnedId, open, openBeside, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
+    // With `features.chatScopedBrowserTabs` off, every page shows in every chat again.
+    useEffect(() => {
+        if (!chatScopedBrowserTabs) updateUnifiedPanelState(workspaceId, releaseBrowserChatOwners);
+    }, [chatScopedBrowserTabs, workspaceId]);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
     // reveal the panel themselves, and a user may explicitly keep an empty panel
@@ -838,20 +848,24 @@ export function UnifiedRightPanel({
         [updateBrowser],
     );
 
-    // A page's new-window link opens as another browser tab with the opener's owner,
-    // so it shares the opener's site session even if the dock target moved since.
+    // A page's new-window link opens as another browser tab with the opener's owner
+    // and conversation, so it shares the opener's site session even if the dock
+    // target moved since. An opener hidden in another conversation still counts.
+    const workspaceTabsRef = useRef(state.workspaceTabs);
+    workspaceTabsRef.current = state.workspaceTabs;
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
         return bridge.onNewTab(({ openerViewId, viewId, url, engine }) => {
-            const opener = tabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
+            const opener = workspaceTabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
             const normalized = normalizeBrowserUrl(url);
             if (!opener || !normalized.ok) return;
             open({ ...browserOpenInput({
                 ownerWorkspaceId: opener.ownerWorkspaceId,
                 ownerRoutingRef: opener.ownerRoutingRef,
-                chatId,
+                chatId: opener.browserChatId ?? chatId,
                 repoLabel: opener.repoLabel,
+                browserChatId: opener.browserChatId ?? null,
             }, normalized.url), ...(viewId ? { resourceId: viewId } : {}), browserEngine: engine });
         });
     }, [chatId, open]);
@@ -1107,6 +1121,16 @@ export function UnifiedRightPanel({
         return () => window.removeEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
     }, [workspaceId, chatId, routingRef, dock, showExplorer, target, targetOptions]);
 
+    // A tab opened from a keyboard or menu gesture (a reopened or duplicated web
+    // tab) takes focus in the strip once it renders.
+    const [focusTabId, setFocusTabId] = useState<string | null>(null);
+    useEffect(() => {
+        if (focusTabId === null) return;
+        setFocusTabId(null);
+        Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
+            .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${focusTabId}`)?.focus();
+    }, [focusTabId, tabs]);
+
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
         if (!tab) return;
@@ -1127,6 +1151,16 @@ export function UnifiedRightPanel({
             || action === 'close-others-in-group'
         ) {
             requestBulkClose(unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds));
+            return;
+        }
+        if (action === 'duplicate') {
+            const input = duplicateBrowserTabInput(tab, chatId);
+            if (!input) {
+                addToast('This tab cannot be duplicated.', 'error');
+                return;
+            }
+            openBeside(input, tabId);
+            setFocusTabId(unifiedTabId(input));
             return;
         }
         if (action === 'copy-path') {
@@ -1162,7 +1196,7 @@ export function UnifiedRightPanel({
                 nonce: (prev?.nonce ?? 0) + 1,
             }));
         }
-    }, [addToast, dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
+    }, [addToast, chatId, dirtyIds, dock, mode, openBeside, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // Reusing the preview slot destroys the outgoing buffer, so it goes through
     // the same unsaved-edits guard a close does. Cancel or a failed save leaves
@@ -1983,7 +2017,6 @@ export function UnifiedRightPanel({
     // Ctrl/Cmd+Shift+T restores this exact panel scope's newest closed web tab
     // through the ordinary open path (fresh view id), then focuses its strip tab.
     // An entry whose owner is no longer a target here is dropped, never retargeted.
-    const [reopenFocusId, setReopenFocusId] = useState<string | null>(null);
     const reopenClosedBrowserTab = useCallback((): boolean => {
         const entry = popClosedBrowserTab(closedTabScopeKey);
         if (entry === null) return false;
@@ -1994,15 +2027,9 @@ export function UnifiedRightPanel({
         setMenuOpen(false);
         const input = reopenBrowserTabInput(entry);
         open(input);
-        setReopenFocusId(unifiedTabId(input));
+        setFocusTabId(unifiedTabId(input));
         return true;
     }, [closedTabScopeKey, workspaceId, targetOptions, routingRef, open]);
-    useEffect(() => {
-        if (reopenFocusId === null) return;
-        setReopenFocusId(null);
-        Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
-            .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${reopenFocusId}`)?.focus();
-    }, [reopenFocusId, tabs]);
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.defaultPrevented || event.isComposing || reopenClosedTabShortcut(event) === null) return;

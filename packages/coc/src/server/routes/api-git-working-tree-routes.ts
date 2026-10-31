@@ -256,7 +256,8 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             if (!change) {
                 return void handleAPIError(res, notFound(`Working-tree change (${stage}) for ${filePath}`));
             }
-            const baseAbsPath = change.originalPath
+            // Porcelain also carries staged rename metadata on an unstaged modification.
+            const baseAbsPath = change.originalPath && (stage === 'staged' || change.status === 'renamed' || change.status === 'copied')
                 ? resolveWorkingTreePath(ws.rootPath, change.originalPath) ?? absPath
                 : absPath;
 

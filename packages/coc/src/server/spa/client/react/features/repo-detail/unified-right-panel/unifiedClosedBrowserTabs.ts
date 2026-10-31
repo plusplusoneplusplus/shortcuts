@@ -21,6 +21,8 @@ export interface ClosedBrowserTab {
     ownerWorkspaceId: string;
     ownerRoutingRef?: string | null;
     chatId: string | null;
+    /** The conversation that owned the page; absent for a workspace-global page. */
+    browserChatId?: string;
     repoLabel?: string;
     url?: string;
     label: string;
@@ -48,6 +50,7 @@ export function recordClosedBrowserTab(scopeKey: string, tab: UnifiedPanelTab): 
         ownerWorkspaceId: tab.ownerWorkspaceId,
         ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
         chatId: tab.chatId,
+        ...(tab.browserChatId ? { browserChatId: tab.browserChatId } : {}),
         ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
         ...(tab.browserUrl ? { url: tab.browserUrl } : {}),
         label: tab.label,
@@ -69,14 +72,15 @@ export function clearClosedBrowserTabs(): void {
     stacks.clear();
 }
 
-/** A fresh browser open for a closed tab: same owner, new view id, stored title as provisional label. */
+/** A fresh browser open for a closed tab: same owner and conversation, new view id, stored title as provisional label. */
 export function reopenBrowserTabInput(entry: ClosedBrowserTab): OpenUnifiedTabInput {
     return {
         ...browserOpenInput({
             ownerWorkspaceId: entry.ownerWorkspaceId,
             ...(entry.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: entry.ownerRoutingRef }),
-            chatId: entry.chatId,
+            chatId: entry.browserChatId ?? entry.chatId,
             ...(entry.repoLabel ? { repoLabel: entry.repoLabel } : {}),
+            browserChatId: entry.browserChatId ?? null,
         }, entry.url),
         label: entry.label,
     };

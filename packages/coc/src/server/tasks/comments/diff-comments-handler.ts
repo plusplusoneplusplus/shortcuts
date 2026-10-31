@@ -251,10 +251,18 @@ export function registerDiffCommentsRoutes(
             if (!isValidContext(body.context)) {
                 return sendError(res, 400, 'Missing or invalid required field: context');
             }
-            if (body.selection === undefined || body.selection === null) {
+            // A file-level comment covers the whole file: no selection, no selected text.
+            const fileLevel = body.scope === 'file';
+            if (body.scope !== undefined && !fileLevel) {
+                return sendError(res, 400, 'Invalid field: scope');
+            }
+            if (fileLevel && body.selection != null) {
+                return sendError(res, 400, 'File-level comments have no selection');
+            }
+            if (!fileLevel && (body.selection === undefined || body.selection === null)) {
                 return sendError(res, 400, 'Missing required field: selection');
             }
-            if (body.selectedText === undefined || body.selectedText === null) {
+            if (!fileLevel && (body.selectedText === undefined || body.selectedText === null)) {
                 return sendError(res, 400, 'Missing required field: selectedText');
             }
             if (body.comment === undefined || body.comment === null) {
@@ -263,8 +271,7 @@ export function registerDiffCommentsRoutes(
             try {
                 const comment = await manager.addComment(wsId, body.context, {
                     context: body.context,
-                    selection: body.selection,
-                    selectedText: body.selectedText,
+                    ...(fileLevel ? { scope: 'file' as const, selectedText: '' } : { selection: body.selection, selectedText: body.selectedText }),
                     comment: body.comment,
                     status: body.status || 'open',
                     author: body.author,

@@ -1558,6 +1558,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     void delegatedResultsRestored.then(() => jobNotices.reconcile()).catch(error =>
         console.error('[job-notices] Could not reconcile notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
+        getOvertures: () => opts.triggerStore,
+        getOvertureTodos: () => todoStore,
         isOwnMirrorMessage: message => message.fromMe && isOwnDesktopMessagingPost({
             connector: 'whatsapp', chatKey: message.chatJid, threadId: message.quotedMessageId,
             text: message.text, accountKey: whatsappMessagingManager.getMirrorAccountKey(), isSelf: message.fromMe,

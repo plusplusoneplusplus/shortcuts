@@ -39,6 +39,7 @@ import {
     moveVisibleTab,
     openPreviewTab,
     openTab,
+    openTabBeside,
     previewTab,
     previewTabToReplace,
     promoteTab,
@@ -73,6 +74,8 @@ export interface UnifiedPanelTabsApi {
 
     /** Open a resource, or focus its existing tab. See `openTab`. */
     open(input: OpenUnifiedTabInput): void;
+    /** Open a new tab directly after `besideId` in strip order, and select it. */
+    openBeside(input: OpenUnifiedTabInput, besideId: string): void;
     /**
      * Open a file into this section's single preview slot — the file tree's
      * single click. See `openPreviewTab`; the caller resolves an outgoing dirty
@@ -135,6 +138,10 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null, 
         setState(prev => openTab(prev, input));
     }, [setState]);
 
+    const openBeside = useCallback((input: OpenUnifiedTabInput, besideId: string) => {
+        setState(prev => openTabBeside(prev, latestChat.current, input, besideId, reorderEnabled));
+    }, [setState, reorderEnabled]);
+
     const openPreview = useCallback((input: OpenUnifiedPreviewTabInput) => {
         setState(prev => openPreviewTab(prev, input));
     }, [setState]);
@@ -184,9 +191,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null, 
 
     return useMemo(() => ({
         state, tabs, activeId, active, pinnedId, preview,
-        open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
+        open, openBeside, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds,
     }), [state, tabs, activeId, active, pinnedId, preview,
-        open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
+        open, openBeside, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds]);
 }

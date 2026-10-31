@@ -5,33 +5,42 @@ description: Cut a CoC release end to end — pick the version, draft user-facin
 
 # Release CoC
 
-Drives the whole release ritual: version → notes draft → approval → tag →
-workflow → release body. The GitHub Release body is the single source of
-truth for release notes; nothing is committed into the repo.
+Releases the fetched `origin/main` commit: pin source → version → notes draft →
+approval → tag → workflow → release body. The GitHub Release body is the single
+source of truth for release notes; nothing is committed into the repo.
 
-Never run `git checkout`, `git switch`, or any branch-changing command in
-this skill. If the repo is not already on `main`, stop and say so.
+Preserve the current checkout, branch, HEAD, index and unrelated edits. Never
+run `git checkout`, `git switch`, or any branch-changing command. Do not pull,
+merge, rebase, reset, stash, commit local edits or push local branch commits to
+prepare a release. Local unmerged commits and ahead/behind/diverged state do
+not enter or block the release; any current branch or detached HEAD is valid,
+and a dirty working tree is allowed.
 
-## 0. Preconditions — check all of these before anything else
+## 0. Preconditions — fetch and pin the release source
 
-Run these and stop with a clear message if any fails:
+Require an authenticated GitHub account, then fetch `origin/main` explicitly
+along with tags. Stop on failure; never use a stale remote-tracking ref or
+fall back to local `main` or `HEAD`.
 
 ```bash
-git rev-parse --abbrev-ref HEAD     # must print "main"
-git status --porcelain              # must be empty
-gh auth status                      # must report a logged-in account
-git fetch --tags origin             # refresh remote tags
+gh auth status || exit 1
+git fetch --tags origin +refs/heads/main:refs/remotes/origin/main || exit 1
+RELEASE_SHA=$(git rev-parse --verify 'refs/remotes/origin/main^{commit}') || exit 1
+printf 'Release source: origin/main at %s\n' "$RELEASE_SHA"
 ```
 
-- **Not on `main`** → stop. Tell the user which branch they are on and ask
-  them to switch themselves. Do not switch for them.
-- **Dirty working tree** → stop. List the dirty paths; ask the user to
-  commit or stash.
+`RELEASE_SHA` is the full commit SHA, not an abbreviated hash or a moving ref.
+Keep this value fixed for the entire release. Use it explicitly for tag
+creation, previous reachable tag selection and the release-note range. Read
+release content from Git objects at that SHA, not working-tree files. Fetching
+updates remote-tracking refs and tags without moving the checkout or HEAD.
+
 - **`gh` not authenticated** → stop with `gh auth login` as the fix.
-- Also confirm `main` is up to date with `origin/main`
-  (`git rev-list --count origin/main..main` and `..` reversed). If local is
-  behind, stop; if ahead, tell the user those commits will not be in the
-  build unless pushed first.
+- **Fetch or commit resolution fails** → stop and report the error. Do not
+  reconcile the local branch or ask the user to commit, stash, switch or push.
+- If a later fetch advances `origin/main`, keep the approved pin. To release a
+  different SHA, restart source selection, regenerate notes and obtain approval
+  for that source and text before tagging.
 
 ## 1. Version selection
 
@@ -67,15 +76,21 @@ force-push a tag.
 
 ## 2. Draft the What's New section
 
-Resolve the previous tag — the highest semver tag reachable from `HEAD`,
+Resolve the previous tag — the highest semver tag reachable from `RELEASE_SHA`,
 prereleases included:
 
 ```bash
-PREV=$(git tag --sort=-v:refname --merged HEAD | head -1)
-git log --no-merges --pretty='%h %s' "$PREV..HEAD"
+PREV=$(git tag --sort=-v:refname --merged "$RELEASE_SHA" | head -1)
+if [ -z "$PREV" ]; then
+  printf '%s\n' 'No previous reachable release tag; agree on a baseline before continuing.' >&2
+  exit 1
+fi
+git log --no-merges --pretty='%h %s' "$PREV..$RELEASE_SHA" || exit 1
 ```
 
-Read that log and write a `## What's New` section.
+If no previous reachable release tag exists, stop and ask the user to agree
+on a baseline before drafting notes. Never substitute `HEAD` or an unreachable
+tag. Read that log and write a `## What's New` section.
 
 **Grouping.** Three optional subsections, in this order, omitting any that
 would be empty:
@@ -113,23 +128,33 @@ immediately under the `## What's New` heading, before the first `###`:
 _Early build — expect rough edges. Please report anything that breaks._
 ```
 
-**Approval gate — mandatory.** Print the full draft to the user and ask for
-explicit approval. There is no auto-write path: do not create the tag, do not
-push, and do not run any `gh release` write command until the user approves
-the text. If they ask for edits, revise and re-present.
+**Approval gate — mandatory.** Show the exact tag, full `RELEASE_SHA`, previous
+tag, release-note range and full draft to the user. Ask for explicit approval
+of that source and text. There is no auto-write path: do not create the tag,
+push, or run any `gh release` write command until the user approves the source
+and text. If they ask for edits, revise and re-present.
 
 ## 3. Tag and push
 
-Only after approval:
+Only after approval, repeat both local and remote tag-collision checks from
+step 1. Stop if either check finds the tag or the remote check fails. Create
+the annotated tag at the pinned SHA, verify its target, then push only that tag:
 
 ```bash
-git tag -a "$TAG" -m "CoC $TAG"
-git push origin "$TAG"
+git tag -a "$TAG" "$RELEASE_SHA" -m "CoC $TAG" || exit 1
+test "$(git rev-parse --verify "refs/tags/$TAG^{commit}")" = "$RELEASE_SHA" || exit 1
+git push origin "refs/tags/$TAG:refs/tags/$TAG" || exit 1
 ```
+
+Never omit the explicit SHA or replace it with `HEAD`, local `main` or a fresh
+resolution of `origin/main`. A collision or push failure is not permission to
+delete, move or force-push a tag.
 
 ## 4. Watch the Release workflow
 
-The tag push triggers `.github/workflows/release.yml`. Poll it:
+The tag push triggers `.github/workflows/release.yml`. Identify the run for
+`$TAG` at `$RELEASE_SHA`; do not select an unrelated run just because it is
+newest. Poll it:
 
 ```bash
 gh run list --workflow=release.yml --limit 5
@@ -201,15 +226,18 @@ Both prerelease and draft releases are editable this way.
 
 ## 6. Report
 
-Print the release URL (`gh release view "$TAG" --json url -q .url`) and, for a
-stable tag, remind the user the release is a draft until they publish it.
+Print the release URL (`gh release view "$TAG" --json url -q .url`) and the
+full source SHA. For a stable tag, remind the user the release is a draft
+until they publish it.
 
 ## Failure modes — quick table
 
 | Situation | Action |
 | --- | --- |
-| Not on `main` | Stop; ask the user to switch. Never switch branches yourself. |
-| Dirty working tree | Stop; list dirty paths. |
+| Local unmerged commits, ahead/behind/diverged branch, detached HEAD or dirty tree | Proceed from the pinned remote SHA; preserve checkout/HEAD and unrelated edits without reconciliation. |
+| Fetch or remote commit resolution fails | Stop; report the error. Never release from stale refs or local HEAD. |
+| `origin/main` advances after pinning | Keep the pin; a different source requires new notes and approval. |
+| No previous reachable release tag | Stop; agree on a baseline with the user. |
 | `gh` not authenticated | Stop; tell the user to run `gh auth login`. |
 | Tag exists locally or on origin | Stop. No delete, no force-push. |
 | Release workflow failed | Report the failing job; do not edit the release body. |

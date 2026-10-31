@@ -365,6 +365,12 @@ to the pill; payloads retain the plain server workspace id.
 selection, layout, scroll, blur and focus, reads the live model, and routes
 file-selection payloads through `activeChatAttach`. Refocus restores retained
 selections; attached selections stay dismissed until selection or model changes.
+`selectionPillPosition` places it below the selection end. File editors pass
+`keepInView`: while any selected line is on screen the pill flips above an end
+line without room below and pins to the bottom edge when the end is scrolled
+out (Ctrl+A, last lines of a file); diff editors hide it instead.
+`MonacoFileEditor` publishes its `selectionContext` with the model mount, so
+the split `UnifiedSourceMirror` attaches through the same pill and identity.
 
 Rendered Markdown in a writable `PreviewPane` mounts
 `shared/markdown-document/MarkdownSelectionAttachPill` with the same owner

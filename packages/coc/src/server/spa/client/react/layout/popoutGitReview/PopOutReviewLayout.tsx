@@ -9,14 +9,19 @@
  * cannot diverge between commit, PR, and branch-range.
  */
 
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { PopOutFilePanel } from '../../features/git/diff/PopOutFilePanel';
 import type { FileChange } from '../../features/git/diff/FileTree';
 import type { UseClassificationReturn } from '../../features/git/diff/useClassification';
 import type { UsePrReviewProgressReturn } from '../../features/git/diff/usePrReviewProgress';
 import type { PopOutReviewModel } from './usePopOutReviewModel';
+import type { ReviewContentSearchPanelProps } from '../../features/git/diff/ReviewContentSearchPanel';
+import { useDiffContentSearchEnabled } from '../../hooks/feature-flags/useDiffContentSearchEnabled';
+import { REVIEW_SEARCH_OPEN_EVENT, useReviewContentSearchShortcut } from '../../features/git/diff/useReviewContentSearchShortcut';
 
 export interface PopOutReviewLayoutProps {
+    identity?: string;
+    contentSearch?: Omit<ReviewContentSearchPanelProps, 'inputRef'>;
     workspaceId: string;
     files: FileChange[];
     model: PopOutReviewModel;
@@ -31,6 +36,7 @@ export interface PopOutReviewLayoutProps {
 }
 
 export function PopOutReviewLayout({
+    identity, contentSearch,
     workspaceId,
     files,
     model,
@@ -42,10 +48,16 @@ export function PopOutReviewLayout({
     chatSidePanel,
 }: PopOutReviewLayoutProps) {
     const classifyReady = model.classifyReady;
+    const rootRef = useRef<HTMLDivElement>(null);
+    const canSearch = useDiffContentSearchEnabled() && !!contentSearch;
+    useReviewContentSearchShortcut(rootRef, canSearch, () => rootRef.current?.dispatchEvent(new Event(REVIEW_SEARCH_OPEN_EVENT)));
 
     return (
-        <div className="flex flex-1 min-h-0">
+        <div ref={rootRef} className="flex flex-1 min-h-0" data-review-content-search={canSearch ? 'true' : undefined}>
             <PopOutFilePanel
+                key={identity}
+                identity={identity}
+                contentSearch={contentSearch}
                 workspaceId={workspaceId}
                 onDisplayOrderChange={model.setDisplayedPaths}
                 files={files}

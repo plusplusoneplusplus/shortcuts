@@ -1701,6 +1701,7 @@ describe('AdminPanel', () => {
                 'browserControl.cursorOverlayEnabled': true,
                 'features.htmlPageTab': false,
                 'features.browserTabShortcuts': true,
+                'features.chatScopedBrowserTabs': false,
                 'features.sensitiveInput': false,
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true));

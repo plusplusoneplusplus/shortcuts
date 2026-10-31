@@ -113,6 +113,7 @@ export interface AdminResolvedConfig {
     gitCommitLookup?: boolean;
     gitCrossCloneCherryPick?: boolean;
     diffFilePicker?: boolean;
+    diffContentSearch?: boolean;
     sessionContextAttachments?: boolean;
     commitChatLens?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
@@ -221,6 +222,7 @@ export interface AdminConfigUpdate {
   'workItems.workflow.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.diffFilePicker'?: boolean;
+  'features.diffContentSearch'?: boolean;
   'features.sessionContextAttachments'?: boolean;
   'features.ralphMultiAgentGrill'?: boolean;
   'features.commitChatLens'?: boolean;
@@ -301,6 +303,8 @@ export interface RuntimeDashboardConfig {
     gitCrossCloneCherryPickEnabled: boolean;
     /** Searchable changed-file navigation from diff headers (`features.diffFilePicker`). */
     diffFilePickerEnabled: boolean;
+    /** Full-content multi-file review search (`features.diffContentSearch`), default off. */
+    diffContentSearchEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
     commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';
@@ -370,6 +374,8 @@ export interface RuntimeDashboardConfig {
     binaryFileRevealEnabled: boolean;
     /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults on. */
     browserTabShortcutsEnabled: boolean;
+    /** Right-panel web pages scoped to the conversation that opened them (`features.chatScopedBrowserTabs`); defaults off. */
+    chatScopedBrowserTabsEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;
     /**

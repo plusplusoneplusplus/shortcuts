@@ -311,6 +311,47 @@ describe('WorkingTreeFileDiff — diff engine', () => {
     });
 });
 
+describe('working-tree content search Monaco navigation', () => {
+    const match = (side: 'old' | 'new', line = 7) => ({
+        filePath: '/repo/src/a.ts', side, line, startColumn: 3, endColumn: 9, text: '😀needle',
+    });
+    it.each(['staged', 'unstaged', 'untracked'] as const)('reveals the exact new side in %s without initial-hunk navigation', async stage => {
+        const target = match('new');
+        await renderDiff({ stage, untrackedAsDiff: true, contentSearchTarget: target, initialHunkTarget: 'last' });
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 7, column: 3 }]);
+        expect(fakes[0].adapter.revealModifiedLine).not.toHaveBeenCalled();
+    });
+    it('switches inline to split before revealing old, and repeats only for fresh activations', async () => {
+        const target = match('old');
+        const view = await renderDiff({ contentSearchTarget: target });
+        expect(fakes[0].options.at(-1)).toMatchObject({ renderSideBySide: true });
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 7, column: 3 }]);
+        const props = { workspaceId: 'ws-a', filePath: '/repo/src/a.ts', repoRoot: '/repo', stage: 'unstaged' as const, createDiffEditor };
+        await act(async () => { view.rerender(<WorkingTreeFileDiff {...props} contentSearchTarget={target} />); });
+        expect(fakes[0].revealedPositions).toHaveLength(1);
+        await act(async () => { view.rerender(<WorkingTreeFileDiff {...props} contentSearchTarget={{ ...target }} />); });
+        expect(fakes[0].revealedPositions).toHaveLength(2);
+    });
+    it('waits for full content and ignores a target for another path', async () => {
+        let finish!: (value: Content) => void;
+        clients['ws-a'].git.getWorkingTreeFileContent.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const view = await renderDiff({ contentSearchTarget: match('old') });
+        expect(fakes).toHaveLength(0);
+        await act(async () => { finish(content('needle', 'needle')); });
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 7, column: 3 }]);
+        await act(async () => {
+            view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" stage="unstaged"
+                createDiffEditor={createDiffEditor} contentSearchTarget={{ ...match('new'), filePath: '/repo/other.ts' }} />);
+        });
+        expect(fakes[0].revealedPositions).toHaveLength(1);
+    });
+    it('lets later definition navigation supersede a search target', async () => {
+        await renderDiff({ contentSearchTarget: match('old') });
+        act(() => { currentCodeMounts[0].onNavigate({ workspaceId: 'ws-a', path: 'src/a.ts', line: 2, column: 5 }); });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 2, column: 5 });
+    });
+});
+
 it.each(['ws-a', 'remote:one:ws-a', 'remote:two:ws-a'])('forwards working-tree selection destination %s with raw workspace identity', async destinationId => {
     const view = await renderDiff({ attachmentDestinationId: destinationId });
     expect(selectionPill).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: 'ws-a', filePath: 'src/a.ts', destinationId, ref: { type: 'working-tree' } }));

@@ -160,6 +160,13 @@ Results/state identify the retained engine and `sourceKind`; `sessionKey` identi
 ### HTML page (file) views
 
 Local `.html`/`.htm` previews are `file` sources hosted as Electron webview guests by `file-preview-host.ts`, independent of engine preferences and browser-data cleanup. They have no preload, use the isolated in-memory `coc-html-page` session, and follow `html-page-policy.ts`. Only pending, main-validated exact file URLs pass the attachment guard. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+
+`file-preview-host.ts` binds `file-preview-download-gate.ts` to each committed document. Focused native primary mouse activation and Enter/Space input record five-second, single-use intent; file views expose no agent control/CDP path. Main-only `requestDownload(guest, url)` captures exact guest, owner, concrete workspace/server session and document identity. Its approval lease expires after 60 seconds and requires native Save As validation by the caller; it grants no filesystem capability.
+
+The first supported request after unused intent expires consumes it and sends a payload-free retry notice to its live visible owner. Requests without intent, repeated expired requests, foreign identities and revoked documents stay quiet; unsupported schemes cannot consume the notice. Failed notice delivery still rejects the native download before any default dialog. A fresh user action is required to retry.
+
+Hiding, reload, allowed file navigation, failure, crash and guest/owner teardown revoke pending approval. Cancelled navigation restores a gate requiring fresh input. Approval rejects stale documents and invalid owners; approved transfers remain independent. The HTML-session `will-download` hook admits the exact guest before passing its original handle to the shared Downloads store. An owner-attached synchronous native Save As chooses the path with overwrite confirmation; the lease is revalidated before `setSavePath`. Unowned or unauthorized requests are cancelled before any default dialog. Admission/unavailable-management notices contain only a safe source label and reach the captured owner. Host disposal removes the session listener. Navigation policy, sandboxing and guest privileges remain unchanged.
+
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
 SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab`, the toolbar classes in `NativeViewTab.tsx`, and `NativeViewNavButtons` (one rounded back/forward/reload-or-stop capsule labelled Page navigation); their Electron placeholders register with the same persistent guest layer. The browser address input and the HTML toolbar's read-only path share one pill style.
@@ -318,6 +325,16 @@ never restores live handles or offers retry/resume for interrupted transfers.
 
 `electron-downloads.ts` retains Chromium's original transfer and native Save dialog,
 including overwrite selection; the renderer supplies only managed IDs and actions.
+Its optional main-only approval handoff admits the handle before a synchronous
+native destination chooser, then revalidates the captured lease before `setSavePath`
+inside `will-download`. Pending revocation cancels the item; approved transfers
+detach from the source signal. Terminal disposal retires authorization and listeners.
+The optional payload-free failure callback runs once before terminal disposal;
+cancellation and completion stay quiet. `file-preview-host.ts` supplies the preview
+lease, native chooser and a safe failure notice bound to the captured live document,
+guest and registered owner. Hidden, closed or replaced sources discard notices;
+their approved transfers still report status through the shared Downloads store.
+`browser-view-host.ts` supplies the shared store to both Electron hosts.
 Pause/resume require live engine capability, and Open/Show require a completed,
 unchanged regular file. Clear/remove affect records only. Source navigation or
 close does not own the session's download handles. ClickOnce interception runs
@@ -331,6 +348,13 @@ main documents. `BrowserDownloadsPanel` uses the shared modal/focus and native
 view overlay contracts, ignores stale replies, and dismisses on owner/visibility
 changes. Web dashboards and older desktops show explicit unavailability. The
 feature needs updated desktop main/preload and SPA; no experimental flag applies.
+
+`test/e2e/html-download.e2e.test.ts` exercises local Blob/data exports through
+real sandboxed Electron handles, native mouse/keyboard input and the registered
+SPA bridge. Its main-only chooser substitute selects temporary destinations;
+saved-byte hashes cover Unicode, binary, empty and 101 MiB files. Build desktop
+first; CI requires `COC_DESKTOP_E2E=1`, and Linux requires a display and working
+Chromium sandbox. Native dialog UI and modal revocation require separate validation.
 
 ### Desktop browser control
 
@@ -776,6 +800,18 @@ owning window. Other windows and HTML previews keep the keys.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
+### Conversation-owned web tabs
+
+Default-off `features.chatScopedBrowserTabs` gives a `browser` tab an owning
+conversation (`browserChatId`) when it opens with a selected chat: `+`, Ctrl/Cmd+T,
+chat links, history and agent reveals (`processId`). The tab stays in
+`workspaceTabs`, so ids, close, lookup and engine cleanup are unchanged;
+`visibleTabs` shows it only from that chat. Hidden tabs unmount their views, so
+Electron hosts hide in the same commit and remounts reattach the retained guest.
+Tabs opened with no chat stay workspace-global. Duplicate, popup and Ctrl/Cmd+Shift+T
+copies keep the source's owner; turning the flag off releases every owner.
+Browser-control scope and background layout stay per workspace, not per chat.
+
 The desktop three-column layout keeps the flexible middle pane usable by sharing
 the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.
 The right-panel maximum reserves that width, both resize handles, and 360px for
@@ -868,7 +904,10 @@ The tab context menu resolves commands against the clicked descriptor. File and
 Markdown note tabs copy full paths from their saved file/task identity or an exact
 workspace-and-clone owner root. Path construction uses the owning filesystem
 spelling without local I/O; unknown paths and non-file resources omit the action.
-Clipboard completion and failure use the shared toast feedback. The docked
+Clipboard completion and failure use the shared toast feedback. Web tabs add
+Duplicate: a fresh-view-id copy (same owner, route, engine pin and committed
+http(s) URL; no live guest or control session) opens selected directly after the
+source in strip order. The docked
 Explorer omits its internal Files/Search switch; the standalone Explorer page
 retains it. Tab descriptors (never document bodies, terminal output, or credentials)
 persist per panel scope in localStorage. Chat-owned `paste`
@@ -1056,7 +1095,9 @@ search icon.
 With `features.markdownPanelPreview` enabled, unified-panel file tabs for
 editable `.md` and `.markdown` files show the shared rendered Markdown view
 by default. Their `PreviewPane` toolbar switches to Raw Monaco using the
-same in-memory edit buffer; line-targeted navigation opens Raw. The tab's
+same in-memory edit buffer; line-targeted navigation opens Raw, as does a
+tab's persisted `rawSource` request (minted per raw open, kept on plain
+re-opens, never changing the global setting). The tab's
 workspace and concrete clone route continue to own file reads and saves.
 Rendered tabs keep a navigation handle for history replay into Raw.
 The standalone Explorer and the read-only source canvas are unaffected.

@@ -959,6 +959,10 @@ references before editing. Paths are package-relative.
   workspace/chat/canvas changes isolate state. Panel opening stays owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
+  Chat and shared Markdown previews render attribute-free `<br>`, `<br/>` and
+  `<br />` in cells through `src/server/spa/client/shared/htmlLineBreaks.ts`;
+  keep escaped/code markup literal and arbitrary HTML escaped. Preserve cell formatting
+  before table upgrade.
   Cover actual column widths and overflow with the Kusto browser regression suite.
 - Native CLI stores are read-only with parameterized filters/path-safe IDs.
   Only explicit import bridges to chats; unavailable stores return typed states.
@@ -1190,7 +1194,12 @@ references before editing. Paths are package-relative.
   `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
   `-v`; no Markdown list syntax so Teams keeps the numbering). `localTopicsReply`
   and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
-  queued targets reject selection and delivery.
+  queued targets reject selection and delivery. WhatsApp appends a separate, five-row
+  overture summary via `whatsapp-overtures.ts`, reading only registered local workspaces'
+  trigger records and exact owner chats/persisted to-do titles. It never uses the
+  to-do service's dependency-refreshing list method or changes trigger/selection state.
+  Removed, delivered and delegated bound rules stay hidden; missing/failed reads and
+  remote overture data are explicitly unavailable, distinct from an empty list.
 - `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
   messages in self/direct/group/meeting chats to one Ask conversation per account,
   Teams chat and explicit local `teamsIc3OwnCommands.workspaceId`, using the shared

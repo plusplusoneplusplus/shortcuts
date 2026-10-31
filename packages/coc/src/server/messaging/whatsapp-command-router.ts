@@ -21,6 +21,8 @@ import { safeErrorDiagnostics } from './safe-error-diagnostics';
 
 import { LocalTopicMemory, queuedChatTask, type LocalTopicQueue } from './local-topics';
 import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
+import { whatsappOverturesReply, type WhatsAppOvertureReader } from './whatsapp-overtures';
+import type { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 
 const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*`, platform: 'whatsapp' as const };
 
@@ -60,6 +62,9 @@ export interface WhatsAppRouterDeps {
     isOwnMirrorMessage?: (message: InboundWAMessage) => boolean | Promise<boolean>;
     /** Read-only Sentinel to-do ledgers for `list todos`; absent without server ledger infrastructure. */
     getTodos?: () => MessagingTodoReader | undefined;
+    /** Read-only local trigger data; never a trigger manager or creation service. */
+    getOvertures?: () => WhatsAppOvertureReader | undefined;
+    getOvertureTodos?: () => Pick<SentinelTodoStore, 'get'> | undefined;
 }
 
 function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
@@ -214,6 +219,9 @@ export class WhatsAppCommandRouter {
                     remoteRefs: this.remoteRefs.slot(msg.chatJid),
                     localTopics: this.localTopics.slot(msg.chatJid),
                     topicQueue: this.deps.topicQueue,
+                    topicListSupplement: (workspaces, verbose) => whatsappOverturesReply(
+                        workspaces, workspaces ? this.deps.getOvertures?.() : undefined,
+                        this.deps.store, workspaces ? this.deps.getOvertureTodos?.() : undefined, verbose),
                     // A quote-reply to an answer compacts that answer's chat.
                     compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
@@ -235,7 +243,7 @@ export class WhatsAppCommandRouter {
                         },
                     },
                 });
-                for (const part of command.type === 'git-status' || command.type === 'list-todos' ? chunkWhatsAppText(text) : [text]) await reply(part);
+                for (const part of command.type === 'git-status' || command.type === 'list-todos' || command.type === 'list-topics' ? chunkWhatsAppText(text) : [text]) await reply(part);
                 return;
             }
             stage = 'chat-routing';

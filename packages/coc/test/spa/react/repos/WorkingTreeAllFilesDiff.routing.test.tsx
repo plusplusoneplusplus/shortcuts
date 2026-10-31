@@ -1,14 +1,20 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { useEffect } from 'react';
 
 const h = vi.hoisted(() => {
-    const make = () => ({ git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileDiff: vi.fn().mockResolvedValue({ diff: '' }) } });
+    const make = () => ({ git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileDiff: vi.fn().mockResolvedValue({ diff: '' }),
+        getWorkingTreeFileContent: vi.fn().mockResolvedValue({
+            binary: false, tooLarge: false, base: { content: 'needle', exists: true }, head: { content: 'needle', exists: true },
+        }) } });
     return { local: make(), first: make(), second: make() };
 });
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => h.local,
     getCocClientFor: (url: string) => url === 'https://first.test' ? h.first : h.second,
+}));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDiffContentSearchEnabled', () => ({
+    useDiffContentSearchEnabled: () => true,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', async () => {
     const { useCocClient } = await import('../../../../src/server/spa/client/react/repos/cloneRouting');
@@ -43,12 +49,23 @@ describe('working review concrete owner routing', () => {
         await waitFor(() => expect(h.first.git.getWorkingTreeFileDiff).toHaveBeenCalledWith('member', '/repo/first.ts', { stage: 'staged' }));
         expect(h.local.git.getWorkingTreeChanges).not.toHaveBeenCalled();
         expect(h.second.git.getWorkingTreeChanges).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'needle' } });
+        await screen.findByText('Searched 1 of 1 files');
+        expect(h.first.git.getWorkingTreeFileContent).toHaveBeenCalledWith('member', '/repo/first.ts', 'staged');
+        expect(h.local.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
+        expect(h.second.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
     });
     it('explicit local owners stay on page origin despite a remote workspace with the same id', async () => {
         render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="member" />);
         expect((await screen.findByTestId('owned-pane')).textContent).toBe('/repo/local.ts');
         expect(h.local.git.getWorkingTreeChanges).toHaveBeenCalledWith('member');
         expect(h.second.git.getWorkingTreeChanges).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+        fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'needle' } });
+        await screen.findByText('Searched 1 of 1 files');
+        expect(h.local.git.getWorkingTreeFileContent).toHaveBeenCalledWith('member', '/repo/local.ts', 'staged');
+        expect(h.second.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
     });
     it('revokes delayed reads across owner changes and refuses unavailable remote owners', async () => {
         let finish!: (value: any) => void;

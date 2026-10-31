@@ -208,6 +208,33 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('keeps diff content search off by default and persists live updates only on its owning server', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.diffContentSearchEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.config.features.diffContentSearch).toBe(false);
+            expect(svc.sources['features.diffContentSearch']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+
+            const enabled = await svc.updateConfig({ 'features.diffContentSearch': true });
+            expect(enabled.effects).toContainEqual({
+                field: 'features.diffContentSearch', runtime: 'live', requiresRestart: false,
+            });
+            expect(runtimeFlag()).toBe(true);
+            expect(changed).toHaveBeenCalledOnce();
+            expect(enabled.sources['features.diffContentSearch']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.diffContentSearch).toBe(true);
+            expect(buildRuntimeDashboardConfig(otherOwner, 'other', '127.0.0.1').features.diffContentSearchEnabled).toBe(false);
+
+            await expect(svc.updateConfig({ 'features.diffContentSearch': 'true' })).rejects.toThrow();
+            expect(runtimeFlag()).toBe(true);
+            await svc.updateConfig({ 'features.diffContentSearch': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.diffContentSearch).toBe(false);
+        });
+
         it('persists live To-do jobs opt-in and opt-out on its owning server only', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const otherOwner = new RuntimeConfigService({ fileConfig: {} });

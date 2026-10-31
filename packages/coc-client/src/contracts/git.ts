@@ -395,7 +395,9 @@ export interface GitDiffCommentReply {
 export interface GitDiffComment {
   id: string;
   context: GitDiffCommentContext;
-  selection: GitDiffCommentSelection;
+  /** `'file'` for a whole-file comment, which has no selection. */
+  scope?: 'file';
+  selection?: GitDiffCommentSelection;
   selectedText: string;
   comment: string;
   status: 'open' | 'resolved' | 'orphaned' | string;

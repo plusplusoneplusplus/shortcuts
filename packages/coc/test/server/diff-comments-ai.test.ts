@@ -55,6 +55,16 @@ describe('renderCommentBlock', () => {
         expect(block).toContain('### Comment 3 (Diff line 42)');
     });
 
+    it('labels a file-level comment as the whole file, with no line or selected text', () => {
+        const comment = makeDiffComment({ scope: 'file', selection: undefined, selectedText: '', comment: 'Split this file' });
+        const block = renderCommentBlock(comment, 0);
+
+        expect(block).toContain('### Comment 1 (Whole file)');
+        expect(block).not.toContain('Diff line');
+        expect(block).not.toContain('Selected Text');
+        expect(block).toContain('"Split this file"');
+    });
+
     it('includes author, tags, aiResponse, and replies', () => {
         const comment = makeDiffComment({
             author: 'alice',

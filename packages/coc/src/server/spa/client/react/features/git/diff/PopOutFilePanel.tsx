@@ -6,7 +6,10 @@
  * and a collapse/expand toggle.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { ReviewContentSearchPanel, type ReviewContentSearchPanelProps } from './ReviewContentSearchPanel';
+import { useDiffContentSearchEnabled } from '../../../hooks/feature-flags/useDiffContentSearchEnabled';
+import { REVIEW_SEARCH_OPEN_EVENT } from './useReviewContentSearchShortcut';
 import {
     FileTreeView,
     FlatFileList,
@@ -27,6 +30,8 @@ import type { HunkCategory } from '../../pull-requests/classification-types';
 import { HUNK_CATEGORIES } from '../../pull-requests/classification-types';
 
 export interface PopOutFilePanelProps {
+    contentSearch?: Omit<ReviewContentSearchPanelProps, 'inputRef'>;
+    identity?: string;
     workspaceId: string;
     onDisplayOrderChange?: (paths: string[]) => void;
     files: FileChange[];
@@ -70,6 +75,7 @@ function loadCollapsed(): boolean {
 }
 
 export function PopOutFilePanel({
+    contentSearch, identity,
     workspaceId,
     onDisplayOrderChange,
     files,
@@ -90,6 +96,21 @@ export function PopOutFilePanel({
     nextPriorityDisabled = false,
 }: PopOutFilePanelProps) {
     const [collapsed, setCollapsed] = useState(loadCollapsed);
+    const enabled = useDiffContentSearchEnabled();
+    const canSearch = enabled && !!contentSearch;
+    const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
+    const searching = canSearch && navigatorMode === 'search';
+    const inputRef = useRef<HTMLInputElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    useEffect(() => { if (!canSearch) setNavigatorMode('files'); }, [canSearch]);
+    useEffect(() => { if (searching && !collapsed) inputRef.current?.focus(); }, [searching, collapsed]);
+    const openSearch = () => { setNavigatorMode('search'); setCollapsed(false); inputRef.current?.focus(); inputRef.current?.select(); };
+    useEffect(() => {
+        const root = panelRef.current?.closest('[data-review-content-search="true"]');
+        if (!root || !canSearch) return;
+        root.addEventListener(REVIEW_SEARCH_OPEN_EVENT, openSearch);
+        return () => root.removeEventListener(REVIEW_SEARCH_OPEN_EVENT, openSearch);
+    }, [canSearch, collapsed, identity]);
     const { mode, setMode } = useFilesViewMode(workspaceId);
     const { width, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 280,
@@ -149,7 +170,7 @@ export function PopOutFilePanel({
 
     if (collapsed) {
         return (
-            <div className="flex flex-col items-center py-2 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ width: 36 }} data-testid="popout-file-panel-collapsed">
+            <div ref={panelRef} className="flex flex-col items-center py-2 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ width: 36 }} data-testid="popout-file-panel-collapsed">
                 <button
                     onClick={toggleCollapse}
                     className="text-xs text-[#616161] dark:text-[#999] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] rounded px-1 py-0.5"
@@ -159,6 +180,7 @@ export function PopOutFilePanel({
                     ▶
                 </button>
                 <span className="text-[10px] text-[#848484] mt-1 [writing-mode:vertical-lr]" data-testid="popout-file-panel-file-count-collapsed">{files.length} files</span>
+                {canSearch && <button type="button" aria-label="Search review contents" onClick={openSearch}>Search</button>}
             </div>
         );
     }
@@ -166,6 +188,7 @@ export function PopOutFilePanel({
     return (
         <>
             <div
+                ref={panelRef}
                 className="flex flex-col flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] overflow-hidden"
                 style={{ width }}
                 data-testid="popout-file-panel"
@@ -177,6 +200,7 @@ export function PopOutFilePanel({
                         <span className="text-[10px] text-[#848484]" data-testid="popout-file-panel-file-count">({files.length})</span>
                     </div>
                     <div className="flex items-center gap-1">
+                        {canSearch && <button type="button" aria-label="Search review contents" aria-pressed={searching} onClick={openSearch}>Search</button>}
                         <FilesViewToggle mode={mode} onChange={setMode} testIdPrefix="popout-files-view-toggle" />
                         <button
                             onClick={toggleCollapse}
@@ -188,6 +212,14 @@ export function PopOutFilePanel({
                         </button>
                     </div>
                 </div>
+                {canSearch && <div className="flex gap-2 px-2 py-1 text-xs" role="group" aria-label="Review navigator">
+                    <button type="button" aria-pressed={!searching} onClick={() => setNavigatorMode('files')}>Files</button>
+                    <button type="button" aria-pressed={searching} onClick={openSearch}>Search</button>
+                </div>}
+                {canSearch && <div hidden={!searching} style={{ display: searching ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
+                    <ReviewContentSearchPanel key={identity} {...contentSearch!} inputRef={inputRef} />
+                </div>}
+                <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 {/* Classification toolbar — visible only when classification is ready. */}
                 {counts && (
                     <div
@@ -317,6 +349,7 @@ export function PopOutFilePanel({
                             visitedFiles={visitedFiles}
                         />
                     )}
+                </div>
                 </div>
             </div>
             {/* Resize handle */}

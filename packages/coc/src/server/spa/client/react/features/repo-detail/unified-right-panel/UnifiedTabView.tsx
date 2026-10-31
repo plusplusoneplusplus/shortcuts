@@ -253,6 +253,7 @@ export function UnifiedTabView({
                     endLine={tab.endLine}
                     revealColumn={tab.column}
                     revealNonce={tab.revealNonce}
+                    rawSource={tab.rawSource}
                     symbolCandidate={tab.symbolCandidate}
                     onNavigate={onOpenFile ? handleNavigate : undefined}
                     onNavigateExternal={onOpenExternal ? handleNavigateExternal : undefined}

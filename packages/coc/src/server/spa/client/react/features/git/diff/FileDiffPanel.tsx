@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
 import type { GitFileDiffContentResponse } from '@plusplusoneplusplus/coc-client';
 import { Spinner, Button } from '../../../ui';
-import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons, computeDiffLines } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
@@ -20,6 +20,7 @@ import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { FileLevelComments, revealFileComment, splitFileComments } from './FileLevelComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
@@ -54,6 +55,10 @@ import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { resolveDiffDefinitionRoute } from './diffDefinitionRoute';
 import { openDiffDefinitionInExplorer } from './diffDefinitionExplorer';
 import { reviewFileParts } from './gitReviewFiles';
+import { createDiffLineIndexResolver } from './diffCoords';
+import type { ReviewContentMatch } from './reviewContentSearch';
+
+export type ReviewContentSearchTarget = ReviewContentMatch & { filePath: string };
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -67,6 +72,8 @@ export interface FileDiffPanelProps {
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
     /** Auto-scroll to first or last hunk after diff loads. */
     initialHunkTarget?: 'first' | 'last';
+    /** A new object jumps once; hosts clear it on ordinary file/review navigation. */
+    contentSearchTarget?: ReviewContentSearchTarget | null;
     /** Optional local return action for embedded file-review surfaces. */
     onBack?: () => void;
     backLabel?: string;
@@ -120,6 +127,7 @@ export function FileDiffPanel({
     source,
     onNavigateToFile,
     initialHunkTarget,
+    contentSearchTarget,
     onBack,
     backLabel = 'All files',
     backTestId = 'file-diff-back-btn',
@@ -213,6 +221,16 @@ export function FileDiffPanel({
     const fallbackReason = classicActive ? engineSelection.fallback : null;
     const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
+    const [dismissedSearchTarget, setDismissedSearchTarget] = useState<ReviewContentSearchTarget | null>(null);
+    const searchTarget = contentSearchTarget !== dismissedSearchTarget && contentSearchTarget?.filePath === filePath
+        ? contentSearchTarget : null;
+    const searchLayoutTargetRef = useRef<ReviewContentSearchTarget | null>(null);
+    // Monaco's inline layout hides the original editor.
+    useEffect(() => {
+        if (!showEditor || searchLayoutTargetRef.current === searchTarget) return;
+        searchLayoutTargetRef.current = searchTarget;
+        if (searchTarget?.side === 'old') setViewMode('split');
+    }, [searchTarget, showEditor, setViewMode]);
     useEffect(() => {
         onDiffEngineChange?.(engineSelection.engine);
     }, [onDiffEngineChange, engineSelection.engine]);
@@ -244,6 +262,23 @@ export function FileDiffPanel({
     const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
     useDiffFindShortcut(scrollContainerRef, find.openFind);
 
+    const classicSearchLine = useMemo(() => {
+        if (!searchTarget || !classicActive || loading || error) return undefined;
+        return createDiffLineIndexResolver(computeDiffLines((diff ?? '').split('\n')))(searchTarget.side, searchTarget.line);
+    }, [searchTarget, classicActive, loading, error, diff]);
+    const classicMatchRanges = useMemo(() => {
+        if (!searchTarget || classicSearchLine === undefined) return find.matchRangesByLine;
+        const ranges = new Map(find.matchRangesByLine);
+        ranges.set(classicSearchLine, [{
+            start: searchTarget.startColumn - 1, end: searchTarget.endColumn - 1, active: true,
+        }]);
+        return ranges;
+    }, [searchTarget, classicSearchLine, find.matchRangesByLine]);
+    useEffect(() => {
+        if (classicSearchLine !== undefined) viewerRef.current?.scrollLineIntoView(classicSearchLine);
+    }, [searchTarget, classicSearchLine, viewMode]);
+    const searchOutsidePatch = searchTarget && classicActive && !loading && !error && classicSearchLine === undefined;
+
     // ── Comments ──
     const diffContext = source.commentContext(filePath);
     const {
@@ -252,6 +287,7 @@ export function FileDiffPanel({
         clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
         resolveWithAI, fixWithAI,
     } = useDiffComments(workspaceId, diffContext, source.routingTarget);
+    const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     // ── Cross-file navigation ──
     const [fetchedFiles, setFetchedFiles] = useState<{ key: string; files: string[] } | null>(null);
@@ -296,7 +332,7 @@ export function FileDiffPanel({
     }, [filePath]);
 
     useEffect(() => {
-        if (!classicActive || !initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        if (searchTarget || !classicActive || !initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -310,7 +346,7 @@ export function FileDiffPanel({
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading, classicActive]);
+    }, [searchTarget, initialHunkTarget, diff, loading, classicActive]);
 
     // ── Handlers ──
 
@@ -408,6 +444,7 @@ export function FileDiffPanel({
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (revealFileComment(scrollContainerRef.current, comment as DiffComment)) return;
         if (showEditor) {
             monacoViewerRef.current?.revealComment(comment.id);
             return;
@@ -486,6 +523,7 @@ export function FileDiffPanel({
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
         if (!route) return false;
+        setDismissedSearchTarget(contentSearchTarget ?? null);
         if (route.kind === 'same-file') {
             rememberDefinitionOrigin(side);
             setDefinitionReveal({ path: filePath, side: route.side, line: route.line, column: route.column });
@@ -516,14 +554,15 @@ export function FileDiffPanel({
                 },
             },
         });
-    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin, source.shortRef, source.label]);
+    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin, source.shortRef, source.label, contentSearchTarget]);
     const backFromDefinition = definitionBack[definitionBack.length - 1] ?? null;
     const goBackFromDefinition = useCallback(() => {
         if (!backFromDefinition) return;
+        setDismissedSearchTarget(contentSearchTarget ?? null);
         setDefinitionBack(stack => stack.slice(0, -1));
         setDefinitionReveal(backFromDefinition);
         if (backFromDefinition.path !== filePath) onNavigateToFile?.(backFromDefinition.path, 'first');
-    }, [backFromDefinition, filePath, onNavigateToFile]);
+    }, [backFromDefinition, filePath, onNavigateToFile, contentSearchTarget]);
     // Capture phase: Monaco would otherwise consume Alt+← (word left on macOS).
     const handleDefinitionBackKey = useCallback((e: React.KeyboardEvent) => {
         if (!backFromDefinition || e.key !== 'ArrowLeft' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -541,11 +580,14 @@ export function FileDiffPanel({
     // Held until that file's models are on screen; a jump replaces the hunk target.
     const pendingDefinitionReveal = definitionReveal?.path === filePath ? definitionReveal : null;
     const editorRevealTarget = useMemo<DiffEditorPosition | null>(
-        () => pendingDefinitionReveal && displayedEditor?.filePath === pendingDefinitionReveal.path
+        () => searchTarget && showEditor && displayedEditor?.filePath === filePath
+            && (searchTarget.side !== 'old' || viewMode === 'split')
+            ? { side: searchTarget.side === 'old' ? 'original' : 'modified', line: searchTarget.line, column: searchTarget.startColumn }
+            : pendingDefinitionReveal && displayedEditor?.filePath === pendingDefinitionReveal.path
             ? { side: pendingDefinitionReveal.side, line: pendingDefinitionReveal.line, column: pendingDefinitionReveal.column,
                 ...(pendingDefinitionReveal.scrollTop !== undefined ? { scrollTop: pendingDefinitionReveal.scrollTop } : {}) }
             : null,
-        [pendingDefinitionReveal, displayedEditor?.filePath],
+        [searchTarget, showEditor, viewMode, filePath, pendingDefinitionReveal, displayedEditor?.filePath],
     );
 
     // ── Render ──
@@ -682,8 +724,22 @@ export function FileDiffPanel({
                     data-testid="file-diff-section"
                     tabIndex={-1}
                 >
+                    <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
+                    {searchOutsidePatch && (
+                        <div className="flex items-center gap-2 px-4 py-2 text-xs" role="status" data-testid="search-outside-patch">
+                            <span>{searchTarget.side.toUpperCase()} line {searchTarget.line} is outside the displayed diff.</span>
+                            {source.fetchFileContent && (
+                                <Button variant="secondary" size="sm" onClick={() => {
+                                    retryEditor();
+                                    setDiffEngine('monaco');
+                                }}>
+                                    Open in Editor view
+                                </Button>
+                            )}
+                        </div>
                     )}
                     {displayedEditor && (
                         <div hidden={!showEditor} className="h-full" aria-hidden={!showEditor}>
@@ -698,11 +754,11 @@ export function FileDiffPanel({
                                 original={displayedEditor.content.base.content}
                                 modified={displayedEditor.content.head.content}
                                 viewMode={viewMode}
-                                initialHunkTarget={pendingDefinitionReveal ? undefined : initialHunkTarget}
+                                initialHunkTarget={searchTarget || pendingDefinitionReveal ? undefined : initialHunkTarget}
                                 revealTarget={editorRevealTarget}
                                 onNavigateDefinition={handleNavigateDefinition}
                                 onLinesReady={showEditor ? (lines) => { setDiffLines(lines); runRelocation(lines); } : undefined}
-                                comments={showEditor ? comments : []}
+                                comments={showEditor ? lineComments : []}
                                 renderCommentThread={renderCommentThread}
                                 onAddComment={handleAddComment}
                                 onAskAI={handleAskAIDiff}
@@ -747,13 +803,13 @@ export function FileDiffPanel({
                                     fileName={filePath}
                                     enableComments
                                     showLineNumbers
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={handleAddComment}
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
-                                    matchRangesByLine={find.matchRangesByLine}
+                                    matchRangesByLine={classicMatchRanges}
                                     diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="file-diff-content"
                                 />
@@ -768,7 +824,7 @@ export function FileDiffPanel({
                                        raw git preamble is dropped (split mode
                                        drops it too). */
                                     hideFileHeaders
-                                    comments={comments}
+                                    comments={lineComments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={handleAddComment}
                                     onAskAI={handleAskAIDiff}
@@ -776,8 +832,8 @@ export function FileDiffPanel({
                                     onCommentClick={handleCommentClick}
                                     filePath={filePath}
                                     getHunkClassification={getHunkClassification}
-                                    activeFilters={hunkActiveFilters}
-                                    matchRangesByLine={find.matchRangesByLine}
+                                    activeFilters={searchTarget ? undefined : hunkActiveFilters}
+                                    matchRangesByLine={classicMatchRanges}
                                     diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="file-diff-content"
                                 />

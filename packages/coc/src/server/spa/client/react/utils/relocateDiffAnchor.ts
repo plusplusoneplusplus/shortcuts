@@ -13,7 +13,7 @@
  */
 
 import type { DiffLine } from '../features/git/diff/UnifiedDiffViewer';
-import type { DiffComment } from '../../comments/diff-comment-types';
+import type { LineDiffComment } from '../../comments/diff-comment-types';
 
 /** djb2 hash — mirrors forge's hashText implementation. */
 function hashText(text: string): string {
@@ -37,7 +37,7 @@ function isSourceLine(line: DiffLine): boolean {
  * @returns The new 0-based index into newLines, or null if not found.
  */
 export function relocateDiffAnchor(
-    comment: Pick<DiffComment, 'anchor' | 'selection'>,
+    comment: Pick<LineDiffComment, 'anchor' | 'selection'>,
     newLines: DiffLine[],
 ): number | null {
     const anchor = comment.anchor;

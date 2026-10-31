@@ -469,6 +469,22 @@ describe('SPA browser socket relay', () => {
         expect(readUnifiedPanelState('other').workspaceTabs).toHaveLength(0);
         h.relay.dispose();
     });
+    it('files an agent-opened page under its conversation only with chat-scoped tabs on, and keeps that owner on re-reveal', async () => {
+        const h = harness();
+        await h.relay.update('w'); h.relay.onOpen();
+        h.reveal({ workspaceId: 'w', processId: 'p', viewId: 'browser-global', url: 'https://fixture.test/' });
+        expect(readUnifiedPanelState('w').workspaceTabs[0]).not.toHaveProperty('browserChatId');
+
+        applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: true });
+        h.reveal({ workspaceId: 'w', processId: 'p', viewId: 'browser-agent', url: 'https://fixture.test/' });
+        const owned = () => readUnifiedPanelState('w').workspaceTabs.find(tab => tab.resourceId === 'browser-agent');
+        expect(owned()).toMatchObject({ browserChatId: 'p', ownerWorkspaceId: 'w' });
+        expect(readUnifiedPanelState('w').activeByScope.p).toBe(owned()!.id);
+        h.reveal({ workspaceId: 'w', processId: 'q', viewId: 'browser-agent', url: 'https://fixture.test/next' });
+        expect(owned()?.browserChatId).toBe('p');
+        expect(readUnifiedPanelState('w').workspaceTabs).toHaveLength(2);
+        h.relay.dispose();
+    });
     describe('background control', () => {
         const withRetain = (h: ReturnType<typeof harness>) => {
             const retainScope = vi.fn(async (_ref: string, _workspace: string | null) => {});

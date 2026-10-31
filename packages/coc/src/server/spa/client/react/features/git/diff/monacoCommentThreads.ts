@@ -61,6 +61,7 @@ export function placeDiffComments(input: PlaceDiffCommentsInput): CommentThreadP
             orphaned.push({ comment, status: 'orphaned' });
             continue;
         }
+        if (!comment.selection) continue; // whole-file comments are not on a line
         const placement = selectionToMonaco(comment.selection, { original, modified, anchor: comment.anchor });
         if (placement.status === 'unresolved') {
             orphaned.push({ comment, status: 'orphaned' });

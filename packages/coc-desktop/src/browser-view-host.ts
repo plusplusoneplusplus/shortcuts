@@ -125,7 +125,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron'), downloads),
             webview2,
         },
-        fileHost: new ElectronFilePreviewHost(),
+        fileHost: new ElectronFilePreviewHost(downloads),
         getDefault: () => readBrowserEngine(dataDir),
         saveDefault: engine => writeBrowserEngine(dataDir, engine),
         getPageZoom: () => readBrowserPageZoom(dataDir),

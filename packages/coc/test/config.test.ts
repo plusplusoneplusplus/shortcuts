@@ -1241,6 +1241,7 @@ timeout: 300
                 '  panelTabGroups: true',
                 '  binaryFileReveal: true',
                 '  browserTabShortcuts: false',
+                '  chatScopedBrowserTabs: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1283,6 +1284,7 @@ timeout: 300
             expect(result.resolved.browserControl.richPasteEnabled).toBe(false);
             expect(result.resolved.browserControl.backgroundEnabled).toBe(false);
             expect(result.resolved.features.browserTabShortcuts).toBe(false);
+            expect(result.resolved.features.chatScopedBrowserTabs).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
             expect(result.resolved.features.teamsOutboundCompliance).toBe(true);
@@ -1292,7 +1294,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1571,6 +1573,7 @@ timeout: 300
                     "chatFolders": false,
                     "chatHistoryPaging": false,
                     "chatProviderSwitching": false,
+                    "chatScopedBrowserTabs": false,
                     "chatStylePrompts": {},
                     "chatStyleSelector": true,
                     "commitChatLens": true,
@@ -1834,6 +1837,7 @@ timeout: 300
                   "features.chatFolders": "default",
                   "features.chatHistoryPaging": "default",
                   "features.chatProviderSwitching": "default",
+                  "features.chatScopedBrowserTabs": "default",
                   "features.chatStylePrompts": "default",
                   "features.chatStyleSelector": "default",
                   "features.commitChatLens": "default",
