@@ -4,7 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import { useNativeViewPlacement } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useNativeViewPlacement';
-import type { BrowserHistoryResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import type { BrowserDemoState, BrowserHistoryResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { resetBrowserDemosForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 
 const mocks = vi.hoisted(() => ({ bridge: undefined as DesktopBrowserBridge | undefined }));
 vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge', async importOriginal => ({
@@ -769,4 +770,32 @@ it('redacts old-host download request URLs and raw external-open errors from not
     expect(screen.getByTestId('browser-notice').textContent).not.toMatch(/secret|token|private/);
     act(() => listener({ viewId: 'view', url, ok: false, error: 'OS rejected ' + url }));
     expect(screen.getByTestId('browser-notice').textContent).not.toMatch(/secret|token|private/);
+});
+
+describe('browser demo review', () => {
+    afterEach(() => resetBrowserDemosForTest());
+
+    it('opens the review for the demo when Stop answers, in this tab only', async () => {
+        const listeners: Array<(state: BrowserDemoState) => void> = [];
+        const demoState: BrowserDemoState = { id: 'demo-1', owner: { workspaceId: 'w', processId: 'chat-1', routingRef: 'remote-workspace' },
+            status: 'recording', stepCount: 1, tabCount: 1, viewIds: ['view'], incomplete: false };
+        const command = vi.fn(async (request: { action: string }) => {
+            if (request.action === 'list') return { ok: true, drafts: [demoState] };
+            if (request.action === 'draft' || request.action === 'stop') {
+                return { ok: true, draft: { ...demoState, startedAt: 1, status: 'stopped',
+                    tabs: [{ viewId: 'view', index: 1, url: 'https://example.test/', title: 'Example' }],
+                    steps: [{ id: 1, at: 1, viewId: 'view', type: 'action', action: { kind: 'click', role: 'button', label: 'Save', url: 'https://example.test/' } }] } };
+            }
+            return { ok: true };
+        });
+        mocks.bridge!.demo = { supported: true, command: command as never, onState: callback => { listeners.push(callback); return () => undefined; } };
+        tab({ workspaceId: 'w', chatId: 'chat-1' });
+        fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+        expect(await screen.findByTestId('browser-demo-review')).toBeTruthy();
+        expect(await screen.findByText('Clicked button \'Save\'')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Close review' }));
+        expect(screen.queryByTestId('browser-demo-review')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+        expect(await screen.findByTestId('browser-demo-review')).toBeTruthy();
+    });
 });

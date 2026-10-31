@@ -7,6 +7,8 @@ import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
 import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
 import { BrowserDemoStrip } from '../../../shared/file-path/BrowserDemoStrip';
+import { BrowserDemoReview } from '../../../shared/file-path/BrowserDemoReview';
+import { useCocClient } from '../../../repos/cloneRouting';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
@@ -77,6 +79,8 @@ export function UnifiedBrowserTab({
     const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
     const [downloadsScope, setDownloadsScope] = useState<string | null>(null);
     const [historyScope, setHistoryScope] = useState<string | null>(null);
+    const [demoReview, setDemoReview] = useState<{ scope: string; id: string } | null>(null);
+    const demoClient = useCocClient(routingRef ?? workspaceId);
     const historyKey = JSON.stringify([sessionKey, viewId, tabId, historyOwnerKey]);
     const addressRef = useRef<HTMLInputElement>(null);
     const latestUrl = useRef(url);
@@ -250,7 +254,8 @@ export function UnifiedBrowserTab({
             />
             <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
             {bridge && <BrowserDemoStrip workspaceId={workspaceId} processId={chatId ?? null} routingRef={sessionKey} viewId={viewId}
-                ready={opened && Boolean(url) && page?.sourceKind !== 'file'} active={active && visible} />}
+                ready={opened && Boolean(url) && page?.sourceKind !== 'file'} active={active && visible}
+                onReview={state => setDemoReview({ scope: historyKey, id: state.id })} />}
         </div>
     );
 
@@ -271,6 +276,8 @@ export function UnifiedBrowserTab({
             {downloadsScope === historyKey && active && visible && <BrowserDownloadsPanel
                 key={historyKey} downloads={bridge?.downloads} engine={engine ?? relatedEngine}
                 desktop={!!bridge} onClose={() => setDownloadsScope(null)} />}
+            {demoReview?.scope === historyKey && active && visible && <BrowserDemoReview
+                key={demoReview.id} demoId={demoReview.id} client={demoClient} onClose={() => setDemoReview(null)} />}
             {historyScope === historyKey && active && visible && bridge?.history && onOpenHistoryUrl && <BrowserHistoryPanel
                 key={historyKey} history={bridge.history} onOpen={onOpenHistoryUrl} onClose={() => setHistoryScope(null)} />}
             {error && (

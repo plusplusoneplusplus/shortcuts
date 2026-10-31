@@ -126,6 +126,10 @@ export async function runBrowserDemoCommand(command: BrowserDemoCommand): Promis
     }
     if (result.ok) {
         if (result.state) apply(result.state);
+        // Stop answers with the draft; mark it stopped now so a review opened from this
+        // result does not see the recording state that main's state event replaces later.
+        const stopped = command.action === 'stop' ? states.get(command.id) : undefined;
+        if (stopped && stopped.status !== 'stopped') apply({ ...stopped, status: 'stopped', pauseReason: undefined });
         if ((command.action === 'discard' || command.action === 'sent') && states.delete(command.id)) notify();
     } else if (result.reason === 'not-found' && 'id' in command && states.delete(command.id)) {
         notify();
