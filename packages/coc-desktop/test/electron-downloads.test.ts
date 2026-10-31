@@ -62,7 +62,7 @@ function previewSetup(options: { admit?: boolean; aborted?: boolean; choose?: (c
     const approval = {
         signal: abort.signal,
         chooseDestination: vi.fn(() => options.choose ? options.choose({ abort, item, handle }) : destination),
-        approve: vi.fn(() => options.approve !== false), cancel: vi.fn(() => abort.abort()),
+        approve: vi.fn(() => options.approve !== false), cancel: vi.fn(() => abort.abort()), onFailure: vi.fn(),
     };
     const remove = vi.spyOn(abort.signal, 'removeEventListener');
     const result = manageElectronDownload(store as any, item as any, path.resolve('Downloads'), approval);
@@ -103,6 +103,7 @@ describe('preview native Save As handoff', () => {
         expect(item.setSavePath).not.toHaveBeenCalled();
         expect(remove).toHaveBeenCalled();
         expect(approval.cancel).toHaveBeenCalledOnce();
+        expect(approval.onFailure).not.toHaveBeenCalled();
     });
 
     it('does not show a dialog for expired admission or unavailable store capacity', () => {
@@ -174,6 +175,7 @@ describe('preview native Save As handoff', () => {
         expect(approval.cancel).toHaveBeenCalledOnce();
         expect(item.setSavePath).not.toHaveBeenCalled();
         expect(item.listenerCount('done')).toBe(0);
+        expect(approval.onFailure).toHaveBeenCalledExactlyOnceWith();
     });
 
     it('fails without retry if assigning the native destination fails after approval', () => {
@@ -186,5 +188,38 @@ describe('preview native Save As handoff', () => {
         expect(item.cancel).toHaveBeenCalledOnce();
         expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'failed' }), true);
         expect(item.listenerCount('done')).toBe(0);
+        expect(approval.onFailure).toHaveBeenCalledExactlyOnceWith();
+    });
+
+    it.each(['interrupted', 'failed'])('reports %s once before terminal lease disposal without private data', state => {
+        const { item, approval, update } = previewSetup();
+        approval.onFailure.mockImplementation(() => { expect(approval.signal.aborted).toBe(false); });
+        item.emit('updated', {}, state);
+        item.emit('done', {}, state);
+        expect(approval.onFailure).toHaveBeenCalledExactlyOnceWith();
+        expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ state }), true, undefined);
+        expect(item.listenerCount('updated')).toBe(0);
+        expect(item.listenerCount('done')).toBe(0);
+    });
+
+    it.each(['completed', 'cancelled'])('keeps %s quiet', state => {
+        const { item, approval } = previewSetup();
+        item.emit('done', {}, state);
+        expect(approval.onFailure).not.toHaveBeenCalled();
+    });
+
+    it('keeps revocation quiet and ignores late native failures after disposal', () => {
+        const { item, approval } = previewSetup({ choose: ({ abort }) => { abort.abort(); return undefined; } });
+        item.emit('done', {}, 'interrupted');
+        expect(approval.onFailure).not.toHaveBeenCalled();
+    });
+
+    it('preserves terminal state and cleanup if failure feedback throws', () => {
+        const { item, approval, update } = previewSetup();
+        approval.onFailure.mockImplementation(() => { throw new Error('owner unavailable'); });
+        expect(() => item.emit('done', {}, 'interrupted')).not.toThrow();
+        expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'interrupted' }), true, undefined);
+        expect(item.listenerCount('done')).toBe(0);
+        expect(item.cancel).not.toHaveBeenCalled();
     });
 });

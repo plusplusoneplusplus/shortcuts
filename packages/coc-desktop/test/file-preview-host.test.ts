@@ -523,6 +523,53 @@ describe('HTML session native download routing', () => {
         await host.dispose();
     });
 
+    it('sends safe transfer failure feedback only to the captured preview owner', async () => {
+        const first = await downloadable(store);
+        mocks.owner = makeOwner(10);
+        mocks.owners.set(1, mocks.owner);
+        mocks.guest = makeGuest(mocks.owner, 20);
+        const second = await downloadable(store);
+        let failure!: () => void;
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            expect(approval.approve()).toBe(true);
+            failure = approval.onFailure;
+            return true;
+        });
+        click(first.guest);
+        request(first.guest);
+        failure();
+        expect(first.sink.download).toHaveBeenCalledExactlyOnceWith({
+            viewId: 'html-page:one', url: 'Local or private source', ok: false,
+            error: 'Unable to save the download. Try Download again.',
+        });
+        expect(second.sink.download).not.toHaveBeenCalled();
+        await first.host.dispose();
+        await second.host.dispose();
+    });
+
+    it.each(['close', 'reload', 'document', 'hide', 'owner', 'guest', 'reparent', 'unregistered'])('discards a transfer failure after %s invalidates its source', async change => {
+        const { host, view, sink, guest, owner, request: source } = await downloadable(store);
+        let failure!: () => void;
+        mocks.manage.mockImplementation((_store, _item, _directory, approval) => {
+            expect(approval.approve()).toBe(true);
+            failure = approval.onFailure;
+            return true;
+        });
+        click();
+        request();
+        if (change === 'close') await view.close();
+        if (change === 'reload') await view.nav('reload');
+        if (change === 'document') guest.emit('did-navigate', {}, htmlPageFileUrl(source.path));
+        if (change === 'hide') await view.setBounds(null);
+        if (change === 'owner') owner.isDestroyed.mockReturnValue(true);
+        if (change === 'guest') guest.isDestroyed.mockReturnValue(true);
+        if (change === 'reparent') guest.hostWebContents = makeOwner(99);
+        if (change === 'unregistered') mocks.trusted = false;
+        failure();
+        expect(sink.download).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+
     it('preserves approved transfers after source closure and removes its session listener on disposal', async () => {
         const { host, view, request: first } = await downloadable(store);
         const second = await host.create(first, { state: vi.fn() } as any);

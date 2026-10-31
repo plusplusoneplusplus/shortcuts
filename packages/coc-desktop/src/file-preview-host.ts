@@ -249,8 +249,10 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
         const approval = guest && this.requestDownload(guest, item.getURL());
         // Reject before Chromium can show its default dialog or choose a path.
         if (!entry || !approval) { event.preventDefault(); return; }
+        const document = entry.downloads;
         const fail = (error: string) => {
-            if (!entry.closed && !approval.signal.aborted && entry.shown && !entry.owner.isDestroyed()
+            if (!entry.closed && entry.downloads === document && !approval.signal.aborted && entry.shown
+                && guest && !guest.isDestroyed() && guest.hostWebContents === entry.owner && !entry.owner.isDestroyed()
                 && isBrowserEmbedder(entry.owner)) {
                 entry.sink.download({ viewId: entry.viewId, url: 'Local or private source', ok: false, error });
             }
@@ -265,6 +267,7 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
         try {
             if (manageElectronDownload(this.downloads, item, app.getPath('downloads'), {
                 ...approval,
+                onFailure: () => fail('Unable to save the download. Try Download again.'),
                 chooseDestination: defaultPath => dialog.showSaveDialogSync(owner, {
                     title: 'Save As', defaultPath,
                     // Native overwrite confirmation; Linux portals need the explicit hint.

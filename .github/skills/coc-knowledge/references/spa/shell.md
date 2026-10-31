@@ -327,7 +327,11 @@ Its optional main-only approval handoff admits the handle before a synchronous
 native destination chooser, then revalidates the captured lease before `setSavePath`
 inside `will-download`. Pending revocation cancels the item; approved transfers
 detach from the source signal. Terminal disposal retires authorization and listeners.
-`file-preview-host.ts` supplies the preview lease and native chooser;
+The optional payload-free failure callback runs once before terminal disposal;
+cancellation and completion stay quiet. `file-preview-host.ts` supplies the preview
+lease, native chooser and a safe failure notice bound to the captured live document,
+guest and registered owner. Hidden, closed or replaced sources discard notices;
+their approved transfers still report status through the shared Downloads store.
 `browser-view-host.ts` supplies the shared store to both Electron hosts.
 Pause/resume require live engine capability, and Open/Show require a completed,
 unchanged regular file. Clear/remove affect records only. Source navigation or

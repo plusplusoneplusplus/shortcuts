@@ -9,12 +9,20 @@ export interface ElectronDownloadApproval {
     chooseDestination(defaultPath: string): string | undefined;
     approve(): boolean;
     cancel(): void;
+    /** Payload-free failure notice for the captured source owner. Cancellation stays quiet. */
+    onFailure?(): void;
 }
 
 /** Keep Chromium's original request and native Save dialog. Never fetch/replay the URL. */
 export function manageElectronDownload(store: BrowserDownloadStore, item: DownloadItem, downloadsDirectory: string, approval?: ElectronDownloadApproval): boolean {
     let retired = false;
     let approved = !approval;
+    let failureReported = false;
+    const reportFailure = () => {
+        if (failureReported) return;
+        failureReported = true;
+        try { approval?.onFailure?.(); } catch { /* feedback must not affect the native transfer */ }
+    };
     const dispose = () => {
         retired = true;
         item.removeListener('updated', updated);
@@ -32,8 +40,14 @@ export function manageElectronDownload(store: BrowserDownloadStore, item: Downlo
     });
     const publish = (state: string, final = false) => {
         if (retired) { return; }
-        try { admitted!.update(sample(state, final), final, final && state === 'completed' ? item.getSavePath() : undefined); }
+        try {
+            const progress = sample(state, final);
+            // Terminal store updates synchronously dispose the lease, so notify first.
+            if (progress.state === 'failed' || progress.state === 'interrupted') reportFailure();
+            admitted!.update(progress, final, final && state === 'completed' ? item.getSavePath() : undefined);
+        }
         catch {
+            reportFailure();
             admitted!.update({ state: 'failed', received: 0, total: 0, canPause: false, canResume: false }, true);
             try { item.cancel(); } catch { /* native handle may already be destroyed */ }
         }
@@ -75,6 +89,7 @@ export function manageElectronDownload(store: BrowserDownloadStore, item: Downlo
         }
         publish(item.getState());
     } catch {
+        reportFailure();
         admitted.update({ state: 'failed', received: 0, total: 0, canPause: false, canResume: false }, true);
         try { item.cancel(); } catch { /* no replay after an unknown outcome */ }
     }
