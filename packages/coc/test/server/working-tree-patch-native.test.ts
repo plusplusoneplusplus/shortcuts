@@ -10,6 +10,9 @@ import type { Route } from '../../src/server/types';
 import { createRouter } from '../../src/server/shared/router';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
+import { compileReviewContentQuery } from '../../src/server/spa/client/react/features/git/diff/reviewContentSearch';
+import { computeDiffLines } from '../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import { createDiffLineIndexResolver } from '../../src/server/spa/client/react/features/git/diff/diffCoords';
 
 const roots: string[] = [];
 const servers: http.Server[] = [];
@@ -67,6 +70,7 @@ describe('production working-tree patch routes with real Rust/Git', () => {
                 expect(result).toEqual({ status: 200, body: { diff: expected, path: '[ab].txt' } });
                 expect(result.body.diff).not.toContain('+wrong glob');
                 expect(result.body.diff).toContain(stage === 'staged' ? `+stage${index}` : `+disk${index}`);
+                expect(result.body.diff).toContain(stage === 'staged' ? (index === 0 ? '-one' : '-two') : `-stage${index}`);
             });
         }
         fs.writeFileSync(path.join(repos[0].root, '[ab].txt'), 'fresh\n');
@@ -74,6 +78,36 @@ describe('production working-tree patch routes with real Rust/Git', () => {
         expect(fresh.body.diff).toContain('+fresh');
         const missing = await request('/api/workspaces/0/git/changes/files/missing/diff');
         expect(missing).toEqual({ status: 200, body: { diff: '', path: 'missing' } });
+    });
+
+    it('aligns full-content search coordinates with index/disk patch lines in a partially-staged repo', async () => {
+        const repo = fixture('seed');
+        const name = 'coordinates.txt';
+        fs.writeFileSync(path.join(repo.root, name), 'HEAD-only\nunchanged needle\n');
+        git(repo.root, 'add', name);
+        git(repo.root, 'commit', '-qm', 'coordinates');
+        fs.writeFileSync(path.join(repo.root, name), 'index-prefix\nindex-extra\nunchanged needle\n');
+        git(repo.root, 'add', name);
+        fs.writeFileSync(path.join(repo.root, name), 'disk-prefix\nunchanged needle\n');
+        const request = await serve([{ id: 'one', rootPath: repo.root }]);
+        const prefix = `/api/workspaces/one/git/changes/files/${name}`;
+        const [{ body: staged }, { body: contents }, { body: patch }] = await Promise.all([
+            request(`${prefix}/content?stage=staged`),
+            request(`${prefix}/content?stage=unstaged`),
+            request(`${prefix}/diff?stage=unstaged`),
+        ]);
+        expect(staged.base.content).toBe('HEAD-only\nunchanged needle\n');
+        expect(staged.head.content).toBe('index-prefix\nindex-extra\nunchanged needle\n');
+        expect(contents.base).toMatchObject({ content: staged.head.content, ref: 'INDEX', exists: true });
+        expect(contents.head).toMatchObject({ content: 'disk-prefix\nunchanged needle\n', ref: 'WORKTREE', exists: true });
+        expect(patch.diff).toContain('-index-prefix\n-index-extra\n+disk-prefix');
+        expect(patch.diff).not.toContain('HEAD-only');
+        const query = compileReviewContentQuery('needle', { caseSensitive: false, wholeWord: false, regex: false });
+        const matches = query.search!({ old: contents.base.content, new: contents.head.content });
+        expect(matches.map(match => [match.side, match.line, match.startColumn])).toEqual([['old', 3, 11], ['new', 2, 11]]);
+        const resolveLine = createDiffLineIndexResolver(computeDiffLines(patch.diff.split('\n')));
+        expect(resolveLine('old', matches[0].line)).toBe(resolveLine('new', matches[1].line));
+        expect(resolveLine('old', matches[0].line)).toBeDefined();
     });
 
     it('preserves full context, native truncation and full=true wire contracts', async () => {

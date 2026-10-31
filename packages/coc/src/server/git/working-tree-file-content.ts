@@ -1,7 +1,7 @@
 /**
  * Both full-text sides of one working-tree file, for the Monaco diff viewer.
  *
- * - `unstaged`  → base = `HEAD:<path>`, head = the file on disk
+ * - `unstaged`  → base = the index (`:<path>`), head = the file on disk
  * - `staged`    → base = `HEAD:<path>`, head = the index (`:<path>`)
  * - `untracked` → base = nothing,       head = the file on disk
  *
@@ -87,7 +87,7 @@ export interface WorkingTreeContentRequest {
     requestPath: string;
     /** Absolute path of the file (the change list's `filePath`). */
     absPath: string;
-    /** Absolute path the base side is read from — differs from `absPath` for a staged rename. */
+    /** Absolute path the base side is read from — differs from `absPath` for a rename. */
     baseAbsPath: string;
     repoRoot: string;
     stage: WorkingTreeContentStage;
@@ -140,6 +140,9 @@ async function resolveSources(io: WorkingTreeContentIO, req: WorkingTreeContentR
     let base: SideSource;
     if (req.stage === 'untracked') {
         base = { kind: 'missing', ref: '' };
+    } else if (req.stage === 'unstaged') {
+        const entry = await io.indexEntry(toRepoRelative(req.repoRoot, req.baseAbsPath));
+        base = entry ? { kind: 'blob', ref: INDEX_REF, entry } : { kind: 'missing', ref: INDEX_REF };
     } else {
         const headSha = await io.resolveHead();
         const entry = headSha ? await io.headEntry(toRepoRelative(req.repoRoot, req.baseAbsPath)) : null;

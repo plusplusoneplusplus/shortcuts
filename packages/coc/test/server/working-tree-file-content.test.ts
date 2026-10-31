@@ -74,15 +74,13 @@ afterEach(() => {
 });
 
 describe('stage resolution', () => {
-    it('unstaged: base is HEAD, head is disk', async () => {
+    it('unstaged: base is the index, head is disk', async () => {
         write('src/foo.ts', 'const a = 1;\n');
         commitAll();
         write('src/foo.ts', 'const a = 2;\n');
 
         const result = await load('src/foo.ts', 'unstaged');
-        const headSha = git('rev-parse', 'HEAD').trim();
-
-        expect(result.base).toEqual({ content: 'const a = 1;\n', ref: headSha, exists: true });
+        expect(result.base).toEqual({ content: 'const a = 1;\n', ref: 'INDEX', exists: true });
         expect(result.head).toEqual({ content: 'const a = 2;\n', ref: 'WORKTREE', exists: true });
         expect(result).toMatchObject({ path: 'src/foo.ts', fileName: 'foo.ts', language: 'ts', binary: false, tooLarge: false });
     });
@@ -99,7 +97,43 @@ describe('stage resolution', () => {
         expect(staged.head).toEqual({ content: 'v2\n', ref: 'INDEX', exists: true });
 
         const unstaged = await load('a.txt', 'unstaged');
+        expect(unstaged.base).toEqual({ content: 'v2\n', ref: 'INDEX', exists: true });
         expect(unstaged.head.content).toBe('v3 on disk only\n');
+    });
+
+    it('unstaged added file compares staged new content with later disk edits', async () => {
+        write('seed.txt', 'seed\n');
+        commitAll();
+        write('added.ts', 'index needle\n');
+        git('add', 'added.ts');
+        write('added.ts', 'disk needle\n');
+
+        const staged = await load('added.ts', 'staged');
+        const unstaged = await load('added.ts', 'unstaged');
+        expect(staged.base.exists).toBe(false);
+        expect(unstaged.base).toEqual({ content: 'index needle\n', ref: 'INDEX', exists: true });
+        expect(unstaged.head).toEqual({ content: 'disk needle\n', ref: 'WORKTREE', exists: true });
+    });
+
+    it('unstaged content in an unborn repository still reads the index', async () => {
+        write('first.txt', 'index needle\n');
+        git('add', 'first.txt');
+        write('first.txt', 'disk needle\n');
+
+        const result = await load('first.txt', 'unstaged');
+        expect(result.base).toEqual({ content: 'index needle\n', ref: 'INDEX', exists: true });
+        expect(result.head).toEqual({ content: 'disk needle\n', ref: 'WORKTREE', exists: true });
+    });
+
+    it('a missing index side is absent even when HEAD contains the path', async () => {
+        write('removed.txt', 'HEAD needle\n');
+        commitAll();
+        git('rm', '--cached', '-q', 'removed.txt');
+        write('removed.txt', 'disk needle\n');
+
+        const result = await load('removed.txt', 'unstaged');
+        expect(result.base).toEqual({ content: '', ref: 'INDEX', exists: false });
+        expect(result.head).toEqual({ content: 'disk needle\n', ref: 'WORKTREE', exists: true });
     });
 
     it('untracked: base is empty and missing, head is disk', async () => {
@@ -128,10 +162,12 @@ describe('stage resolution', () => {
     it('unstaged deleted file has no head', async () => {
         write('gone.txt', 'bye\n');
         commitAll();
+        write('gone.txt', 'staged goodbye\n');
+        git('add', 'gone.txt');
         fs.unlinkSync(path.join(repo, 'gone.txt'));
 
         const result = await load('gone.txt', 'unstaged');
-        expect(result.base).toMatchObject({ content: 'bye\n', exists: true });
+        expect(result.base).toEqual({ content: 'staged goodbye\n', ref: 'INDEX', exists: true });
         expect(result.head).toEqual({ content: '', ref: 'WORKTREE', exists: false });
     });
 
@@ -157,6 +193,36 @@ describe('stage resolution', () => {
         expect(result.base).toMatchObject({ content: 'same body\n', exists: true });
         expect(result.head).toMatchObject({ content: 'same body\nplus one\n', exists: true, ref: 'INDEX' });
         expect(result.path).toBe('new/name.ts');
+    });
+
+    it('unstaged edits after a staged rename read the index at the new path', async () => {
+        write('old.ts', 'HEAD needle\n');
+        commitAll();
+        git('mv', 'old.ts', 'new.ts');
+        write('new.ts', 'index needle\n');
+        git('add', 'new.ts');
+        write('new.ts', 'disk needle\n');
+
+        const staged = await load('new.ts', 'staged', 'old.ts');
+        const unstaged = await load('new.ts', 'unstaged');
+        expect(staged.base.content).toBe('HEAD needle\n');
+        expect(staged.head.content).toBe('index needle\n');
+        expect(unstaged.base).toEqual({ content: 'index needle\n', ref: 'INDEX', exists: true });
+        expect(unstaged.head).toEqual({ content: 'disk needle\n', ref: 'WORKTREE', exists: true });
+    });
+
+    it('an unstaged rename reads its old-side bytes from the original index path', async () => {
+        write('old.ts', 'HEAD needle\n');
+        commitAll();
+        write('old.ts', 'index needle\n');
+        git('add', 'old.ts');
+        fs.renameSync(path.join(repo, 'old.ts'), path.join(repo, 'new.ts'));
+        git('add', '-N', 'new.ts');
+
+        expect(git('diff', '-M', '--', 'old.ts', 'new.ts')).toContain('rename from old.ts');
+        const result = await load('new.ts', 'unstaged', 'old.ts');
+        expect(result.base).toEqual({ content: 'index needle\n', ref: 'INDEX', exists: true });
+        expect(result.head).toEqual({ content: 'index needle\n', ref: 'WORKTREE', exists: true });
     });
 
     it('a repository with no commits has a missing base, not an error', async () => {
@@ -197,6 +263,7 @@ describe('byte fidelity', () => {
         expect(staged.head.content).toBe('one\r\ntwo\r\nthree\r\n');
 
         const unstaged = await load('crlf.txt', 'unstaged');
+        expect(unstaged.base.content).toBe('one\r\ntwo\r\nthree\r\n');
         expect(unstaged.head.content).toBe('one\r\n');
     });
 
@@ -212,6 +279,7 @@ describe('byte fidelity', () => {
         expect(staged.head.content).toBe('no newline\n');
 
         const unstaged = await load('t.txt', 'unstaged');
+        expect(unstaged.base.content).toBe('no newline\n');
         expect(unstaged.head.content).toBe('\n\n  padded  \n\n');
     });
 
@@ -430,6 +498,29 @@ describe('caching', () => {
         const afterCommit = await loadWorkingTreeFileContent(io, req('s.txt', 'staged'), cache);
         expect(afterCommit.base.content).toBe('v3\n');
         expect(afterCommit.head.content).toBe('v4\n');
+    });
+
+    it('invalidates the unstaged base on re-staging without a disk metadata change', async () => {
+        write('s.txt', 'HEAD needle\n');
+        commitAll();
+        write('s.txt', 'index needle\n');
+        git('add', 's.txt');
+        write('s.txt', 'disk needle\n');
+        const service = new GitCacheService();
+        const cache = { service, workspaceId: 'ws1' };
+        const { io, reads } = countingIO();
+        const disk = await io.statDisk(path.join(repo, 's.txt'));
+        io.statDisk = async () => disk;
+
+        const before = await loadWorkingTreeFileContent(io, req('s.txt', 'unstaged'), cache);
+        expect(before.base.content).toBe('index needle\n');
+        expect(reads()).toBe(2);
+        git('add', 's.txt');
+        const after = await loadWorkingTreeFileContent(io, req('s.txt', 'unstaged'), cache);
+        expect(after.base.content).toBe('disk needle\n');
+        expect(after.head.content).toBe('disk needle\n');
+        expect(reads()).toBe(4);
+        expect(service.size).toBe(1);
     });
 
     it('keeps workspaces and stages in separate entries', async () => {

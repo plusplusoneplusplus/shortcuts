@@ -89,7 +89,10 @@ header's all-diffs button opens the `working-tree-all` view
 (`WorkingTreeAllFilesDiff`, deep link `working-changes`): the shared `ReviewFiles`
 navigator with one full `WorkingTreeFileDiff`. Stage labels and repository/stage/path
 selection IDs separate partially staged paths in every layout. Untracked text renders
-against an empty base; binary/oversized files retain the preview. The full-diff action
+against an empty base; binary/oversized files retain the preview. Paired content
+and Classic patches compare HEAD/index for staged files and index/disk for unstaged
+files. Rename base paths follow the requested stage, so staged rename metadata
+cannot redirect an unstaged index read to the old HEAD path. The full-diff action
 opens the existing single-file route. Owner/endpoint changes replace the host; refresh
 retains dirty buffers, including files removed from the latest change list. Internal
 navigation uses `useDirtyDetailGuard`; mutable changes omit viewed-state controls.
