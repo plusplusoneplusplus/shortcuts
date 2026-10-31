@@ -40,6 +40,7 @@ export class BrowserDemoTabCapture {
     private generation = 0;
     private enabled = true;
     private discardQueued = false;
+    private enableRevision = 0;
     private readonly docs = new Map<string, string>();
     private readonly reportedFrames = new Set<string>();
     private readonly source = buildBrowserDemoCaptureSource();
@@ -57,7 +58,7 @@ export class BrowserDemoTabCapture {
             if (typeof added?.identifier === 'string') this.scriptId = added.identifier;
             const frames = await this.frames(cdp);
             const main = frames.find(frame => frame.main);
-            if (!main || !await this.drainFrame(cdp, main, true, generation)) throw new Error('The recorder did not answer in the page.');
+            if (!main || !await this.drainFrame(cdp, main, this.enabled, generation)) throw new Error('The recorder did not answer in the page.');
         } catch (error) {
             await this.stop(false);
             if (error instanceof BrowserDemoUnavailableError) throw error;
@@ -73,7 +74,10 @@ export class BrowserDemoTabCapture {
 
     /** Paused documents stop queueing; anything queued meanwhile is drained and dropped. */
     setEnabled(enabled: boolean): void {
-        if (this.enabled !== enabled) this.discardQueued = true;
+        if (this.enabled !== enabled) {
+            this.discardQueued = true;
+            this.enableRevision++;
+        }
         this.enabled = enabled;
     }
 
@@ -104,23 +108,24 @@ export class BrowserDemoTabCapture {
     }
 
     private async collect(cdp: Cdp, generation: number): Promise<void> {
+        const revision = this.enableRevision;
         if (this.discardQueued) {
             this.discardQueued = false;
-            await this.pollFrames(cdp, generation, false);
+            await this.pollFrames(cdp, generation, false, revision);
         }
-        await this.pollFrames(cdp, generation);
+        await this.pollFrames(cdp, generation, this.enabled, revision);
     }
 
-    private async pollFrames(cdp: Cdp, generation: number, enabled: boolean = this.enabled): Promise<void> {
+    private async pollFrames(cdp: Cdp, generation: number, enabled: boolean = this.enabled, revision = this.enableRevision): Promise<void> {
         let frames: Frame[];
         try { frames = await this.frames(cdp); } catch {
-            if (generation === this.generation) this.sink.gap('capture-failed');
+            if (generation === this.generation && revision === this.enableRevision) this.sink.gap('capture-failed');
             return;
         }
         for (const frame of frames) {
-            if (generation !== this.generation) return;
-            try { await this.drainFrame(cdp, frame, enabled, generation); } catch {
-                if (generation !== this.generation) return;
+            if (generation !== this.generation || revision !== this.enableRevision) return;
+            try { await this.drainFrame(cdp, frame, enabled, generation, true, revision); } catch {
+                if (generation !== this.generation || revision !== this.enableRevision) return;
                 if (frame.main) this.sink.gap('capture-failed');
                 else if (!this.reportedFrames.has(frame.id)) {
                     this.reportedFrames.add(frame.id);
@@ -152,7 +157,7 @@ export class BrowserDemoTabCapture {
     }
 
     /** Returns false when the frame's world never answers. */
-    private async drainFrame(cdp: Cdp, frame: Frame, enabled: boolean, generation: number, deliver = true): Promise<boolean> {
+    private async drainFrame(cdp: Cdp, frame: Frame, enabled: boolean, generation: number, deliver = true, revision = this.enableRevision): Promise<boolean> {
         const world = await cdp('Page.createIsolatedWorld', { frameId: frame.id, worldName: BROWSER_DEMO_WORLD }) as { executionContextId?: unknown } | undefined;
         const contextId = world?.executionContextId;
         if (typeof contextId !== 'number') throw new Error('No isolated world for the frame.');
@@ -165,13 +170,13 @@ export class BrowserDemoTabCapture {
         const lostScript = value === null || value === undefined;
         if (lostScript) {
             // A document this tab already drained lost its script: actions there may be missing.
-            if (this.docs.has(frame.id) && generation === this.generation && deliver) this.sink.gap('capture-failed');
+            if (this.docs.has(frame.id) && generation === this.generation && revision === this.enableRevision && deliver) this.sink.gap('capture-failed');
             await evaluate(this.source);
             value = await evaluate(drainExpression(enabled));
         }
         const drained = parseDrain(value);
         if (!drained) throw new Error('The recorder returned an invalid reply.');
-        if (generation !== this.generation || !deliver) return true;
+        if (generation !== this.generation || revision !== this.enableRevision || !deliver) return true;
         if (enabled && !lostScript && this.docs.has(frame.id) && this.docs.get(frame.id) !== drained.doc) {
             this.sink.gap('capture-failed');
         }

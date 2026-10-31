@@ -140,6 +140,7 @@ export class BrowserDemoRecorders {
                 else demo.session.closeTab(viewId);
             }
         } else for (const capture of demo.captures.values()) capture.setEnabled(true);
+        if (this.demos.get(demo.session.id) !== demo) throw new BrowserDemoError('not-found', 'The demo ended while resuming capture.');
         if (this.demos.get(demo.session.id) === demo && !demo.session.viewIds().length) return this.stop(ownerId, id).then(() => this.state(demo));
         return this.emit(demo);
     }
@@ -193,6 +194,7 @@ export class BrowserDemoRecorders {
         const source = this.source(ownerId, viewId, demo.session.owner);
         if (!demo.session.addTab(viewId, source.view.snapshot(), undefined, true)) return this.emit(demo);
         await this.capture(demo, viewId, source).catch(() => {});
+        if (this.demos.get(demo.session.id) !== demo) throw new BrowserDemoError('not-found', 'The demo ended while adding this tab.');
         return this.emit(demo);
     }
 
@@ -310,6 +312,7 @@ export class BrowserDemoRecorders {
         if (demo.stopping || demo.session.state === 'stopped') return;
         if (!demo.session.addTab(viewId, source.view.snapshot(), openerViewId)) { this.emit(demo); return; }
         await this.capture(demo, viewId, source).catch(() => {});
+        if (this.demos.get(demo.session.id) !== demo) return;
         if (demo.session.state === 'paused') demo.captures.get(viewId)?.setEnabled(false);
         this.emit(demo);
     }
@@ -335,8 +338,17 @@ export class BrowserDemoRecorders {
         };
         const capture = this.options.capture ? this.options.capture(source.view, sink) : new BrowserDemoTabCapture(source.view, sink);
         demo.captures.set(viewId, capture);
-        try { await capture.start(); } catch (error) {
+        if (demo.session.state === 'paused') capture.setEnabled(false);
+        try {
+            await capture.start();
+            if (this.demos.get(demo.session.id) !== demo || !demo.session.hasTab(viewId)) {
+                if (demo.captures.get(viewId) === capture) demo.captures.delete(viewId);
+                await capture.stop(false);
+                throw new BrowserDemoError('not-found', 'The demo or tab ended while capture was starting.');
+            }
+        } catch (error) {
             if (demo.captures.get(viewId) === capture) demo.captures.delete(viewId);
+            if (error instanceof BrowserDemoError) throw error;
             if (required) {
                 throw new BrowserDemoError(error instanceof BrowserDemoUnavailableError ? error.reason : 'handshake-failed',
                     error instanceof Error ? error.message : String(error));

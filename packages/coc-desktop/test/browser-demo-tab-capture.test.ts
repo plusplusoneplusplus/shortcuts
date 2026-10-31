@@ -191,6 +191,40 @@ describe('BrowserDemoTabCapture', () => {
         await capture.stop();
     });
 
+    it('revokes an in-flight poll that crosses a pause/resume boundary', async () => {
+        const { view } = fakeView();
+        const out = sink();
+        const capture = new BrowserDemoTabCapture(view, out.target, 60_000);
+        await capture.start();
+        let entered!: () => void;
+        let finish!: () => void;
+        const began = new Promise<void>(resolve => { entered = resolve; });
+        const wait = new Promise<void>(resolve => { finish = resolve; });
+        const cdp = view.cdp;
+        let held = true;
+        view.cdp = async (method, params = {}) => {
+            if (method === 'Page.createIsolatedWorld' && held) {
+                held = false;
+                entered();
+                await wait;
+            }
+            return cdp(method, params);
+        };
+        const polling = capture.poll();
+        await began;
+        capture.setEnabled(false);
+        document.querySelector('button')!.click();
+        capture.setEnabled(true);
+        finish();
+        await polling;
+        expect(out.actions).toEqual([]);
+        await capture.poll();
+        document.querySelector('button')!.click();
+        await capture.poll();
+        expect(out.actions).toHaveLength(1);
+        await capture.stop();
+    });
+
     it('drops actions while disabled', async () => {
         const { view } = fakeView();
         const out = sink();

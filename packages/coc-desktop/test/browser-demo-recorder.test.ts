@@ -8,7 +8,7 @@ const click: BrowserDemoAction = { kind: 'click', role: 'button', label: 'Save',
 
 interface FakeCapture extends BrowserDemoCapture { sink: BrowserDemoTabSink; enabled: boolean; stopped?: boolean; flushed?: boolean }
 
-function harness(options: { failStart?: (viewId: string) => Error | undefined; pendingTabMs?: number; startWait?: Promise<void> } = {}) {
+function harness(options: { failStart?: (viewId: string) => Error | undefined; pendingTabMs?: number; startWait?: Promise<void> | ((viewId: string) => Promise<void>) } = {}) {
     const tabs = new Map<string, BrowserDemoTabSource & { ownerId: number }>();
     const captures = new Map<string, FakeCapture>();
     const send = vi.fn();
@@ -27,7 +27,7 @@ function harness(options: { failStart?: (viewId: string) => Error | undefined; p
             const viewId = viewOf.get(view)!;
             const capture: FakeCapture = {
                 sink, enabled: true,
-                start: async () => { await options.startWait; const error = options.failStart?.(viewId); if (error) throw error; },
+                start: async () => { await (typeof options.startWait === 'function' ? options.startWait(viewId) : options.startWait); const error = options.failStart?.(viewId); if (error) throw error; },
                 setEnabled: enabled => { capture.enabled = enabled; },
                 stop: async flush => { capture.stopped = true; capture.flushed = flush; },
             };
@@ -121,6 +121,35 @@ describe('BrowserDemoRecorders start and ownership', () => {
 });
 
 describe('BrowserDemoRecorders capture lifecycle', () => {
+    it('starts an explicitly added paused tab with capture disabled', async () => {
+        const h = harness();
+        h.addTab('t1');
+        h.addTab('t2');
+        const { id } = await h.recorders.start(1, owner, 't1');
+        h.recorders.pause(1, id);
+        await h.recorders.addTab(1, id, 't2');
+        expect(h.captures.get('t2')!.enabled).toBe(false);
+        await h.recorders.release(1, id);
+    });
+
+    it.each(['explicit', 'descendant'] as const)('cannot republish a discarded demo after a late %s tab handshake', async kind => {
+        let finish!: () => void;
+        const wait = new Promise<void>(resolve => { finish = resolve; });
+        const h = harness({ startWait: viewId => viewId === 't2' ? wait : Promise.resolve() });
+        h.addTab('t1');
+        h.addTab('t2');
+        const { id } = await h.recorders.start(1, owner, 't1');
+        if (kind === 'descendant') h.recorders.reserveChild(1, 't1', 't2');
+        const starting = kind === 'explicit' ? h.recorders.addTab(1, id, 't2') : h.recorders.tabReady(1, 't2');
+        await h.recorders.release(1, id);
+        finish();
+        if (kind === 'explicit') await expect(starting).rejects.toMatchObject({ reason: 'not-found' });
+        else await starting;
+        expect(h.states().at(-1)).toMatchObject({ ended: 'discarded' });
+        expect(h.recorders.unsent()).toEqual([]);
+        expect(h.captures.get('t2')!.stopped).toBe(true);
+    });
+
     it('rejects mutations while Stop drains its captures', async () => {
         const h = harness();
         h.addTab('t1');
