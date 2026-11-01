@@ -163,7 +163,8 @@ export function Router() {
                     // sub-tab key differs by layout mode (`'activity'` in classic).
                     const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab() : rawTab;
                     e.preventDefault();
-                    dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+                    // Explorer routes belong to the resource panel; keep the chat workspace visible.
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: tab === 'explorer' ? resolveChatSubTab() : tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId);
                 }

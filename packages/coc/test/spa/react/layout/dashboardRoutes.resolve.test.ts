@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { appReducer, type AppContextState } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import {
     resolveDashboardRoute,
     applyRouteEffects,
@@ -35,6 +36,32 @@ function makeCtx(overrides: Partial<RouteContext> = {}): RouteContext {
 const appActions = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'app' }> => e.kind === 'app').map((e) => e.action);
 const queueActions = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'queue' }> => e.kind === 'queue').map((e) => e.action);
 const navigations = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'navigate' }> => e.kind === 'navigate');
+
+describe('Explorer routes keep the chat workspace visible', () => {
+    it.each(['ws1', 'remote:server-a:ws1'])('restores %s Explorer after switching repos without hiding chats', id => {
+        let state = { selectedRepoId: null, activeRepoSubTab: 'chats', repoRouteState: {},
+            repoTabState: {}, notePathState: {} } as unknown as AppContextState;
+        const visit = (hash: string) => {
+            const resolution = resolveDashboardRoute(hash, makeCtx({
+                selectedRepoId: state.selectedRepoId,
+                repoRouteState: state.repoRouteState, repoTabState: state.repoTabState,
+            }));
+            for (const action of appActions(resolution)) state = appReducer(state, action);
+            return resolution;
+        };
+        const suffix = '/explorer/src%2Findex.ts';
+        visit('#repos/' + encodeURIComponent(id) + suffix);
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedExplorerPath).toBe('src/index.ts');
+        visit('#repos/other/chats');
+        const restored = visit('#repos/' + encodeURIComponent(id));
+        expect(navigations(restored)).toContainEqual({ kind: 'navigate',
+            hash: '#repos/' + encodeURIComponent(id) + suffix, mode: 'replaceState' });
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedRepoId).toBe(id);
+        expect(state.selectedExplorerPath).toBe('src/index.ts');
+    });
+});
 
 // ── Top-level tab activation ──────────────────────────────────────────────────
 

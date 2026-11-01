@@ -1,4 +1,5 @@
 import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen';
+import { decodeSegment, tokenizeHash } from '../../../layout/routePath';
 /**
  * UnifiedRightPanel — the workspace's one and only right-side surface.
  *
@@ -1351,6 +1352,39 @@ export function UnifiedRightPanel({
         ) => openFileForOwner(file, options, target, targetRoutingRef, targetLabel),
         [openFileForOwner, target, targetRoutingRef, targetLabel],
     );
+    // Retained Explorer links address this panel, never a standalone page that
+    // replaces the chat list. Read on mount too, so repo switches and reloads
+    // restore the owning panel even if the hash event precedes its subscription.
+    const explorerRouteRef = useRef<string | null>(null);
+    useEffect(() => {
+        const restoreExplorer = () => {
+            const { segments } = tokenizeHash(location.hash);
+            if (segments[0] !== 'repos' || !segments[1] || segments[2] !== 'explorer'
+                || decodeSegment(segments[1]) !== (routingRef ?? workspaceId)
+                || isRepoGroupWorkspaceId(workspaceId)) {
+                explorerRouteRef.current = null;
+                return;
+            }
+            if (explorerRouteRef.current === location.hash) return;
+            explorerRouteRef.current = location.hash;
+            showExplorer();
+            setWorkspaceDockOpen(workspaceId, true);
+            const path = decodeSegment(segments.slice(3).join('/'));
+            if (!path) return;
+            const name = path.split('/').pop() ?? '';
+            setTreeRevealRequest(prev => ({
+                ownerWorkspaceId: workspaceId, path,
+                directory: !name.includes('.'), nonce: (prev?.nonce ?? 0) + 1,
+            }));
+            // Match the Explorer's existing deep-link file/directory convention.
+            if (name.includes('.')) {
+                openFileForOwner({ path, name }, { preview: false }, workspaceId, routingRef ?? null);
+            }
+        };
+        restoreExplorer();
+        window.addEventListener('hashchange', restoreExplorer);
+        return () => window.removeEventListener('hashchange', restoreExplorer);
+    }, [workspaceId, routingRef, showExplorer, openFileForOwner]);
     const openBreadcrumbFile = useCallback((file: { path: string; name: string }) => {
         if (!active || active.kind !== 'file') {
             return;

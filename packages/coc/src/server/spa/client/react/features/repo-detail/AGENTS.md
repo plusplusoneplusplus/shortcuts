@@ -5,6 +5,8 @@ TopBar repo navigation and the per-repo detail view.
 The dashboard uses the classic tab order and quick actions. Workspace accepts
 `activity` and `chats` route aliases; the optional plan tab is `Plans (Dep.)`.
 Layout is fixed, with no global or per-repo mode preference.
+Explorer shortcuts and remembered `/explorer/<path>` routes keep the chat
+workspace selected. The owning right panel restores the tree and file selection.
 
 ## RepoTabStrip kernel decomposition
 
