@@ -1332,6 +1332,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ));
             }
 
+            // Reject expired sessions before creating any uploaded attachment files.
+            if (!fields.isProviderSwitch && !isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
+                return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
+            }
+
             // Process both new-style attachments and legacy images
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
             const {
@@ -1353,12 +1358,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const messageContentWithContext = textContext
                 ? (body.content as string) + textContext
                 : undefined;
-
-            // Reconstructed provider switches do not depend on the outgoing
-            // provider's native session being alive.
-            if (!fields.isProviderSwitch && !isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
-                return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
-            }
 
             if (fields.modelCoerced) {
                 getLogger().warn(

@@ -25,6 +25,12 @@ import {
 import { setServerLogger } from '../../src/server/logging/server-logger';
 import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
 import { createWorkspaceDirectory } from '../../src/server/servers/workspace-directory';
+import { processMessageAttachments } from '../../src/server/core/attachment-utils';
+
+vi.mock('../../src/server/core/attachment-utils', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../src/server/core/attachment-utils')>();
+    return { ...actual, processMessageAttachments: vi.fn(actual.processMessageAttachments) };
+});
 
 // ============================================================================
 // Helpers
@@ -138,6 +144,22 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
     // Success path
     // ========================================================================
+
+    it('rejects an expired demo Send before creating attachment files or history', async () => {
+        await store.addProcess({ id: 'expired-demo', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'expired-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        vi.mocked(mockBridge.isSessionAlive).mockResolvedValue(false);
+        const attachmentCalls = vi.mocked(processMessageAttachments).mock.calls.length;
+        const response = await postJSON(`${baseUrl}/api/processes/expired-demo/message?workspace=demo-owner`, {
+            content: 'Explain', browserDemo: { inputAllowed: false }, attachments: [
+                { name: 'demo.md', mimeType: 'text/markdown', size: 4, dataUrl: 'data:text/markdown;base64,ZGVtbw==' },
+            ],
+        });
+        expect(response.status).toBe(410);
+        expect(vi.mocked(processMessageAttachments).mock.calls).toHaveLength(attachmentCalls);
+        expect((await store.getProcess('expired-demo', 'demo-owner'))!.conversationTurns).toEqual([]);
+    });
 
     it.each(['completed', 'running'] as const)('retains the entire sent demo in owner history across file cleanup (parent=%s)', async status => {
         await store.addProcess({ id: 'demo-history', type: 'chat', status, startTime: new Date(),
