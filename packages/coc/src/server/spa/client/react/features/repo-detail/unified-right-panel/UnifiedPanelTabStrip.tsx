@@ -773,7 +773,7 @@ export function UnifiedPanelTabStrip({
                             {!foldedGroups?.has(group) && section.hidden.length > 0 && (
                                 <UnifiedPanelTabOverflowMenu
                                     title={`${TAB_GROUP_LABELS[group]} tabs`}
-                                    tabs={section.tabs} activeId={activeId}
+                                    tabs={section.tabs} entries={section.hidden} activeId={activeId}
                                     hideBrowserRepoLabels={hideBrowserRepoLabels}
                                     dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
                                     onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}

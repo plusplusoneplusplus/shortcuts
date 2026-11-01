@@ -11,7 +11,10 @@ import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 export interface UnifiedPanelTabOverflowMenuProps {
     hideBrowserRepoLabels?: boolean;
     title: string;
+    /** The group the bulk-close actions act on. */
     tabs: readonly UnifiedPanelTab[];
+    /** Tabs listed and searched, e.g. only those the strip hides; defaults to `tabs`. */
+    entries?: readonly UnifiedPanelTab[];
     activeId: string | null;
     dirtyIds: ReadonlySet<string>;
     errorIds: ReadonlySet<string>;
@@ -31,7 +34,7 @@ export interface UnifiedPanelTabOverflowMenuProps {
 }
 
 export function UnifiedPanelTabOverflowMenu({
-    title, tabs, activeId, dirtyIds, errorIds, onActivate, onClose, onCloseMany, trigger,
+    title, tabs, entries, activeId, dirtyIds, errorIds, onActivate, onClose, onCloseMany, trigger,
     hideBrowserRepoLabels = false,
     testIdPrefix = 'unified-panel-tab-overflow', popupRole = 'listbox', strings = {},
 }: UnifiedPanelTabOverflowMenuProps) {
@@ -44,11 +47,12 @@ export function UnifiedPanelTabOverflowMenu({
     const [highlighted, setHighlighted] = useState(0);
     const [position, setPosition] = useState({ top: 0, left: 0 });
     const grouped = popupRole === 'listbox';
+    const listed = entries ?? tabs;
     const filteredTabs = useMemo(() => {
         const needle = query.trim().toLocaleLowerCase();
-        if (!needle) return tabs;
-        return tabs.filter(tab => `${tab.label} ${tab.repoLabel ?? ''}`.toLocaleLowerCase().includes(needle));
-    }, [query, tabs]);
+        if (!needle) return listed;
+        return listed.filter(tab => `${tab.label} ${tab.repoLabel ?? ''}`.toLocaleLowerCase().includes(needle));
+    }, [query, listed]);
 
     useEffect(() => {
         if (!open) return;
@@ -153,7 +157,7 @@ export function UnifiedPanelTabOverflowMenu({
             >
                 <div className="flex items-center justify-between px-3 pb-2 pt-3">
                     <span className="text-xs font-semibold text-[#333] dark:text-[#ddd]">{title}</span>
-                    <span className="text-[10px] text-[#777] dark:text-[#aaa]">{tabs.length} open</span>
+                    <span className="text-[10px] text-[#777] dark:text-[#aaa]">{entries ? `${entries.length} hidden` : `${tabs.length} open`}</span>
                 </div>
                 <div className="px-2 pb-2">
                     <input

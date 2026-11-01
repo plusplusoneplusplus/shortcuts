@@ -95,7 +95,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         }));
         const { props } = renderStrip({ tabs, hideBrowserRepoLabels: true });
         fireEvent.click(screen.getByTestId('unified-panel-group-overflow-web'));
-        for (const entry of tabs) {
+        for (const entry of tabs.slice(3)) {
             expect(screen.getByRole('option', { name: entry.label })).toBeTruthy();
             expect(screen.getByTestId(`unified-panel-tab-overflow-row-${entry.id}`)).not.toHaveTextContent(entry.repoLabel!);
         }
@@ -150,8 +150,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         const { props } = renderStrip({ tabs, activeId: tabs[0].id }, true);
         fireEvent.click(overflow());
         const list = screen.getByRole('listbox', { name: 'Files tabs' });
-        expect(within(list).getAllByRole('option')).toHaveLength(tabs.length);
-        expect(within(list).getByRole('option', { name: /file-1.ts/ })).toHaveAttribute('aria-selected', 'true');
+        expect(within(list).getAllByRole('option').map(node => node.textContent)).toEqual(['file-4.ts', 'file-5.ts']);
         fireEvent.click(within(list).getByRole('option', { name: /file-5.ts/ }));
 
         expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
@@ -161,17 +160,63 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(screen.getByRole('button', { name: 'Files, 5 tabs' })).toHaveAttribute('aria-expanded', 'true');
         expect(props.onToggleGroup).not.toHaveBeenCalled();
         expect(props.onMove).not.toHaveBeenCalled();
+
+        // The promoted tab left the overflow; the tab it displaced joined it.
+        expect(overflow()).toHaveTextContent('+2');
+        fireEvent.click(overflow());
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['file-3.ts', 'file-4.ts']);
     });
 
-    it('searches the complete group including visible tabs and owner labels, then activates with Enter', () => {
+    it('lists only the tabs the strip hides, keyed by id rather than title', () => {
+        // Web group from the bug report, plus a hidden tab that shares a visible tab's title and URL.
+        const tabs = Object.freeze([
+            tab('browser', 'Google', { id: 'browser:1', resourceId: 'https://google.com' }),
+            tab('browser', 'Search - Microsoft Bing', { id: 'browser:2' }),
+            tab('browser', 'YouTube', { id: 'browser:3' }),
+            tab('browser', 'Apple', { id: 'browser:4' }),
+            tab('browser', 'Google', { id: 'browser:5', resourceId: 'https://google.com' }),
+        ]);
+        const { props, rerender } = renderStrip({ tabs, activeId: tabs[1].id });
+        expect(overflow('web')).toHaveTextContent('+2');
+        fireEvent.click(overflow('web'));
+        const menu = screen.getByTestId('unified-panel-tab-overflow-menu');
+        expect(within(menu).getByText('2 hidden')).toBeTruthy();
+        expect(screen.getAllByRole('option').map(node => node.closest('[data-testid]')!.getAttribute('data-testid')))
+            .toEqual(['unified-panel-tab-overflow-row-browser:4', 'unified-panel-tab-overflow-row-browser:5']);
+
+        // Search covers only overflow entries; a visible-only match shows the empty state.
+        const search = screen.getByRole('textbox', { name: 'Search web tabs' });
+        fireEvent.change(search, { target: { value: 'youtube' } });
+        expect(screen.queryAllByRole('option')).toHaveLength(0);
+        expect(screen.getByText('No matching tabs')).toBeTruthy();
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).not.toHaveBeenCalled();
+        fireEvent.change(search, { target: { value: 'google' } });
+        expect(screen.getAllByRole('option')).toHaveLength(1);
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).toHaveBeenCalledWith('browser:5');
+
+        // Closing a hidden tab shrinks the list; the last one removes +N.
+        rerender(<UnifiedPanelTabStrip {...props} tabs={tabs.slice(0, 4)} />);
+        expect(overflow('web')).toHaveTextContent('+1');
+        fireEvent.click(overflow('web'));
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['Apple']);
+        expect(within(screen.getByTestId('unified-panel-tab-overflow-menu')).getByText('1 hidden')).toBeTruthy();
+        rerender(<UnifiedPanelTabStrip {...props} tabs={tabs.slice(0, 3)} />);
+        expect(screen.queryByTestId('unified-panel-group-overflow-web')).toBeNull();
+    });
+
+    it('searches hidden tabs by label and owner label, then activates with Enter', () => {
         const tabs = Object.freeze(files().map((entry, index) => index === 4
             ? Object.freeze({ ...entry, repoLabel: 'Other project', ownerWorkspaceId: 'other-workspace' }) : entry));
         const { props } = renderStrip({ tabs, activeId: tabs[0].id });
         fireEvent.click(overflow());
         const search = screen.getByRole('textbox', { name: 'Search files tabs' });
-        fireEvent.change(search, { target: { value: 'FILE-1' } });
+        fireEvent.change(search, { target: { value: 'FILE-4' } });
         expect(screen.getAllByRole('option')).toHaveLength(1);
-        expect(screen.getByRole('option')).toHaveTextContent(tabs[0].label);
+        expect(screen.getByRole('option')).toHaveTextContent(tabs[3].label);
+        fireEvent.change(search, { target: { value: 'FILE-1' } });
+        expect(screen.queryAllByRole('option')).toHaveLength(0);
         fireEvent.change(search, { target: { value: 'other PROJECT' } });
         expect(screen.getAllByRole('option')).toHaveLength(1);
         expect(screen.getByRole('option')).toHaveTextContent(tabs[4].label);
