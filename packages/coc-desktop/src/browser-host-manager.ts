@@ -112,6 +112,7 @@ export class BrowserHostManager {
     private readonly pendingHumanTabs = new Map<string, { sessionKey: string; control: BrowserHumanTakeover }>();
     private readonly takeovers = new Map<string, TakeoverTurn>();
     private readonly commandHolds = new Set<CommandHold>();
+    private readonly demoControlReservations = new Set<Pick<BrowserCommandRequest, 'workspaceId' | 'processId'>>();
     /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
     private readonly tabShortcutOwners = new Set<number>();
 
@@ -121,10 +122,13 @@ export class BrowserHostManager {
     constructor(private readonly options: BrowserManagerOptions) {
         this.demos = new BrowserDemoRecorders({
             send: options.send,
+            busy: owner => [...this.demoControlReservations].some(request =>
+                request.workspaceId === owner.workspaceId && request.processId === owner.processId)
+                ? 'An AI browser command for this chat is still finishing.' : undefined,
             lookup: (ownerId, viewId) => {
                 const entry = this.entry(ownerId, viewId);
                 if (!entry?.view || entry.closed) return undefined;
-                const busy = entry.activity ? 'An AI browser turn is using this tab.'
+                const busy = entry.activity || entry.control?.busy ? 'An AI browser turn is using this tab.'
                     : entry.takeover?.paused ? 'Finish the human takeover in this tab first.' : undefined;
                 return { view: entry.view, sessionKey: entry.sessionKey, sourceKind: entry.sourceKind, ...(busy ? { busy } : {}) };
             },
@@ -434,14 +438,20 @@ export class BrowserHostManager {
 
     private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
+        if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
+        const queues = new Set<BrowserControlQueue>();
         const commandHold: CommandHold | undefined = hold && { routingOwnerId: ownerId, workspaceId: request.workspaceId, processId: request.processId, hold };
         if (commandHold) {
             this.commandHolds.add(commandHold);
             for (const check of this.navigationChecks.values()) if (this.holdsCommand(check, commandHold)) check.releases.push(commandHold.hold());
         }
         const pendingKeys: string[] = [];
-        try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys); }
+        const reservation = { workspaceId: request.workspaceId, processId: request.processId };
+        this.demoControlReservations.add(reservation);
+        try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys, queues); }
         finally {
+            // Abort rejects the caller before CDP settles; admission must still await required releases.
+            void Promise.all([...queues].map(queue => queue.settled())).then(() => this.demoControlReservations.delete(reservation));
             if (commandHold) this.commandHolds.delete(commandHold);
             for (const key of pendingKeys) {
                 this.pendingActivity.delete(key);
@@ -453,7 +463,7 @@ export class BrowserHostManager {
         }
     }
 
-    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[]): Promise<BrowserCommandResult> {
+    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[], queues: Set<BrowserControlQueue>): Promise<BrowserCommandResult> {
         signal?.throwIfAborted();
         if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
@@ -499,6 +509,7 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
+        if (selected.control) queues.add(selected.control);
         const takeover = this.takeovers.get(this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey));
         if (selected.takeover?.paused && selected.takeover !== takeover?.control) throw new Error('Browser view is under exclusive human control');
         if (takeover && request.humanTakeoverEnabled) {
@@ -515,6 +526,7 @@ export class BrowserHostManager {
             url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
+            if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
             this.activateControl(selected, ownerId, request, scope.background);
@@ -1114,6 +1126,7 @@ export class BrowserHostManager {
             if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
+            if (this.demos.recordingTab(entry.ownerId, entry.viewId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             if (entry.takeover?.paused && !privateRefresh) throw new Error('Browser actions and observation paused for human takeover');
             const result = await operation(page, commandSignal, view);
             commandSignal.throwIfAborted();

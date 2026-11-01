@@ -55,6 +55,7 @@ export interface BrowserDemoCapture {
 
 export interface BrowserDemoRecordersOptions {
     lookup(ownerId: number, viewId: string): BrowserDemoTabSource | undefined;
+    busy?(owner: BrowserDemoOwner): string | undefined;
     send(ownerId: number, channel: string, payload: unknown): void;
     capture?(view: Pick<BrowserHostedView, 'cdp'>, sink: BrowserDemoTabSink): BrowserDemoCapture;
     now?(): number;
@@ -131,6 +132,13 @@ export class BrowserDemoRecorders {
         const demo = this.demo(ownerId, id);
         if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         const reopened = demo.session.state === 'stopped';
+        if (reopened) {
+            const busy = this.options.busy?.(demo.session.owner);
+            if (busy) throw new BrowserDemoError('busy', busy);
+            for (const viewId of demo.session.viewIds()) {
+                if (this.options.lookup(ownerId, viewId)) this.source(ownerId, viewId, demo.session.owner);
+            }
+        }
         demo.session.resume();
         demo.pauseReason = undefined;
         if (reopened) {
@@ -309,7 +317,8 @@ export class BrowserDemoRecorders {
         if (source.view.snapshot().engine === 'webview2') {
             throw new BrowserDemoError('engine-unsupported', 'Demo recording is unavailable in WebView2 because it cannot preserve popup opener lineage. Use an Electron browser tab.');
         }
-        if (source.busy) throw new BrowserDemoError('busy', source.busy);
+        const busy = source.busy ?? this.options.busy?.(owner);
+        if (busy) throw new BrowserDemoError('busy', busy);
         return source;
     }
 

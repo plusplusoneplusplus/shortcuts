@@ -19,6 +19,9 @@ Preserve immediate popup opener identity separately from root SPA tab routing.
 Never add typed values, screenshots, page dumps or renderer debugger access.
 Sanitize website metadata before it enters drafts and report collection gaps.
 Reject late startup/poll/adoption results after pause, discard, close or reload.
+Recording admission excludes queued AI commands for the chat and busy target
+queues. Preserve reservations through dispatched input releases after cancellation;
+recheck recording ownership before queued main-process dispatch.
 
 `main.ts` and `container-main.ts` confirm unsent drafts before shutdown side
 effects. Native close/reload warnings belong to registered owning windows;

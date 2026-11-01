@@ -81,20 +81,24 @@ describe('browser command queue', () => {
         const gate = deferred<unknown>();
         const send = vi.fn(async (_method: string, _params?: Record<string, unknown>): Promise<unknown> => ({})).mockImplementationOnce(() => gate.promise);
         const queue = new BrowserControlQueue(send);
+        expect(queue.busy).toBe(false);
         const controller = new AbortController();
         const first = queue.run(async page => {
             await page.press('Enter');
             await page.press('Space');
         }, controller.signal);
+        expect(queue.busy).toBe(true);
         await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
         const error = new Error('Turn stopped');
         controller.abort(error);
         await expect(first).rejects.toBe(error);
+        expect(queue.busy).toBe(true);
         const second = queue.run(page => page.press('Tab'));
         await Promise.resolve();
         expect(send).toHaveBeenCalledOnce();
         gate.resolve({});
         await second;
+        expect(queue.busy).toBe(false);
         expect(send.mock.calls.map(call => call[1])).toEqual([
             expect.objectContaining({ type: 'keyDown', key: 'Enter' }),
             expect.objectContaining({ type: 'keyUp', key: 'Enter' }),

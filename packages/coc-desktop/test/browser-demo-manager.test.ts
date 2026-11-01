@@ -10,6 +10,12 @@ import type { BrowserDemoTabSink } from '../src/browser-demo-tab-capture';
 
 const owner = { workspaceId: 'w', processId: 'p', routingRef: 'w' };
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(done => { resolve = done; });
+    return { promise, resolve };
+}
+
 function harness() {
     const sinks = new Map<string, BrowserEventSink>();
     const views = new Map<string, BrowserHostedView>();
@@ -78,6 +84,117 @@ describe('browser demo recording in the host manager', () => {
             await expect(h.manager.demos.start(1, owner, viewId)).rejects.toMatchObject({ reason: 'busy' });
             h.manager.finishControl(1, 'ai');
             await expect(h.manager.demos.start(1, owner, viewId)).resolves.toMatchObject({ status: 'recording' });
+        } finally { await h.manager.dispose(); }
+    });
+
+    it.each(['p', 'other'])('excludes queued input from recording admission (chat: %s)', async processId => {
+        const h = harness();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(1, 'free', 'https://b.test/', 'w');
+            const input = h.run(processId, { action: 'press', key: 'Enter' }, 't1:root');
+            await expect(h.manager.demos.start(1, owner, 'root')).rejects.toMatchObject({ reason: 'busy' });
+            if (processId === 'p') {
+                await expect(h.manager.demos.start(1, owner, 'free')).rejects.toMatchObject({ reason: 'busy' });
+            }
+            await input;
+            const cdp = vi.mocked(h.views.get('root')!.cdp!);
+            expect(cdp.mock.calls.filter(([method]) => method === 'Input.dispatchKeyEvent')
+                .map(([, params]) => params?.type)).toEqual(['keyDown', 'keyUp']);
+            h.manager.finishControl(1);
+            await expect(h.manager.demos.start(1, owner, 'root')).resolves.toMatchObject({ status: 'recording' });
+            await expect(h.run(processId === 'p' ? 'p' : 'fresh', { action: 'press', key: 'Tab' }, 't1:root')).rejects.toThrow(
+                processId === 'p' ? BROWSER_DEMO_RECORDING_ERROR : 'Browser tab not found in this workspace');
+            expect(cdp.mock.calls.filter(([method]) => method === 'Input.dispatchKeyEvent')).toHaveLength(2);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('retains admission exclusion until cancelled input finishes its required release', async () => {
+        const h = harness();
+        const down = deferred<unknown>();
+        const up = deferred<unknown>();
+        const pressed = deferred<void>();
+        const released = deferred<void>();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(1, 'free', 'https://b.test/', 'w');
+            const cdp = vi.mocked(h.views.get('root')!.cdp!);
+            cdp.mockImplementation(async (_method, params) => {
+                if (params?.type === 'keyDown') { pressed.resolve(); return down.promise; }
+                if (params?.type === 'keyUp') { released.resolve(); return up.promise; }
+                return {};
+            });
+            const controller = new AbortController();
+            const input = h.manager.executeControl(1, { id: 'cancelled', workspaceId: 'w', processId: 'p',
+                selectedTab: 't1:root', command: { action: 'press', key: 'Enter' } }, controller.signal);
+            await pressed.promise;
+            controller.abort(new Error('Turn stopped'));
+            await expect(input).rejects.toThrow('Turn stopped');
+            h.manager.finishControl(1, 'p');
+            await expect(h.manager.demos.start(1, owner, 'root')).rejects.toMatchObject({ reason: 'busy' });
+            await expect(h.manager.demos.start(1, owner, 'free')).rejects.toMatchObject({ reason: 'busy' });
+            down.resolve({});
+            await released.promise;
+            await expect(h.manager.demos.start(1, owner, 'root')).rejects.toMatchObject({ reason: 'busy' });
+            await expect(h.manager.demos.start(1, owner, 'free')).rejects.toMatchObject({ reason: 'busy' });
+            up.resolve({});
+            await h.manager.withControlPage(1, 'root', 'w', async () => {});
+            await expect(h.manager.demos.start(1, owner, 'free')).resolves.toMatchObject({ status: 'recording' });
+            expect(cdp.mock.calls.filter(([method]) => method === 'Input.dispatchKeyEvent')
+                .map(([, params]) => params?.type)).toEqual(['keyDown', 'keyUp']);
+        } finally {
+            down.resolve({});
+            up.resolve({});
+            await h.manager.dispose();
+        }
+    });
+
+    it('rechecks recording membership in the main-process dispatch path', async () => {
+        const h = harness();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.demos.start(1, owner, 'root');
+            const operation = vi.fn(async () => {});
+            await expect(h.manager.withControlPage(1, 'root', 'w', operation)).rejects.toThrow(BROWSER_DEMO_RECORDING_ERROR);
+            expect(operation).not.toHaveBeenCalled();
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('allows another chat to record an unrelated tab while AI input remains pending', async () => {
+        const h = harness();
+        const gate = deferred<unknown>();
+        const pressed = deferred<void>();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(1, 'free', 'https://b.test/', 'w');
+            vi.mocked(h.views.get('root')!.cdp!).mockImplementation(async (method, params) => {
+                if (params?.type === 'keyDown') { pressed.resolve(); return gate.promise; }
+                if (method === 'Runtime.evaluate') return {
+                    result: { value: { title: 'Fixture', url: 'https://a.test/', elements: [], nextRef: 1 } },
+                };
+                return {};
+            });
+            const input = h.run('other', { action: 'press', key: 'Enter' }, 't1:root');
+            await pressed.promise;
+            await expect(h.manager.demos.start(1, owner, 'free')).resolves.toMatchObject({ status: 'recording' });
+            gate.resolve({});
+            await input;
+        } finally { gate.resolve({}); await h.manager.dispose(); }
+    });
+
+    it('refuses stopped-draft resume while its chat has queued input on another tab', async () => {
+        const h = harness();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(1, 'free', 'https://b.test/', 'w');
+            const { id } = await h.manager.demos.start(1, owner, 'root');
+            await h.manager.demos.stop(1, id);
+            const input = h.run('p', { action: 'press', key: 'Enter' }, 't1:free');
+            await expect(h.manager.demos.resume(1, id)).rejects.toMatchObject({ reason: 'busy' });
+            expect(h.manager.demos.draft(1, id).status).toBe('stopped');
+            await input;
+            h.manager.finishControl(1, 'p');
+            await expect(h.manager.demos.resume(1, id)).resolves.toMatchObject({ status: 'recording' });
         } finally { await h.manager.dispose(); }
     });
 

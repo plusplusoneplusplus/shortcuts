@@ -38,7 +38,11 @@ agent-driven site approval path retain their existing contracts.
 `shared/file-path/browser-demo.ts` mirrors counts and owner identities in SPA
 memory. `BrowserDemoStrip` supplies recording state, Pause/Stop and explicit Add;
 chat/workspace departure pauses recording and the owning composer blocks send
-while capturing. The desktop blocks AI access to captured views and their chat.
+while capturing. The desktop atomically excludes AI access to captured views and
+their chat: queued commands prevent Start or stopped-draft Resume, and recording
+ownership is rechecked before main-process dispatch. Command reservations and
+target-queue busy state survive cancellation until dispatched input releases
+settle. Other chats can still use unrelated tabs.
 Stopped drafts remain reviewable from another browser tab of the same owner.
 
 `BrowserDemoReview` loads the stopped action list with tab lineage, editable
