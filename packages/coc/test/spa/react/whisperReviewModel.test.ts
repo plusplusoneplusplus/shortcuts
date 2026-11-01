@@ -4,13 +4,15 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+    buildSnippetSides,
+    SNIPPET_GAP,
     buildWhisperReviewEntries,
     wholeNewFileText,
     whisperReviewContentKey,
 } from '../../../src/server/spa/client/react/features/chat/whisper-diff/whisperReviewModel';
 import type { WhisperDiffState } from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffState';
 import { buildWhisperCombinedDiff } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperCombinedDiff';
-import { buildWhisperFileDiff } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperFileDiff';
+import { buildWhisperFileDiff, buildWhisperFileHunks } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperFileDiff';
 import { collectFileEdits, computeFileEditTotals } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
 type Call = { toolName: string; args: Record<string, unknown> };
@@ -56,6 +58,52 @@ describe('wholeNewFileText', () => {
     });
 });
 
+const G = SNIPPET_GAP;
+const sidesOf = (calls: Call[], path = 'a.ts') => buildSnippetSides(buildWhisperFileHunks(calls, path)!);
+const rows = (sides: ReturnType<typeof buildSnippetSides>, side: 'original' | 'modified') =>
+    sides[side].split('\n').map((text, i) => [sides.lineLabels[side][i], text]);
+
+describe('buildSnippetSides', () => {
+    it('keeps each snippet edit as its own unnumbered block, never a contiguous file', () => {
+        const sides = sidesOf([
+            { toolName: 'edit', args: { path: 'a.ts', old_str: 'keep\nold one', new_str: 'keep\nnew one\nadded' } },
+            { toolName: 'edit', args: { path: 'a.ts', old_str: 'stay\ngone', new_str: 'stay' } },
+        ]);
+        // No anchor was captured, so no line gets a number: the synthetic
+        // `@@ -1,n +1,m @@` edit headers are never shown as positions.
+        expect(rows(sides, 'original')).toEqual([['', G], ['', 'keep'], ['', 'old one'], ['', G], ['', 'stay'], ['', 'gone']]);
+        expect(rows(sides, 'modified')).toEqual([['', G], ['', 'keep'], ['', 'new one'], ['', 'added'], ['', G], ['', 'stay']]);
+    });
+
+    it('numbers lines from captured unified anchors and keeps disjoint hunks apart', () => {
+        const patch = [
+            'diff --git a/a.ts b/a.ts', '--- a/a.ts', '+++ b/a.ts',
+            '@@ -10,3 +10,3 @@ function f() {', ' ctx', '-before', '+after', ' tail',
+            '@@ -40,2 +40,3 @@', ' x', '+inserted', ' y',
+            '@@ -90,1 +91,0 @@', '-removed',
+            '\\ No newline at end of file',
+        ].join('\n');
+        const sides = sidesOf([{ toolName: 'apply_patch', args: { input: patch } }]);
+        expect(rows(sides, 'original')).toEqual([
+            ['', '@@ -10,3 +10,3 @@ function f() {'], ['10', 'ctx'], ['11', 'before'], ['12', 'tail'],
+            ['', '@@ -40,2 +40,3 @@'], ['40', 'x'], ['41', 'y'],
+            ['', '@@ -90,1 +91,0 @@'], ['90', 'removed'],
+        ]);
+        expect(rows(sides, 'modified')).toEqual([
+            ['', '@@ -10,3 +10,3 @@ function f() {'], ['10', 'ctx'], ['11', 'after'], ['12', 'tail'],
+            ['', '@@ -40,2 +40,3 @@'], ['40', 'x'], ['41', 'inserted'], ['42', 'y'],
+            ['', '@@ -90,1 +91,0 @@'],
+        ]);
+    });
+
+    it('shows legacy context anchors as text without numbers, after an unanchored lead', () => {
+        const patch = '*** Begin Patch\n*** Update File: a.ts\n-lead old\n+lead new\n@@ class Foo\n bar()\n-a\n+b\n*** End Patch';
+        const sides = sidesOf([{ toolName: 'apply_patch', args: { input: patch } }]);
+        expect(rows(sides, 'original')).toEqual([['', G], ['', 'lead old'], ['', '@@ class Foo'], ['', 'bar()'], ['', 'a']]);
+        expect(rows(sides, 'modified')).toEqual([['', G], ['', 'lead new'], ['', '@@ class Foo'], ['', 'bar()'], ['', 'b']]);
+    });
+});
+
 describe('buildWhisperReviewEntries', () => {
     const calls: Call[] = [
         { toolName: 'create', args: { path: '/r/src/new.ts', file_text: 'n\n' } },
@@ -78,7 +126,10 @@ describe('buildWhisperReviewEntries', () => {
         // A path outside the root keeps its full form, with `/` separators.
         const win = entries.find(e => e.sourcePath.includes('win.ts'))!;
         expect(win.file.path).toBe('C:/r/src/win.ts');
-        expect(win.content.kind).toBe('patch');
+        expect(win.content).toMatchObject({
+            kind: 'patch', original: `${G}\na`, modified: `${G}\nb`,
+            lineLabels: { original: ['', ''], modified: ['', ''] },
+        });
     });
 
     it('keys models and content by the captured diff', () => {

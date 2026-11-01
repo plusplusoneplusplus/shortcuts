@@ -40,6 +40,17 @@ export interface DiffModelDescriptor {
      * disk-matching commit or branch head. Only that side may be edited or use a language server.
      */
     isWorkingCopy: boolean;
+    /**
+     * Gutter label per model line, for a side that is an excerpt rather than
+     * the whole file ('' leaves a line unnumbered). Omitted: plain numbers.
+     */
+    lineLabels?: readonly string[];
+}
+
+/** Per-side gutter labels for excerpt models; see `DiffModelDescriptor.lineLabels`. */
+export interface DiffLineLabels {
+    original: readonly string[];
+    modified: readonly string[];
 }
 
 export interface DiffModelsInput {
@@ -64,6 +75,8 @@ export interface DiffModelsParams {
     modifiedMatchesWorkingCopy?: boolean;
     original: string;
     modified: string;
+    /** Gutter labels when the sides are excerpts; only with `modelIdentity`. */
+    lineLabels?: DiffLineLabels;
 }
 
 function encodePath(relativePath: string): string {
@@ -122,6 +135,7 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
                 text: params.original,
                 language,
                 isWorkingCopy: false,
+                ...(params.lineLabels && { lineLabels: params.lineLabels.original }),
             },
             modified: {
                 uri: workingCopy ? browserDocumentUri(workspaceId, relativePath)
@@ -129,6 +143,7 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
                 text: params.modified,
                 language,
                 isWorkingCopy: workingCopy,
+                ...(params.lineLabels && { lineLabels: params.lineLabels.modified }),
             },
         };
     }
@@ -150,8 +165,11 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
 /** Same URIs and texts: re-applying would only reset the editor. */
 export function sameDiffModels(a: DiffModelsInput | null, b: DiffModelsInput | null): boolean {
     if (!a || !b) return a === b;
+    const sameLabels = (x?: readonly string[], y?: readonly string[]) =>
+        x === y || (!!x && !!y && x.length === y.length && x.every((label, i) => label === y[i]));
     const same = (x: DiffModelDescriptor, y: DiffModelDescriptor) =>
-        x.uri === y.uri && x.text === y.text && x.language === y.language && x.isWorkingCopy === y.isWorkingCopy;
+        x.uri === y.uri && x.text === y.text && x.language === y.language && x.isWorkingCopy === y.isWorkingCopy
+        && sameLabels(x.lineLabels, y.lineLabels);
     return same(a.original, b.original) && same(a.modified, b.modified);
 }
 

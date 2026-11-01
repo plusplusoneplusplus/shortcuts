@@ -5,15 +5,16 @@
  *
  * It reuses the Git/PR review shell rather than drawing its own: `ReviewFiles`
  * supplies the changed-files tree, selection, filters, resize separator and
- * narrow drawer, and each file renders in `MonacoFileDiffViewer` when both of
- * its sides are known in full.
+ * narrow drawer, and each captured diff renders in `MonacoFileDiffViewer`.
  *
  * The data is the snapshot replayed from the chat's tool calls
  * (`useWhisperDiffState`) — never the current disk, Git HEAD or another turn —
  * so the panel shows only what those calls captured (see
- * `whisperReviewModel`): a created file opens in Monaco against an empty
- * original; snippet edits keep their reconstructed patch in the classic
- * viewer; deleted and non-reconstructable files say that no diff was captured.
+ * `whisperReviewModel`): a created file opens against an empty original;
+ * snippet edits open as their captured snippets only, under a notice, with
+ * line numbers only where the patch anchored them; deleted and
+ * non-reconstructable files say that no diff was captured. The Classic engine
+ * preference and editor failures fall back to the reconstructed patch.
  *
  * Selection starts at the entry point's `focusPath` (a popover file row) or the
  * first file in tree order (the "N files" footer), and resets when a new open
@@ -123,9 +124,9 @@ function WhisperFileDiff({ entry, context, workspaceId, createDiffEditor }: {
     const [failedAttempt, setFailedAttempt] = useState<number | null>(null);
     const { content } = entry;
     const { name, directory } = reviewFileParts(entry.file.path);
-    const whole = content.kind === 'whole';
+    const hasDiff = content.kind === 'whole' || content.kind === 'patch';
     const editorFailed = failedAttempt === attempt;
-    const showEditor = whole && engine === 'monaco' && !editorFailed;
+    const showEditor = hasDiff && engine === 'monaco' && !editorFailed;
 
     return (
         <div className="flex flex-col flex-1 min-h-0 min-w-0" data-testid="whisper-diff-file" data-path={entry.file.path} data-content={content.kind}>
@@ -134,21 +135,21 @@ function WhisperFileDiff({ entry, context, workspaceId, createDiffEditor }: {
                     <strong className="truncate font-medium">{name}</strong>
                     <span className="truncate text-[10px] text-[#848484]">{directory}</span>
                 </span>
-                {whole && <DiffEngineToggle engine={engine} onChange={setEngine} />}
+                {hasDiff && <DiffEngineToggle engine={engine} onChange={setEngine} />}
                 {showEditor && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
                 {showEditor && <DiffWordWrapToggle />}
             </div>
-            <div className="flex-1 min-h-0 overflow-auto px-1 py-1" data-testid="whisper-diff-body">
-                {whole && engine === 'monaco' && editorFailed && (
+            <div className={`flex-1 min-h-0 flex flex-col ${showEditor ? 'overflow-hidden' : 'overflow-auto px-1 py-1'}`} data-testid="whisper-diff-body">
+                {hasDiff && engine === 'monaco' && editorFailed && (
                     <DiffEngineFallbackBanner reason="editorFailed" onRetry={() => setAttempt(value => value + 1)} />
                 )}
                 {content.kind === 'patch' && (
-                    <div role="note" className="px-2 py-1 mb-1 text-xs text-[#616161] dark:text-[#bbb]" data-testid="whisper-diff-patch-only">
+                    <div role="note" className="shrink-0 px-2 py-1 text-xs text-[#616161] dark:text-[#bbb]" data-testid="whisper-diff-patch-only">
                         Only the edited snippets were captured for this change, so the full file is not shown.
                     </div>
                 )}
                 {showEditor ? (
-                    <div className="h-full">
+                    <div className="flex-1 min-h-0">
                         <MonacoFileDiffViewer
                             key={attempt}
                             workspaceId={workspaceId}
@@ -157,6 +158,7 @@ function WhisperFileDiff({ entry, context, workspaceId, createDiffEditor }: {
                             modelIdentity={entry.modelIdentity}
                             original={content.original}
                             modified={content.modified}
+                            lineLabels={content.kind === 'patch' ? content.lineLabels : undefined}
                             viewMode={viewMode}
                             initialHunkTarget={context.target}
                             languageFeatures={false}
@@ -165,7 +167,7 @@ function WhisperFileDiff({ entry, context, workspaceId, createDiffEditor }: {
                             data-testid="whisper-diff-editor"
                         />
                     </div>
-                ) : content.kind === 'whole' || content.kind === 'patch' ? (
+                ) : hasDiff ? (
                     <UnifiedDiffViewer
                         diff={content.diff}
                         fileName={name}

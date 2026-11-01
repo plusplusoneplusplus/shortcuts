@@ -29,6 +29,7 @@ function fakeMonaco() {
             getScrollTop: () => 120,
             getPosition: () => (model ? { lineNumber: 2, column: 4 } : null),
             focus: vi.fn(),
+            updateOptions: vi.fn(),
         };
     };
     const original = sideEditor();
@@ -147,5 +148,27 @@ describe('monacoDiffEditorAdapter — definition reveal', () => {
         expect(original.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
         expect(original.setScrollTop).toHaveBeenCalledWith(300);
         expect(original.revealPositionInCenter).not.toHaveBeenCalled();
+    });
+});
+
+describe('monacoDiffEditorAdapter — excerpt line labels', () => {
+    const lineNumbersOf = (editor: { updateOptions: ReturnType<typeof vi.fn> }) =>
+        editor.updateOptions.mock.calls.at(-1)![0].lineNumbers;
+
+    it('labels each side from its descriptor and restores plain numbers for full files', () => {
+        const { monaco, original, modified } = fakeMonaco();
+        const adapter = createMonacoDiffEditorAdapter(monaco, document.createElement('div'), {});
+        adapter.setModels(buildDiffModels({
+            workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'staged', modelIdentity: 'chat-change-1',
+            original: '@@\nold', modified: '@@\nnew\nmore',
+            lineLabels: { original: ['', '40'], modified: ['', '40', '41'] },
+        }));
+        const left = lineNumbersOf(original);
+        const right = lineNumbersOf(modified);
+        expect([1, 2, 3].map(left)).toEqual(['', '40', '']);
+        expect([1, 2, 3].map(right)).toEqual(['', '40', '41']);
+        adapter.setModels(COMMIT);
+        expect(lineNumbersOf(original)).toBe('on');
+        expect(lineNumbersOf(modified)).toBe('on');
     });
 });

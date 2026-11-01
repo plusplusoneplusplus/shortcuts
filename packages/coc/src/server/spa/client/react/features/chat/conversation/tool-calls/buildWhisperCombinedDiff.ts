@@ -5,7 +5,7 @@
  * The combined whisper diff panel shows the entire change across all files in a
  * whisper group in one scroll. This builder is the synchronous, network-free
  * source for that view: it replays the group's already-captured tool calls
- * through the existing `buildWhisperFileDiff` once per file — in popover (group)
+ * through the existing `buildWhisperFileHunks` once per file — in popover (group)
  * order — and concatenates each reconstructable file's `diff --git a/… b/…`
  * section into a single unified diff string.
  *
@@ -19,7 +19,12 @@
  * This mirrors the single-file path's decisions but drops its commit/network
  * fallback (that stays single-file only), so the combined view opens instantly.
  */
-import { buildWhisperFileDiff, type WhisperDiffToolCall } from './buildWhisperFileDiff';
+import {
+    buildWhisperFileHunks,
+    formatWhisperFileDiff,
+    type WhisperDiffToolCall,
+    type WhisperFileHunk,
+} from './buildWhisperFileDiff';
 import type { FileEdit } from './toolGroupUtils';
 
 /** One reconstructed file section: the file summary plus its `diff --git` block. */
@@ -27,6 +32,8 @@ export interface CombinedWhisperDiffSection {
     file: FileEdit;
     /** This file's reconstructed unified diff (a single `diff --git` section). */
     diff: string;
+    /** The replayed operations behind `diff`, with synthesized headers kept apart. */
+    hunks: WhisperFileHunk[];
 }
 
 export interface CombinedWhisperDiff {
@@ -69,9 +76,9 @@ export function buildWhisperCombinedDiff(
             deletedFiles.push(file);
             continue;
         }
-        const diff = buildWhisperFileDiff(toolCalls, file.path);
-        if (diff) {
-            sections.push({ file, diff });
+        const hunks = buildWhisperFileHunks(toolCalls, file.path);
+        if (hunks) {
+            sections.push({ file, diff: formatWhisperFileDiff(file.path, hunks), hunks });
         } else {
             // No reconstructable diff (e.g. Codex structured changes with no line
             // content). The single-file path would fall back to a commit diff, but

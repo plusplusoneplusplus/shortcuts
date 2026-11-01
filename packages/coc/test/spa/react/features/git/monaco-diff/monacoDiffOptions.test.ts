@@ -108,6 +108,18 @@ describe('buildDiffModels', () => {
         expect(sameDiffModels(a, null)).toBe(false);
         expect(sameDiffModels(null, null)).toBe(true);
     });
+
+    it('carries per-side gutter labels for excerpt snapshots and compares them', () => {
+        const lineLabels = { original: ['', '12'], modified: ['', '12', '13'] };
+        const snapshot = { ...base, stage: 'staged' as const, modelIdentity: 'chat-change-x', lineLabels };
+        const a = buildDiffModels(snapshot);
+        expect(a.original.lineLabels).toEqual(['', '12']);
+        expect(a.modified.lineLabels).toEqual(['', '12', '13']);
+        expect(buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'chat-change-x' }).original).not.toHaveProperty('lineLabels');
+        expect(sameDiffModels(a, buildDiffModels({ ...snapshot, lineLabels: { ...lineLabels, modified: ['', '12', '13'] } }))).toBe(true);
+        expect(sameDiffModels(a, buildDiffModels({ ...snapshot, lineLabels: { ...lineLabels, modified: ['', '', ''] } }))).toBe(false);
+        expect(sameDiffModels(a, buildDiffModels({ ...snapshot, lineLabels: undefined }))).toBe(false);
+    });
 });
 
 describe('buildDiffEditorOptions', () => {

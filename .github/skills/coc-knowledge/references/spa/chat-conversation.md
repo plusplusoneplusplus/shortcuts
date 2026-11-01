@@ -499,9 +499,11 @@ mounts it around its slide-in surface). The dialog lazy-loads through the clone-
 skill client, tries workspace then global lookup, and caches per workspace/name while
 mounted.
 
-`buildWhisperFileDiff` reconstructs tool-call diffs without file I/O. Captured
-`apply_patch` bodies keep their existing anchors; a leading unanchored body gets a
-synthetic `@@` header with old/new counts from its context and change lines.
+`buildWhisperFileHunks` replays tool calls into one hunk per operation without
+file I/O, and `buildWhisperFileDiff` formats them as a unified diff. Captured
+`apply_patch` bodies keep their existing anchors; edits, creates and a leading
+unanchored patch body get a synthetic `@@` header (`WhisperFileHunk.header`, never
+a real position). Combined sections carry both `diff` and `hunks`.
 The classic viewer uses `hideFileHeaders`, so this boundary keeps added-file content
 outside the viewer's suppressed git preamble.
 
@@ -509,12 +511,18 @@ outside the viewer's suppressed git preamble.
 Changes `diff` tabs) renders that replayed snapshot in the shared Git/PR review
 shell: `ReviewFiles` supplies the tree, selection, filters, resize separator and
 narrow drawer. `whisperReviewModel` maps each file to a workspace-relative row
-(A/M/D, popover counts) and decides its content honestly: a single all-added
-new-file hunk is `whole` and opens in `MonacoFileDiffViewer` (empty original,
-exact created text, synthetic models keyed by owner workspace and diff hash,
-read-only, no language features); every other change stays `patch` in the
-classic viewer with a patch-only note; deleted and non-reconstructable files say
-no diff was captured. It never reads disk, Git or another turn. The footer opens
+(A/M/D, popover counts) and decides its content honestly. Both diff kinds open
+in `MonacoFileDiffViewer` (synthetic models keyed by owner workspace and diff
+hash, read-only, no language features): a single all-added new-file hunk is
+`whole` (empty original, exact created text); every other change is `patch`,
+shown under the patch-only note as `buildSnippetSides` excerpts. Each operation,
+split again at every captured `@@` anchor, is its own block that starts with one
+shared row (the anchor text, or `⋯` when the position is unknown), so disjoint
+hunks never merge. Per-side `lineLabels` (`DiffModelDescriptor.lineLabels`,
+applied by the adapter as Monaco `lineNumbers`) number lines only from captured
+`@@ -a,b +c,d @@` anchors; synthetic headers and separator rows stay blank.
+Deleted and non-reconstructable files say no diff was captured. It never reads
+disk, Git or another turn. The footer opens
 the first file in tree order, a file row its `focusPath`; selection resets per
 open of a frozen group and survives a live Changes source's rebuilds via
 `selectionKey`. The Classic engine preference and editor failure

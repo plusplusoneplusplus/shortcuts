@@ -46,6 +46,7 @@ import {
     chatChangesTabInput,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import { clearUnifiedDiffSources } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
+import { SNIPPET_GAP } from '../../../../src/server/spa/client/react/features/chat/whisper-diff/whisperReviewModel';
 import { UnifiedDiffTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedDiffTab';
 import {
     EMPTY_UNIFIED_PANEL,
@@ -165,6 +166,15 @@ function selectedDiff(path: string): string {
     expect(screen.getByTestId('whisper-diff-file')).toHaveAttribute('data-path', path);
     return screen.getByTestId('whisper-diff-body').textContent ?? '';
 }
+/** The selected file's Monaco sides, one line per row. */
+function selectedSides(path: string): { original: string[]; modified: string[] } {
+    selectedDiff(path);
+    return {
+        original: (screen.getByTestId('monaco-original').textContent ?? '').split('\n'),
+        modified: (screen.getByTestId('monaco-modified').textContent ?? '').split('\n'),
+    };
+}
+const G = SNIPPET_GAP;
 
 beforeEach(() => {
     cleanup();
@@ -190,21 +200,20 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
 
     it('replays repeated edits and a later reversion as chronological steps', () => {
         renderChangesTab();
-        const diff = selectedDiff('src/app.ts');
-        // Three operations, three hunks — not one net before/after, and never a
-        // fabricated full file.
+        const sides = selectedSides('src/app.ts');
+        // Three operations, three separate snippet blocks in Monaco — not one
+        // net before/after, and never a fabricated full file.
         expect(screen.getByTestId('whisper-diff-patch-only')).toBeInTheDocument();
-        expect(screen.queryByTestId('whisper-diff-editor')).toBeNull();
-        expect(screen.getByTestId('whisper-diff-viewer').textContent?.match(/^@@/gm)?.length).toBe(3);
-        expect(diff.indexOf('+alpha')).toBeLessThan(diff.indexOf('+beta'));
-        expect(diff.indexOf('+beta')).toBeLessThan(diff.indexOf('-beta'));
-        expect(diff).toContain('-alpha');
+        expect(screen.getByTestId('whisper-diff-editor')).toHaveAttribute('data-workspace', OWNER);
+        expect(sides.original).toEqual([G, G, 'alpha', G, 'beta']);
+        expect(sides.modified).toEqual([G, 'alpha', '', G, 'beta', G, 'alpha']);
     });
 
     it('replays a record captured in both toolCalls and timeline exactly once', () => {
         renderChangesTab();
-        const diff = selectedDiff('src/helper.ts');
-        expect(diff.match(/\+new helper/g)?.length).toBe(1);
+        const { original, modified } = selectedSides('src/helper.ts');
+        expect(original).toEqual([G, 'old helper']);
+        expect(modified).toEqual([G, 'new helper']);
     });
 
     it('says why deleted and unavailable files have no diff', () => {
@@ -226,10 +235,10 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
 
     it('selects a file when its row is clicked', () => {
         renderChangesTab();
-        const body = selectedDiff('src/helper.ts');
+        const { modified } = selectedSides('src/helper.ts');
         expect(selectedPath()).toBe('src/helper.ts');
-        expect(body).toContain('+new helper');
-        expect(body).not.toContain('+beta');
+        expect(modified).toContain('new helper');
+        expect(modified).not.toContain('beta');
     });
 
     it('rebuilds from a grown chat, keeping the earlier turns in place', () => {
@@ -241,9 +250,9 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
 
     it('reconstructs a Windows-recorded file from its backslash args', () => {
         renderChangesTab();
-        const body = selectedDiff('src/win/panel.ts');
-        expect(body).toContain('+winA');
-        expect(body).toContain('+winB');
+        const { original, modified } = selectedSides('src/win/panel.ts');
+        expect(original).toEqual([G, G, 'winA']);
+        expect(modified).toEqual([G, 'winA', '', G, 'winB']);
     });
 
     it('shows one file, not two, when the chat records it in both path forms', () => {
@@ -257,9 +266,9 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
         renderChangesTab(mixed);
         expect(rowPaths()).toEqual(['src/both.ts']);
         expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('1 file');
-        // Both operations replay into the one patch, in order.
-        const diff = screen.getByTestId('whisper-diff-body').textContent ?? '';
-        expect(diff.indexOf('+one')).toBeLessThan(diff.indexOf('+two'));
+        // Both operations replay into the one file's snippets, in order.
+        const modified = screen.getByTestId('monaco-modified').textContent ?? '';
+        expect(modified).toBe(`${G}\none\n\n${G}\ntwo`);
     });
 });
 

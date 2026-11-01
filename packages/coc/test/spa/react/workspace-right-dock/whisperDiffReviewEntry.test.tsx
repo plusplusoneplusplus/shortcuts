@@ -85,7 +85,10 @@ describe('changed-files entry points → shared review tab', () => {
         renderTab(openTab(groupContext({ focusPath: `${ROOT}/src/file-viewer/Reload.tsx` })));
         fireEvent.click(nav().querySelector('[data-file-path="src/explorer/Preview.test.tsx"]')!);
         expect(selectedPath()).toBe('src/explorer/Preview.test.tsx');
-        expect(screen.getByTestId('whisper-diff-viewer').textContent).toContain('+new');
+        // A snippet edit opens in the shared Monaco editor as the snippet only.
+        expect(screen.getByTestId('whisper-diff-patch-only')).toBeInTheDocument();
+        expect(screen.getByTestId('monaco-modified').textContent?.split('\n')).toContain('new');
+        expect(screen.queryByTestId('whisper-diff-viewer')).toBeNull();
     });
 
     it('keeps a remote clone\'s snapshot in its own tab and editor models', () => {
