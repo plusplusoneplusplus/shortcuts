@@ -225,8 +225,12 @@ CoC and container production callers do not import or refresh Copilot's OAuth ca
 `src/github-auth.ts` exposes isolated one-shot cancellation without caching or
 refresh. Copilot RPC, environment/custom resolvers and service authorization
 stay in TypeScript. See the native instructions for exact-key and platform contracts.
-Shared types, storage and lifecycle remain
-vendor-neutral. Protocol/security contracts belong in the
+`auth_sdk::claude::acquire_token` owns source-pinned read/check/lock/re-read/
+refresh/persist acquisition, with cancellation and a deadline. Callers sharing
+credentials must share a private coordination directory; external Claude CLI
+writers remain outside that lock protocol. Its API is Rust-only.
+Shared types, storage and lifecycle remain vendor-neutral. Protocol/security
+contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).
 
 `rust/auth-cli` is the standalone Cargo `auth-cli` binary over auth-sdk, installed

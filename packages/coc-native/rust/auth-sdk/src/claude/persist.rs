@@ -89,7 +89,7 @@ fn read_existing_json(target: &PersistTarget) -> serde_json::Value {
         .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()))
 }
 
-fn merge_fields(
+pub(super) fn merge_fields(
     existing: &serde_json::Value,
     fields: &PersistFields<'_>,
 ) -> serde_json::Value {
@@ -151,7 +151,7 @@ fn write_file(home_dir: &Path, json_str: &str) -> PersistResult {
     let dir = home_dir.join(".claude");
     let path = dir.join(".credentials.json");
 
-    if let Err(_) = std::fs::create_dir_all(&dir) {
+    if std::fs::create_dir_all(&dir).is_err() {
         return PersistResult { success: false, warning: None };
     }
 
@@ -167,13 +167,14 @@ fn write_file(home_dir: &Path, json_str: &str) -> PersistResult {
     }
 }
 
-fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
+pub(super) fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
     use std::io::Write;
 
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     tmp.write_all(content.as_bytes())?;
     tmp.flush()?;
+    tmp.as_file().sync_all()?;
     tmp.persist(path)?;
     Ok(())
 }

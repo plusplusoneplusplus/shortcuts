@@ -44,24 +44,50 @@ pub struct ClaudeCredentialSources {
 /// Returns `None` when no source yields a valid token.
 /// This function is read-only — it never writes credentials.
 pub fn read_credentials(sources: &ClaudeCredentialSources) -> Option<ClaudeToken> {
-    let raw = resolve_raw(sources)?;
+    let store = crate::OsCredentialStore::new(MACOS_KEYCHAIN_SERVICE);
+    let (_, raw) = resolve_raw(sources, &store, keychain_account().as_deref())?;
     extract_token(&raw)
 }
 
-fn resolve_raw(sources: &ClaudeCredentialSources) -> Option<String> {
+pub(super) enum CredentialSource {
+    File(PathBuf),
+    Keychain(String),
+}
+
+pub(super) fn keychain_account() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var("USER").ok().filter(|account| !account.is_empty())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+pub(super) fn resolve_raw(
+    sources: &ClaudeCredentialSources,
+    store: &dyn crate::CredentialStore,
+    account: Option<&str>,
+) -> Option<(CredentialSource, String)> {
     if let Some(path) = &sources.credentials_file_override {
-        return read_file(path);
+        return read_file(path).map(|raw| (CredentialSource::File(path.clone()), raw));
     }
-
-    let default_path = sources.home_dir.join(CREDENTIALS_FILE);
-    if let Some(content) = read_file(&default_path) {
-        return Some(content);
+    let path = sources.home_dir.join(CREDENTIALS_FILE);
+    if let Some(raw) = read_file(&path) {
+        return Some((CredentialSource::File(path), raw));
     }
-
     if sources.skip_keychain {
         return None;
     }
-    read_keychain()
+    let account = account?;
+    let raw = store.read(account).ok()??;
+    let raw = raw.expose().trim();
+    if raw.is_empty() {
+        None
+    } else {
+        Some((CredentialSource::Keychain(account.to_owned()), raw.to_owned()))
+    }
 }
 
 fn read_file(path: &Path) -> Option<String> {
@@ -71,26 +97,6 @@ fn read_file(path: &Path) -> Option<String> {
         return None;
     }
     Some(trimmed.to_owned())
-}
-
-fn read_keychain() -> Option<String> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        None
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use crate::{CredentialStore, OsCredentialStore};
-        let store = OsCredentialStore::new(MACOS_KEYCHAIN_SERVICE);
-        let account = std::env::var("USER").ok()?;
-        match store.read(&account) {
-            Ok(Some(secret)) => {
-                let text = secret.expose().trim().to_owned();
-                if text.is_empty() { None } else { Some(text) }
-            }
-            _ => None,
-        }
-    }
 }
 
 /// Extracts a [`ClaudeToken`] from a raw credentials JSON string.

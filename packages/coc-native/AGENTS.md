@@ -107,6 +107,10 @@ Its `exchange_refresh_token` accepts caller-owned secrets and validated
 diagnostics, and has no storage or verified-account dependency. Scope policy,
 scheduling and cache ownership stay with the caller. Native OAuth acquisition reuses
 the exchange within its existing discovery, identity verification and locked rotation.
+`auth_sdk::claude::acquire_token` coordinates demand refresh in Rust, pins reads
+and writes to one credential source, and persists rotation before returning.
+Callers sharing credentials must share a private coordination directory; external
+Claude CLI writers do not use these locks. Claude acquisition has no N-API export.
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles and
 one-shot `exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`.

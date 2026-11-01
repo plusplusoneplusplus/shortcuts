@@ -6,8 +6,8 @@ OAuth primitives: token exchange, HTTP transport, and file-advisory lock
 coordination. `auth_sdk::microsoft` builds on `oauth` for Microsoft public-cloud,
 US-government and China-cloud OAuth, plus Azure CLI acquisition.
 `auth_sdk::github` reads existing, explicitly selected Copilot CLI and GitHub CLI credentials.
-`auth_sdk::claude` reads Claude Code OAuth credentials from the macOS Keychain or
-`~/.claude/.credentials.json`.
+`auth_sdk::claude` reads, refreshes and persists Claude Code OAuth credentials
+with source-pinned, coordinated demand acquisition.
 Shared `Account`, `Token`, `Secret`, `Clock`, `CredentialStore`, lifecycle and
 `AuthError` contracts are vendor-neutral. Future vendors use separate modules
 and the shared `oauth` primitives, not a universal vendor options object.
@@ -64,7 +64,7 @@ reader fallback. Environment/custom JS resolvers and Copilot SDK RPC stay in
 TypeScript, as do Copilot API authorization and allowed token-family checks.
 JavaScript token strings cannot be zeroized.
 
-## Claude credential reading
+## Claude credentials
 
 `claude::read_credentials(sources)` reads Claude Code OAuth credentials from
 the first available source:
@@ -98,16 +98,38 @@ new access token, a **rotated** refresh token, absolute `expires_at` in epoch
 milliseconds, and granted scopes. `is_expired(expires_at)` checks whether
 a token is within the 5-minute expiry margin.
 
-**Rotating refresh tokens:** Claude invalidates the previous refresh token
-on each exchange. If two processes refresh concurrently, one will win and
-the other's refresh token becomes invalid — logging the user out. The caller
-must coordinate externally (e.g. `CredentialLock`) and persist the new
-refresh token before using the new access token.
+`claude::acquire_token(http, options, cancel, deadline)` returns a `ClaudeToken`.
+`ClaudeTokenOptions` supplies credential sources, refresh options and an existing
+private coordination directory. Fresh tokens and tokens with unknown expiry
+return unchanged. Known expiries within the five-minute margin require renewal.
+The operation pins the selected file or Keychain account, acquires its advisory
+lock, re-reads credentials, and refreshes only if renewal is still needed.
+
+Rotation is saved to the selected source before returning the new token. File
+overrides stay exclusive; Keychain failures never redirect writes to a file.
+Atomic file replacement syncs the temporary file and uses mode `0o600` on Unix.
+Sibling keys and existing OAuth metadata survive read-modify-write, including
+sibling updates during the exchange. A detected external token replacement
+returns `AccountMismatch` without overwriting it. Missing credentials or refresh
+tokens return `LoginRequired`; expired refresh credentials require interaction.
+Safe `OAuthRefreshError` codes and endpoint status/rejection propagate.
+
+All SDK callers sharing credentials must use the same coordination directory.
+File aliases use the canonical target path as their lock identity. The lock wait
+and HTTP exchange honor cancellation and the deadline; synchronous store I/O
+must run on a worker and cannot be preempted. Once a rotation response is accepted,
+its save completes before checking cancellation for publication. Failed saves
+never return the rotated token and may require sign-in; the operation never
+retries an exchange automatically. The Claude CLI and other external writers do
+not share this lock protocol, so their concurrent refreshes remain uncoordinated.
+
+The lower-level `refresh_token` performs only the exchange. Its caller must
+coordinate and persist the rotated refresh token before using the access token.
 
 `claude::persist_credentials(fields, target)` writes refreshed credentials
 back to the credential store using a read-modify-write pattern. The existing
 JSON is read, only the `claudeAiOauth` section is updated (preserving sibling
-keys like `mcpOAuth`), and the result is written back. `PersistFields` can be
+keys like `mcpOAuth`), and the result is written according to `PersistTarget`. `PersistFields` can be
 constructed from a `&ClaudeRefreshResponse` via the `From` impl.
 
 On macOS, the Keychain is tried first; file is the fallback. On Linux/Windows,
