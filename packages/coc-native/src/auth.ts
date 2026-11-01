@@ -166,7 +166,8 @@ export class MicrosoftOAuthSignIn {
 
 export type MicrosoftOAuthRefreshOptions = Bindings.MicrosoftOAuthRefreshOptions & { timeoutMs?: number };
 export type MicrosoftOAuthRefreshResponse = Readonly<Bindings.MicrosoftOAuthRefreshResponse>;
-export type MicrosoftOAuthRefreshRejection = 'invalid_grant' | 'interaction_required' | 'consent_required';
+export type OAuthRefreshRejection = 'invalid_grant' | 'interaction_required' | 'consent_required';
+export type MicrosoftOAuthRefreshRejection = OAuthRefreshRejection;
 
 /** Only rejection, not the broader SDK code, identifies cache-invalidating failures. */
 export class MicrosoftOAuthRefreshError extends AuthError {
@@ -188,15 +189,18 @@ export function loadNativeMicrosoftOAuthRefresh(): Pick<typeof Bindings, 'Native
     return { NativeMicrosoftOAuthRefreshRequest: request };
 }
 
-function decodeRefreshError(error: unknown): never {
+export function decodeOAuthRefreshError(
+    error: unknown,
+    ErrorType: new (code: AuthErrorCode, status?: number, rejection?: OAuthRefreshRejection) => AuthError = MicrosoftOAuthRefreshError,
+): never {
     if (error instanceof NativeAddonLoadError || error instanceof AuthError) throw error;
     const message = error instanceof Error ? error.message : '';
     const match = /^\[auth-refresh:([A-Za-z]+):(\d{3})?:(invalid_grant|interaction_required|consent_required)?\]/.exec(message);
     if (match && errorCodes.has(match[1])) {
-        throw new MicrosoftOAuthRefreshError(
+        throw new ErrorType(
             match[1] as AuthErrorCode,
             match[2] ? Number(match[2]) : undefined,
-            match[3] as MicrosoftOAuthRefreshRejection | undefined,
+            match[3] as OAuthRefreshRejection | undefined,
         );
     }
     return decodeAuthError(error);
@@ -222,7 +226,7 @@ export async function exchangeMicrosoftRefreshToken(
         if (signal?.aborted) throw new AuthError('Cancelled');
         return Object.freeze(response);
     } catch (error) {
-        return decodeRefreshError(error);
+        return decodeOAuthRefreshError(error);
     } finally {
         if (abort) signal?.removeEventListener('abort', abort);
         request?.cancel();

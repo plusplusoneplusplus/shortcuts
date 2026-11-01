@@ -13,6 +13,7 @@ use std::{
 };
 use tokio_util::sync::CancellationToken;
 
+mod claude;
 mod github;
 mod refresh;
 

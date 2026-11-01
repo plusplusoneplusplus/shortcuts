@@ -110,7 +110,14 @@ the exchange within its existing discovery, identity verification and locked rot
 `auth_sdk::claude::acquire_token` coordinates demand refresh in Rust, pins reads
 and writes to one credential source, and persists rotation before returning.
 Callers sharing credentials must share a private coordination directory; external
-Claude CLI writers do not use these locks. Claude acquisition has no N-API export.
+Claude CLI writers do not use these locks. `src/claude-auth.ts` exposes one-shot
+`acquireClaudeCredential(options, signal?)` through `NativeClaudeCredentialRequest`.
+Absolute home, coordination and optional credential-file paths are caller-owned;
+construction validates without I/O. Queued workers are revoked before I/O; running
+workers settle before the promise. Cancellation and a 100..900,000 ms deadline
+(default 30 seconds) cover queueing through Node publication. Refresh secrets stay in Rust. The frozen
+result contains access/expiry/scope/subscription metadata; `ClaudeCredentialError`
+retains only safe SDK codes, HTTP status and allowlisted rejection values.
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles and
 one-shot `exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`.
@@ -155,6 +162,8 @@ selection before cached returns and after acquisition, and rejects changes with
 See `rust/auth-sdk/README.md` for source selection, storage/timeout boundaries and
 registration/consent constraints. Rust tests inject providers and clocks;
 `test/auth.test.ts` uses the built addon and synthetic CLI executables.
+`test/claude-auth.test.ts` covers isolated-file reads, publication, cancellation,
+capability checks and safe errors; `auth::claude::tests` injects refresh transport.
 `test/oauth-refresh.test.ts` covers built-addon validation and trusted loader
 injection; `auth::refresh::tests` injects Rust HTTP transport for exchange,
 marshalling, safe diagnostics and native cancellation/deadline cleanup.

@@ -15,7 +15,8 @@ and the shared `oauth` primitives, not a universal vendor options object.
 The N-API addon exports `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through
 the native package. Nothing automatically instantiates them. Existing consumers,
 Microsoft handles have their own lifecycle; GitHub acquisition uses one-shot
-`readGitHubCredential` requests through the native package.
+`readGitHubCredential` requests through the native package. Claude uses one-shot
+`acquireClaudeCredential` requests.
 
 ## GitHub CLI credential acquisition
 
@@ -122,6 +123,24 @@ its save completes before checking cancellation for publication. Failed saves
 never return the rotated token and may require sign-in; the operation never
 retries an exchange automatically. The Claude CLI and other external writers do
 not share this lock protocol, so their concurrent refreshes remain uncoordinated.
+
+The native package exposes `acquireClaudeCredential(options, signal?)` through a
+one-shot `NativeClaudeCredentialRequest`. Options require absolute `homeDir` and
+`coordinationDirectory`, with optional absolute `credentialsFile`, `skipKeychain`
+and `timeoutMs` (100..900,000 ms, default 30,000). The caller resolves home and
+environment overrides explicitly; construction performs no I/O. JavaScript
+cannot override the token endpoint or client registration.
+
+Acquisition runs on a blocking worker; cancelled or timed-out queued work is
+revoked before I/O. One deadline covers worker
+queueing, lock contention, HTTP and Node publication; cancellation is per request.
+A synchronous store transaction already running must settle before the promise
+settles. Publication checks both cancellation and deadline before copying the
+access token into JavaScript. Results freeze the snapshot and scopes and contain
+`accessToken`, optional `expiresAt`, `scopes`, optional `subscriptionType` and
+`rateLimitTier`. Refresh secrets stay native. `ClaudeCredentialError` retains only
+SDK `code`, optional HTTP `status` and allowlisted `rejection`; raw provider
+messages and causes are discarded. JavaScript token strings cannot be zeroized.
 
 The lower-level `refresh_token` performs only the exchange. Its caller must
 coordinate and persist the rotated refresh token before using the access token.
@@ -391,8 +410,11 @@ real user authentication.
 config fixtures. Rust Windows tests create and remove unique generic credentials;
 the ignored `github::tests::isolated_macos_cli_keychain_fixture` checks exact
 same-account CLI Keychain import on macOS with scoped cleanup.
-`cargo test --locked -p coc-native auth::refresh::tests` uses trusted Rust
-HTTP injection for boundary conversion, safe errors, one-shot handles and
-cancelled/timed-out work cleanup. `test/oauth-refresh.test.ts` covers built-addon
-validation and trusted loader fixtures for the exported TypeScript wrapper.
-Refresh tests make no auth network requests or credential-store accesses.
+`cargo test --locked -p coc-native --features napi/dyn-symbols auth::` exercises
+Microsoft refresh and Claude acquisition boundaries with trusted HTTP injection,
+safe errors, one-shot handles, cancellation, deadlines and queued-worker cleanup.
+Dynamic N-API symbols let these tests run without a Node host. The native package's
+`test/oauth-refresh.test.ts` and `test/claude-auth.test.ts` cover built-addon
+validation and trusted loader fixtures. Claude tests use isolated files and
+synthetic credentials; refresh tests make no auth network requests or live
+credential-store accesses.

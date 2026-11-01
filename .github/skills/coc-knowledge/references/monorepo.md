@@ -228,7 +228,12 @@ stay in TypeScript. See the native instructions for exact-key and platform contr
 `auth_sdk::claude::acquire_token` owns source-pinned read/check/lock/re-read/
 refresh/persist acquisition, with cancellation and a deadline. Callers sharing
 credentials must share a private coordination directory; external Claude CLI
-writers remain outside that lock protocol. Its API is Rust-only.
+writers remain outside that lock protocol. `src/claude-auth.ts` exposes one-shot
+`acquireClaudeCredential(options, signal?)` with caller-owned absolute paths,
+a 30-second default bounded timeout, and cancellation through Node publication.
+Queued workers are revoked before I/O; running acquisition settles before
+delivery. Refresh secrets stay in Rust; returned access metadata is frozen and errors contain only safe codes,
+HTTP status and allowlisted rejection values.
 Shared types, storage and lifecycle remain vendor-neutral. Protocol/security
 contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).
