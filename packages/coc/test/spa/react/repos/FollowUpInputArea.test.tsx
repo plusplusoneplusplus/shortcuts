@@ -1182,3 +1182,72 @@ describe('follow-up Configure tiers', () => {
         expect(screen.getByTestId('follow-up-effort-tier-selector')).toHaveAttribute('data-tier-value', 'medium');
     });
 });
+
+describe('FollowUpInputArea browser demo recording', () => {
+    afterEach(async () => {
+        const { resetBrowserDemosForTest } = await import('../../../../src/server/spa/client/react/shared/file-path/browser-demo');
+        resetBrowserDemosForTest();
+        delete (window as any).cocDesktop;
+    });
+
+    it('blocks sends while this chat records a demo and allows them once it stops', async () => {
+        const listeners: Array<(state: unknown) => void> = [];
+        (window as any).cocDesktop = { browser: { demo: {
+            command: vi.fn().mockResolvedValue({ ok: true, drafts: [] }),
+            onState: (callback: (state: unknown) => void) => { listeners.push(callback); return () => {}; },
+        } } };
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        render(<FollowUpInputArea {...makeProps({ suggestions: ['Run tests'], onSend, currentProcessId: 'queue_chat-1' })} />);
+        const demo = { id: 'd', owner: { workspaceId: 'ws-1', processId: 'chat-1', routingRef: 'ws-1' }, stepCount: 0, tabCount: 1, viewIds: ['v'], incomplete: false };
+        act(() => { for (const listener of listeners) listener({ ...demo, status: 'recording' }); });
+        expect(screen.getByTestId('follow-up-demo-recording').textContent).toContain('Recording a browser demo for this chat');
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).not.toHaveBeenCalled();
+        act(() => { for (const listener of listeners) listener({ ...demo, status: 'stopped' }); });
+        expect(screen.queryByTestId('follow-up-demo-recording')).toBeNull();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+    });
+
+    it('does not block a different chat', () => {
+        const listeners: Array<(state: unknown) => void> = [];
+        (window as any).cocDesktop = { browser: { demo: {
+            command: vi.fn().mockResolvedValue({ ok: true, drafts: [] }),
+            onState: (callback: (state: unknown) => void) => { listeners.push(callback); return () => {}; },
+        } } };
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        render(<FollowUpInputArea {...makeProps({ suggestions: ['Run tests'], onSend, currentProcessId: 'other-chat' })} />);
+        act(() => { for (const listener of listeners) listener({ id: 'd', owner: { workspaceId: 'ws-1', processId: 'chat-1', routingRef: 'ws-1' },
+            status: 'recording', stepCount: 0, tabCount: 1, viewIds: ['v'], incomplete: false }); });
+        expect(screen.queryByTestId('follow-up-demo-recording')).toBeNull();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+    });
+
+    it.each([
+        { workspaceId: 'ws-2', routingRef: 'ws-2' },
+        { workspaceId: 'ws-1', routingRef: 'remote:server-b:ws-1' },
+        { workspaceId: 'ws-2', routingRef: 'remote:server-a:ws-2' },
+    ])('does not block equal chat IDs on a different concrete owner: %j', browserOwner => {
+        const listeners: Array<(state: unknown) => void> = [];
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: { demo: {
+            command: vi.fn().mockResolvedValue({ ok: true, drafts: [] }),
+            onState: (callback: (state: unknown) => void) => { listeners.push(callback); return () => {}; },
+        } } };
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const props = makeProps({ workspaceId: 'group-g', suggestions: ['Run tests'], onSend, currentProcessId: 'queue_chat-1', browserOwner });
+        const view = render(<FollowUpInputArea {...props} />);
+        const recordedOwner = { workspaceId: 'ws-1', routingRef: 'remote:server-a:ws-1' };
+        const demo = { id: 'd', owner: { ...recordedOwner, processId: 'chat-1' },
+            status: 'paused', stepCount: 0, tabCount: 1, viewIds: ['v'], incomplete: false };
+        act(() => { for (const listener of listeners) listener(demo); });
+        expect(screen.queryByTestId('follow-up-demo-recording')).toBeNull();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+        onSend.mockClear();
+        view.rerender(<FollowUpInputArea {...props} browserOwner={recordedOwner} />);
+        expect(screen.getByTestId('follow-up-demo-recording')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).not.toHaveBeenCalled();
+    });
+});

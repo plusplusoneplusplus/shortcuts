@@ -25,6 +25,12 @@ import {
 import { setServerLogger } from '../../src/server/logging/server-logger';
 import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
 import { createWorkspaceDirectory } from '../../src/server/servers/workspace-directory';
+import { processMessageAttachments } from '../../src/server/core/attachment-utils';
+
+vi.mock('../../src/server/core/attachment-utils', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../src/server/core/attachment-utils')>();
+    return { ...actual, processMessageAttachments: vi.fn(actual.processMessageAttachments) };
+});
 
 // ============================================================================
 // Helpers
@@ -138,6 +144,65 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
     // Success path
     // ========================================================================
+
+    it('rejects an expired demo Send before creating attachment files or history', async () => {
+        await store.addProcess({ id: 'expired-demo', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'expired-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        vi.mocked(mockBridge.isSessionAlive).mockResolvedValue(false);
+        const attachmentCalls = vi.mocked(processMessageAttachments).mock.calls.length;
+        const response = await postJSON(`${baseUrl}/api/processes/expired-demo/message?workspace=demo-owner`, {
+            content: 'Explain', browserDemo: { inputAllowed: false }, attachments: [
+                { name: 'demo.md', mimeType: 'text/markdown', size: 4, dataUrl: 'data:text/markdown;base64,ZGVtbw==' },
+            ],
+        });
+        expect(response.status).toBe(410);
+        expect(vi.mocked(processMessageAttachments).mock.calls).toHaveLength(attachmentCalls);
+        expect((await store.getProcess('expired-demo', 'demo-owner'))!.conversationTurns).toEqual([]);
+    });
+
+    it.each(['completed', 'running'] as const)('retains the entire sent demo in owner history across file cleanup (parent=%s)', async status => {
+        await store.addProcess({ id: 'demo-history', type: 'chat', status, startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'demo-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        const markdown = '# Browser demonstration\n' + 'Clicked the Billing link; typed value omitted.\n'.repeat(1400);
+        const name = 'browser-demo-fixture.md';
+        const response = await postJSON(`${baseUrl}/api/processes/demo-history/message?workspace=demo-owner`, {
+            content: 'Explain the reviewed demo', browserDemo: { inputAllowed: false },
+            attachments: [{ name, mimeType: 'text/markdown', size: Buffer.byteLength(markdown),
+                dataUrl: `data:text/markdown;base64,${Buffer.from(markdown).toString('base64')}` }],
+        });
+        expect(response.status).toBe(202);
+        const proc = await store.getProcess('demo-history', 'demo-owner');
+        const queued = status === 'running' ? proc!.pendingMessages![0]
+            : vi.mocked(mockBridge.enqueue).mock.calls[0][0].payload;
+        const savedPath = queued.attachments![0].path;
+        expect(fs.readFileSync(savedPath, 'utf8')).toBe(markdown);
+        expect(status === 'running' ? queued.content : queued.prompt).toContain(savedPath);
+        const persisted = status === 'running' ? proc!.pendingMessages![0].displayContent : proc!.conversationTurns![0].content;
+        expect(persisted).toContain(markdown);
+        fs.rmSync(path.dirname(savedPath), { recursive: true, force: true });
+        const reloaded = await new FileProcessStore({ dataDir }).getProcess('demo-history', 'demo-owner');
+        expect(status === 'running' ? reloaded!.pendingMessages![0].displayContent : reloaded!.conversationTurns![0].content)
+            .toContain(markdown);
+        expect(await store.getProcess('demo-history', 'other-owner')).toBeUndefined();
+    });
+
+    it('routes demo restrictions to the exact owner and rejects invalid grants', async () => {
+        await store.addProcess({ id: 'demo-chat', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'demo-session',
+            metadata: { type: 'chat', workspaceId: 'demo-owner', mode: 'ask' }, conversationTurns: [] });
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=other-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: false } })).status).toBe(404);
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=demo-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: true } })).status).toBe(400);
+        expect(mockBridge.enqueue).not.toHaveBeenCalled();
+        expect((await postJSON(`${baseUrl}/api/processes/demo-chat/message?workspace=demo-owner`,
+            { content: 'Explain', browserDemo: { inputAllowed: false } })).status).toBe(202);
+        expect(vi.mocked(mockBridge.enqueue).mock.calls[0][0].payload).toMatchObject({
+            workspaceId: 'demo-owner', processId: 'demo-chat', context: { browserDemo: { inputAllowed: false } },
+        });
+    });
 
     it('admits two remote directory follow-ups through the real scoped route and preserves destination mode/provider', async () => {
         await store.addProcess({

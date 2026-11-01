@@ -349,7 +349,10 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string, observedTakeoverRevision?: number): Promise<BrowserCommandResult> {
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string, observedTakeoverRevision?: number, inputAllowed = true): Promise<BrowserCommandResult> {
+        if (!inputAllowed && !['tabs', 'snapshot', 'read', 'frames', 'wait', 'screenshot'].includes(command.action)) {
+            return Promise.reject(new Error('demo-no-input: ask the user before acting in the browser'));
+        }
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
         this.syncPolicies();
         const framesEnabled = this.getFramesEnabled();

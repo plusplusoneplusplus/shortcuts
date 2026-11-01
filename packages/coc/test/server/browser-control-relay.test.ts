@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BrowserNavigationApprovals } from '../../src/server/llm-tools/browser-navigation-approval';
+import { BROWSER_ACTIONS } from '@plusplusoneplusplus/coc-client';
 
 const client = (id: string) => ({ id, send: vi.fn<(data: string) => void>() });
 const request = (client: ReturnType<typeof client>) => JSON.parse(client.send.mock.calls.at(-1)![0]).request;
@@ -15,6 +16,31 @@ const frame = { id: 'f-one', origin: 'https://fixture.test', name: '', document:
 afterEach(() => vi.useRealTimers());
 
 describe('browser control relay', () => {
+    it.each(BROWSER_ACTIONS.filter(action => !['tabs', 'snapshot', 'read', 'frames', 'wait', 'screenshot'].includes(action)))(
+        'rejects demo-turn %s before routing or site approval', async action => {
+            const relay = enabled(), a = client('a');
+            relay.advertise(a, 'w', true);
+            await expect(relay.execute('w', 'p', { action }, undefined, undefined, 'demo-turn', undefined, false))
+                .rejects.toThrow('demo-no-input: ask the user before acting in the browser');
+            expect(a.send).not.toHaveBeenCalled();
+        });
+    it.each(['tabs', 'snapshot', 'read', 'frames', 'wait', 'screenshot'] as const)(
+        'allows demo-turn %s and leaves other owners and later turns unrestricted', async action => {
+            const relay = enabled(), a = client('a'), remote = enabled(), b = client('b');
+            relay.setFramesEnabledGetter(() => true);
+            relay.advertise(a, 'w', true);
+            remote.advertise(b, 'w', true);
+            const read = relay.execute('w', 'p', { action }, undefined, undefined, 'demo-turn', undefined, false);
+            relay.reply(a, { id: request(a).id, ok: true, result: { frame: 'f-one', document: 'd-one', frames: [frame], elements: [] } });
+            await expect(read).resolves.toMatchObject({ elements: [] });
+            for (const [runtime, socket, processId] of [[relay, a, 'other-chat'], [remote, b, 'p'], [relay, a, 'p']] as const) {
+                const input = runtime.execute('w', processId, { action: 'click', ref: 'e1' }, undefined, undefined, 'explicit-task');
+                runtime.reply(socket, { id: request(socket).id, ok: true, result: { frame: 'f-one', document: 'd-one', frames: [frame], elements: [] } });
+                await expect(input).resolves.toMatchObject({ elements: [] });
+            }
+            await expect(relay.execute('w', 'p', { action: 'click' }, undefined, undefined, 'demo-turn', undefined, false))
+                .rejects.toThrow('demo-no-input');
+        });
     it('defaults navigation approval on, follows the live getter and is off when browser control is off', () => {
         const relay = new BrowserControlRelay();
         expect(relay.getNavigationApprovalEnabled()).toBe(false);

@@ -200,7 +200,11 @@ published Codex SDK `ThreadOptions` contract.
 
 `compactSession()` compacts a thread in place over the same app-server stdio channel (shared `runAppServerRpc` helper). After the handshake it issues `thread/resume` (id 1) — **not** `thread/read`, which fails "thread not found" on a thread this app-server process never resumed — then `thread/compact/start` (id 2, `{ threadId }`), which rewrites the rollout JSONL under the same thread id and summarizes asynchronously.
 
-Completion is awaited method-based, not id-based: a `thread/compacted` notification or a forward-compatible `context_compaction` `item/completed` for the thread. `thread/tokenUsage/updated` frames are tracked via `tokenUsage.total.totalTokens`; the first total (emitted by resume) is the baseline, the last the reduced total. `tokensRemoved = max(0, first − last)`; `messagesRemoved` is always 0. The surviving thread id means `resumeThread(sessionId)` follow-ups carry compacted history with no session-id remap. Timeout `CODEX_COMPACT_TIMEOUT_MS` (120s, `COC_CODEX_COMPACT_TIMEOUT_MS` override). `customInstructions` is **ignored** (`ThreadCompactStartParams` carries only `threadId`) and warn-logged. A `-32601` on `thread/compact/start` throws `CompactUnsupportedError`.
+Completion is awaited method-based, not id-based: a `thread/compacted` notification or a forward-compatible `context_compaction` `item/completed` for the thread. `thread/tokenUsage/updated` frames supply `tokenUsage.total.totalTokens`; the first total is the baseline, the last the reduced total. `tokensRemoved = max(0, first - last)`; `messagesRemoved` is always 0. Follow-ups resume the same thread id. `customInstructions` is ignored and warn-logged; a `-32601` on `thread/compact/start` throws `CompactUnsupportedError`.
+
+Compaction waits without a CoC timer for completion or RPC/transport/process failure, including stdio EOF. `runAppServerRpc` tears down its readline and owned listeners on settlement, requests SIGTERM for a live child without waiting for exit or escalating to SIGKILL, and clears any caller-supplied deadline; quota retains its 10s deadline.
+
+Compaction runs outside the active-session map: `abortSession()`, `cleanup()` and `dispose()` cannot cancel an in-flight compaction, and a silent live transport can wait indefinitely. Disposed services reject new compaction calls.
 
 ### CompactResult.contextUsage
 

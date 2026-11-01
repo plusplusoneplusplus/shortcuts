@@ -673,9 +673,9 @@ export interface ChatPayload {
     /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
     reasoningEffort?: ReasoningEffort;
     /**
-     * Style selected for the first turn. Presentation only — never affects
+     * Style selected for this turn, retained through queued follow-ups. Presentation only — never affects
      * provider, model, effort, tools, or permissions. Validated at the queue
-     * boundary, where an omitted field is normalized to `'default'`.
+     * boundary; omission on a new task uses the configured server default.
      */
     chatStyle?: ChatStyle;
     /** Process ID of the failed chat this task restarts (`POST /api/queue/:id/retry`). */

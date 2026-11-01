@@ -46,7 +46,9 @@ vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => 
     getRepoGroupChats: (...args: unknown[]) => mockGetRepoGroupChats(...args),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel', () => ({
-    UnifiedRightPanel: () => null,
+    UnifiedRightPanel: ({ viewingChatOwner }: { viewingChatOwner?: { workspaceId: string; routingRef: string; processId: string } | null }) =>
+        <div data-testid="stub-demo-viewing-owner" data-owner={viewingChatOwner?.workspaceId}
+            data-route={viewingChatOwner?.routingRef} data-process={viewingChatOwner?.processId} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost', () => ({
     ContentSearchOverlayHost: () => null,
@@ -243,6 +245,9 @@ describe('RepoGroupView — aggregated chats', () => {
         expect(location.hash).toBe('#repos/group-ai/chats/member/ws-a/queue_m1');
         expect(screen.getByTestId('stub-member-chat-pane').dataset.owner).toBe('ws-a');
         expect(screen.getByTestId('stub-member-chat-pane').dataset.route).toBe('ws-a');
+        expect(screen.getByTestId('stub-demo-viewing-owner').dataset).toMatchObject({
+            owner: 'ws-a', route: 'ws-a', process: 'queue_m1',
+        });
         expect(screen.getByTestId('repo-group-member-open-in-repo').getAttribute('href')).toBe('#repos/ws-a/chats/queue_m1');
     });
 
@@ -273,12 +278,16 @@ describe('RepoGroupView — aggregated chats', () => {
         fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
         expect(location.hash).toBe('#repos/remote%3Asrv-1%3Agroup-ai/chats/member/ws-a/queue_m1');
         expect(screen.getByTestId('stub-member-chat-pane').dataset.route).toBe('remote:srv-1:ws-a');
+        expect(screen.getByTestId('stub-demo-viewing-owner').dataset).toMatchObject({
+            owner: 'ws-a', route: 'remote:srv-1:ws-a', process: 'queue_m1',
+        });
         expect(screen.getByTestId('repo-group-member-owner').textContent).toBe('connector · devbox');
         fireEvent.click(screen.getByTestId('repo-group-split-new-chat'));
         expect(location.hash).toBe('#repos/remote%3Asrv-1%3Agroup-ai/chats');
         expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null, repoId: selectionId });
         expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('false');
         expect(screen.queryByTestId('stub-member-chat-pane')).toBeNull();
+        expect(screen.getByTestId('stub-demo-viewing-owner').dataset.owner).toBeUndefined();
     });
 
     it('mobile keyboard selection opens owner detail and Back to group chats retains list scroll', async () => {

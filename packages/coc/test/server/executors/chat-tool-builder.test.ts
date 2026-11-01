@@ -6,6 +6,7 @@ import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-bui
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { CONFIG_FILE_NAME } from '../../../src/config';
 import { BrowserToolStateStore } from '../../../src/server/llm-tools/browser-tools';
+import { BrowserControlRelay } from '../../../src/server/streaming/browser-control-relay';
 
 const WS_ID = 'ws-tools';
 
@@ -16,6 +17,33 @@ function makeStore(searchEnabled = true) {
 }
 
 describe('buildChatToolBundle', () => {
+    it('restricts the demo browser tool and keeps browser unavailable to nested scripts', async () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+        const relay = new BrowserControlRelay();
+        relay.setEnabledGetter(() => true);
+        const client = { id: 'desktop', send: vi.fn() };
+        relay.advertise(client, WS_ID, true);
+        const options = {
+            dataDir: tmpDir, workspaceId: WS_ID, processId: 'demo-chat', store: makeStore(),
+            browserRuntime: relay, browserState: new BrowserToolStateStore(tmpDir), browserInputAllowed: false,
+            toolScriptingEnabled: true, canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false,
+        };
+        const result = buildChatToolBundle(options);
+        const browser = result.tools.find(tool => tool.name === 'browser')!;
+        const invocation = { toolName: 'browser', toolCallId: 'call', sessionId: 'session', arguments: {} };
+        const direct = await browser.handler!({ action: 'click', ref: 'e1' }, invocation);
+        expect(direct).toMatchObject({ resultType: 'failure', textResultForLlm: expect.stringContaining('demo-no-input') });
+        const script = result.tools.find(tool => tool.name === 'run_tool_script')!;
+        const nested = await script.handler!({ code: "return await tools.browser({ action: 'open', url: 'https://fixture.test' });" },
+            { ...invocation, toolName: 'run_tool_script' });
+        expect(JSON.stringify(nested)).toContain('Unknown tool: browser');
+        expect(client.send).not.toHaveBeenCalled();
+        const reading = browser.handler!({ action: 'snapshot' }, invocation);
+        await vi.waitFor(() => expect(client.send).toHaveBeenCalledOnce());
+        const { request } = JSON.parse(client.send.mock.calls[0][0]);
+        relay.reply(client, { id: request.id, ok: true, result: { elements: [] } });
+        expect(await reading).toMatchObject({ resultType: 'success' });
+    });
     it('retains review reads and ledger verdicts but excludes every supplied execution capability', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
         const result = buildChatToolBundle({

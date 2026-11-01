@@ -48,6 +48,7 @@ import {
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
+import { BROWSER_DEMO_COMMAND_CHANNEL, BROWSER_DEMO_STATE_CHANNEL } from '../src/browser-demo-recorder';
 import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL } from '../src/browser-control-command';
 import {
     HTML_PAGE_SESSION_KEY,
@@ -158,6 +159,23 @@ describe('preload bridge', () => {
         const state = { viewId: 'view', status: 'loaded' };
         listener({}, state);
         expect(callback).toHaveBeenCalledWith(state);
+        unsubscribe();
+        expect(removeListener).toHaveBeenLastCalledWith(channel, listener);
+    });
+
+    it('exposes browser demo commands and state through one owner-checked channel pair', async () => {
+        const { demo } = exposedApi().browser;
+        expect(demo.supported).toBe(true);
+        const command = { action: 'start', owner: { workspaceId: 'w', processId: 'p', routingRef: 'w' }, viewId: 'view' };
+        invoke.mockResolvedValueOnce({ ok: true });
+        expect(await demo.command(command)).toEqual({ ok: true });
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_DEMO_COMMAND_CHANNEL, command);
+        const callback = vi.fn();
+        const unsubscribe = demo.onState(callback);
+        const [channel, listener] = on.mock.calls.at(-1)!;
+        expect(channel).toBe(BROWSER_DEMO_STATE_CHANNEL);
+        listener({}, { id: 'd', status: 'recording' });
+        expect(callback).toHaveBeenCalledWith({ id: 'd', status: 'recording' });
         unsubscribe();
         expect(removeListener).toHaveBeenLastCalledWith(channel, listener);
     });

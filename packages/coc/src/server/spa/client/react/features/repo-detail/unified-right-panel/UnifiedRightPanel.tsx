@@ -134,8 +134,10 @@ import {
 import {
     desktopBrowserBridge,
     OPEN_BROWSER_URL_EVENT,
+    type BrowserDemoOwner,
     type OpenBrowserUrlDetail,
 } from '../../../shared/file-path/browser-bridge';
+import { setBrowserDemoViewingChat } from '../../../shared/file-path/browser-demo';
 import { desktopHtmlPageBridge, HTML_PAGE_VIEW_PREFIX, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -228,6 +230,8 @@ export interface UnifiedRightPanelProps {
      * diff) are filed under it; workspace tabs stay visible either way.
      */
     chatId?: string | null;
+    /** Concrete selected conversation when a group panel shows a member chat. */
+    viewingChatOwner?: BrowserDemoOwner | null;
     /** Open/width/resize + the target workspace new resources open against. */
     dock: WorkspaceDockController;
     /** Absolute root path on the scope's host, when the scope is a concrete repo. */
@@ -257,6 +261,7 @@ export function UnifiedRightPanel({
     workspaceId,
     routingRef,
     chatId = null,
+    viewingChatOwner,
     dock,
     workspaceRootPath,
     targets,
@@ -307,6 +312,13 @@ export function UnifiedRightPanel({
     useEffect(() => {
         if (pinnedId !== null) activate(pinnedId);
     }, [pinnedId, activate]);
+    const demoWorkspaceId = viewingChatOwner === undefined ? workspaceId : viewingChatOwner?.workspaceId;
+    const demoRoutingRef = viewingChatOwner === undefined ? routingRef ?? workspaceId : viewingChatOwner?.routingRef;
+    const demoProcessId = viewingChatOwner === undefined ? chatId : viewingChatOwner?.processId;
+    // Leaving the exact chat/server/workspace that records a demo pauses it.
+    useEffect(() => setBrowserDemoViewingChat(demoWorkspaceId && demoRoutingRef && demoProcessId
+        ? { workspaceId: demoWorkspaceId, routingRef: demoRoutingRef, processId: demoProcessId } : null),
+    [demoWorkspaceId, demoRoutingRef, demoProcessId]);
 
     // Expanded covers the workspace row; only an open panel can be expanded, and
     // closing the panel drops the flag so the next open starts at its own width.
@@ -2352,6 +2364,7 @@ export function UnifiedRightPanel({
                                         tabId={tab.id}
                                         viewId={tab.resourceId}
                                         sessionKey={browserSessionKey(tab)}
+                                        chatId={tab.browserChatId ?? (tab.ownerWorkspaceId === demoWorkspaceId && browserSessionKey(tab) === demoRoutingRef ? demoProcessId ?? null : null)}
                                         url={tab.browserUrl}
                                         relatedEngine={tab.browserEngine}
                                         active={tab.id === activeId}

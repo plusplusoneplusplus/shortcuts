@@ -54,7 +54,7 @@ import {
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
 } from './devtunnel-modal';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
-import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
+import { confirmBrowserDemoQuit, disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
 
 const APP_NAME = 'CoCContainer';
 const DEFAULT_PORT = 5000;
@@ -530,12 +530,16 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', (event) => {
-    // Dispose the DevTunnel manager (does NOT persist enabled:false) before
-    // anything else — it holds no server reference so disposing it is always safe.
-    devTunnelManager?.dispose();
     if (isQuitting) {
         return;
     }
+    if (!confirmBrowserDemoQuit()) {
+        event.preventDefault();
+        return;
+    }
+    // Dispose the DevTunnel manager (does NOT persist enabled:false) before
+    // anything else — it holds no server reference so disposing it is always safe.
+    devTunnelManager?.dispose();
     event.preventDefault();
     isQuitting = true;
     void disposeBrowserViews()

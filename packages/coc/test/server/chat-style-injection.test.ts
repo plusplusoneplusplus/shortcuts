@@ -2,9 +2,8 @@
  * Chat-style injection rule (AC-04 / AC-05 / AC-06).
  *
  * The style block rides the *user message*: it is prepended before the message
- * is persisted, so the transcript shows it, and it is emitted only when the
- * style selected for a turn differs from the style last recorded for the
- * conversation and is not `'default'`.
+ * is sent, so the transcript shows it. Initial turns inject non-default styles;
+ * follow-up admission carries selection to the executor's context-boundary check.
  *
  * Covers both halves of the rule:
  *  - turn 1, via ProcessLifecycleRunner (new conversation, recorded style is
@@ -12,7 +11,7 @@
  *  - every later turn, via POST /api/processes/:id/message.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -21,7 +20,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
-import { buildChatStyleBlock, setChatStylePromptOverridesProvider } from '../../src/server/executors/chat-style-prompt';
+import { buildChatStyleBlock, setChatStylePromptOverridesProvider, shouldInjectChatStyle } from '../../src/server/executors/chat-style-prompt';
 import { buildChatModeDisplayBlock } from '../../src/server/executors/chat-mode-directive';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
@@ -66,7 +65,7 @@ describe('chat style on the first turn of a conversation', () => {
         };
     }
 
-    async function runTask(task: QueuedTask, flagEnabled = true, configuredDefault?: ChatStyle) {
+    async function runTask(task: QueuedTask, flagEnabled = true, configuredDefault?: ChatStyle, executionError?: Error) {
         const store = createMockProcessStore();
         let executedPrompt: string | undefined;
         const runner = new ProcessLifecycleRunner(
@@ -84,6 +83,7 @@ describe('chat style on the first turn of a conversation', () => {
             executeFollowUpFn: async () => undefined,
             executeByTypeFn: async (_t, prompt) => {
                 executedPrompt = prompt;
+                if (executionError) throw executionError;
                 return { response: 'done.' };
             },
             getWorkingDirectoryFn: () => undefined,
@@ -99,6 +99,38 @@ describe('chat style on the first turn of a conversation', () => {
         expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', HUMAN_BLOCK));
         expect(executedPrompt).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
         expect(process?.metadata?.chatStyle).toBe('human');
+        expect(process?.metadata?.chatStyleContext).toMatchObject({ style: 'human', block: HUMAN_BLOCK, turnIndex: 0 });
+    });
+
+    it('does not establish context when initial execution fails', async () => {
+        const { result, process } = await runTask(chatTask('t-failed', 'human'), true, undefined, new Error('Delivery failed'));
+        expect(result.success).toBe(false);
+        expect(process?.metadata?.chatStyleContext).toBeUndefined();
+    });
+
+    it('records the actual initial turn index when cold resume prepends historical turns', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess({
+            id: 'history', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'history',
+            metadata: { workspaceId: 'ws-style' },
+            conversationTurns: [
+                { role: 'user', content: 'earlier', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'answer', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        });
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, 'copilot', {
+            getChatStyleSelectorEnabled: () => true,
+        });
+        const task = chatTask('cold-resume', 'human', { resumedFrom: 'history' });
+        expect((await runner.run(task, {
+            cancelledTasks: new Set(), executeFollowUpFn: async () => undefined,
+            executeByTypeFn: async () => ({ response: 'done', sessionId: 'new-session' }),
+            getWorkingDirectoryFn: () => undefined,
+        })).success).toBe(true);
+        const current = (await store.getProcess('queue_cold-resume'))!;
+        expect(current.metadata?.chatStyleContext).toMatchObject({ turnIndex: 2 });
+        expect(current.conversationTurns?.[2].content).toBe(asked('What broke the build?', HUMAN_BLOCK));
+        expect(shouldInjectChatStyle('human', HUMAN_BLOCK, current, true)).toBe(false);
     });
 
     // AC-03 — an admin edit to the style's prompt text reaches the injected
@@ -207,6 +239,35 @@ describe('chat style on the first turn of a conversation', () => {
         expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
         expect(executedPrompt).toBe('What broke the build?');
         expect(process?.metadata?.chatStyle).toBeUndefined();
+    });
+
+    it.each([
+        { taskGeneration: {} },
+        { replication: {} },
+        { resolveComments: {} },
+        { resolveDiffCommentsMulti: {} },
+        { classifyDiff: { repoId: 'workspace', prId: '1', headSha: 'head' } },
+        { noteCreate: {} },
+    ])('keeps specialized initial context %j out of style injection', async context => {
+        const { process, executedPrompt } = await runTask(chatTask('t-specialized', 'human', { context }));
+        expect(executedPrompt).not.toContain('<chat-style>');
+        expect(process?.metadata?.chatStyle).toBeUndefined();
+        expect(process?.metadata?.chatStyleContext).toBeUndefined();
+    });
+
+    it.each(['commitChat', 'noteChat'])('keeps %s initial chats eligible', async name => {
+        const { process, executedPrompt } = await runTask(chatTask('t-artifact', 'human', { context: { [name]: {} } }));
+        expect(executedPrompt).toContain(HUMAN_BLOCK);
+        expect(process?.metadata?.chatStyle).toBe('human');
+    });
+
+    it('excludes Dreams internal chat-shaped tasks by task type', async () => {
+        const task = chatTask('t-dream', 'human');
+        task.type = 'dream';
+        const { process, executedPrompt } = await runTask(task);
+        expect(executedPrompt).not.toContain('<chat-style>');
+        expect(process?.metadata?.chatStyle).toBeUndefined();
+        expect(process?.metadata?.chatStyleContext).toBeUndefined();
     });
 
     it('never injects for a workflow task', async () => {
@@ -336,7 +397,7 @@ describe('chat style on follow-up turns', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it('injects only when the style differs from the recorded one', async () => {
+    it('carries every accepted selection to execution without decorating admission content', async () => {
         await startServer();
         await seedProcess('p-seq', { chatStyle: 'default' });
 
@@ -349,12 +410,16 @@ describe('chat style on follow-up turns', () => {
 
         expect(await userTurns('p-seq')).toEqual([
             asked('one'),
-            asked('two', HUMAN_BLOCK),
+            asked('two'),
             asked('three'),
-            asked('four', DIRECT_BLOCK),
+            asked('four'),
             asked('five'),
-            asked('six', HUMAN_BLOCK),
+            asked('six'),
         ]);
+        expect(vi.mocked(mockBridge.enqueue!).mock.calls.map(([task]) => task.payload.chatStyle))
+            .toEqual(['default', 'human', 'human', 'direct', 'default', 'human']);
+        expect(vi.mocked(mockBridge.enqueue!).mock.calls.every(([task]) =>
+            !String(task.payload.prompt).includes('<chat-style>'))).toBe(true);
         // Switching back to Default still records it — Default is a state.
         expect((await store.getProcess('p-seq'))?.metadata?.chatStyle).toBe('human');
     });
@@ -403,6 +468,15 @@ describe('chat style on follow-up turns', () => {
         expect((await store.getProcess('p-ralph'))?.metadata?.chatStyle).toBeUndefined();
     });
 
+    it('carries the selected style when the accepted turn switches out of Ralph', async () => {
+        await startServer();
+        await seedProcess('p-leave-ralph', { mode: 'ralph' });
+        const result = await postMessage('p-leave-ralph', { content: 'explain', mode: 'ask', chatStyle: 'direct' });
+        expect(result.status).toBe(202);
+        expect(vi.mocked(mockBridge.enqueue!).mock.calls[0][0].payload).toMatchObject({
+            mode: 'ask', chatStyle: 'direct', prompt: 'explain',
+        });
+    });
     // A follow-up with no chatStyle field lands on the configured server
     // default, so a client that never learned about the selector still tracks
     // whatever the admin picked.
@@ -413,7 +487,8 @@ describe('chat style on follow-up turns', () => {
 
         await sendTurn('p-cfg', 'hello');
 
-        expect(await userTurns('p-cfg')).toEqual([asked('hello', DIRECT_BLOCK)]);
+        expect(await userTurns('p-cfg')).toEqual([asked('hello')]);
+        expect(vi.mocked(mockBridge.enqueue!).mock.calls[0][0].payload.chatStyle).toBe('direct');
         expect((await store.getProcess('p-cfg'))?.metadata?.chatStyle).toBe('direct');
     });
 

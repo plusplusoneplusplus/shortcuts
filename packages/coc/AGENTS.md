@@ -47,6 +47,12 @@ references before editing. Paths are package-relative.
   desktop `richPasteSupported`; reject unsupported clients without fallback.
   Native clipboard contents stay desktop-local; results acknowledge delivery,
   not editor persistence, and never echo the payload.
+- Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
+  through exact-owner admission, buffered drain and follow-up execution. Never steer
+  them into an active turn. The accepted turn's browser tool binds this restriction
+  outside model arguments; the relay rejects input, navigation, evaluation and
+  takeover requests before desktop dispatch. Read-only actions remain available.
+  Keep this policy out of conversation metadata so later explicit tasks remain independent.
 - Separate **storage origin** from **execution workspace**. Work items, plans/versions,
   changes, bindings, PR provider state, classification, and review progress use
   `/api/origins/:originId/...` and `*ForOrigin` methods. Concrete `workspaceId` selects
@@ -882,6 +888,12 @@ references before editing. Paths are package-relative.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
   under `src/server/executors/`; lifecycle owns persistence.
   Mode directives/style belong in user turns, not the system prefix.
+  Style admission carries the selected value through queued/pending messages;
+  the follow-up executor rechecks the live gate and context at execution.
+  Stable native turns skip unchanged style; compaction, history rebuilds and
+  style/prompt drift restore it once. Keep executed `chatStyleContext` separate
+  from selector `chatStyle`, and decorate the exact accepted user turn.
+  Default emits nothing; initial executor exclusions remain unchanged.
 - Tool-call response sizes use the shared render model and already-loaded owner data.
   Count available raw strings as UTF-8 bytes before display clipping, including empty
   responses; use B/KiB/MiB/GiB. Never infer tokens or omitted payload sizes or fetch

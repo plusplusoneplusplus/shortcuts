@@ -3,6 +3,7 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
+import { BROWSER_DEMO_COMMAND_CHANNEL, runBrowserDemoCommand } from './browser-demo-recorder';
 import { ControlDeadline } from './browser-control-queue';
 import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
@@ -72,14 +73,45 @@ function ownWindow(sender: WebContents): BrowserWindow | null {
     return window && !window.isDestroyed() && window.webContents === sender ? window : null;
 }
 
+function confirmDiscardBrowserDemos(window?: BrowserWindow): boolean {
+    const drafts = manager?.demos.unsent(window?.webContents.id) ?? [];
+    if (!drafts.length) return true;
+    const options = {
+        type: 'warning' as const, title: 'Unsent browser demos',
+        message: `Discard ${drafts.length === 1 ? 'the unsent browser demo' : `${drafts.length} unsent browser demos`}?`,
+        detail: 'Recordings and review edits are kept only in memory. Closing, reloading or quitting deletes them. Cancel to return and send or discard them yourself.',
+        buttons: ['Cancel', 'Discard demos and continue'], defaultId: 0, cancelId: 0, noLink: true,
+    };
+    return (window ? dialog.showMessageBoxSync(window, options) : dialog.showMessageBoxSync(options)) === 1;
+}
+
+/** Check every owning window before shutdown disposes its memory-only demos. */
+export function confirmBrowserDemoQuit(): boolean {
+    return confirmDiscardBrowserDemos();
+}
+
 function wireOwner(window: BrowserWindow): void {
     const id = window.webContents.id;
     if (owners.has(id)) { return; }
     owners.set(id, window);
     const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
+    let closeApproved = false;
+    window.on('close', event => {
+        closeApproved = false;
+        if (!manager?.demos.unsent(id).length) return;
+        closeApproved = confirmDiscardBrowserDemos(window);
+        if (!closeApproved) event.preventDefault();
+    });
+    window.webContents.on('will-prevent-unload', event => {
+        const approved = closeApproved;
+        closeApproved = false;
+        if (approved || manager?.demos.unsent(id).length && confirmDiscardBrowserDemos(window)) {
+            event.preventDefault();
+        }
+    });
     // Reload closes guests without emitting onClosed into the next SPA document.
     window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) { cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
+        if (isMainFrame && !isInPlace) { closeApproved = false; cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
     });
     window.webContents.on('render-process-gone', () => {
         cancelControl(id);
@@ -228,6 +260,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         if (action === 'policy') return manager!.setHumanTakeoverEnabled(event.sender.id, identity.routingRef, note === true);
         return manager!.humanTakeover(event.sender.id, identity, action, note);
+    });
+    ipcMain.handle(BROWSER_DEMO_COMMAND_CHANNEL, (event, command: unknown) => {
+        if (!historyWindow(event)) return { ok: false, reason: 'not-found', message: 'Browser demos require a registered SPA main frame.' };
+        return runBrowserDemoCommand(manager!.demos, event.sender.id, command);
     });
     ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');

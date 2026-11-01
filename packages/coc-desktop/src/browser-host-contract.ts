@@ -44,10 +44,10 @@ export interface BrowserEventSink {
     documentCommitted?(url: string, title: string): void;
     documentTitleUpdated?(url: string, title: string): void;
     /** Successful main-document load or committed same-document navigation, never state replay. */
-    visited?(url: string, title: string): void;
+    visited?(url: string, title: string, sourceViewId?: string): void;
     /** Changes metadata only; cannot create a visit. */
     titleUpdated?(url: string, title: string): void;
-    newTab(url: string): void;
+    newTab(url: string, openerViewId?: string): void;
     download(event: BrowserDownloadEvent): void;
     closeRequested(): void;
     openMenuRequested(): void;
@@ -57,9 +57,9 @@ export interface BrowserEventSink {
     tabShortcut?(event: { digit: number } | { held: boolean }): void;
     /** The host expired or lost its guest; remove the manager handle as well. */
     closed?(): void;
-    controlPopoutOpened?(viewId: string, view: BrowserHostedView): void;
+    controlPopoutOpened?(viewId: string, view: BrowserHostedView, openerViewId?: string): void;
     controlPopoutClosed?(viewId: string): void;
-    controlFocused?(): void;
+    controlFocused?(sourceViewId?: string): void;
     controlStopRequested?(viewId: string, turnId: string): void;
     /**
      * A main-frame request (initial load, link, form post or redirect hop) is about to be sent.

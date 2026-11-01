@@ -259,6 +259,8 @@ without installing or launching an application.
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Electron downloads use desktop main’s download manager; WebView2 reports an explicit source-page system-browser fallback without replaying the download URL. Opted-in Windows ClickOnce requests use the shared activation policy.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
+The default-off desktop demonstration recorder has separate capture/review and
+unsent lifecycle contracts in [browser-demos.md](../browser-demos.md).
 WebView2 placement combines renderer-relative DIP bounds with Electron's physical screen content origin. The helper maps that origin into the parent HWND's client coordinates and DPI-scales only relative bounds, keeping pages aligned below Windows menu bars through moves, zoom and fullscreen. It raises the child HWND without activation; null bounds hide it for inactive tabs and DOM overlays.
 
 `browser-webview-guard.ts` registers exact main SPA documents and denies every

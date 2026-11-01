@@ -96,7 +96,7 @@ import {
 } from './report-issue';
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
-import { disposeBrowserViews, registerBrowserViewIpc, registerBrowserEmbedder } from './browser-view-host';
+import { confirmBrowserDemoQuit, disposeBrowserViews, registerBrowserViewIpc, registerBrowserEmbedder } from './browser-view-host';
 import { disposeExtensionCanvasIpc, registerExtensionCanvasIpc } from './extension-canvas-ipc';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
@@ -1287,6 +1287,10 @@ app.on('activate', () => {
 // attached to. Intercept once, run the async drain, then let the quit proceed.
 app.on('before-quit', (event) => {
     if (isQuitting) {
+        return;
+    }
+    if (!confirmBrowserDemoQuit()) {
+        event.preventDefault();
         return;
     }
     // AC-03: always stop the Desktop-owned tunnel process on quit, whether the

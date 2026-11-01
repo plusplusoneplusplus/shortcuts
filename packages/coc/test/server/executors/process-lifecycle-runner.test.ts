@@ -65,6 +65,18 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // ============================================================================
 
 describe('ProcessLifecycleRunner browser activation', () => {
+    it.each([true, false])('carries queued demo restriction only when the accepted context has it (demo=%s)', async demo => {
+        const store = createMockProcessStore();
+        await store.addProcess({ id: 'existing-chat', type: 'chat', status: 'running', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-abc' } });
+        const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());
+        const opts = makeOpts();
+        const task = makeTask({ payload: { kind: 'chat', processId: 'existing-chat', mode: 'ask', prompt: 'Explain',
+            workspaceId: 'ws-abc', context: demo ? { browserDemo: { inputAllowed: false } } : {} } });
+        expect((await runner.run(task, opts)).success).toBe(true);
+        const execute = vi.mocked(opts.executeFollowUpFn);
+        expect(execute.mock.calls[0][11]?.browserDemo).toEqual(demo ? { inputAllowed: false } : undefined);
+    });
     it('materializes accepted initial activation into durable process metadata', async () => {
         const store = createMockProcessStore();
         const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());

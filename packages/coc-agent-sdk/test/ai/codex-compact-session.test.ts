@@ -89,18 +89,29 @@ function makeAvailableService(): CodexSDKService {
     return svc;
 }
 
+function expectRpcCleanedUp(child: MockCodexAppServerChild): void {
+    expect(child.listenerCount('error')).toBe(0);
+    expect(child.listenerCount('exit')).toBe(0);
+    expect(child.stdin.listenerCount('error')).toBe(0);
+    expect(child.stdout.listenerCount('data')).toBe(0);
+    expect(child.stdout.listenerCount('end')).toBe(0);
+    expect(child.stdout.listenerCount('error')).toBe(0);
+    expect(child.stderr.listenerCount('data')).toBe(0);
+    expect(child.stderr.listenerCount('error')).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+}
+
 describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
     beforeEach(() => {
         mockSpawn.mockReset();
         mockResolveCodexExec.mockReset();
         // Default: no unpacked native binary (dev / global install).
         mockResolveCodexExec.mockReturnValue(undefined);
-        // Keep the timeout comfortably long for the non-timeout tests.
-        process.env.COC_CODEX_COMPACT_TIMEOUT_MS = '5000';
     });
 
     afterEach(() => {
-        delete process.env.COC_CODEX_COMPACT_TIMEOUT_MS;
+        vi.useRealTimers();
+        vi.unstubAllEnvs();
         vi.restoreAllMocks();
         resetSDKLogger();
     });
@@ -167,6 +178,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
     });
 
     it('settles on a forward-compatible context_compaction item/completed (no thread/compacted)', async () => {
+        vi.useFakeTimers();
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
@@ -176,7 +188,8 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
 
         child.writeStdoutLine(RESUME_ACK);
         child.writeStdoutLine(usageFrame(800));
-        await flushMicrotasks();
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(child.kill).not.toHaveBeenCalled();
         child.writeStdoutLine(usageFrame(200));
         child.writeStdoutLine({ method: 'item/completed', params: { threadId: THREAD_ID, item: { type: 'context_compaction' } } });
 
@@ -187,6 +200,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
             messagesRemoved: 0,
             contextUsage: { currentTokens: 200 },
         });
+        expectRpcCleanedUp(child);
     });
 
     // `settleSuccess` keeps both the first and the LAST observed total
@@ -281,20 +295,118 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         expect(err.provider).toBe(CODEX_PROVIDER);
     });
 
-    it('rejects and kills the child on compaction timeout', async () => {
-        process.env.COC_CODEX_COMPACT_TIMEOUT_MS = '40';
+    it.each([undefined, '40'])('waits beyond 120 seconds for completion with timeout override %s', async (override) => {
+        vi.useFakeTimers();
+        vi.stubEnv('COC_CODEX_COMPACT_TIMEOUT_MS', override);
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
         const svc = makeAvailableService();
         const promise = svc.compactSession(THREAD_ID);
+        const settled = vi.fn();
+        void promise.then(settled, settled);
         await flushMicrotasks();
 
-        child.writeStdoutLine(RESUME_ACK);
-        // No completion notification — let the timer fire.
+        // Even a stalled resume handshake has no CoC deadline.
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(settled).not.toHaveBeenCalled();
+        expect(child.kill).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
 
-        await expect(promise).rejects.toThrow(/compaction timed out after 40ms/);
-        expect(child.kill).toHaveBeenCalled();
+        child.writeStdoutLine(RESUME_ACK);
+        child.writeStdoutLine(usageFrame(1000));
+        child.writeStdoutLine({ id: 2, result: {} });
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(settled).not.toHaveBeenCalled();
+        expect(child.kill).not.toHaveBeenCalled();
+
+        child.writeStdoutLine(usageFrame(300));
+        child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
+        await expect(promise).resolves.toEqual({
+            success: true,
+            tokensRemoved: 700,
+            messagesRemoved: 0,
+            contextUsage: { currentTokens: 300 },
+        });
+        expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+        expectRpcCleanedUp(child);
+        child.writeStdoutLine(RESUME_ACK);
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(settled).toHaveBeenCalledTimes(1);
+        expect(child.sentMessages()).toHaveLength(4);
+        expect(child.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        'resume RPC',
+        'compact RPC',
+        'process error',
+        'process exit',
+        'stdin error',
+        'stdout error',
+        'stderr error',
+        'stdout closed',
+    ])('settles and cleans up on %s after the former deadline', async (failure) => {
+        vi.useFakeTimers();
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+        const svc = makeAvailableService();
+        const promise = svc.compactSession(THREAD_ID);
+        const settled = vi.fn();
+        void promise.then(settled, settled);
+        await flushMicrotasks();
+        if (failure !== 'resume RPC') child.writeStdoutLine(RESUME_ACK);
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(settled).not.toHaveBeenCalled();
+        expect(child.kill).not.toHaveBeenCalled();
+
+        const error = new Error('transport failed');
+        let expectedError: Error | RegExp = error;
+        switch (failure) {
+            case 'resume RPC':
+                child.writeStdoutLine({ id: 1, error: { code: -32000, message: 'resume failed' } });
+                expectedError = /thread\/resume failed.*resume failed/;
+                break;
+            case 'compact RPC':
+                child.writeStdoutLine({ id: 2, error: { code: -32000, message: 'compact failed' } });
+                expectedError = /compact failed/;
+                break;
+            case 'process error':
+                child.emit('error', error);
+                break;
+            case 'process exit':
+                child.stderr.write('app-server failed\n');
+                child.emit('exit', 1);
+                expectedError = /exited before completing compaction \(exit code 1\): app-server failed/;
+                break;
+            case 'stdin error':
+                child.stdin.emit('error', error);
+                break;
+            case 'stdout error':
+                child.stdout.emit('error', error);
+                break;
+            case 'stderr error':
+                child.stderr.emit('error', error);
+                break;
+            case 'stdout closed':
+                child.stdout.end();
+                expectedError = /stdio closed before completing RPC/;
+                break;
+        }
+        if (expectedError === error) {
+            await expect(promise).rejects.toBe(error);
+        } else {
+            await expect(promise).rejects.toThrow(expectedError);
+        }
+        if (failure === 'process exit') {
+            expect(child.kill).not.toHaveBeenCalled();
+        } else {
+            expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+        }
+        expectRpcCleanedUp(child);
+        child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
+        await vi.advanceTimersByTimeAsync(120_001);
+        expect(settled).toHaveBeenCalledTimes(1);
     });
 
     it('rejects with captured stderr + exit code when the child exits before completing', async () => {

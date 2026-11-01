@@ -74,6 +74,75 @@ export interface DesktopBrowserDownloads {
     action(id: string | null, action: BrowserDownloadAction): Promise<BrowserOperationResult>;
     onChanged(callback: () => void): () => void;
 }
+/** Mirrors coc-desktop browser-demo-*.ts: one chat's in-memory task demonstration. */
+export interface BrowserDemoOwner { workspaceId: string; processId: string; routingRef: string }
+export type BrowserDemoStatus = 'recording' | 'paused' | 'stopped';
+export type BrowserDemoPauseReason = 'user' | 'scope' | 'disconnected';
+export type BrowserDemoErrorReason = 'engine-unsupported' | 'handshake-failed' | 'file-preview' | 'busy' | 'limit' | 'not-found' | 'invalid';
+/** Compact live state: counts and tab ids only, never labels or URLs. */
+export interface BrowserDemoState {
+    id: string;
+    owner: BrowserDemoOwner;
+    status: BrowserDemoStatus;
+    pauseReason?: BrowserDemoPauseReason;
+    stepCount: number;
+    tabCount: number;
+    viewIds: string[];
+    incomplete: boolean;
+    ended?: 'discarded' | 'sent';
+}
+export interface BrowserDemoAction {
+    kind: 'click' | 'type' | 'toggle' | 'select' | 'file' | 'submit' | 'key';
+    role: string;
+    label: string;
+    url: string;
+    sensitive?: true;
+    checked?: boolean;
+    key?: 'Enter' | 'Escape' | 'Tab';
+}
+export interface BrowserDemoTab {
+    viewId: string;
+    index: number;
+    openerViewId?: string;
+    addedByUser?: true;
+    url: string;
+    title: string;
+    closed?: true;
+}
+export type BrowserDemoGapReason = 'paused' | 'rate-limit' | 'step-limit' | 'tab-limit' | 'capture-failed' | 'frame-unavailable' | 'tab-crashed' | 'tab-not-opened';
+export type BrowserDemoStep = { id: number; at: number; viewId: string } & (
+    | { type: 'action'; action: BrowserDemoAction }
+    | { type: 'navigate'; url: string; title: string }
+    | { type: 'tab-opened'; openerViewId?: string; addedByUser?: true; url: string }
+    | { type: 'switch' }
+    | { type: 'tab-closed' }
+    | { type: 'gap'; reason: BrowserDemoGapReason }
+);
+/** The redacted draft; review edits stay in SPA memory. */
+export interface BrowserDemoSnapshot {
+    id: string;
+    owner: BrowserDemoOwner;
+    status: BrowserDemoStatus;
+    startedAt: number;
+    tabs: BrowserDemoTab[];
+    steps: BrowserDemoStep[];
+    incomplete: boolean;
+}
+export type BrowserDemoCommand =
+    | { action: 'start'; owner: BrowserDemoOwner; viewId: string }
+    | { action: 'pause'; id: string; reason?: BrowserDemoPauseReason }
+    | { action: 'resume' | 'stop' | 'draft' | 'discard' | 'sent'; id: string }
+    | { action: 'add-tab' | 'remove-tab'; id: string; viewId: string }
+    | { action: 'switch'; viewId: string }
+    | { action: 'list' };
+export type BrowserDemoCommandResult =
+    | { ok: true; state?: BrowserDemoState; draft?: BrowserDemoSnapshot; drafts?: BrowserDemoState[] }
+    | { ok: false; reason: BrowserDemoErrorReason; message: string };
+export interface DesktopBrowserDemo {
+    supported?: boolean;
+    command(command: BrowserDemoCommand): Promise<BrowserDemoCommandResult>;
+    onState(callback: (state: BrowserDemoState) => void): () => void;
+}
 export const WEBVIEW2_INSTALL_URL = 'https://developer.microsoft.com/microsoft-edge/webview2/#download-section';
 export const DESKTOP_BROWSER_PREFERENCES_HASH = '#admin/settings/appearance';
 
@@ -145,6 +214,8 @@ export interface DesktopBrowserBridge {
     history?: DesktopBrowserHistory;
     /** Installation-wide downloads; absent on older hosts. */
     downloads?: DesktopBrowserDownloads;
+    /** Task-demonstration recording; absent on older desktop hosts. */
+    demo?: DesktopBrowserDemo;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult>;

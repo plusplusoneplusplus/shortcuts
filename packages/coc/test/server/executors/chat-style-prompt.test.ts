@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { CHAT_STYLES } from '@plusplusoneplusplus/coc-client';
+import type { AIProcess } from '@plusplusoneplusplus/forge';
 
 import {
   buildChatStyleBlock,
   prependChatStyleBlock,
   recordedChatStyle,
+  buildChatStyleContext,
+  shouldInjectChatStyle,
   setChatStylePromptOverridesProvider,
 } from '../../../src/server/executors/chat-style-prompt';
 import { CHAT_STYLE_FOCUS_LINES } from '../../../src/config/chat-style-prompts';
@@ -73,6 +76,42 @@ describe('buildChatStyleBlock', () => {
     expect(buildChatStyleBlock(undefined)).toBeUndefined();
     expect(buildChatStyleBlock(null)).toBeUndefined();
     expect(buildChatStyleBlock(42)).toBeUndefined();
+  });
+});
+
+describe('style context invalidation', () => {
+  const block = buildChatStyleBlock('direct')!;
+  function process(): AIProcess {
+    return {
+      id: 'style', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: '',
+      sdkSessionId: 'session',
+      metadata: { chatStyle: 'direct', chatStyleContext: {
+        ...buildChatStyleContext('direct', block, 0), injectedAt: '2026-01-02T00:00:00Z',
+      } },
+      conversationTurns: [{ role: 'user', content: `${block}\n\nhello`, turnIndex: 0,
+        timestamp: new Date('2026-01-01T00:00:00Z'), timeline: [] }],
+    };
+  }
+  it('ignores compaction older than actual injection, even for a pre-compaction accepted turn', () => {
+    const proc = process();
+    proc.metadata!.compaction = { state: 'completed', completedAt: '2026-01-01T12:00:00Z' };
+    expect(shouldInjectChatStyle('direct', block, proc, true)).toBe(false);
+  });
+  it('restores context after rewind removes the recorded turn', () => {
+    const proc = process();
+    proc.conversationTurns = [];
+    expect(shouldInjectChatStyle('direct', block, proc, true)).toBe(true);
+  });
+  it('does not trust an invalid execution marker or a replaced user turn', () => {
+    const proc = process();
+    proc.metadata!.chatStyleContext = { style: 'direct', block };
+    expect(shouldInjectChatStyle('direct', block, proc, true)).toBe(true);
+    const replaced = process();
+    replaced.conversationTurns![0].content = 'replacement';
+    expect(shouldInjectChatStyle('direct', block, replaced, true)).toBe(true);
+  });
+  it('never emits default, even without a session or after compaction', () => {
+    expect(shouldInjectChatStyle('default', undefined, undefined, false)).toBe(false);
   });
 });
 

@@ -121,7 +121,7 @@ export interface BrowserControlRuntime {
     getEnabled(): boolean;
     getFramesEnabled?(): boolean;
     getHumanTakeoverRevision?(workspaceId: string, processId: string): number;
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, turnId?: string, observedTakeoverRevision?: number): Promise<BrowserCommandResult>;
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, turnId?: string, observedTakeoverRevision?: number, inputAllowed?: boolean): Promise<BrowserCommandResult>;
 }
 
 export const BROWSER_TOOL_PARAMETERS = {

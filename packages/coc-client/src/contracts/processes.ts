@@ -254,6 +254,8 @@ export interface ProcessMessageRequest {
    * `PROVIDER_SWITCH_REQUIRES_IDLE`.
    */
   provider?: ChatProviderId;
+  /** Reviewed demo context never authorizes browser input in this turn. */
+  browserDemo?: { inputAllowed: false };
   [key: string]: unknown;
 }
 

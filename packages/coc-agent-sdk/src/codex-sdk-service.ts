@@ -90,22 +90,6 @@ const runtimeRequire = createRequire(__filename);
 const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
 const CODEX_DIFF_TIMEOUT_MS = 5000;
 
-/**
- * Compaction runs a real model summarization turn on the app-server, so it needs
- * a far longer budget than the 10s quota RPC. Override with a positive numeric
- * `COC_CODEX_COMPACT_TIMEOUT_MS` (used by tests to exercise the timeout path
- * deterministically); mirrors the `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` seam.
- */
-const CODEX_COMPACT_TIMEOUT_MS = 120_000;
-function resolveCodexCompactTimeoutMs(): number {
-    const raw = process.env.COC_CODEX_COMPACT_TIMEOUT_MS;
-    if (raw !== undefined && raw.trim() !== '') {
-        const parsed = Number(raw);
-        if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-    return CODEX_COMPACT_TIMEOUT_MS;
-}
-
 // ============================================================================
 // Auth checker injection (AC-08)
 // ============================================================================
@@ -963,15 +947,14 @@ export class CodexSDKService implements ISDKService {
      * Spawn `codex app-server --listen stdio://`, run a JSON-RPC exchange over
      * its stdio, and settle with the caller's result. Shared by the quota and
      * compaction paths: it owns spawn (via {@link resolveCodexSpawn}), stderr
-     * capture, readline framing, the JSON-RPC 2.0 envelope, timeout, and
+     * capture, readline framing, the JSON-RPC 2.0 envelope, optional timeout, and
      * cleanup, while `run` drives the provider-specific message flow.
      *
      * `resolve`/`reject` handed to `run` clear the timer and tear down the child
      * before settling, so a single call site settles the promise exactly once.
      */
     private runAppServerRpc<T>(opts: {
-        timeoutMessage: string;
-        timeoutMs: number;
+        timeout?: { ms: number; message: string };
         /** Build the "exited before finishing" error from the exit code + captured stderr. */
         buildExitError: (code: number | null, stderr: string) => Error;
         run: (ctx: {
@@ -992,52 +975,64 @@ export class CodexSDKService implements ISDKService {
             // an `app.asar` path, missing auth) surfaces its real reason instead
             // of a bare "exited before finishing" message.
             let stderr = '';
-            child.stderr?.on('data', (chunk: Buffer | string) => {
+            const captureStderr = (chunk: Buffer | string) => {
                 if (stderr.length < 8192) stderr += chunk.toString();
-            });
+            };
+            child.stderr?.on('data', captureStderr);
 
             const rl = readline.createInterface({ input: child.stdout! });
             let settled = false;
+            let timer: ReturnType<typeof setTimeout> | undefined;
 
-            const cleanup = () => {
+            const cleanup = (killChild = true) => {
                 if (settled) return;
                 settled = true;
+                if (timer !== undefined) clearTimeout(timer);
                 rl.close();
-                child.kill('SIGTERM');
+                if (killChild) child.kill('SIGTERM');
+                child.removeListener('error', settleReject);
+                child.removeListener('exit', onExit);
+                child.stdin?.removeListener('error', settleReject);
+                child.stderr?.removeListener('error', settleReject);
+                child.stderr?.removeListener('data', captureStderr);
+                rl.removeAllListeners();
             };
 
-            const timer = setTimeout(() => {
-                cleanup();
-                reject(new Error(opts.timeoutMessage));
-            }, opts.timeoutMs);
-
             const settleResolve = (value: T) => {
-                clearTimeout(timer);
+                if (settled) return;
                 cleanup();
                 resolve(value);
             };
             const settleReject = (error: Error) => {
-                clearTimeout(timer);
+                if (settled) return;
                 cleanup();
                 reject(error);
             };
 
-            child.on('error', (err) => {
-                clearTimeout(timer);
-                cleanup();
-                reject(err);
+            child.on('error', settleReject);
+            child.stdin?.on('error', settleReject);
+            child.stderr?.on('error', settleReject);
+            rl.on('error', settleReject);
+            rl.on('close', () => {
+                if (!settled) settleReject(new Error('Codex app-server stdio closed before completing RPC'));
             });
 
-            child.on('exit', (code) => {
-                clearTimeout(timer);
+            const onExit = (code: number | null) => {
                 if (!settled) {
-                    settled = true;
+                    cleanup(false);
                     reject(opts.buildExitError(code ?? null, stderr.trim()));
                 }
-            });
+            };
+            child.on('exit', onExit);
+
+            const timeout = opts.timeout;
+            if (timeout) {
+                timer = setTimeout(() => settleReject(new Error(timeout.message)), timeout.ms);
+            }
 
             const lineHandlers: Array<(msg: CodexAppServerRpcMessage) => void> = [];
             rl.on('line', (line) => {
+                if (settled) return;
                 let msg: CodexAppServerRpcMessage;
                 try {
                     msg = JSON.parse(line) as CodexAppServerRpcMessage;
@@ -1063,8 +1058,7 @@ export class CodexSDKService implements ISDKService {
     /** Spawn `codex app-server --listen stdio://`, send RPC messages, and return rate limits. */
     private readRateLimitsViaStdioAppServer(): Promise<CodexRateLimitsResult> {
         return this.runAppServerRpc<CodexRateLimitsResult>({
-            timeoutMessage: 'Codex app-server stdio RPC timed out',
-            timeoutMs: 10_000,
+            timeout: { ms: 10_000, message: 'Codex app-server stdio RPC timed out' },
             buildExitError: (code, stderr) => new Error(
                 'Codex app-server stdio exited before returning rate limits'
                 + (code != null ? ` (exit code ${code})` : '')
@@ -2213,11 +2207,7 @@ export class CodexSDKService implements ISDKService {
             );
         }
 
-        const timeoutMs = resolveCodexCompactTimeoutMs();
-
         return this.runAppServerRpc<CompactResult>({
-            timeoutMessage: `Codex app-server stdio compaction timed out after ${timeoutMs}ms`,
-            timeoutMs,
             buildExitError: (code, stderr) => new Error(
                 'Codex app-server stdio exited before completing compaction'
                 + (code != null ? ` (exit code ${code})` : '')

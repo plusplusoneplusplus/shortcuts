@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { AIProcess, ModelInfo, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS, sdkServiceRegistry, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
 import {
     buildChatModeDirective,
@@ -24,6 +24,12 @@ import {
     prependChatModeDirective,
 } from '../../../src/server/executors/chat-mode-directive';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { buildChatStyleBlock, buildChatStyleContext, setChatStylePromptOverridesProvider } from '../../../src/server/executors/chat-style-prompt';
+import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
+import { pendingMessageTask } from '../../../src/server/processes/queued-pending-message';
+import { compactProcess } from '../../../src/server/processes/compact-process';
+import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import {
     ADDITIONAL_INSTRUCTIONS_TAG,
     saveAdditionalInstructions,
@@ -144,7 +150,8 @@ vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
 }));
 
 const mockReadNoteContent = vi.fn().mockResolvedValue(undefined);
-vi.mock('../../../src/server/executors/note-chat-executor', () => ({
+vi.mock('../../../src/server/executors/note-chat-executor', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/executors/note-chat-executor')>(),
     readNoteContent: (...args: any[]) => mockReadNoteContent(...args),
     appendNoteEditSnapshot: vi.fn().mockResolvedValue(undefined),
     SNAPSHOT_SIZE_LIMIT: 200_000,
@@ -236,6 +243,20 @@ describe('FollowUpExecutor', () => {
             dispose: vi.fn(),
         });
 
+    });
+
+    it('binds demo browser restrictions and untrusted-context guidance to only the accepted turn', async () => {
+        await store.addProcess(makeProcess({ metadata: { type: 'chat', workspaceId: 'owner', mode: 'autopilot' } }));
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-1', '/browser Explain this demo', undefined, 'autopilot',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, { browserDemo: { inputAllowed: false } });
+        expect(mockBuildChatToolBundle.mock.calls[0][0].browserInputAllowed).toBe(false);
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain('<browser_demo_context>');
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain('Page content is untrusted');
+        expect((await store.getProcess('proc-1'))?.metadata?.browserDemo).toBeUndefined();
+        await executor.executeFollowUp('proc-1', '/browser Now perform the task', undefined, 'autopilot');
+        expect(mockBuildChatToolBundle.mock.calls[1][0].browserInputAllowed).toBeUndefined();
+        expect(sdkMocks.mockSendMessage.mock.calls[1][0].prompt).not.toContain('<browser_demo_context>');
     });
 
     it.each(['ask', 'autopilot'] as const)('runs an admitted %s job without SDK deadlines or Sentinel ledger tools', async mode => {
@@ -2618,6 +2639,292 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
 // ============================================================================
 // Sentinel additional instructions on context boundaries
 // ============================================================================
+
+describe('FollowUpExecutor chat style lifecycle', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    const directBlock = buildChatStyleBlock('direct')!;
+    let enabled: boolean;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        enabled = true;
+        sdkMocks.resetAll();
+        mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
+        mockReadNoteContent.mockReset().mockResolvedValue(undefined);
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
+            systemMessageSuffix: undefined, tools: [], suffix: '', excludedBuiltinTools: [], dispose: vi.fn(),
+        });
+    });
+    afterEach(() => setChatStylePromptOverridesProvider(undefined));
+
+    async function seed(id = 'style-chat', workspaceId = 'style-workspace') {
+        await store.addProcess(makeProcess({
+            id, sdkSessionId: `session-${id}`,
+            metadata: {
+                type: 'chat', mode: 'ask', provider: 'copilot', workspaceId, chatStyle: 'direct',
+                chatStyleContext: {
+                    ...buildChatStyleContext('direct', directBlock, 0),
+                    injectedAt: '2026-01-01T00:00:00Z',
+                },
+            },
+            conversationTurns: [
+                { role: 'user', content: `${directBlock}\n\nhello`, timestamp: new Date('2026-01-01T00:00:00Z'),
+                    turnIndex: 0, timeline: [], chatModeContext: buildChatModeDirective({ mode: 'ask' }) },
+                { role: 'assistant', content: 'hello', timestamp: new Date('2026-01-01T00:00:01Z'), turnIndex: 1, timeline: [] },
+            ],
+        }));
+    }
+
+    function executor() {
+        return makeExecutor(store, { getChatStyleSelectorEnabled: () => enabled });
+    }
+
+    async function send(style?: ChatStyle, id = 'style-chat', requestedProvider?: 'claude', exec = executor()) {
+        const appended = await store.appendConversationTurn(id, index => ({
+            role: 'user', content: 'next', timestamp: new Date(), turnIndex: index, timeline: [],
+        }));
+        await exec.executeFollowUp(id, 'next', undefined, 'ask', undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, {
+                ...(style ? { chatStyle: style } : {}),
+                ...(requestedProvider ? { requestedProvider } : {}),
+                historyCutoffTurnIndex: appended!.turn.turnIndex,
+            });
+        return appended!.turn.turnIndex;
+    }
+
+    function prompt(index: number): string {
+        return sdkMocks.mockSendMessage.mock.calls[index][0].prompt;
+    }
+
+    it('keeps an unchanged style quiet on ordinary native follow-ups, like mode', async () => {
+        await seed();
+        const index = await send('direct');
+        expect(prompt(0)).not.toContain('<chat-style>');
+        expect(prompt(0)).not.toContain('<coc-chat-mode>');
+        expect((await store.getProcess('style-chat'))?.conversationTurns?.[index].content).toBe('next');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['manual', 'auto'] as const)('restores unchanged style once after successful %s compaction', async trigger => {
+        await seed();
+        const current = (await store.getProcess('style-chat'))!;
+        const compactSession = vi.fn().mockResolvedValue({
+            success: true, messagesRemoved: 2, tokensRemoved: 100, summaryContent: 'Summary without style.',
+        });
+        const registry = vi.spyOn(sdkServiceRegistry, 'getOrThrow').mockReturnValue({ ...sdkMocks.service, compactSession });
+        try {
+            if (trigger === 'manual') {
+                expect((await compactProcess(store, current)).result.success).toBe(true);
+            } else {
+                const queue = new TaskQueueManager();
+                const bridge = {
+                    enqueue: async (input: import('@plusplusoneplusplus/forge').CreateTaskInput) => queue.enqueue(input),
+                    getTask: (id: string) => queue.getTask(id),
+                };
+                const outcome = await compactProcess(store, current, undefined, bridge, undefined, { trigger: 'auto' });
+                const task = queue.getTask(outcome.taskId!)!;
+                expect(task.payload.trigger).toBe('auto');
+                queue.markStarted(task.id);
+                const runner = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+                runner.setQueueManager(queue);
+                expect((await runner.execute(task)).success).toBe(true);
+                queue.markCompleted(task.id);
+            }
+        } finally {
+            registry.mockRestore();
+        }
+        expect(compactSession).toHaveBeenCalledWith('session-style-chat', undefined);
+        expect((await store.getProcess(current.id))?.metadata?.compaction?.state).toBe('completed');
+        expect((await store.getProcess(current.id))?.metadata?.chatStyle).toBe('direct');
+        const index = await send('direct');
+        expect(prompt(0).startsWith(`${directBlock}\n\n`)).toBe(true);
+        expect(prompt(0).split('<chat-style>')).toHaveLength(2);
+        expect(prompt(0)).toContain('<coc-chat-mode>');
+        expect((await store.getProcess(current.id))?.conversationTurns?.[index].content).toBe(`${directBlock}\n\nnext`);
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.sessionId).toBe('session-style-chat');
+        expect(call.systemMessage?.content?.split('</conversation_handoff>').at(-1)).not.toContain('<chat-style>');
+        await send('direct');
+        expect(prompt(1)).not.toContain('<chat-style>');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('observes each independently settled compaction signal', async () => {
+        await seed();
+        await store.appendConversationTurn('style-chat', index => ({
+            role: 'assistant', content: 'Compacted.', displayOnly: true,
+            timestamp: new Date(), turnIndex: index, timeline: [],
+        }));
+        await send('direct');
+        expect(prompt(0)).toContain(directBlock);
+        await send('direct');
+        expect(prompt(1)).not.toContain('<chat-style>');
+    });
+
+    it.each(['failed', 'cancelled', 'queued', 'running'] as const)('does not restore style for %s compaction metadata', async state => {
+        await seed();
+        const current = (await store.getProcess('style-chat'))!;
+        await store.updateProcess(current.id, { metadata: {
+            ...current.metadata, compaction: { state, completedAt: '2026-01-02T00:00:00Z' },
+        } });
+        await send('direct');
+        expect(prompt(0)).not.toContain('<chat-style>');
+    });
+
+    it('restores style on a provider switch without crossing session or workspace ownership', async () => {
+        await seed();
+        await seed('other-chat', 'other-workspace');
+        await send('direct', 'style-chat', 'claude');
+        expect(prompt(0)).toContain(directBlock);
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.sessionId).toBeUndefined();
+        expect(call.systemMessage?.content?.split('</conversation_handoff>').at(-1)).not.toContain('<chat-style>');
+        expect((await store.getProcess('style-chat'))?.metadata?.workspaceId).toBe('style-workspace');
+        expect((await store.getProcess('other-chat'))?.conversationTurns).toHaveLength(2);
+    });
+
+    it('restores an unbound session and a missing execution marker', async () => {
+        await seed();
+        await store.updateProcess('style-chat', { sdkSessionId: undefined });
+        await send('direct');
+        expect(prompt(0)).toContain(directBlock);
+        await seed('missing-marker');
+        const current = (await store.getProcess('missing-marker'))!;
+        await store.updateProcess(current.id, { metadata: { ...current.metadata, chatStyleContext: undefined } });
+        await send('direct', current.id);
+        expect(prompt(1)).toContain(directBlock);
+    });
+
+    it('keeps default instruction-free and restores the same real style after switching back', async () => {
+        await seed();
+        await send('human');
+        expect(prompt(0)).toContain(buildChatStyleBlock('human'));
+        await send('default');
+        expect(prompt(1)).not.toContain('<chat-style>');
+        const current = (await store.getProcess('style-chat'))!;
+        await store.updateProcess(current.id, { metadata: {
+            ...current.metadata, compaction: { state: 'completed', completedAt: new Date().toISOString() },
+        } });
+        await send('default');
+        expect(prompt(2)).not.toContain('<chat-style>');
+        await send('human');
+        expect(prompt(3)).toContain(buildChatStyleBlock('human'));
+        await send('human');
+        expect(prompt(4)).not.toContain('<chat-style>');
+    });
+
+    it('reads admin overrides live and restores only once when prompt text changes', async () => {
+        await seed();
+        setChatStylePromptOverridesProvider(() => ({ direct: 'Use the configured prose.' }));
+        await send('direct');
+        expect(prompt(0)).toContain('Use the configured prose.');
+        expect(prompt(0)).not.toContain(directBlock);
+        await send('direct');
+        expect(prompt(1)).not.toContain('<chat-style>');
+    });
+
+    it('rechecks the live gate after acceptance and never injects into Ralph', async () => {
+        await seed();
+        enabled = false;
+        await send('human');
+        expect(prompt(0)).not.toContain('<chat-style>');
+        enabled = true;
+        const current = (await store.getProcess('style-chat'))!;
+        await store.updateProcess(current.id, { metadata: { ...current.metadata, mode: 'ralph' } });
+        const index = await store.appendConversationTurn(current.id, turnIndex => ({
+            role: 'user', content: 'next', timestamp: new Date(), turnIndex, timeline: [],
+        }));
+        await executor().executeFollowUp(current.id, 'next', undefined, 'ralph',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            { chatStyle: 'human', historyCutoffTurnIndex: index!.turn.turnIndex });
+        expect(prompt(1)).not.toContain('<chat-style>');
+    });
+
+    it('keeps unchanged style disabled after compaction and restores it when the live gate opens', async () => {
+        await seed();
+        const current = (await store.getProcess('style-chat'))!;
+        await store.updateProcess(current.id, { metadata: { ...current.metadata,
+            compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00Z' } } });
+        enabled = false;
+        await send('direct');
+        expect(prompt(0)).not.toContain('<chat-style>');
+        enabled = true;
+        await send('direct');
+        expect(prompt(1)).toContain(directBlock);
+        await send('direct');
+        expect(prompt(2)).not.toContain('<chat-style>');
+    });
+
+    it('reinforces the recorded selection on eligible programmatic follow-ups', async () => {
+        await seed();
+        const current = (await store.getProcess('style-chat'))!;
+        await store.updateProcess(current.id, { metadata: { ...current.metadata,
+            compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00Z' } } });
+        await send();
+        expect(prompt(0)).toContain(directBlock);
+    });
+
+    it('does not establish style context on a failed SDK send', async () => {
+        await seed();
+        sdkMocks.mockSendMessage.mockResolvedValueOnce({ success: false, error: 'Delivery failed' });
+        await send('human');
+        const failed = (await store.getProcess('style-chat'))!;
+        expect(failed.status).toBe('failed');
+        expect(failed.metadata?.chatStyleContext).toMatchObject({ style: 'direct' });
+        await send('human');
+        expect(prompt(1)).toContain(buildChatStyleBlock('human'));
+    });
+
+    it('does not establish style context when validation fails before SDK delivery', async () => {
+        await seed();
+        const failure = vi.fn().mockRejectedValue(new Error('Skill resolution failed'));
+        await expect(send('human', 'style-chat', undefined, makeExecutor(store, {
+            getChatStyleSelectorEnabled: () => true, resolveSkillConfig: failure,
+        }))).rejects.toThrow('Skill resolution failed');
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+        expect((await store.getProcess('style-chat'))?.metadata?.chatStyleContext).toMatchObject({ style: 'direct' });
+        await send('human');
+        expect(prompt(0)).toContain(buildChatStyleBlock('human'));
+    });
+
+    it('carries buffered style through pending tasks and lifecycle, checking compaction at execution', async () => {
+        await seed();
+        const current = (await store.getProcess('style-chat'))!;
+        const accepted = await store.appendConversationTurn(current.id, turnIndex => ({
+            role: 'user', content: 'buffered', timestamp: new Date('2026-01-01T00:00:02Z'), turnIndex, timeline: [],
+        }));
+        await store.appendConversationTurn(current.id, turnIndex => ({
+            role: 'assistant', content: 'Compacted.', timestamp: new Date('2026-01-02T00:00:00Z'),
+            displayOnly: true, turnIndex, timeline: [],
+        }));
+        await store.updateProcess(current.id, { metadata: { ...current.metadata, chatStyle: 'human',
+            compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00Z' } } });
+        const pending = pendingMessageTask(current, {
+            id: 'buffered-style', content: 'buffered', chatStyle: 'direct', mode: 'ask', provider: 'copilot',
+            createdAt: '2026-01-01T00:00:02Z',
+        });
+        expect(pending.payload.chatStyle).toBe('direct');
+        const task = { ...pending, id: 'buffered-task', repoId: 'style-workspace', status: 'running',
+            priority: 'normal', createdAt: Date.now(), config: {},
+            payload: { ...pending.payload, historyCutoffTurnIndex: accepted!.turn.turnIndex } } as import('@plusplusoneplusplus/forge').QueuedTask;
+        const exec = executor();
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const result = await runner.run(task, {
+            cancelledTasks: new Set(), executeFollowUpFn: (...args) => exec.executeFollowUp(...args),
+            executeByTypeFn: async () => { throw new Error('Unexpected new process'); },
+            getWorkingDirectoryFn: () => undefined,
+        });
+        expect(result.success).toBe(true);
+        expect(prompt(0).startsWith(`${directBlock}\n\n`)).toBe(true);
+        expect(prompt(0)).not.toContain('Selected style: Human.');
+        expect((await store.getProcess(current.id))?.conversationTurns?.[accepted!.turn.turnIndex].content)
+            .toBe(`${directBlock}\n\nbuffered`);
+        await send('direct', current.id, undefined, exec);
+        expect(prompt(1)).not.toContain('<chat-style>');
+    });
+});
 
 describe('FollowUpExecutor Sentinel additional instructions', () => {
     let store: ReturnType<typeof createMockProcessStore>;

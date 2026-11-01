@@ -13,6 +13,8 @@ import { BrowserHumanTakeover } from './browser-human-takeover';
 import { BrowserControlQueue } from './browser-control-queue';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
+import { BrowserDemoRecorders } from './browser-demo-recorder';
+import type { BrowserDemoOwner } from './browser-demo-session';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
@@ -71,6 +73,8 @@ interface TakeoverTurn {
     selected?: Entry;
 }
 
+export const BROWSER_DEMO_RECORDING_ERROR = 'recording-active: the user is recording a browser demo for this chat';
+
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failed) { throw failed.reason; }
@@ -109,10 +113,28 @@ export class BrowserHostManager {
     private readonly pendingHumanTabs = new Map<string, { sessionKey: string; control: BrowserHumanTakeover }>();
     private readonly takeovers = new Map<string, TakeoverTurn>();
     private readonly commandHolds = new Set<CommandHold>();
+    private readonly demoControlReservations = new Set<BrowserDemoOwner>();
     /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
     private readonly tabShortcutOwners = new Set<number>();
 
-    constructor(private readonly options: BrowserManagerOptions) {}
+    /** Task-demonstration drafts; recorded chats and tabs refuse AI control while capturing. */
+    readonly demos: BrowserDemoRecorders;
+
+    constructor(private readonly options: BrowserManagerOptions) {
+        this.demos = new BrowserDemoRecorders({
+            send: options.send,
+            busy: owner => [...this.demoControlReservations].some(request =>
+                request.workspaceId === owner.workspaceId && request.processId === owner.processId && request.routingRef === owner.routingRef)
+                ? 'An AI browser command for this chat is still finishing.' : undefined,
+            lookup: (ownerId, viewId) => {
+                const entry = this.entry(ownerId, viewId);
+                if (!entry?.view || entry.closed) return undefined;
+                const busy = entry.activity || entry.control?.busy ? 'An AI browser turn is using this tab.'
+                    : entry.takeover?.paused ? 'Finish the human takeover in this tab first.' : undefined;
+                return { view: entry.view, sessionKey: entry.sessionKey, sourceKind: entry.sourceKind, ...(busy ? { busy } : {}) };
+            },
+        });
+    }
 
     finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
         for (const item of this.takeovers.values()) if (item.ownerId === ownerId
@@ -349,6 +371,7 @@ export class BrowserHostManager {
     async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
         const key = this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey);
         let item = this.takeovers.get(key);
         if (item && item.control.owner.turnId !== (request.turnId ?? request.processId)) {
@@ -358,7 +381,7 @@ export class BrowserHostManager {
         if (!request.humanTakeoverEnabled) {
             if (item?.control.paused) { item.control.stop('Browser human takeover disabled'); throw new Error('Browser human takeover disabled; continuation terminated'); }
             if (request.command.action === 'request_human') throw new Error('Browser human takeover unavailable or disabled');
-            return this.executeControlUnpaused(ownerId, request, signal, routingRef, hold);
+            return this.executeControlUnpaused(ownerId, request, signal, scope.sessionKey, hold);
         }
         if (!item) {
             const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
@@ -404,7 +427,7 @@ export class BrowserHostManager {
         };
         return current.control.run(async commandSignal => {
             try {
-                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, routingRef, hold);
+                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, scope.sessionKey, hold);
                 commandSignal.throwIfAborted();
                 return { ...result, ...(current.control.note ? { handoffNote: current.control.note } : {}) };
             } finally {
@@ -416,14 +439,21 @@ export class BrowserHostManager {
 
     private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
+        const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        const reservation = { workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey };
+        if (this.demos.capturing(reservation)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
+        const queues = new Set<BrowserControlQueue>();
         const commandHold: CommandHold | undefined = hold && { routingOwnerId: ownerId, workspaceId: request.workspaceId, processId: request.processId, hold };
         if (commandHold) {
             this.commandHolds.add(commandHold);
             for (const check of this.navigationChecks.values()) if (this.holdsCommand(check, commandHold)) check.releases.push(commandHold.hold());
         }
         const pendingKeys: string[] = [];
-        try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys); }
+        this.demoControlReservations.add(reservation);
+        try { return await this.runControl(ownerId, request, signal, scope.sessionKey, pendingKeys, queues); }
         finally {
+            // Abort rejects the caller before CDP settles; admission must still await required releases.
+            void Promise.all([...queues].map(queue => queue.settled())).then(() => this.demoControlReservations.delete(reservation));
             if (commandHold) this.commandHolds.delete(commandHold);
             for (const key of pendingKeys) {
                 this.pendingActivity.delete(key);
@@ -435,13 +465,14 @@ export class BrowserHostManager {
         }
     }
 
-    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[]): Promise<BrowserCommandResult> {
+    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[], queues: Set<BrowserControlQueue>): Promise<BrowserCommandResult> {
         signal?.throwIfAborted();
         if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
         // Background reveals publish the tab without raising the window or changing its selection.
         const background = scope.background ? { background: true } : {};
-        let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef);
+        // Tabs another chat is recording stay out of reach, reads included.
+        let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef).filter(entry => !this.demos.recordingTab(entry.ownerId, entry.viewId));
         const command = request.command;
         if (command.action === 'tabs') {
             const tabs: BrowserControlTab[] = [];
@@ -480,6 +511,7 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
+        if (selected.control) queues.add(selected.control);
         const takeover = this.takeovers.get(this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey));
         if (selected.takeover?.paused && selected.takeover !== takeover?.control) throw new Error('Browser view is under exclusive human control');
         if (takeover && request.humanTakeoverEnabled) {
@@ -496,6 +528,7 @@ export class BrowserHostManager {
             url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
+            if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
             this.activateControl(selected, ownerId, request, scope.background);
@@ -697,6 +730,8 @@ export class BrowserHostManager {
         }
         entry.ready = Promise.resolve().then(() => create(entry));
         if (entry.sourceKind === 'url') {
+            void entry.ready.then(() => this.demos.tabReady(init.ownerId, init.viewId), () => this.demos.tabClosed(init.ownerId, init.viewId))
+                .catch(error => console.error('[coc-desktop] Browser demo tab capture failed:', error));
             entry.control = new BrowserControlQueue((method, params, sessionId) => {
                 if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
                 if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
@@ -772,6 +807,7 @@ export class BrowserHostManager {
                 if (entry.closed) return;
                 if (state.error) entry.committedPage = undefined;
                 if (state.errorCode === 'runtime-crashed') {
+                    this.demos.crashed(entry.ownerId, entry.viewId);
                     entry.takeover?.stop('Browser runtime crashed during human takeover');
                     this.clearControlEntry(entry, false);
                     entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
@@ -794,8 +830,12 @@ export class BrowserHostManager {
                 entry.committedPage = { ...entry.committedPage, title };
                 if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
             },
-            visited: (url, title) => {
+            visited: (url, title, sourceViewId) => {
                 if (!entry.closed && entry.sourceKind === 'url') {
+                    const source = sourceViewId ? this.entry(entry.ownerId, sourceViewId) : entry;
+                    if (source && !source.closed && source.sessionKey === entry.sessionKey) {
+                        this.demos.navigated(entry.ownerId, source.viewId, url, title);
+                    }
                     void this.options.history.recordVisit(entry.engine, url, title)
                         .catch(error => console.error('[coc-desktop] Browser history save failed:', error));
                 }
@@ -806,14 +846,18 @@ export class BrowserHostManager {
                         .catch(error => console.error('[coc-desktop] Browser history title save failed:', error));
                 }
             },
-            newTab: target => {
+            newTab: (target, openerViewId) => {
                 if (!entry.closed && validateBrowserUrl(target).ok) {
+                    const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
+                    if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                     let viewId: string | undefined;
                     if (entry.takeover?.paused) {
                         if (this.pendingHumanTabs.size >= 128) return;
                         viewId = `browser-${randomUUID()}`;
                         this.pendingHumanTabs.set(JSON.stringify([entry.ownerId, viewId]), { sessionKey: entry.sessionKey, control: entry.takeover });
                     }
+                    // A recorded tab's child joins the recording under the id the SPA opens it with.
+                    viewId = this.demos.reserveChild(entry.ownerId, opener.viewId, viewId) ?? viewId;
                     this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}) });
                 }
             },
@@ -836,8 +880,10 @@ export class BrowserHostManager {
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
-            controlPopoutOpened: (viewId, view) => {
+            controlPopoutOpened: (viewId, view, openerViewId) => {
                 if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
+                if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                 const popout: Entry = {
                     ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
                     sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
@@ -849,6 +895,7 @@ export class BrowserHostManager {
                     return view.cdp!(method, params);
                 });
                 this.owners.get(entry.ownerId)?.set(viewId, popout);
+                void this.demos.popupOpened(entry.ownerId, opener.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
             },
             controlPopoutClosed: viewId => {
                 const popout = this.entry(entry.ownerId, viewId);
@@ -859,9 +906,15 @@ export class BrowserHostManager {
                 this.pruneNavigationChecks();
                 popout.control?.cancel(new Error('Browser popout closed'));
                 this.owners.get(entry.ownerId)?.delete(viewId);
+                void this.demos.tabClosed(entry.ownerId, viewId)
+                    .catch(error => console.error('[coc-desktop] Browser demo popup cleanup failed:', error));
             },
-            controlFocused: () => {
-                if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+            controlFocused: sourceViewId => {
+                if (!entry.closed && entry.sourceKind === 'url') {
+                    const source = sourceViewId ? this.entry(entry.ownerId, sourceViewId) : entry;
+                    if (source && !source.closed && source.sessionKey === entry.sessionKey) this.demos.switched(entry.ownerId, source.viewId);
+                    this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+                }
             },
             controlStopRequested: (viewId, turnId) => {
                 const popout = this.entry(entry.ownerId, viewId);
@@ -1076,6 +1129,7 @@ export class BrowserHostManager {
             if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
+            if (this.demos.recordingTab(entry.ownerId, entry.viewId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             if (entry.takeover?.paused && !privateRefresh) throw new Error('Browser actions and observation paused for human takeover');
             const result = await operation(page, commandSignal, view);
             commandSignal.throwIfAborted();
@@ -1120,16 +1174,20 @@ export class BrowserHostManager {
         entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
+        const demoClosed = this.demos.tabClosed(entry.ownerId, entry.viewId);
         if (notify) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: entry.viewId, engine: entry.engine }); }
         // Startup is allowed to finish; create() then closes the partial view itself.
         const view = await entry.ready.catch(error => {
             if (!(error instanceof BrowserHostError)) { console.error('[coc-desktop] Browser startup failed while closing:', error); }
             return undefined;
         });
+        await demoClosed;
         if (view) { await view.close(); }
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        // Drafts go synchronously; the window's tab map must clear in this tick too, or a reload's reopen reuses it.
+        const demos = this.demos.closeOwner(ownerId);
         for (const [key, item] of this.takeovers) if (item.ownerId === ownerId) { item.control.stop('Browser owner window disconnected'); this.takeovers.delete(key); }
         for (const key of this.pendingHumanTabs.keys()) if (JSON.parse(key)[0] === ownerId) this.pendingHumanTabs.delete(key);
         this.finishControl(ownerId);
@@ -1139,7 +1197,7 @@ export class BrowserHostManager {
         this.retainedScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);
-        const results = await Promise.allSettled([...entries?.values() ?? []].map(entry => this.closeEntry(entry)));
+        const results = await Promise.allSettled([demos, ...[...entries?.values() ?? []].map(entry => this.closeEntry(entry))]);
         throwRejected(results);
     }
 

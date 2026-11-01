@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL, type BrowserDownloadStore } from '../src/browser-downloads';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
+import { BROWSER_DEMO_COMMAND_CHANNEL } from '../src/browser-demo-recorder';
 import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
     previewDownloads: undefined as BrowserDownloadStore | undefined,
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], views: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
-    menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })),
+    menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })), confirm: vi.fn(() => 0),
 }));
 vi.mock('electron', () => ({
     clipboard: { availableFormats: () => [], write: vi.fn() },
@@ -21,7 +22,7 @@ vi.mock('electron', () => ({
     app: { on: vi.fn() }, webContents: { getAllWebContents: () => [] },
     BrowserWindow: { fromWebContents: (sender: unknown) => mocks.windows.get(sender) },
     ipcMain: { handle: (channel: string, handler: any) => mocks.handlers.set(channel, handler), on: (channel: string, handler: any) => mocks.events.set(channel, handler) },
-    dialog: { showMessageBox: (...args: any[]) => mocks.dialog(...args) }, shell: { openExternal: vi.fn() },
+    dialog: { showMessageBox: (...args: any[]) => mocks.dialog(...args), showMessageBoxSync: (...args: any[]) => mocks.confirm(...args) }, shell: { openExternal: vi.fn() },
 }));
 vi.mock('../src/server-controller', () => ({ defaultDataDir: () => 'unused' }));
 vi.mock('../src/electron-browser-host', () => ({ ElectronBrowserHost: class {
@@ -69,6 +70,7 @@ beforeEach(async () => {
     vi.resetModules(); vi.clearAllMocks();
     mocks.handlers.clear(); mocks.events.clear(); mocks.windows.clear(); mocks.sinks.length = 0; mocks.views.length = 0;
     mocks.clearData.mockResolvedValue(); mocks.dialog.mockResolvedValue({ response: 0 });
+    mocks.confirm.mockReturnValue(0);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-history-ipc-'));
     host = await import('../src/browser-view-host');
     host.registerBrowserViewIpc(dir);
@@ -79,6 +81,69 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    async function recordDemo(spa: ReturnType<typeof owner>, viewId = 'demo-tab') {
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, viewId, 'https://fixture.test/', 'w');
+        mocks.views.at(-1).cdp.mockImplementation(async (method: string) => {
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+            if (method === 'Page.createIsolatedWorld') return { executionContextId: 1 };
+            if (method === 'Page.addScriptToEvaluateOnNewDocument') return { identifier: 'demo-script' };
+            return { result: { value: { doc: 'document', items: [], dropped: 0 } } };
+        });
+        return invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'start',
+            owner: { workspaceId: 'w', processId: 'demo-chat', routingRef: 'w' }, viewId });
+    }
+
+    it('warns before close and reload, preserves cancelled demos and scopes warnings to the owning window', async () => {
+        const spa = owner(1), other = owner(2);
+        const demo = await recordDemo(spa);
+        expect(demo.ok).toBe(true);
+        const close = { preventDefault: vi.fn() };
+        other.window.emit('close', close);
+        expect(mocks.confirm).not.toHaveBeenCalled();
+        spa.window.emit('close', close);
+        expect(close.preventDefault).toHaveBeenCalledOnce();
+        expect((await invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'list' })).drafts).toHaveLength(1);
+        const reload = { preventDefault: vi.fn() };
+        spa.contents.emit('will-prevent-unload', reload);
+        expect(reload.preventDefault).not.toHaveBeenCalled();
+        mocks.confirm.mockReturnValue(1);
+        spa.contents.emit('will-prevent-unload', reload);
+        expect(reload.preventDefault).toHaveBeenCalledOnce();
+        expect((await invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'list' })).drafts).toHaveLength(1);
+        spa.contents.emit('did-start-navigation', {}, 'http://localhost:4000/', false, true);
+        expect((await invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'list' })).drafts).toEqual([]);
+    });
+
+    it('confirms stopped drafts on quit before disposal, with counts only and cancel as the default', async () => {
+        const spa = owner(1);
+        const { state } = await recordDemo(spa);
+        await invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'stop', id: state.id });
+        expect(host.confirmBrowserDemoQuit()).toBe(false);
+        const options = mocks.confirm.mock.calls.at(-1)![0];
+        expect(options).toMatchObject({ defaultId: 0, cancelId: 0, buttons: ['Cancel', 'Discard demos and continue'] });
+        expect(JSON.stringify(options)).not.toMatch(/demo-chat|fixture\.test/);
+        mocks.confirm.mockReturnValue(1);
+        expect(host.confirmBrowserDemoQuit()).toBe(true);
+        expect((await invoke(BROWSER_DEMO_COMMAND_CHANNEL, spa.event, { action: 'list' })).drafts).toHaveLength(1);
+        spa.window.emit('closed');
+        expect(host.confirmBrowserDemoQuit()).toBe(true);
+    });
+
+    it('does not ask twice for an approved close and does not override unrelated unload guards', async () => {
+        const spa = owner(1);
+        await recordDemo(spa);
+        mocks.confirm.mockReturnValue(1);
+        const event = { preventDefault: vi.fn() };
+        spa.window.emit('close', event);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        spa.contents.emit('will-prevent-unload', event);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.confirm).toHaveBeenCalledOnce();
+        spa.window.emit('closed');
+        event.preventDefault.mockClear();
+        spa.contents.emit('will-prevent-unload', event);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+    });
     it('shares the installation download store with URL tabs and HTML previews', () => {
         expect(mocks.downloads).toBeDefined();
         expect(mocks.previewDownloads).toBe(mocks.downloads);

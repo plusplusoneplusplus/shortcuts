@@ -253,7 +253,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean; cursorOverlayEnabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean; cursorOverlayEnabled?: boolean; demoRecordingEnabled?: boolean };
     /** Target for native Azure CLI IC3 own-user Ask commands. */
     teamsIc3OwnCommands?: {
         workspaceId?: string;
@@ -708,7 +708,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean; cursorOverlayEnabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean; cursorOverlayEnabled: boolean; demoRecordingEnabled: boolean };
     teamsIc3OwnCommands: {
         workspaceId: string;
     };
@@ -1094,7 +1094,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true },
+    browserControl: { enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true, demoRecordingEnabled: false },
     teamsIc3OwnCommands: { workspaceId: '' },
     teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
     teamsOutboundCompliance: { prompt: '' },

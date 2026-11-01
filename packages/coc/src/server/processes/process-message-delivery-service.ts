@@ -21,6 +21,7 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
+import { buildChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
 import {
     ProcessOperationAdmission,
@@ -59,6 +60,7 @@ export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
  * route assembles separately.
  */
 export interface NormalizedFollowUpFields {
+    browserDemo?: { inputAllowed: false };
     /** Interaction mode override; legacy `plan` normalizes to Ask, `ralph` is dropped. */
     mode?: string;
     /** Delivery mode; defaults to `enqueue` when absent. */
@@ -170,11 +172,19 @@ export function normalizeFollowUpInput(
         return { ok: false, error: `Invalid chatStyle: must be one of ${CHAT_STYLES.join(', ')}` };
     }
     const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : defaultChatStyle;
+    if (body.browserDemo !== undefined && (
+        !body.browserDemo || typeof body.browserDemo !== 'object' || Array.isArray(body.browserDemo)
+        || !('inputAllowed' in body.browserDemo) || body.browserDemo.inputAllowed !== false
+        || Object.keys(body.browserDemo).length !== 1
+    )) {
+        return { ok: false, error: 'Invalid browserDemo: expected { inputAllowed: false }' };
+    }
 
     return {
         ok: true,
         value: {
             chatStyle,
+            ...(body.browserDemo !== undefined ? { browserDemo: { inputAllowed: false as const } } : {}),
             ...(mode ? { mode } : {}),
             deliveryMode,
             ...(selectedSkillNames ? { selectedSkillNames } : {}),
@@ -241,6 +251,8 @@ export interface FollowUpMessageInput {
     fileAttachmentMeta?: FileAttachmentMeta[];
     selectedSkillNames?: string[];
     mode?: string;
+    chatStyle?: ChatStyle;
+    browserDemo?: { inputAllowed: false };
     model?: string;
     effort?: ReasoningEffort;
     deliveryMode: 'immediate' | 'enqueue';
@@ -649,6 +661,7 @@ export class ProcessMessageDeliveryService {
             ? { relayRequestId: input.relayRequestId }
             : {};
         const reviewContext = {
+            ...(input.browserDemo ? { browserDemo: input.browserDemo } : {}),
             ...(input.sentinelRemoteResultReview ? { sentinelRemoteResultReview: true } : {}),
             ...(input.sentinelPrOutcomeReview ? {
                 sentinelPrOutcomeReview: true,
@@ -669,6 +682,9 @@ export class ProcessMessageDeliveryService {
         let pendingMessageId: string | undefined;
         let taskId: string | undefined;
         let steerSucceeded = false;
+        const styleNeedsTurn = input.chatStyle !== undefined
+            && (input.chatStyle !== recordedChatStyle(proc.metadata)
+                || shouldInjectChatStyle(input.chatStyle, buildChatStyleBlock(input.chatStyle), proc, !!activeBinding.sessionId));
 
         // Buffer a follow-up as a pending message for server-side drain. The user
         // turn is NOT appended here — it is deferred until drainPendingMessages
@@ -684,19 +700,20 @@ export class ProcessMessageDeliveryService {
                 ...requestCorrelation,
                 ...scheduling,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
-                content: input.content,
+                content: input.browserDemo ? input.contentWithContext ?? input.content : input.content,
                 displayContent: input.displayContent,
                 ...(input.images ? { images: input.images } : {}),
                 ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(input.model ? { model: input.model } : {}),
                 ...(input.provider ? { provider: input.provider } : {}),
+                ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
                 ...(input.effort ? { reasoningEffort: input.effort } : {}),
                 ...(input.mode ? { mode: input.mode } : {}),
                 ...(input.attachments ? { attachments: input.attachments } : {}),
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.turnSource || input.sentinelRemoteResultReview ? { context: { ...input.turnSource, ...reviewContext } } : {}),
+                ...(input.turnSource || Object.keys(reviewContext).length ? { context: { ...input.turnSource, ...reviewContext } } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -710,14 +727,16 @@ export class ProcessMessageDeliveryService {
 
         try {
             if (input.metadataUpdate) {
-                await this.store.updateProcess(id, { metadata: { ...input.metadataUpdate, ...(proc.metadata?.compaction ? { compaction: proc.metadata.compaction } : {}) } });
+                await this.store.updateProcess(id, { metadata: { ...input.metadataUpdate,
+                    chatStyleContext: proc.metadata?.chatStyleContext,
+                    ...(proc.metadata?.compaction ? { compaction: proc.metadata.compaction } : {}) } });
             }
             if (this.bridge.enqueue) {
                 const displayName = truncateDisplayName(input.content.trim());
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
                 if (compactionPending) {
                     await bufferAsPendingMessage();
-                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && this.bridge.steerProcess) {
+                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && !styleNeedsTurn && !input.browserDemo && this.bridge.steerProcess) {
                     const steered = await this.bridge.steerProcess(id, input.content);
                     if (!steered) {
                         // Steering failed (no active SDK session); buffer for server-side drain.
@@ -757,7 +776,7 @@ export class ProcessMessageDeliveryService {
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                             readonly: input.sentinelPrOutcomeReview ? true : (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
-                            ...(input.turnSource || input.sentinelRemoteResultReview || input.selectedSkillNames?.length ? { context: {
+                            ...(input.turnSource || Object.keys(reviewContext).length || input.selectedSkillNames?.length ? { context: {
                                 ...input.turnSource,
                                 ...reviewContext,
                                 ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),
@@ -765,6 +784,7 @@ export class ProcessMessageDeliveryService {
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
                             ...(input.provider ? { provider: input.provider } : {}),
+                            ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
                             historyCutoffTurnIndex,
                             ...(input.effort ? { reasoningEffort: input.effort } : {}),
                             deliveryMode: input.deliveryMode,
@@ -779,10 +799,6 @@ export class ProcessMessageDeliveryService {
                     path = 'enqueued';
                 }
             } else {
-                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}), historyCutoffTurnIndex }).catch(() => {
-                }).finally(() => {
-                    cleanupChatAttachmentTempDir(input.imageTempDir, input.attachments, input.images);
-                });
                 path = 'direct-executed';
             }
         } catch (err) {
@@ -835,6 +851,19 @@ export class ProcessMessageDeliveryService {
             );
             turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
             if (mirror && appendResult) this.sentinelMirror!.accepted(mirror);
+        }
+        if (path === 'direct-executed') {
+            this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode,
+                input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort,
+                input.resumeSessionId, {
+                    ...(input.provider ? { requestedProvider: input.provider } : {}),
+                    ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
+                    ...(input.browserDemo ? { browserDemo: input.browserDemo } : {}),
+                    historyCutoffTurnIndex: turnIndex,
+                }).catch(() => {
+                }).finally(() => {
+                    cleanupChatAttachmentTempDir(input.imageTempDir, input.attachments, input.images);
+                });
         }
 
         events.push({

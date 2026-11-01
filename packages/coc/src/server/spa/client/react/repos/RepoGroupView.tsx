@@ -471,6 +471,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                         workspaceId={workspaceId}
                         routingRef={groupRoutingRef}
                         chatId={panelChatId}
+                        viewingChatOwner={memberChat.selection ? groupOwnerAvailable ? {
+                            workspaceId: memberChat.selection.ownerWorkspaceId,
+                            routingRef: memberChat.selection.ownerSelectionId,
+                            processId: memberChat.selection.processId,
+                        } : null : undefined}
                         dock={dock}
                         targets={dockTargets}
                         repoGroup={{

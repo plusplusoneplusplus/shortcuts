@@ -43,8 +43,9 @@ import {
 import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import {
     isChatStyleEligiblePayload,
+    buildChatStyleBlock,
+    persistChatStyleOnUserTurn,
     prependChatStyleBlock,
-    shouldInjectChatStyle,
 } from './chat-style-prompt';
 import {
     buildChatModeDisplayBlock,
@@ -641,6 +642,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             ...(userTurnPersisted ? { userTurnPersisted: true } : {}),
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
+                            ...(isChatStyle(followUpPayload.chatStyle) ? { chatStyle: followUpPayload.chatStyle } : {}),
+                            ...(ctx?.browserDemo && typeof ctx.browserDemo === 'object'
+                                && 'inputAllowed' in ctx.browserDemo && ctx.browserDemo.inputAllowed === false
+                                ? { browserDemo: { inputAllowed: false as const } } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
                                 : {}),
@@ -728,13 +733,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // Style selected for this brand-new conversation. `undefined` means the
         // feature is off or this task type is out of scope, in which case no
         // block is injected and no style is recorded.
-        const taskChatStyle = this.resolveNewChatStyle(task.payload);
-        // A new conversation has recorded nothing yet, so the baseline it is
-        // compared against is 'default' — NOT the configured default. Using the
-        // configured default here would make it compare equal to itself, so a
-        // server configured to start on Direct would never inject on turn 1.
-        const injectChatStyle = taskChatStyle !== undefined
-            && shouldInjectChatStyle(taskChatStyle, DEFAULT_CHAT_STYLE);
+        const taskChatStyle = task.type === 'chat' ? this.resolveNewChatStyle(task.payload) : undefined;
+        const styleBlock = buildChatStyleBlock(taskChatStyle);
+        const injectChatStyle = styleBlock !== undefined;
         const prompt = injectChatStyle ? prependChatStyleBlock(rawPrompt, taskChatStyle) : rawPrompt;
         // pr-classification tasks always run read-only ask mode (see
         // ClassificationExecutor). Record it explicitly so UI surfaces don't
@@ -982,6 +983,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             }
             if (getRefrainTaskContext(task)) await this.runtime.getSentinelRefrains?.()?.guard(task);
             const result = await opts.executeByTypeFn(task, prompt);
+            if (taskChatStyle !== undefined
+                && !(result && typeof result === 'object' && 'success' in result && result.success === false)) {
+                await persistChatStyleOnUserTurn(
+                    this.store, processId, taskChatStyle, styleBlock, process.conversationTurns?.at(-1)?.turnIndex);
+            }
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);
 

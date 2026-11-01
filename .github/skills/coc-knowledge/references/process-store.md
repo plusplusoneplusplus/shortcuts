@@ -582,8 +582,9 @@ persisted change; rejected admission restores those edges before compensation.
 Buffered messages/reviews retain stable receipts and order behind the boundary,
 ahead of later arrivals. Manual compaction follows existing admitted/buffered work.
 Restart recovery and queued-only cancellation share `/compact` behavior;
-running compactions keep provider-owned lifecycle (Codex 120s timeout, no CoC deadline for
-Copilot/Claude). Usage still above the absolute threshold settles as `insufficient`;
+running compactions keep provider-owned lifecycle without a CoC wall-clock deadline
+for Copilot, Claude or Codex (see `sdk-wrapper.md` for Codex cancellation limits).
+Usage still above the absolute threshold settles as `insufficient`;
 failed/insufficient attempts pause after two consecutively, unsupported providers pause
 immediately, cancellation does not count. Stale tasks reconcile from their compaction
 records on the next check.

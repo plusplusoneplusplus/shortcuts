@@ -258,6 +258,9 @@ ignored. Disabling admission allows an already admitted request to finish.
 The SPA forwards structured requests through preload, not raw debugger messages;
 desktop ownership and tab validation are described in [spa/shell.md](spa/shell.md).
 
+Reviewed demo turns carry a server-bound input restriction before dispatch;
+see [browser-demos.md](browser-demos.md) for admission and lifecycle contracts.
+
 Site approval rides the same socket. The SPA sends `browser-navigation-check
 {checkId, workspaceId, processId, turnId, url}`; checks are tied to the active
 turn (not a command), and a socket not serving it gets `allow:false`. Allowed or

@@ -125,6 +125,9 @@ export class BrowserControlQueue {
     /** Wait for the issued engine call and required input releases, without waiting on queued commands. */
     settled(): Promise<void> { return this.activeBarrier; }
 
+    /** Includes cancelled calls whose dispatched input is still settling. */
+    get busy(): boolean { return !!this.active || this.pending.size > 0; }
+
     cancel(reason: Error): void {
         for (const controller of this.pending) controller.abort(reason);
         this.page.dispose();
