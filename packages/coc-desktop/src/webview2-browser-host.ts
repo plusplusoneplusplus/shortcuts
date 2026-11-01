@@ -10,6 +10,8 @@ import type { HtmlPageBounds } from './html-page-policy';
 import { randomUUID } from 'node:crypto';
 import { isClickOnceRequest, type BrowserApplicationRequest } from './browser-clickonce';
 import { captureWebView2Annotation } from './webview2-annotation-capture';
+import type { BrowserDownloadStore } from './browser-downloads';
+import { WebView2Downloads, validWebView2DownloadId, supportedWebView2Download } from './webview2-downloads';
 
 const execFileAsync = promisify(execFile);
 
@@ -59,9 +61,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private readonly views = new Map<string, NativeEntry>();
     private sequence = 0;
     private readonly process: WebView2Process;
+    private readonly downloads?: WebView2Downloads;
 
-    constructor(profilePath: string) {
+    constructor(profilePath: string, store?: BrowserDownloadStore,
+        private readonly chooseDownload?: (ownerId: number, filename: string) => Promise<string | undefined>,
+        private readonly downloadOwnerCurrent: (ownerId: number) => boolean = () => false) {
         this.process = new WebView2Process(() => this.binary(), profilePath, message => this.event(message), error => {
+            this.downloads?.failed();
             for (const entry of [...this.views.values()]) {
                 if (entry.root) { this.remove(entry.nativeId, entry); continue; }
                 entry.state = { ...entry.state, loading: false, errorCode: error.reason, error: error.message };
@@ -69,6 +75,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 entry.sink.state(entry.state);
             }
         });
+        if (store && chooseDownload) this.downloads = new WebView2Downloads(store, (op, payload) => this.process.request(op, payload));
     }
 
     private binary(): string {
@@ -213,11 +220,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             },
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
+                this.downloads?.revokeView(id);
                 entry.documentGeneration++;
                 entry.request.url = url;
                 await this.process.request('navigate', { viewId: id, url });
             },
             nav: async action => {
+                if (action !== 'stop') this.downloads?.revokeView(id);
                 if (action !== 'stop') entry.documentGeneration++;
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed') {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
@@ -316,6 +325,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private remove(id: string, entry: NativeEntry): void {
         if (this.views.get(id) !== entry) { return; }
         this.views.delete(id);
+        this.downloads?.revokeView(id);
         this.clearCdp(entry);
         this.process.rejectView(id);
         if (entry.root) {
@@ -343,6 +353,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
 
     private viewFailure(entry: NativeEntry, error: unknown): void {
         if (this.views.get(entry.nativeId) !== entry) { return; }
+        this.downloads?.revokeView(entry.nativeId);
         entry.state = { ...entry.state, loading: false, errorCode: 'runtime-crashed', error: error instanceof Error ? error.message : String(error) };
         this.clearCdp(entry);
         if (entry.root) { this.remove(entry.nativeId, entry); }
@@ -354,6 +365,8 @@ export class WebView2BrowserHost implements BrowserEngineHost {
 
     private event(message: Record<string, unknown>): void {
         if (typeof message.viewId !== 'string') { return; }
+        // Approved operations outlive their initiating tab; route by retained native operation identity.
+        if (message.event === 'download-progress') { this.downloads?.progress(message); return; }
         if (message.event === 'popup-opened') {
             const root = typeof message.rootId === 'string' ? this.views.get(message.rootId) : undefined;
             if (!root || root.root || root.state.errorCode === 'runtime-crashed' || root.window.isDestroyed() || this.views.has(message.viewId)
@@ -373,12 +386,24 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             return;
         }
         const entry = this.views.get(message.viewId);
-        if (!entry) { return; }
+        if (!entry) {
+            if (message.event === 'download' && validWebView2DownloadId(message.downloadId)) {
+                void this.process.request('download-decide', { viewId: message.viewId, downloadId: message.downloadId, action: 'cancel' })
+                    .catch(() => console.error('[coc-desktop] Unowned download cancellation failed.'));
+            }
+            return;
+        }
+        if (message.event === 'download-error') {
+            entry.sink.download({ viewId: entry.request.viewId, url: 'Local or private source', ok: false,
+                error: 'The native download could not be managed safely.' });
+            return;
+        }
         if (message.event === 'navigation-gate') {
             if (typeof message.url === 'string' && validateBrowserUrl(message.url).ok) { this.navigationGate(entry, message.url); }
             return;
         }
         if (message.event === 'document-starting') {
+            this.downloads?.revokeView(entry.nativeId);
             entry.documentGeneration++;
             return;
         }
@@ -487,8 +512,36 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             const report = (ok: boolean, error?: string) => {
                 if (this.views.get(message.viewId as string) === entry) { entry.sink.download({ viewId: entry.request.viewId, url: downloadSource(url), ok, ...(error ? { error } : {}) }); }
             };
-            if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
-            else { report(false, 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.'); }
+            const id = message.downloadId;
+            if (!validWebView2DownloadId(id)) {
+                report(false, message.reason === 'limit' ? 'Too many active downloads or pending approvals.'
+                    : message.reason === 'unsupported' ? 'This download URL is unsupported or exceeds the native limit.'
+                    : supportedWebView2Download(url) ? 'Native download management is unavailable. Rebuild or update the desktop app.'
+                    : 'Only HTTP(S) and browser-native blob downloads are supported.');
+                return;
+            }
+            const generation = entry.documentGeneration;
+            const lease = entry.sink.downloadApproval?.(entry.root ? entry.request.viewId : undefined);
+            const current = () => !!lease?.current() && this.views.get(entry.nativeId) === entry
+                && entry.documentGeneration === generation && entry.state.errorCode !== 'runtime-crashed'
+                && !entry.window.isDestroyed() && this.downloadOwnerCurrent(entry.request.ownerId);
+            if (!this.downloads || !lease || !current() || typeof message.filename !== 'string') {
+                lease?.dispose();
+                report(false, 'Download approval is unavailable for this source.');
+                void this.process.request('download-decide', { viewId: entry.nativeId, downloadId: id, action: 'cancel' })
+                    .catch(() => console.error('[coc-desktop] Download approval rejection failed.'));
+                return;
+            }
+            let failureReported = false;
+            this.downloads.start(entry.nativeId, id, url, message.filename, {
+                ownerId: entry.request.ownerId, current, dispose: () => lease.dispose(),
+                chooseDestination: filename => this.chooseDownload!(entry.request.ownerId, filename),
+                failure: () => {
+                    if (failureReported) return;
+                    failureReported = true;
+                    report(false, 'Download failed or is unavailable. Check Downloads before trying again.');
+                },
+            });
         } else if ((message.event === 'open-menu-requested' || message.event === 'focus-address-requested' || message.event === 'reopen-closed-requested') && entry.bounds && !entry.window.isDestroyed()) {
             entry.window.webContents.focus();
             void this.focusOwner(entry.request.ownerId).then(() => {
@@ -528,11 +581,15 @@ export class WebView2BrowserHost implements BrowserEngineHost {
 
     async clearData(): Promise<void> {
         if (process.platform !== 'win32' || process.arch !== 'x64') { throw new BrowserHostError('unsupported-platform', 'WebView2 requires Windows x64.'); }
+        await this.downloads?.cancelAll();
         await this.process.request('clear');
     }
 
     async dispose(): Promise<void> {
-        try { await this.process.dispose(); }
+        try {
+            try { await this.downloads?.dispose(); }
+            finally { await this.process.dispose(); }
+        }
         finally {
             for (const entry of [...this.views.values()]) { this.remove(entry.nativeId, entry); }
         }

@@ -914,6 +914,28 @@ export class BrowserHostManager {
         let applicationPending = false;
         const generation = entry.hostGeneration = {};
         const view = await create({
+            downloadApproval: sourceViewId => {
+                const source = sourceViewId === undefined ? entry : this.entry(entry.ownerId, sourceViewId);
+                if (!source || source.closed || entry.closed || this.disposed || source.sessionKey !== entry.sessionKey
+                    || source.sourceKind !== 'url' || source.hostGeneration !== generation) return;
+                const activity = this.gateActivity(entry, sourceViewId);
+                const takeover = source.takeover?.status;
+                const releases: (() => void)[] = [];
+                if (activity) {
+                    if (source.control) releases.push(source.control.hold());
+                    for (const hold of this.commandHolds) {
+                        if (hold.routingOwnerId === activity.routingOwnerId && hold.workspaceId === activity.workspaceId
+                            && hold.processId === activity.processId) releases.push(hold.hold());
+                    }
+                }
+                let disposed = false;
+                return {
+                    current: () => !disposed && !this.disposed && !entry.closed && !source.closed
+                        && entry.hostGeneration === generation && this.entry(entry.ownerId, source.viewId) === source
+                        && source.takeover?.status === takeover && this.gateActivity(entry, sourceViewId) === activity,
+                    dispose: () => { if (!disposed) { disposed = true; for (const release of releases) release(); } },
+                };
+            },
             application: (request, current) => {
                 if (entry.sourceKind !== 'url' || applicationPending || !this.options.clickOnce) return;
                 const live = () => !this.disposed && !entry.closed && entry.hostGeneration === generation && this.entry(entry.ownerId, entry.viewId) === entry && current();
@@ -1015,7 +1037,7 @@ export class BrowserHostManager {
                 if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                 const popout: Entry = {
                     ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
-                    sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
+                    sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true, hostGeneration: generation,
                 };
                 popout.takeover = entry.takeover;
                 for (const item of this.takeovers.values()) if (item.control === entry.takeover) item.entries.add(popout);

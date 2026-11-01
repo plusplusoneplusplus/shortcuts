@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron';
+import * as path from 'node:path';
 import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
@@ -127,8 +128,22 @@ function wireOwner(window: BrowserWindow): void {
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
     installBrowserWebviewGuard();
-    const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
     downloads = new BrowserDownloadStore(dataDir, broadcastDownloads);
+    const downloadOwnerCurrent = (ownerId: number) => {
+        const window = owners.get(ownerId);
+        return !!window && !window.isDestroyed() && !window.webContents.isDestroyed() && isBrowserEmbedder(window.webContents);
+    };
+    const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'), downloads, async (ownerId, filename) => {
+        if (!downloadOwnerCurrent(ownerId)) return;
+        const window = owners.get(ownerId)!;
+        const result = await dialog.showSaveDialog(window, {
+            title: 'Save browser download',
+            defaultPath: path.join(app.getPath('downloads'), filename),
+            properties: ['showOverwriteConfirmation', 'createDirectory'],
+        });
+        if (result.canceled || !downloadOwnerCurrent(ownerId) || owners.get(ownerId) !== window) return;
+        return result.filePath;
+    }, downloadOwnerCurrent);
     const history = new BrowserHistoryStore(dataDir, Date.now, broadcastHistory);
     historyMaintenance = setInterval(() => {
         void history.pruneExpired().catch(error => console.error('[coc-desktop] Browser history maintenance failed:', error));

@@ -260,7 +260,7 @@ without installing or launching an application.
 ### Browser adapters and lifecycle
 
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
-Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Electron downloads use desktop main’s download manager; WebView2 reports an explicit source-page system-browser fallback without replaying the download URL. Opted-in Windows ClickOnce requests use the shared activation policy.
+Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Both engines use desktop main's shared download manager without replaying download URLs. Opted-in Windows ClickOnce requests use the shared activation policy.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 The default-off desktop demonstration recorder has separate capture/review and
 unsent lifecycle contracts in [browser-demos.md](../browser-demos.md).
@@ -339,13 +339,27 @@ cancellation and completion stay quiet. `file-preview-host.ts` supplies the prev
 lease, native chooser and a safe failure notice bound to the captured live document,
 guest and registered owner. Hidden, closed or replaced sources discard notices;
 their approved transfers still report status through the shared Downloads store.
-`browser-view-host.ts` supplies the shared store to both Electron hosts.
+`browser-view-host.ts` supplies the shared store to both Electron hosts and WebView2.
 Pause/resume require live engine capability, and Open/Show require a completed,
 unchanged regular file. Clear/remove affect records only. Source navigation or
 close does not own the session's download handles. ClickOnce interception runs
-first. WebView2's native bridge supplies no retained operations: Downloads explains
-its unavailability and directs the user to open the source page in the system
-browser. Download URLs are never automatically replayed.
+first. Download URLs are never automatically replayed.
+
+`webview2-downloads.ts` manages the helper's original native HTTP(S)/blob operation,
+held by a `DownloadStarting` deferral and opaque, one-time, exact-view ID. Main's
+registered-owner native Save As selects the destination with overwrite confirmation;
+page metadata and renderer IPC grant no path or origin authority. Eight pending
+approvals and one unsettled chooser per owner bound admission. Approval expires
+after 60 seconds or document/owner/control-turn revocation; agent command deadlines
+hold during the chooser. Approved transfers detach from the source lease.
+
+Native byte/state events drive progress and terminal state through the shared store.
+Approval alone cannot complete a download; WebView2 file capabilities additionally
+require the saved regular-file size to match native received/known-total counts.
+Closure cancels pending deferrals; approved transfers remain installation-wide.
+Shutdown and engine cleanup cancel native operations and drain subscriptions.
+URLs, destination paths and native operation IDs stay in main/helper, and blob
+support does not change the HTTP(S)-only navigation policy.
 
 Optional `cocDesktop.browser.downloads` exposes `query`, ID-only `action` and
 payload-free `onChanged`. IPC and broadcasts require registered exact-source SPA

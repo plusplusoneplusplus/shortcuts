@@ -1,8 +1,14 @@
 use serde::Deserialize;
 use serde_json::Value;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_TRANSPORT_BYTES: usize = 1_048_576;
+static OUTPUT_FAILED: AtomicBool = AtomicBool::new(false);
+
+pub fn output_failed() -> bool {
+    OUTPUT_FAILED.load(Ordering::Relaxed)
+}
 
 pub fn read_command(
     input: &mut impl io::BufRead,
@@ -62,6 +68,8 @@ pub struct Command {
     pub url: Option<String>,
     pub bounds: Option<Bounds>,
     pub action: Option<String>,
+    pub download_id: Option<String>,
+    pub destination: Option<String>,
     pub cookies: Option<Vec<ImportCookie>>,
     pub page_zoom_percent: Option<f64>,
     pub method: Option<String>,
@@ -452,10 +460,14 @@ fn png_data_url(png: &[u8], limit: usize) -> Option<String> {
 }
 
 pub fn emit(value: Value) {
+    if output_failed() {
+        return;
+    }
     let stdout = io::stdout();
     let mut output = stdout.lock();
     if writeln!(output, "{value}").and_then(|_| output.flush()).is_err() {
-        std::process::exit(1);
+        // Let the STA pump cancel operations and complete deferrals before exiting.
+        OUTPUT_FAILED.store(true, Ordering::Relaxed);
     }
 }
 

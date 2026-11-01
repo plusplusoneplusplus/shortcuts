@@ -34,8 +34,9 @@ references before editing. Paths are package-relative.
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
 - Browser Downloads uses installation-wide desktop main metadata and ID-only IPC,
-  never workspace/server file paths. Electron retains original transfers with a
-  native Save dialog; WebView2 requires explicit source-page system-browser handoff.
+  never workspace/server file paths. Both engines retain original transfers with a
+  native Save dialog. WebView2 accepts native HTTP(S)/blob operations through bounded,
+  exact-view approval deferrals; navigation remains HTTP(S)-only.
   Completed file actions validate native-selected file identity; record clearing
   preserves files. See the shell knowledge reference for lifecycle and bounds.
 - Windows ClickOnce is an installation-wide, default-off Desktop Preferences toggle,

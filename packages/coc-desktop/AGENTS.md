@@ -90,6 +90,16 @@ Owner reload/crash/closure revokes notification leases before native cleanup. Pr
 late notifications/replies in the caller. Never install annotation scripts on
 future documents or expose CDP to the SPA.
 
+`browser-downloads.ts` owns installation-wide download metadata and verified
+completed-file actions for both engines. WebView2 retains the original native
+operation behind a one-time, exact-view deferral. Main requires a registered
+owner, live document/control-turn lease and native Save As with overwrite
+confirmation. Pending approval is bounded and expires; source teardown revokes
+pending requests, while approved transfers remain independent. Blob download
+support never broadens navigation policy or authorizes through a URL/origin.
+Paths and native operation IDs stay in main/helper; renderer actions use store
+IDs only. Native progress, not approval, determines completion.
+
 For demonstration recording, read
 [browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
 The feature is default off, Electron-only and memory-only until reviewed Send.
@@ -142,4 +152,6 @@ preload bridge, host manager, isolated guest, native PNG capture, chips and comp
 request path; its process endpoint is a deterministic receiver. Run with
 `ELECTRON_DISABLE_SANDBOX=1 COC_DESKTOP_E2E_NO_SANDBOX=1 COC_DESKTOP_E2E=1 xvfb-run -a npm run test:run -- test/e2e/browser-webview-layer.e2e.test.ts`
 on Linux after desktop compilation and SPA stylesheet build. Shared DOM e2e covers
-1x/2x pixels and fractional zoom. Windows WebView2 runtime behavior needs a Windows host.
+1x/2x pixels and fractional zoom. Real desktop interaction requires explicit manual
+verification; Windows WebView2 runtime behavior requires a Windows host.
+Downloads have store, engine adapter, owner/chooser IPC and panel suites.

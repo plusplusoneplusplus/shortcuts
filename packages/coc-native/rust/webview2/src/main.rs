@@ -3,11 +3,18 @@ mod cleanup;
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
 mod clickonce;
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
+mod download;
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
 mod history;
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 mod host;
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
 mod protocol;
+
+#[cfg(all(test, target_os = "windows", target_arch = "x86_64"))]
+extern crate self as windows_core;
+#[cfg(all(test, target_os = "windows", target_arch = "x86_64"))]
+pub use windows::core::*;
 
 fn main() {
     if let Some(argument) = std::env::args().nth(1) {

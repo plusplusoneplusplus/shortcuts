@@ -10,7 +10,7 @@ const row = (state: BrowserManagedDownload['state'] = 'downloading', patch = {})
     state, received: 512, total: 1024, active: ['downloading', 'paused'].includes(state), canPause: state === 'downloading', canResume: state === 'paused', fileAvailable: state === 'completed', ...patch,
 });
 const reply = (entries = [row()]): BrowserDownloadsResult => ({ ok: true, entries, storageError: null,
-    engines: { electron: { managed: true, message: 'Native Save dialog' }, webview2: { managed: false, message: 'WebView2 downloads open in the system browser and are managed there.' } } });
+    engines: { electron: { managed: true, message: 'Native Save dialog' }, webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' } } });
 function setup(value = reply()) {
     const listeners = new Set<() => void>();
     const downloads: DesktopBrowserDownloads = { query: vi.fn(async () => value), action: vi.fn(async () => ({ ok: true })),
@@ -90,11 +90,12 @@ describe('Downloads panel', () => {
         expect(screen.getByRole('status')).toHaveTextContent(desktop ? 'This desktop version does not support' : 'available in the CoC desktop app');
         expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
     });
-    it('labels WebView2 fallback and provides wrapping controls for narrow layouts', async () => {
-        const { downloads, rerender } = setup(reply([row('completed', { filename: 'a'.repeat(180) })]));
+    it('labels managed WebView2 downloads and provides wrapping controls for narrow layouts', async () => {
+        const { downloads, rerender } = setup(reply([row('completed', { filename: 'a'.repeat(180), engine: 'webview2' })]));
         rerender(<BrowserDownloadsPanel downloads={downloads} engine="webview2" desktop onClose={vi.fn()} />);
         await screen.findByText('a'.repeat(180));
-        expect(screen.getByRole('status')).toHaveTextContent('WebView2 downloads open in the system browser');
+        expect(screen.getByRole('status')).toHaveTextContent('WebView2 downloads use a native Save dialog.');
+        expect(screen.getByText('WebView2')).toBeInTheDocument();
         expect(screen.getByText('a'.repeat(180))).toHaveClass('break-words');
         expect(screen.getByRole('group')).toHaveClass('flex-wrap');
         expect(screen.getByRole('dialog')).toHaveClass('max-w-[640px]');
