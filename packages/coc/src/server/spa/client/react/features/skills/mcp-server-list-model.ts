@@ -20,7 +20,10 @@ import { isMcpToolEnabled, type EnabledMcpToolsMap } from './mcpToolsAllowList';
 
 export type DiscoveryState = 'idle' | 'loading' | 'loaded' | 'error';
 
-export type McpServerSource = 'global' | 'workspace';
+export type McpServerSource = 'global' | 'workspace' | 'member';
+
+/** A repo-group member referenced by a server row. */
+export type McpMemberRef = { workspaceId: string; name?: string };
 
 export type McpServerEntry = {
     name: string;
@@ -38,6 +41,12 @@ export type McpServerEntry = {
     authExpiresAt?: number;
     /** User-provided description from config file. */
     description?: string;
+    /** Defining member repo (repo groups, `member` source only). */
+    member?: McpMemberRef;
+    /** Other members whose identical definition was folded into this row. */
+    sharedWith?: McpMemberRef[];
+    /** Members whose distinct same-name definition lost (first in group order wins). */
+    conflicts?: McpMemberRef[];
 };
 
 export type McpServerSourceSection = {
@@ -48,9 +57,19 @@ export type McpServerSourceSection = {
     servers: McpServerEntry[];
 };
 
+export type McpMemberSourceSection = McpServerSourceSection & McpMemberRef & {
+    stale?: boolean;
+    staleReason?: 'workspace-removed' | 'path-missing';
+    disabledByMember: string[];
+};
+
 export type McpServerSources = {
     global: McpServerSourceSection;
     workspace: McpServerSourceSection;
+    /** Repo groups only: member sources in group order. */
+    members?: McpMemberSourceSection[];
+    /** Repo groups only: membership could not be read. */
+    membersError?: string;
 };
 
 export type FilterTab = 'all' | 'active' | 'auth' | 'disabled';
@@ -124,11 +143,37 @@ export function getTransportPillClass(type: string): string {
     return '';
 }
 
-export function getSourcePillInfo(server: McpServerEntry): { label: string; cls: string } {
+export function memberLabel(member: McpMemberRef): string {
+    return member.name || member.workspaceId;
+}
+
+/** Full provenance sentence for a row (pill tooltip and accessible label). */
+export function describeServerSource(server: McpServerEntry, groupMode = false): string {
+    if (server.source === 'member' && server.member) {
+        const parts = [`Defined in member repo ${memberLabel(server.member)}.`];
+        if (server.sharedWith?.length) {
+            parts.push(`Same definition in ${server.sharedWith.map(memberLabel).join(', ')}.`);
+        }
+        if (server.conflicts?.length) {
+            parts.push(`Different definition in ${server.conflicts.map(memberLabel).join(', ')} is not used: the first member in group order wins.`);
+        }
+        return parts.join(' ');
+    }
+    if (server.source === 'workspace') return groupMode ? "Defined in the group's own config." : 'Defined in repo config.';
+    if (server.source === 'global') return 'Defined in global config.';
+    return 'Defined in repo config.';
+}
+
+export function getSourcePillInfo(server: McpServerEntry, groupMode = false): { label: string; cls: string } {
+    if (server.source === 'member' && server.member) {
+        const shared = server.sharedWith?.length ? ` +${server.sharedWith.length}` : '';
+        return server.conflicts?.length
+            ? { label: `${memberLabel(server.member)}${shared} · conflict`, cls: 'warn' }
+            : { label: `${memberLabel(server.member)}${shared}`, cls: 'muted' };
+    }
     if (server.overriddenBy === 'workspace' || server.source === 'workspace') {
-        return server.overriddenBy === 'workspace'
-            ? { label: 'user override', cls: 'warn' }
-            : { label: 'repo config', cls: 'muted' };
+        if (server.overriddenBy === 'workspace') return { label: 'user override', cls: 'warn' };
+        return { label: groupMode ? 'group config' : 'repo config', cls: 'muted' };
     }
     if (server.source === 'global') return { label: 'global', cls: 'muted' };
     return { label: 'repo config', cls: 'muted' };
@@ -243,7 +288,7 @@ export interface McpServerRowModel {
     status: ServerStatus;
     description: string;
     transportCls: string;
-    sourcePill: { label: string; cls: string };
+    sourcePill: { label: string; cls: string; title: string };
     toolCount: { text: string; title?: string };
     flow: McpAuthFlowState | undefined;
     showAuthBtn: boolean;
@@ -258,6 +303,8 @@ export interface McpServerListModelInput {
     discoveryState: DiscoveryState;
     toolsAllowList: EnabledMcpToolsMap;
     authFlow: Record<string, McpAuthFlowState>;
+    /** Repo-group page: label the group's own config and member sources. */
+    groupMode?: boolean;
 }
 
 export interface McpServerListModel {
@@ -270,7 +317,7 @@ export interface McpServerListModel {
  * fully-derived row for each server passing the current filter/search.
  */
 export function buildMcpServerListModel(input: McpServerListModelInput): McpServerListModel {
-    const { servers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow } = input;
+    const { servers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow, groupMode } = input;
 
     const counts = computeServerCounts(servers, isEnabled, discovery);
     const filtered = filterServers(servers, { filterTab, searchQuery, isEnabled, discovery });
@@ -286,7 +333,7 @@ export function buildMcpServerListModel(input: McpServerListModelInput): McpServ
             status: getServerStatus(server, enabled, discovery[server.name]),
             description: getServerDescription(server, enabled),
             transportCls: getTransportPillClass(server.type),
-            sourcePill: getSourcePillInfo(server),
+            sourcePill: { ...getSourcePillInfo(server, groupMode), title: describeServerSource(server, groupMode) },
             toolCount: getToolCountLabel({
                 enabled,
                 effective: server.effective !== false,

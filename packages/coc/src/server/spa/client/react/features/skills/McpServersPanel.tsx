@@ -13,6 +13,8 @@ import type {
 import { isMcpToolEnabled } from './mcpToolsAllowList';
 import {
     buildMcpServerListModel,
+    describeServerSource,
+    memberLabel,
     type DiscoveryState,
     type FilterTab,
     type InspectorTab,
@@ -115,21 +117,45 @@ function ToggleSwitch({ checked, disabled, onChange, testId }: {
     );
 }
 
+function memberSourceMeta(member: NonNullable<McpServerSources['members']>[number]): { meta: string; problem: boolean } {
+    if (member.stale) {
+        return { meta: member.staleReason === 'path-missing' ? 'Unavailable · repo path missing' : 'Unavailable · repo removed', problem: true };
+    }
+    if (!member.success) return { meta: `Not loaded · ${member.error ?? 'config could not be read'}`, problem: true };
+    if (!member.fileExists) return { meta: 'No MCP config', problem: false };
+    const count = `${member.servers.length} server${member.servers.length !== 1 ? 's' : ''}`;
+    const disabled = member.disabledByMember.length
+        ? ` · ${member.disabledByMember.length} disabled in repo settings`
+        : '';
+    return { meta: `${count}${disabled}`, problem: false };
+}
+
 function SourcePathsCard({ sources, groupMode }: { sources?: McpServerSources; groupMode?: boolean }) {
     const paths = useMemo(() => {
-        const items: { label: string; file: string; meta: string }[] = [];
-        // A group has no checkout, so the repo-local config file never exists for it.
-        if (sources?.workspace && !groupMode) {
+        const items: { key: string; label: string; file: string; meta: string; problem?: boolean }[] = [];
+        if (sources?.workspace && (!groupMode || sources.workspace.fileExists)) {
             const ws = sources.workspace;
             items.push({
-                label: 'Repo config',
+                key: 'workspace',
+                label: groupMode ? 'Group config' : 'Repo config',
                 file: ws.configPath || '.vscode/mcp.json',
-                meta: `${ws.servers.length} server${ws.servers.length !== 1 ? 's' : ''} · checked in`,
+                meta: `${ws.servers.length} server${ws.servers.length !== 1 ? 's' : ''}${groupMode ? '' : ' · checked in'}`,
+            });
+        }
+        for (const member of groupMode ? sources?.members ?? [] : []) {
+            const { meta, problem } = memberSourceMeta(member);
+            items.push({
+                key: `member:${member.workspaceId}`,
+                label: memberLabel(member),
+                file: member.configPath || '.vscode/mcp.json',
+                meta,
+                problem,
             });
         }
         if (sources?.global) {
             const gl = sources.global;
             items.push({
+                key: 'global',
                 label: 'User overrides',
                 file: gl.configPath || '~/.copilot/mcp-config.json',
                 meta: `${gl.servers.length} server${gl.servers.length !== 1 ? 's' : ''} · local only · not committed`,
@@ -146,12 +172,21 @@ function SourcePathsCard({ sources, groupMode }: { sources?: McpServerSources; g
                 <span>Configuration sources</span>
                 <span className="mcp-hint">{paths.length} file{paths.length !== 1 ? 's' : ''}</span>
             </div>
+            {groupMode && sources?.membersError && (
+                <div className="mcp-path-row" role="alert" data-testid="mcp-members-error">
+                    <div className="mcp-path-body">
+                        <div className="mcp-path-meta" style={{ color: 'var(--mcp-danger, #cf222e)' }}>
+                            Member repos could not be read; their servers are not included.
+                        </div>
+                    </div>
+                </div>
+            )}
             {paths.map((p) => (
-                <div className="mcp-path-row" key={p.label}>
+                <div className="mcp-path-row" key={p.key} data-testid={`mcp-source-${p.key}`}>
                     <div className="mcp-path-label">{p.label}</div>
                     <div className="mcp-path-body">
                         <div className="mcp-path-file">{p.file}</div>
-                        <div className="mcp-path-meta">{p.meta}</div>
+                        <div className="mcp-path-meta" style={p.problem ? { color: 'var(--mcp-danger, #cf222e)' } : undefined}>{p.meta}</div>
                     </div>
                     <button className="mcp-path-open" type="button">Open file →</button>
                 </div>
@@ -160,10 +195,9 @@ function SourcePathsCard({ sources, groupMode }: { sources?: McpServerSources; g
     );
 }
 
-function InspectorOverviewPane({ server, detail }: { server: McpServerEntry; detail: ClientMcpServerDetail | null | 'loading' }) {
+function InspectorOverviewPane({ server, detail, groupMode }: { server: McpServerEntry; detail: ClientMcpServerDetail | null | 'loading'; groupMode?: boolean }) {
     const command = server.command || server.url || `npx -y @modelcontextprotocol/server-${server.name}`;
     const description = (detail && detail !== 'loading') ? detail.description : (server.description ?? '—');
-    const source = (detail && detail !== 'loading') ? detail.source : (server.source ?? '—');
     return (
         <div className="mcp-overview-grid">
             <dl className="mcp-kv">
@@ -171,7 +205,7 @@ function InspectorOverviewPane({ server, detail }: { server: McpServerEntry; det
                 <dt>Description</dt><dd>{detail === 'loading' ? <span className="mcp-small">Loading…</span> : (description || '—')}</dd>
                 <dt>Transport</dt><dd>{server.type}</dd>
                 <dt>Command</dt><dd><code>{command}</code></dd>
-                <dt>Source</dt><dd>{source === 'workspace' ? 'Repo config' : source === 'global' ? 'Global config' : '—'}</dd>
+                <dt>Source</dt><dd data-testid="mcp-overview-source">{describeServerSource(server, groupMode)}</dd>
             </dl>
             <div className="mcp-health">
                 <h4>Health</h4>
@@ -755,7 +789,7 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                 ))}
             </div>
             <div className="mcp-inspector-body">
-                {effectiveTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} />}
+                {effectiveTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} groupMode={groupMode} />}
                 {effectiveTab === 'tools' && (
                     <InspectorToolsPane
                         enabled={tools.enabled}
@@ -1169,7 +1203,8 @@ export function McpServersPanel({
         discoveryState,
         toolsAllowList,
         authFlow,
-    }), [availableServers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow]);
+        groupMode,
+    }), [availableServers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow, groupMode]);
     const { counts, rows } = model;
 
     if (loading) {
@@ -1292,7 +1327,7 @@ export function McpServersPanel({
                                         )}
                                     </div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${transportCls}`}>{server.type}</span></div>
-                                    <div className="mcp-meta"><span className={`mcp-pill ${sourcePill.cls}`}>{sourcePill.label}</span></div>
+                                    <div className="mcp-meta"><span className={`mcp-pill ${sourcePill.cls}`} title={sourcePill.title} data-testid={`mcp-source-pill-${server.name}`}>{sourcePill.label}</span></div>
                                     <div className="mcp-tools-count" title={toolCount.title} data-testid={`mcp-tools-count-${server.name}`}>{toolCount.text}</div>
                                     <ToggleSwitch
                                         checked={!isOverridden && enabled}
@@ -1336,7 +1371,9 @@ export function McpServersPanel({
             {groupMode ? (
                 <div className="mcp-empty-state" data-testid="mcp-group-readonly-hint" style={{ padding: '16px 0' }}>
                     A repo group has no repository checkout, so servers can&apos;t be added or edited here.
-                    Define them in global MCP settings; this page controls which ones the group&apos;s chats use.
+                    The list combines global config, the group&apos;s own config and each member repo&apos;s
+                    MCP config; edit a member&apos;s servers in that repo&apos;s settings. This page controls
+                    which ones the group&apos;s chats use.
                 </div>
             ) : (
                 <AddServerCard

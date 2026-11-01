@@ -118,6 +118,7 @@ import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { registerMyWorkRoutes } from '../workspaces/my-work-handler';
 import { registerMyLifeRoutes } from '../workspaces/my-life-handler';
+import { resolveWorkspaceMcp } from '../workspaces/workspace-mcp-resolver';
 import { registerRepoGroupRoutes } from '../workspaces/repo-group-handler';
 import { readRepoQueueSnapshot } from './queue-stats';
 import { registerWorkItemRoutes } from './work-item-routes';
@@ -1216,6 +1217,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             resolveWorkspaceRoot: async (workspaceId) => {
                 const workspaces = await store.getWorkspaces();
                 return workspaces.find(w => w.id === workspaceId)?.rootPath;
+            },
+            resolveWorkspaceServer: async (workspaceId, serverName) => {
+                const workspace = (await store.getWorkspaces()).find(w => w.id === workspaceId);
+                if (!workspace) return undefined;
+                return (await resolveWorkspaceMcp({ store, dataDir, workspace })).servers[serverName]?.config;
             },
         });
     }

@@ -529,6 +529,15 @@ output like `abc1234 subject`, count as commits. For truncated commit output a s
 same-turn verification window lets a correlated `git log -1` supply the hash/subject.
 Read-only git commands and generic prose are ignored.
 
+Commit rows in strips and the whisper "N commits" popover activate on click; popover rows
+are also focusable and activate on Enter/Space, while the trailing ↗️ pop-out keeps its own
+click/key handling without activating the row. `ChatDetail` provides a
+`ChatCommitOpenerContext` opener (`chatCommitOpener.ts`) only when the unified panel shows
+this chat and `chatCommitPanelTarget` resolves its repo; the exact SHA then opens in the
+panel's Git tab through `openPanelGitCommit` and the chat stays visible. Otherwise (pop-outs,
+lens/side-panel chats, group-level chats) rows keep the `#repos/<workspaceId>/git/<sha>` route.
+Commit lookup and not-found states belong to the Git detail.
+
 ### ask_user
 
 Live unanswered batches stay owned by `ChatDetail`/`ConversationArea` through

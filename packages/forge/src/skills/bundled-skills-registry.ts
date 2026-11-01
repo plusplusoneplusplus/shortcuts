@@ -115,4 +115,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Propose a minimal unified diff for review without changing files. Use when the user asks to propose a diff, preview a patch, or review changes before applying them.',
         relativePath: 'propose-diff',
     },
+    {
+        name: 'todo',
+        description: 'Track a task as a To-do item and start it in a tracked conversation. Use when the user runs /todo <task> or asks to track and start a task.',
+        relativePath: 'todo',
+    },
 ];

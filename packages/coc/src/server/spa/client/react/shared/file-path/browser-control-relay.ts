@@ -16,9 +16,10 @@ import { clearBrowserNavigationPrompt, setBrowserNavigationPrompt } from './brow
 
 /**
  * One relay on the existing socket; only the socket owning the selected clone advertises.
- * With background control on, scopes with active turns stay retained and served after a switch.
+ * With background control on, scopes with active turns stay retained and served after a switch,
+ * and targets off screen in the foreground scope run unseen without changing the selected tab.
  * Background actions the desktop reports as `foreground-required:` wait, without a timeout,
- * behind a Switch back notice and re-run once that scope is the foreground scope again.
+ * behind a Switch back notice; Switch back shows the target and re-runs them in the foreground.
  * Navigations the desktop holds during a turn are asked of the owning server; its prompts
  * show in the conversation's chat and are blocked when the socket goes away.
  */
@@ -44,6 +45,8 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     const panelScopes = new Map<string, string>();
     /** Requests waiting on Switch back; they keep their `pending` entry. */
     const waiting = new Map<string, { request: BrowserCommandRequest; ref: string }>();
+    /** Scopes whose Switch back was clicked: their re-runs show the target (`watch`). */
+    const watchRefs = new Set<string>();
     const noticeKey = (ref: string, request: BrowserCommandRequest) => JSON.stringify([baseUrl ?? '', ref, request.turnId ?? request.processId]);
     const ownerClient = () => baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient();
     const refreshNotice = (key: string) => {
@@ -55,6 +58,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             actions: [...new Set(entries.map(entry => entry.request.command?.action ?? 'browser action'))],
             switchBack: () => {
                 if (disposed) return;
+                watchRefs.add(ref);
                 if (routingRef === ref) { rerunWaiting(); return; }
                 const scope = panelScopes.get(ref) ?? ref;
                 window.location.hash = `#repos/${encodeURIComponent(scope)}/chats/${encodeURIComponent(request.processId)}`;
@@ -154,15 +158,16 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             event.routingOwnerId === undefined ? undefined : event.routingOwnerId === ownerId)) return;
         const existing = findBrowserPanelView(event.viewId, event.workspaceId, ownerRef);
         const scope = existing?.scope ?? (event.workspaceId === workspaceId ? getBrowserControlScope()?.panelScope : undefined) ?? ownerRef;
+        // Unseen targets join the strip without changing any selection or opening the dock.
         const tabId = openUnifiedPanelTab(scope, existing ? {
             ...existing.tab, chatId: event.processId,
         } : {
             ...browserOpenInput({ ownerWorkspaceId: event.workspaceId, ownerRoutingRef: ownerRef, chatId: event.processId }, event.url),
             resourceId: event.viewId,
-        });
+        }, event.background === true ? { reveal: false, activate: false } : undefined);
         updateBrowserControlTab(event.workspaceId, event.processId, tabId, baseUrl);
         if (event.background === true) {
-            // The owning panel is not mounted: create the guest here so the turn can drive it unseen.
+            // The tab may never mount: create the guest here so the turn can drive it unseen.
             const bridge = desktopBrowserBridge();
             if (bridge?.adopt && event.url) attachBrowserWebview(event.viewId, event.url, ownerRef, bridge);
             setBrowserWebviewBackground(event.viewId, true);
@@ -305,12 +310,13 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             }
         }
     };
-    const run = (request: BrowserCommandRequest, ref: string) => {
+    const run = (request: BrowserCommandRequest, ref: string, watch = false) => {
         pending.set(request.id, ref);
         if (request.framesEnabled === true) { framePending.add(request.id); frameRefs.add(ref); }
         // Cancellation (switch, close, config change) removes the entry, so only live requests reply.
         const live = () => pending.get(request.id) === ref && connected && !waiting.has(request.id);
-        void (backgroundOn() || request.humanTakeoverEnabled ? control!.execute(request, ref) : control!.execute(request)).then(
+        const placement = backgroundOn() ? { hiddenTargets: true, ...(watch ? { watch: true } : {}) } : undefined;
+        void (placement ? control!.execute(request, ref, placement) : request.humanTakeoverEnabled ? control!.execute(request, ref) : control!.execute(request)).then(
             result => {
                 if (live()) {
                     const tabId = panelTabId(result.tab, request.workspaceId, ref) ?? result.tab;
@@ -321,7 +327,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             error => {
                 if (!live()) return;
                 const message = error instanceof Error ? error.message : String(error);
-                if (ref !== routingRef && retained.has(ref) && message.includes('foreground-required:')) {
+                if ((ref !== routingRef ? retained.has(ref) : backgroundOn()) && message.includes('foreground-required:')) {
                     // Known not to run hidden: wait for Switch back; the server pauses its 60s limit.
                     waiting.set(request.id, { request, ref });
                     connection.send({ type: 'browser-command-waiting', id: request.id, waiting: true });
@@ -339,12 +345,13 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     /** Re-runs the requests waiting on the scope that just became the foreground scope. */
     function rerunWaiting() {
         if (!connected || disposed || !routingRef) return;
+        const watch = watchRefs.delete(routingRef);
         for (const [id, entry] of [...waiting]) {
             if (entry.ref !== routingRef) continue;
             waiting.delete(id);
             refreshNotice(noticeKey(entry.ref, entry.request));
             connection.send({ type: 'browser-command-waiting', id, waiting: false });
-            run(entry.request, entry.ref);
+            run(entry.request, entry.ref, watch);
         }
     }
     const relay = {

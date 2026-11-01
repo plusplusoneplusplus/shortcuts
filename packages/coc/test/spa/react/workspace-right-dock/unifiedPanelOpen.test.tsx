@@ -131,6 +131,24 @@ describe('unifiedPanelOpen', () => {
         expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toHaveLength(1);
     });
 
+    it('adds or refreshes a tab without changing any selection when activation is off', () => {
+        setDockOpen(WS, false);
+        const selected = openUnifiedPanelTab(WS, fileInput('src/app.ts'), { reveal: false });
+        const browser = { kind: 'browser' as const, ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-agent', label: 'Agent page' };
+
+        const added = openUnifiedPanelTab(WS, browser, { reveal: false, activate: false });
+        expect(readUnifiedPanelState(WS).activeByScope).toEqual({ [CHAT]: selected });
+        expect(readUnifiedPanelState(WS).workspaceTabs.map(tab => tab.id)).toEqual([added]);
+        // A refresh of the same page keeps the selection too.
+        openUnifiedPanelTab(WS, { ...browser, label: 'Agent page 2' }, { reveal: false, activate: false });
+        expect(readUnifiedPanelState(WS).activeByScope).toEqual({ [CHAT]: selected });
+        expect(readUnifiedPanelState(WS).workspaceTabs[0].label).toBe('Agent page 2');
+        expect(isDockOpen(WS)).toBe(false);
+        // An ordinary open still selects it.
+        openUnifiedPanelTab(WS, browser, { reveal: false });
+        expect(readUnifiedPanelState(WS).activeByScope[CHAT]).toBe(added);
+    });
+
     it('reaches a mounted consumer of the same workspace', () => {
         render(<Probe chatId={CHAT} />);
         expect(screen.getByTestId('labels')).toHaveTextContent('');

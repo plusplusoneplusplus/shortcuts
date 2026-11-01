@@ -11,7 +11,6 @@ import { isExplorerDirty } from './explorer/explorerDirtyStore';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { cn } from '../../ui';
 import { useApp, type AppAction } from '../../contexts/AppContext';
-import { buildGitRouteHash, buildGitRouteSuffix } from '../../layout/gitRoute';
 import { formatRelativeTime } from '../../utils/format';
 import type { RepoGroupMember } from '../../repos/repoGroupService';
 import { BRANCH_RANGE_DEEP_LINK } from '../git/repoGitTab/useRepoGitSelection';
@@ -33,6 +32,7 @@ import {
 import { useGroupRailGit, useRepoRailGit } from './useRailGitSummary';
 import { RailOutgoingCommits } from './RailOutgoingCommits';
 import { routingRefForPanelOwner } from './unified-right-panel/unifiedPanelOwnerRouting';
+import { openPanelGitCommit } from './unified-right-panel/panelGitCommit';
 
 const TONE_CLASS: Record<RailGitTone, string> = {
     clean: 'text-[#16825d] dark:text-[#3fb950]',
@@ -52,13 +52,9 @@ const PREVIEW_REFRESH_MS = 5000;
 function openOutgoingCommit(rail: RailControls, dispatch: (action: AppAction) => void,
     routeWorkspaceId: string, workspaceId: string, sourceSelectionId: string, commit: GitCommit) {
     rail.onOpenGit?.('branch', 'detail');
-    const route = { routeWorkspaceId, workspaceId, commitHash: commit.hash, filePath: null };
-    const routeSelectionId = routeWorkspaceId === workspaceId ? sourceSelectionId : routeWorkspaceId;
     // Keep the workspace shell and supplied metadata: generic hash navigation
     // switches tabs and republishes the route without the already-read commit.
-    window.history.replaceState(null, '', buildGitRouteHash({ ...route, routeWorkspaceId: routeSelectionId }));
-    dispatch({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: routeSelectionId, suffix: buildGitRouteSuffix(route) });
-    dispatch({ type: 'SET_GIT_ROUTE', ...route, knownCommit: { sourceSelectionId, commit } });
+    openPanelGitCommit(dispatch, { routeWorkspaceId, workspaceId, sourceSelectionId }, commit.hash, commit);
 }
 
 interface Tiles {

@@ -28,6 +28,8 @@
 import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { loadEffectiveMcpConfig } from '@plusplusoneplusplus/forge';
 import { readRepoPreferences } from '../preferences-handler';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
+import { resolveWorkspaceMcp, toRuntimeMcpServers } from '../workspaces/workspace-mcp-resolver';
 
 /** Per-server allow-list of ENABLED tool names. */
 export type EnabledMcpToolsMap = Record<string, string[]>;
@@ -102,7 +104,9 @@ export function resolveChatMcpServers(input: {
  * `mcpServers` map for a chat/session turn.
  *
  * Returns `undefined` (caller falls back to the SDK default load) when there is
- * no workspace context or no MCP servers are configured. Never throws — any
+ * no workspace context or no MCP servers are configured. A repo group whose
+ * record cannot be read resolves to `{}` (no MCP) so its policy is never
+ * bypassed. Never throws — any
  * lookup failure degrades to `undefined` so a chat turn is never blocked by
  * allow-list resolution.
  */
@@ -123,6 +127,9 @@ export async function resolveChatMcpServersForWorkspace(opts: {
             workspace = undefined;
         }
 
+        // A group's policy and members live in the registry; without them the
+        // turn runs no MCP rather than an unfiltered default load.
+        if (isRepoGroupWorkspaceId(opts.workspaceId) && !workspace) return {};
         const rootPath = workspace?.rootPath ?? opts.workingDirectory;
         if (!rootPath) return undefined;
 
@@ -130,14 +137,18 @@ export async function resolveChatMcpServersForWorkspace(opts: {
             ? readRepoPreferences(opts.dataDir, opts.workspaceId).enabledMcpTools ?? undefined
             : undefined;
 
-        return resolveChatMcpServers({
-            rootPath,
-            enabledMcpServers: workspace?.enabledMcpServers,
-            enabledMcpTools,
+        // Same resolver as Settings → MCP and tool discovery, so a repo group's
+        // turns run exactly the deduplicated member union the page shows.
+        const resolution = await resolveWorkspaceMcp({
+            store: opts.store,
+            dataDir: opts.dataDir,
+            workspace: { id: opts.workspaceId, rootPath },
             forceReload: opts.forceReload,
         });
+        return toRuntimeMcpServers(resolution.servers, workspace?.enabledMcpServers, enabledMcpTools);
     } catch {
-        // Resolution must never break a chat turn — fall back to default load.
-        return undefined;
+        // Resolution must never break a chat turn — fall back to default load
+        // (a group fails closed instead, as above).
+        return isRepoGroupWorkspaceId(opts.workspaceId) ? {} : undefined;
     }
 }

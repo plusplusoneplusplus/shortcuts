@@ -1450,14 +1450,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.panelTabCategories', default: false, runtime: 'live', runtimeFlag: 'panelTabCategoriesEnabled',
-        ui: {
-            tab: 'appearance', group: 'editorFiles', order: 46, label: 'Panel tab categories', badge: 'experimental',
-            hint: 'Show one right-panel chip per category (Tools, Files, Web, Canvas). Each chip shows the tab last used in that category, so one click switches between, say, a web page and a source file; its menu lists the rest. Overrides Panel tab groups. Disabled by default.',
-            testId: 'toggle-panel-tab-categories-enabled',
-        },
-    }),
-    bool({
         key: 'features.binaryFileReveal', default: true, runtime: 'live', runtimeFlag: 'binaryFileRevealEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 47, label: 'Open binary files in Explorer', badge: 'experimental',

@@ -194,6 +194,9 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-retain', 'remote:server:w', 'w');
         expect(await control.execute(request, 'remote:server:w')).toEqual({ tabs: [] });
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-command', request, 'remote:server:w');
+        invoke.mockResolvedValueOnce({ tabs: [] });
+        expect(await control.execute(request, 'w', { hiddenTargets: true, watch: true })).toEqual({ tabs: [] });
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-command', request, 'w', { hiddenTargets: true, watch: true });
         control.cancel('r');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
         await control.releaseFrames('remote:server:w');

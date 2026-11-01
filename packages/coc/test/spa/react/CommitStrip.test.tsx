@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CommitStrip } from '../../../src/server/spa/client/react/features/chat/conversation/CommitStrip';
 import type { DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
+import { ChatCommitOpenerContext } from '../../../src/server/spa/client/react/features/chat/conversation/chatCommitOpener';
 import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 function makeCommit(overrides: Partial<DetectedCommit> = {}): DetectedCommit {
@@ -130,6 +131,21 @@ describe('CommitStrip', () => {
 
             expect(location.hash).toBe('#repos/ws-test/git/abc1234');
             location.hash = originalHash;
+        });
+
+        it('opens the commit through the chat panel opener when one is provided', () => {
+            const opener = vi.fn();
+            const prevHash = location.hash;
+            const { container } = render(
+                <ChatCommitOpenerContext.Provider value={opener}>
+                    <CommitStrip commits={[makeCommit({ shortHash: 'abc1234', fullHash: 'abc1234567890' })]} workspaceId="ws-test" />
+                </ChatCommitOpenerContext.Provider>
+            );
+
+            fireEvent.click(container.querySelector('[data-testid="commit-strip-row-abc1234"]')!);
+
+            expect(opener).toHaveBeenCalledWith('abc1234567890');
+            expect(location.hash).toBe(prevHash);
         });
 
         it('uses fullHash for navigation when available', () => {

@@ -206,6 +206,25 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.featureValues['teamsIc3OwnCommands.workspaceId']).toBe('group-team');
     });
 
+    it('ignores saved panel categories in Appearance while preserving the groups control and save path', async () => {
+        render(<Harness tabs={['appearance']} />);
+        act(() => controller.hydrate({ features: { panelTabCategories: true, panelTabGroups: true } }));
+        expect(screen.queryByText('Panel tab categories')).toBeNull();
+        expect(screen.queryByTestId('toggle-panel-tab-categories-enabled')).toBeNull();
+        expect(controller.featureValues).not.toHaveProperty('features.panelTabCategories');
+        expect(readRuntimeFeatureValues(controller.featureValues)).not.toHaveProperty('panelTabCategoriesEnabled');
+        expect(screen.getByTestId('toggle-panel-tab-groups-enabled')).toHaveProperty('checked', true);
+        expect(controller.isTabDirty('appearance')).toBe(false);
+
+        fireEvent.click(screen.getByTestId('toggle-panel-tab-groups-enabled'));
+        await act(async () => { await controller.handleSaveTab('appearance'); });
+        expect(updateConfig).toHaveBeenCalledTimes(1);
+        expect(updateConfig.mock.calls[0][0]).not.toHaveProperty('features.panelTabCategories');
+        expect(updateConfig.mock.calls[0][0]).toHaveProperty('features.panelTabGroups', false);
+        expect(applyRuntimeConfigPatch.mock.calls[0][0]).not.toHaveProperty('panelTabCategoriesEnabled');
+        expect(applyRuntimeConfigPatch.mock.calls[0][0]).toHaveProperty('panelTabGroupsEnabled', false);
+    });
+
     it('ignores saved rail Git opt-outs in Appearance and runtime updates', () => {
         render(<Harness tabs={['appearance']} />);
         act(() => controller.hydrate({ features: { railGitSummary: false } }));

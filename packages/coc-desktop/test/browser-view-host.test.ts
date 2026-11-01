@@ -227,6 +227,9 @@ describe('desktop history IPC', () => {
         await expect(invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, spa.event, 'w')).resolves.toBeUndefined();
         expect(await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } })).toEqual({ tabs: [] });
         await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'other', processId: 'p', command: { action: 'tabs' } })).rejects.toThrow('scope changed');
+        // Window-local placement policy travels beside the request and is validated at the IPC boundary.
+        expect(await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } }, 'w', { hiddenTargets: true })).toEqual({ tabs: [] });
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } }, 'w', { hiddenTargets: 1 })).rejects.toThrow('Invalid browser placement policy');
     });
 
     it('removes the AI cursor live only from the calling registered window\'s views in that scope', async () => {

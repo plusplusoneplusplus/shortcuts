@@ -900,22 +900,24 @@ describe('Features card UI metadata', () => {
         })).panelTabGroupsEnabled).toBe(true);
     });
 
-    it('exposes panel tab categories as a live, experimental default-off Appearance toggle', () => {
-        const def = getAdminSettingDefinition('features.panelTabCategories')!;
-        expect(def.value).toEqual({ kind: 'boolean' });
-        expect(def.default).toBe(false);
-        expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('panelTabCategoriesEnabled');
-        expect(def.ui).toMatchObject({
-            tab: 'appearance', group: 'editorFiles', order: 46, badge: 'experimental',
-            testId: 'toggle-panel-tab-categories-enabled',
-        });
-        expect(DEFAULT_CONFIG.features.panelTabCategories).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).panelTabCategoriesEnabled).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).panelTabCategoriesEnabled).toBe(false);
-        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { panelTabCategories: true },
-        })).panelTabCategoriesEnabled).toBe(true);
+    it('omits panel tab categories from settings, defaults, schema leaves, sources and runtime flags', () => {
+        const key = 'features.panelTabCategories';
+        expect(getAdminSettingDefinition(key)).toBeUndefined();
+        expect(ADMIN_SETTING_KEYS).not.toContain(key);
+        expect(ADMIN_EDITABLE_KEYS).not.toContain(key);
+        expect(CONFIG_SOURCE_KEYS).not.toContain(key);
+        expect(getFeatureCardSettings('editorFiles', 'appearance').some(def => def.ui?.label === 'Panel tab categories')).toBe(false);
+        expect(DEFAULT_CONFIG.features).not.toHaveProperty('panelTabCategories');
+        expect(buildRuntimeFeatureFlags({})).not.toHaveProperty('panelTabCategoriesEnabled');
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG)).not.toHaveProperty('panelTabCategoriesEnabled');
+
+        // Unknown file keys remain readable, but are not schema leaves or resolved settings.
+        const stale = { features: { panelTabCategories: 'unused', panelTabGroups: true } };
+        expect(CLIConfigSchema.safeParse(stale).success).toBe(true);
+        const resolved = mergeConfig(DEFAULT_CONFIG, stale);
+        expect(resolved.features).not.toHaveProperty('panelTabCategories');
+        expect(resolved.features.panelTabGroups).toBe(true);
+        expect(buildRuntimeFeatures(resolved)).not.toHaveProperty('panelTabCategoriesEnabled');
     });
 
     it('exposes binary-file Open in Explorer as a live, experimental default-on Appearance toggle', () => {
@@ -1096,7 +1098,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.panelTabGroups': 'appearance',
-        'features.panelTabCategories': 'appearance',
         'features.binaryFileReveal': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',

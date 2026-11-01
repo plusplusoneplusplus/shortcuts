@@ -1,7 +1,8 @@
 /**
  * Eager, live discovery of the tools exposed by a workspace's *enabled* MCP
- * servers. Resolves the effective (global + workspace) MCP config, filters it
- * by the workspace `enabledMcpServers` allow-list, then connects to each server
+ * servers. Takes the shared effective resolution (`resolveWorkspaceMcp`, which
+ * includes repo-group member servers), filters it by the workspace
+ * `enabledMcpServers` allow-list, then connects to each server
  * concurrently — reusing the JSON-RPC handshake in `mcp-connection-tester.ts` —
  * and returns a per-server result.
  *
@@ -10,8 +11,9 @@
  * connection is bounded by a per-server timeout.
  */
 
+import * as path from 'path';
 import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
-import { loadDefaultMcpConfig, loadWorkspaceMcpConfig } from '@plusplusoneplusplus/forge';
+import type { EffectiveMcpServer } from '../workspaces/workspace-mcp-resolver';
 import { listMcpTools, type McpTestRequest, type McpToolInfo } from './mcp-connection-tester';
 import { getTeamsOAuthCredential, TEAMS_NATIVE_MCP_NAME } from '../messaging/teams-native-auth';
 
@@ -36,15 +38,16 @@ export interface DiscoverOptions {
     timeoutMs?: number;
     /** Max concurrent server probes. */
     concurrency?: number;
-    /** Bypass the MCP config file cache when resolving servers. */
-    forceReload?: boolean;
 }
 
 /**
  * Convert a resolved `MCPServerConfig` into a connection request for the tester.
- * Returns `null` for configs missing the fields needed to connect.
+ * Returns `null` for configs missing the fields needed to connect. A stdio
+ * probe runs where the chat runtime would: `executionRoot` (the session cwd, or
+ * the member root for a group member's server), or the server's own `cwd`
+ * resolved against it.
  */
-export function configToTestRequest(config: MCPServerConfig): McpTestRequest | null {
+export function configToTestRequest(config: MCPServerConfig, executionRoot?: string): McpTestRequest | null {
     const type = config.type === 'http' || config.type === 'sse' ? config.type : 'stdio';
     if (type === 'stdio') {
         const command = 'command' in config ? config.command : undefined;
@@ -52,6 +55,9 @@ export function configToTestRequest(config: MCPServerConfig): McpTestRequest | n
         const req: McpTestRequest = { type: 'stdio', command };
         if ('args' in config && config.args) req.args = config.args;
         if ('env' in config && config.env) req.env = config.env;
+        const cwd = 'cwd' in config ? config.cwd : undefined;
+        if (executionRoot) req.cwd = path.resolve(executionRoot, cwd ?? '.');
+        else if (cwd) req.cwd = cwd;
         return req;
     }
     const url = 'url' in config ? config.url : undefined;
@@ -62,29 +68,19 @@ export function configToTestRequest(config: MCPServerConfig): McpTestRequest | n
 }
 
 /**
- * Resolve the workspace's *enabled* MCP servers to connection requests.
- * Mirrors the effective merge used elsewhere: workspace entries override global
- * entries with the same name. `enabledMcpServers === null/undefined` means all
- * servers are enabled.
+ * Turn the workspace's *enabled* effective servers into connection requests.
+ * `enabledMcpServers === null/undefined` means all servers are enabled.
  */
 export function resolveEnabledMcpServers(
-    rootPath: string,
+    servers: Record<string, EffectiveMcpServer>,
     enabledMcpServers: string[] | null | undefined,
-    forceReload = false,
 ): Record<string, McpTestRequest> {
-    const globalConfig = loadDefaultMcpConfig(forceReload);
-    const workspaceConfig = loadWorkspaceMcpConfig(rootPath, forceReload);
-    const merged: Record<string, MCPServerConfig> = {
-        ...globalConfig.mcpServers,
-        ...workspaceConfig.mcpServers,
-    };
-
     const result: Record<string, McpTestRequest> = {};
-    for (const [name, config] of Object.entries(merged)) {
+    for (const [name, server] of Object.entries(servers)) {
         const isEnabled =
             enabledMcpServers === null || enabledMcpServers === undefined || enabledMcpServers.includes(name);
         if (!isEnabled) continue;
-        const req = configToTestRequest(config);
+        const req = configToTestRequest(server.config, server.executionRoot);
         if (req) result[name] = req;
     }
     return result;
@@ -139,13 +135,12 @@ export async function discoverMcpToolsForServers(
 }
 
 /**
- * Resolve and probe all *enabled* MCP servers for a workspace.
+ * Probe all *enabled* servers of a workspace's effective resolution.
  */
 export async function discoverWorkspaceMcpTools(
-    rootPath: string,
+    servers: Record<string, EffectiveMcpServer>,
     enabledMcpServers: string[] | null | undefined,
     opts: DiscoverOptions = {},
 ): Promise<Record<string, McpServerToolsResult>> {
-    const servers = resolveEnabledMcpServers(rootPath, enabledMcpServers, opts.forceReload);
-    return discoverMcpToolsForServers(servers, opts);
+    return discoverMcpToolsForServers(resolveEnabledMcpServers(servers, enabledMcpServers), opts);
 }

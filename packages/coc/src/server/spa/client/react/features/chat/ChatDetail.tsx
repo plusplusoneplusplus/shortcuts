@@ -68,6 +68,8 @@ import { buildChatChangesContext } from './conversation/tool-calls/chatChangesMo
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
+import { ChatCommitOpenerContext, type ChatCommitOpener } from './conversation/chatCommitOpener';
+import { chatCommitPanelTarget, openPanelGitCommit } from '../repo-detail/unified-right-panel/panelGitCommit';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -685,6 +687,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // of those the entry points below keep their existing sibling columns.
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
     useBrowserControlScope(unifiedPanelHost || isPopOut ? browserRoutingRef : null, unifiedPanelHost?.workspaceId);
+
+    // Commit rows in this conversation open in the panel's Git tab, so the chat
+    // stays on screen; without a target they keep the workspace Git route.
+    const openCommitInPanel = useMemo<ChatCommitOpener | null>(() => {
+        const target = unifiedPanelHost ? chatCommitPanelTarget(unifiedPanelHost, workspaceId) : null;
+        return target ? (commitHash: string) => openPanelGitCommit(appDispatch, target, commitHash) : null;
+    }, [unifiedPanelHost, workspaceId, appDispatch]);
 
     // Path resolution for a clicked source link needs the remote-server
     // workspaces folded in, exactly as the docked canvas's own hook does — a
@@ -3026,6 +3035,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 full-height sibling column to the right of this whole stack. */}
             <div ref={whisperSkillBoundaryRef} className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
             <WhisperSkillDetailDialogProvider boundaryRef={whisperSkillBoundaryRef} scopeKey={`${workspaceId ?? ''}:${taskId}`}>
+            <ChatCommitOpenerContext.Provider value={openCommitInPanel}>
             <div ref={scratchpadContainerRef}className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
@@ -3518,6 +3528,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onClose={scratchpad.close}
                 />
             )}
+            </ChatCommitOpenerContext.Provider>
             </WhisperSkillDetailDialogProvider>
             </div>{/* /left stack */}
             {sourceCanvasColumn}

@@ -106,6 +106,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
     EMPTY_UNIFIED_PANEL,
+    activateTab,
     openTab,
     unifiedTabId,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -281,7 +282,10 @@ describe('UnifiedRightPanel', () => {
     });
 
     describe('grouped resource tab shell', () => {
-        afterEach(() => { _resetRuntimeConfig(); });
+        afterEach(() => {
+            _resetRuntimeConfig();
+            delete (window as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__;
+        });
 
         function seedCanvasBurst() {
             let state = openTab(EMPTY_UNIFIED_PANEL, {
@@ -299,6 +303,53 @@ describe('UnifiedRightPanel', () => {
             writeUnifiedPanelState(WS, state);
             return state;
         }
+
+        it.each([
+            { nested: true, groups: false }, { nested: true, groups: true },
+            { nested: false, groups: false }, { nested: false, groups: true },
+        ])('ignores stale category bootstrap and live flags without changing tabs or groups (%j)', async ({ nested, groups }) => {
+            const flags = { panelTabCategoriesEnabled: true, panelTabGroupsEnabled: groups, panelTabReorderingEnabled: false };
+            Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+                configurable: true,
+                value: { apiBasePath: '/api', wsPath: '/ws', ...(nested ? { features: flags } : flags) },
+            });
+            const seeded = seedCanvasBurst();
+            const activeId = seeded.activeByScope['chat-a'];
+            const file = { kind: 'file' as const, ownerWorkspaceId: 'member-repo',
+                ownerRoutingRef: 'remote:server-a:member-repo', chatId: 'chat-a',
+                resourceId: 'src/b.ts', label: 'b.ts' };
+            const state = activateTab(openTab(seeded, file), 'chat-a', activeId);
+            writeUnifiedPanelState(WS, state);
+            const otherScope = openTab(EMPTY_UNIFIED_PANEL, { ...file, chatId: 'chat-b' });
+            writeUnifiedPanelState('ws-2', otherScope);
+            renderPanel({ chatId: 'chat-a' });
+            await waitFor(() => expect(screen.getByTestId(`unified-panel-view-${activeId}`)).toBeTruthy());
+            const view = screen.getByTestId(`unified-panel-view-${activeId}`);
+            const tabIds = () => screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'));
+            const renderedIds = tabIds();
+            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'file')).toHaveLength(2);
+            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(groups ? 3 : 1);
+            expect(screen.queryByTestId('unified-panel-category-canvas')).toBeNull();
+            if (groups) {
+                expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toBeTruthy();
+                expect(screen.getByTestId('unified-panel-group-overflow-canvas')).toHaveTextContent('+2');
+            } else {
+                expect(screen.getByTestId('unified-panel-tab-section-divider')).toBeTruthy();
+                expect(screen.getByTestId('unified-panel-canvas-stack')).toHaveTextContent('Canvases 5');
+            }
+
+            for (const enabled of [false, true]) {
+                act(() => { applyRuntimeConfigPatch({ panelTabCategoriesEnabled: enabled }); });
+                expect(tabIds()).toEqual(renderedIds);
+                expect(screen.getByTestId(`unified-panel-view-${activeId}`)).toBe(view);
+                expect(readUnifiedPanelState(WS)).toBe(state);
+                expect(readUnifiedPanelState('ws-2')).toBe(otherScope);
+            }
+            fireEvent.click(screen.getByTestId(`unified-panel-tab-${unifiedTabId(file)}`));
+            expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId(file)}`)).toHaveAttribute('aria-selected', 'true');
+            expect(readUnifiedPanelState(WS).chatTabs).toBe(state.chatTabs);
+            expect(readUnifiedPanelState('ws-2')).toBe(otherScope);
+        });
 
         it('renders grouped tabs and replaces the active canvas header count chip with group overflow', async () => {
             applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
@@ -1098,6 +1149,21 @@ describe('UnifiedRightPanel', () => {
             expect(opened.browserEngine).toBe('webview2');
             expect(opened.resourceId).not.toBe(opener.resourceId);
             await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/page', WS, 'webview2'));
+        });
+
+        it('opens a popup of a page an AI turn drives unseen as an unselected tab and creates its guest', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            await openUrlTab('https://example.com');
+            const viewId = viewIdOf();
+            bridge.open.mockClear();
+            act(() => onNewTab?.({ openerViewId: viewId, url: 'https://docs.example.com/popup', engine: 'electron', background: true } as any));
+            expect(browserTabs()).toHaveLength(2);
+            expect(browserTabs()[0].getAttribute('aria-selected')).toBe('true');
+            expect(browserTabs()[1].getAttribute('aria-selected')).toBe('false');
+            const opened = readUnifiedPanelState(WS).workspaceTabs[1];
+            expect(opened.browserUrl).toBe('https://docs.example.com/popup');
+            // The unselected tab never mounts, so the guest is created here for the turn to find.
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/popup', WS, 'electron'));
         });
 
         it('reports download handoff and opens the current page in the system browser via the bridge', async () => {

@@ -54,6 +54,12 @@ export interface OpenUnifiedPanelTabOptions {
      * taking over the screen.
      */
     reveal?: boolean;
+    /**
+     * Select the tab. On by default. Pass `false` to add or refresh the tab
+     * while every chat keeps its current selection — an AI turn driving a page
+     * the user is not looking at.
+     */
+    activate?: boolean;
 }
 
 /**
@@ -71,7 +77,10 @@ export function openUnifiedPanelTab(
     options: OpenUnifiedPanelTabOptions = {},
 ): string {
     const id = unifiedTabIdFor(input);
-    updateUnifiedPanelState(workspaceId, prev => openTab(prev, input));
+    updateUnifiedPanelState(workspaceId, prev => {
+        const next = openTab(prev, input);
+        return options.activate === false && next.activeByScope !== prev.activeByScope ? { ...next, activeByScope: prev.activeByScope } : next;
+    });
     if (options.reveal !== false) openWorkspaceDock(workspaceId);
     return id;
 }

@@ -1,7 +1,7 @@
 /**
  * Covers:
  *  - configToTestRequest mapping (stdio/http, invalid)
- *  - resolveEnabledMcpServers (effective merge + enabled allow-list filter)
+ *  - resolveEnabledMcpServers (effective resolution + enabled allow-list filter, execution cwd)
  *  - discoverMcpToolsForServers (per-server success/error isolation)
  *
  * `listMcpTools` from mcp-connection-tester is mocked so no real processes spawn.
@@ -29,7 +29,17 @@ import {
     discoverMcpToolsForServers,
     discoverWorkspaceMcpTools,
 } from '../../src/server/routes/mcp-tools-discovery';
-import { setHomeDirectoryOverride } from '@plusplusoneplusplus/forge';
+import { loadDefaultMcpConfig, loadWorkspaceMcpConfig, setHomeDirectoryOverride } from '@plusplusoneplusplus/forge';
+import { mergeWorkspaceMcpServers } from '../../src/server/workspaces/workspace-mcp-resolver';
+
+/** The ordinary-repo effective resolution, as the route builds it. */
+function repoServers(rootPath: string) {
+    return mergeWorkspaceMcpServers({
+        global: loadDefaultMcpConfig(true).mcpServers,
+        workspace: loadWorkspaceMcpConfig(rootPath, true).mcpServers,
+        workspaceRoot: rootPath,
+    });
+}
 
 describe('native Teams tool discovery', () => {
     it('uses a freshly acquired native bearer without retaining configured authorization headers', async () => {
@@ -75,6 +85,13 @@ describe('configToTestRequest', () => {
     it('returns null for http config without a url', () => {
         expect(configToTestRequest({ type: 'http' } as any)).toBeNull();
     });
+
+    it('runs a stdio probe where the runtime would: own cwd resolved against the execution root', () => {
+        const root = path.resolve('/repo');
+        expect(configToTestRequest({ command: 'bin' } as any, root)?.cwd).toBe(root);
+        expect(configToTestRequest({ command: 'bin', cwd: 'tools' } as any, root)?.cwd).toBe(path.join(root, 'tools'));
+        expect(configToTestRequest({ type: 'http', url: 'https://x' } as any, root)).not.toHaveProperty('cwd');
+    });
 });
 
 // ----------------------------------------------------------------------------
@@ -119,19 +136,19 @@ describe('resolveEnabledMcpServers', () => {
     });
 
     it('returns all servers when enabled list is null', () => {
-        const resolved = resolveEnabledMcpServers(tmpWorkspace, null, true);
+        const resolved = resolveEnabledMcpServers(repoServers(tmpWorkspace), null);
         expect(Object.keys(resolved).sort()).toEqual(['g1', 'g2', 'w1']);
-        expect(resolved.w1).toEqual({ type: 'stdio', command: 'w1-bin', args: ['--flag'] });
+        expect(resolved.w1).toEqual({ type: 'stdio', command: 'w1-bin', args: ['--flag'], cwd: tmpWorkspace });
     });
 
     it('filters by the enabled allow-list', () => {
-        const resolved = resolveEnabledMcpServers(tmpWorkspace, ['g1', 'w1'], true);
+        const resolved = resolveEnabledMcpServers(repoServers(tmpWorkspace), ['g1', 'w1']);
         expect(Object.keys(resolved).sort()).toEqual(['g1', 'w1']);
         expect(resolved.g2).toBeUndefined();
     });
 
     it('returns an empty map when nothing is enabled', () => {
-        const resolved = resolveEnabledMcpServers(tmpWorkspace, [], true);
+        const resolved = resolveEnabledMcpServers(repoServers(tmpWorkspace), []);
         expect(resolved).toEqual({});
     });
 });
@@ -218,7 +235,7 @@ describe('discoverWorkspaceMcpTools', () => {
 
     it('discovers only enabled servers and keys results by server name', async () => {
         listMcpToolsMock.mockResolvedValue({ success: true, message: 'ok', tools: [{ name: 'tool' }] });
-        const results = await discoverWorkspaceMcpTools(tmpWorkspace, ['g1'], { forceReload: true });
+        const results = await discoverWorkspaceMcpTools(repoServers(tmpWorkspace), ['g1']);
         expect(Object.keys(results)).toEqual(['g1']);
         expect(results.g1.status).toBe('ok');
         expect(results.g1.tools).toEqual([{ name: 'tool' }]);

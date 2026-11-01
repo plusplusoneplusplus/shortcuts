@@ -8,11 +8,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { BranchService, loadDefaultMcpConfig, loadWorkspaceMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem, computeWorkspaceId } from '@plusplusoneplusplus/forge';
+import { BranchService, detectRemoteUrl, resolvePathForHostFilesystem, computeWorkspaceId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { setStaticConfigCacheHeaders } from '../shared/router';
-import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
+import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { gitInfoCache, type GitInfoResult } from '../git/git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
@@ -41,12 +41,15 @@ import {
     addServerToConfig,
     migrateServerScope,
     readAllDescriptions,
+    readRawWorkspaceConfig,
     findServerSource,
     type McpToolScope,
     type McpConfigScope,
 } from './mcp-config-writer';
 import { testMcpConnection } from './mcp-connection-tester';
 import { discoverWorkspaceMcpTools } from './mcp-tools-discovery';
+import { resolveWorkspaceMcp, type McpDefinitionSource, type McpMemberRef } from '../workspaces/workspace-mcp-resolver';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 import { readMcpServerAuthInfo, type McpServerAuthStatus } from '../mcp-oauth';
 import { getServerLogger } from '../logging/server-logger';
 import { isTeamsMcpServer, teamsNativeAuthStatus } from '../messaging/teams-native-auth';
@@ -66,7 +69,7 @@ function hasGitDirectory(rootPath: string): boolean {
     }
 }
 
-type WorkspaceMcpServerSource = 'global' | 'workspace';
+type WorkspaceMcpServerSource = McpDefinitionSource;
 
 interface WorkspaceMcpServerEntry {
     name: string;
@@ -76,6 +79,12 @@ interface WorkspaceMcpServerEntry {
     source?: WorkspaceMcpServerSource;
     effective?: boolean;
     overriddenBy?: WorkspaceMcpServerSource;
+    /** Defining member repo (`member` source only). */
+    member?: McpMemberRef;
+    /** Other members whose identical definition was folded into this server. */
+    sharedWith?: McpMemberRef[];
+    /** Members whose distinct same-name definition lost to `member` (first in group order). */
+    conflicts?: McpMemberRef[];
     /** Derived server status (added to availableServers only). */
     status?: 'ok' | 'auth' | 'off' | 'err';
     /** Auth state for remote servers (added to availableServers only). */
@@ -94,25 +103,33 @@ interface WorkspaceMcpSourceSection {
     servers: WorkspaceMcpServerEntry[];
 }
 
+interface WorkspaceMcpMemberSection extends WorkspaceMcpSourceSection, McpMemberRef {
+    stale?: boolean;
+    staleReason?: 'workspace-removed' | 'path-missing';
+    /** Names the member's own settings disable, so the group does not inherit them. */
+    disabledByMember: string[];
+}
+
+/** List-safe row: never env, headers, or args. */
 function toMcpServerEntry(
     name: string,
     config: MCPServerConfig,
     source: WorkspaceMcpServerSource,
-    effective: boolean,
+    overriddenBy?: WorkspaceMcpServerSource,
 ): WorkspaceMcpServerEntry {
     return {
         name,
         type: config.type ?? 'stdio',
         source,
-        effective,
+        effective: !overriddenBy,
         ...('url' in config && config.url ? { url: config.url } : {}),
         ...('command' in config && config.command ? { command: config.command } : {}),
-        ...(!effective ? { overriddenBy: 'workspace' as const } : {}),
+        ...(overriddenBy ? { overriddenBy } : {}),
     };
 }
 
 function toMcpSourceSection(
-    config: ReturnType<typeof loadDefaultMcpConfig>,
+    config: { configPath?: string; fileExists?: boolean; success?: boolean; error?: string },
     servers: WorkspaceMcpServerEntry[],
 ): WorkspaceMcpSourceSection {
     return {
@@ -143,16 +160,26 @@ function deriveServerStatus(
     return 'ok';
 }
 
-function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false, dataDir?: string) {
-    const globalConfig = loadDefaultMcpConfig(forceReload);
-    const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath, forceReload);
-    const workspaceNames = new Set(Object.keys(workspaceConfig.mcpServers));
+function readMemberDescription(rootPath: string, name: string): string | undefined {
+    const entry = (readRawWorkspaceConfig(rootPath).servers as Record<string, { description?: unknown }> | undefined)?.[name];
+    return typeof entry?.description === 'string' ? entry.description : undefined;
+}
 
-    const globalServers = Object.entries(globalConfig.mcpServers).map(([name, config]) =>
-        toMcpServerEntry(name, config, 'global', !workspaceNames.has(name))
-    );
-    const workspaceServers = Object.entries(workspaceConfig.mcpServers).map(([name, config]) =>
-        toMcpServerEntry(name, config, 'workspace', true)
+async function buildMcpConfigResponse(
+    store: ProcessStore,
+    ws: WorkspaceInfo,
+    forceReload = false,
+    dataDir?: string,
+) {
+    const resolution = await resolveWorkspaceMcp({ store, dataDir, workspace: ws, forceReload });
+    const effectiveSource = (name: string) => resolution.servers[name]?.source;
+
+    const globalServers = Object.entries(resolution.global.mcpServers).map(([name, config]) => {
+        const winner = effectiveSource(name);
+        return toMcpServerEntry(name, config, 'global', winner !== 'global' ? winner : undefined);
+    });
+    const workspaceServers = Object.entries(resolution.workspace.mcpServers).map(([name, config]) =>
+        toMcpServerEntry(name, config, 'workspace')
     );
 
     // Read descriptions from raw config files (not filtered/normalized by loader)
@@ -160,13 +187,14 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false, dataDir?
 
     // Compute effective server list with status and description
     const enabledSet = ws.enabledMcpServers;
-    const availableServers = Object.entries({
-        ...globalConfig.mcpServers,
-        ...workspaceConfig.mcpServers,
-    }).map(([name, config]) => {
+    const availableServers = Object.entries(resolution.servers).map(([name, server]) => {
+        const { config } = server;
         const isEnabled = enabledSet === null || enabledSet === undefined || enabledSet.includes(name);
         const type = config.type ?? 'stdio';
-        const entry = toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true);
+        const entry = toMcpServerEntry(name, config, server.source);
+        if (server.member) entry.member = { workspaceId: server.member.workspaceId, ...(server.member.name ? { name: server.member.name } : {}) };
+        if (server.sharedWith) entry.sharedWith = server.sharedWith;
+        if (server.conflicts) entry.conflicts = server.conflicts;
         const url = 'url' in config ? config.url : undefined;
         const auth = dataDir && url && isTeamsMcpServer(name, config)
             ? { status: teamsNativeAuthStatus(dataDir, url) }
@@ -174,19 +202,65 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false, dataDir?
         entry.authStatus = auth.status;
         if ('expiresAt' in auth && auth.expiresAt !== undefined) entry.authExpiresAt = auth.expiresAt;
         entry.status = deriveServerStatus(type, isEnabled, auth.status);
-        const desc = descriptions[name];
+        const desc = server.member ? readMemberDescription(server.member.rootPath, name) : descriptions[name];
         if (desc) entry.description = desc;
         return entry;
     });
+
+    const members: WorkspaceMcpMemberSection[] | undefined = resolution.isGroup
+        ? resolution.members.map(member => {
+            const servers = Object.entries(member.servers).map(([name, config]) => {
+                const winner = resolution.servers[name];
+                const wins = winner?.source === 'member'
+                    && (winner.member?.workspaceId === member.workspaceId
+                        || winner.sharedWith?.some(m => m.workspaceId === member.workspaceId));
+                return toMcpServerEntry(name, config, 'member', wins ? undefined : (winner?.source ?? 'member'));
+            });
+            return {
+                ...toMcpSourceSection(member, servers),
+                workspaceId: member.workspaceId,
+                ...(member.name ? { name: member.name } : {}),
+                ...(member.stale ? { stale: true } : {}),
+                ...(member.staleReason ? { staleReason: member.staleReason } : {}),
+                disabledByMember: member.disabledByMember,
+            };
+        })
+        : undefined;
 
     return {
         availableServers,
         enabledMcpServers: ws.enabledMcpServers ?? null,
         sources: {
-            global: toMcpSourceSection(globalConfig, globalServers),
-            workspace: toMcpSourceSection(workspaceConfig, workspaceServers),
+            global: toMcpSourceSection(resolution.global, globalServers),
+            workspace: toMcpSourceSection(resolution.workspace, workspaceServers),
+            ...(members ? { members } : {}),
+            ...(resolution.membersError ? { membersError: resolution.membersError } : {}),
         },
     };
+}
+
+/**
+ * Repo-group servers defined by a member are owned by that member's repo:
+ * detail reads its file, and definition edits are refused here so a group page
+ * never writes an arbitrary member (or a same-named global entry).
+ */
+async function resolveMcpDefinitionOwner(
+    store: ProcessStore,
+    ws: WorkspaceInfo,
+    serverName: string,
+    dataDir: string | undefined,
+): Promise<{ rootPath: string; member?: McpMemberRef }> {
+    if (!isRepoGroupWorkspaceId(ws.id)) return { rootPath: ws.rootPath };
+    const server = (await resolveWorkspaceMcp({ store, dataDir, workspace: ws })).servers[serverName];
+    if (server?.source === 'member' && server.member) {
+        const { rootPath, ...member } = server.member;
+        return { rootPath, member };
+    }
+    return { rootPath: ws.rootPath };
+}
+
+function memberOwnedConflict(serverName: string, member: McpMemberRef) {
+    return conflict(`MCP server "${serverName}" is defined by member repo "${member.name ?? member.workspaceId}"; edit it in that repo's settings`);
 }
 
 /**
@@ -540,7 +614,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const enabledMcpTools = ctx.dataDir
                 ? readRepoPreferences(ctx.dataDir, ws.id).enabledMcpTools ?? null
                 : null;
-            sendJSON(res, 200, { ...buildMcpConfigResponse(ws, forceReload, ctx.dataDir), enabledMcpTools });
+            sendJSON(res, 200, { ...(await buildMcpConfigResponse(store, ws, forceReload, ctx.dataDir)), enabledMcpTools });
         },
     });
 
@@ -553,7 +627,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const parsed = url.parse(req.url || '/', true);
             const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
-            const servers = await discoverWorkspaceMcpTools(ws.rootPath, ws.enabledMcpServers, { forceReload, dataDir: ctx.dataDir });
+            const resolution = await resolveWorkspaceMcp({ store, dataDir: ctx.dataDir, workspace: ws, forceReload });
+            const servers = await discoverWorkspaceMcpTools(resolution.servers, ws.enabledMcpServers, { dataDir: ctx.dataDir });
             sendJSON(res, 200, { servers });
         },
     });
@@ -667,11 +742,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const serverName = decodeURIComponent(match![2]);
-            const detail = getServerDetail(serverName, ws.rootPath);
+            const owner = await resolveMcpDefinitionOwner(store, ws, serverName, ctx.dataDir);
+            const detail = getServerDetail(serverName, owner.rootPath);
             if (!detail) {
                 return handleAPIError(res, notFound('MCP server'));
             }
-            sendJSON(res, 200, detail);
+            sendJSON(res, 200, owner.member ? { ...detail, source: 'member', member: owner.member } : detail);
         },
     });
 
@@ -743,6 +819,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 update.toolScope = body.toolScope as McpToolScope;
             }
 
+            const owner = await resolveMcpDefinitionOwner(store, ws, serverName, ctx.dataDir);
+            if (owner.member) return handleAPIError(res, memberOwnedConflict(serverName, owner.member));
             const ok = await updateServerConfig(serverName, ws.rootPath, update);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));
@@ -759,6 +837,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const serverName = decodeURIComponent(match![2]);
+            const owner = await resolveMcpDefinitionOwner(store, ws, serverName, ctx.dataDir);
+            if (owner.member) return handleAPIError(res, memberOwnedConflict(serverName, owner.member));
             const ok = await deleteServerFromConfig(serverName, ws.rootPath);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));
@@ -782,6 +862,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, badRequest('`targetScope` must be "global" or "workspace"'));
             }
 
+            const owner = await resolveMcpDefinitionOwner(store, ws, serverName, ctx.dataDir);
+            if (owner.member) return handleAPIError(res, memberOwnedConflict(serverName, owner.member));
             const ok = await migrateServerScope(serverName, ws.rootPath, body.targetScope as McpConfigScope);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));

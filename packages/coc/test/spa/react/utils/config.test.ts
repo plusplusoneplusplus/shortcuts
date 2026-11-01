@@ -19,7 +19,6 @@ import {
     isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPanelTabGroupsEnabled,
-    isPanelTabCategoriesEnabled,
     isBrowserBackgroundControlEnabled,
     isBinaryFileRevealEnabled,
     isBrowserTabShortcutsEnabled,
@@ -101,21 +100,6 @@ describe('panel tab groups runtime flag', () => {
         expect(isPanelTabGroupsEnabled()).toBe(false);
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
         expect(isPanelTabGroupsEnabled()).toBe(true);
-    });
-});
-
-describe('panel tab categories runtime flag', () => {
-    it('defaults off and follows bootstrap and live patches', () => {
-        expect(isPanelTabCategoriesEnabled()).toBe(false);
-        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
-            configurable: true,
-            value: { features: { panelTabCategoriesEnabled: 'true' } },
-        });
-        expect(isPanelTabCategoriesEnabled()).toBe(false);
-        applyRuntimeConfigPatch({ panelTabCategoriesEnabled: true });
-        expect(isPanelTabCategoriesEnabled()).toBe(true);
-        applyRuntimeConfigPatch({ panelTabCategoriesEnabled: false });
-        expect(isPanelTabCategoriesEnabled()).toBe(false);
     });
 });
 

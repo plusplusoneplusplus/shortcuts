@@ -34,7 +34,6 @@ beforeAll(() => {
 
 const mockDispatch = vi.fn();
 let activeSubTab = 'chats';
-let panelTabCategoriesEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
@@ -130,7 +129,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isFeatureEnabled: () => false,
     isPanelTabReorderingEnabled: () => true,
     isPanelTabGroupsEnabled: () => false,
-    isPanelTabCategoriesEnabled: () => panelTabCategoriesEnabled,
     isBrowserTabShortcutsEnabled: () => false,
     isChatScopedBrowserTabsEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
@@ -209,7 +207,6 @@ describe('RepoDetail queue — remote-clone request routing', () => {
     beforeEach(() => {
         urls = [];
         activeSubTab = 'chats';
-        panelTabCategoriesEnabled = false;
         seedAlongsideChat = false;
         resetCloneRegistryForTests();
         mockDispatch.mockClear();
@@ -251,8 +248,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
     const resumeUrls = (list: string[], wsId: string) =>
         list.filter(u => u.includes('/queue/resume') && u.includes(`repoId=${wsId}`));
 
-    it.each([false, true])('keeps remote queue routing with panel tab categories %s', async enabled => {
-        panelTabCategoriesEnabled = enabled;
+    it('keeps remote queue routing with the normal right panel', async () => {
         registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_BASE }]);
         renderDetail(REMOTE_WS);
 

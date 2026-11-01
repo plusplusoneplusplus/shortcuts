@@ -2,7 +2,8 @@
  * CommitStrip — compact inline display of detected git commits inside a tool group.
  *
  * Renders one row per commit with short hash, subject, and optional diff stats.
- * Clicking a row navigates to the commit detail view; the trailing ↗️ button
+ * Clicking a row opens the commit detail (the chat's right-panel Git tab when
+ * one hosts this chat, else the workspace Git route); the trailing ↗️ button
  * opens the commit in a dedicated pop-out window.
  */
 import React from 'react';
@@ -11,6 +12,7 @@ import { buildGitReviewPopOutUrl } from '../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { popOutOpened } from '../../../utils/popOutWindow';
+import { activateChatCommit, useChatCommitOpener } from './chatCommitOpener';
 
 export interface CommitStripProps {
     commits: DetectedCommit[];
@@ -21,15 +23,13 @@ export interface CommitStripProps {
 
 export function CommitStrip({ commits, workspaceId, sourceSelectionId, sourceBaseUrl }: CommitStripProps) {
     const { markPoppedOut } = useGitReviewPopOut();
+    const openCommit = useChatCommitOpener();
 
     if (commits.length === 0) return null;
 
     const handleClick = (e: React.MouseEvent, commit: DetectedCommit) => {
         e.stopPropagation();
-        const hash = commit.fullHash || commit.shortHash;
-        if (workspaceId) {
-            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash;
-        }
+        if (workspaceId) activateChatCommit(openCommit, workspaceId, commit);
     };
 
     const handlePopOut = (e: React.MouseEvent, commit: DetectedCommit) => {

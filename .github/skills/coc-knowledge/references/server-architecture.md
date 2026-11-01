@@ -79,7 +79,9 @@ process history and workspace IDs. Model metadata warm-up runs before listening;
 a failed catalog warm-up is logged without blocking the listener.
 Startup installs configured `skills.defaultSkills` into the global skills directory;
 `DEFAULT_BUNDLED_SKILLS` in `src/config.ts` includes `propose-diff` for read-only
-patch proposals that require explicit user approval before application. Bundled
+patch proposals that require explicit user approval before application, and `todo`,
+which tracks a task through `sentinel_todos` and starts it with a tracked
+`send_to_conversation` launch (no file/API bypass when either tool is missing). Bundled
 payloads and their registry live in `packages/forge/resources/bundled-skills/`
 and `packages/forge/src/skills/bundled-skills-registry.ts`.
 
