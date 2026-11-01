@@ -85,6 +85,11 @@ export interface ExplorerPanelProps {
      */
     deepLink?: boolean;
     /**
+     * Receives each Explorer hash this mount writes, so a host that also
+     * listens for Explorer routes can tell its own writes from deep links.
+     */
+    onRouteWrite?: (hash: string) => void;
+    /**
      * Where a file open goes in `navigator` and `sidebar` mode: this Explorer
      * owns no editor there, so every open is handed to this callback and the
      * host's tab strip is the only place a file appears. An `editor` mount
@@ -274,12 +279,17 @@ export function ExplorerPanel({
     workspaceId,
     routingRef,
     deepLink = true,
+    onRouteWrite,
     onOpenFile,
     mode: panelMode,
     activeFilePath,
     revealRequest,
 }: ExplorerPanelProps) {
     const ownerKey = routingRef ?? workspaceId;
+    const writeRoute = useCallback((hash: string) => {
+        location.hash = hash;
+        onRouteWrite?.(location.hash);
+    }, [onRouteWrite]);
     const deleteFeature = useExplorerDeleteEnabled(workspaceId, routingRef);
     // Navigator mode: the host owns the editor, so this panel is only a tree.
     // `sidebar` is navigator plus "the host owns the breadcrumbs too".
@@ -569,7 +579,7 @@ export function ExplorerPanel({
                 const explorerRoute = `#repos/${encodeURIComponent(request.owner)}/explorer`;
                 const ownsHash = location.hash === explorerRoute || location.hash.startsWith(`${explorerRoute}/`);
                 if (deepLink) {
-                    if (ownsHash) location.hash = `${explorerRoute}${parent ? `/${encodeURIComponent(parent)}` : ''}`;
+                    if (ownsHash) writeRoute(`${explorerRoute}${parent ? `/${encodeURIComponent(parent)}` : ''}`);
                 }
             }
         } catch (error) {
@@ -842,9 +852,9 @@ export function ExplorerPanel({
         setSelectedPath(path);
         // Update hash for deep-linking — only when this mount owns the route.
         if (deepLink) {
-            location.hash = `#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(path)}`;
+            writeRoute(`#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(path)}`);
         }
-    }, [ownerKey, deepLink]);
+    }, [ownerKey, deepLink, writeRoute]);
 
     const handleToggle = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -949,9 +959,9 @@ export function ExplorerPanel({
             });
         }
         if (deepLink) {
-            location.hash = `#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(filePath)}`;
+            writeRoute(`#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(filePath)}`);
         }
-    }, [ownerKey, deepLink, openFileInEditor]);
+    }, [ownerKey, deepLink, openFileInEditor, writeRoute]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });

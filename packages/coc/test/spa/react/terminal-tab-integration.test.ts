@@ -127,7 +127,7 @@ describe('RepoDetail TerminalView rendering', () => {
     });
 
     it('renders TerminalView with display:none pattern', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal' ? undefined : 'none'");
+        expect(REPO_DETAIL_SOURCE).toContain("contentSubTab === 'terminal' ? undefined : 'none'");
     });
 
     it('guards TerminalView mount on terminalEnabled', () => {
@@ -139,7 +139,7 @@ describe('RepoDetail TerminalView rendering', () => {
     });
 
     it('terminal content area uses overflow-hidden', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal'");
+        expect(REPO_DETAIL_SOURCE).toContain("contentSubTab === 'terminal'");
         expect(REPO_DETAIL_SOURCE).toContain("overflow-hidden");
     });
 });

@@ -99,8 +99,9 @@ process-sidebar links, and clone completion all write full hashes. `RepoDetail` 
 the chat surface synchronously when the active sub-tab is absent from `visibleSubTabs`,
 independently of selection-correction effects and Git info loading. The remembered
 route stays intact. Git and Explorer shortcuts and routes select the chat workspace;
-`UnifiedRightPanel` restores the navigator and
-file selection on mount or hash navigation for its exact local or clone-qualified owner.
+My Work and My Life keep Git as a real sub-tab. `UnifiedRightPanel` restores the navigator and
+file selection on mount or hash navigation for its exact local or clone-qualified owner,
+skipping routes its own Explorer wrote (`onRouteWrite`) so preview clicks stay previews.
 
 ### Workspace panel resources
 

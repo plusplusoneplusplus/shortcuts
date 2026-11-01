@@ -82,6 +82,12 @@ describe('Git routes keep the chat workspace visible', () => {
         expect(state.selectedGitFilePath).toBe('src.ts');
         expect(state.repoRouteState[id]).toBe('/git/abc123/src.ts');
     });
+
+    it.each(['my_work', 'my_life'])('keeps the Git page for virtual workspace %s', id => {
+        const resolution = resolveDashboardRoute('#repos/' + id + '/git', makeCtx());
+        expect(appActions(resolution)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+        expect(appActions(resolution)).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
 });
 
 // ── Top-level tab activation ──────────────────────────────────────────────────

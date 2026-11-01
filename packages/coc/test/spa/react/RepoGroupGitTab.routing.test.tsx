@@ -136,16 +136,16 @@ function RouteProbe() {
 }
 
 /**
- * `RepoGroupView` only mounts the group's Git tab once the Git sub-tab is the
- * active one, which the route decides. Mirroring that here keeps the host from
- * seeing a render before the route it belongs to has been resolved.
+ * `RepoGroupView` mounts the group's Git list beside the chats once the group
+ * is selected; Git routes keep the chat sub-tab active. Mirroring that here
+ * keeps the host from seeing a render before the route has been resolved.
  */
 function GroupGitHost({ groupId, members }: {
     groupId: string;
     members: readonly RepoGroupMember[] | undefined;
 }) {
     const { state } = useApp();
-    if (state.selectedRepoId !== groupId || state.activeRepoSubTab !== 'git') return null;
+    if (state.selectedRepoId !== groupId) return null;
     return <RepoGroupGitTab workspaceId={getWorkspaceIdFromSelectionId(groupId)} selectionId={groupId} members={members} />;
 }
 

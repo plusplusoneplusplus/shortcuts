@@ -1356,6 +1356,9 @@ export function UnifiedRightPanel({
     // replaces the chat list. Read on mount too, so repo switches and reloads
     // restore the owning panel even if the hash event precedes its subscription.
     const explorerRouteRef = useRef<string | null>(null);
+    // The panel's own Explorer writes these routes on selection; recording them
+    // stops a preview click from being replayed as a pinned deep-link open.
+    const recordExplorerRoute = useCallback((hash: string) => { explorerRouteRef.current = hash; }, []);
     useEffect(() => {
         const restoreExplorer = () => {
             const { segments } = tokenizeHash(location.hash);
@@ -2582,6 +2585,7 @@ export function UnifiedRightPanel({
                                             // the explorer deep-link hash, or a group member's
                                             // file click would navigate out of the group.
                                             deepLink={target === workspaceId}
+                                            onRouteWrite={recordExplorerRoute}
                                             mode="sidebar"
                                             activeFilePath={trackedTreeFile}
                                             revealRequest={

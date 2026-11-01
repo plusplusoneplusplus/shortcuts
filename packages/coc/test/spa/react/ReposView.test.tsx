@@ -1081,9 +1081,9 @@ describe('RepoDetail — ExplorerPanel keep-mounted', () => {
 
     it('wraps ExplorerPanel in display:none div instead of conditional &&', () => {
         // Must NOT use short-circuit conditional rendering
-        expect(source).not.toContain("activeSubTab === 'explorer' && <ExplorerPanel");
+        expect(source).not.toContain("contentSubTab === 'explorer' && <ExplorerPanel");
         // Must use CSS display:none pattern
-        expect(source).toContain("activeSubTab === 'explorer' ? undefined : 'none'");
+        expect(source).toContain("contentSubTab === 'explorer' ? undefined : 'none'");
     });
 
     it('uses the clone-qualified selection key so repo and clone switches force remount', () => {

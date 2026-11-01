@@ -26,8 +26,12 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: () => <div data-testid="mock-terminal" />,
 }));
+const mockExplorer = vi.hoisted(() => ({ props: {} as { onRouteWrite?: (hash: string) => void } }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: () => <div data-testid="mock-explorer" />,
+    ExplorerPanel: (props: { onRouteWrite?: (hash: string) => void }) => {
+        mockExplorer.props = props;
+        return <div data-testid="mock-explorer" />;
+    },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: () => <textarea aria-label="Note draft" defaultValue="Draft" />,
@@ -119,6 +123,25 @@ describe('Explorer route restoration in the resource panel', () => {
         window.history.replaceState(null, '', `/#repos/${encodeURIComponent(`remote:server-b:${WS}`)}/explorer`);
         render(<Host routingRef={`remote:server-a:${WS}`} />);
         expect(panel().dataset.open).toBe('false');
+    });
+
+    it('does not replay its own Explorer selection as a pinned file open', async () => {
+        const fileTabs = () => Object.values(readUnifiedPanelState(WS).chatTabs).flat()
+            .filter(tab => tab.kind === 'file' && tab.resourceId === 'src/index.ts');
+        const navigate = (hash: string, own = false) => act(() => {
+            window.history.replaceState(null, '', '/' + hash);
+            if (own) mockExplorer.props.onRouteWrite?.(location.hash);
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        window.history.replaceState(null, '', `/#repos/${WS}/explorer`);
+        render(<Host />);
+        navigate(`#repos/${WS}/explorer/src%2Findex.ts`, true);
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+        expect(fileTabs()).toEqual([]);
+        // A later outside link to the same file still opens it.
+        navigate(`#repos/${WS}/activity`);
+        navigate(`#repos/${WS}/explorer/src%2Findex.ts`);
+        await waitFor(() => expect(fileTabs()).toHaveLength(1));
     });
 
     it('opens on hash navigation and lets the user close it without reopening on render', () => {
