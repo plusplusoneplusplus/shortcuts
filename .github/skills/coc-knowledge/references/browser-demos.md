@@ -65,9 +65,12 @@ and coalesce in-flight scope pauses.
 supply their own workspace/selection/process tuple separately from panel and dock
 scope. Departure pauses recording; only the owning composer blocks Send.
 
-The desktop atomically excludes AI access to captured views and their chat:
-queued commands prevent Start or stopped-draft Resume, and recording
-ownership is rechecked before main-process dispatch. Command reservations and
+The desktop atomically excludes AI access to captured views and their concrete
+routing/workspace/chat owner. Commands resolve and pin validated routing before
+capture matching and queued admission reservations; equal raw IDs on other
+servers stay independent, while the same chat spans desktop windows. Queued
+commands prevent Start or stopped-draft Resume. Dispatch rechecks recording and
+routing ownership; captured views stay excluded across chats. Reservations and
 target-queue busy state survive cancellation until dispatched input releases
 settle. Other chats can still use unrelated tabs.
 Stopped drafts remain reviewable from another browser tab of the same owner.

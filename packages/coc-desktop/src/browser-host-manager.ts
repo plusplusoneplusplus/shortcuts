@@ -14,6 +14,7 @@ import { BrowserControlQueue } from './browser-control-queue';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { BrowserDemoRecorders } from './browser-demo-recorder';
+import type { BrowserDemoOwner } from './browser-demo-session';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
@@ -112,7 +113,7 @@ export class BrowserHostManager {
     private readonly pendingHumanTabs = new Map<string, { sessionKey: string; control: BrowserHumanTakeover }>();
     private readonly takeovers = new Map<string, TakeoverTurn>();
     private readonly commandHolds = new Set<CommandHold>();
-    private readonly demoControlReservations = new Set<Pick<BrowserCommandRequest, 'workspaceId' | 'processId'>>();
+    private readonly demoControlReservations = new Set<BrowserDemoOwner>();
     /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
     private readonly tabShortcutOwners = new Set<number>();
 
@@ -123,7 +124,7 @@ export class BrowserHostManager {
         this.demos = new BrowserDemoRecorders({
             send: options.send,
             busy: owner => [...this.demoControlReservations].some(request =>
-                request.workspaceId === owner.workspaceId && request.processId === owner.processId)
+                request.workspaceId === owner.workspaceId && request.processId === owner.processId && request.routingRef === owner.routingRef)
                 ? 'An AI browser command for this chat is still finishing.' : undefined,
             lookup: (ownerId, viewId) => {
                 const entry = this.entry(ownerId, viewId);
@@ -369,8 +370,8 @@ export class BrowserHostManager {
 
     async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
-        if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
         const key = this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey);
         let item = this.takeovers.get(key);
         if (item && item.control.owner.turnId !== (request.turnId ?? request.processId)) {
@@ -380,7 +381,7 @@ export class BrowserHostManager {
         if (!request.humanTakeoverEnabled) {
             if (item?.control.paused) { item.control.stop('Browser human takeover disabled'); throw new Error('Browser human takeover disabled; continuation terminated'); }
             if (request.command.action === 'request_human') throw new Error('Browser human takeover unavailable or disabled');
-            return this.executeControlUnpaused(ownerId, request, signal, routingRef, hold);
+            return this.executeControlUnpaused(ownerId, request, signal, scope.sessionKey, hold);
         }
         if (!item) {
             const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
@@ -426,7 +427,7 @@ export class BrowserHostManager {
         };
         return current.control.run(async commandSignal => {
             try {
-                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, routingRef, hold);
+                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, scope.sessionKey, hold);
                 commandSignal.throwIfAborted();
                 return { ...result, ...(current.control.note ? { handoffNote: current.control.note } : {}) };
             } finally {
@@ -438,7 +439,9 @@ export class BrowserHostManager {
 
     private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
-        if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
+        const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        const reservation = { workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey };
+        if (this.demos.capturing(reservation)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
         const queues = new Set<BrowserControlQueue>();
         const commandHold: CommandHold | undefined = hold && { routingOwnerId: ownerId, workspaceId: request.workspaceId, processId: request.processId, hold };
         if (commandHold) {
@@ -446,9 +449,8 @@ export class BrowserHostManager {
             for (const check of this.navigationChecks.values()) if (this.holdsCommand(check, commandHold)) check.releases.push(commandHold.hold());
         }
         const pendingKeys: string[] = [];
-        const reservation = { workspaceId: request.workspaceId, processId: request.processId };
         this.demoControlReservations.add(reservation);
-        try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys, queues); }
+        try { return await this.runControl(ownerId, request, signal, scope.sessionKey, pendingKeys, queues); }
         finally {
             // Abort rejects the caller before CDP settles; admission must still await required releases.
             void Promise.all([...queues].map(queue => queue.settled())).then(() => this.demoControlReservations.delete(reservation));
@@ -526,7 +528,7 @@ export class BrowserHostManager {
             url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
-            if (this.demos.capturing(request.workspaceId, request.processId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
+            if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
             this.activateControl(selected, ownerId, request, scope.background);

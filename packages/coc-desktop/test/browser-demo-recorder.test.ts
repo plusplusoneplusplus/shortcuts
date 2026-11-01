@@ -57,7 +57,7 @@ describe('BrowserDemoRecorders start and ownership', () => {
         const h = harness({ startWait });
         h.addTab('t1');
         const starting = h.recorders.start(1, owner, 't1');
-        expect(h.recorders.capturing(owner.workspaceId, owner.processId)).toBe(true);
+        expect(h.recorders.capturing(owner)).toBe(true);
         await expect(h.recorders.start(1, owner, 't1')).rejects.toMatchObject({ reason: 'busy' });
         await h.recorders.closeOwner(1);
         h.tabs.clear();
@@ -90,7 +90,7 @@ describe('BrowserDemoRecorders start and ownership', () => {
         h.addTab('t1');
         expect(await runBrowserDemoCommand(h.recorders, 1, { action: 'start', owner, viewId: 't1' })).toEqual({ ok: false, reason: 'handshake-failed', message: 'no answer' });
         expect(h.recorders.unsent()).toEqual([]);
-        expect(h.recorders.capturing(owner.workspaceId, owner.processId)).toBe(false);
+        expect(h.recorders.capturing(owner)).toBe(false);
     });
 
     it('reports WebView2 recording unavailable even when its CDP transport works', async () => {
@@ -206,22 +206,23 @@ describe('BrowserDemoRecorders capture lifecycle', () => {
         expect(draft.status).toBe('stopped');
         expect(draft.tabs[0].url).toBe('https://t1.test/?token=…');
         expect(draft.steps.map(step => step.type)).toEqual(['tab-opened', 'action', 'action']);
-        expect(h.recorders.capturing(owner.workspaceId, owner.processId)).toBe(false);
+        expect(h.recorders.capturing(owner)).toBe(false);
     });
 
     it('blocks AI control for the chat and its tabs only while capturing, including pause', async () => {
         const h = harness();
         h.addTab('t1');
         const { id } = await h.recorders.start(1, owner, 't1');
-        expect(h.recorders.capturing('ws-a', 'chat-1')).toBe(true);
-        expect(h.recorders.capturing('ws-a', 'chat-2')).toBe(false);
-        expect(h.recorders.capturing('ws-b', 'chat-1')).toBe(false);
+        expect(h.recorders.capturing(owner)).toBe(true);
+        expect(h.recorders.capturing({ ...owner, processId: 'chat-2' })).toBe(false);
+        expect(h.recorders.capturing({ ...owner, workspaceId: 'ws-b' })).toBe(false);
+        expect(h.recorders.capturing({ ...owner, routingRef: 'remote:server-b:ws-a' })).toBe(false);
         expect(h.recorders.recordingTab(1, 't1')).toBe(true);
         expect(h.recorders.recordingTab(2, 't1')).toBe(false);
         h.recorders.pause(1, id, 'scope');
         expect(h.states().at(-1)).toMatchObject({ status: 'paused', pauseReason: 'scope' });
         expect(h.captures.get('t1')!.enabled).toBe(false);
-        expect(h.recorders.capturing('ws-a', 'chat-1')).toBe(true);
+        expect(h.recorders.capturing(owner)).toBe(true);
         await h.recorders.resume(1, id);
         expect(h.captures.get('t1')!.enabled).toBe(true);
         await h.recorders.stop(1, id);

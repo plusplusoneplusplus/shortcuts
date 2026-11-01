@@ -295,9 +295,9 @@ export class BrowserDemoRecorders {
     }
 
     /** AI browser commands for this chat fail while its demo is being captured. */
-    capturing(workspaceId: string, processId: string): boolean {
+    capturing(owner: BrowserDemoOwner): boolean {
         return [...this.demos.values()].some(demo => demo.session.state !== 'stopped'
-            && demo.session.owner.workspaceId === workspaceId && demo.session.owner.processId === processId);
+            && sameOwner(demo.session.owner, owner));
     }
 
     /** The tab is captured by a recording that is not stopped. */

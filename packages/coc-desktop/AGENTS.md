@@ -19,9 +19,12 @@ Preserve immediate popup opener identity separately from root SPA tab routing.
 Never add typed values, screenshots, page dumps or renderer debugger access.
 Sanitize website metadata before it enters drafts and report collection gaps.
 Reject late startup/poll/adoption results after pause, discard, close or reload.
-Recording admission excludes queued AI commands for the chat and busy target
-queues. Preserve reservations through dispatched input releases after cancellation;
-recheck recording ownership before queued main-process dispatch.
+Recording admission excludes queued AI commands for the concrete
+routing/workspace/chat owner and busy target queues. Resolve and pin validated
+routing before matching; equal raw IDs on other servers stay independent, while
+the same chat spans windows. Preserve reservations through dispatched input
+releases after cancellation; recheck recording ownership and routing before
+queued main-process dispatch. Captured views stay excluded across chats.
 Share final capture drains between Stop and captured-tab closure. Retire routing
 synchronously, retain sinks through the drain, and report unavailable final capture
 as a gap before closing membership.

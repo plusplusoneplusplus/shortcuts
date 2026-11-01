@@ -67,6 +67,165 @@ function harness(realCapture = false, configure?: (view: BrowserHostedView, view
 }
 
 describe('browser demo recording in the host manager', () => {
+    it.each([1, 2])('isolates equal chat and tab IDs on different server routes (window %s)', async remoteWindow => {
+        const h = harness();
+        const remoteOwner = { ...owner, routingRef: 'remote:server-b:w' };
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const { id } = await h.manager.demos.start(1, owner, 'root');
+            const remoteTab = remoteWindow === 1 ? 'remote-root' : 'root';
+            await h.manager.open(remoteWindow, remoteTab, 'https://b.test/', remoteOwner.routingRef);
+            if (remoteWindow === 1) h.manager.retainControlScope(1, remoteOwner.routingRef, 'w');
+            else h.manager.bindControlScope(remoteWindow, 'w', remoteOwner.routingRef);
+            const request = { id: 'remote-tabs', workspaceId: 'w', processId: 'p', command: { action: 'tabs' as const } };
+            expect((await h.manager.executeControl(remoteWindow, request, undefined, remoteOwner.routingRef)).tabs?.map(tab => tab.id))
+                .toEqual([`t${remoteWindow}:${remoteTab}`]);
+            await expect(h.manager.executeControl(remoteWindow, { ...request, id: 'remote-press',
+                selectedTab: `t${remoteWindow}:${remoteTab}`, command: { action: 'press', key: 'Enter' } },
+            undefined, remoteOwner.routingRef)).resolves.toMatchObject({});
+            await expect(h.run('p', { action: 'tabs' })).rejects.toThrow(BROWSER_DEMO_RECORDING_ERROR);
+            h.manager.demos.pause(1, id);
+            await expect(h.manager.executeControl(remoteWindow, request, undefined, remoteOwner.routingRef)).resolves.toHaveProperty('tabs');
+            await expect(h.run('p', { action: 'tabs' })).rejects.toThrow(BROWSER_DEMO_RECORDING_ERROR);
+            h.manager.bindControlScope(3, 'w', 'w');
+            await expect(h.manager.executeControl(3, request)).rejects.toThrow(BROWSER_DEMO_RECORDING_ERROR);
+            await expect(h.manager.executeControl(remoteWindow, request, undefined, 'unbound-route')).rejects.toThrow('scope changed');
+        } finally { await h.manager.dispose(); }
+    });
+
+    it.each([1, 2])('keeps foreign-server reservations out of Start and stopped Resume (window %s)', async remoteWindow => {
+        const h = harness();
+        const gate = deferred<unknown>();
+        const pressed = deferred<void>();
+        const remoteOwner = { ...owner, routingRef: 'remote:server-b:w' };
+        let inputSettled: Promise<unknown> | undefined;
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(1, 'free', 'https://a.test/free', 'w');
+            const draft = await h.manager.demos.start(1, owner, 'root');
+            await h.manager.demos.stop(1, draft.id);
+            const remoteTab = remoteWindow === 1 ? 'remote-root' : 'root';
+            await h.manager.open(remoteWindow, remoteTab, 'https://b.test/', remoteOwner.routingRef);
+            const remoteView = h.views.get(remoteTab)!;
+            const originalCdp = vi.mocked(remoteView.cdp!).getMockImplementation()!;
+            vi.mocked(remoteView.cdp!).mockImplementation(async (method, params) => {
+                if (params?.type === 'keyDown') { pressed.resolve(); return gate.promise; }
+                return originalCdp(method, params);
+            });
+            if (remoteWindow === 1) h.manager.retainControlScope(1, remoteOwner.routingRef, 'w');
+            else h.manager.bindControlScope(remoteWindow, 'w', remoteOwner.routingRef);
+            const input = h.manager.executeControl(remoteWindow, { id: 'remote-input', workspaceId: 'w', processId: 'p',
+                selectedTab: `t${remoteWindow}:${remoteTab}`, command: { action: 'press', key: 'Enter' } }, undefined, remoteOwner.routingRef);
+            inputSettled = input.then(() => undefined, error => error);
+            await pressed.promise;
+            await expect(h.manager.demos.resume(1, draft.id)).resolves.toMatchObject({ status: 'recording' });
+            await h.manager.demos.release(1, draft.id);
+            await expect(h.manager.demos.start(1, owner, 'free')).resolves.toMatchObject({ status: 'recording' });
+            await h.manager.open(remoteWindow, 'remote-free', 'https://b.test/free', remoteOwner.routingRef);
+            await expect(h.manager.demos.start(remoteWindow, remoteOwner, 'remote-free')).rejects.toMatchObject({ reason: 'busy' });
+            gate.resolve({});
+            expect(await inputSettled).toBeUndefined();
+        } finally { gate.resolve({}); await inputSettled; await h.manager.dispose(); }
+    });
+
+    it('shares same-server chat reservations across concrete windows', async () => {
+        const h = harness();
+        const gate = deferred<unknown>();
+        const pressed = deferred<void>();
+        let inputSettled: Promise<unknown> | undefined;
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            await h.manager.open(2, 'root', 'https://a.test/other', 'w');
+            await h.manager.open(2, 'free', 'https://a.test/free', 'w');
+            const draft = await h.manager.demos.start(2, owner, 'root');
+            await h.manager.demos.stop(2, draft.id);
+            h.manager.bindControlScope(2, 'w', 'w');
+            const inputView = h.views.get('root')!;
+            const originalCdp = vi.mocked(inputView.cdp!).getMockImplementation()!;
+            vi.mocked(inputView.cdp!).mockImplementation(async (method, params) => {
+                if (params?.type === 'keyDown') { pressed.resolve(); return gate.promise; }
+                return originalCdp(method, params);
+            });
+            const input = h.manager.executeControl(1, { id: 'same-server', workspaceId: 'w', processId: 'p',
+                selectedTab: 't2:root', command: { action: 'press', key: 'Enter' } });
+            inputSettled = input.then(() => undefined, error => error);
+            await pressed.promise;
+            await expect(h.manager.demos.start(2, owner, 'free')).rejects.toMatchObject({ reason: 'busy' });
+            await expect(h.manager.demos.resume(2, draft.id)).rejects.toMatchObject({ reason: 'busy' });
+            gate.resolve({});
+            expect(await inputSettled).toBeUndefined();
+        } finally { gate.resolve({}); await inputSettled; await h.manager.dispose(); }
+    });
+
+    it('retains only the concrete server reservation through cancelled input releases', async () => {
+        const h = harness();
+        const down = deferred<unknown>();
+        const up = deferred<unknown>();
+        const pressed = deferred<void>();
+        const released = deferred<void>();
+        const remoteOwner = { ...owner, routingRef: 'remote:server-b:w' };
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const localDraft = await h.manager.demos.start(1, owner, 'root');
+            await h.manager.demos.stop(1, localDraft.id);
+            h.manager.bindControlScope(2, 'w', remoteOwner.routingRef);
+            await h.manager.open(2, 'root', 'https://b.test/', remoteOwner.routingRef);
+            await h.manager.open(2, 'free', 'https://b.test/free', remoteOwner.routingRef);
+            const remoteDraft = await h.manager.demos.start(2, remoteOwner, 'free');
+            await h.manager.demos.stop(2, remoteDraft.id);
+            const remoteView = h.views.get('root')!;
+            const originalCdp = vi.mocked(remoteView.cdp!).getMockImplementation()!;
+            vi.mocked(remoteView.cdp!).mockImplementation(async (method, params) => {
+                if (params?.type === 'keyDown') { pressed.resolve(); return down.promise; }
+                if (params?.type === 'keyUp') { released.resolve(); return up.promise; }
+                return originalCdp(method, params);
+            });
+            const controller = new AbortController();
+            const input = h.manager.executeControl(2, { id: 'remote-cancelled', workspaceId: 'w', processId: 'p',
+                selectedTab: 't2:root', command: { action: 'press', key: 'Enter' } }, controller.signal);
+            await pressed.promise;
+            controller.abort(new Error('Turn stopped'));
+            await expect(input).rejects.toThrow('Turn stopped');
+            h.manager.finishControl(2, 'p');
+            await expect(h.manager.demos.resume(1, localDraft.id)).resolves.toMatchObject({ status: 'recording' });
+            await expect(h.manager.demos.resume(2, remoteDraft.id)).rejects.toMatchObject({ reason: 'busy' });
+            await expect(h.manager.demos.start(2, remoteOwner, 'root')).rejects.toMatchObject({ reason: 'busy' });
+            down.resolve({});
+            await released.promise;
+            await expect(h.manager.demos.resume(2, remoteDraft.id)).rejects.toMatchObject({ reason: 'busy' });
+            up.resolve({});
+            await h.manager.withControlPage(2, 'root', remoteOwner.routingRef, async () => {});
+            await expect(h.manager.demos.resume(2, remoteDraft.id)).resolves.toMatchObject({ status: 'recording' });
+            expect(vi.mocked(remoteView.cdp!).mock.calls.filter(([method]) => method === 'Input.dispatchKeyEvent')
+                .map(([, params]) => params?.type)).toEqual(['keyDown', 'keyUp']);
+        } finally { down.resolve({}); up.resolve({}); await h.manager.dispose(); }
+    });
+
+    it('keeps queued dispatch bound to its validated server when equal-ID selection changes', async () => {
+        const h = harness();
+        const gate = deferred<void>();
+        const entered = deferred<void>();
+        let blocking: Promise<unknown> | undefined;
+        let inputSettled: Promise<unknown> | undefined;
+        const remoteOwner = { ...owner, routingRef: 'remote:server-b:w' };
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const originalView = h.views.get('root')!;
+            await h.manager.open(1, 'remote-root', 'https://b.test/', remoteOwner.routingRef);
+            blocking = h.manager.withControlPage(1, 'root', 'w', async () => { entered.resolve(); await gate.promise; });
+            await entered.promise;
+            const input = h.manager.executeControl(1, { id: 'queued-owner-change', workspaceId: 'w', processId: 'p',
+                selectedTab: 't1:root', command: { action: 'press', key: 'Enter' } });
+            inputSettled = input.then(() => undefined, error => error);
+            h.manager.bindControlScope(1, 'w', remoteOwner.routingRef);
+            await expect(h.manager.demos.start(1, remoteOwner, 'remote-root')).resolves.toMatchObject({ status: 'recording' });
+            gate.resolve();
+            await blocking;
+            expect(await inputSettled).toMatchObject({ message: 'Browser workspace scope changed' });
+            expect(vi.mocked(originalView.cdp!).mock.calls.some(([method]) => method.startsWith('Input.'))).toBe(false);
+        } finally { gate.resolve(); await blocking; await inputSettled; await h.manager.dispose(); }
+    });
+
     it.each(['stop', 'close', 'discard', 'owner-close'] as const)('revokes child readiness on %s without starting late capture', async ending => {
         const ready = deferred<void>();
         const waiting = deferred<void>();
