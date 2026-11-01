@@ -24,6 +24,13 @@ Document replacement, inaccessible frames, malformed reports and overflow produc
 explicit gaps. Pause revisions reject in-flight batches; boundary drains discard
 paused observations. Stop drains final actions before session freeze. Capture
 startup, child adoption and resumed handshakes recheck lifecycle ownership.
+
+Captured-tab closure shares the final drain with concurrent Stop and duplicate
+close events, retaining sinks and membership until completion. The manager retires
+tab routing immediately but keeps an available native view alive through its
+drain. Detached documents/transports produce explicit capture gaps; discarded
+drafts reject late close results.
+
 Collection has 300 steps plus one terminal limit marker, 24 tabs, 16 frames per
 poll, 100 queued observations per document and 16 pending child reservations.
 

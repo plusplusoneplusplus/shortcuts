@@ -904,7 +904,8 @@ export class BrowserHostManager {
                 this.pruneNavigationChecks();
                 popout.control?.cancel(new Error('Browser popout closed'));
                 this.owners.get(entry.ownerId)?.delete(viewId);
-                void this.demos.tabClosed(entry.ownerId, viewId);
+                void this.demos.tabClosed(entry.ownerId, viewId)
+                    .catch(error => console.error('[coc-desktop] Browser demo popup cleanup failed:', error));
             },
             controlFocused: sourceViewId => {
                 if (!entry.closed && entry.sourceKind === 'url') {
@@ -1171,13 +1172,14 @@ export class BrowserHostManager {
         entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
-        void this.demos.tabClosed(entry.ownerId, entry.viewId);
+        const demoClosed = this.demos.tabClosed(entry.ownerId, entry.viewId);
         if (notify) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: entry.viewId, engine: entry.engine }); }
         // Startup is allowed to finish; create() then closes the partial view itself.
         const view = await entry.ready.catch(error => {
             if (!(error instanceof BrowserHostError)) { console.error('[coc-desktop] Browser startup failed while closing:', error); }
             return undefined;
         });
+        await demoClosed;
         if (view) { await view.close(); }
     }
 

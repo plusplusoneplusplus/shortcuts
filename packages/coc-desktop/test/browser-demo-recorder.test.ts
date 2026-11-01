@@ -171,6 +171,7 @@ describe('BrowserDemoRecorders capture lifecycle', () => {
         await expect(h.recorders.resume(1, id)).rejects.toMatchObject({ reason: 'busy' });
         await expect(h.recorders.addTab(1, id, 't2')).rejects.toMatchObject({ reason: 'busy' });
         expect(h.recorders.reserveChild(1, 't1')).toBeUndefined();
+        await Promise.resolve();
         finish();
         await stopping;
     });
@@ -271,6 +272,89 @@ describe('BrowserDemoRecorders capture lifecycle', () => {
         expect(draft.incomplete).toBe(true);
         expect(draft.steps.map(step => step.type === 'gap' ? `gap:${step.reason}` : step.type)).toEqual(['tab-opened', 'tab-opened', 'gap:tab-crashed', 'tab-closed', 'tab-closed']);
         expect(draft.tabs[1]).toMatchObject({ addedByUser: true });
+    });
+
+    it.each(['root', 'child', 'popup'] as const)('drains final %s actions before revoking membership', async kind => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const viewId = kind === 'root' ? 'root' : kind;
+        if (kind === 'child') {
+            h.recorders.reserveChild(1, 'root', viewId);
+            h.addTab(viewId);
+            await h.recorders.tabReady(1, viewId);
+        } else if (kind === 'popup') {
+            await h.recorders.popupOpened(1, 'root', viewId, h.addTab(viewId));
+        }
+        const capture = h.captures.get(viewId)!;
+        capture.stop = vi.fn(async flush => { if (flush) capture.sink.actions([click]); });
+        await h.recorders.tabClosed(1, viewId);
+        const draft = h.recorders.draft(1, id);
+        expect(draft.steps.filter(step => step.viewId === viewId).map(step => step.type))
+            .toEqual(['tab-opened', 'action', 'tab-closed']);
+        expect(draft.incomplete).toBe(false);
+        expect(capture.stop).toHaveBeenCalledExactlyOnceWith(true);
+        capture.sink.actions([click]);
+        expect(h.recorders.draft(1, id).steps).toHaveLength(draft.steps.length);
+        await h.recorders.release(1, id);
+    });
+
+    it('reports a lost closure transport instead of silently omitting final actions', async () => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        h.captures.get('root')!.stop = async () => { throw new Error('Transport gone'); };
+        await h.recorders.tabClosed(1, 'root');
+        const draft = h.recorders.draft(1, id);
+        expect(draft.status).toBe('stopped');
+        expect(draft.incomplete).toBe(true);
+        expect(draft.steps.map(step => step.type === 'gap' ? step.reason : step.type))
+            .toEqual(['tab-opened', 'capture-failed', 'tab-closed']);
+    });
+
+    it.each(['close-first', 'stop-first'] as const)('shares a pending close drain with duplicate closure and concurrent Stop (%s)', async order => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        let finish!: () => void;
+        const wait = new Promise<void>(resolve => { finish = resolve; });
+        const capture = h.captures.get('root')!;
+        capture.stop = vi.fn(async flush => {
+            await wait;
+            if (flush) capture.sink.actions([click]);
+        });
+        const first = order === 'close-first' ? h.recorders.tabClosed(1, 'root') : h.recorders.stop(1, id);
+        const second = order === 'close-first' ? h.recorders.stop(1, id) : h.recorders.tabClosed(1, 'root');
+        const duplicate = h.recorders.tabClosed(1, 'root');
+        expect(h.recorders.draft(1, id).tabs[0].closed).toBeUndefined();
+        finish();
+        await Promise.all([first, duplicate, second]);
+        expect(capture.stop).toHaveBeenCalledExactlyOnceWith(true);
+        expect(h.recorders.draft(1, id).steps.map(step => step.type)).toEqual(['tab-opened', 'action', 'tab-closed']);
+        expect(h.recorders.draft(1, id).status).toBe('stopped');
+    });
+
+    it('cannot publish late close actions after the draft is discarded', async () => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        let finish!: () => void;
+        const wait = new Promise<void>(resolve => { finish = resolve; });
+        const capture = h.captures.get('root')!;
+        capture.stop = async flush => {
+            if (!flush) return;
+            await wait;
+            capture.sink.actions([click]);
+            capture.sink.gap('capture-failed');
+        };
+        const closing = h.recorders.tabClosed(1, 'root');
+        await h.recorders.release(1, id);
+        const sent = h.send.mock.calls.length;
+        finish();
+        await closing;
+        expect(h.send).toHaveBeenCalledTimes(sent);
+        expect(h.states().at(-1)).toMatchObject({ ended: 'discarded' });
+        expect(h.recorders.unsent()).toEqual([]);
     });
 
     it('releases only the closing window drafts', async () => {

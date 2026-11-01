@@ -66,6 +66,8 @@ interface Demo {
     ownerId: number;
     session: BrowserDemoSession;
     captures: Map<string, BrowserDemoCapture>;
+    draining: Map<string, Promise<void>>;
+    closing: Map<string, Promise<void>>;
     pending: Map<string, { openerViewId: string; timer: ReturnType<typeof setTimeout> }>;
     pauseReason?: BrowserDemoPauseReason;
     stopping?: boolean;
@@ -100,7 +102,7 @@ export class BrowserDemoRecorders {
         if (this.member(ownerId, viewId)) throw new BrowserDemoError('busy', 'This tab is already part of a demo recording.');
         if (this.demos.size >= BROWSER_DEMO_MAX_DRAFTS) throw new BrowserDemoError('limit', 'Too many unsent browser demos. Send or discard one first.');
         const source = this.source(ownerId, viewId, owner);
-        const demo: Demo = { ownerId, session: new BrowserDemoSession(randomUUID(), { ...owner }, this.options.now), captures: new Map(), pending: new Map() };
+        const demo: Demo = { ownerId, session: new BrowserDemoSession(randomUUID(), { ...owner }, this.options.now), captures: new Map(), draining: new Map(), closing: new Map(), pending: new Map() };
         demo.session.addTab(viewId, source.view.snapshot());
         // Reserve ownership before the handshake, so AI input and another start cannot race it.
         this.demos.set(demo.session.id, demo);
@@ -159,15 +161,10 @@ export class BrowserDemoRecorders {
         if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         demo.stopping = true;
         this.clearPending(demo);
-        const captures = [...demo.captures.entries()];
         try {
             // Keep registrations alive until the final actions pass through their sinks.
-            const results = await Promise.allSettled(captures.map(([, capture]) => capture.stop(true)));
-            for (const [index, [viewId, capture]] of captures.entries()) {
-                if (demo.captures.get(viewId) !== capture) continue;
-                demo.captures.delete(viewId);
-                if (results[index].status === 'rejected') demo.session.gap(viewId, 'capture-failed');
-            }
+            await Promise.all([...demo.captures.keys()].map(viewId => this.drainCapture(demo, viewId)));
+            await Promise.all(demo.closing.values());
             demo.pauseReason = undefined;
             const snapshot = demo.session.stop();
             if (this.demos.get(demo.session.id) === demo) this.emit(demo);
@@ -219,7 +216,7 @@ export class BrowserDemoRecorders {
      */
     reserveChild(ownerId: number, openerViewId: string, viewId = `browser-${randomUUID()}`): string | undefined {
         const demo = this.member(ownerId, openerViewId);
-        if (!demo || demo.stopping || demo.session.state === 'stopped') return undefined;
+        if (!demo || demo.stopping || demo.closing.has(openerViewId) || demo.session.state === 'stopped') return undefined;
         if (demo.pending.size >= 16) {
             demo.session.gap(openerViewId, 'tab-limit');
             this.emit(demo);
@@ -372,15 +369,35 @@ export class BrowserDemoRecorders {
         }
     }
 
-    private async closeMember(demo: Demo, viewId: string): Promise<void> {
+    private drainCapture(demo: Demo, viewId: string): Promise<void> {
+        const draining = demo.draining.get(viewId);
+        if (draining) return draining;
         const capture = demo.captures.get(viewId);
-        demo.captures.delete(viewId);
-        demo.session.closeTab(viewId);
-        await capture?.stop(false).catch(() => {});
+        if (!capture) return Promise.resolve();
+        const operation = Promise.resolve().then(() => capture.stop(true)).catch(() => {
+            if (demo.captures.get(viewId) === capture) demo.session.gap(viewId, 'capture-failed');
+        }).finally(() => {
+            if (demo.captures.get(viewId) === capture) demo.captures.delete(viewId);
+            demo.draining.delete(viewId);
+        });
+        demo.draining.set(viewId, operation);
+        return operation;
+    }
+
+    private async closeMember(demo: Demo, viewId: string): Promise<void> {
+        let closing = demo.closing.get(viewId);
+        if (!closing) {
+            closing = this.drainCapture(demo, viewId).then(() => {
+                if (this.demos.get(demo.session.id) !== demo) return;
+                demo.session.closeTab(viewId);
+                this.emit(demo);
+            }).finally(() => { demo.closing.delete(viewId); });
+            demo.closing.set(viewId, closing);
+        }
+        await closing;
         if (this.demos.get(demo.session.id) !== demo) return;
         // The last captured tab closed: stop and hand the draft to review.
-        if (!demo.session.viewIds().length && demo.session.state !== 'stopped') { await this.stop(demo.ownerId, demo.session.id); return; }
-        this.emit(demo);
+        if (!demo.session.viewIds().length && demo.session.state !== 'stopped' && !demo.stopping) await this.stop(demo.ownerId, demo.session.id);
     }
 
     private clearPending(demo: Demo): void {

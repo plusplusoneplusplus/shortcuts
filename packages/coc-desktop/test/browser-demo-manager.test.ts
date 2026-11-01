@@ -45,10 +45,11 @@ function harness() {
         }), dispose: async () => {} },
         getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
     });
-    const captures: { view: unknown; sink: BrowserDemoTabSink }[] = [];
+    const captures: { view: unknown; sink: BrowserDemoTabSink; capture: BrowserDemoCapture }[] = [];
     (manager.demos as unknown as { options: { capture: (view: unknown, sink: BrowserDemoTabSink) => BrowserDemoCapture } }).options.capture = (view, sink) => {
-        captures.push({ view, sink });
-        return { start: async () => {}, setEnabled: () => {}, stop: async () => {} };
+        const capture = { start: async () => {}, setEnabled: () => {}, stop: async () => {} };
+        captures.push({ view, sink, capture });
+        return capture;
     };
     manager.bindControlScope(1, 'w', 'w');
     const run = (processId: string, command: Parameters<BrowserHostManager['executeControl']>[1]['command'], selectedTab?: string) =>
@@ -253,6 +254,30 @@ describe('browser demo recording in the host manager', () => {
             expect(draft.steps.map(step => step.type)).toEqual(['tab-opened', 'navigate', 'tab-closed']);
             expect(JSON.stringify(draft)).not.toContain('secret');
         } finally { await h.manager.dispose(); }
+    });
+
+    it('keeps the native view alive through the final close drain while retiring its routing immediately', async () => {
+        const h = harness();
+        const gate = deferred<void>();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const { id } = await h.manager.demos.start(1, owner, 'root');
+            const { capture, sink } = h.captures[0];
+            capture.stop = async flush => {
+                expect(flush).toBe(true);
+                expect(h.views.get('root')!.close).not.toHaveBeenCalled();
+                await gate.promise;
+                sink.actions([{ kind: 'click', role: 'button', label: 'Save', url: 'https://a.test/' }]);
+            };
+            const closing = h.manager.close(1, 'root');
+            expect((await h.run('other', { action: 'tabs' })).tabs).toEqual([]);
+            expect(h.manager.demos.draft(1, id).tabs[0].closed).toBeUndefined();
+            gate.resolve();
+            await closing;
+            expect(h.views.get('root')!.close).toHaveBeenCalledOnce();
+            expect(h.manager.demos.draft(1, id).steps.map(step => step.type)).toEqual(['tab-opened', 'action', 'tab-closed']);
+            expect(h.manager.demos.draft(1, id).status).toBe('stopped');
+        } finally { gate.resolve(); await h.manager.dispose(); }
     });
 
     // Regression: awaiting draft cleanup before clearing the tab map let a reload's reopen reuse the dying entry.

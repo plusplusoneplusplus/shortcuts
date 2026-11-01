@@ -22,6 +22,9 @@ Reject late startup/poll/adoption results after pause, discard, close or reload.
 Recording admission excludes queued AI commands for the chat and busy target
 queues. Preserve reservations through dispatched input releases after cancellation;
 recheck recording ownership before queued main-process dispatch.
+Share final capture drains between Stop and captured-tab closure. Retire routing
+synchronously, retain sinks through the drain, and report unavailable final capture
+as a gap before closing membership.
 
 `main.ts` and `container-main.ts` confirm unsent drafts before shutdown side
 effects. Native close/reload warnings belong to registered owning windows;

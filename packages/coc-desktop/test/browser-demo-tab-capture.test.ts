@@ -257,4 +257,48 @@ describe('BrowserDemoTabCapture', () => {
         await capture.poll();
         expect(out.actions).toHaveLength(1);
     });
+
+    it('waits for an in-flight drain before collecting the final queued close action', async () => {
+        const { view } = fakeView();
+        const out = sink();
+        const capture = new BrowserDemoTabCapture(view, out.target, 60_000);
+        await capture.start();
+        let entered!: () => void;
+        let finish!: () => void;
+        const began = new Promise<void>(resolve => { entered = resolve; });
+        const wait = new Promise<void>(resolve => { finish = resolve; });
+        const cdp = view.cdp;
+        let held = true;
+        view.cdp = async (method, params = {}) => {
+            const result = await cdp(method, params);
+            if (method === 'Runtime.evaluate' && held) {
+                held = false;
+                entered();
+                await wait;
+            }
+            return result;
+        };
+        document.querySelector('button')!.click();
+        const polling = capture.poll();
+        await began;
+        document.querySelector('button')!.click();
+        const stopping = capture.stop(true);
+        finish();
+        await Promise.all([polling, stopping]);
+        expect(out.actions).toHaveLength(2);
+        expect(out.gaps).toEqual([]);
+    });
+
+    it.each(['detached', 'missing'] as const)('reports a final capture gap when the close transport is %s', async kind => {
+        const { view } = fakeView();
+        const source: { cdp?: typeof view.cdp } = { ...view };
+        const out = sink();
+        const capture = new BrowserDemoTabCapture(source, out.target, 60_000);
+        await capture.start();
+        document.querySelector('button')!.click();
+        source.cdp = kind === 'missing' ? undefined : async () => { throw new Error('Target gone'); };
+        await capture.stop(true);
+        expect(out.actions).toEqual([]);
+        expect(out.gaps).toEqual(['capture-failed']);
+    });
 });

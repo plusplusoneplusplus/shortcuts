@@ -96,7 +96,10 @@ export class BrowserDemoTabCapture {
         this.timer = undefined;
         const cdp = this.view.cdp?.bind(this.view);
         await this.polling?.catch(() => {});
-        if (flush && cdp) await this.collect(cdp, this.generation);
+        if (flush) {
+            if (cdp) await this.collect(cdp, this.generation);
+            else this.sink.gap('capture-failed');
+        }
         const generation = ++this.generation;
         if (!cdp) return;
         const scriptId = this.scriptId;
