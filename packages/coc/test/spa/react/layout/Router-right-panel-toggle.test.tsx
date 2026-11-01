@@ -74,15 +74,15 @@ vi.mock('../../../../src/server/spa/client/react/features/logs/LogsView', () => 
 
 const KEY = workspaceDockOpenStorageKey('feature-repo');
 
-it('Alt+E addresses Explorer in the panel without selecting a standalone page', () => {
+it.each([['e', 'explorer'], ['g', 'git']])('Alt+%s addresses %s in the panel without selecting a standalone page', (key, tab) => {
     render(<Router />);
     mockDispatch.mockClear();
     act(() => document.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'e', code: 'KeyE', altKey: true, bubbles: true,
+        key, code: 'Key' + key.toUpperCase(), altKey: true, bubbles: true,
     })));
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-    expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'explorer' });
-    expect(location.hash).toBe('#repos/feature-repo/explorer');
+    expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab });
+    expect(location.hash).toBe('#repos/feature-repo/' + tab);
 });
 
 function press(init: KeyboardEventInit, target: EventTarget = document) {

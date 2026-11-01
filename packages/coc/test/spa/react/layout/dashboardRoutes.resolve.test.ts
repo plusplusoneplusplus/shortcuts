@@ -63,6 +63,27 @@ describe('Explorer routes keep the chat workspace visible', () => {
     });
 });
 
+describe('Git routes keep the chat workspace visible', () => {
+    it.each(['ws1', 'remote:server-a:ws1'])('restores %s commit details without selecting a hidden Git page', id => {
+        let state = { selectedRepoId: null, activeRepoSubTab: 'chats', repoRouteState: {},
+            repoTabState: {}, notePathState: {} } as unknown as AppContextState;
+        const visit = (hash: string) => {
+            const resolution = resolveDashboardRoute(hash, makeCtx({ selectedRepoId: state.selectedRepoId,
+                repoRouteState: state.repoRouteState, repoTabState: state.repoTabState }));
+            for (const action of appActions(resolution)) state = appReducer(state, action);
+            expect(queueActions(resolution)).toEqual([]);
+        };
+        visit('#repos/' + encodeURIComponent(id) + '/git/abc123/src.ts');
+        expect(state.activeRepoSubTab).toBe('activity');
+        visit('#repos/other/git/def456');
+        visit('#repos/' + encodeURIComponent(id));
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedGitCommitHash).toBe('abc123');
+        expect(state.selectedGitFilePath).toBe('src.ts');
+        expect(state.repoRouteState[id]).toBe('/git/abc123/src.ts');
+    });
+});
+
 // ── Top-level tab activation ──────────────────────────────────────────────────
 
 describe('resolveDashboardRoute — top-level activation', () => {
@@ -161,7 +182,7 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
             { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
             { kind: 'app', action: { type: 'SET_SELECTED_REPO', id: 'ws1' } },
             { kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'ws1', suffix: '/git' } },
-            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'git' } },
+            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'activity' } },
             { kind: 'app', action: { type: 'SET_SELECTED_WORKFLOW', name: null } },
             { kind: 'app', action: { type: 'SET_WORKFLOW_RUN_PROCESS', processId: null } },
             { kind: 'app', action: { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1', commitHash: null, filePath: null } },
@@ -223,7 +244,7 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
         expect(appActions(r)).toEqual(
             expect.arrayContaining([
                 { type: 'SET_SELECTED_REPO', id: 'ws1' },
-                { type: 'SET_REPO_SUB_TAB', tab: 'git' },
+                { type: 'SET_REPO_SUB_TAB', tab: 'activity' },
             ]),
         );
     });

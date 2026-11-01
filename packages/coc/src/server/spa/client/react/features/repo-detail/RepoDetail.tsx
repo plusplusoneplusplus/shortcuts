@@ -230,11 +230,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         schedulesInScheduledSlideEnabled,
     }), [isGitRepo, terminalEnabled, workflowsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
 
-    // A hidden sub-tab (e.g. a `/git/...` route, now owned by the right panel)
-    // renders nothing, so fall back to the workspace at once. Don't wait for git
-    // info: no visible tab depends on it, and a slow or stuck load would leave
-    // the page blank. Route memory lives in AppContext, so the remembered deep
-    // route survives this display fallback.
+    // Rendering cannot depend on an effect correcting route state. A panel-only
+    // route may be restored again while navigation updates are being batched.
+    const contentSubTab = isRepoSubTabVisible(activeSubTab, visibleSubTabs) ? activeSubTab : 'chats';
+
+    // Reconcile selection as well as the synchronous display fallback. Preserve
+    // the remembered deep route so the owning panel can restore its detail.
     useEffect(() => {
         if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;
         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
@@ -695,7 +696,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")} style={dockExpanded ? { display: 'none' } : undefined}>
-                {activeSubTab === 'tasks' ? (
+                {contentSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         <TasksPanel
                                 key={ws.id}
@@ -707,9 +708,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                             />
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'terminal' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
-                            <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", contentSubTab === 'activity' || contentSubTab === 'chats' || contentSubTab === 'schedules' || contentSubTab === 'explorer' || contentSubTab === 'terminal' || contentSubTab === 'dreams' || contentSubTab === 'cli-sessions' || contentSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
+                        {contentSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
+                            <div style={{ display: (contentSubTab === 'activity' || contentSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <SplitWorkspacePanel
                                     workspaceId={ws.id}
                                     footer={chromeless ? <StatusActions variant="sidebar" /> : undefined}
@@ -721,7 +722,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         ...queueJobs,
                                         scopeLabel: railScopeLabel,
                                         routeId: sourceSelectionId,
-                                        scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
+                                        scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${contentSubTab}`,
                                     }}
                                     railGit={isGitRepo ? (
                                         <RepoRailGitView
@@ -762,7 +763,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             onDetailDirtyChange={splitGitPanel.onDetailDirtyChange}
                                             onDetailRegisterSave={splitGitPanel.onDetailRegisterSave}
                                             headerToolbarContainer={splitGitHeaderNode}
-                                            active={activeSubTab === 'activity' || activeSubTab === 'chats'}
+                                            active={contentSubTab === 'activity' || contentSubTab === 'chats'}
                                         />
                                     ) : null}
                                     gitHeaderExtra={isGitRepo ? (
@@ -781,8 +782,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     }
                                 />
                             </div>
-                        {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {contentSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
+                        <div style={{ display: contentSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('explorer') && (
                                 <ExplorerPanel
                                     key={sourceSelectionId}
@@ -793,21 +794,21 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                             )}
                         </div>
                         {terminalEnabled && (
-                            <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: contentSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {wasVisited('terminal') && <TerminalView key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
                         {dreamsEnabled && (
-                            <div style={{ display: activeSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: contentSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} originId={workItemOriginId} />}
                             </div>
                         )}
                         {nativeCliSessionsEnabled && (
-                            <div style={{ display: (activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: (contentSubTab === 'cli-sessions' || contentSubTab === 'copilot-sessions') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {(wasVisited('cli-sessions') || wasVisited('copilot-sessions')) && <NativeCliSessionsPanel key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
-                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} workspaceId={ws.id} />}
+                        {contentSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} workspaceId={ws.id} />}
                     </div>
                 )}
             </div>
