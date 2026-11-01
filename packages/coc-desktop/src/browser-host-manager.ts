@@ -501,8 +501,9 @@ export class BrowserHostManager {
         if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
         // With hidden targets on, a foreground-scope tab the user is not looking at runs like a background tab:
         // no selection change, no focus, hidden layout. A new tab follows the tab it opens from; a first tab shows.
+        // The placement is window-local: a remembered tab in another window keeps its foreground reveal there.
         const hiddenTargets = !scope.background && placement?.hiddenTargets === true && placement.watch !== true;
-        let background = scope.background || hiddenTargets && !!entry && this.hiddenTarget(entry);
+        let background = scope.background || hiddenTargets && !!entry && entry.ownerId === ownerId && this.hiddenTarget(entry);
         if (command.action === 'open' && (command.newTab || !entry)) {
             const viewId = `browser-${randomUUID()}`;
             const pendingKey = JSON.stringify([ownerId, viewId]);

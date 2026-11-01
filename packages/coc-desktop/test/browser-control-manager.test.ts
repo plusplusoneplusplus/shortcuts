@@ -538,6 +538,26 @@ describe('main browser control scope and selection', () => {
             }
         });
 
+        it('reveals an off-screen remembered tab in its owner window when another window routes the follow-up', async () => {
+            const { h, exec, reveals } = setup();
+            try {
+                const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined, { hiddenTargets: true });
+                const viewId = opened.tab!.slice(3);
+                await h.manager.bounds(1, viewId, rect);
+                // The owner window collapses its panel; window 2 shows the same workspace and routes the follow-up.
+                await h.manager.bounds(1, viewId, null);
+                h.send.mockClear();
+                await h.manager.executeControl(2, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'press', key: 'a' }, selectedTab: opened.tab },
+                    undefined, undefined, undefined, { hiddenTargets: true });
+                expect(reveals()).toEqual([expect.objectContaining({ viewId, routingOwnerId: 2 })]);
+                expect(reveals()[0]).not.toHaveProperty('background');
+                expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_REVEAL_CHANNEL, expect.anything());
+                expect(h.views[0].focus).toHaveBeenCalled();
+            } finally {
+                await h.manager.dispose();
+            }
+        });
+
         it('targets select and new tabs without moving the selection: new tabs follow the tab they open from', async () => {
             const { h, exec, reveals } = setup();
             try {
