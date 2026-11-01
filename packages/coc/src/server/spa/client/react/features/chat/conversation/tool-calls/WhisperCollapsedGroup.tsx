@@ -26,6 +26,7 @@ import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hover
 import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
 import { useWhisperSkillDetailDialog } from './WhisperSkillDetailDialog';
 import { popOutOpened } from '../../../../utils/popOutWindow';
+import { activateChatCommit, useChatCommitOpener } from '../chatCommitOpener';
 
 /**
  * Context emitted when a user opens the whisper diff panel from the files
@@ -549,6 +550,7 @@ interface CommitHoverPopoverProps {
 
 function CommitHoverPopover({ commits, workspaceId, sourceSelectionId, sourceBaseUrl, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: CommitHoverPopoverProps) {
     const { markPoppedOut } = useGitReviewPopOut();
+    const openCommit = useChatCommitOpener();
 
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
@@ -583,16 +585,23 @@ function CommitHoverPopover({ commits, workspaceId, sourceSelectionId, sourceBas
                         'flex items-center gap-2 px-2.5 py-1 text-xs ' +
                         (commit.isFixup || commit.isAmend ? 'opacity-70 ' : '') +
                         (workspaceId
-                            ? 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]'
+                            ? 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42] focus-visible:outline-none focus-visible:bg-[#e1effe] dark:focus-visible:bg-[#1f2d42]'
                             : '')
                     }
                     data-testid={`commit-popover-row-${commit.shortHash}`}
                     onClick={workspaceId ? (e) => {
                         e.stopPropagation();
-                        const hash = commit.fullHash || commit.shortHash;
-                        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash;
+                        activateChatCommit(openCommit, workspaceId, commit);
+                    } : undefined}
+                    onKeyDown={workspaceId ? (e) => {
+                        // The pop-out control handles its own keys.
+                        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        activateChatCommit(openCommit, workspaceId, commit);
                     } : undefined}
                     role={workspaceId ? 'link' : undefined}
+                    tabIndex={workspaceId ? 0 : undefined}
                 >
                     <span className="shrink-0">{commit.isAmend ? '✏️' : commit.isFixup ? '🔧' : '🔀'}</span>
                     <span className="font-mono shrink-0 text-[#f57c00] dark:text-[#ffb74d]">

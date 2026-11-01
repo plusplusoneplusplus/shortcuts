@@ -4,6 +4,7 @@ import React from 'react';
 import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 import type { WhisperSummary } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import type { DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
+import { ChatCommitOpenerContext } from '../../../src/server/spa/client/react/features/chat/conversation/chatCommitOpener';
 
 function makeToolMap(entries: Array<[string, any]>): Map<string, any> {
     return new Map(entries);
@@ -437,6 +438,63 @@ describe('WhisperCollapsedGroup', () => {
 
             const [, name] = openSpy.mock.calls[0];
             expect(name).toBe('coc-git-review-abc1234');
+        });
+    });
+
+    // ── Row activation in the chat's right-panel Git tab ─────────────────────
+    describe('commit popover row with a panel opener', () => {
+        let originalOpen: typeof window.open;
+        beforeEach(() => { originalOpen = window.open; });
+        afterEach(() => { window.open = originalOpen; });
+
+        function renderWithOpener(opener: (hash: string) => void) {
+            render(
+                <ChatCommitOpenerContext.Provider value={opener}>
+                    <WhisperCollapsedGroup
+                        {...defaultProps}
+                        workspaceId="ws1"
+                        sourceSelectionId="remote:srv:ws1"
+                        summary={makeSummary({ commitCount: 1, commits: [
+                            makeCommit({ shortHash: '7137232', fullHash: '713723222abcdef', subject: 'feat(skills): add bundled /todo skill' }),
+                        ] })}
+                    />
+                </ChatCommitOpenerContext.Provider>,
+            );
+            fireEvent.mouseEnter(screen.getByTestId('whisper-commit-hover'));
+            return screen.getByTestId('commit-popover-row-7137232');
+        }
+
+        it('clicking the SHA/subject opens the exact commit in the panel and keeps the chat route', () => {
+            const opener = vi.fn();
+            window.history.replaceState(null, '', '#repos/ws1/chats/chat-1');
+            const row = renderWithOpener(opener);
+            fireEvent.click(row.querySelector('.truncate')!);
+            expect(opener).toHaveBeenCalledTimes(1);
+            expect(opener).toHaveBeenCalledWith('713723222abcdef');
+            expect(location.hash).toBe('#repos/ws1/chats/chat-1');
+        });
+
+        it('row is focusable and activates on Enter and Space', () => {
+            const opener = vi.fn();
+            const row = renderWithOpener(opener);
+            expect(row.getAttribute('tabindex')).toBe('0');
+            expect(row.className).toContain('focus-visible:bg-[#e1effe]');
+            fireEvent.keyDown(row, { key: 'Enter' });
+            fireEvent.keyDown(row, { key: ' ' });
+            fireEvent.keyDown(row, { key: 'a' });
+            expect(opener.mock.calls).toEqual([['713723222abcdef'], ['713723222abcdef']]);
+        });
+
+        it('pop-out control keeps its own action without activating the row', () => {
+            const opener = vi.fn();
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+            renderWithOpener(opener);
+            const btn = screen.getByTestId('commit-popover-popout-7137232');
+            fireEvent.click(btn);
+            fireEvent.keyDown(btn, { key: 'Enter' });
+            expect(openSpy).toHaveBeenCalledTimes(2);
+            expect(opener).not.toHaveBeenCalled();
         });
     });
 
