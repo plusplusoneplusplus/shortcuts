@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolvePlaywrightWorkers } from './playwright-workers';
 
 export default defineConfig({
     testDir: '.',
@@ -6,7 +7,7 @@ export default defineConfig({
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
     retries: 1,
-    workers: 4,
+    workers: resolvePlaywrightWorkers(),
     reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['html', { open: 'never' }]],
     timeout: 30_000,
     use: {
