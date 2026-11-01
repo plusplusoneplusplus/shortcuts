@@ -1372,7 +1372,7 @@ export function McpServersPanel({
                 <div className="mcp-empty-state" data-testid="mcp-group-readonly-hint" style={{ padding: '16px 0' }}>
                     A repo group has no repository checkout, so servers can&apos;t be added or edited here.
                     The list combines global config, the group&apos;s own config and each member repo&apos;s
-                    .vscode/mcp.json; edit a member&apos;s servers in that repo&apos;s settings. This page controls
+                    MCP config; edit a member&apos;s servers in that repo&apos;s settings. This page controls
                     which ones the group&apos;s chats use.
                 </div>
             ) : (

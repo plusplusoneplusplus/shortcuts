@@ -62,8 +62,10 @@ describe('McpServersPanel — group mode', () => {
         renderPanel();
         expect(screen.queryByRole('button', { name: /Add server/ })).toBeNull();
         expect(screen.queryByRole('link', { name: /New server/ })).toBeNull();
-        expect(screen.getByTestId('mcp-group-readonly-hint').textContent)
-            .toMatch(/no repository checkout.*each member repo/s);
+        const hint = screen.getByTestId('mcp-group-readonly-hint').textContent;
+        expect(hint).toMatch(/no repository checkout.*each member repo/s);
+        // Config file paths appear only in real source rows, never in the hint (e2e GS.7).
+        expect(hint).not.toContain('.vscode/mcp.json');
     });
 
     it('drops the Configuration inspector tab (env, args, scope, delete)', async () => {
