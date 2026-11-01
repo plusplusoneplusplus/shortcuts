@@ -549,7 +549,7 @@ describe('SPA browser socket relay', () => {
             expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'w', focused: expect.any(Boolean), background: [] });
             const finish = hold(h);
             h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
-            expect(h.control.execute).toHaveBeenLastCalledWith({ ...request, turnId: 't1' }, 'w');
+            expect(h.control.execute).toHaveBeenLastCalledWith({ ...request, turnId: 't1' }, 'w', { hiddenTargets: true });
 
             window.location.hash = '#repos/other';
             await h.relay.update('other');
@@ -564,12 +564,13 @@ describe('SPA browser socket relay', () => {
             expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
             const next = { ...request, id: 'r2', turnId: 't1' };
             h.relay.onMessage({ type: 'browser-command', request: next });
-            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'w');
+            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'w', { hiddenTargets: true });
 
-            // A background reveal opens the tab without moving the window.
+            // A background reveal adds the tab without moving the window, selecting it or opening the dock.
             h.reveal({ workspaceId: 'w', processId: 'p', viewId: 'browser-agent', url: 'https://fixture.test/', turnId: 't1', routingRef: 'w', background: true });
             expect(window.location.hash).toBe('#repos/other');
             expect(readUnifiedPanelState('w').workspaceTabs).toHaveLength(1);
+            expect(readUnifiedPanelState('w').activeByScope).toEqual({});
 
             // Finishing the turn drops the retention and stops serving the workspace.
             h.relay.onMessage({ type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId: 't1' });
@@ -672,7 +673,7 @@ describe('SPA browser socket relay', () => {
             expect(h.send).toHaveBeenCalledWith({ type: 'browser-capability-clear', background: ['w'] });
             const next = { ...request, id: 'r2', turnId: 't1' };
             h.relay.onMessage({ type: 'browser-command', request: next });
-            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'remote:server:w');
+            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'remote:server:w', { hiddenTargets: true });
             h.relay.dispose();
         });
 
@@ -713,7 +714,8 @@ describe('SPA browser socket relay', () => {
                 expect(window.location.hash).toBe('#repos/w/chats/p');
                 h.control.execute.mockClear();
                 await h.relay.update('w');
-                expect(h.control.execute).toHaveBeenCalledExactlyOnceWith(paste, 'w');
+                // Switch back shows the target: the re-run asks the desktop to watch it.
+                expect(h.control.execute).toHaveBeenCalledExactlyOnceWith(paste, 'w', { hiddenTargets: true, watch: true });
                 const waitingOff = (h.send.mock.calls as unknown[][]).findIndex(([m]) => (m as any).type === 'browser-command-waiting' && (m as any).waiting === false);
                 expect(waitingOff).toBeGreaterThanOrEqual(0);
                 await tick();
@@ -767,18 +769,55 @@ describe('SPA browser socket relay', () => {
                 h.relay.dispose();
             });
 
-            it('returns other background errors and foreground-required errors on screen unchanged', async () => {
+            it('returns other background errors unchanged', async () => {
                 const h = await backgroundTurn();
                 h.control.execute.mockRejectedValueOnce(new Error('Element not found'));
                 h.relay.onMessage({ type: 'browser-command', request: paste });
                 await tick();
                 expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-paste', ok: false, error: 'Element not found' } }]);
+                expect(getBrowserControlNotices()).toEqual([]);
+                h.relay.dispose();
+            });
+
+            it('waits on an off-screen tab of the workspace on screen; Switch back watches it and re-runs in place', async () => {
+                const h = await backgroundTurn();
                 await h.relay.update('w');
+                window.location.hash = '#repos/w/chats/p';
                 h.send.mockClear();
-                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.control.execute.mockRejectedValueOnce(new Error('foreground-required: rich paste needs the browser tab on screen'));
                 h.relay.onMessage({ type: 'browser-command', request: { ...paste, id: 'r-front' } });
                 await tick();
-                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-front', ok: false, error: foregroundRequired.message } }]);
+                expect(h.control.execute).toHaveBeenLastCalledWith({ ...paste, id: 'r-front' }, 'w', { hiddenTargets: true });
+                expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-waiting', id: 'r-front', waiting: true });
+                expect(results(h)).toEqual([]);
+                const [notice] = getBrowserControlNotices();
+                expect(notice).toMatchObject({ routingRef: 'w', actions: ['paste_html'] });
+                // Nothing re-runs or moves on its own.
+                await h.relay.update('w');
+                expect(h.control.execute).toHaveBeenCalledTimes(2);
+                notice.switchBack();
+                expect(window.location.hash).toBe('#repos/w/chats/p');
+                expect(h.control.execute).toHaveBeenLastCalledWith({ ...paste, id: 'r-front' }, 'w', { hiddenTargets: true, watch: true });
+                expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-waiting', id: 'r-front', waiting: false });
+                await tick();
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-front', ok: true, result: { tabs: [] } } }]);
+                expect(getBrowserControlNotices()).toEqual([]);
+                // Later actions are placed by the desktop again (no sticky watch).
+                h.relay.onMessage({ type: 'browser-command', request: { ...request, id: 'r-next', turnId: 't1' } });
+                expect(h.control.execute).toHaveBeenLastCalledWith({ ...request, id: 'r-next', turnId: 't1' }, 'w', { hiddenTargets: true });
+                h.relay.dispose();
+            });
+
+            it('returns foreground-required unchanged with background control off', async () => {
+                applyRuntimeConfigPatch({ browserBackgroundControlEnabled: false });
+                const h = harness(undefined, true);
+                withRetain(h);
+                await h.relay.update('w'); h.relay.onOpen();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                expect(h.control.execute).toHaveBeenLastCalledWith(paste);
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-paste', ok: false, error: foregroundRequired.message } }]);
                 expect(getBrowserControlNotices()).toEqual([]);
                 h.relay.dispose();
             });
@@ -818,7 +857,7 @@ describe('SPA browser socket relay', () => {
                 notice.switchBack();
                 expect(window.location.hash).toBe(`#repos/${encodeURIComponent('remote:server:w')}/chats/p`);
                 await h.relay.update('remote:server:w');
-                expect(h.control.execute).toHaveBeenLastCalledWith(paste, 'remote:server:w');
+                expect(h.control.execute).toHaveBeenLastCalledWith(paste, 'remote:server:w', { hiddenTargets: true, watch: true });
                 h.relay.dispose();
             });
         });

@@ -545,7 +545,9 @@ references before editing. Paths are package-relative.
   The relay keeps per-socket background workspace sets only while it is on,
   rejects only a dropped workspace's calls, and lets the owning socket pause a
   call's 60s timer with `browser-command-waiting` while its Switch back notice
-  waits. Flag off keeps one foreground workspace per socket.
+  waits. While on, the SPA relay also passes window-local `hiddenTargets`
+  placement so off-screen foreground-scope tabs run unseen. Flag off keeps one
+  foreground workspace per socket and the reveal-and-focus behaviour.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
   preferences and turn cancellation; create the turn AbortController before

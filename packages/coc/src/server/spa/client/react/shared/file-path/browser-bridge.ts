@@ -171,6 +171,8 @@ export interface BrowserNewTabRequest {
     viewId?: string;
     engine: BrowserEngine;
     url: string;
+    /** An AI turn drives the opener unseen: add the tab without selecting it. */
+    background?: boolean;
 }
 
 /** Download fallback notice; current desktops return a safe source label in `url`. */
@@ -194,7 +196,11 @@ export interface DesktopBrowserBridge {
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         /** Keep a background scope controllable while another is selected; `null` drops it. Absent on older desktops. */
         retainScope?(sessionKey: string, workspaceId: string | null): Promise<void>;
-        execute(request: BrowserCommandRequest, routingRef?: string): Promise<BrowserCommandResult>;
+        /**
+         * `placement` is window-local policy: `hiddenTargets` runs targets that are off screen like background
+         * tabs (no selection change or focus); `watch` shows the target first. Older desktops ignore it.
+         */
+        execute(request: BrowserCommandRequest, routingRef?: string, placement?: { hiddenTargets?: boolean; watch?: boolean }): Promise<BrowserCommandResult>;
         cancel(id: string): void;
         releaseFrames?(routingRef: string): Promise<void>;
         /** Removes the AI cursor from this window's views in the scope now; absent on older desktops. */
@@ -261,7 +267,7 @@ export interface BrowserControlReveal {
     url?: string;
     routingRef?: string;
     turnId?: string;
-    /** The view belongs to a retained background scope; the window must not switch to it. */
+    /** The view runs unseen (a retained scope, or a tab off screen); the window must not switch or select it. */
     background?: boolean;
 }
 
@@ -284,7 +290,7 @@ export interface BrowserControlActivityEvent {
     viewId: string;
     active: boolean;
     finished?: boolean;
-    /** The turn drives this tab from a retained scope while another workspace is selected. */
+    /** The turn drives this tab unseen: from a retained scope, or while the tab is off screen. */
     background?: boolean;
 }
 

@@ -3,7 +3,7 @@ import { useAppOptional } from '../../contexts/AppContext';
 import { useReposOptional } from '../../contexts/ReposContext';
 import { getBrowserControlNotices, subscribeBrowserControlNotices, type BrowserControlNotice } from './browser-control-notice';
 
-/** One notice per background browser-control turn whose actions need its workspace on screen. */
+/** One notice per background browser-control turn whose actions need its tab on screen. */
 export function BrowserControlSwitchBackNotices() {
     const notices = useSyncExternalStore(subscribeBrowserControlNotices, getBrowserControlNotices, getBrowserControlNotices);
     if (!notices.length) return null;
@@ -31,7 +31,7 @@ function NoticeCard({ notice }: { notice: BrowserControlNotice }) {
         className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-3 text-sm text-[#1f2328] dark:text-[#cccccc]">
         <div>
             AI browser control in <strong>{workspaceName}</strong>{chatTitle ? <> · <strong>{chatTitle}</strong></> : null} needs
-            this workspace on screen to run <strong>{notice.actions.join(', ')}</strong>.
+            its browser tab on screen to run <strong>{notice.actions.join(', ')}</strong>.
         </div>
         <div className="mt-2 flex items-center gap-2">
             <button type="button" data-testid="browser-control-switch-back" onClick={notice.switchBack}

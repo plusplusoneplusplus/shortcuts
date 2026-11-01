@@ -12,7 +12,7 @@ import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest, validateBrowserControlPlacement } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
@@ -265,9 +265,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (!historyWindow(event)) return { ok: false, reason: 'not-found', message: 'Browser demos require a registered SPA main frame.' };
         return runBrowserDemoCommand(manager!.demos, event.sender.id, command);
     });
-    ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown) => {
+    ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown, placementInput?: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         const request = validateBrowserCommandRequest(input);
+        const placement = validateBrowserControlPlacement(placementInput);
         if (routingRef !== undefined && (typeof routingRef !== 'string' || !routingRef || routingRef.length > 512)) throw new TypeError('Invalid browser routing reference');
         const sessionKey = manager!.controlSessionKey(event.sender.id, request.workspaceId, routingRef);
         let requests = controlRequests.get(event.sender.id);
@@ -281,7 +282,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             aborted = () => reject(controller.signal.reason);
             controller.signal.addEventListener('abort', aborted, { once: true });
         });
-        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal, sessionKey, () => deadline.hold()), cancellation]); }
+        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal, sessionKey, () => deadline.hold(), placement), cancellation]); }
         finally {
             deadline.clear();
             controller.signal.removeEventListener('abort', aborted);

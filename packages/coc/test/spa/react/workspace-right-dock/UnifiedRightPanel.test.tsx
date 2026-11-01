@@ -1100,6 +1100,21 @@ describe('UnifiedRightPanel', () => {
             await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/page', WS, 'webview2'));
         });
 
+        it('opens a popup of a page an AI turn drives unseen as an unselected tab and creates its guest', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            await openUrlTab('https://example.com');
+            const viewId = viewIdOf();
+            bridge.open.mockClear();
+            act(() => onNewTab?.({ openerViewId: viewId, url: 'https://docs.example.com/popup', engine: 'electron', background: true } as any));
+            expect(browserTabs()).toHaveLength(2);
+            expect(browserTabs()[0].getAttribute('aria-selected')).toBe('true');
+            expect(browserTabs()[1].getAttribute('aria-selected')).toBe('false');
+            const opened = readUnifiedPanelState(WS).workspaceTabs[1];
+            expect(opened.browserUrl).toBe('https://docs.example.com/popup');
+            // The unselected tab never mounts, so the guest is created here for the turn to find.
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/popup', WS, 'electron'));
+        });
+
         it('reports download handoff and opens the current page in the system browser via the bridge', async () => {
             const open = vi.spyOn(window, 'open').mockReturnValue(null);
             try {

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { BrowserOpenResult, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
+import type { BrowserEngine, BrowserOpenResult, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 
 export interface BrowserWebviewEntry {
     viewId: string;
@@ -62,11 +62,11 @@ export function placeBrowserWebview(viewId: string, element: HTMLElement, shown:
     };
 }
 
-/** Create the guest for a tab whose panel is not mounted, so a background turn can drive it. */
-export function attachBrowserWebview(viewId: string, url: string, sessionKey: string, bridge: DesktopBrowserBridge): void {
+/** Create the guest for a tab that is not mounted, so a background turn can drive it. */
+export function attachBrowserWebview(viewId: string, url: string, sessionKey: string, bridge: DesktopBrowserBridge, relatedEngine?: BrowserEngine): void {
     if (entries.get(viewId)?.config) return;
     const attach = prepareBrowserWebview(viewId);
-    void bridge.open(viewId, url, sessionKey).then(result => attach(result, bridge), error => {
+    void (relatedEngine ? bridge.open(viewId, url, sessionKey, relatedEngine) : bridge.open(viewId, url, sessionKey)).then(result => attach(result, bridge), error => {
         console.error('Could not attach background browser page:', error);
         removeBrowserWebviewIfUnplaced(viewId);
     });

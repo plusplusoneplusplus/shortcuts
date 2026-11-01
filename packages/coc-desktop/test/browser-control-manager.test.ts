@@ -4,7 +4,8 @@ import { BrowserControlPage } from '../src/browser-control-page';
 import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
 import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink, BrowserViewRequest } from '../src/browser-host-contract';
-import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
+import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, validateBrowserControlPlacement, type BrowserControlPlacement } from '../src/browser-control-command';
+import { BROWSER_VIEW_NEW_TAB_CHANNEL } from '../src/browser-view-policy';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
@@ -464,6 +465,155 @@ describe('main browser control scope and selection', () => {
             configure.mockRestore();
             await h.manager.dispose();
         }
+    });
+
+    describe('hidden targets in the foreground scope', () => {
+        const rect = { x: 0, y: 0, width: 800, height: 600 };
+        const setup = () => {
+            const clipboard = { availableFormats: () => [], write: vi.fn() };
+            const h = harness(undefined, clipboard);
+            const exec = (command: BrowserCommand, selectedTab: string | undefined, placement?: BrowserControlPlacement, extra = {}) =>
+                h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', command, selectedTab, ...extra }, undefined, undefined, undefined, placement);
+            const reveals = () => h.send.mock.calls.filter(([, channel]) => channel === BROWSER_CONTROL_REVEAL_CHANNEL).map(([, , payload]) => payload);
+            return { h, clipboard, exec, reveals };
+        };
+
+        it('runs a same-workspace action on an off-screen tab unseen, keeps the selection, and shows it only on explicit watch', async () => {
+            const { h, clipboard, exec, reveals } = setup();
+            const configure = vi.spyOn(BrowserControlPage.prototype, 'configureFrames').mockResolvedValue();
+            try {
+                // A first tab has nothing to follow, so it shows; it counts as shown until the SPA places it.
+                const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined, { hiddenTargets: true });
+                const viewId = opened.tab!.slice(3);
+                expect(reveals().at(-1)).not.toHaveProperty('background');
+                const view = h.views[0];
+                view.setBackgroundControl = vi.fn();
+                await exec({ action: 'press', key: 'a' }, opened.tab, { hiddenTargets: true });
+                expect(view.focus).toHaveBeenCalledOnce();
+                await h.manager.bounds(1, viewId, rect);
+                // The user selects another tab: the SPA reports the guest off screen.
+                await h.manager.bounds(1, viewId, null);
+                vi.mocked(view.focus).mockClear();
+                h.send.mockClear();
+                await exec({ action: 'press', key: 'b' }, opened.tab, { hiddenTargets: true });
+                expect(view.focus).not.toHaveBeenCalled();
+                expect(view.setBackgroundControl).toHaveBeenLastCalledWith(true);
+                expect(vi.mocked(view.cdp!)).toHaveBeenCalledWith('Emulation.setFocusEmulationEnabled', { enabled: true });
+                expect(reveals()).toEqual([expect.objectContaining({ viewId, background: true })]);
+                expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.objectContaining({ viewId, active: true, background: true }));
+                // Screen-only work fails before dispatch so the SPA can wait for an explicit switch back.
+                await expect(exec({ action: 'paste_html', ref: 'e1', html: '<b>x</b>', text: 'x' }, opened.tab, { hiddenTargets: true },
+                    { framesEnabled: true, richPasteEnabled: true })).rejects.toThrow('foreground-required: rich paste needs the browser tab on screen');
+                expect(clipboard.write).not.toHaveBeenCalled();
+                expect(view.focus).not.toHaveBeenCalled();
+                // Watch: the user asked to see it, so it shows, takes focus and leaves hidden layout; later actions follow it.
+                h.send.mockClear();
+                await exec({ action: 'press', key: 'c' }, opened.tab, { hiddenTargets: true, watch: true });
+                expect(reveals()).toEqual([expect.not.objectContaining({ background: true })]);
+                expect(view.focus).toHaveBeenCalledOnce();
+                expect(view.setBackgroundControl).toHaveBeenLastCalledWith(false);
+                await exec({ action: 'press', key: 'd' }, opened.tab, { hiddenTargets: true });
+                expect(view.focus).toHaveBeenCalledTimes(2);
+                // Switching away again goes back to unseen work.
+                await h.manager.bounds(1, viewId, null);
+                await exec({ action: 'press', key: 'e' }, opened.tab, { hiddenTargets: true });
+                expect(view.focus).toHaveBeenCalledTimes(2);
+            } finally {
+                configure.mockRestore();
+                await h.manager.dispose();
+            }
+        });
+
+        it('keeps the old reveal-and-focus behaviour without the policy', async () => {
+            const { h, exec, reveals } = setup();
+            try {
+                const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined);
+                await h.manager.bounds(1, opened.tab!.slice(3), null);
+                h.send.mockClear();
+                await exec({ action: 'press', key: 'a' }, opened.tab);
+                expect(reveals()).toEqual([expect.not.objectContaining({ background: true })]);
+                expect(h.views[0].focus).toHaveBeenCalled();
+            } finally {
+                await h.manager.dispose();
+            }
+        });
+
+        it('targets select and new tabs without moving the selection: new tabs follow the tab they open from', async () => {
+            const { h, exec, reveals } = setup();
+            try {
+                const first = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined, { hiddenTargets: true });
+                await h.manager.bounds(1, first.tab!.slice(3), rect);
+                // Watched opener: the new tab shows.
+                h.send.mockClear();
+                const shownChild = await exec({ action: 'open', url: 'https://fixture.test/2', newTab: true }, first.tab, { hiddenTargets: true });
+                expect(reveals()).toEqual([expect.not.objectContaining({ background: true }), expect.not.objectContaining({ background: true })]);
+                await h.manager.bounds(1, shownChild.tab!.slice(3), rect);
+                await h.manager.bounds(1, first.tab!.slice(3), null);
+                // Off-screen opener: the new tab is created unseen and stays the AI's target.
+                h.send.mockClear();
+                const hiddenChild = await exec({ action: 'open', url: 'https://fixture.test/3', newTab: true }, first.tab, { hiddenTargets: true });
+                expect(hiddenChild.tab).not.toBe(first.tab);
+                expect(reveals()).toEqual([
+                    expect.objectContaining({ viewId: hiddenChild.tab!.slice(3), background: true }),
+                    expect.objectContaining({ viewId: hiddenChild.tab!.slice(3), background: true }),
+                ]);
+                h.send.mockClear();
+                await exec({ action: 'read' }, hiddenChild.tab, { hiddenTargets: true });
+                expect(reveals()).toEqual([expect.objectContaining({ background: true })]);
+                // Selecting an off-screen tab never selects it in the window.
+                h.send.mockClear();
+                const selected = await exec({ action: 'select', tab: first.tab! }, hiddenChild.tab, { hiddenTargets: true });
+                expect(selected.tab).toBe(first.tab);
+                expect(reveals()).toEqual([expect.objectContaining({ viewId: first.tab!.slice(3), background: true })]);
+                // Selecting the tab the user is looking at stays a foreground reveal.
+                h.send.mockClear();
+                await exec({ action: 'select', tab: shownChild.tab! }, first.tab, { hiddenTargets: true });
+                expect(reveals()).toEqual([expect.not.objectContaining({ background: true })]);
+            } finally {
+                await h.manager.dispose();
+            }
+        });
+
+        it('opens page popups of an unseen AI-driven tab unseen, and ordinary popups as usual', async () => {
+            const { h, exec } = setup();
+            try {
+                const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined, { hiddenTargets: true });
+                const viewId = opened.tab!.slice(3);
+                const newTabs = () => h.send.mock.calls.filter(([, channel]) => channel === BROWSER_VIEW_NEW_TAB_CHANNEL).map(([, , payload]) => payload);
+                await h.manager.bounds(1, viewId, rect);
+                h.sinks[0].newTab('https://fixture.test/popup');
+                expect(newTabs().at(-1)).not.toHaveProperty('background');
+                await h.manager.bounds(1, viewId, null);
+                await exec({ action: 'read' }, opened.tab, { hiddenTargets: true });
+                h.sinks[0].newTab('https://fixture.test/popup');
+                expect(newTabs().at(-1)).toMatchObject({ openerViewId: viewId, background: true });
+                // Once the turn ends, the tab's popups are ordinary again.
+                h.manager.finishControl(1);
+                h.sinks[0].newTab('https://fixture.test/popup');
+                expect(newTabs().at(-1)).not.toHaveProperty('background');
+            } finally {
+                await h.manager.dispose();
+            }
+        });
+
+        it('keeps retained background scopes unchanged and validates the placement policy', async () => {
+            const { h, exec, reveals } = setup();
+            try {
+                const opened = await exec({ action: 'open', url: 'https://fixture.test/' }, undefined);
+                await h.manager.bounds(1, opened.tab!.slice(3), rect);
+                h.manager.retainControlScope(1, 'w', 'w');
+                h.manager.bindControlScope(1, 'b', 'b');
+                h.send.mockClear();
+                // A retained scope stays background even when watch is asked from another workspace.
+                await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'read' }, selectedTab: opened.tab }, undefined, 'w', undefined, { hiddenTargets: true, watch: true });
+                expect(reveals()).toEqual([expect.objectContaining({ background: true })]);
+            } finally {
+                await h.manager.dispose();
+            }
+            expect(validateBrowserControlPlacement(undefined)).toBeUndefined();
+            expect(validateBrowserControlPlacement({ hiddenTargets: true, watch: false })).toEqual({ hiddenTargets: true, watch: false });
+            for (const bad of [null, [], 'x', { hiddenTargets: 'yes' }, { other: true }]) expect(() => validateBrowserControlPlacement(bad)).toThrow('Invalid browser placement policy');
+        });
     });
 
     it('drops hidden layout when a background turn finishes', async () => {

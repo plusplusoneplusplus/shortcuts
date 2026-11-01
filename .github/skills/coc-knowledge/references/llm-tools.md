@@ -740,10 +740,12 @@ server relay; `wait` and text-wait deadlines use the same bound. Default-on
 `browserControl.backgroundEnabled` lets one desktop window keep serving each
 workspace that has an active control turn after the window switches workspace.
 Commands reach only that turn's retained owner/session-key scope and run on the
-hidden tab without focus or selection changes. Actions that need the screen
-(rich paste, Electron frame-session input) fail with `foreground-required:`; the SPA
-relay shows a Switch back notice, sends `browser-command-waiting` so the server
-pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
+hidden tab without focus or selection changes. In the workspace on screen, a
+target tab that is off screen runs the same unseen way. Actions that need the
+screen (rich paste, Electron frame-session input) fail with `foreground-required:`;
+the SPA relay shows a Switch back notice, sends `browser-command-waiting` so the
+server pauses that call's 60s timer, and waits without timeout; Switch back shows
+the target and re-runs. See `spa/shell.md`.
 
 Live `browserControl.cursorOverlayEnabled` (default on, requires browser control)
 adds `cursorOverlayEnabled: true` to each relayed command; absent means off. The

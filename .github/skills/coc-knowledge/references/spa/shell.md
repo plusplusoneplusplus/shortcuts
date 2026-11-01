@@ -371,11 +371,13 @@ outside this scope; Electron URL popouts inherit their opener's owner.
 
 Main reveal events open or reuse ordinary descriptors through
 `openUnifiedPanelTab`, including collapsed/unmounted panels. Existing descriptors
-retain their original panel scope. `BrowserHostManager.executeControl` returns
+retain their original panel scope. Background reveals pass `{ reveal: false,
+activate: false }`: the tab joins the strip, no chat's selection moves and the
+dock stays as it is. `BrowserHostManager.executeControl` returns
 raw contract results; conversation selection, output hints and deltas belong on
 the server. Subtree/all snapshots include a separate full interactive baseline.
 Each view retains one `BrowserControlPage` and serial command queue across
-navigation. Input commands activate the owner window and selected hosted view;
+navigation. Foreground input commands activate the owner window and selected hosted view;
 Electron focuses the exact guest element and WebView2 transfers native focus. Explicit frame key presses
 require visible ancestors and focus in that document, excluding descendant frames, and preserve the
 active element and selection. Shared DOM reads transport-page markdown at `command.offset` in
@@ -413,14 +415,30 @@ With default-on `browserControl.backgroundEnabled` (runtime flag
 `browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
 switching workspace keeps every scope with an active turn retained: the relay
 retains it before rebinding, advertises it in `background`, and runs its commands
-with `execute(request, routingRef)` without cancelling them. Background reveals
-create the guest unseen and never change the hash. Desktop actions that cannot run
+with `execute(request, routingRef, { hiddenTargets: true })` without cancelling
+them. Background reveals create the guest unseen and never change the hash or
+any tab selection.
+
+`hiddenTargets` placement (window-local, beside the server request; older
+desktops ignore it) also covers the foreground scope. Main records each view's
+last placement from `bounds`/`hide` (`shown`); a target with null bounds — another
+tab selected, panel collapsed, chat-scoped elsewhere — runs as a background
+command: background reveal, `setBackgroundControl(true)`, CDP focus emulation, no
+`view.focus()`. `open` with `newTab` follows the tab it opens from; a first tab
+(no current target) shows and counts as shown (`revealPending`) until the SPA
+places it. Popouts keep foreground behaviour. Page new-window links from such an
+unseen AI-driven tab arrive with `background: true`; `UnifiedRightPanel` adds that
+tab unselected and creates its guest with `attachBrowserWebview`. Clicking the tab
+is how the user watches: once shown, later commands run in the foreground. Desktop actions that cannot run
 hidden fail before dispatch with `foreground-required:`; the relay then sends
 `browser-command-waiting` (the server pauses its 60s limit) and publishes one
 `browser-control-notice.ts` entry per turn, rendered by the app-shell
-`BrowserControlSwitchBackNotices` with Switch back and Stop. Switch back opens
-`#repos/<panel scope>/chats/<processId>` (repo group or clone key); once that ref
-is foreground again, waiting requests re-run. Turn finish, tab close, server
+`BrowserControlSwitchBackNotices` with Switch back and Stop. This includes
+off-screen tabs of the scope on screen. Switch back opens
+`#repos/<panel scope>/chats/<processId>` (repo group or clone key) when another
+scope is on screen; once that ref is foreground, waiting requests re-run with
+`watch` placement, so main reveals and focuses the target in the foreground.
+Re-runs not started by Switch back carry no `watch`. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
 errors return unchanged. With the flag off, switching cancels active agent work;
 human takeover retains its private pause until explicit Return or termination.

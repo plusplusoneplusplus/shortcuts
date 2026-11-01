@@ -29,6 +29,25 @@ export function validateBrowserCommandRequest(input: unknown): BrowserCommandReq
     return request;
 }
 
+/**
+ * Window-local placement policy for one command, sent beside the server request.
+ * `hiddenTargets`: a foreground-scope target the user is not looking at runs like a background tab.
+ * `watch`: the user explicitly asked to see this command's target, so it shows and runs in the foreground.
+ */
+export interface BrowserControlPlacement {
+    hiddenTargets?: boolean;
+    watch?: boolean;
+}
+
+export function validateBrowserControlPlacement(input: unknown): BrowserControlPlacement | undefined {
+    if (input === undefined) return undefined;
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+        || Object.entries(input).some(([key, value]) => !['hiddenTargets', 'watch'].includes(key) || typeof value !== 'boolean')) {
+        throw new TypeError('Invalid browser placement policy');
+    }
+    return input as BrowserControlPlacement;
+}
+
 export const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 export const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
 export const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';

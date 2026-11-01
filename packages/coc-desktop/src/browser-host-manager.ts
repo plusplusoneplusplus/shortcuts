@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
 import { validBrowserFavicon } from './browser-favicon';
-import { BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserControlPlacement, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -42,6 +42,10 @@ interface Entry {
     activity?: ControlActivity;
     /** CDP focus emulation is on so a background tab takes input without window focus. */
     focusEmulated?: boolean;
+    /** The SPA lays this view out on screen (its last placement had bounds). */
+    shown?: boolean;
+    /** A foreground reveal asked the SPA to show this view; counts as shown until the SPA reports a placement. */
+    revealPending?: boolean;
     hostGeneration?: object;
 }
 
@@ -213,6 +217,11 @@ export class BrowserHostManager {
         await view.cdp('Emulation.setFocusEmulationEnabled', { enabled });
     }
 
+    /** The SPA has this view off screen: another tab is selected, its panel is hidden, or it never showed. */
+    private hiddenTarget(entry: Entry): boolean {
+        return !entry.popout && !entry.shown && !entry.revealPending;
+    }
+
     private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest, background: boolean): void {
         const turnId = request.turnId ?? request.processId;
         if (this.finishedTurns.get(routingOwnerId)?.has(turnId)) throw new Error('Browser conversation turn has finished');
@@ -368,7 +377,7 @@ export class BrowserHostManager {
         }, note).finally(() => { for (const entry of item.entries) this.nativeNavigationGate(entry); });
     }
 
-    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
+    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void, placement?: BrowserControlPlacement): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
         if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
@@ -381,7 +390,7 @@ export class BrowserHostManager {
         if (!request.humanTakeoverEnabled) {
             if (item?.control.paused) { item.control.stop('Browser human takeover disabled'); throw new Error('Browser human takeover disabled; continuation terminated'); }
             if (request.command.action === 'request_human') throw new Error('Browser human takeover unavailable or disabled');
-            return this.executeControlUnpaused(ownerId, request, signal, scope.sessionKey, hold);
+            return this.executeControlUnpaused(ownerId, request, signal, scope.sessionKey, hold, placement);
         }
         if (!item) {
             const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
@@ -427,7 +436,7 @@ export class BrowserHostManager {
         };
         return current.control.run(async commandSignal => {
             try {
-                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, scope.sessionKey, hold);
+                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, scope.sessionKey, hold, placement);
                 commandSignal.throwIfAborted();
                 return { ...result, ...(current.control.note ? { handoffNote: current.control.note } : {}) };
             } finally {
@@ -437,7 +446,7 @@ export class BrowserHostManager {
         }, signal, hold, validate, request.validateAfterTakeover);
     }
 
-    private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
+    private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void, placement?: BrowserControlPlacement): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
         const reservation = { workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey };
@@ -450,7 +459,7 @@ export class BrowserHostManager {
         }
         const pendingKeys: string[] = [];
         this.demoControlReservations.add(reservation);
-        try { return await this.runControl(ownerId, request, signal, scope.sessionKey, pendingKeys, queues); }
+        try { return await this.runControl(ownerId, request, signal, scope.sessionKey, pendingKeys, queues, placement); }
         finally {
             // Abort rejects the caller before CDP settles; admission must still await required releases.
             void Promise.all([...queues].map(queue => queue.settled())).then(() => this.demoControlReservations.delete(reservation));
@@ -465,12 +474,10 @@ export class BrowserHostManager {
         }
     }
 
-    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[], queues: Set<BrowserControlQueue>): Promise<BrowserCommandResult> {
+    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[], queues: Set<BrowserControlQueue>, placement?: BrowserControlPlacement): Promise<BrowserCommandResult> {
         signal?.throwIfAborted();
         if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
-        // Background reveals publish the tab without raising the window or changing its selection.
-        const background = scope.background ? { background: true } : {};
         // Tabs another chat is recording stay out of reach, reads included.
         let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef).filter(entry => !this.demos.recordingTab(entry.ownerId, entry.viewId));
         const command = request.command;
@@ -492,6 +499,10 @@ export class BrowserHostManager {
         let created = false;
         // Select fails closed; open can replace a vanished remembered selection.
         if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
+        // With hidden targets on, a foreground-scope tab the user is not looking at runs like a background tab:
+        // no selection change, no focus, hidden layout. A new tab follows the tab it opens from; a first tab shows.
+        const hiddenTargets = !scope.background && placement?.hiddenTargets === true && placement.watch !== true;
+        let background = scope.background || hiddenTargets && !!entry && this.hiddenTarget(entry);
         if (command.action === 'open' && (command.newTab || !entry)) {
             const viewId = `browser-${randomUUID()}`;
             const pendingKey = JSON.stringify([ownerId, viewId]);
@@ -499,9 +510,11 @@ export class BrowserHostManager {
                 routingRef: scope.sessionKey, viewId, active: true, routingOwnerId: ownerId });
             pendingKeys.push(pendingKey);
             const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
+            const pending = this.entry(ownerId, viewId);
+            if (pending && !background) pending.revealPending = true;
             // Publish through the existing unified panel before Electron waits for guest adoption.
             this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
-                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId, ...background,
+                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId, ...(background ? { background: true } : {}),
             });
             const result = await opened;
             if (!result.ok) throw new Error(result.message ?? result.reason);
@@ -511,6 +524,8 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
+        if (selected.popout) background = scope.background;
+        if (!background && !selected.popout && placement?.watch === true && !selected.shown) selected.revealPending = true;
         if (selected.control) queues.add(selected.control);
         const takeover = this.takeovers.get(this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey));
         if (selected.takeover?.paused && selected.takeover !== takeover?.control) throw new Error('Browser view is under exclusive human control');
@@ -525,14 +540,14 @@ export class BrowserHostManager {
 
         if (!selected.popout) this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
             workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId: selected.viewId, routingOwnerId: ownerId,
-            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
+            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...(background ? { background: true } : {}),
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
             if (this.demos.capturing({ workspaceId: request.workspaceId, processId: request.processId, routingRef: scope.sessionKey })) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
-            this.activateControl(selected, ownerId, request, scope.background);
-            await this.backgroundControl(selected, scope.background);
+            this.activateControl(selected, ownerId, request, background);
+            await this.backgroundControl(selected, background);
             activeSignal.throwIfAborted();
             await page.configureFrames(request.framesEnabled === true,
                 view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
@@ -540,7 +555,7 @@ export class BrowserHostManager {
             // Also drawn for background tabs, so the last spot shows when the user switches back.
             page.setCursorOverlay(request.cursorOverlayEnabled === true);
             // Background tabs never take focus: input relies on CDP focus emulation instead.
-            if (!scope.background && (selected.popout || command.action === 'click' || command.action === 'type'
+            if (!background && (selected.popout || command.action === 'click' || command.action === 'type'
                 || command.action === 'select_option' || command.action === 'press'
                 || command.action === 'scroll')) {
                 await view.focus();
@@ -551,7 +566,7 @@ export class BrowserHostManager {
                     const clipboard = this.options.richClipboard;
                     if (!clipboard) throw new Error('unsupported-runtime: native rich clipboard unavailable');
                     // Native paste needs real window focus, which a background tab must not take.
-                    if (scope.background) throw new Error('foreground-required: rich paste needs the workspace on screen');
+                    if (background) throw new Error(scope.background ? 'foreground-required: rich paste needs the workspace on screen' : 'foreground-required: rich paste needs the browser tab on screen');
                     await withRichClipboard(clipboard, command.html!, command.text!, command.replaceClipboard === true, activeSignal, async write => {
                         activeSignal.throwIfAborted();
                         await view.focus();
@@ -858,7 +873,9 @@ export class BrowserHostManager {
                     }
                     // A recorded tab's child joins the recording under the id the SPA opens it with.
                     viewId = this.demos.reserveChild(entry.ownerId, opener.viewId, viewId) ?? viewId;
-                    this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}) });
+                    // A page an AI turn drives unseen opens its new tab unseen too; the user's selection stays.
+                    const background = opener.activity?.background === true && this.hiddenTarget(opener);
+                    this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}), ...(background ? { background: true } : {}) });
                 }
             },
             focusAddressRequested: () => {
@@ -1157,6 +1174,8 @@ export class BrowserHostManager {
     }
 
     bounds(ownerId: number, viewId: unknown, bounds: HtmlPageBounds | null): Promise<void> {
+        const entry = this.entry(ownerId, viewId);
+        if (entry) { entry.shown = bounds !== null; entry.revealPending = false; }
         return this.command(ownerId, viewId, view => view.setBounds(bounds));
     }
 

@@ -120,7 +120,7 @@ import { useWorkspaceSettingsOwner } from '../../repo-settings/WorkspaceSettings
 import { panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
-import { removeBrowserWebview } from './browserWebviewLayerStore';
+import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
 import {
     browserLabelForUrl, browserOpenInput, browserSessionKey, duplicateBrowserTabInput, normalizeBrowserUrl,
 } from './unifiedBrowserTabs';
@@ -199,7 +199,7 @@ import {
     type OpenUnifiedTabInput,
     type UnifiedPanelTab,
 } from './unifiedPanelTabsModel';
-import { updateUnifiedPanelState } from './unifiedPanelOpen';
+import { openUnifiedPanelTab, updateUnifiedPanelState } from './unifiedPanelOpen';
 import { getRepoGroup } from '../../../repos/repoGroupService';
 import {
     activateWorkspaceRouteForBaseUrl,
@@ -865,24 +865,29 @@ export function UnifiedRightPanel({
     // A page's new-window link opens as another browser tab with the opener's owner
     // and conversation, so it shares the opener's site session even if the dock
     // target moved since. An opener hidden in another conversation still counts.
+    // A page an AI turn drives unseen opens its tab unseen too: no selection change,
+    // and the guest is created here because the tab does not mount.
     const workspaceTabsRef = useRef(state.workspaceTabs);
     workspaceTabsRef.current = state.workspaceTabs;
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
-        return bridge.onNewTab(({ openerViewId, viewId, url, engine }) => {
+        return bridge.onNewTab(({ openerViewId, viewId, url, engine, background }) => {
             const opener = workspaceTabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
             const normalized = normalizeBrowserUrl(url);
             if (!opener || !normalized.ok) return;
-            open({ ...browserOpenInput({
+            const input = { ...browserOpenInput({
                 ownerWorkspaceId: opener.ownerWorkspaceId,
                 ownerRoutingRef: opener.ownerRoutingRef,
                 chatId: opener.browserChatId ?? chatId,
                 repoLabel: opener.repoLabel,
                 browserChatId: opener.browserChatId ?? null,
-            }, normalized.url), ...(viewId ? { resourceId: viewId } : {}), browserEngine: engine });
+            }, normalized.url), ...(viewId ? { resourceId: viewId } : {}), browserEngine: engine };
+            if (background !== true) { open(input); return; }
+            openUnifiedPanelTab(workspaceId, input, { reveal: false, activate: false });
+            attachBrowserWebview(input.resourceId, normalized.url, browserSessionKey(opener), bridge, engine);
         });
-    }, [chatId, open]);
+    }, [chatId, open, workspaceId]);
 
     // A web link clicked in a chat opens as a new browser tab owned by the dock
     // target; a link in a resource (a canvas) names its own owner and scope.

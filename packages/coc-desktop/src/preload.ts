@@ -280,9 +280,11 @@ const browser = {
         /** Keep a background workspace scope controllable while another one is selected; `null` drops it. */
         retainScope: (sessionKey: string, workspaceId: string | null): Promise<void> =>
             ipcRenderer.invoke(BROWSER_CONTROL_RETAIN_CHANNEL, sessionKey, workspaceId),
-        execute: (request: BrowserCommandRequest, routingRef?: string): Promise<BrowserCommandResult> =>
-            routingRef === undefined ? ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request)
-                : ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef),
+        /** `placement` (window-local): `hiddenTargets` runs hidden foreground targets unseen; `watch` shows the target. */
+        execute: (request: BrowserCommandRequest, routingRef?: string, placement?: { hiddenTargets?: boolean; watch?: boolean }): Promise<BrowserCommandResult> =>
+            placement !== undefined ? ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef, placement)
+                : routingRef === undefined ? ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request)
+                    : ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef),
         cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
         releaseFrames: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, routingRef),
         /** The cursor setting turned off: remove the AI cursor from this window's views in the scope now. */
