@@ -46,7 +46,7 @@ const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
 
 const CODEX_DEFAULTS: EffortTierDefaultsMap = {
     'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh'  },
-    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh'  },
+    low:    { model: 'gpt-6.1-terra', reasoningEffort: 'medium' },
     medium: { model: 'gpt-6.1-sol',   reasoningEffort: 'medium' },
     high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
 };

@@ -59,6 +59,27 @@ describe('resolveEffortTierConfig', () => {
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
+    it('resolves the Codex low tier to the gpt-6.1-terra default unless the user overrides it', () => {
+        const codexLow = () => makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'codex' },
+            config: { effortTier: 'low' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        const defaulted = codexLow();
+        resolveEffortTierConfig(defaulted, makeContext());
+        expect(defaulted.config.model).toBe('gpt-6.1-terra');
+        expect(defaulted.config.reasoningEffort).toBe('medium');
+
+        const overridden = codexLow();
+        resolveEffortTierConfig(overridden, makeContext({
+            getEffortTiersForProvider: (provider) => provider === 'codex'
+                ? { low: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' } }
+                : undefined,
+        }));
+        expect(overridden.config.model).toBe('gpt-5.6-terra');
+        expect(overridden.config.reasoningEffort).toBe('xhigh');
+    });
+
     it('resolves Claude tiers to CLI catalog aliases (regression: high tier uses a catalog alias)', () => {
         // The Claude high-tier default must reference a model id the Claude
         // CLI catalog advertises ('fable'), so executor-side effort validation
