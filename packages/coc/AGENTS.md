@@ -1438,7 +1438,8 @@ references before editing. Paths are package-relative.
   `test:run` is non-watch; `test` is Vitest watch mode.
   Use `test:e2e`/`lint` when relevant; docs need no build/tests. Each Playwright worker
   runs a CoC server, esbuild and Chromium, so `test/e2e/playwright-workers.ts` defaults
-  local runs to two workers (CI four); check free memory before raising `--workers`.
+  to min(4, available cores), at least one, locally and in CI; check free memory before
+  raising `--workers`.
 - Docker/tenant changes keep `test/docker/` contracts green: loopback-only bind,
   no exposed/published CoC port, and `COC_BUILD_COMMIT` support without `.git`.
 - Keep current safety rules here; details belong in existing domain references/source.
