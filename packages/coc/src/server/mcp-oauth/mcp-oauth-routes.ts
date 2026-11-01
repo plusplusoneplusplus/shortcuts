@@ -48,6 +48,12 @@ export interface McpOauthRouteContext {
     aiService?: ISDKService;
     /** Resolve a workspace id to its root path. Required alongside `aiService`. */
     resolveWorkspaceRoot?: (workspaceId: string) => Promise<string | undefined>;
+    /**
+     * Resolve a server through the workspace's effective MCP resolution, so a
+     * repo group finds servers its members define. Falls back to the root-path
+     * lookup when omitted.
+     */
+    resolveWorkspaceServer?: (workspaceId: string, serverName: string) => Promise<MCPServerConfig | undefined>;
 }
 
 function serialize(entry: PendingMcpOAuth): Record<string, unknown> {
@@ -224,7 +230,9 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                     }
                 }
 
-                const serverConfig = findServerConfig(serverName, workspaceRoot);
+                const serverConfig = workspaceId && ctx.resolveWorkspaceServer
+                    ? await ctx.resolveWorkspaceServer(workspaceId, serverName)
+                    : findServerConfig(serverName, workspaceRoot);
                 if (!serverConfig) {
                     sendError(res, 404, `MCP server "${serverName}" not found in config`);
                     return;

@@ -63,7 +63,7 @@ describe('McpServersPanel — group mode', () => {
         expect(screen.queryByRole('button', { name: /Add server/ })).toBeNull();
         expect(screen.queryByRole('link', { name: /New server/ })).toBeNull();
         expect(screen.getByTestId('mcp-group-readonly-hint').textContent)
-            .toMatch(/no repository checkout/);
+            .toMatch(/no repository checkout.*each member repo/s);
     });
 
     it('drops the Configuration inspector tab (env, args, scope, delete)', async () => {
@@ -81,6 +81,54 @@ describe('McpServersPanel — group mode', () => {
         renderPanel();
         expect(screen.queryByText('.vscode/mcp.json')).toBeNull();
         expect(screen.getByText('~/.copilot/mcp-config.json')).toBeTruthy();
+    });
+
+    it('shows member sources with honest partial-failure states', () => {
+        renderPanel({
+            sources: {
+                global: { configPath: '~/.copilot/mcp-config.json', fileExists: true, success: true, servers: [] },
+                workspace: { configPath: '/data/repos/group-demo/.vscode/mcp.json', fileExists: true, success: true, servers: [] },
+                members: [
+                    { workspaceId: 'ws-a', name: 'repo-a', configPath: '/r/a/.vscode/mcp.json', fileExists: true, success: true, servers, disabledByMember: ['hidden'] },
+                    { workspaceId: 'ws-b', name: 'repo-b', configPath: '/r/b/.vscode/mcp.json', fileExists: true, success: false, error: 'Failed to parse MCP config', servers: [], disabledByMember: [] },
+                    { workspaceId: 'ws-gone', configPath: '', fileExists: false, success: true, stale: true, staleReason: 'workspace-removed', servers: [], disabledByMember: [] },
+                ],
+            },
+        });
+        expect(screen.getByTestId('mcp-source-workspace').textContent).toMatch(/Group config/);
+        expect(screen.getByTestId('mcp-source-member:ws-a').textContent).toMatch(/repo-a.*1 server · 1 disabled in repo settings/);
+        expect(screen.getByTestId('mcp-source-member:ws-b').textContent).toMatch(/Not loaded · Failed to parse/);
+        expect(screen.getByTestId('mcp-source-member:ws-gone').textContent).toMatch(/Unavailable · repo removed/);
+    });
+
+    it('flags an unreadable membership', () => {
+        renderPanel({
+            sources: {
+                global: { configPath: '~/.copilot/mcp-config.json', fileExists: true, success: true, servers: [] },
+                workspace: { configPath: '', fileExists: false, success: true, servers: [] },
+                membersError: 'Repo group membership is unavailable',
+            },
+        });
+        expect(screen.getByRole('alert').textContent).toMatch(/Member repos could not be read/);
+    });
+
+    it('labels member rows with their source, shared members and conflicts', async () => {
+        const user = userEvent.setup();
+        renderPanel({
+            availableServers: [{
+                name: 'api',
+                type: 'http',
+                source: 'member',
+                member: { workspaceId: 'ws-a', name: 'repo-a' },
+                sharedWith: [{ workspaceId: 'ws-c', name: 'repo-c' }],
+                conflicts: [{ workspaceId: 'ws-b', name: 'repo-b' }],
+            }],
+        });
+        const pill = screen.getByTestId('mcp-source-pill-api');
+        expect(pill.textContent).toBe('repo-a +1 · conflict');
+        expect(pill.getAttribute('title')).toMatch(/Different definition in repo-b is not used/);
+        await user.click(screen.getByRole('button', { name: /Expand api/ }));
+        expect(screen.getByTestId('mcp-overview-source').textContent).toMatch(/Defined in member repo repo-a\. Same definition in repo-c\./);
     });
 
     it('keeps the full add/edit affordances for an ordinary repo workspace', async () => {

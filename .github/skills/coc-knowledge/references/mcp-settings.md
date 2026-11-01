@@ -1,6 +1,19 @@
 # MCP Settings (Workspace-Scoped)
 
-Workspace MCP servers are a merge of two sources: global servers from `~/.copilot/mcp-config.json` (root key `mcpServers`) and workspace servers from `<repo>/.vscode/mcp.json` (root key `servers`, read via Forge MCP loader helpers). Workspace entries override global entries with the same name. Extra fields (`description`, `toolScope`) are stored directly on server entries in those files; consumers that ignore unknown keys keep working.
+Workspace MCP servers are a merge of global servers from `~/.copilot/mcp-config.json` (root key `mcpServers`) and workspace servers from `<root>/.vscode/mcp.json` (root key `servers`, read via Forge MCP loader helpers). Workspace entries override global entries with the same name. Extra fields (`description`, `toolScope`) are stored directly on server entries in those files; consumers that ignore unknown keys keep working.
+
+One resolver, `resolveWorkspaceMcp` (`packages/coc/src/server/workspaces/workspace-mcp-resolver.ts`), feeds the settings list/detail/mutation routes, live tool discovery, OAuth start and every chat turn (`resolveChatMcpServersForWorkspace`, first turns, follow-ups and tool scripting), so the page shows what chats run.
+
+## Repo groups
+
+A group resolves global < live members' `.vscode/mcp.json` (membership order) < the group root's own `.vscode/mcp.json`:
+
+- A member contributes only servers its own `enabledMcpServers` allows; its `enabledMcpTools` entry narrows the tool list. The group's tool allow-list intersects member-sourced lists (never widens them); for global/group servers it replaces the list as in a repo.
+- Member stdio servers are anchored to the member root: `cwd` (default the member root) resolves against it and relative command paths resolve against that `cwd`. Bare commands keep PATH lookup; `${workspaceFolder}`-style variables are not substituted. Discovery probes run stdio servers from the same execution directory as the runtime.
+- Same-name member definitions are compared by an in-memory fingerprint of the full resolved connection (transport, command, args, cwd, env, url, headers, tools, timeout, enabled). Identical ones fold into one server with `sharedWith`; distinct ones resolve to the first member in group order and list the losers in `conflicts`. Different names stay separate servers, because policies are keyed by name.
+- Stale members, unreadable member configs and an unreadable membership file are reported in `sources` and contribute nothing. Membership is re-read on every resolution; `forceReload` also bypasses member config caches.
+- A group whose workspace record cannot be read resolves chat MCP to `{}` instead of an unfiltered default load.
+- Group Settings → MCP (`McpServersPanel` `groupMode`) uses the compact rows with source pills (`global`, `group config`, member name with `+N` shared and `· conflict`; tooltip and Overview give the full sentence), lists Group config/member/global source rows with stale, load-failure and disabled-in-repo states, and hides definition edits; enablement and tool allow-lists stay on the group.
 
 ## REST API
 
@@ -8,11 +21,11 @@ All routes are workspace-scoped under `/api/workspaces/:id/mcp-config`.
 
 ### `GET /api/workspaces/:id/mcp-config`
 
-Returns the effective `availableServers` list plus source-separated `sources.global` / `sources.workspace`. Each `availableServers` entry carries safe row metadata only — `name`, `type`, optional `url`/`command`, source/effective flags, `description` (from the config file, or empty string), and `status` (`"ok"` | `"auth"` | `"off"` | `"err"`, derived server-side from type + enabled state and overridden by the panel with live discovery failures). It must **not** return secrets such as `env`, headers, or full argument arrays. `?forceReload=true` bypasses the path-keyed MCP config cache.
+Returns the effective `availableServers` list plus source-separated `sources.global` / `sources.workspace`; groups add `sources.members` (per member: config path/load state, `stale`/`staleReason`, `disabledByMember`, servers with effective/`overriddenBy`) and `sources.membersError`. Each `availableServers` entry carries safe row metadata only — `name`, `type`, optional `url`/`command`, `source` (`global` | `workspace` | `member`) with effective flags, `member`/`sharedWith`/`conflicts` member refs for groups, `description` (from the config file, or empty string), and `status` (`"ok"` | `"auth"` | `"off"` | `"err"`, derived server-side from type + enabled state and overridden by the panel with live discovery failures). It must **not** return secrets such as `env`, headers, or full argument arrays. `?forceReload=true` bypasses the path-keyed MCP config cache.
 
 ### `GET /api/workspaces/:id/mcp-config/:server/detail`
 
-Full detail for one server, available only here: `description`, `envKeys` (key names, values masked), `args` (full array), `toolScope` (`"all"` | `"readonly"` | `"allowlist"`), `source` (`"global"` | `"workspace"`), and `rawJson` (the server's JSON block from its config file).
+Full detail for one server, available only here: `description`, `envKeys` (key names, values masked), `args` (full array), `toolScope` (`"all"` | `"readonly"` | `"allowlist"`), `source` (`"global"` | `"workspace"`, or `"member"` plus `member` when a group server is defined by a member, read from that member's file), and `rawJson` (the server's JSON block from its config file).
 
 ### `PUT /api/workspaces/:id/mcp-config`
 
@@ -25,7 +38,7 @@ Responds with `{ workspace, enabledMcpServers, enabledMcpTools }` — the canoni
 
 ### `PUT /api/workspaces/:id/mcp-config/:server`
 
-Updates `description`, `args`, `env` (key-value pairs merged into existing), and `toolScope` in the server's own source file (global or workspace, whichever currently defines it).
+Updates `description`, `args`, `env` (key-value pairs merged into existing), and `toolScope` in the server's own source file (global or workspace, whichever currently defines it). On a group, a member-defined server returns 409 (edit it in that repo); this also applies to DELETE and migrate, so a group page never writes a member or a same-named global entry.
 
 ### `DELETE /api/workspaces/:id/mcp-config/:server`
 
@@ -45,8 +58,8 @@ Moves a server between scopes. Body: `{ targetScope: "global"|"workspace" }`.
 
 ## OAuth Routes
 
-`POST /api/mcp-oauth/start` resolves configured HTTP/SSE MCP servers, with workspace
-definitions overriding global entries. `Microsoft Teams` starts native sign-in;
+`POST /api/mcp-oauth/start` resolves configured HTTP/SSE MCP servers through the
+workspace's effective resolution (workspace over global; group members included). `Microsoft Teams` starts native sign-in;
 other servers use the active AI SDK's `createClient` when generic MCP OAuth is
 enabled. Generic `force: true` clears matching cache entries and selects
 `forceReauth`; Teams reauthentication does not touch that cache. Pending-lifecycle

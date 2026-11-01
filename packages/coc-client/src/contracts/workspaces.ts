@@ -31,7 +31,18 @@ export interface WorkspaceInfo {
   [key: string]: unknown;
 }
 
-export type WorkspaceMcpServerSource = 'global' | 'workspace';
+/**
+ * Which config defines a server. `workspace` is the workspace's own
+ * `.vscode/mcp.json` (the group root for a repo group); `member` is a repo-group
+ * member's `.vscode/mcp.json`.
+ */
+export type WorkspaceMcpServerSource = 'global' | 'workspace' | 'member';
+
+/** A repo-group member referenced by an MCP server row. */
+export interface McpMemberRef {
+  workspaceId: string;
+  name?: string;
+}
 export type McpConfigScope = 'global' | 'workspace';
 export type McpToolScope = 'all' | 'readonly' | 'allowlist';
 
@@ -65,6 +76,12 @@ export interface WorkspaceMcpServerEntry {
   authExpiresAt?: number;
   /** User-provided description from config file. */
   description?: string;
+  /** Defining member repo (`member` source only). */
+  member?: McpMemberRef;
+  /** Other members whose identical definition was folded into this server. */
+  sharedWith?: McpMemberRef[];
+  /** Members whose distinct same-name definition lost to `member` (first in group order). */
+  conflicts?: McpMemberRef[];
 }
 
 export interface McpServerDetail {
@@ -72,7 +89,9 @@ export interface McpServerDetail {
   envKeys: string[];
   args: string[];
   toolScope: McpToolScope;
-  source: McpConfigScope;
+  source: McpConfigScope | 'member';
+  /** Defining member repo when `source` is `member`. */
+  member?: McpMemberRef;
   rawJson: Record<string, unknown>;
 }
 
@@ -103,9 +122,21 @@ export interface WorkspaceMcpSourceSection {
   servers: WorkspaceMcpServerEntry[];
 }
 
+/** One repo-group member's `.vscode/mcp.json`, as the group inherits it. */
+export interface WorkspaceMcpMemberSourceSection extends WorkspaceMcpSourceSection, McpMemberRef {
+  stale?: boolean;
+  staleReason?: 'workspace-removed' | 'path-missing';
+  /** Names the member's own settings disable, so the group does not inherit them. */
+  disabledByMember: string[];
+}
+
 export interface WorkspaceMcpSources {
   global: WorkspaceMcpSourceSection;
   workspace: WorkspaceMcpSourceSection;
+  /** Repo groups only: member sources in group order. */
+  members?: WorkspaceMcpMemberSourceSection[];
+  /** Repo groups only: set when the membership could not be read. */
+  membersError?: string;
 }
 
 export interface WorkspaceMcpConfigResponse {

@@ -261,5 +261,25 @@ describe('MCP OAuth REST routes', () => {
             });
             expect(res.statusCode).toBe(404);
         });
+
+        it('resolves the server through the workspace effective resolution (repo-group members)', async () => {
+            const calls: Array<[string, string]> = [];
+            const r: Route[] = [];
+            registerMcpOauthRoutes(r, {
+                manager,
+                aiService: { createClient: async () => ({ createSession: async () => ({}) }) } as any,
+                resolveWorkspaceRoot: async () => '/data/repos/group-demo',
+                resolveWorkspaceServer: async (workspaceId, serverName) => {
+                    calls.push([workspaceId, serverName]);
+                    return serverName === 'member-local' ? { command: './run.sh', cwd: '/repos/a' } : undefined;
+                },
+            });
+            const found = await dispatch(r, 'POST', '/api/mcp-oauth/start', { workspaceId: 'group-demo', serverName: 'member-local' });
+            // Found via the member definition (a stdio server cannot do OAuth), not 404 from the group root.
+            expect(found.statusCode).toBe(400);
+            const missing = await dispatch(r, 'POST', '/api/mcp-oauth/start', { workspaceId: 'group-demo', serverName: 'nope' });
+            expect(missing.statusCode).toBe(404);
+            expect(calls).toEqual([['group-demo', 'member-local'], ['group-demo', 'nope']]);
+        });
     });
 });

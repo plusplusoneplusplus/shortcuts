@@ -13,6 +13,7 @@ import {
     getServerDescription,
     getTransportPillClass,
     getSourcePillInfo,
+    describeServerSource,
     shouldShowAuthButton,
     getToolCountLabel,
     computeServerCounts,
@@ -130,6 +131,36 @@ describe('getSourcePillInfo', () => {
 
     it('defaults to repo config', () => {
         expect(getSourcePillInfo(stdio)).toEqual({ label: 'repo config', cls: 'muted' });
+    });
+
+    it('labels the group root config as group config in group mode', () => {
+        expect(getSourcePillInfo({ ...stdio, source: 'workspace' }, true)).toEqual({ label: 'group config', cls: 'muted' });
+    });
+
+    it('labels member servers with the member, shared count and conflicts', () => {
+        const member = { ...stdio, source: 'member' as const, member: { workspaceId: 'ws-a', name: 'repo-a' } };
+        expect(getSourcePillInfo(member)).toEqual({ label: 'repo-a', cls: 'muted' });
+        expect(getSourcePillInfo({ ...member, sharedWith: [{ workspaceId: 'ws-b' }] })).toEqual({ label: 'repo-a +1', cls: 'muted' });
+        expect(getSourcePillInfo({ ...member, conflicts: [{ workspaceId: 'ws-c', name: 'repo-c' }] }))
+            .toEqual({ label: 'repo-a · conflict', cls: 'warn' });
+    });
+});
+
+describe('describeServerSource', () => {
+    it('spells out shared and conflicting member definitions', () => {
+        expect(describeServerSource({
+            ...stdio,
+            source: 'member',
+            member: { workspaceId: 'ws-a', name: 'repo-a' },
+            sharedWith: [{ workspaceId: 'ws-b', name: 'repo-b' }],
+            conflicts: [{ workspaceId: 'ws-c' }],
+        })).toBe('Defined in member repo repo-a. Same definition in repo-b. Different definition in ws-c is not used: the first member in group order wins.');
+    });
+
+    it('names global, repo and group sources', () => {
+        expect(describeServerSource({ ...stdio, source: 'global' })).toBe('Defined in global config.');
+        expect(describeServerSource({ ...stdio, source: 'workspace' })).toBe('Defined in repo config.');
+        expect(describeServerSource({ ...stdio, source: 'workspace' }, true)).toBe("Defined in the group's own config.");
     });
 });
 

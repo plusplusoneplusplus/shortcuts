@@ -22,6 +22,8 @@ export interface McpTestRequest {
     env?: Record<string, string>;
     /** Optional HTTP headers for http/sse transports (e.g. auth). */
     headers?: Record<string, string>;
+    /** Working directory for a stdio process; defaults to the server's own cwd. */
+    cwd?: string;
 }
 
 export interface McpTestResult {
@@ -89,6 +91,7 @@ function testStdioMcpServer(req: McpTestRequest): Promise<McpTestResult> {
         try {
             child = spawn(command, args, {
                 env: mergedEnv,
+                ...(req.cwd ? { cwd: req.cwd } : {}),
                 stdio: ['pipe', 'pipe', 'pipe'],
                 shell: false,
             });
@@ -333,6 +336,7 @@ function listStdioMcpTools(req: McpTestRequest, timeoutMs: number): Promise<McpL
         try {
             child = spawn(command, args, {
                 env: mergedEnv,
+                ...(req.cwd ? { cwd: req.cwd } : {}),
                 stdio: ['pipe', 'pipe', 'pipe'],
                 shell: false,
             });
