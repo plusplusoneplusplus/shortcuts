@@ -40,7 +40,7 @@ export interface BrowserDemoState {
 
 /** What the manager knows about one tab of a window. */
 export interface BrowserDemoTabSource {
-    view: Pick<BrowserHostedView, 'cdp' | 'snapshot'>;
+    view: Pick<BrowserHostedView, 'cdp' | 'snapshot' | 'waitForControlReady'>;
     sessionKey: string;
     sourceKind: 'url' | 'file';
     /** Why recording cannot start on this tab now (AI turn, paused takeover). */
@@ -57,7 +57,7 @@ export interface BrowserDemoRecordersOptions {
     lookup(ownerId: number, viewId: string): BrowserDemoTabSource | undefined;
     busy?(owner: BrowserDemoOwner): string | undefined;
     send(ownerId: number, channel: string, payload: unknown): void;
-    capture?(view: Pick<BrowserHostedView, 'cdp'>, sink: BrowserDemoTabSink): BrowserDemoCapture;
+    capture?(view: Pick<BrowserHostedView, 'cdp' | 'waitForControlReady'>, sink: BrowserDemoTabSink): BrowserDemoCapture;
     now?(): number;
     pendingTabMs?: number;
 }
@@ -255,7 +255,7 @@ export class BrowserDemoRecorders {
     }
 
     /** A captured tab opened a popup window: the popup is captured too. */
-    async popupOpened(ownerId: number, openerViewId: string, popupViewId: string, view: Pick<BrowserHostedView, 'cdp' | 'snapshot'>): Promise<void> {
+    async popupOpened(ownerId: number, openerViewId: string, popupViewId: string, view: Pick<BrowserHostedView, 'cdp' | 'snapshot' | 'waitForControlReady'>): Promise<void> {
         const demo = this.member(ownerId, openerViewId);
         if (!demo || demo.stopping || demo.session.state === 'stopped') return;
         await this.adopt(demo, popupViewId, { view, sessionKey: demo.session.owner.routingRef, sourceKind: 'url' }, openerViewId);
@@ -331,6 +331,7 @@ export class BrowserDemoRecorders {
     private async adopt(demo: Demo, viewId: string, source: BrowserDemoTabSource, openerViewId: string): Promise<void> {
         if (demo.stopping || demo.session.state === 'stopped') return;
         if (!demo.session.addTab(viewId, source.view.snapshot(), openerViewId)) { this.emit(demo); return; }
+        this.emit(demo);
         await this.capture(demo, viewId, source).catch(() => {});
         if (this.demos.get(demo.session.id) !== demo) return;
         if (demo.session.state === 'paused') demo.captures.get(viewId)?.setEnabled(false);
@@ -361,9 +362,11 @@ export class BrowserDemoRecorders {
         if (demo.session.state === 'paused') capture.setEnabled(false);
         try {
             await capture.start();
-            if (this.demos.get(demo.session.id) !== demo || !demo.session.hasTab(viewId)) {
-                if (demo.captures.get(viewId) === capture) demo.captures.delete(viewId);
-                await capture.stop(false);
+            if (this.demos.get(demo.session.id) !== demo || !demo.session.hasTab(viewId) || demo.captures.get(viewId) !== capture) {
+                if (demo.captures.get(viewId) === capture) {
+                    demo.captures.delete(viewId);
+                    await capture.stop(false);
+                }
                 throw new BrowserDemoError('not-found', 'The demo or tab ended while capture was starting.');
             }
         } catch (error) {

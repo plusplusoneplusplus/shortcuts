@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BROWSER_DEMO_DRAIN, BROWSER_DEMO_WORLD, type BrowserDemoAction } from '../src/browser-demo-capture';
 import { BrowserDemoTabCapture, BrowserDemoUnavailableError } from '../src/browser-demo-tab-capture';
 import type { BrowserDemoGapReason } from '../src/browser-demo-session';
@@ -82,6 +82,54 @@ afterEach(() => {
 });
 
 describe('BrowserDemoTabCapture', () => {
+    it('waits for exact page readiness before CDP installation and records subsequent input', async () => {
+        const { view, calls } = fakeView();
+        let ready!: () => void;
+        const wait = new Promise<void>(resolve => { ready = resolve; });
+        const out = sink();
+        const capture = new BrowserDemoTabCapture({ ...view, waitForControlReady: () => wait }, out.target, 60_000);
+        const starting = capture.start();
+        try {
+            await Promise.resolve();
+            expect(calls).toEqual([]);
+            ready();
+            await starting;
+            document.querySelector('button')!.click();
+            await capture.poll();
+            expect(out.actions).toEqual([expect.objectContaining({ kind: 'click', label: 'Save' })]);
+            expect(out.gaps).toEqual([]);
+        } finally { ready(); await starting; await capture.stop(false); }
+    });
+
+    it.each([false, true])('revokes delayed readiness on Stop (flush: %s), even if the host resolves late', async flush => {
+        const { view, calls } = fakeView();
+        let ready!: () => void;
+        let signal!: AbortSignal;
+        const wait = new Promise<void>(resolve => { ready = resolve; });
+        const out = sink();
+        const capture = new BrowserDemoTabCapture({
+            ...view, waitForControlReady: async current => { signal = current; await wait; },
+        }, out.target);
+        const starting = capture.start();
+        await capture.stop(flush);
+        expect(signal.aborted).toBe(true);
+        ready();
+        await starting;
+        await capture.poll();
+        expect(calls).toEqual([]);
+        expect(out.actions).toEqual([]);
+        expect(out.gaps).toEqual(flush ? ['capture-failed'] : []);
+    });
+
+    it('reports readiness failures as unavailable rather than installing on a failed document', async () => {
+        const { view, calls } = fakeView();
+        const capture = new BrowserDemoTabCapture({
+            ...view, waitForControlReady: vi.fn().mockRejectedValue(new Error('Page failed to load')),
+        }, sink().target);
+        await expect(capture.start()).rejects.toMatchObject({ reason: 'handshake-failed' });
+        expect(calls.some(call => call.method === 'Page.addScriptToEvaluateOnNewDocument')).toBe(false);
+    });
+
     it('installs in a private world and delivers sanitized trusted actions on poll', async () => {
         const { view, calls } = fakeView();
         const out = sink();

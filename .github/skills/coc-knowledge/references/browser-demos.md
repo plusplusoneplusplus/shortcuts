@@ -24,6 +24,10 @@ Document replacement, inaccessible frames, malformed reports and overflow produc
 explicit gaps. Pause revisions reject in-flight batches; boundary drains discard
 paused observations. Stop drains final actions before session freeze. Capture
 startup, child adoption and resumed handshakes recheck lifecycle ownership.
+Descendant membership and immediate opener lineage publish when the descriptor
+arrives. Capture uses the host's exact guest/document readiness hook before CDP
+installation. Stop, closure, discard and owner teardown abort that wait; an
+unready final drain discloses a capture gap without installing on a late document.
 
 Captured-tab closure shares the final drain with concurrent Stop and duplicate
 close events, retaining sinks and membership until completion. The manager retires

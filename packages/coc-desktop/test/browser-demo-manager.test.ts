@@ -6,7 +6,7 @@ import { BROWSER_DEMO_RECORDING_ERROR, BrowserHostManager } from '../src/browser
 import type { BrowserEngineHost, BrowserEventSink, BrowserHostedView } from '../src/browser-host-contract';
 import { BROWSER_VIEW_NEW_TAB_CHANNEL } from '../src/browser-view-policy';
 import type { BrowserDemoCapture } from '../src/browser-demo-recorder';
-import type { BrowserDemoTabSink } from '../src/browser-demo-tab-capture';
+import { BrowserDemoTabCapture, type BrowserDemoTabSink } from '../src/browser-demo-tab-capture';
 
 const owner = { workspaceId: 'w', processId: 'p', routingRef: 'w' };
 
@@ -16,7 +16,7 @@ function deferred<T>() {
     return { promise, resolve };
 }
 
-function harness() {
+function harness(realCapture = false, configure?: (view: BrowserHostedView, viewId: string) => void) {
     const sinks = new Map<string, BrowserEventSink>();
     const views = new Map<string, BrowserHostedView>();
     const host: BrowserEngineHost = {
@@ -27,10 +27,18 @@ function harness() {
             const view: BrowserHostedView = {
                 snapshot: () => ({ viewId: request.viewId, engine: 'electron', url: request.url, title: 'Fixture', canGoBack: false, canGoForward: false, loading: false }),
                 navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), setNavigationGate: vi.fn(),
-                cdp: vi.fn(async (method: string, params?: Record<string, unknown>) =>
-                    method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"snapshot"')
-                        ? { result: { value: { title: 'Fixture', url: request.url, elements: [], nextRef: 1 } } } : {}),
+                cdp: vi.fn(async (method: string, params?: Record<string, unknown>) => {
+                    if (realCapture) {
+                        if (method === 'Page.addScriptToEvaluateOnNewDocument') return { identifier: 'script' };
+                        if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+                        if (method === 'Page.createIsolatedWorld') return { executionContextId: 1 };
+                        if (method === 'Runtime.evaluate') return { result: { value: { doc: 'fixture', items: [], dropped: 0 } } };
+                    }
+                    return method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"snapshot"')
+                        ? { result: { value: { title: 'Fixture', url: request.url, elements: [], nextRef: 1 } } } : {};
+                }),
             };
+            configure?.(view, request.viewId);
             views.set(request.viewId, view);
             return view;
         },
@@ -46,8 +54,8 @@ function harness() {
         getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
     });
     const captures: { view: unknown; sink: BrowserDemoTabSink; capture: BrowserDemoCapture }[] = [];
-    (manager.demos as unknown as { options: { capture: (view: unknown, sink: BrowserDemoTabSink) => BrowserDemoCapture } }).options.capture = (view, sink) => {
-        const capture = { start: async () => {}, setEnabled: () => {}, stop: async () => {} };
+    (manager.demos as unknown as { options: { capture: (view: Pick<BrowserHostedView, 'cdp' | 'waitForControlReady'>, sink: BrowserDemoTabSink) => BrowserDemoCapture } }).options.capture = (view, sink) => {
+        const capture = realCapture ? new BrowserDemoTabCapture(view, sink, 60_000) : { start: async () => {}, setEnabled: () => {}, stop: async () => {} };
         captures.push({ view, sink, capture });
         return capture;
     };
@@ -59,6 +67,43 @@ function harness() {
 }
 
 describe('browser demo recording in the host manager', () => {
+    it.each(['stop', 'close', 'discard', 'owner-close'] as const)('revokes child readiness on %s without starting late capture', async ending => {
+        const ready = deferred<void>();
+        const waiting = deferred<void>();
+        let signal!: AbortSignal;
+        const h = harness(true, (view, viewId) => {
+            if (viewId !== 'root') view.waitForControlReady = async current => {
+                signal = current;
+                waiting.resolve();
+                await ready.promise;
+            };
+        });
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const { id } = await h.manager.demos.start(1, owner, 'root');
+            h.sinks.get('root')!.newTab('https://b.test/');
+            const childId = h.send.mock.calls.at(-1)![2].viewId as string;
+            const lookup = h.manager.demos;
+            await h.manager.open(1, childId, 'https://b.test/', 'w');
+            const child = h.views.get(childId)!;
+            await waiting.promise;
+            expect(signal.aborted).toBe(false);
+            expect(lookup.recordingTab(1, childId)).toBe(true);
+            expect(child.cdp).not.toHaveBeenCalled();
+            if (ending === 'stop') await lookup.stop(1, id);
+            else if (ending === 'close') await h.manager.close(1, childId, true);
+            else if (ending === 'discard') await lookup.release(1, id);
+            else await h.manager.closeOwner(1);
+            expect(signal.aborted).toBe(true);
+            ready.resolve();
+            await h.flush();
+            expect(child.cdp).not.toHaveBeenCalled();
+            if (ending === 'stop' || ending === 'close') {
+                expect(lookup.draft(1, id).steps).toContainEqual(expect.objectContaining({ type: 'gap', viewId: childId, reason: 'capture-failed' }));
+            } else expect(lookup.unsent()).toEqual([]);
+        } finally { ready.resolve(); await h.manager.dispose(); }
+    });
+
     it('blocks every AI browser command for the recording chat and hides recorded tabs from other chats', async () => {
         const h = harness();
         try {

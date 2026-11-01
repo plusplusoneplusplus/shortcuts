@@ -9,7 +9,7 @@ import { BROWSER_VIEW_NEW_TAB_CHANNEL } from '../src/browser-view-policy';
 const mocks = vi.hoisted(() => ({
     visible: false,
     deferAttach: false,
-    attach: undefined as undefined | (() => void),
+    attach: undefined as undefined | ((guest?: unknown) => void),
     expire: undefined as undefined | (() => void),
     beforeRequest: undefined as undefined | ((details: any, callback: any) => void),
     verifyProc: undefined as undefined | ((request: any, callback: (result: number) => void) => void),
@@ -56,7 +56,7 @@ vi.mock('../src/browser-webview-guard', () => ({
     isBrowserEmbedder: () => true,
     hardenedBrowserPreferences: (session: unknown) => ({ session, sandbox: true }),
     authorizeBrowserWebview: (_owner: number, src: string, _profile: unknown, attach: (guest: unknown) => void, expire: () => void) => {
-        mocks.attach = () => attach(mocks.contents);
+        mocks.attach = guest => attach(guest ?? mocks.contents);
         if (!mocks.deferAttach) { attach(mocks.contents); }
         mocks.expire = expire;
         return { embed: 'webview', src, partition: 'token', adopt: vi.fn(), dispose: mocks.revoke };
@@ -646,6 +646,66 @@ it.each([false, true])('writes pair and JSON expiry in Unix seconds to Electron,
 });
 
 describe('Electron successful history events', () => {
+    it('keeps descendant lineage before guest attachment and captures only after its document is ready', async () => {
+        const host = new ElectronBrowserHost('profile');
+        const send = vi.fn();
+        const manager = new BrowserHostManager({
+            hosts: { electron: host, webview2: { engine: 'webview2', availability: vi.fn(), create: vi.fn(), clearData: vi.fn(), dispose: vi.fn() } },
+            fileHost: { create: vi.fn(), dispose: vi.fn() },
+            history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
+            getDefault: () => 'electron', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send, changed: () => {},
+        });
+        let queued: string[] = [];
+        const command = mocks.contents.debugger.sendCommand;
+        const respond = async (method: string, child = false) => {
+            if (method === 'Page.addScriptToEvaluateOnNewDocument') return { identifier: 'demo-script' };
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+            if (method === 'Page.createIsolatedWorld') return { executionContextId: 1 };
+            if (method === 'Runtime.evaluate') {
+                const items = child ? queued : [];
+                if (child) queued = [];
+                return { result: { value: { doc: 'fixture', items, dropped: 0 } } };
+            }
+            return {};
+        };
+        command.mockImplementation((method: string) => respond(method));
+        const childCommand = vi.fn((method: string) => respond(method, true));
+        const child = {
+            ...mocks.contents, id: 9, getURL: () => 'https://child.test/',
+            debugger: { ...mocks.contents.debugger, sendCommand: childCommand },
+        };
+        try {
+            await manager.open(7, 'root', 'https://example.test/', 'workspace');
+            const { id } = await manager.demos.start(7, { workspaceId: 'workspace', processId: 'demo-chat', routingRef: 'workspace' }, 'root');
+            mocks.deferAttach = true;
+            const rootHandler = mocks.contents.setWindowOpenHandler.mock.calls.at(-1)![0];
+            rootHandler({ url: 'https://child.test/', disposition: 'background-tab' });
+            const childId = send.mock.calls.filter(([, channel]) => channel === BROWSER_VIEW_NEW_TAB_CHANNEL).at(-1)![2].viewId;
+            command.mockClear();
+            await manager.open(7, childId, 'https://child.test/', 'workspace');
+            expect(manager.demos.draft(7, id).tabs.find(tab => tab.viewId === childId)).toMatchObject({ openerViewId: 'root' });
+            expect(manager.demos.recordingTab(7, childId)).toBe(true);
+            expect(command).not.toHaveBeenCalled();
+            const loading = vi.spyOn(child, 'isLoading').mockReturnValue(true);
+            try {
+                mocks.attach!(child);
+                expect(await manager.adopt(7, childId, 9)).toEqual({ ok: true });
+                expect(childCommand).not.toHaveBeenCalled();
+                loading.mockReturnValue(false);
+                await vi.waitFor(() => expect(childCommand.mock.calls.filter(([method]) => method === 'Page.addScriptToEvaluateOnNewDocument')).toHaveLength(1));
+                await vi.waitFor(() => expect(childCommand.mock.calls.some(([method]) => method === 'Runtime.evaluate')).toBe(true));
+                queued.push(JSON.stringify({ kind: 'click', role: 'button', label: 'Save', url: 'https://child.test/' }));
+                await manager.demos.stop(7, id);
+                const draft = manager.demos.draft(7, id);
+                expect(draft.steps).toContainEqual(expect.objectContaining({ type: 'action', viewId: childId, action: expect.objectContaining({ kind: 'click', label: 'Save' }) }));
+                expect(draft.incomplete).toBe(false);
+            } finally { loading.mockRestore(); }
+        } finally {
+            await manager.dispose();
+            command.mockReset().mockResolvedValue({ value: 'fixture' });
+        }
+    });
+
     it('records the final redirect URL once after main-frame completion, without snapshot replay', async () => {
         const { hosted, sink } = await view();
         emit('did-start-navigation', 'https://example.test/redirect', false, true);

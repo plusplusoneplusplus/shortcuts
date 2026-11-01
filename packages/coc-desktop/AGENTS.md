@@ -26,6 +26,9 @@ Share final capture drains between Stop and captured-tab closure. Retire routing
 synchronously, retain sinks through the drain, and report unavailable final capture
 as a gap before closing membership.
 Authorized pending descendants retain historical opener lineage after closure.
+Publish descendant membership immediately; wait for the exact guest/document
+through the host readiness hook before capture installation. Stop, tab closure,
+discard and owner teardown abort waiting capture without a late handshake.
 Auto-stop only after tabs, pending descendants and close drains are exhausted;
 expiry, failed adoption and explicit Stop cancellation must disclose gaps.
 

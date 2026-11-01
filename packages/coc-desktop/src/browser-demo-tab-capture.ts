@@ -37,6 +37,7 @@ export class BrowserDemoTabCapture {
     private scriptId?: string;
     private timer?: ReturnType<typeof setInterval>;
     private polling?: Promise<void>;
+    private readiness?: AbortController;
     private generation = 0;
     private enabled = true;
     private discardQueued = false;
@@ -45,14 +46,19 @@ export class BrowserDemoTabCapture {
     private readonly reportedFrames = new Set<string>();
     private readonly source = buildBrowserDemoCaptureSource();
 
-    constructor(private readonly view: Pick<BrowserHostedView, 'cdp'>, private readonly sink: BrowserDemoTabSink, private readonly pollMs = BROWSER_DEMO_POLL_MS) {}
+    constructor(private readonly view: Pick<BrowserHostedView, 'cdp' | 'waitForControlReady'>, private readonly sink: BrowserDemoTabSink, private readonly pollMs = BROWSER_DEMO_POLL_MS) {}
 
     /** Install and prove the script runs in the main frame; throws `BrowserDemoUnavailableError` when it cannot. */
     async start(): Promise<void> {
         const cdp = this.view.cdp?.bind(this.view);
         if (!cdp) throw new BrowserDemoUnavailableError('engine-unsupported', 'This browser engine cannot run the demo recorder.');
         const generation = ++this.generation;
+        const readiness = new AbortController();
+        this.readiness = readiness;
         try {
+            await this.view.waitForControlReady?.(readiness.signal);
+            if (readiness.signal.aborted || generation !== this.generation) return;
+            this.readiness = undefined;
             await cdp('Page.enable', {});
             const added = await cdp('Page.addScriptToEvaluateOnNewDocument', { source: this.source, worldName: BROWSER_DEMO_WORLD, runImmediately: true }) as { identifier?: unknown } | undefined;
             if (typeof added?.identifier === 'string') this.scriptId = added.identifier;
@@ -60,6 +66,8 @@ export class BrowserDemoTabCapture {
             const main = frames.find(frame => frame.main);
             if (!main || !await this.drainFrame(cdp, main, this.enabled, generation)) throw new Error('The recorder did not answer in the page.');
         } catch (error) {
+            if (readiness.signal.aborted) return;
+            this.readiness = undefined;
             await this.stop(false);
             if (error instanceof BrowserDemoUnavailableError) throw error;
             throw new BrowserDemoUnavailableError('handshake-failed', `The demo recorder could not start in this tab: ${error instanceof Error ? error.message : String(error)}`);
@@ -92,6 +100,13 @@ export class BrowserDemoTabCapture {
 
     /** Stop capture; with `flush` the last queued actions are collected first so a final click is kept. */
     async stop(flush = true): Promise<void> {
+        if (this.readiness) {
+            this.readiness.abort(new Error('Demo capture stopped before the page became ready.'));
+            this.readiness = undefined;
+            ++this.generation;
+            if (flush) this.sink.gap('capture-failed');
+            return;
+        }
         if (this.timer) clearInterval(this.timer);
         this.timer = undefined;
         const cdp = this.view.cdp?.bind(this.view);
