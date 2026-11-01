@@ -40,6 +40,7 @@ Its core packages are `coc` and `forge`, plus a shared client library (`coc-clie
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
 | Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
+| Desktop Browser Demonstrations | [browser-demos.md](references/browser-demos.md) | Opt-in action recording, privacy, popup lineage, owner review, explain-only attachment turns and unsent lifecycle |
 | Dashboard SPA · Chat shell | [spa/chat.md](references/spa/chat.md) | Composer gating, review chat lens, chat list and task-group engine |
 | Dashboard SPA · Conversation | [spa/chat-conversation.md](references/spa/chat-conversation.md) | Turn bubbles, chat header, metadata popover, implement-plan card, agents view, tool calls, Quick Ask side-notes |
 | Dashboard SPA · Composer | [spa/chat-composer.md](references/spa/chat-composer.md) | Input area toolbars, attachments, provider/mode/effort/style selectors, Ralph launch |
