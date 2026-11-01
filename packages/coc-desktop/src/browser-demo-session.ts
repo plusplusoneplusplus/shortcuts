@@ -73,12 +73,12 @@ export class BrowserDemoSession {
     }
 
     /**
-     * Add the starting tab, a tab whose opener is already captured, or (`addedByUser`) an existing
-     * tab the user chose explicitly. Returns false when it is not added.
+     * Add the starting tab, an authorized descendant of a recorded opener (even after closure),
+     * or (`addedByUser`) an existing tab the user chose explicitly.
      */
     addTab(viewId: string, page: { url: string; title: string }, openerViewId?: string, addedByUser = false): boolean {
         if (this.status === 'stopped' || this.tabs.has(viewId)) return false;
-        if (openerViewId !== undefined && !this.hasTab(openerViewId)) return false;
+        if (openerViewId !== undefined && !this.tabs.has(openerViewId)) return false;
         if (this.tabs.size >= BROWSER_DEMO_LIMITS.tabs) {
             this.gap(openerViewId ?? this.activeViewId ?? viewId, 'tab-limit');
             return false;

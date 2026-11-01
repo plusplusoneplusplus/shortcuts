@@ -40,6 +40,13 @@ immediate source; recursively opened descendants inherit the recording. Existing
 unrelated tabs require explicit Add. Human navigation permissions and the
 agent-driven site approval path retain their existing contracts.
 
+Authorized child reservations retain historical opener lineage after closure.
+Automatic Stop requires no open captured tabs, pending descendants or close drains.
+Pending children expire after 30 seconds; expiry, failed adoption, child closure
+before readiness and explicit Stop cancellation disclose gaps. Readiness matches
+the exact window/session and refuses file previews, busy tabs and existing demo
+members. Owner teardown revokes reservations without retaining unsent data.
+
 ### Toolbar, review and attachment
 
 `shared/file-path/browser-demo.ts` mirrors counts and owner identities in SPA

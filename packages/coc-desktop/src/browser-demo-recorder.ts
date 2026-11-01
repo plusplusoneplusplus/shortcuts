@@ -160,7 +160,7 @@ export class BrowserDemoRecorders {
         const demo = this.demo(ownerId, id);
         if (demo.stopping) throw new BrowserDemoError('busy', 'The demo is finishing its capture.');
         demo.stopping = true;
-        this.clearPending(demo);
+        this.clearPending(demo, true);
         try {
             // Keep registrations alive until the final actions pass through their sinks.
             await Promise.all([...demo.captures.keys()].map(viewId => this.drainCapture(demo, viewId)));
@@ -226,6 +226,7 @@ export class BrowserDemoRecorders {
             if (!demo.pending.delete(viewId) || this.demos.get(demo.session.id) !== demo) return;
             demo.session.gap(openerViewId, 'tab-not-opened');
             this.emit(demo);
+            void this.stopIfIdle(demo).catch(error => console.error('[coc-desktop] Browser demo pending-tab cleanup failed:', error));
         }, this.options.pendingTabMs ?? BROWSER_DEMO_PENDING_TAB_MS);
         timer.unref?.();
         demo.pending.set(viewId, { openerViewId, timer });
@@ -240,8 +241,15 @@ export class BrowserDemoRecorders {
             clearTimeout(pending.timer);
             demo.pending.delete(viewId);
             const source = this.options.lookup(ownerId, viewId);
-            if (!source || source.sessionKey !== demo.session.owner.routingRef) { demo.session.gap(pending.openerViewId, 'tab-not-opened'); this.emit(demo); return; }
+            if (!source || source.sessionKey !== demo.session.owner.routingRef || source.sourceKind !== 'url'
+                || source.busy || this.member(ownerId, viewId)) {
+                demo.session.gap(pending.openerViewId, 'tab-not-opened');
+                this.emit(demo);
+                await this.stopIfIdle(demo);
+                return;
+            }
             await this.adopt(demo, viewId, source, pending.openerViewId);
+            await this.stopIfIdle(demo);
             return;
         }
     }
@@ -282,6 +290,7 @@ export class BrowserDemoRecorders {
             const pending = demo.pending.get(viewId);
             if (pending) { clearTimeout(pending.timer); demo.pending.delete(viewId); demo.session.gap(pending.openerViewId, 'tab-not-opened'); this.emit(demo); }
             if (demo.session.hasTab(viewId)) await this.closeMember(demo, viewId);
+            else await this.stopIfIdle(demo);
         }
     }
 
@@ -395,13 +404,20 @@ export class BrowserDemoRecorders {
             demo.closing.set(viewId, closing);
         }
         await closing;
-        if (this.demos.get(demo.session.id) !== demo) return;
-        // The last captured tab closed: stop and hand the draft to review.
-        if (!demo.session.viewIds().length && demo.session.state !== 'stopped' && !demo.stopping) await this.stop(demo.ownerId, demo.session.id);
+        await this.stopIfIdle(demo);
     }
 
-    private clearPending(demo: Demo): void {
-        for (const { timer } of demo.pending.values()) clearTimeout(timer);
+    private async stopIfIdle(demo: Demo): Promise<void> {
+        if (this.demos.get(demo.session.id) !== demo || demo.stopping || demo.session.state === 'stopped'
+            || demo.session.viewIds().length || demo.pending.size || demo.closing.size) return;
+        await this.stop(demo.ownerId, demo.session.id);
+    }
+
+    private clearPending(demo: Demo, reportGaps = false): void {
+        for (const { openerViewId, timer } of demo.pending.values()) {
+            clearTimeout(timer);
+            if (reportGaps) demo.session.gap(openerViewId, 'tab-not-opened');
+        }
         demo.pending.clear();
     }
 

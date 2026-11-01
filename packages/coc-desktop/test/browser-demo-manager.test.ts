@@ -280,6 +280,37 @@ describe('browser demo recording in the host manager', () => {
         } finally { gate.resolve(); await h.manager.dispose(); }
     });
 
+    it.each([false, true])('adopts authorized children and grandchildren after opener closure (other tab: %s)', async otherTab => {
+        const h = harness();
+        try {
+            await h.manager.open(1, 'root', 'https://a.test/', 'w');
+            const { id } = await h.manager.demos.start(1, owner, 'root');
+            if (otherTab) {
+                await h.manager.open(1, 'other', 'https://b.test/', 'w');
+                await h.manager.demos.addTab(1, id, 'other');
+            }
+            h.sinks.get('root')!.newTab('https://child.test/');
+            const child = h.send.mock.calls.at(-1)![2].viewId as string;
+            await h.manager.close(1, 'root');
+            expect(h.manager.demos.draft(1, id).status).toBe('recording');
+            await expect(h.run('p', { action: 'tabs' })).rejects.toThrow(BROWSER_DEMO_RECORDING_ERROR);
+            await h.manager.open(1, child, 'https://child.test/', 'w');
+            await h.flush();
+            h.sinks.get(child)!.newTab('https://grandchild.test/');
+            const grandchild = h.send.mock.calls.at(-1)![2].viewId as string;
+            await h.manager.close(1, child);
+            await h.manager.open(1, grandchild, 'https://grandchild.test/', 'w');
+            await h.flush();
+            const draft = h.manager.demos.draft(1, id);
+            expect(draft.tabs.find(tab => tab.viewId === child)).toMatchObject({ openerViewId: 'root', closed: true });
+            expect(draft.tabs.find(tab => tab.viewId === grandchild)).toMatchObject({ openerViewId: child });
+            expect(draft.incomplete).toBe(false);
+            await h.manager.close(1, grandchild);
+            if (otherTab) await h.manager.close(1, 'other');
+            expect(h.manager.demos.draft(1, id).status).toBe('stopped');
+        } finally { await h.manager.dispose(); }
+    });
+
     // Regression: awaiting draft cleanup before clearing the tab map let a reload's reopen reuse the dying entry.
     it('frees drafts in the same tick as a full SPA reload so reopened tabs are fresh', async () => {
         const h = harness();

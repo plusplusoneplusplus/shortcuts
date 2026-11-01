@@ -371,6 +371,115 @@ describe('BrowserDemoRecorders capture lifecycle', () => {
 });
 
 describe('BrowserDemoRecorders tab lineage', () => {
+    it.each([false, true])('retains an authorized descendant after its opener closes (other tab: %s)', async otherTab => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        if (otherTab) {
+            h.addTab('other');
+            await h.recorders.addTab(1, id, 'other');
+        }
+        const child = h.recorders.reserveChild(1, 'root')!;
+        await h.recorders.tabClosed(1, 'root');
+        expect(h.recorders.draft(1, id).status).toBe('recording');
+        expect(h.recorders.reserveChild(1, 'root')).toBeUndefined();
+        h.addTab(child);
+        await h.recorders.tabReady(1, child);
+        const draft = h.recorders.draft(1, id);
+        expect(draft.tabs.find(tab => tab.viewId === child)).toMatchObject({ openerViewId: 'root' });
+        expect(draft.incomplete).toBe(false);
+        h.captures.get(child)!.sink.actions([click]);
+        expect(h.recorders.draft(1, id).steps.at(-1)).toMatchObject({ type: 'action', viewId: child });
+        await h.recorders.tabClosed(1, child);
+        if (otherTab) await h.recorders.tabClosed(1, 'other');
+        expect(h.recorders.draft(1, id).status).toBe('stopped');
+    });
+
+    it('keeps an orphaned pending descendant paused when it is adopted', async () => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const child = h.recorders.reserveChild(1, 'root')!;
+        h.recorders.pause(1, id);
+        await h.recorders.tabClosed(1, 'root');
+        h.addTab(child);
+        await h.recorders.tabReady(1, child);
+        expect(h.recorders.draft(1, id).status).toBe('paused');
+        expect(h.captures.get(child)!.enabled).toBe(false);
+        await h.recorders.release(1, id);
+    });
+
+    it('stops with an explicit gap when the last pending descendant expires after opener closure', async () => {
+        vi.useFakeTimers();
+        const h = harness({ pendingTabMs: 1_000 });
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const child = h.recorders.reserveChild(1, 'root')!;
+        await h.recorders.tabClosed(1, 'root');
+        expect(h.recorders.draft(1, id).status).toBe('recording');
+        await vi.advanceTimersByTimeAsync(1_000);
+        const draft = h.recorders.draft(1, id);
+        expect(draft.status).toBe('stopped');
+        expect(draft.steps.at(-1)).toMatchObject({ type: 'gap', reason: 'tab-not-opened', viewId: 'root' });
+        expect(draft.incomplete).toBe(true);
+        h.addTab(child);
+        await h.recorders.tabReady(1, child);
+        expect(h.recorders.draft(1, id).tabs).toHaveLength(1);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('discloses explicit Stop cancellation of authorized pending descendants', async () => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const child = h.recorders.reserveChild(1, 'root')!;
+        const draft = await h.recorders.stop(1, id);
+        expect(draft.incomplete).toBe(true);
+        expect(draft.steps.at(-1)).toMatchObject({ type: 'gap', reason: 'tab-not-opened', viewId: 'root' });
+        h.addTab(child);
+        await h.recorders.tabReady(1, child);
+        expect(h.recorders.draft(1, id).tabs).toHaveLength(1);
+    });
+
+    it.each(['foreign-session', 'file', 'busy', 'closed-before-ready'] as const)('discloses failed orphan adoption and stops (%s)', async reason => {
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const child = h.recorders.reserveChild(1, 'root')!;
+        await h.recorders.tabClosed(1, 'root');
+        if (reason === 'closed-before-ready') await h.recorders.tabClosed(1, child);
+        else {
+            h.addTab(child, reason === 'foreign-session' ? { sessionKey: 'ws-b' }
+                : reason === 'file' ? { sourceKind: 'file' } : { busy: 'AI input pending' });
+            await h.recorders.tabReady(1, child);
+        }
+        const draft = h.recorders.draft(1, id);
+        expect(draft.status).toBe('stopped');
+        expect(draft.incomplete).toBe(true);
+        expect(draft.steps.at(-1)).toMatchObject({ type: 'gap', reason: 'tab-not-opened', viewId: 'root' });
+        expect(h.captures.has(child)).toBe(false);
+    });
+
+    it('retains a pending child across foreign-window readiness and releases it on owner teardown', async () => {
+        vi.useFakeTimers();
+        const h = harness();
+        h.addTab('root');
+        const { id } = await h.recorders.start(1, owner, 'root');
+        const child = h.recorders.reserveChild(1, 'root')!;
+        await h.recorders.tabClosed(1, 'root');
+        h.addTab(child, {}, 2);
+        await h.recorders.tabReady(2, child);
+        expect(h.recorders.draft(1, id).status).toBe('recording');
+        expect(h.recorders.draft(1, id).tabs).toHaveLength(1);
+        expect(vi.getTimerCount()).toBe(1);
+        await h.recorders.closeOwner(1);
+        expect(h.recorders.unsent()).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+        h.addTab(child);
+        await h.recorders.tabReady(1, child);
+        expect(h.recorders.unsent()).toEqual([]);
+    });
+
     it('follows reserved child tabs recursively, never tabs opened by unrecorded tabs', async () => {
         const h = harness();
         h.addTab('root');

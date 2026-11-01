@@ -55,7 +55,10 @@ describe('BrowserDemoSession', () => {
         demo.navigated('root', { url: 'https://a.test/again', title: '' });
         expect(demo.snapshot().steps.map(step => step.type)).toEqual(['tab-opened', 'navigate', 'tab-closed']);
         expect(demo.snapshot().steps[1]).toMatchObject({ title: 'Next for [email]' });
-        expect(demo.addTab('late', { url: 'https://b.test/', title: '' }, 'root')).toBe(false);
+        expect(demo.addTab('late', { url: 'https://b.test/', title: '' }, 'root')).toBe(true);
+        expect(demo.snapshot().tabs[1]).toMatchObject({ viewId: 'late', openerViewId: 'root' });
+        expect(demo.hasTab('root')).toBe(false);
+        expect(demo.addTab('unknown', { url: 'https://c.test/', title: '' }, 'stranger')).toBe(false);
     });
 
     it('drops actions while paused and marks the pause as a gap', () => {

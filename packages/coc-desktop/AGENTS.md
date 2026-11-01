@@ -25,6 +25,9 @@ recheck recording ownership before queued main-process dispatch.
 Share final capture drains between Stop and captured-tab closure. Retire routing
 synchronously, retain sinks through the drain, and report unavailable final capture
 as a gap before closing membership.
+Authorized pending descendants retain historical opener lineage after closure.
+Auto-stop only after tabs, pending descendants and close drains are exhausted;
+expiry, failed adoption and explicit Stop cancellation must disclose gaps.
 
 `main.ts` and `container-main.ts` confirm unsent drafts before shutdown side
 effects. Native close/reload warnings belong to registered owning windows;
