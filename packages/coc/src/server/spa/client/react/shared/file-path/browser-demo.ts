@@ -38,6 +38,7 @@ function apply(state: BrowserDemoState): void {
     }
     else states.set(state.id, state);
     notify();
+    pauseOutOfScope();
 }
 
 function attach(): DesktopBrowserDemo | undefined {
@@ -51,7 +52,7 @@ function attach(): DesktopBrowserDemo | undefined {
         if (!result.ok || !result.drafts) return;
         for (const state of result.drafts) states.set(state.id, state);
         notify();
-        if (viewing) pauseOutOfScope();
+        pauseOutOfScope();
     }).catch(() => undefined);
     return demo;
 }
@@ -100,12 +101,15 @@ export function listBrowserDemos(): BrowserDemoState[] {
 
 let viewing: { token: number; owner: BrowserDemoOwner | null } | null = null;
 let nextViewingToken = 1;
+const scopePauses = new Set<string>();
 
 /** Pause recordings whose chat is not the one this window shows; nothing records for another scope. */
 function pauseOutOfScope(): void {
     for (const state of states.values()) {
-        if (state.status === 'recording' && (!viewing?.owner || !sameChatOwner(state.owner, viewing.owner))) {
-            void runBrowserDemoCommand({ action: 'pause', id: state.id, reason: 'scope' });
+        if (state.status === 'recording' && !isBrowserDemoChatInView(state.owner) && !scopePauses.has(state.id)) {
+            scopePauses.add(state.id);
+            void runBrowserDemoCommand({ action: 'pause', id: state.id, reason: 'scope' })
+                .finally(() => { scopePauses.delete(state.id); });
         }
     }
 }
@@ -139,6 +143,12 @@ export function isBrowserDemoChatInView(owner: BrowserDemoOwner): boolean {
 export async function runBrowserDemoCommand(command: BrowserDemoCommand): Promise<BrowserDemoCommandResult> {
     const demo = attach();
     if (!demo) return { ok: false, reason: 'engine-unsupported', message: 'Demo recording is unavailable in this desktop version.' };
+    if (command.action === 'start' || command.action === 'resume' || command.action === 'add-tab') {
+        const owner = command.action === 'start' ? command.owner : states.get(command.id)?.owner;
+        if (!owner || !isBrowserDemoChatInView(owner)) {
+            return { ok: false, reason: 'invalid', message: 'Open the recording chat to continue.' };
+        }
+    }
     let result: BrowserDemoCommandResult;
     try {
         result = await demo.command(command);
@@ -167,6 +177,7 @@ export function resetBrowserDemosForTest(): void {
     attached?.off();
     attached = null;
     states.clear();
+    scopePauses.clear();
     listeners.clear();
     if (unloadGuardAttached) window.removeEventListener('beforeunload', beforeUnload);
     unloadGuardAttached = false;

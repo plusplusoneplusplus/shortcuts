@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { StrictMode } from 'react';
 import { BrowserDemoReview } from '../../../../src/server/spa/client/react/shared/file-path/BrowserDemoReview';
-import { listBrowserDemos, resetBrowserDemosForTest, runBrowserDemoCommand } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
+import { listBrowserDemos, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 import {
     buildBrowserDemoAttachment, describeBrowserDemoStep, getBrowserDemoEdits, looksLikeSecret, resetBrowserDemoEditsForTest,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo-review';
@@ -57,6 +57,7 @@ async function mount(onClose = vi.fn()) {
 }
 
 beforeEach(() => {
+    setBrowserDemoViewingChat(owner);
     mock.listeners = [];
     sendMessage = vi.fn(async () => ({}));
     mock.command.mockReset().mockImplementation(async (command: { action: string }) => {
@@ -116,6 +117,25 @@ describe('browser demo attachment', () => {
 });
 
 describe('browser demo review', () => {
+    it.each([
+        null,
+        { ...owner, processId: 'chat-2' },
+        { ...owner, workspaceId: 'other-workspace' },
+        { ...owner, routingRef: 'remote:server-b:ws-remote' },
+    ])('keeps review recoverable but refuses Resume outside its owner: %j', async otherOwner => {
+        await mount();
+        act(() => { setBrowserDemoViewingChat(otherOwner); });
+        const resume = screen.getByRole('button', { name: 'Resume recording' }) as HTMLButtonElement;
+        expect(resume.disabled).toBe(true);
+        fireEvent.click(resume);
+        expect(commands()).not.toContainEqual({ action: 'resume', id: 'demo-1' });
+        expect(screen.getByRole('button', { name: 'Send to chat…' })).toBeTruthy();
+        act(() => { setBrowserDemoViewingChat({ ...owner, processId: 'queue_chat-1' }); });
+        expect(resume.disabled).toBe(false);
+        fireEvent.click(resume);
+        await waitFor(() => expect(commands()).toContainEqual({ action: 'resume', id: 'demo-1' }));
+    });
+
     it('loads the stopped action list through React Strict Mode effect replay', async () => {
         await runBrowserDemoCommand({ action: 'list' });
         render(<StrictMode><BrowserDemoReview demoId="demo-1" client={client()} onClose={vi.fn()} /></StrictMode>);

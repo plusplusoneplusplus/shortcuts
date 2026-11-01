@@ -759,9 +759,11 @@ never be handed to the local Electron process.
 
 Default-off `browserControl.demoRecordingEnabled` adds `BrowserDemoStrip` and
 `BrowserDemoReview` to `UnifiedBrowserTab`. Their draft and annotation state is
-memory-only and belongs to the concrete chat/workspace/clone owner. Viewing scope,
-Resume and composer exclusion compare that full owner, normalizing queue IDs
-only inside it. Aggregated member chats supply `viewingChatOwner` separately from
+memory-only and belongs to the concrete chat/workspace/clone owner. Start, Add
+and every Resume control require that owner in view; the shared command boundary
+also checks admission and reconciles delayed recording states against current scope.
+Composer exclusion compares the full owner, normalizing queue IDs only inside it.
+Aggregated member chats supply `viewingChatOwner` separately from
 the panel scope and dock target. Stop opens review; another tab of that owner
 can recover a stopped draft. Explicit Send
 uses the owner-routed process attachment API and carries the explain-only

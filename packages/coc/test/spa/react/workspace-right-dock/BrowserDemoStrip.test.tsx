@@ -4,7 +4,7 @@ import { BrowserDemoStrip } from '../../../../src/server/spa/client/react/shared
 import {
     getBrowserDemoForOwner, isBrowserDemoCapturingChat, isBrowserDemoChatInView, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
-import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import type { BrowserDemoCommandResult, BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 import { getBrowserDemoEdits, setBrowserDemoEdits } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo-review';
 
 const mock = vi.hoisted(() => ({
@@ -37,6 +37,7 @@ beforeEach(() => {
     mock.hasDemo = true;
     mock.listeners = [];
     mock.command.mockReset().mockImplementation(async (command: { action: string }) => command.action === 'list' ? { ok: true, drafts: [] } : { ok: true });
+    setBrowserDemoViewingChat(owner);
 });
 afterEach(() => { cleanup(); resetBrowserDemosForTest(); });
 
@@ -282,5 +283,98 @@ describe('browser demo record controls', () => {
         expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(true);
         act(() => { setBrowserDemoViewingChat({ ...owner, processId: 'queue_chat-1' }); });
         expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    const departures = [
+        null,
+        { ...owner, processId: 'chat-2' },
+        { ...owner, workspaceId: 'other-workspace' },
+        { ...owner, routingRef: 'remote:server-b:w' },
+    ];
+
+    it.each(departures)('refuses every capture admission outside the owner: %j', async otherOwner => {
+        mount();
+        push(state({ status: 'stopped' }));
+        act(() => { setBrowserDemoViewingChat(otherOwner); });
+        for (const command of [
+            { action: 'start', owner, viewId: 'one' } as const,
+            { action: 'resume', id: 'demo-1' } as const,
+            { action: 'add-tab', id: 'demo-1', viewId: 'two' } as const,
+        ]) {
+            await expect(runBrowserDemoCommand(command)).resolves.toMatchObject({ ok: false, reason: 'invalid' });
+            expect(mock.command).not.toHaveBeenCalledWith(command);
+        }
+        expect((screen.getByRole('button', { name: 'Resume recording' }) as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Resume recording' }));
+        for (const pauseReason of ['user', 'scope', 'disconnected'] as const) {
+            push(state({ status: 'paused', pauseReason }));
+            expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+        }
+        expect(mock.command).not.toHaveBeenCalledWith({ action: 'resume', id: 'demo-1' });
+        push(state({ ended: 'discarded' }));
+        expect((screen.getByRole('button', { name: 'Record demo' }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it.each(departures)('pauses delayed Start completion after departure: %j', async otherOwner => {
+        let finish!: (result: BrowserDemoCommandResult) => void;
+        mock.command.mockImplementation((command: { action: string }) => {
+            if (command.action === 'start') return new Promise<BrowserDemoCommandResult>(resolve => { finish = resolve; });
+            if (command.action === 'pause') return Promise.resolve({ ok: true, state: state({ status: 'paused', pauseReason: 'scope' }) });
+            return Promise.resolve({ ok: true, drafts: [] });
+        });
+        mount();
+        fireEvent.click(screen.getByRole('button', { name: 'Record demo' }));
+        act(() => { setBrowserDemoViewingChat(otherOwner); });
+        expect(mock.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
+        await act(async () => { finish({ ok: true, state: state() }); });
+        expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' });
+        expect(getBrowserDemoForOwner(owner)?.status).toBe('paused');
+    });
+
+    it.each(['paused', 'stopped'] as const)('pauses delayed %s Resume completion after departure', async status => {
+        let finish!: (result: BrowserDemoCommandResult) => void;
+        mock.command.mockImplementation((command: { action: string }) => {
+            if (command.action === 'resume') return new Promise<BrowserDemoCommandResult>(resolve => { finish = resolve; });
+            if (command.action === 'pause') return Promise.resolve({ ok: true, state: state({ status: 'paused', pauseReason: 'scope' }) });
+            return Promise.resolve({ ok: true, drafts: [] });
+        });
+        mount();
+        push(state({ status, pauseReason: status === 'paused' ? 'user' : undefined }));
+        fireEvent.click(screen.getByRole('button', { name: status === 'paused' ? 'Resume' : 'Resume recording' }));
+        act(() => { setBrowserDemoViewingChat(null); });
+        await act(async () => { finish({ ok: true, state: state() }); });
+        expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' });
+        expect(getBrowserDemoForOwner(owner)?.status).toBe('paused');
+    });
+
+    it('coalesces repeated recording events while the scope pause is in flight', async () => {
+        let finish!: (result: BrowserDemoCommandResult) => void;
+        mock.command.mockImplementation((command: { action: string }) => command.action === 'pause'
+            ? new Promise<BrowserDemoCommandResult>(resolve => { finish = resolve; })
+            : Promise.resolve({ ok: true, drafts: [] }));
+        mount();
+        push(state());
+        act(() => { setBrowserDemoViewingChat(null); });
+        push(state({ stepCount: 1 }));
+        push(state({ stepCount: 2 }));
+        expect(mock.command.mock.calls.filter(([command]) => command.action === 'pause')).toHaveLength(1);
+        await act(async () => { finish({ ok: true, state: state({ status: 'paused', pauseReason: 'scope' }) }); });
+        push(state());
+        expect(mock.command.mock.calls.filter(([command]) => command.action === 'pause')).toHaveLength(2);
+        await act(async () => { finish({ ok: true, state: state({ status: 'paused', pauseReason: 'scope' }) }); });
+    });
+
+    it.each(['event', 'list'] as const)('reconciles out-of-scope recording from %s without a scope change', async source => {
+        setBrowserDemoViewingChat(null);
+        mock.command.mockImplementation(async (command: { action: string }) => {
+            if (command.action === 'list') return { ok: true, drafts: source === 'list' ? [state()] : [] };
+            if (command.action === 'pause') return { ok: true, state: state({ status: 'paused', pauseReason: 'scope' }) };
+            return { ok: true };
+        });
+        mount();
+        if (source === 'event') push(state());
+        await waitFor(() => expect(getBrowserDemoForOwner(owner)?.status).toBe('paused'));
+        expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' });
     });
 });

@@ -3,7 +3,7 @@ import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { Dialog } from '../../ui/Dialog';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { BrowserDemoSnapshot } from './browser-bridge';
-import { listBrowserDemos, runBrowserDemoCommand, subscribeBrowserDemos } from './browser-demo';
+import { isBrowserDemoChatInView, listBrowserDemos, runBrowserDemoCommand, subscribeBrowserDemos } from './browser-demo';
 import {
     BROWSER_DEMO_EXAMPLE_MAX, BROWSER_DEMO_MESSAGE_MAX, BROWSER_DEMO_NOTE_MAX, browserDemoAcceptsExample, browserDemoMessageContent,
     browserDemoTabRef, buildBrowserDemoAttachment, clearBrowserDemoEdits, describeBrowserDemoStep, getBrowserDemoEdits, looksLikeSecret,
@@ -36,6 +36,8 @@ export function BrowserDemoReview({ demoId, client, onClose }: BrowserDemoReview
     const titleId = useId();
     const state = useSyncExternalStore(subscribeBrowserDemos,
         useCallback(() => listBrowserDemos().find(item => item.id === demoId) ?? null, [demoId]), () => null);
+    const inView = useSyncExternalStore(subscribeBrowserDemos,
+        () => state ? isBrowserDemoChatInView(state.owner) : false, () => false);
     const [draft, setDraft] = useState<BrowserDemoSnapshot | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [edits, setEditsState] = useState<BrowserDemoEdits>(() => getBrowserDemoEdits(demoId));
@@ -200,7 +202,9 @@ export function BrowserDemoReview({ demoId, client, onClose }: BrowserDemoReview
                             onClick={() => { void send(); }}>{pending ? 'Sending…' : error ? 'Retry send' : 'Send demo'}</button>
                     </> : <>
                         <button type="button" className={button} disabled={pending} onClick={() => setConfirmDiscard(true)}>Discard</button>
-                        <button type="button" className={button} disabled={pending} onClick={() => { void resume(); }}>Resume recording</button>
+                        <button type="button" className={button} disabled={pending || !inView}
+                            title={!inView ? 'Open the recording chat to continue.' : undefined}
+                            onClick={() => { void resume(); }}>Resume recording</button>
                         <button type="button" className={`${button} bg-[#0078d4] text-white hover:bg-[#106ebe]`} disabled={!canSend}
                             onClick={() => setPreview(true)}>Send to chat…</button>
                     </>}

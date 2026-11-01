@@ -39,8 +39,9 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
     const [error, setError] = useState<{ viewId: string; text: string } | null>(null);
     const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
+    const captureOwner = demo?.owner ?? owner;
     const inView = useSyncExternalStore(subscribeBrowserDemos,
-        () => demo ? isBrowserDemoChatInView(demo.owner) : false, () => false);
+        () => captureOwner ? isBrowserDemoChatInView(captureOwner) : false, () => false);
     const recordingHere = active && demo?.status === 'recording' ? demo.id : null;
     useEffect(() => {
         if (recordingHere) void runBrowserDemoCommand({ action: 'switch', viewId });
@@ -72,11 +73,12 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
         const capturing = ownerDemo && ownerDemo.status !== 'stopped' ? ownerDemo : null;
         const reason = !supported ? 'Demo recording is unavailable in this desktop version.'
             : !owner ? 'Open a chat to record a demo.'
+            : !inView ? 'Open the recording chat to continue.'
             : ownerDemo?.status === 'stopped' ? 'Review or discard this chat’s demo first.'
             : !ready ? 'Open a web page to record a demo.' : null;
         if (capturing) {
             return <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="browser-demo-add">
-                <button type="button" className={button} disabled={pending || !ready}
+                <button type="button" className={button} disabled={pending || !ready || !inView}
                     title={ready ? 'Capture this tab in the chat’s demo recording' : 'Open a web page first.'}
                     onClick={() => { void run({ action: 'add-tab', id: capturing.id, viewId }); }}>Add to recording</button>
                 {alert}
@@ -109,14 +111,16 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
             <button type="button" className={button} onClick={() => setConfirmDiscard(null)}>Keep</button>
         </> : <>
             {demo.status === 'recording' && <button type="button" className={button} disabled={pending} onClick={() => { void run({ action: 'pause', id: demo.id, reason: 'user' }); }}>Pause</button>}
-            {demo.status === 'paused' && <button type="button" className={button} disabled={pending || (demo.pauseReason === 'scope' && !inView)}
-                title={demo.pauseReason === 'scope' && !inView ? 'Open the recording chat to continue.' : undefined}
+            {demo.status === 'paused' && <button type="button" className={button} disabled={pending || !inView}
+                title={!inView ? 'Open the recording chat to continue.' : undefined}
                 onClick={() => { void run({ action: 'resume', id: demo.id }); }}>Resume</button>}
             {demo.status !== 'stopped' && <button type="button" className={button} disabled={pending} onClick={() => {
                 void run({ action: 'stop', id: demo.id }).then(ok => { if (ok && onReview) onReview(demo); });
             }}>Stop</button>}
             {demo.status === 'stopped' && onReview && <button type="button" className={button} onClick={() => onReview(demo)}>Review</button>}
-            {demo.status === 'stopped' && <button type="button" className={button} disabled={pending} onClick={() => { void run({ action: 'resume', id: demo.id }); }}>Resume recording</button>}
+            {demo.status === 'stopped' && <button type="button" className={button} disabled={pending || !inView}
+                title={!inView ? 'Open the recording chat to continue.' : undefined}
+                onClick={() => { void run({ action: 'resume', id: demo.id }); }}>Resume recording</button>}
             <button type="button" className={button} disabled={pending} onClick={() => setConfirmDiscard(demo.id)}>Discard</button>
         </>}
         {demo.incomplete && <span className="w-full" role="note">Some steps could not be captured. Review will show the gaps.</span>}
