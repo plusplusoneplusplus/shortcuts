@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import {
-    clearUnifiedTabGroupState, readUnifiedTabGroupState, toggleGroupFolded, useUnifiedTabGroupState,
+    clearUnifiedTabGroupState, moveTabGroup, readUnifiedTabGroupOrder, readUnifiedTabGroupState, toggleGroupFolded,
+    useUnifiedTabGroupOrder, useUnifiedTabGroupState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroupStore';
 import { unifiedPanelStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -39,8 +40,9 @@ describe('unifiedPanelTabGroupStore', () => {
     it('persists toggles using the panel scope and isolates equal workspace ids on different hosts', () => {
         toggleGroupFolded('host-a:workspace', 'files');
         toggleGroupFolded('host-a:workspace', 'tools');
-        expect(localStorage.getItem('unified-right-panel:host-a:workspace:groups')).toBe('["tools","files"]');
-        expect(JSON.parse(localStorage.getItem(key('host-a:workspace'))!)).toEqual(['tools', 'files']);
+        expect(JSON.parse(localStorage.getItem('unified-right-panel:host-a:workspace:groups')!)).toEqual({
+            folded: ['tools', 'files'], order: ['tools', 'files', 'web', 'canvas'],
+        });
         expect([...readUnifiedTabGroupState('host-b:workspace')]).toEqual([]);
         const first = readUnifiedTabGroupState('host-a:workspace');
         expect(readUnifiedTabGroupState('host-a:workspace')).toBe(first);
@@ -143,5 +145,63 @@ describe('unifiedPanelTabGroupStore', () => {
         expect(() => toggleGroupFolded('one', 'tools')).not.toThrow();
         expect(() => clearUnifiedTabGroupState('one')).not.toThrow();
         expect(() => clearUnifiedTabGroupState()).not.toThrow();
+    });
+
+    describe('group order', () => {
+        it('defaults to the fixed order with a stable snapshot', () => {
+            const first = readUnifiedTabGroupOrder('one');
+            expect(first).toEqual(['tools', 'files', 'web', 'canvas']);
+            expect(readUnifiedTabGroupOrder('one')).toBe(first);
+        });
+
+        it('persists moves beside fold state and keeps both through later writes', () => {
+            toggleGroupFolded('one', 'tools');
+            moveTabGroup('one', 'web', 'tools');
+            expect(JSON.parse(localStorage.getItem(key('one'))!)).toEqual({
+                folded: ['tools'], order: ['web', 'tools', 'files', 'canvas'],
+            });
+            toggleGroupFolded('one', 'files');
+            expect(readUnifiedTabGroupOrder('one')).toEqual(['web', 'tools', 'files', 'canvas']);
+            expect([...readUnifiedTabGroupState('one')]).toEqual(['tools', 'files']);
+        });
+
+        it('isolates workspaces and equal workspace ids on different hosts', () => {
+            moveTabGroup('host-a:workspace', 'canvas', 'tools');
+            expect(readUnifiedTabGroupOrder('host-a:workspace')).toEqual(['canvas', 'tools', 'files', 'web']);
+            expect(readUnifiedTabGroupOrder('host-b:workspace')).toEqual(['tools', 'files', 'web', 'canvas']);
+            expect(readUnifiedTabGroupOrder('other')).toEqual(['tools', 'files', 'web', 'canvas']);
+        });
+
+        it('reads legacy folded-only arrays with the default order', () => {
+            localStorage.setItem(key('legacy'), '["files"]');
+            expect([...readUnifiedTabGroupState('legacy')]).toEqual(['files']);
+            expect(readUnifiedTabGroupOrder('legacy')).toEqual(['tools', 'files', 'web', 'canvas']);
+            moveTabGroup('legacy', 'files', null);
+            expect(JSON.parse(localStorage.getItem(key('legacy'))!)).toEqual({
+                folded: ['files'], order: ['tools', 'web', 'canvas', 'files'],
+            });
+        });
+
+        it('validates saved orders: unknown, repeated and missing groups reconcile', () => {
+            localStorage.setItem(key('saved'), JSON.stringify({ folded: 'bad', order: ['web', 'nope', 'web', 'canvas'] }));
+            expect(readUnifiedTabGroupOrder('saved')).toEqual(['web', 'canvas', 'tools', 'files']);
+            expect([...readUnifiedTabGroupState('saved')]).toEqual([]);
+            localStorage.setItem(key('saved'), JSON.stringify({ order: 7 }));
+            expect(readUnifiedTabGroupOrder('saved')).toEqual(['tools', 'files', 'web', 'canvas']);
+        });
+
+        it('skips no-op moves without writing', () => {
+            moveTabGroup('one', 'files', 'web');
+            expect(localStorage.getItem(key('one'))).toBeNull();
+        });
+
+        it('notifies subscribers and resets on clear', () => {
+            const { result } = renderHook(() => useUnifiedTabGroupOrder('hook'));
+            expect(result.current).toEqual(['tools', 'files', 'web', 'canvas']);
+            act(() => moveTabGroup('hook', 'web', null));
+            expect(result.current).toEqual(['tools', 'files', 'canvas', 'web']);
+            act(() => clearUnifiedTabGroupState('hook'));
+            expect(result.current).toEqual(['tools', 'files', 'web', 'canvas']);
+        });
     });
 });

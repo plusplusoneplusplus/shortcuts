@@ -907,12 +907,17 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-Default-off `features.panelTabGroups` partitions saved order into fixed Tools,
-Files, Web and Canvas groups in one strip row. The cap is three, with pinned,
-active and preview priority; overflow uses the full saved group in a searchable
-native-view-overlay portal shared with canvas compression. Fold state persists
-per panel scope at `unified-right-panel:<scope>:groups`, independently of chats.
-Moves stay within the kind group and bulk closes retain the panel's guards.
+Default-off `features.panelTabGroups` partitions saved order into Tools, Files,
+Web and Canvas group blocks in one strip row. The cap is three, with pinned,
+active and preview priority; the +N overflow lists the group's hidden tabs in a
+searchable native-view-overlay portal shared with canvas compression. Fold state
+and block order persist per panel scope at `unified-right-panel:<scope>:groups`
+as `{ folded, order }` (a legacy folded-only array still reads), independently of
+chats; saved orders are normalized, with unknown/repeated groups dropped and
+missing ones appended in default order. Dragging a group pill past 4px, or
+Alt+Arrow on it, moves the whole block without touching membership, member order,
+activation or keyed views; a shorter press folds, Escape cancels. Tab moves stay
+within the kind group and bulk closes retain the panel's guards.
 Canvas uses group overflow without a header count chip.
 With groups off and default-on `features.panelTabReordering` set to `false`, the
 strip divides tools from resources and confines moves to a section. With either

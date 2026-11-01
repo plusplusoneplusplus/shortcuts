@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    groupStripTabs, isGroupBoundaryMove, stripGroupForKind,
+    groupStripTabs, isGroupBoundaryMove, moveGroupInOrder, normalizeGroupOrder, stripGroupForKind,
     type GroupStripTabsOptions, type UnifiedTabStripGroup,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
 import type { UnifiedPanelTab, UnifiedTabKind } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -108,6 +108,43 @@ describe('groupStripTabs', () => {
         expect(input.map(item => item.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
         expect([...folded]).toEqual(['files']);
         expect([...dirtyIds]).toEqual(['e']);
+    });
+});
+
+describe('group block order', () => {
+    const input = [tab('t', 'todo'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), tab('c', 'canvas')];
+
+    it('renders blocks in saved order, keeping members, their order and selection intact', () => {
+        const result = groupStripTabs(input, { ...options, order: ['web', 'tools', 'files', 'canvas'], activeId: 'w2' });
+        expect(result.map(item => item.group)).toEqual(['web', 'tools', 'files', 'canvas']);
+        expect(result[0].tabs.map(item => item.id)).toEqual(['w1', 'w2']);
+        expect(result[0].hasActive).toBe(true);
+        expect(result[2].tabs.map(item => item.id)).toEqual(['f1', 'f2']);
+    });
+
+    it('keeps each block\'s hidden partition whatever the block order', () => {
+        const many = [...files, tab('w', 'browser')];
+        const before = groupStripTabs(many, options);
+        const after = groupStripTabs(many, { ...options, order: ['web', 'files'] });
+        expect(after.map(item => item.group)).toEqual(['web', 'files']);
+        expect(after[1].hidden.map(item => item.id)).toEqual(before[0].hidden.map(item => item.id));
+        expect(after[1].hidden).toHaveLength(3);
+    });
+
+    it('reconciles saved orders deterministically', () => {
+        expect(normalizeGroupOrder(undefined)).toEqual(['tools', 'files', 'web', 'canvas']);
+        expect(normalizeGroupOrder('web')).toEqual(['tools', 'files', 'web', 'canvas']);
+        expect(normalizeGroupOrder(['canvas', 'bogus', 'web', 'canvas', null])).toEqual(['canvas', 'web', 'tools', 'files']);
+    });
+
+    it('moves one block before another or to the end', () => {
+        const order = normalizeGroupOrder(undefined);
+        expect(moveGroupInOrder(order, 'web', 'tools')).toEqual(['web', 'tools', 'files', 'canvas']);
+        expect(moveGroupInOrder(order, 'tools', null)).toEqual(['files', 'web', 'canvas', 'tools']);
+        expect(moveGroupInOrder(order, 'tools', 'web')).toEqual(['files', 'tools', 'web', 'canvas']);
+        expect(moveGroupInOrder(order, 'web', 'web')).toEqual(order);
+        expect(moveGroupInOrder(['files'], 'canvas', 'files')).toEqual(['canvas', 'files', 'tools', 'web']);
+        expect(order).toEqual(['tools', 'files', 'web', 'canvas']);
     });
 });
 

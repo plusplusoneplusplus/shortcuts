@@ -3,13 +3,16 @@
  */
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {
     UnifiedPanelTabStrip,
     type UnifiedPanelTabStripProps,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
 import type { UnifiedTabStripGroup } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
+import {
+    clearUnifiedTabGroupState, moveTabGroup, readUnifiedTabGroupOrder, useUnifiedTabGroupOrder,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroupStore';
 import {
     unifiedPanelBulkCloseTargets,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabMenuModel';
@@ -409,5 +412,181 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close others in group' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close all in group' })).toBeEnabled();
+    });
+});
+
+describe('UnifiedPanelTabStrip group block reordering', () => {
+    const tools = [tab('terminal', 'Shell')];
+    const fileTabs = [tab('file', 'a.ts'), tab('file', 'b.ts'), tab('file', 'c.ts')];
+    const web = ['Google', 'Bing', 'YouTube', 'Docs'].map(label => tab('browser', label));
+    const tabs = Object.freeze([...tools, ...fileTabs, ...web]);
+    const folded = new Set<UnifiedTabStripGroup>(['tools', 'files']);
+
+    function Harness({ scope, ...props }: { scope: string } & Partial<UnifiedPanelTabStripProps>) {
+        const order = useUnifiedTabGroupOrder(scope);
+        return <UnifiedPanelTabStrip
+            tabs={tabs} activeId={web[1].id} groupsEnabled foldedGroups={folded}
+            onActivate={vi.fn()} onClose={vi.fn()} onCloseMany={vi.fn()} onMove={vi.fn()}
+            groupOrder={order} onMoveGroup={(group, before) => moveTabGroup(scope, group, before)}
+            {...props}
+        />;
+    }
+
+    function renderHarness(props: Partial<UnifiedPanelTabStripProps> = {}, scope = 'host-a:workspace') {
+        const handlers = { onActivate: vi.fn(), onToggleGroup: vi.fn(), ...props };
+        const view = render(<Harness scope={scope} {...handlers} />);
+        return { ...view, handlers };
+    }
+
+    const blockOrder = () => screen.getAllByRole('group').map(node => node.getAttribute('data-strip-group'));
+    const label = (group: UnifiedTabStripGroup) => screen.getByTestId(`unified-panel-group-${group}`);
+
+    /** Lays the rendered blocks out 100px apart in DOM order (jsdom has no layout). */
+    function layoutBlocks() {
+        screen.getAllByRole('group').forEach((node, index) => {
+            node.getBoundingClientRect = () => ({ left: index * 100, right: index * 100 + 100, width: 100 } as DOMRect);
+        });
+    }
+
+    function drag(group: UnifiedTabStripGroup, fromX: number, toX: number) {
+        layoutBlocks();
+        fireEvent.pointerDown(label(group), { button: 0, clientX: fromX });
+        fireEvent.pointerMove(window, { clientX: toX });
+    }
+
+    afterEach(() => {
+        cleanup();
+        clearUnifiedTabGroupState();
+        localStorage.clear();
+    });
+
+    it('drags Web before Tools as one block, keeping members, active tab, folds, overflow and tab nodes', () => {
+        const { handlers } = renderHarness();
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        const activeNode = tabNode(web[1]);
+        const shownWeb = shownIds('web');
+        expect(overflow('web')).toHaveTextContent('+1');
+
+        drag('web', 250, 30);
+        const indicator = screen.getByTestId('unified-panel-group-drop-indicator');
+        expect(indicator).toHaveAttribute('data-position', 'before');
+        expect(screen.getByRole('group', { name: /^Tools/ })).toContainElement(indicator);
+        expect(screen.getByRole('group', { name: /^Web/ })).toHaveAttribute('data-dragging', 'true');
+        fireEvent.pointerUp(window);
+        // The click that ends a drag must not fold the group.
+        fireEvent.click(label('web'));
+
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        expect(readUnifiedTabGroupOrder('host-a:workspace')).toEqual(['web', 'tools', 'files', 'canvas']);
+        expect(shownIds('web')).toEqual(shownWeb);
+        expect(tabNode(web[1])).toBe(activeNode);
+        expect(activeNode).toHaveAttribute('aria-selected', 'true');
+        expect(label('tools')).toHaveAttribute('aria-expanded', 'false');
+        expect(label('files')).toHaveAttribute('aria-expanded', 'false');
+        expect(overflow('web')).toHaveTextContent('+1');
+        fireEvent.click(overflow('web'));
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual([expect.stringContaining('Docs')]);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(handlers.onToggleGroup).not.toHaveBeenCalled();
+        expect(handlers.onActivate).not.toHaveBeenCalled();
+        expect(screen.getByRole('status')).toHaveTextContent('Web group moved. Position 1 of 3.');
+    });
+
+    it('drops after a block onto the following block slot', () => {
+        renderHarness();
+        drag('tools', 50, 280);
+        expect(screen.getByTestId('unified-panel-group-drop-indicator')).toHaveAttribute('data-position', 'after');
+        fireEvent.pointerUp(window);
+        expect(blockOrder()).toEqual(['files', 'web', 'tools']);
+    });
+
+    it('treats movement under the threshold as a click that folds or expands', () => {
+        const { handlers } = renderHarness();
+        drag('web', 250, 253);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(screen.getByRole('group', { name: /^Web/ })).not.toHaveAttribute('data-dragging');
+        fireEvent.pointerUp(window);
+        fireEvent.click(label('web'));
+        expect(handlers.onToggleGroup).toHaveBeenCalledWith('web');
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('cancels with Escape or pointercancel without moving, folding or activating', () => {
+        const { handlers } = renderHarness();
+        drag('web', 250, 30);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(screen.getByRole('status')).toHaveTextContent('Group move cancelled.');
+        fireEvent.pointerUp(window);
+        fireEvent.click(label('web'));
+
+        drag('files', 150, 10);
+        fireEvent.pointerCancel(window);
+        fireEvent.pointerUp(window);
+
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        expect(localStorage.length).toBe(0);
+        expect(handlers.onToggleGroup).not.toHaveBeenCalled();
+        expect(handlers.onActivate).not.toHaveBeenCalled();
+    });
+
+    it('does not write a move when the block drops back into its own slot', () => {
+        renderHarness();
+        drag('files', 150, 220);
+        expect(screen.getByTestId('unified-panel-group-drop-indicator')).toHaveAttribute('data-position', 'before');
+        fireEvent.pointerUp(window);
+        drag('files', 150, 160);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        fireEvent.pointerUp(window);
+        expect(localStorage.length).toBe(0);
+        expect(screen.getByRole('status')).toHaveTextContent('Group move cancelled.');
+    });
+
+    it('moves the focused group with Alt+Arrow, keeps focus and stops at the edges', async () => {
+        renderHarness();
+        const webLabel = label('web');
+        expect(webLabel).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
+        webLabel.focus();
+        fireEvent.keyDown(webLabel, { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        expect(screen.getByRole('status')).toHaveTextContent('Web group moved left. Position 2 of 3.');
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        await act(async () => { await Promise.resolve(); });
+        expect(document.activeElement).toBe(label('web'));
+        fireEvent.keyDown(label('web'), { key: 'ArrowRight', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        // Plain arrows still traverse stops rather than moving blocks.
+        fireEvent.keyDown(label('web'), { key: 'ArrowRight' });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        expect(label('tools')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('keeps group order per workspace and reconciles groups that appear later', () => {
+        const { unmount } = renderHarness();
+        drag('web', 250, 30);
+        fireEvent.pointerUp(window);
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        unmount();
+
+        renderHarness({}, 'host-b:workspace');
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        cleanup();
+
+        renderHarness({ tabs: [...tabs, tab('canvas', 'Diagram')] });
+        expect(blockOrder()).toEqual(['web', 'tools', 'files', 'canvas']);
+    });
+
+    it('offers no group drag handle with a single group or without a move callback', () => {
+        renderHarness({ tabs: web });
+        expect(label('web')).not.toHaveAttribute('aria-keyshortcuts');
+        cleanup();
+        render(<UnifiedPanelTabStrip tabs={tabs} activeId={null} groupsEnabled onActivate={vi.fn()} onClose={vi.fn()}
+            onCloseMany={vi.fn()} onMove={vi.fn()} />);
+        expect(label('web')).not.toHaveAttribute('aria-keyshortcuts');
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
     });
 });

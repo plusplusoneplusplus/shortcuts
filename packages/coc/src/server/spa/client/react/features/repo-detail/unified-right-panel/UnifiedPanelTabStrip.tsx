@@ -9,7 +9,9 @@
  * Three details that are easy to lose:
  *  - **Reorder is reachable without a mouse.** Drag is the fast path, but
  *    Alt+Arrow moves the focused tab. Mixed ordering also exposes menu actions;
- *    grouped ordering confines moves to the tab's section.
+ *    grouped ordering confines moves to the tab's section. With groups on, a
+ *    group pill drags (past a small threshold, so a click still folds) or
+ *    Alt+Arrows its whole block; Escape cancels either drag.
  *  - **Promotion is a gesture, not a button.** Double-clicking a preview tab
  *    (or pressing Enter on it) makes it permanent; the strip only reports the
  *    gesture, the model owns the one-way rule (AC-04).
@@ -212,6 +214,10 @@ function BrowserTabIcon({ tabId }: { tabId: string }) {
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
 const EMPTY_FOLDED_GROUPS: ReadonlySet<UnifiedTabStripGroup> = new Set();
+/** Pointer travel, in px, before pressing a group pill becomes a drag instead of a click. */
+export const GROUP_DRAG_THRESHOLD = 4;
+
+type GroupDropTarget = { group: UnifiedTabStripGroup; position: 'before' | 'after' };
 
 export interface UnifiedPanelTabStripProps {
     /** Visible tabs in presentation order. */
@@ -242,6 +248,10 @@ export interface UnifiedPanelTabStripProps {
     groupsEnabled?: boolean;
     foldedGroups?: ReadonlySet<UnifiedTabStripGroup>;
     onToggleGroup?: (group: UnifiedTabStripGroup) => void;
+    /** Saved group block order (panel scope); missing groups follow in default order. */
+    groupOrder?: readonly UnifiedTabStripGroup[];
+    /** Move a whole group block before `beforeGroup`, or last when it is null. */
+    onMoveGroup?: (group: UnifiedTabStripGroup, beforeGroup: UnifiedTabStripGroup | null) => void;
     /** Changing panel/chat scope cancels an in-flight gesture. */
     reorderScope?: string;
     /** Transient excursion tab, excluded from persisted moves. */
@@ -298,6 +308,8 @@ export function UnifiedPanelTabStrip({
     groupsEnabled = false,
     foldedGroups = EMPTY_FOLDED_GROUPS,
     onToggleGroup,
+    groupOrder,
+    onMoveGroup,
     reorderScope,
     pinnedId,
     onPromote,
@@ -333,9 +345,29 @@ export function UnifiedPanelTabStrip({
     const groups = useMemo(() =>
         groupsEnabled ? groupStripTabs(tabs, {
             activeId, previewId: tabs.find(tab => tab.preview)?.id ?? null, pinnedId,
-            cap: 3, folded: foldedGroups, narrow: false, dirtyIds, errorIds,
+            cap: 3, order: groupOrder, folded: foldedGroups, narrow: false, dirtyIds, errorIds,
         }) : [],
-        [groupsEnabled, tabs, activeId, pinnedId, foldedGroups, dirtyIds, errorIds]);
+        [groupsEnabled, tabs, activeId, pinnedId, groupOrder, foldedGroups, dirtyIds, errorIds]);
+    const groupMoves = groupsEnabled && !!onMoveGroup && groups.length > 1;
+    // Window listeners outlive the render that installed them.
+    const latestGroups = useRef({ order: groups.map(entry => entry.group), onMoveGroup });
+    latestGroups.current = { order: groups.map(entry => entry.group), onMoveGroup };
+    // A pressed pill: `drop` is null until the pointer passes the threshold.
+    const groupPress = useRef<{ group: UnifiedTabStripGroup; startX: number; dragging: boolean; drop: GroupDropTarget | null; release: () => void } | null>(null);
+    const [groupDrag, setGroupDrag] = useState<{ group: UnifiedTabStripGroup; drop: GroupDropTarget | null } | null>(null);
+    const endGroupPress = useCallback((message?: string) => {
+        const press = groupPress.current;
+        if (!press) return;
+        groupPress.current = null;
+        press.release();
+        if (press.dragging) suppressClickUntil.current = Date.now() + 250;
+        setGroupDrag(null);
+        if (message && press.dragging) setLiveMessage(message);
+    }, []);
+    useEffect(() => () => endGroupPress(), [endGroupPress]);
+    useEffect(() => {
+        if (groupDrag && !groups.some(entry => entry.group === groupDrag.group)) endGroupPress('Group move cancelled.');
+    }, [groups, groupDrag, endGroupPress]);
     const { visibleTabs: stripTabs, canvasTabs: stackedCanvasTabs } = useMemo(
         () => groupsEnabled
             ? { visibleTabs: groups.flatMap(group => group.shown), canvasTabs: [] }
@@ -351,7 +383,7 @@ export function UnifiedPanelTabStrip({
         return new Map(browserTabs.map((tab, index) => [tab.id, digits[index]]));
     }, [shortcutsOn, stripTabs]);
     const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
-    useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag]);
+    useEffect(() => { cancelDrag(); endGroupPress(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag, endGroupPress]);
     useEffect(() => {
         if (draggedId && !stripTabs.some(tab => tab.id === draggedId)) cancelDrag();
         if (dropIndicator && !stripTabs.some(tab => tab.id === dropIndicator.id)) setDropIndicator(null);
@@ -415,6 +447,120 @@ export function UnifiedPanelTabStrip({
             node?.focus();
             node?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
         });
+    };
+
+    const focusGroupLabel = (group: UnifiedTabStripGroup) => {
+        const focus = () => {
+            const node = listRef.current?.querySelector<HTMLElement>(`[data-testid="unified-panel-group-${group}"]`);
+            node?.focus();
+            node?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        };
+        // Moving a block re-inserts its node, which drops focus; refocus once
+        // the store's render has landed.
+        queueMicrotask(focus);
+        requestAnimationFrame(focus);
+    };
+
+    /** Move a block before `beforeGroup` (null = last) unless it is already there. */
+    const moveGroup = (group: UnifiedTabStripGroup, beforeGroup: UnifiedTabStripGroup | null, message: string) => {
+        const { order, onMoveGroup: move } = latestGroups.current;
+        const from = order.indexOf(group);
+        if (from < 0 || beforeGroup === group || (order[from + 1] ?? null) === beforeGroup) return false;
+        move?.(group, beforeGroup);
+        setLiveMessage(message);
+        focusGroupLabel(group);
+        return true;
+    };
+
+    /** Alt+Arrow on a pill: swap its block with the neighbouring visible block. */
+    const onGroupKeyDown = (event: ReactKeyboardEvent, group: UnifiedTabStripGroup) => {
+        if (!event.altKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const order = groups.map(entry => entry.group);
+        const index = order.indexOf(group);
+        const to = index + (event.key === 'ArrowLeft' ? -1 : 1);
+        if (to < 0 || to >= order.length) return;
+        const beforeGroup = event.key === 'ArrowLeft' ? order[to] : (order[to + 1] ?? null);
+        moveGroup(group, beforeGroup,
+            `${TAB_GROUP_LABELS[group]} group moved ${event.key === 'ArrowLeft' ? 'left' : 'right'}. Position ${to + 1} of ${order.length}.`);
+    };
+
+    /** The block under `clientX` (nearest end block outside the row) and which half it is in. */
+    const groupDropAt = (clientX: number, dragged: UnifiedTabStripGroup): GroupDropTarget | null => {
+        const blocks = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-strip-group]') ?? []);
+        if (!blocks.length) return null;
+        const rects = blocks.map(block => block.getBoundingClientRect());
+        let index = rects.findIndex(rect => clientX >= rect.left && clientX < rect.right);
+        if (index < 0) index = clientX < rects[0].left ? 0 : blocks.length - 1;
+        const group = blocks[index].dataset.stripGroup as UnifiedTabStripGroup;
+        if (group === dragged) return null;
+        return { group, position: clientX < rects[index].left + rects[index].width / 2 ? 'before' : 'after' };
+    };
+
+    const onGroupPointerDown = (event: ReactPointerEvent, group: UnifiedTabStripGroup) => {
+        if (event.button !== 0 || groupPress.current) return;
+        const startX = event.clientX;
+        // Keep move/up events when the pointer crosses a hosted browser view.
+        try {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+        } catch {
+            /* Synthetic or already-released pointers cannot be captured. */
+        }
+        const onMove = (move: PointerEvent) => {
+            const press = groupPress.current;
+            if (!press) return;
+            if (!press.dragging) {
+                if (Math.abs(move.clientX - press.startX) < GROUP_DRAG_THRESHOLD) return;
+                press.dragging = true;
+                cancelDrag();
+                setContextMenu(null);
+            }
+            const list = listRef.current;
+            if (list) {
+                const rect = list.getBoundingClientRect();
+                if (move.clientX < rect.left + 28) list.scrollLeft -= 24;
+                else if (move.clientX > rect.right - 28) list.scrollLeft += 24;
+            }
+            press.drop = groupDropAt(move.clientX, press.group);
+            setGroupDrag({ group: press.group, drop: press.drop });
+        };
+        const onUp = () => {
+            const press = groupPress.current;
+            const drop = press?.dragging ? press.drop : null;
+            if (press && drop) {
+                const order = latestGroups.current.order.filter(entry => entry !== press.group);
+                const beforeGroup = drop.position === 'before' ? drop.group : (order[order.indexOf(drop.group) + 1] ?? null);
+                const to = beforeGroup === null ? order.length : order.indexOf(beforeGroup);
+                const moved = moveGroup(press.group, beforeGroup,
+                    `${TAB_GROUP_LABELS[press.group]} group moved. Position ${to + 1} of ${order.length + 1}.`);
+                endGroupPress(moved ? undefined : 'Group move cancelled.');
+                return;
+            }
+            endGroupPress('Group move cancelled.');
+        };
+        const onCancel = () => endGroupPress('Group move cancelled.');
+        const onKey = (key: KeyboardEvent) => {
+            if (key.key !== 'Escape' || !groupPress.current?.dragging) return;
+            key.preventDefault();
+            key.stopPropagation();
+            onCancel();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onCancel);
+        window.addEventListener('blur', onCancel);
+        document.addEventListener('keydown', onKey, true);
+        groupPress.current = {
+            group, startX, dragging: false, drop: null,
+            release: () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onCancel);
+                window.removeEventListener('blur', onCancel);
+                document.removeEventListener('keydown', onKey, true);
+            },
+        };
     };
 
     /** Alt+Arrow: shift the focused tab one place inside its section. */
@@ -759,13 +905,28 @@ export function UnifiedPanelTabStrip({
                     });
                     if (section.group === null) return tabNodes;
                     const group = section.group;
+                    const groupDropPosition = groupDrag?.drop?.group === group ? groupDrag.drop.position : null;
                     return (
                         <div key={group} role="group" data-strip-group={group}
                             aria-label={`${TAB_GROUP_LABELS[group]}, ${section.tabs.length} tabs, ${section.hidden.length} hidden`}
-                            className="flex flex-shrink-0 items-stretch">
+                            data-dragging={groupDrag?.group === group || undefined}
+                            className={cn('relative flex flex-shrink-0 items-stretch', groupDrag?.group === group && 'opacity-50')}>
+                            {groupDropPosition && (
+                                <span
+                                    aria-hidden="true"
+                                    data-testid="unified-panel-group-drop-indicator"
+                                    data-position={groupDropPosition}
+                                    className={cn('pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-[#0078d4] dark:bg-[#3794ff]',
+                                        groupDropPosition === 'before' ? 'left-0' : 'right-0')}
+                                />
+                            )}
                             <UnifiedPanelTabGroupLabel group={group} count={section.tabs.length}
                                 active={section.hasActive} folded={foldedGroups?.has(group) ?? false}
+                                dragging={groupDrag?.group === group}
+                                onPointerDown={groupMoves ? event => onGroupPointerDown(event, group) : undefined}
+                                onKeyDown={groupMoves ? event => onGroupKeyDown(event, group) : undefined}
                                 onToggle={() => {
+                                    if (Date.now() < suppressClickUntil.current || groupPress.current?.dragging) return;
                                     onToggleGroup?.(group);
                                     setLiveMessage(`${TAB_GROUP_LABELS[group]} ${foldedGroups?.has(group) ? 'expanded' : 'folded'}.`);
                                 }} />

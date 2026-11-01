@@ -1,8 +1,34 @@
+import { moveRepoTabOrderToIndex } from '../../../repos/repoOrder';
 import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
 
 export type UnifiedTabStripGroup = 'tools' | 'files' | 'web' | 'canvas';
 
 export const UNIFIED_TAB_STRIP_GROUPS: readonly UnifiedTabStripGroup[] = ['tools', 'files', 'web', 'canvas'];
+
+/**
+ * A saved group order made whole: unknown and repeated entries are dropped,
+ * and groups it does not name follow in default order.
+ */
+export function normalizeGroupOrder(saved: unknown): UnifiedTabStripGroup[] {
+    const named = Array.isArray(saved)
+        ? saved.filter((group, index): group is UnifiedTabStripGroup =>
+            UNIFIED_TAB_STRIP_GROUPS.includes(group) && saved.indexOf(group) === index)
+        : [];
+    return [...named, ...UNIFIED_TAB_STRIP_GROUPS.filter(group => !named.includes(group))];
+}
+
+/** Put `group` before `beforeGroup`, or last when `beforeGroup` is null. */
+export function moveGroupInOrder(
+    order: readonly UnifiedTabStripGroup[],
+    group: UnifiedTabStripGroup,
+    beforeGroup: UnifiedTabStripGroup | null,
+): UnifiedTabStripGroup[] {
+    const whole = normalizeGroupOrder(order);
+    const rest = whole.filter(entry => entry !== group);
+    const index = beforeGroup === null || beforeGroup === group ? rest.length : rest.indexOf(beforeGroup);
+    if (beforeGroup === group || index < 0) return whole;
+    return moveRepoTabOrderToIndex(whole, group, index) as UnifiedTabStripGroup[];
+}
 
 export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
     switch (kind) {
@@ -37,6 +63,8 @@ export interface GroupStripTabsOptions {
     previewId?: string | null;
     pinnedId?: string | null;
     cap?: number;
+    /** Saved block order; missing groups follow in default order. */
+    order?: readonly UnifiedTabStripGroup[];
     folded: ReadonlySet<UnifiedTabStripGroup>;
     narrow: boolean;
     dirtyIds?: ReadonlySet<string>;
@@ -59,7 +87,7 @@ export function groupStripTabs(
 ): UnifiedTabStripGroupModel[] {
     const { activeId, previewId, pinnedId, folded, narrow, dirtyIds, errorIds } = options;
     const cap = Number.isFinite(options.cap) ? Math.max(0, Math.floor(options.cap!)) : 3;
-    return UNIFIED_TAB_STRIP_GROUPS.flatMap(group => {
+    return normalizeGroupOrder(options.order).flatMap(group => {
         const members = tabs.filter(tab => stripGroupForKind(tab.kind) === group);
         if (!members.length) return [];
         const hasActive = members.some(tab => tab.id === activeId);
