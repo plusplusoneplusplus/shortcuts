@@ -49,7 +49,7 @@ import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTa
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import { dirtyCloseLabel } from './unifiedDirtyClose';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
-import { categoryStripTabs, groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
+import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
 import { unifiedTabRepoLabel } from './unifiedTabLabels';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
@@ -240,11 +240,6 @@ export interface UnifiedPanelTabStripProps {
     /** Repo-group browser tabs use page names while retaining their owners. */
     hideBrowserRepoLabels?: boolean;
     groupsEnabled?: boolean;
-    /**
-     * One chip per category showing its last-used tab, each with its own menu
-     * (`features.panelTabCategories`). Takes precedence over `groupsEnabled`.
-     */
-    categoriesEnabled?: boolean;
     foldedGroups?: ReadonlySet<UnifiedTabStripGroup>;
     onToggleGroup?: (group: UnifiedTabStripGroup) => void;
     /** Changing panel/chat scope cancels an in-flight gesture. */
@@ -300,8 +295,7 @@ export function UnifiedPanelTabStrip({
     reorderEnabled: mixedReorderEnabled = false,
     browserShortcuts = null,
     hideBrowserRepoLabels = false,
-    groupsEnabled: inlineGroupsEnabled = false,
-    categoriesEnabled = false,
+    groupsEnabled = false,
     foldedGroups = EMPTY_FOLDED_GROUPS,
     onToggleGroup,
     reorderScope,
@@ -316,9 +310,6 @@ export function UnifiedPanelTabStrip({
     leadingControls,
     className,
 }: UnifiedPanelTabStripProps) {
-    // Categories keep the inline groups' kind boundaries for moves, menus and
-    // keyboard stops; they only change which tabs a section shows.
-    const groupsEnabled = inlineGroupsEnabled || categoriesEnabled;
     const reorderEnabled = mixedReorderEnabled || groupsEnabled;
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
     const draggingId = useRef<string | null>(null);
@@ -339,23 +330,12 @@ export function UnifiedPanelTabStrip({
         setDropIndicator(null);
     }, []);
     const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
-    // The tab each category last showed, so its chip returns to it.
-    const [lastUsedIds, setLastUsedIds] = useState<Partial<Record<UnifiedTabStripGroup, string>>>({});
-    const activeGroup = useMemo(() => {
-        const active = tabs.find(tab => tab.id === activeId);
-        return active ? stripGroupForKind(active.kind) : null;
-    }, [tabs, activeId]);
-    useEffect(() => {
-        if (!categoriesEnabled || !activeId || !activeGroup) return;
-        setLastUsedIds(current => current[activeGroup] === activeId ? current : { ...current, [activeGroup]: activeId });
-    }, [categoriesEnabled, activeId, activeGroup]);
-    const groups = useMemo(() => {
-        if (categoriesEnabled) return categoryStripTabs(tabs, { activeId, lastUsedIds, dirtyIds, errorIds });
-        return groupsEnabled ? groupStripTabs(tabs, {
+    const groups = useMemo(() =>
+        groupsEnabled ? groupStripTabs(tabs, {
             activeId, previewId: tabs.find(tab => tab.preview)?.id ?? null, pinnedId,
             cap: 3, folded: foldedGroups, narrow: false, dirtyIds, errorIds,
-        }) : [];
-    }, [categoriesEnabled, groupsEnabled, tabs, activeId, lastUsedIds, pinnedId, foldedGroups, dirtyIds, errorIds]);
+        }) : [],
+        [groupsEnabled, tabs, activeId, pinnedId, foldedGroups, dirtyIds, errorIds]);
     const { visibleTabs: stripTabs, canvasTabs: stackedCanvasTabs } = useMemo(
         () => groupsEnabled
             ? { visibleTabs: groups.flatMap(group => group.shown), canvasTabs: [] }
@@ -371,7 +351,7 @@ export function UnifiedPanelTabStrip({
         return new Map(browserTabs.map((tab, index) => [tab.id, digits[index]]));
     }, [shortcutsOn, stripTabs]);
     const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
-    useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, categoriesEnabled, cancelDrag]);
+    useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag]);
     useEffect(() => {
         if (draggedId && !stripTabs.some(tab => tab.id === draggedId)) cancelDrag();
         if (dropIndicator && !stripTabs.some(tab => tab.id === dropIndicator.id)) setDropIndicator(null);
@@ -681,9 +661,9 @@ export function UnifiedPanelTabStrip({
                                 // tab squeezes and the labels truncate to nothing long before the
                                 // strip actually overflows. Browser tabs shrink only to a floor.
                                 'group relative flex h-[35px] cursor-pointer select-none',
-                                categoriesEnabled ? 'min-w-0 flex-1' : tab.kind === 'browser' ? BROWSER_TAB_SIZE : DEFAULT_TAB_SIZE,
+                                tab.kind === 'browser' ? BROWSER_TAB_SIZE : DEFAULT_TAB_SIZE,
                                 'items-center gap-1.5 whitespace-nowrap px-2.5 text-xs',
-                                !categoriesEnabled && 'border-r border-[#e5e5e5] dark:border-[#333]',
+                                'border-r border-[#e5e5e5] dark:border-[#333]',
                                 'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
                                 isActive
                                     ? 'bg-white text-[#1f1f1f] shadow-[inset_0_-2px_0_0_#0078d4] dark:bg-[#1e1e1e] dark:text-white dark:shadow-[inset_0_-2px_0_0_#3794ff]'
@@ -768,7 +748,7 @@ export function UnifiedPanelTabStrip({
                                 className={cn(
                                     'w-4 flex-shrink-0 cursor-pointer border-none bg-transparent p-0 leading-none',
                                     'text-[#848484] hover:text-[#1f1f1f] dark:hover:text-white',
-                                    (isDirty || (categoriesEnabled && !isActive)) && 'hidden group-hover:block group-focus-within:block',
+                                    isDirty && 'hidden group-hover:block group-focus-within:block',
                                 )}
                             >
                                 ✕
@@ -779,36 +759,6 @@ export function UnifiedPanelTabStrip({
                     });
                     if (section.group === null) return tabNodes;
                     const group = section.group;
-                    if (categoriesEnabled) return (
-                        <CategoryChip key={group} group={group} section={section} active={section.hasActive}
-                            menu={section.tabs.length > 1 && (
-                                <UnifiedPanelTabOverflowMenu
-                                    title={`${TAB_GROUP_LABELS[group]} tabs`}
-                                    tabs={section.tabs} activeId={section.shown[0]?.id ?? null}
-                                    hideBrowserRepoLabels={hideBrowserRepoLabels}
-                                    dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
-                                    onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
-                                    strings={{ closeOthers: 'Close others in category', closeAll: 'Close all in category' }}
-                                    trigger={<button type="button" data-strip-stop data-group-overflow
-                                        data-testid={`unified-panel-category-menu-${group}`}
-                                        aria-label={`All ${section.tabs.length} ${TAB_GROUP_LABELS[group]} tabs`
-                                            + `${section.hiddenDirty ? ', some unsaved' : ''}${section.hiddenError ? ', some unavailable' : ''}`}
-                                        title={`All ${TAB_GROUP_LABELS[group]} tabs`}
-                                        className={cn(
-                                            'flex flex-shrink-0 cursor-pointer items-center gap-0.5 border-0 bg-transparent px-1.5 text-[11px]',
-                                            'text-[#616161] hover:bg-black/5 hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:bg-white/10 dark:hover:text-white',
-                                            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
-                                        )}>
-                                        {section.hiddenDirty && <span aria-hidden="true" data-testid={`unified-panel-category-dirty-${group}`}>{'\u25CF'}</span>}
-                                        {section.hiddenError && <span aria-hidden="true">{'\u26A0'}</span>}
-                                        <span className="rounded-full bg-black/5 px-1 leading-4 dark:bg-white/10">{section.tabs.length}</span>
-                                        <span aria-hidden="true">{'\u25BE'}</span>
-                                    </button>}
-                                />
-                            )}>
-                            {tabNodes}
-                        </CategoryChip>
-                    );
                     return (
                         <div key={group} role="group" data-strip-group={group}
                             aria-label={`${TAB_GROUP_LABELS[group]}, ${section.tabs.length} tabs, ${section.hidden.length} hidden`}
@@ -915,34 +865,6 @@ export function UnifiedPanelTabStrip({
                     />
                 );
             })()}
-        </div>
-    );
-}
-
-/**
- * One category's chip: its current tab plus, with more than one tab, the
- * category's menu. The active chip takes the spare width; the others shrink
- * toward their icon so the row stays one line.
- */
-function CategoryChip({ group, section, active, menu, children }: {
-    group: UnifiedTabStripGroup;
-    section: { tabs: readonly UnifiedPanelTab[]; hidden: readonly UnifiedPanelTab[] };
-    active: boolean;
-    menu: ReactNode;
-    children: ReactNode;
-}) {
-    return (
-        <div role="group" data-strip-group={group} data-testid={`unified-panel-category-${group}`}
-            data-active={active || undefined}
-            aria-label={`${TAB_GROUP_LABELS[group]}, ${section.tabs.length} tabs`}
-            className={cn(
-                'flex items-stretch border-r border-[#e5e5e5] dark:border-[#333]',
-                active
-                    ? 'min-w-[120px] max-w-[280px] flex-[1_1_240px] bg-white dark:bg-[#1e1e1e]'
-                    : 'min-w-[64px] max-w-[190px] flex-[0_1_170px]',
-            )}>
-            {children}
-            {menu}
         </div>
     );
 }

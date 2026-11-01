@@ -138,8 +138,6 @@ interface DashboardConfig {
     panelTabReorderingEnabled?: boolean;
     /** Whether fixed inline right-panel tab groups are enabled. Default false. */
     panelTabGroupsEnabled?: boolean;
-    /** Whether right-panel tabs show as one chip per category. Default false. */
-    panelTabCategoriesEnabled?: boolean;
     /** Whether right-panel binary placeholders offer "Open in Explorer". Default false. */
     binaryFileRevealEnabled?: boolean;
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
@@ -366,11 +364,6 @@ export function isPanelTabReorderingEnabled(): boolean {
 
 export function isPanelTabGroupsEnabled(): boolean {
     return getConfig().panelTabGroupsEnabled === true;
-}
-
-/** One right-panel chip per tab category (`features.panelTabCategories`); off unless the server says on. */
-export function isPanelTabCategoriesEnabled(): boolean {
-    return getConfig().panelTabCategoriesEnabled === true;
 }
 
 /** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); on unless the server says off. */

@@ -911,11 +911,6 @@ native-view-overlay portal shared with canvas compression. Fold state persists
 per panel scope at `unified-right-panel:<scope>:groups`, independently of chats.
 Moves stay within the kind group and bulk closes retain the panel's guards.
 Canvas uses group overflow without a header count chip.
-Default-off `features.panelTabCategories` takes precedence: each nonempty group
-renders as one chip showing its active, last-used or newest tab, plus that
-group's own overflow menu, so switching categories is one click. It keeps the
-groups' move boundaries and also disables canvas compression.
-
 With groups off and default-on `features.panelTabReordering` set to `false`, the
 strip divides tools from resources and confines moves to a section. With either
 flag enabled, native drag, Alt+Arrow and tab-menu moves share `moveVisibleTab`:

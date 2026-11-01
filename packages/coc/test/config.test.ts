@@ -1252,7 +1252,6 @@ timeout: 300
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
-                '  panelTabCategories: true',
                 '  binaryFileReveal: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
@@ -1310,7 +1309,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'panelTabCategories', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1322,6 +1321,19 @@ timeout: 300
                 expect(result.resolved.features[feature]).toBe(value ?? DEFAULT_CONFIG.features[feature]);
                 expect(result.sources[`features.${feature}`]).toBe(value === undefined ? 'default' : 'file');
             });
+        });
+
+        it.each([false, true])('ignores persisted panel tab categories and preserves groups (%s)', groups => {
+            const configPath = path.join(tmpDir, 'stale-panel-categories.yaml');
+            const yaml = `features:\n  panelTabCategories: true\n  panelTabGroups: ${groups}\n`;
+            fs.writeFileSync(configPath, yaml);
+
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.features).not.toHaveProperty('panelTabCategories');
+            expect(result.sources).not.toHaveProperty('features.panelTabCategories');
+            expect(result.resolved.features.panelTabGroups).toBe(groups);
+            expect(result.sources['features.panelTabGroups']).toBe('file');
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(yaml);
         });
 
         it.each([undefined, false, true])('resolves the desktop mirror flag and its source (%s)', value => {
@@ -1609,7 +1621,6 @@ timeout: 300
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
                     "panelSourceSplit": true,
-                    "panelTabCategories": false,
                     "panelTabGroups": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
@@ -1875,7 +1886,6 @@ timeout: 300
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
                   "features.panelSourceSplit": "default",
-                  "features.panelTabCategories": "default",
                   "features.panelTabGroups": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
