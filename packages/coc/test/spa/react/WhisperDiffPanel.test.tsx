@@ -4,8 +4,9 @@
  *
  * The data comes from the real tool-call replay (`buildWhisperCombinedDiff`),
  * so the Monaco sides asserted here are the exact captured snapshot: a created
- * file opens against an empty original, snippet edits stay patch-only in the
- * classic viewer, and deleted / non-reconstructable files say no diff exists.
+ * file opens against an empty original, snippet edits open as their snippets
+ * only (under the patch-only notice), and deleted / non-reconstructable files
+ * say no diff exists.
  * Monaco and the classic viewer are stubbed to their inputs.
  */
 /* @vitest-environment jsdom */
@@ -31,7 +32,7 @@ vi.mock('../../../src/server/spa/client/react/features/git/diff/MonacoFileDiffVi
             return (
                 <div data-testid={props['data-testid']} data-workspace={props.workspaceId} data-path={props.relativePath}
                     data-stage={props.stage} data-model={props.modelIdentity} data-language={String(props.languageFeatures)}
-                    data-editable={String(!!props.editable)}>
+                    data-editable={String(!!props.editable)} data-labels={props.lineLabels ? JSON.stringify(props.lineLabels) : undefined}>
                     <pre data-testid="monaco-original">{props.original}</pre>
                     <pre data-testid="monaco-modified">{props.modified}</pre>
                     <button type="button" data-testid="monaco-fail" onClick={() => props.onEditorError(new Error('boom'))}>fail</button>
@@ -42,6 +43,7 @@ vi.mock('../../../src/server/spa/client/react/features/git/diff/MonacoFileDiffVi
 });
 
 import { WhisperDiffPanel } from '../../../src/server/spa/client/react/features/chat/whisper-diff/WhisperDiffPanel';
+import { SNIPPET_GAP } from '../../../src/server/spa/client/react/features/chat/whisper-diff/whisperReviewModel';
 import type { WhisperDiffState } from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffState';
 import { buildWhisperCombinedDiff } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperCombinedDiff';
 import { collectFileEdits, computeFileEditTotals } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
@@ -164,24 +166,58 @@ describe('WhisperDiffPanel — captured snapshot content', () => {
         expect(screen.queryByTestId('whisper-diff-viewer')).toBeNull();
     });
 
-    it('keeps a snippet edit patch-only in the classic viewer, never a full file', () => {
+    it('opens a snippet edit in Monaco as the snippet only, under the patch-only notice', () => {
+        renderPanel(stateFrom(BASE_CALLS, { focusPath: `${ROOT}/src/sub/edit.ts` }));
+        expect(screen.getByTestId('whisper-diff-patch-only')).toHaveTextContent('Only the edited snippets');
+        const editor = screen.getByTestId('whisper-diff-editor');
+        expect(editor).toHaveAttribute('data-path', 'src/sub/edit.ts');
+        expect(editor).toHaveAttribute('data-workspace', 'repo-a');
+        expect(editor).toHaveAttribute('data-language', 'false');
+        expect(editor).toHaveAttribute('data-editable', 'false');
+        expect(editor.getAttribute('data-model')).toMatch(/^chat-change-/);
+        // The captured snippet, never the working file; no made-up positions.
+        expect(screen.getByTestId('monaco-original').textContent).toBe(`${SNIPPET_GAP}\nold line`);
+        expect(screen.getByTestId('monaco-modified').textContent).toBe(`${SNIPPET_GAP}\nnew line`);
+        expect(JSON.parse(editor.getAttribute('data-labels')!)).toEqual({ original: ['', ''], modified: ['', ''] });
+        expect(screen.queryByTestId('whisper-diff-viewer')).toBeNull();
+        expect(screen.getByTestId('diff-engine-toggle')).toBeInTheDocument();
+    });
+
+    it('keeps several anchored hunks apart with their captured line numbers', () => {
+        const patch = [
+            'diff --git a/src/p.ts b/src/p.ts', '--- a/src/p.ts', '+++ b/src/p.ts',
+            '@@ -3,2 +3,2 @@', ' a', '-b', '+B',
+            '@@ -30,1 +30,2 @@', ' y', '+z',
+        ].join('\n');
+        renderPanel(stateFrom([{ toolName: 'apply_patch', args: { input: patch } }]));
+        expect(screen.getByTestId('whisper-diff-patch-only')).toBeInTheDocument();
+        expect(screen.getByTestId('monaco-original').textContent).toBe('@@ -3,2 +3,2 @@\na\nb\n@@ -30,1 +30,2 @@\ny');
+        expect(screen.getByTestId('monaco-modified').textContent).toBe('@@ -3,2 +3,2 @@\na\nB\n@@ -30,1 +30,2 @@\ny\nz');
+        expect(JSON.parse(screen.getByTestId('whisper-diff-editor').getAttribute('data-labels')!)).toEqual({
+            original: ['', '3', '4', '', '30'],
+            modified: ['', '3', '4', '', '30', '31'],
+        });
+    });
+
+    it('honours the Classic engine preference for a snippet edit', () => {
+        engine.value = 'legacy';
         renderPanel(stateFrom(BASE_CALLS, { focusPath: `${ROOT}/src/sub/edit.ts` }));
         expect(screen.queryByTestId('whisper-diff-editor')).toBeNull();
-        expect(screen.getByTestId('whisper-diff-patch-only')).toHaveTextContent('Only the edited snippets');
+        expect(screen.getByTestId('whisper-diff-patch-only')).toBeInTheDocument();
         const patch = screen.getByTestId('whisper-diff-viewer').textContent ?? '';
         expect(patch).toContain('-old line');
         expect(patch).toContain('+new line');
-        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
     });
 
-    it('keeps a created-then-edited file patch-only', () => {
+    it('opens a created-then-edited file as two separate snippets', () => {
         const calls: Call[] = [
             { toolName: 'create', args: { path: `${ROOT}/a.ts`, file_text: 'one\n' } },
             { toolName: 'edit', args: { path: `${ROOT}/a.ts`, old_str: 'one', new_str: 'two' } },
         ];
         renderPanel(stateFrom(calls));
         expect(fileBody()).toHaveAttribute('data-content', 'patch');
-        expect(screen.queryByTestId('whisper-diff-editor')).toBeNull();
+        expect(screen.getByTestId('monaco-original').textContent).toBe(`${SNIPPET_GAP}\n${SNIPPET_GAP}\none`);
+        expect(screen.getByTestId('monaco-modified').textContent).toBe(`${SNIPPET_GAP}\none\n\n${SNIPPET_GAP}\ntwo`);
     });
 
     it('says no diff was captured for deleted and non-reconstructable files', () => {

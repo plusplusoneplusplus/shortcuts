@@ -138,6 +138,10 @@ export function createMonacoDiffEditorAdapter(
             const original = registry.acquire(models.original.uri, models.original.text, models.original.language);
             const modified = registry.acquire(models.modified.uri, models.modified.text, models.modified.language);
             leases = [original, modified];
+            for (const side of SIDES) {
+                const labels = models[side].lineLabels;
+                sideEditor(side).updateOptions({ lineNumbers: labels ? line => labels[line - 1] ?? '' : 'on' });
+            }
             editor.setModel({ original: original.model, modified: modified.model });
         },
         updateOptions(next) {

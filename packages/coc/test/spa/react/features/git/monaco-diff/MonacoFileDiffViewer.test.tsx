@@ -105,6 +105,19 @@ describe('MonacoFileDiffViewer — editor inputs', () => {
         expect(models.modified.isWorkingCopy).toBe(false);
     });
 
+    it('excerpt snapshots reach the editor with their gutter labels, and new labels re-apply', async () => {
+        const lineLabels = { original: ['', '7'], modified: ['', '7'] };
+        const h = harness({ stage: 'staged', modelIdentity: 'chat-change-1', original: '@@\nold', modified: '@@\nnew', lineLabels });
+        await act(flush);
+        const [models] = h.fake().models;
+        expect(models.original).toMatchObject({ text: '@@\nold', lineLabels: ['', '7'], isWorkingCopy: false });
+        expect(models.modified).toMatchObject({ text: '@@\nnew', lineLabels: ['', '7'], isWorkingCopy: false });
+        h.rerender({ lineLabels: { original: ['', ''], modified: ['', ''] } });
+        await act(flush);
+        expect(h.fake().models).toHaveLength(2);
+        expect(h.fake().models[1].modified.lineLabels).toEqual(['', '']);
+    });
+
     it('follows the app theme', async () => {
         appTheme = 'dark';
         const h = harness();

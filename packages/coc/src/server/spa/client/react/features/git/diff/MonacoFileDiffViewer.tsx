@@ -1,8 +1,9 @@
 /**
  * MonacoFileDiffViewer — one file's diff in Monaco's diff editor.
  *
- * Both sides arrive as full text from the server (AC-01); this component never
- * reconstructs files from a patch. It renders a host element, measures it, and
+ * Both sides arrive as text from the host (full files from the server, or a
+ * chat snapshot's labelled excerpts); this component never reconstructs files
+ * from a patch. It renders a host element, measures it, and
  * hands everything else to `monacoDiffController`: editor creation, models,
  * options, theme, diff readiness, hunk navigation and disposal.
  *
@@ -45,6 +46,7 @@ import {
     buildDiffEditorOptions,
     buildDiffModels,
     isEditableDiff,
+    type DiffLineLabels,
     resolveDiffEditorTheme,
     type MonacoDiffStage,
 } from './monacoDiffOptions';
@@ -86,6 +88,11 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     original: string;
     /** Full text of the changed side (index for staged, disk for unstaged). */
     modified: string;
+    /**
+     * Gutter labels when both sides are excerpts of a snapshot rather than full
+     * files; requires `modelIdentity`. Omitted: plain line numbers.
+     */
+    lineLabels?: DiffLineLabels;
     viewMode: DiffViewMode;
     /** Hunk to reveal once the diff for this file is ready. */
     initialHunkTarget?: 'first' | 'last';
@@ -154,7 +161,7 @@ function prefersDarkScheme(): boolean {
 
 export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, MonacoFileDiffViewerProps>(
     function MonacoFileDiffViewer({
-        workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
+        workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, lineLabels, viewMode, initialHunkTarget,
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor, revealTarget,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
         languageFeatures = true, languageStore, onNavigateDefinition, onNoDefinition, historicalDefinitions = false, routingRef,
@@ -178,8 +185,8 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         );
 
         const models = useMemo(
-            () => buildDiffModels({ workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified }),
-            [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
+            () => buildDiffModels({ workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, lineLabels }),
+            [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, lineLabels],
         );
         const editable = isEditableDiff(editableRequested, stage, models);
         // Never a silent no-op: an empty Ctrl/Cmd+Click says so.

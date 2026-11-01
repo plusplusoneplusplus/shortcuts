@@ -34,8 +34,13 @@ export interface WhisperDiffToolCall {
     args?: unknown;
 }
 
-/** One reconstructed hunk: an optional `@@` header plus prefixed body lines. */
-interface FileHunk {
+/**
+ * One replayed operation: an optional synthesized `@@` header plus prefixed
+ * body lines. The header is always made up here (edit/create anchors, or the
+ * leading unanchored part of a patch), so its line numbers are not real; any
+ * anchors the agent wrote stay inside `body`.
+ */
+export interface WhisperFileHunk {
     header?: string;
     body: string[];
     /** True when this operation created the file from nothing. */
@@ -86,7 +91,7 @@ const GIT_METADATA_RE = /^(index |similarity index |rename from |rename to |old 
  * matching file section, or `null` when the patch has no section for the file.
  * Handles both legacy `*** Add/Update/Delete File:` and unified `diff --git` formats.
  */
-function patchHunkForFile(patchText: string, targetPath: string): FileHunk | null {
+function patchHunkForFile(patchText: string, targetPath: string): WhisperFileHunk | null {
     const target = normalizePath(targetPath);
     const lines = patchText.split(/\r?\n/);
     let capturing = false;
@@ -164,9 +169,9 @@ function patchHunkForFile(patchText: string, targetPath: string): FileHunk | nul
 /**
  * Collect, in call order, every reconstructable hunk that touches `targetPath`.
  */
-function collectHunks(toolCalls: WhisperDiffToolCall[], targetPath: string): FileHunk[] {
+function collectHunks(toolCalls: WhisperDiffToolCall[], targetPath: string): WhisperFileHunk[] {
     const target = normalizePath(targetPath);
-    const hunks: FileHunk[] = [];
+    const hunks: WhisperFileHunk[] = [];
 
     for (const call of toolCalls) {
         const toolName = normalizeToolName(call.toolName);
@@ -207,14 +212,18 @@ function collectHunks(toolCalls: WhisperDiffToolCall[], targetPath: string): Fil
     return hunks;
 }
 
-export function buildWhisperFileDiff(
+/** Every replayed operation for `targetPath`, in call order; null when none. */
+export function buildWhisperFileHunks(
     toolCalls: WhisperDiffToolCall[],
     targetPath: string,
-): string | null {
+): WhisperFileHunk[] | null {
     if (!targetPath) return null;
     const hunks = collectHunks(toolCalls, targetPath);
-    if (hunks.length === 0) return null;
+    return hunks.length ? hunks : null;
+}
 
+/** The unified diff for `targetPath`'s replayed operations. */
+export function formatWhisperFileDiff(targetPath: string, hunks: readonly WhisperFileHunk[]): string {
     const path = normalizePath(targetPath);
     const onlyCreates = hunks.every(h => h.isCreate);
 
@@ -233,4 +242,12 @@ export function buildWhisperFileDiff(
     }
 
     return out.join('\n');
+}
+
+export function buildWhisperFileDiff(
+    toolCalls: WhisperDiffToolCall[],
+    targetPath: string,
+): string | null {
+    const hunks = buildWhisperFileHunks(toolCalls, targetPath);
+    return hunks && formatWhisperFileDiff(targetPath, hunks);
 }

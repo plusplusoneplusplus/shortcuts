@@ -38,7 +38,7 @@ const file: FileEdit = {
 const successState: WhisperDiffState = {
     status: 'success',
     view: {
-        sections: [{ file, diff: 'diff --git a/foo b/foo\n+x' }],
+        sections: [{ file, diff: 'diff --git a/foo b/foo\n+x', hunks: [{ body: ['+x'], isCreate: false }] }],
         deletedFiles: [],
         nonReconstructableFiles: [],
         fileCount: 1,
