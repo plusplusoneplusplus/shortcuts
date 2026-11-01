@@ -984,6 +984,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'dream',
     'trace-callstack',
     'propose-diff',
+    'todo',
 ];
 
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
