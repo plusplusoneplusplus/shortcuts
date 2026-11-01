@@ -1223,4 +1223,31 @@ describe('FollowUpInputArea browser demo recording', () => {
         fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
         expect(onSend).toHaveBeenCalledWith('Run tests');
     });
+
+    it.each([
+        { workspaceId: 'ws-2', routingRef: 'ws-2' },
+        { workspaceId: 'ws-1', routingRef: 'remote:server-b:ws-1' },
+        { workspaceId: 'ws-2', routingRef: 'remote:server-a:ws-2' },
+    ])('does not block equal chat IDs on a different concrete owner: %j', browserOwner => {
+        const listeners: Array<(state: unknown) => void> = [];
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: { demo: {
+            command: vi.fn().mockResolvedValue({ ok: true, drafts: [] }),
+            onState: (callback: (state: unknown) => void) => { listeners.push(callback); return () => {}; },
+        } } };
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const props = makeProps({ workspaceId: 'group-g', suggestions: ['Run tests'], onSend, currentProcessId: 'queue_chat-1', browserOwner });
+        const view = render(<FollowUpInputArea {...props} />);
+        const recordedOwner = { workspaceId: 'ws-1', routingRef: 'remote:server-a:ws-1' };
+        const demo = { id: 'd', owner: { ...recordedOwner, processId: 'chat-1' },
+            status: 'paused', stepCount: 0, tabCount: 1, viewIds: ['v'], incomplete: false };
+        act(() => { for (const listener of listeners) listener(demo); });
+        expect(screen.queryByTestId('follow-up-demo-recording')).toBeNull();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+        onSend.mockClear();
+        view.rerender(<FollowUpInputArea {...props} browserOwner={recordedOwner} />);
+        expect(screen.getByTestId('follow-up-demo-recording')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).not.toHaveBeenCalled();
+    });
 });

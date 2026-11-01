@@ -422,10 +422,11 @@ export function FollowUpInputArea({
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const commitContextOwner = useCommitContextOwner(activeWorkspaceId, attachmentDestinationId);
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
-    // A chat recording a browser demo takes no AI input until the user stops recording.
-    const demoCapturing = useBrowserDemoCapturingChat(activeProcessId);
     const browserWorkspaceId = browserOwner?.workspaceId ?? activeWorkspaceId;
     const browserRoutingRef = browserOwner?.routingRef ?? activeWorkspaceId;
+    // A chat recording a browser demo takes no AI input until the user stops recording.
+    const demoCapturing = useBrowserDemoCapturingChat(browserWorkspaceId && browserRoutingRef && activeProcessId
+        ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef, processId: activeProcessId } : null);
     const browserEnabled = useBrowserToolEnabled(browserRoutingRef);
     const browserClient = useCocClient(browserRoutingRef);
     const [browserCleared, setBrowserCleared] = useState(false);

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserDemoStrip } from '../../../../src/server/spa/client/react/shared/file-path/BrowserDemoStrip';
 import {
-    getBrowserDemoForOwner, isBrowserDemoCapturingChat, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat,
+    getBrowserDemoForOwner, isBrowserDemoCapturingChat, isBrowserDemoChatInView, resetBrowserDemosForTest, runBrowserDemoCommand, setBrowserDemoViewingChat,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
 import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 import { getBrowserDemoEdits, setBrowserDemoEdits } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo-review';
@@ -101,9 +101,10 @@ describe('browser demo record controls', () => {
         await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'start', owner, viewId: 'one' }));
         expect(await screen.findByText('Recording demo · 0 steps · 1 tab')).toBeTruthy();
         expect(screen.getByTestId('browser-demo-strip').dataset.status).toBe('recording');
-        expect(isBrowserDemoCapturingChat('chat-1')).toBe(true);
-        expect(isBrowserDemoCapturingChat('queue_chat-1')).toBe(true);
-        expect(isBrowserDemoCapturingChat('chat-2')).toBe(false);
+        expect(isBrowserDemoCapturingChat(owner)).toBe(true);
+        expect(isBrowserDemoCapturingChat({ ...owner, processId: 'queue_chat-1' })).toBe(true);
+        expect(isBrowserDemoCapturingChat({ ...owner, processId: 'chat-2' })).toBe(false);
+        expect(getBrowserDemoForOwner({ ...owner, processId: 'queue_chat-1' })?.id).toBe('demo-1');
     });
 
     it('stays hidden when the setting is off and no recording exists', () => {
@@ -237,15 +238,15 @@ describe('browser demo record controls', () => {
     });
 
     it('pauses a recording when the window leaves its chat and keeps Resume until the chat is back', async () => {
-        const release = setBrowserDemoViewingChat('queue_chat-1');
+        const release = setBrowserDemoViewingChat({ ...owner, processId: 'queue_chat-1' });
         mount();
         push(state());
         expect(mock.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
-        act(() => { setBrowserDemoViewingChat('chat-2'); });
+        act(() => { setBrowserDemoViewingChat({ ...owner, processId: 'chat-2' }); });
         await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' }));
         push(state({ status: 'paused', pauseReason: 'scope' }));
         expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(true);
-        act(() => { setBrowserDemoViewingChat('chat-1'); });
+        act(() => { setBrowserDemoViewingChat(owner); });
         expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(false);
         release();
     });
@@ -253,12 +254,33 @@ describe('browser demo record controls', () => {
     it('pauses on panel unmount only when no panel takes the scope back in the same tick', async () => {
         mount();
         push(state());
-        const release = setBrowserDemoViewingChat('chat-1');
+        const release = setBrowserDemoViewingChat(owner);
         release();
-        const again = setBrowserDemoViewingChat('chat-1');
+        const again = setBrowserDemoViewingChat(owner);
         await new Promise(resolve => setTimeout(resolve, 5));
         expect(mock.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
         again();
         await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' }));
+    });
+
+    it.each([
+        { workspaceId: 'other-workspace', processId: 'chat-1', routingRef: owner.routingRef },
+        { ...owner, routingRef: 'remote:server-b:w' },
+        { workspaceId: 'other-workspace', processId: 'queue_chat-1', routingRef: 'remote:server-a:other-workspace' },
+    ])('isolates equal chat IDs from a different owner: %j', async otherOwner => {
+        setBrowserDemoViewingChat(owner);
+        mount();
+        push(state());
+        expect(isBrowserDemoCapturingChat(owner)).toBe(true);
+        expect(isBrowserDemoCapturingChat(otherOwner)).toBe(false);
+        expect(getBrowserDemoForOwner(otherOwner)).toBeNull();
+        act(() => { setBrowserDemoViewingChat(otherOwner); });
+        expect(isBrowserDemoChatInView(owner)).toBe(false);
+        expect(isBrowserDemoChatInView(otherOwner)).toBe(true);
+        await waitFor(() => expect(mock.command).toHaveBeenCalledWith({ action: 'pause', id: 'demo-1', reason: 'scope' }));
+        push(state({ status: 'paused', pauseReason: 'scope' }));
+        expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(true);
+        act(() => { setBrowserDemoViewingChat({ ...owner, processId: 'queue_chat-1' }); });
+        expect((screen.getByRole('button', { name: 'Resume' }) as HTMLButtonElement).disabled).toBe(false);
     });
 });

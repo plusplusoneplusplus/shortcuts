@@ -40,7 +40,7 @@ export function BrowserDemoStrip({ workspaceId, processId, routingRef, viewId, r
     const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
     const inView = useSyncExternalStore(subscribeBrowserDemos,
-        () => demo ? isBrowserDemoChatInView(demo.owner.processId) : false, () => false);
+        () => demo ? isBrowserDemoChatInView(demo.owner) : false, () => false);
     const recordingHere = active && demo?.status === 'recording' ? demo.id : null;
     useEffect(() => {
         if (recordingHere) void runBrowserDemoCommand({ action: 'switch', viewId });

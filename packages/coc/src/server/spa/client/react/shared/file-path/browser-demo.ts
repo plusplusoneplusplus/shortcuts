@@ -71,41 +71,40 @@ export function getBrowserDemoForView(routingRef: string, viewId: string): Brows
 /** The exact owner's demo in any status, including one waiting for review. */
 export function getBrowserDemoForOwner(owner: BrowserDemoOwner): BrowserDemoState | null {
     for (const state of states.values()) {
-        if (state.owner.workspaceId === owner.workspaceId && state.owner.processId === owner.processId
-            && state.owner.routingRef === owner.routingRef) return state;
+        if (sameChatOwner(state.owner, owner)) return state;
     }
     return null;
 }
 
 const bareProcessId = (id: string) => id.startsWith('queue_') ? id.slice(6) : id;
 
-/**
- * Whether a recording or paused demo belongs to this conversation. Composers know a chat by
- * its process id in either queue form, so this matches both.
- */
-export function isBrowserDemoCapturingChat(processId: string | null | undefined): boolean {
-    if (!processId) return false;
-    const id = bareProcessId(processId);
-    for (const state of states.values()) if (state.status !== 'stopped' && bareProcessId(state.owner.processId) === id) return true;
+function sameChatOwner(a: BrowserDemoOwner, b: BrowserDemoOwner): boolean {
+    return a.workspaceId === b.workspaceId && a.routingRef === b.routingRef
+        && bareProcessId(a.processId) === bareProcessId(b.processId);
+}
+
+/** Queue aliases identify the same chat only within its concrete workspace/server owner. */
+export function isBrowserDemoCapturingChat(owner: BrowserDemoOwner | null | undefined): boolean {
+    if (!owner) return false;
+    for (const state of states.values()) if (state.status !== 'stopped' && sameChatOwner(state.owner, owner)) return true;
     return false;
 }
 
-export function useBrowserDemoCapturingChat(processId: string | null | undefined): boolean {
-    return useSyncExternalStore(subscribeBrowserDemos, () => isBrowserDemoCapturingChat(processId), () => false);
+export function useBrowserDemoCapturingChat(owner: BrowserDemoOwner | null | undefined): boolean {
+    return useSyncExternalStore(subscribeBrowserDemos, () => isBrowserDemoCapturingChat(owner), () => false);
 }
 
 export function listBrowserDemos(): BrowserDemoState[] {
     return [...states.values()];
 }
 
-let viewing: { token: number; chatId: string | null } | null = null;
+let viewing: { token: number; owner: BrowserDemoOwner | null } | null = null;
 let nextViewingToken = 1;
 
 /** Pause recordings whose chat is not the one this window shows; nothing records for another scope. */
 function pauseOutOfScope(): void {
-    const chat = viewing?.chatId ? bareProcessId(viewing.chatId) : null;
     for (const state of states.values()) {
-        if (state.status === 'recording' && bareProcessId(state.owner.processId) !== chat) {
+        if (state.status === 'recording' && (!viewing?.owner || !sameChatOwner(state.owner, viewing.owner))) {
             void runBrowserDemoCommand({ action: 'pause', id: state.id, reason: 'scope' });
         }
     }
@@ -116,9 +115,9 @@ function pauseOutOfScope(): void {
  * pauses the recording; the user resumes it explicitly. Returns the release for unmount,
  * which waits a tick so a remount in the same scope does not pause.
  */
-export function setBrowserDemoViewingChat(chatId: string | null): () => void {
+export function setBrowserDemoViewingChat(owner: BrowserDemoOwner | null): () => void {
     const token = nextViewingToken++;
-    viewing = { token, chatId };
+    viewing = { token, owner: owner ? { ...owner } : null };
     notify();
     pauseOutOfScope();
     return () => {
@@ -131,9 +130,9 @@ export function setBrowserDemoViewingChat(chatId: string | null): () => void {
     };
 }
 
-/** Whether this window shows `processId`'s chat, so its paused recording may resume. */
-export function isBrowserDemoChatInView(processId: string): boolean {
-    return Boolean(viewing?.chatId) && bareProcessId(viewing!.chatId!) === bareProcessId(processId);
+/** Whether this window shows the exact owner's chat, so its paused recording may resume. */
+export function isBrowserDemoChatInView(owner: BrowserDemoOwner): boolean {
+    return !!viewing?.owner && sameChatOwner(viewing.owner, owner);
 }
 
 /** Run one recorder command; failures, including a missing host, come back as values. */

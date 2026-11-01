@@ -55,9 +55,14 @@ members. Owner teardown revokes reservations without retaining unsent data.
 
 `shared/file-path/browser-demo.ts` mirrors counts and owner identities in SPA
 memory. `BrowserDemoStrip` supplies recording state, Pause/Stop and explicit Add;
-chat/workspace departure pauses recording and the owning composer blocks send
-while capturing. The desktop atomically excludes AI access to captured views and
-their chat: queued commands prevent Start or stopped-draft Resume, and recording
+viewing, Resume and composer matching require the concrete routing/server reference,
+raw workspace and chat owner. Queue-ID aliases normalize only within that owner.
+`UnifiedRightPanel` reports the selected owner; aggregated group member chats
+supply their own workspace/selection/process tuple separately from panel and dock
+scope. Departure pauses recording; only the owning composer blocks Send.
+
+The desktop atomically excludes AI access to captured views and their chat:
+queued commands prevent Start or stopped-draft Resume, and recording
 ownership is rechecked before main-process dispatch. Command reservations and
 target-queue busy state survive cancellation until dispatched input releases
 settle. Other chats can still use unrelated tabs.

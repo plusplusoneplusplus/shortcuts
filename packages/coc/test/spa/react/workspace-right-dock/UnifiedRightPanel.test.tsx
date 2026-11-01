@@ -91,6 +91,8 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { isBrowserDemoChatInView, resetBrowserDemosForTest, subscribeBrowserDemos } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
+import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 import { WorkspaceSettingsProvider } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
 import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
@@ -155,6 +157,40 @@ async function openViaMenu(testId: string) {
 }
 
 describe('UnifiedRightPanel', () => {
+    it.each([
+        { workspaceId: 'ws-2', routingRef: 'remote:server-a:ws-2' },
+        { workspaceId: WS, routingRef: 'remote:server-b:ws-1' },
+    ])('pauses an equal-ID recording on workspace/server departure: %j', async next => {
+        const listeners: Array<(state: BrowserDemoState) => void> = [];
+        const command = vi.fn().mockResolvedValue({ ok: true, drafts: [] });
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: { onNewTab: () => () => {}, demo: {
+            command, onState: (callback: (state: BrowserDemoState) => void) => { listeners.push(callback); return () => {}; },
+        } } };
+        const owner = { workspaceId: WS, routingRef: 'remote:server-a:ws-1', processId: 'chat-1' };
+        subscribeBrowserDemos(() => {});
+        const dock = dockStub();
+        const view = renderPanel({ routingRef: owner.routingRef, chatId: 'queue_chat-1', dock });
+        act(() => listeners.forEach(listener => listener({ id: 'demo', owner, status: 'recording',
+            stepCount: 0, tabCount: 1, viewIds: [], incomplete: false })));
+        expect(isBrowserDemoChatInView(owner)).toBe(true);
+        expect(command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'pause' }));
+        view.rerender(<UnifiedRightPanel {...next} chatId="queue_chat-1" dock={dock} />);
+        expect(isBrowserDemoChatInView(owner)).toBe(false);
+        await waitFor(() => expect(command).toHaveBeenCalledWith({ action: 'pause', id: 'demo', reason: 'scope' }));
+    });
+
+    it('uses the selected member owner, not the group scope or dock target, for recording visibility', async () => {
+        const owner = { workspaceId: WS, routingRef: 'remote:server-a:ws-1', processId: 'chat-1' };
+        const props = { workspaceId: 'group-g', routingRef: 'remote:server-a:group-g', chatId: 'old-group-chat', dock: dockStub() };
+        const view = renderPanel({ ...props, viewingChatOwner: owner });
+        expect(isBrowserDemoChatInView(owner)).toBe(true);
+        expect(isBrowserDemoChatInView({ ...owner, workspaceId: 'group-g', routingRef: props.routingRef })).toBe(false);
+        view.rerender(<UnifiedRightPanel {...props} viewingChatOwner={{ ...owner, workspaceId: 'ws-2', routingRef: 'remote:server-a:ws-2' }} />);
+        expect(isBrowserDemoChatInView(owner)).toBe(false);
+        view.rerender(<UnifiedRightPanel {...props} viewingChatOwner={null} />);
+        expect(isBrowserDemoChatInView({ workspaceId: 'group-g', routingRef: props.routingRef, processId: 'old-group-chat' })).toBe(false);
+    });
+
     it.each(['group-web', 'remote:server-a:group-web', WS])(
         'hides browser repo names only for group panels (%s) without changing owners', workspaceId => {
             let state = EMPTY_UNIFIED_PANEL;
@@ -238,6 +274,7 @@ describe('UnifiedRightPanel', () => {
     });
     afterEach(() => {
         cleanup();
+        resetBrowserDemosForTest();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
         delete (window as { cocDesktop?: unknown }).cocDesktop;
