@@ -1,4 +1,4 @@
-.git-file-review{--review-border:#e0e0e0;--review-muted:#777;--review-panel:#fafafa;display:flex;flex:1;flex-direction:column;min-height:0;min-width:0;overflow:hidden;container-type:inline-size;font-size:12px;color:#303030}
+.git-file-review{--review-border:#e0e0e0;--review-muted:#777;--review-panel:#fafafa;display:flex;flex:1;flex-direction:column;height:100%;min-height:0;min-width:0;overflow:hidden;container-type:inline-size;font-size:12px;color:#303030}
 .dark .git-file-review{--review-border:#3c3c3c;--review-muted:#999;--review-panel:#252526;color:#ccc}
 .git-file-review button,.git-file-review select,.git-file-review input{font:inherit}
 .git-file-review button{cursor:pointer}

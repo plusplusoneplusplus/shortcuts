@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { appReducer, type AppContextState } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import {
     resolveDashboardRoute,
     applyRouteEffects,
@@ -35,6 +36,59 @@ function makeCtx(overrides: Partial<RouteContext> = {}): RouteContext {
 const appActions = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'app' }> => e.kind === 'app').map((e) => e.action);
 const queueActions = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'queue' }> => e.kind === 'queue').map((e) => e.action);
 const navigations = (r: RouteResolution) => r.effects.filter((e): e is Extract<RouteEffect, { kind: 'navigate' }> => e.kind === 'navigate');
+
+describe('Explorer routes keep the chat workspace visible', () => {
+    it.each(['ws1', 'remote:server-a:ws1'])('restores %s Explorer after switching repos without hiding chats', id => {
+        let state = { selectedRepoId: null, activeRepoSubTab: 'chats', repoRouteState: {},
+            repoTabState: {}, notePathState: {} } as unknown as AppContextState;
+        const visit = (hash: string) => {
+            const resolution = resolveDashboardRoute(hash, makeCtx({
+                selectedRepoId: state.selectedRepoId,
+                repoRouteState: state.repoRouteState, repoTabState: state.repoTabState,
+            }));
+            for (const action of appActions(resolution)) state = appReducer(state, action);
+            return resolution;
+        };
+        const suffix = '/explorer/src%2Findex.ts';
+        visit('#repos/' + encodeURIComponent(id) + suffix);
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedExplorerPath).toBe('src/index.ts');
+        visit('#repos/other/chats');
+        const restored = visit('#repos/' + encodeURIComponent(id));
+        expect(navigations(restored)).toContainEqual({ kind: 'navigate',
+            hash: '#repos/' + encodeURIComponent(id) + suffix, mode: 'replaceState' });
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedRepoId).toBe(id);
+        expect(state.selectedExplorerPath).toBe('src/index.ts');
+    });
+});
+
+describe('Git routes keep the chat workspace visible', () => {
+    it.each(['ws1', 'remote:server-a:ws1'])('restores %s commit details without selecting a hidden Git page', id => {
+        let state = { selectedRepoId: null, activeRepoSubTab: 'chats', repoRouteState: {},
+            repoTabState: {}, notePathState: {} } as unknown as AppContextState;
+        const visit = (hash: string) => {
+            const resolution = resolveDashboardRoute(hash, makeCtx({ selectedRepoId: state.selectedRepoId,
+                repoRouteState: state.repoRouteState, repoTabState: state.repoTabState }));
+            for (const action of appActions(resolution)) state = appReducer(state, action);
+            expect(queueActions(resolution)).toEqual([]);
+        };
+        visit('#repos/' + encodeURIComponent(id) + '/git/abc123/src.ts');
+        expect(state.activeRepoSubTab).toBe('activity');
+        visit('#repos/other/git/def456');
+        visit('#repos/' + encodeURIComponent(id));
+        expect(state.activeRepoSubTab).toBe('activity');
+        expect(state.selectedGitCommitHash).toBe('abc123');
+        expect(state.selectedGitFilePath).toBe('src.ts');
+        expect(state.repoRouteState[id]).toBe('/git/abc123/src.ts');
+    });
+
+    it.each(['my_work', 'my_life'])('keeps the Git page for virtual workspace %s', id => {
+        const resolution = resolveDashboardRoute('#repos/' + id + '/git', makeCtx());
+        expect(appActions(resolution)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+        expect(appActions(resolution)).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
+});
 
 // ── Top-level tab activation ──────────────────────────────────────────────────
 
@@ -134,7 +188,7 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
             { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
             { kind: 'app', action: { type: 'SET_SELECTED_REPO', id: 'ws1' } },
             { kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'ws1', suffix: '/git' } },
-            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'git' } },
+            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'activity' } },
             { kind: 'app', action: { type: 'SET_SELECTED_WORKFLOW', name: null } },
             { kind: 'app', action: { type: 'SET_WORKFLOW_RUN_PROCESS', processId: null } },
             { kind: 'app', action: { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1', commitHash: null, filePath: null } },
@@ -196,7 +250,7 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
         expect(appActions(r)).toEqual(
             expect.arrayContaining([
                 { type: 'SET_SELECTED_REPO', id: 'ws1' },
-                { type: 'SET_REPO_SUB_TAB', tab: 'git' },
+                { type: 'SET_REPO_SUB_TAB', tab: 'activity' },
             ]),
         );
     });

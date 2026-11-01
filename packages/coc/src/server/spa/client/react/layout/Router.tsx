@@ -163,7 +163,10 @@ export function Router() {
                     // sub-tab key differs by layout mode (`'activity'` in classic).
                     const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab() : rawTab;
                     e.preventDefault();
-                    dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+                    // Git and Explorer routes address the panel, keeping the workspace visible.
+                    // Virtual workspaces (My Work, My Life) keep Git as a real page.
+                    const panelOwned = tab === 'explorer' || (tab === 'git' && !isVirtualWorkspaceId(state.selectedRepoId));
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: panelOwned ? resolveChatSubTab() : tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId);
                 }

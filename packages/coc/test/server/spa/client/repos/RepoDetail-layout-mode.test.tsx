@@ -374,9 +374,10 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(screen.queryByTestId('repo-chat-tab-chats')).toBeNull();
     });
 
-    it('classic mode with non-activity sub-tab still mounts Activity (display:none pattern)', () => {
+    it('a visible secondary tab keeps Activity mounted but hidden', () => {
 
-        mockActiveRepoSubTab = 'settings';
+        mockActiveRepoSubTab = 'dreams';
+        mockDreamsEnabled = true;
         renderDetail();
 
         // Activity should be mounted (kept alive via display:none)
@@ -475,6 +476,17 @@ describe('RepoDetail — hidden sub-tab falls back to the workspace', () => {
         renderDetail(repoWith(true, false));
 
         expect(gitTabRedirectCalls()).toHaveLength(0);
+    });
+
+    // The reducer correction can be delayed or overwritten by route restoration.
+    // Rendering must remain usable even while the context still names a hidden tab.
+    it.each(['git', 'notes', 'settings', 'terminal'])('renders the chat workspace while %s is still selected', tab => {
+        mockActiveRepoSubTab = tab;
+        renderDetail(repoWith(true, true));
+        const panel = screen.getByTestId('split-workspace-panel');
+        expect(panel.parentElement?.style.display).not.toBe('none');
+        expect((panel.closest('#repo-sub-tab-content') as HTMLElement).style.display).not.toBe('none');
+        expect(screen.getByTestId('split-chat-list-item')).toBeTruthy();
     });
 });
 

@@ -41,7 +41,7 @@ for (const dark of [false, true]) {
         page.on('pageerror', error => errors.push(error.message));
         await page.route('http://working-review.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
         await page.goto('http://working-review.test/');
-        await page.setContent(`<html class="${dark ? 'dark' : ''}"><body><div id="fixture" style="display:flex;width:1100px;height:600px"></div></body></html>`);
+        await page.setContent(`<html class="${dark ? 'dark' : ''}"><body><div id="fixture" style="width:1100px;height:1000px"></div></body></html>`);
         await page.addStyleTag({ content: '*{box-sizing:border-box}body{margin:0}button,input,select{background:transparent;color:inherit;border:0}' + css });
         await page.addScriptTag({ content: script });
         const navigator = page.getByRole('complementary', { name: 'Changed files' });
@@ -49,6 +49,23 @@ for (const dark of [false, true]) {
         await expect(page.getByTestId('working-tree-file-diff-content')).toContainText('staged');
         await expect(navigator).toBeVisible();
         await expect(separator).toBeVisible();
+        // The Git detail host is a block inside a flex column. Its child must
+        // fill the available height even though the host itself is not flex.
+        const expectFullHeight = async () => {
+            const host = (await page.locator('#fixture').boundingBox())!;
+            await expect.poll(async () => {
+                const bounds = (await page.getByTestId('git-file-review').boundingBox())!;
+                return Math.abs(bounds.y + bounds.height - host.y - host.height);
+            }).toBeLessThanOrEqual(1);
+            const review = (await page.getByTestId('git-file-review').boundingBox())!;
+            const diff = (await page.getByTestId('working-tree-file-diff').boundingBox())!;
+            expect(Math.abs(diff.y + diff.height - review.y - review.height)).toBeLessThanOrEqual(1);
+        };
+        await expectFullHeight();
+        await page.locator('#fixture').evaluate(element => { element.style.height = '700px'; });
+        await expectFullHeight();
+        await page.locator('#fixture').evaluate(element => { element.style.display = 'flex'; });
+        await expectFullHeight();
         const width = (await navigator.boundingBox())!.width;
         await separator.focus();
         await page.keyboard.press('ArrowRight');
@@ -71,6 +88,7 @@ for (const dark of [false, true]) {
         await navigator.getByRole('button', { name: /, Untracked,/ }).click();
         await expect(page.getByTestId('working-tree-file-diff-content')).toContainText('new text');
         await expect(navigator).toBeHidden();
+        await expectFullHeight();
         expect(errors).toEqual([]);
     });
 }

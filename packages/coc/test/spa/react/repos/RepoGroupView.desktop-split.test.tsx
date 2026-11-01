@@ -341,7 +341,7 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
                 mockAppState.selectedGitCommitHash = effect.action.commitHash;
             }
         }
-        expect(mockAppState.activeRepoSubTab).toBe('git');
+        expect(mockAppState.activeRepoSubTab).toBe('activity');
         expect(mockAppState.gitRouteScope).toEqual({ routeWorkspaceId: GROUP_ID, workspaceId: 'r1' });
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 

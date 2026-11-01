@@ -706,12 +706,14 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
         effects.push({ kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') } });
     }
     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+        // Git and Explorer routes address the panel while chats stay visible.
+        // Virtual workspaces (My Work, My Life) keep Git as a real page.
         // When the schedules-in-slide flag is ON, schedule routes
         // (#repos/{id}/schedules/...) live in the chat-list "Scheduled" slide +
         // main pane, not the standalone Schedules sub-tab. Keep the chat surface
         // mounted so RepoChatTab can host the schedule detail/editor. Flag OFF ⇒
         // unchanged.
-        if (parts[2] === 'schedules' && ctx.isSchedulesInSlide()) {
+        if ((parts[2] === 'git' && !isVirtualWorkspaceId(repoId)) || parts[2] === 'explorer' || (parts[2] === 'schedules' && ctx.isSchedulesInSlide())) {
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab() } });
         } else {
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab } });

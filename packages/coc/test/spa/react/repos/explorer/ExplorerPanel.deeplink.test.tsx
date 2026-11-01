@@ -109,7 +109,9 @@ describe('ExplorerPanel deep-link ownership', () => {
             ),
             'utf-8',
         );
-        const writes = source.split('\n').filter(line => line.includes('location.hash = '));
+        // One helper sets the hash and reports it to the host; every caller is guarded.
+        expect(source.split('\n').filter(line => line.includes('location.hash = '))).toHaveLength(1);
+        const writes = source.split('\n').filter(line => line.includes('writeRoute(`'));
         expect(writes).toHaveLength(3);
         for (const write of writes) {
             const idx = source.indexOf(write);

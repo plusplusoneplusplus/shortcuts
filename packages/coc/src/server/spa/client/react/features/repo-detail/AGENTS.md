@@ -5,6 +5,9 @@ TopBar repo navigation and the per-repo detail view.
 The dashboard uses the classic tab order and quick actions. Workspace accepts
 `activity` and `chats` route aliases; the optional plan tab is `Plans (Dep.)`.
 Layout is fixed, with no global or per-repo mode preference.
+Git and Explorer shortcuts and remembered routes keep the chat workspace selected.
+`RepoDetail` renders the workspace synchronously for hidden sub-tabs, independently
+of its selection-correction effect. The owning panel restores route details.
 
 ## RepoTabStrip kernel decomposition
 

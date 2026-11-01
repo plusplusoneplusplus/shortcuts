@@ -74,6 +74,28 @@ vi.mock('../../../../src/server/spa/client/react/features/logs/LogsView', () => 
 
 const KEY = workspaceDockOpenStorageKey('feature-repo');
 
+it.each([['e', 'explorer'], ['g', 'git']])('Alt+%s addresses %s in the panel without selecting a standalone page', (key, tab) => {
+    render(<Router />);
+    mockDispatch.mockClear();
+    act(() => document.dispatchEvent(new KeyboardEvent('keydown', {
+        key, code: 'Key' + key.toUpperCase(), altKey: true, bubbles: true,
+    })));
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab });
+    expect(location.hash).toBe('#repos/feature-repo/' + tab);
+});
+
+it.each(['my_work', 'my_life'])('Alt+G opens the Git page of virtual workspace %s', id => {
+    mockSelectedRepoId = id;
+    render(<Router />);
+    mockDispatch.mockClear();
+    act(() => document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'g', code: 'KeyG', altKey: true, bubbles: true,
+    })));
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+    expect(location.hash).toBe('#repos/' + id + '/git');
+});
+
 function press(init: KeyboardEventInit, target: EventTarget = document) {
     act(() => {
         target.dispatchEvent(new KeyboardEvent('keydown', { key: '\\', code: 'Backslash', bubbles: true, ...init }));

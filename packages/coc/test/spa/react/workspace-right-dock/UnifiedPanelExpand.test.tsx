@@ -9,7 +9,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
@@ -26,8 +26,12 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: () => <div data-testid="mock-terminal" />,
 }));
+const mockExplorer = vi.hoisted(() => ({ props: {} as { onRouteWrite?: (hash: string) => void } }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: () => <div data-testid="mock-explorer" />,
+    ExplorerPanel: (props: { onRouteWrite?: (hash: string) => void }) => {
+        mockExplorer.props = props;
+        return <div data-testid="mock-explorer" />;
+    },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: () => <textarea aria-label="Note draft" defaultValue="Draft" />,
@@ -38,9 +42,13 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
     async () => await import('../language-servers/inertTransportMock'));
+vi.mock('../../../../src/server/spa/client/react/features/language-servers/fileIdentity', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    resolveOwnedFile: async (_owner: unknown, path: string) => path,
+}));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { useWorkspaceDock } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -56,9 +64,9 @@ import {
 const WS = 'ws-expand';
 const OTHER_WS = 'ws-expand-other';
 
-function Host() {
-    const dock = useWorkspaceDock(WS);
-    return <><WorkspaceDockToggle workspaceId={WS} /><UnifiedRightPanel workspaceId={WS} dock={dock} /></>;
+function Host({ workspaceId = WS, routingRef }: { workspaceId?: string; routingRef?: string } = {}) {
+    const dock = useWorkspaceDock(workspaceId);
+    return <><WorkspaceDockToggle workspaceId={workspaceId} /><UnifiedRightPanel workspaceId={workspaceId} routingRef={routingRef} dock={dock} /></>;
 }
 
 function renderPanel() {
@@ -74,6 +82,7 @@ const panel = () => screen.getByTestId('unified-right-panel');
 const body = () => screen.getByTestId('unified-panel-body');
 
 beforeEach(() => {
+    window.history.replaceState(null, '', '/');
     localStorage.clear();
     clearUnifiedPanelState(WS);
     clearUnifiedTreeState(WS);
@@ -81,8 +90,70 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    window.history.replaceState(null, '', '/');
     setWorkspaceDockExpanded(WS, false);
     setWorkspaceDockExpanded(OTHER_WS, false);
+});
+
+describe('Explorer route restoration in the resource panel', () => {
+    it('opens Explorer without tabs on mount and after switching away and back', () => {
+        window.history.replaceState(null, '', `/#repos/${WS}/explorer`);
+        const view = render(<Host />);
+        expect(panel().dataset.open).toBe('true');
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+        window.history.replaceState(null, '', `/#repos/${OTHER_WS}/activity`);
+        view.rerender(<Host key={OTHER_WS} workspaceId={OTHER_WS} />);
+        window.history.replaceState(null, '', `/#repos/${WS}/explorer`);
+        view.rerender(<Host key={WS} />);
+        expect(panel().dataset.open).toBe('true');
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+    });
+
+    it.each([undefined, `remote:server-a:${WS}`])('opens a deep-linked file on its concrete owner (%s)', async routingRef => {
+        window.history.replaceState(null, '', `/#repos/${encodeURIComponent(routingRef ?? WS)}/explorer/src%2Findex.ts`);
+        render(<Host routingRef={routingRef} />);
+        await waitFor(() => expect(Object.values(readUnifiedPanelState(WS).chatTabs).flat()).toEqual(expect.arrayContaining([
+            expect.objectContaining({ kind: 'file', resourceId: 'src/index.ts',
+                ownerWorkspaceId: WS, ownerRoutingRef: routingRef ?? null }),
+        ])));
+        expect(panel().dataset.open).toBe('true');
+    });
+
+    it('ignores a route belonging to another clone of the same repo', () => {
+        window.history.replaceState(null, '', `/#repos/${encodeURIComponent(`remote:server-b:${WS}`)}/explorer`);
+        render(<Host routingRef={`remote:server-a:${WS}`} />);
+        expect(panel().dataset.open).toBe('false');
+    });
+
+    it('does not replay its own Explorer selection as a pinned file open', async () => {
+        const fileTabs = () => Object.values(readUnifiedPanelState(WS).chatTabs).flat()
+            .filter(tab => tab.kind === 'file' && tab.resourceId === 'src/index.ts');
+        const navigate = (hash: string, own = false) => act(() => {
+            window.history.replaceState(null, '', '/' + hash);
+            if (own) mockExplorer.props.onRouteWrite?.(location.hash);
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        window.history.replaceState(null, '', `/#repos/${WS}/explorer`);
+        render(<Host />);
+        navigate(`#repos/${WS}/explorer/src%2Findex.ts`, true);
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+        expect(fileTabs()).toEqual([]);
+        // A later outside link to the same file still opens it.
+        navigate(`#repos/${WS}/activity`);
+        navigate(`#repos/${WS}/explorer/src%2Findex.ts`);
+        await waitFor(() => expect(fileTabs()).toHaveLength(1));
+    });
+
+    it('opens on hash navigation and lets the user close it without reopening on render', () => {
+        render(<Host />);
+        act(() => {
+            window.history.replaceState(null, '', `/#repos/${WS}/explorer/src`);
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        expect(panel().dataset.open).toBe('true');
+        act(() => setWorkspaceDockOpen(WS, false));
+        expect(panel().dataset.open).toBe('false');
+    });
 });
 
 describe('Unified panel header cycle', () => {

@@ -95,10 +95,13 @@ name one owner; reorder uses that owner's repo view.
 
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats
-`chats`/`activity` and `cli-sessions`/`copilot-sessions` as aliases, waits for git
-capability loading, and falls back to the chat surface only when the active sub-tab is
-absent from the resolved `visibleSubTabs` — that fallback does not erase the stored deep
-route suffix.
+`chats`/`activity` and `cli-sessions`/`copilot-sessions` as aliases and falls back to
+the chat surface synchronously when the active sub-tab is absent from `visibleSubTabs`,
+independently of selection-correction effects and Git info loading. The remembered
+route stays intact. Git and Explorer shortcuts and routes select the chat workspace;
+My Work and My Life keep Git as a real sub-tab. `UnifiedRightPanel` restores the navigator and
+file selection on mount or hash navigation for its exact local or clone-qualified owner,
+skipping routes its own Explorer wrote (`onRouteWrite`) so preview clicks stay previews.
 
 ### Workspace panel resources
 

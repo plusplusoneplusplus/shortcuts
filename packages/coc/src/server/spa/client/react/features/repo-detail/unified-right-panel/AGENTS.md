@@ -10,6 +10,9 @@ workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
 uses a full-width presentation with a visible header toggle. The state around it — open, selected Search/Explorer mode, width,
 resize, and target — comes from
 `../useWorkspaceDock`, described in `../AGENTS.md`.
+`UnifiedRightPanel` restores `/explorer/<path>` on mount and hash navigation only
+for its exact local or clone-qualified owner. The route opens the navigator and
+file tab while the host keeps the chat workspace visible.
 
 ## Scope, owner, and identity
 
