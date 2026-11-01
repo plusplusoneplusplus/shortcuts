@@ -17,7 +17,7 @@ meaningful keys. It reads targeted accessible semantics, never typed values,
 screenshots or page dumps. Editable/control roots and descendants cannot supply
 label text. Main validates every queued observation and redacts credentials,
 emails, numbers and opaque identifiers from labels, titles and URL metadata.
-Only bounded semantic roles survive.
+Sensitive field labels are omitted. Only bounded semantic roles survive.
 
 `browser-demo-tab-capture.ts` polls document-local queues through main-only CDP.
 Document replacement, inaccessible frames, malformed reports and overflow produce

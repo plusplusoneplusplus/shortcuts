@@ -123,6 +123,14 @@ describe('browser demo capture script', () => {
         expect(JSON.stringify(sent())).not.toContain('hunter2');
     });
 
+    it('never emits a sensitive field label even when the site reflects a short password into it', () => {
+        document.body.innerHTML = '<input type="password" aria-label="private-field-value">';
+        const input = document.querySelector('input')!;
+        type(input, 'private-field-value');
+        expect(sent()[0]).toMatchObject({ kind: 'type', sensitive: true, label: '' });
+        expect(JSON.stringify(sent())).not.toContain('private-field-value');
+    });
+
     it('records toggles with state, selects and files without values', () => {
         document.body.innerHTML = '<label><input type="checkbox"> Remember</label><select aria-label="Country"><option>Iceland</option></select><input type="file" aria-label="Upload">';
         const box = document.querySelector('input[type=checkbox]') as HTMLInputElement;
@@ -193,6 +201,10 @@ describe('demo capture queue', () => {
 });
 
 describe('demo redaction', () => {
+    it('redacts short credentials explicitly named in metadata', () => {
+        expect(redactDemoText('Account password=fixture')).toBe('Account [credential]');
+        expect(redactDemoUrl('https://fixture.test/reset/token%3Dfixture')).toBe('https://fixture.test/reset/{id}');
+    });
     it('redacts opaque alphabetic identifiers without requiring a known prefix or digits', () => {
         const opaque = 'abcdefghijklmnopqrstuvwxyzabcdef';
         expect(redactDemoText(`Account ${opaque}`)).toBe('Account [token]');
@@ -251,6 +263,6 @@ describe('sanitizeDemoObservation', () => {
 
     it('keeps only known fields and never passes a value through', () => {
         const action = sanitizeDemoObservation(JSON.stringify({ ...valid, kind: 'type', value: 'hunter2', role: '<script>', sensitive: true, checked: true }));
-        expect(action).toEqual({ kind: 'type', role: 'generic', label: 'Send to [email]', url: 'https://mail.test/c?id=…', sensitive: true });
+        expect(action).toEqual({ kind: 'type', role: 'generic', label: '', url: 'https://mail.test/c?id=…', sensitive: true });
     });
 });

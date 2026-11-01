@@ -114,8 +114,9 @@ function browserDemoCapture(drain: string, limit: number): void {
         return origin instanceof Element ? origin.closest(interactive) : null;
     };
     const report = (kind: BrowserDemoActionKind, element: Element, extra: Partial<BrowserDemoObservation> = {}) => {
-        const observation: BrowserDemoObservation = { kind, role: role(element), label: label(element), url: location.href, ...extra };
-        if (sensitive(element)) observation.sensitive = true;
+        const isSensitive = sensitive(element);
+        const observation: BrowserDemoObservation = { kind, role: role(element), label: isSensitive ? '' : label(element), url: location.href, ...extra };
+        if (isSensitive) observation.sensitive = true;
         send(JSON.stringify(observation));
     };
     const flush = (element: Element) => {
@@ -174,12 +175,14 @@ const ROLES = new Set(['button', 'link', 'textbox', 'combobox', 'checkbox', 'rad
     'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'treeitem', 'label', 'generic']);
 const MAX_LABEL = 120;
 const KNOWN_CREDENTIAL = /\b(?:(?:sk-|gh[pousr]_|github_pat_|xox[baprs]-|AKIA)[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/;
+const NAMED_CREDENTIAL = /\b(?:password|passwd|secret|token|api[-_ ]?key|authorization)\s*[:=]\s*[^\s/]+/i;
 
 /** Hide identifiers a label, title or URL could carry: emails, long numbers and token-like runs. */
 export function redactDemoText(value: string, maximum = MAX_LABEL): string {
     return value.replace(/[\u0000-\u001f\u007f]+/g, ' ')
         .replace(/[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/g, '[email]')
         .replace(new RegExp(KNOWN_CREDENTIAL.source, 'g'), '[token]')
+        .replace(new RegExp(NAMED_CREDENTIAL.source, 'gi'), '[credential]')
         .replace(/\+?\d[\d -]{6,}\d/g, '[number]')
         .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[token]')
         .replace(/\s+/g, ' ').trim().slice(0, maximum);
@@ -198,7 +201,7 @@ export function redactDemoUrl(value: string): string | undefined {
     const path = url.pathname.split('/').map(segment => {
         let decoded = segment;
         try { decoded = decodeURIComponent(segment); } catch { /* keep the raw segment */ }
-        return SECRET_SEGMENT.test(decoded) || KNOWN_CREDENTIAL.test(decoded) || /@/.test(decoded) ? '{id}' : segment;
+        return SECRET_SEGMENT.test(decoded) || KNOWN_CREDENTIAL.test(decoded) || NAMED_CREDENTIAL.test(decoded) || /@/.test(decoded) ? '{id}' : segment;
     }).join('/');
     const names = [...new Set([...url.searchParams.keys()])].slice(0, 12).map(name => encodeURIComponent(redactDemoText(name, 40)));
     const query = names.length ? `?${names.map(name => `${name}=…`).join('&')}` : '';
@@ -231,7 +234,7 @@ export function sanitizeDemoObservation(payload: unknown): BrowserDemoAction | u
     if (!url) return undefined;
     const sensitive = value.sensitive === true;
     const role = typeof value.role === 'string' && ROLES.has(value.role) ? value.role : 'generic';
-    const label = typeof value.label === 'string' ? redactDemoText(value.label) : '';
+    const label = !sensitive && typeof value.label === 'string' ? redactDemoText(value.label) : '';
     const action: BrowserDemoAction = { kind: value.kind as BrowserDemoActionKind, role, label, url };
     if (sensitive) action.sensitive = true;
     if (typeof value.checked === 'boolean' && action.kind === 'toggle') action.checked = value.checked;
