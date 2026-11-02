@@ -3,13 +3,16 @@
  */
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {
     UnifiedPanelTabStrip,
     type UnifiedPanelTabStripProps,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
 import type { UnifiedTabStripGroup } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
+import {
+    clearUnifiedTabGroupState, moveTabGroup, readUnifiedTabGroupOrder, useUnifiedTabGroupOrder,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroupStore';
 import {
     unifiedPanelBulkCloseTargets,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabMenuModel';
@@ -95,7 +98,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         }));
         const { props } = renderStrip({ tabs, hideBrowserRepoLabels: true });
         fireEvent.click(screen.getByTestId('unified-panel-group-overflow-web'));
-        for (const entry of tabs) {
+        for (const entry of tabs.slice(3)) {
             expect(screen.getByRole('option', { name: entry.label })).toBeTruthy();
             expect(screen.getByTestId(`unified-panel-tab-overflow-row-${entry.id}`)).not.toHaveTextContent(entry.repoLabel!);
         }
@@ -150,8 +153,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         const { props } = renderStrip({ tabs, activeId: tabs[0].id }, true);
         fireEvent.click(overflow());
         const list = screen.getByRole('listbox', { name: 'Files tabs' });
-        expect(within(list).getAllByRole('option')).toHaveLength(tabs.length);
-        expect(within(list).getByRole('option', { name: /file-1.ts/ })).toHaveAttribute('aria-selected', 'true');
+        expect(within(list).getAllByRole('option').map(node => node.textContent)).toEqual(['file-4.ts', 'file-5.ts']);
         fireEvent.click(within(list).getByRole('option', { name: /file-5.ts/ }));
 
         expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
@@ -161,17 +163,63 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(screen.getByRole('button', { name: 'Files, 5 tabs' })).toHaveAttribute('aria-expanded', 'true');
         expect(props.onToggleGroup).not.toHaveBeenCalled();
         expect(props.onMove).not.toHaveBeenCalled();
+
+        // The promoted tab left the overflow; the tab it displaced joined it.
+        expect(overflow()).toHaveTextContent('+2');
+        fireEvent.click(overflow());
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['file-3.ts', 'file-4.ts']);
     });
 
-    it('searches the complete group including visible tabs and owner labels, then activates with Enter', () => {
+    it('lists only the tabs the strip hides, keyed by id rather than title', () => {
+        // Web group from the bug report, plus a hidden tab that shares a visible tab's title and URL.
+        const tabs = Object.freeze([
+            tab('browser', 'Google', { id: 'browser:1', resourceId: 'https://google.com' }),
+            tab('browser', 'Search - Microsoft Bing', { id: 'browser:2' }),
+            tab('browser', 'YouTube', { id: 'browser:3' }),
+            tab('browser', 'Apple', { id: 'browser:4' }),
+            tab('browser', 'Google', { id: 'browser:5', resourceId: 'https://google.com' }),
+        ]);
+        const { props, rerender } = renderStrip({ tabs, activeId: tabs[1].id });
+        expect(overflow('web')).toHaveTextContent('+2');
+        fireEvent.click(overflow('web'));
+        const menu = screen.getByTestId('unified-panel-tab-overflow-menu');
+        expect(within(menu).getByText('2 hidden')).toBeTruthy();
+        expect(screen.getAllByRole('option').map(node => node.closest('[data-testid]')!.getAttribute('data-testid')))
+            .toEqual(['unified-panel-tab-overflow-row-browser:4', 'unified-panel-tab-overflow-row-browser:5']);
+
+        // Search covers only overflow entries; a visible-only match shows the empty state.
+        const search = screen.getByRole('textbox', { name: 'Search web tabs' });
+        fireEvent.change(search, { target: { value: 'youtube' } });
+        expect(screen.queryAllByRole('option')).toHaveLength(0);
+        expect(screen.getByText('No matching tabs')).toBeTruthy();
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).not.toHaveBeenCalled();
+        fireEvent.change(search, { target: { value: 'google' } });
+        expect(screen.getAllByRole('option')).toHaveLength(1);
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).toHaveBeenCalledWith('browser:5');
+
+        // Closing a hidden tab shrinks the list; the last one removes +N.
+        rerender(<UnifiedPanelTabStrip {...props} tabs={tabs.slice(0, 4)} />);
+        expect(overflow('web')).toHaveTextContent('+1');
+        fireEvent.click(overflow('web'));
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['Apple']);
+        expect(within(screen.getByTestId('unified-panel-tab-overflow-menu')).getByText('1 hidden')).toBeTruthy();
+        rerender(<UnifiedPanelTabStrip {...props} tabs={tabs.slice(0, 3)} />);
+        expect(screen.queryByTestId('unified-panel-group-overflow-web')).toBeNull();
+    });
+
+    it('searches hidden tabs by label and owner label, then activates with Enter', () => {
         const tabs = Object.freeze(files().map((entry, index) => index === 4
             ? Object.freeze({ ...entry, repoLabel: 'Other project', ownerWorkspaceId: 'other-workspace' }) : entry));
         const { props } = renderStrip({ tabs, activeId: tabs[0].id });
         fireEvent.click(overflow());
         const search = screen.getByRole('textbox', { name: 'Search files tabs' });
-        fireEvent.change(search, { target: { value: 'FILE-1' } });
+        fireEvent.change(search, { target: { value: 'FILE-4' } });
         expect(screen.getAllByRole('option')).toHaveLength(1);
-        expect(screen.getByRole('option')).toHaveTextContent(tabs[0].label);
+        expect(screen.getByRole('option')).toHaveTextContent(tabs[3].label);
+        fireEvent.change(search, { target: { value: 'FILE-1' } });
+        expect(screen.queryAllByRole('option')).toHaveLength(0);
         fireEvent.change(search, { target: { value: 'other PROJECT' } });
         expect(screen.getAllByRole('option')).toHaveLength(1);
         expect(screen.getByRole('option')).toHaveTextContent(tabs[4].label);
@@ -364,5 +412,181 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close others in group' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close all in group' })).toBeEnabled();
+    });
+});
+
+describe('UnifiedPanelTabStrip group block reordering', () => {
+    const tools = [tab('terminal', 'Shell')];
+    const fileTabs = [tab('file', 'a.ts'), tab('file', 'b.ts'), tab('file', 'c.ts')];
+    const web = ['Google', 'Bing', 'YouTube', 'Docs'].map(label => tab('browser', label));
+    const tabs = Object.freeze([...tools, ...fileTabs, ...web]);
+    const folded = new Set<UnifiedTabStripGroup>(['tools', 'files']);
+
+    function Harness({ scope, ...props }: { scope: string } & Partial<UnifiedPanelTabStripProps>) {
+        const order = useUnifiedTabGroupOrder(scope);
+        return <UnifiedPanelTabStrip
+            tabs={tabs} activeId={web[1].id} groupsEnabled foldedGroups={folded}
+            onActivate={vi.fn()} onClose={vi.fn()} onCloseMany={vi.fn()} onMove={vi.fn()}
+            groupOrder={order} onMoveGroup={(group, before) => moveTabGroup(scope, group, before)}
+            {...props}
+        />;
+    }
+
+    function renderHarness(props: Partial<UnifiedPanelTabStripProps> = {}, scope = 'host-a:workspace') {
+        const handlers = { onActivate: vi.fn(), onToggleGroup: vi.fn(), ...props };
+        const view = render(<Harness scope={scope} {...handlers} />);
+        return { ...view, handlers };
+    }
+
+    const blockOrder = () => screen.getAllByRole('group').map(node => node.getAttribute('data-strip-group'));
+    const label = (group: UnifiedTabStripGroup) => screen.getByTestId(`unified-panel-group-${group}`);
+
+    /** Lays the rendered blocks out 100px apart in DOM order (jsdom has no layout). */
+    function layoutBlocks() {
+        screen.getAllByRole('group').forEach((node, index) => {
+            node.getBoundingClientRect = () => ({ left: index * 100, right: index * 100 + 100, width: 100 } as DOMRect);
+        });
+    }
+
+    function drag(group: UnifiedTabStripGroup, fromX: number, toX: number) {
+        layoutBlocks();
+        fireEvent.pointerDown(label(group), { button: 0, clientX: fromX });
+        fireEvent.pointerMove(window, { clientX: toX });
+    }
+
+    afterEach(() => {
+        cleanup();
+        clearUnifiedTabGroupState();
+        localStorage.clear();
+    });
+
+    it('drags Web before Tools as one block, keeping members, active tab, folds, overflow and tab nodes', () => {
+        const { handlers } = renderHarness();
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        const activeNode = tabNode(web[1]);
+        const shownWeb = shownIds('web');
+        expect(overflow('web')).toHaveTextContent('+1');
+
+        drag('web', 250, 30);
+        const indicator = screen.getByTestId('unified-panel-group-drop-indicator');
+        expect(indicator).toHaveAttribute('data-position', 'before');
+        expect(screen.getByRole('group', { name: /^Tools/ })).toContainElement(indicator);
+        expect(screen.getByRole('group', { name: /^Web/ })).toHaveAttribute('data-dragging', 'true');
+        fireEvent.pointerUp(window);
+        // The click that ends a drag must not fold the group.
+        fireEvent.click(label('web'));
+
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        expect(readUnifiedTabGroupOrder('host-a:workspace')).toEqual(['web', 'tools', 'files', 'canvas']);
+        expect(shownIds('web')).toEqual(shownWeb);
+        expect(tabNode(web[1])).toBe(activeNode);
+        expect(activeNode).toHaveAttribute('aria-selected', 'true');
+        expect(label('tools')).toHaveAttribute('aria-expanded', 'false');
+        expect(label('files')).toHaveAttribute('aria-expanded', 'false');
+        expect(overflow('web')).toHaveTextContent('+1');
+        fireEvent.click(overflow('web'));
+        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual([expect.stringContaining('Docs')]);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(handlers.onToggleGroup).not.toHaveBeenCalled();
+        expect(handlers.onActivate).not.toHaveBeenCalled();
+        expect(screen.getByRole('status')).toHaveTextContent('Web group moved. Position 1 of 3.');
+    });
+
+    it('drops after a block onto the following block slot', () => {
+        renderHarness();
+        drag('tools', 50, 280);
+        expect(screen.getByTestId('unified-panel-group-drop-indicator')).toHaveAttribute('data-position', 'after');
+        fireEvent.pointerUp(window);
+        expect(blockOrder()).toEqual(['files', 'web', 'tools']);
+    });
+
+    it('treats movement under the threshold as a click that folds or expands', () => {
+        const { handlers } = renderHarness();
+        drag('web', 250, 253);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(screen.getByRole('group', { name: /^Web/ })).not.toHaveAttribute('data-dragging');
+        fireEvent.pointerUp(window);
+        fireEvent.click(label('web'));
+        expect(handlers.onToggleGroup).toHaveBeenCalledWith('web');
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('cancels with Escape or pointercancel without moving, folding or activating', () => {
+        const { handlers } = renderHarness();
+        drag('web', 250, 30);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        expect(screen.getByRole('status')).toHaveTextContent('Group move cancelled.');
+        fireEvent.pointerUp(window);
+        fireEvent.click(label('web'));
+
+        drag('files', 150, 10);
+        fireEvent.pointerCancel(window);
+        fireEvent.pointerUp(window);
+
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        expect(localStorage.length).toBe(0);
+        expect(handlers.onToggleGroup).not.toHaveBeenCalled();
+        expect(handlers.onActivate).not.toHaveBeenCalled();
+    });
+
+    it('does not write a move when the block drops back into its own slot', () => {
+        renderHarness();
+        drag('files', 150, 220);
+        expect(screen.getByTestId('unified-panel-group-drop-indicator')).toHaveAttribute('data-position', 'before');
+        fireEvent.pointerUp(window);
+        drag('files', 150, 160);
+        expect(screen.queryByTestId('unified-panel-group-drop-indicator')).toBeNull();
+        fireEvent.pointerUp(window);
+        expect(localStorage.length).toBe(0);
+        expect(screen.getByRole('status')).toHaveTextContent('Group move cancelled.');
+    });
+
+    it('moves the focused group with Alt+Arrow, keeps focus and stops at the edges', async () => {
+        renderHarness();
+        const webLabel = label('web');
+        expect(webLabel).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
+        webLabel.focus();
+        fireEvent.keyDown(webLabel, { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        expect(screen.getByRole('status')).toHaveTextContent('Web group moved left. Position 2 of 3.');
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        await act(async () => { await Promise.resolve(); });
+        expect(document.activeElement).toBe(label('web'));
+        fireEvent.keyDown(label('web'), { key: 'ArrowRight', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        // Plain arrows still traverse stops rather than moving blocks.
+        fireEvent.keyDown(label('web'), { key: 'ArrowRight' });
+        expect(blockOrder()).toEqual(['tools', 'web', 'files']);
+        expect(label('tools')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('keeps group order per workspace and reconciles groups that appear later', () => {
+        const { unmount } = renderHarness();
+        drag('web', 250, 30);
+        fireEvent.pointerUp(window);
+        expect(blockOrder()).toEqual(['web', 'tools', 'files']);
+        unmount();
+
+        renderHarness({}, 'host-b:workspace');
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
+        cleanup();
+
+        renderHarness({ tabs: [...tabs, tab('canvas', 'Diagram')] });
+        expect(blockOrder()).toEqual(['web', 'tools', 'files', 'canvas']);
+    });
+
+    it('offers no group drag handle with a single group or without a move callback', () => {
+        renderHarness({ tabs: web });
+        expect(label('web')).not.toHaveAttribute('aria-keyshortcuts');
+        cleanup();
+        render(<UnifiedPanelTabStrip tabs={tabs} activeId={null} groupsEnabled onActivate={vi.fn()} onClose={vi.fn()}
+            onCloseMany={vi.fn()} onMove={vi.fn()} />);
+        expect(label('web')).not.toHaveAttribute('aria-keyshortcuts');
+        fireEvent.keyDown(label('web'), { key: 'ArrowLeft', altKey: true });
+        expect(blockOrder()).toEqual(['tools', 'files', 'web']);
     });
 });

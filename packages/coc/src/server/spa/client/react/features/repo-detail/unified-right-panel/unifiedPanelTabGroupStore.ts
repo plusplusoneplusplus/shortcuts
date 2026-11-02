@@ -1,10 +1,10 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { unifiedPanelStorageKey } from './unifiedPanelTabsModel';
-import { UNIFIED_TAB_STRIP_GROUPS, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
+import { moveGroupInOrder, normalizeGroupOrder, UNIFIED_TAB_STRIP_GROUPS, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 
 const EMPTY: ReadonlySet<UnifiedTabStripGroup> = new Set();
 const listeners = new Map<string, Set<() => void>>();
-const snapshotCache = new Map<string, { raw: string; value: ReadonlySet<UnifiedTabStripGroup> }>();
+const snapshotCache = new Map<string, { raw: string; value: GroupLayout }>();
 
 function storageKey(scope: string): string {
     return unifiedPanelStorageKey(scope).replace(/:tabs$/, ':groups');
@@ -25,7 +25,18 @@ function subscribe(key: string, listener: () => void): () => void {
     };
 }
 
-export function readUnifiedTabGroupState(scope: string): ReadonlySet<UnifiedTabStripGroup> {
+interface GroupLayout {
+    folded: ReadonlySet<UnifiedTabStripGroup>;
+    order: readonly UnifiedTabStripGroup[];
+}
+
+const DEFAULT_LAYOUT: GroupLayout = { folded: EMPTY, order: normalizeGroupOrder(undefined) };
+
+/**
+ * One record per panel scope: `{ folded, order }`. A bare array is the older
+ * folded-only form and still reads as fold state with the default order.
+ */
+function readLayout(scope: string): GroupLayout {
     const key = storageKey(scope);
     let raw: string | null = null;
     try {
@@ -33,46 +44,80 @@ export function readUnifiedTabGroupState(scope: string): ReadonlySet<UnifiedTabS
     } catch {
         /* Storage can be disabled. */
     }
-    if (raw === null) return EMPTY;
+    if (raw === null) return DEFAULT_LAYOUT;
     const cached = snapshotCache.get(key);
     if (cached?.raw === raw) return cached.value;
-    let value = EMPTY;
+    let value = DEFAULT_LAYOUT;
     try {
         const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-            const groups = UNIFIED_TAB_STRIP_GROUPS.filter(group => parsed.includes(group));
-            if (groups.length) value = new Set(groups);
-        }
+        const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed as { folded?: unknown; order?: unknown } : null;
+        const folded = Array.isArray(parsed) ? parsed : record?.folded;
+        const groups = Array.isArray(folded) ? UNIFIED_TAB_STRIP_GROUPS.filter(group => folded.includes(group)) : [];
+        value = {
+            folded: groups.length ? new Set(groups) : EMPTY,
+            order: record ? normalizeGroupOrder(record.order) : DEFAULT_LAYOUT.order,
+        };
     } catch {
-        /* Malformed chrome state falls back to unfolded groups. */
+        /* Malformed chrome state falls back to unfolded groups in default order. */
     }
     snapshotCache.set(key, { raw, value });
     return value;
 }
 
-export function toggleGroupFolded(scope: string, group: UnifiedTabStripGroup): void {
-    const next = new Set(readUnifiedTabGroupState(scope));
-    if (next.has(group)) next.delete(group);
-    else next.add(group);
+function writeLayout(scope: string, folded: ReadonlySet<UnifiedTabStripGroup>, order: readonly UnifiedTabStripGroup[]): void {
     const key = storageKey(scope);
-    const groups = UNIFIED_TAB_STRIP_GROUPS.filter(item => next.has(item));
-    const raw = JSON.stringify(groups);
+    const groups = UNIFIED_TAB_STRIP_GROUPS.filter(item => folded.has(item));
+    const value: GroupLayout = { folded: groups.length ? new Set(groups) : EMPTY, order: normalizeGroupOrder(order) };
+    const raw = JSON.stringify({ folded: groups, order: value.order });
     try {
         localStorage.setItem(key, raw);
     } catch {
         /* Ignore quota / disabled storage. */
     }
-    snapshotCache.set(key, { raw, value: groups.length ? new Set(groups) : EMPTY });
+    snapshotCache.set(key, { raw, value });
     listeners.get(key)?.forEach(listener => listener());
 }
 
-export function useUnifiedTabGroupState(scope: string): ReadonlySet<UnifiedTabStripGroup> {
+export function readUnifiedTabGroupState(scope: string): ReadonlySet<UnifiedTabStripGroup> {
+    return readLayout(scope).folded;
+}
+
+export function readUnifiedTabGroupOrder(scope: string): readonly UnifiedTabStripGroup[] {
+    return readLayout(scope).order;
+}
+
+export function toggleGroupFolded(scope: string, group: UnifiedTabStripGroup): void {
+    const { folded, order } = readLayout(scope);
+    const next = new Set(folded);
+    if (next.has(group)) next.delete(group);
+    else next.add(group);
+    writeLayout(scope, next, order);
+}
+
+/** Move a whole group block before `beforeGroup`, or last when it is null. */
+export function moveTabGroup(scope: string, group: UnifiedTabStripGroup, beforeGroup: UnifiedTabStripGroup | null): void {
+    const { folded, order } = readLayout(scope);
+    const next = moveGroupInOrder(order, group, beforeGroup);
+    if (next.every((entry, index) => entry === order[index])) return;
+    writeLayout(scope, folded, next);
+}
+
+function useGroupLayout<T>(scope: string, select: (layout: GroupLayout) => T): T {
     const key = storageKey(scope);
     return useSyncExternalStore(
         useCallback(listener => subscribe(key, listener), [key]),
-        useCallback(() => readUnifiedTabGroupState(scope), [scope]),
-        () => EMPTY,
+        () => select(readLayout(scope)),
+        () => select(DEFAULT_LAYOUT),
     );
+}
+
+export function useUnifiedTabGroupState(scope: string): ReadonlySet<UnifiedTabStripGroup> {
+    return useGroupLayout(scope, layout => layout.folded);
+}
+
+export function useUnifiedTabGroupOrder(scope: string): readonly UnifiedTabStripGroup[] {
+    return useGroupLayout(scope, layout => layout.order);
 }
 
 export function clearUnifiedTabGroupState(scope?: string): void {

@@ -42,13 +42,19 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership. Default-off `features.panelTabGroups`
-partitions the saved order into Tools, Files, Web and Canvas in one row, with
+partitions the saved order into Tools, Files, Web and Canvas blocks in one row, with
 three visible slots per group. Pinned To-do, active and preview tabs take priority;
 promoted active/preview tabs occupy trailing slots without changing saved order.
-Folded groups retain the active and pinned tabs. Fold state belongs to the panel
-scope, not the chat, in `unified-right-panel:<scope>:groups`. Searchable overflow
-menus expose the full group and preserve dirty/error marks and guarded bulk closing.
-Drag, Alt+Arrow and menu moves stay within the kind group.
+Folded groups retain the active and pinned tabs. Fold state and block order belong
+to the panel scope, not the chat, in `unified-right-panel:<scope>:groups`
+(`{ folded, order }`; legacy arrays read as folds). `normalizeGroupOrder` drops
+unknown/repeated groups and appends missing ones in default order. Searchable +N
+menus list the group's hidden tabs and preserve dirty/error marks and guarded bulk
+closing. Tab drag, Alt+Arrow and menu moves stay within the kind group. A group
+pill moves its whole block: pointer drag past `GROUP_DRAG_THRESHOLD` (shorter
+presses fold; Escape, pointercancel and blur cancel and suppress the trailing
+click) or Alt+Arrow on the focused pill. Block moves only rewrite the order list,
+so members, activation, folds and keyed hosted views are untouched.
 
 With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
 workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
@@ -108,8 +114,8 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
 | `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; Browser tabs in repo groups show page titles and favicons without repository labels in the strip, tooltip or overflow rows; `unifiedTabLabels.ts` controls display only and preserves descriptor ownership. Other tabs retain their repository labels. The menu model owns per-kind availability, group move boundaries, file/note absolute paths and visible-order bulk targets. Path copy uses the clicked descriptor's saved path/task root or a workspace root matching both owner id and clone route, without local filesystem resolution; unavailable paths stay hidden and clipboard results use shared toasts. |
-| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state. |
-| `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
+| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, block order normalization/moves, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state and is the block's drag handle. |
+| `unifiedPanelTabGroupStore.ts` | Panel-scope fold state and block order through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears both. |
 | `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, the active file's "Reload from disk" button, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |

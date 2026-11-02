@@ -112,7 +112,7 @@ import { UnifiedPanelRepoPicker } from './UnifiedPanelRepoPicker';
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
-import { toggleGroupFolded, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
+import { moveTabGroup, toggleGroupFolded, useUnifiedTabGroupOrder, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -275,6 +275,7 @@ export function UnifiedRightPanel({
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
     const [chatScopedBrowserTabs, setChatScopedBrowserTabs] = useState(() => isChatScopedBrowserTabsEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
+    const groupOrder = useUnifiedTabGroupOrder(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
     useEffect(() => {
@@ -2226,6 +2227,8 @@ export function UnifiedRightPanel({
                     groupsEnabled={groupsEnabled}
                     foldedGroups={foldedGroups}
                     onToggleGroup={group => toggleGroupFolded(workspaceId, group)}
+                    groupOrder={groupOrder}
+                    onMoveGroup={(group, beforeGroup) => moveTabGroup(workspaceId, group, beforeGroup)}
                     reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}
                     pinnedId={pinnedId}
                     onPromote={promote}

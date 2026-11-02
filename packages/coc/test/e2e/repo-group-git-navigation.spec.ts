@@ -67,7 +67,8 @@ async function seedGroupWithTwoRepos(serverUrl: string, tmpDir: string): Promise
 async function openGroupGit(page: Page, serverUrl: string, groupId: string, suffix = ''): Promise<void> {
     await page.goto(repoHashUrl(serverUrl, groupId, `git${suffix}`));
     await expect(page.getByTestId('repo-group-git-tab')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 20_000 });
+    await expect(page.getByTestId('git-tab-loading')).toBeHidden({ timeout: 20_000 });
+    await expect(page.locator('[data-testid^="commit-row-"]').first()).toBeVisible({ timeout: 20_000 });
 }
 
 /** The member the hosted panel is currently showing. */
@@ -80,7 +81,8 @@ async function pickMember(page: Page, memberId: string): Promise<void> {
     await page.getByTestId(`repo-group-git-member-${memberId}`).click();
     await expect(page.getByTestId('repo-group-git-member-list')).toBeHidden();
     await expect(hostedMember(page)).toHaveAttribute('data-member', memberId, { timeout: 20_000 });
-    await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 20_000 });
+    await expect(page.getByTestId('git-tab-loading')).toBeHidden({ timeout: 20_000 });
+    await expect(page.locator('[data-testid^="commit-row-"]').first()).toBeVisible({ timeout: 20_000 });
 }
 
 /** Click the newest commit row and return its short hash. */
@@ -90,6 +92,9 @@ async function openNewestCommit(page: Page): Promise<string> {
     const shortHash = (await firstRow.getAttribute('data-testid'))!.replace('commit-row-', '');
     await firstRow.click();
     await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
+    // Review automatically selects a file, adding a route after the commit overview.
+    await expect(page).toHaveURL(new RegExp(`/${shortHash}[^/]*/[^/]+$`));
+    await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 20_000 });
     return shortHash;
 }
 
@@ -149,18 +154,22 @@ test.describe('Repo group Git navigation', () => {
 
             await pickMember(page, MEMBER_A);
             const hashA = await openNewestCommit(page);
+            const fileUrlA = page.url();
 
             await pickMember(page, MEMBER_B);
             const hashB = await openNewestCommit(page);
-            expect(hashB).not.toBe('');
 
-            // Back through B's history, then back to A's commit.
+            // Back through B's file, commit overview and history, then A's file.
+            await page.goBack();
+            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${MEMBER_B}/${hashB}[0-9a-f]*$`));
             await page.goBack();
             await expect(page).toHaveURL(`${serverUrl}/#repos/${groupId}/git/member/${MEMBER_B}`);
             await page.goBack();
-            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${MEMBER_A}/${hashA}`));
+            await expect(page).toHaveURL(fileUrlA);
+            expect(fileUrlA).toContain(`/git/member/${MEMBER_A}/${hashA}`);
             await expect(hostedMember(page)).toHaveAttribute('data-member', MEMBER_A, { timeout: 20_000 });
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
+            await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
 
             await page.goForward();

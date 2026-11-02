@@ -1,3 +1,4 @@
+import type { KeyboardEvent, PointerEvent } from 'react';
 import { cn } from '../../../ui/cn';
 import type { UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 
@@ -9,12 +10,19 @@ const ICONS: Record<UnifiedTabStripGroup, string> = {
     tools: '\uD83E\uDDF0', files: '\uD83D\uDCC4', web: '\uD83C\uDF10', canvas: '\uD83C\uDFA8',
 };
 
-export function UnifiedPanelTabGroupLabel({ group, count, folded, active, onToggle }: {
+/**
+ * A group's pill. When `onPointerDown` is supplied the pill is also the
+ * group's drag handle and Alt+Arrow moves the whole block (`onKeyDown`).
+ */
+export function UnifiedPanelTabGroupLabel({ group, count, folded, active, dragging = false, onToggle, onPointerDown, onKeyDown }: {
     group: UnifiedTabStripGroup;
     count: number;
     folded: boolean;
     active: boolean;
+    dragging?: boolean;
     onToggle: () => void;
+    onPointerDown?: (event: PointerEvent<HTMLButtonElement>) => void;
+    onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
     return (
         <button
@@ -23,10 +31,16 @@ export function UnifiedPanelTabGroupLabel({ group, count, folded, active, onTogg
             data-testid={`unified-panel-group-${group}`}
             aria-label={`${TAB_GROUP_LABELS[group]}, ${count} tabs`}
             aria-expanded={!folded}
+            aria-keyshortcuts={onPointerDown ? 'Alt+ArrowLeft Alt+ArrowRight' : undefined}
+            title={onPointerDown ? `${TAB_GROUP_LABELS[group]}: click to ${folded ? 'expand' : 'fold'}, drag or Alt+Arrow to move` : undefined}
+            data-dragging={dragging || undefined}
             onClick={onToggle}
+            onPointerDown={onPointerDown}
+            onKeyDown={onKeyDown}
             className={cn(
                 'mx-1 my-1 flex flex-shrink-0 items-center gap-1 rounded border px-2 text-[11px]',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]',
+                dragging && 'cursor-grabbing',
                 active
                     ? 'border-[#0078d4] bg-[#e8f2fb] text-[#0078d4] dark:bg-[#37373d] dark:text-[#3794ff]'
                     : 'border-[#b6b6b6] text-[#616161] dark:border-[#555] dark:text-[#b8b8b8]',
