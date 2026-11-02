@@ -30,7 +30,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace } from './fixtures/seed';
+import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace, openExplorerPanel } from './fixtures/remote-shell';
 import { enableExplorerEditorTabs } from './fixtures/explorer-tabs-seed';
 import type { Locator, Page } from '@playwright/test';
@@ -53,6 +53,19 @@ const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
 const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
 const EXPLORER_PANEL_ROOT = '[data-testid="unified-panel-explorer-mode"]';
 const SEARCH_PANEL_ROOT = '[data-testid="unified-panel-search-mode"]';
+
+/**
+ * Panel tab groups are default-on and cap each group at three visible tabs with
+ * Home/End landing on group labels. Specs about the plain scrolling strip turn
+ * them off before the page load.
+ */
+async function disablePanelTabGroups(baseURL: string): Promise<void> {
+    const res = await request(`${baseURL}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.panelTabGroups': false }),
+    });
+    if (res.status !== 200) throw new Error(`Failed to disable panel tab groups: ${res.status} ${res.body}`);
+}
 
 /** Create a repo with files for explorer testing. */
 function createExplorerRepoFixture(tmpDir: string): string {
@@ -806,10 +819,11 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const styleOf = (id: string) =>
                 editorTab(page, id).evaluate(el => {
                     const style = getComputedStyle(el);
+                    const strip = el.closest('.unified-panel-tab-strip');
                     return {
                         background: style.backgroundColor,
                         color: style.color,
-                        shadow: style.boxShadow,
+                        strip: strip ? getComputedStyle(strip).backgroundColor : null,
                     };
                 });
 
@@ -822,7 +836,8 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const darkInactive = await styleOf('file:src/index.ts');
             expect(dark.background).toBe('rgb(30, 30, 30)');
             expect(dark.color).toBe('rgb(255, 255, 255)');
-            expect(dark.shadow).toContain('rgb(55, 148, 255)');
+            // Chrome-style: the active tab is a raised surface above the strip.
+            expect(dark.strip).toBe('rgb(37, 37, 38)');
             // The active tab is distinguishable from its neighbour, not just tinted.
             expect(darkInactive.background).not.toBe(dark.background);
 
@@ -832,7 +847,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const lightInactive = await styleOf('file:src/index.ts');
             expect(light.background).toBe('rgb(255, 255, 255)');
             expect(light.color).toMatch(/rgb\(3[01], 3[01], 3[01]\)/);
-            expect(light.shadow).toContain('rgb(0, 120, 212)');
+            expect(light.strip).toBe('rgb(229, 231, 235)');
             expect(lightInactive.background).not.toBe(light.background);
 
             // Same tab, genuinely repainted for the theme.
@@ -851,6 +866,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const overflowPaths = createOverflowFiles(repoDir, 8);
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
+            await disablePanelTabGroups(serverUrl);
 
             await gotoExplorer(page, serverUrl);
             await expect(treeNode(page, 'overflow')).toBeVisible({ timeout: 8_000 });
@@ -900,6 +916,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const repoDir = createExplorerRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
+            await disablePanelTabGroups(serverUrl);
 
             await gotoExplorer(page, serverUrl);
             await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
