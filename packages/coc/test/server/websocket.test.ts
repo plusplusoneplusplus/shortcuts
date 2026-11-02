@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
+import { once } from 'node:events';
 import type { AddressInfo } from 'net';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -387,29 +388,58 @@ describe('WebSocket Server', () => {
             ws.close();
         });
 
-        it('should prune dead connections after heartbeat timeout', async () => {
-            // Create a standalone WebSocket server with short intervals for testing
+        it('should remove connections after the client closes', async () => {
             const wsServer = new ProcessWebSocketServer();
             const httpServer = http.createServer();
+            let ws: WebSocket | undefined;
+            try {
+                await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
+                const addr = httpServer.address() as AddressInfo;
+                wsServer.attach(httpServer);
+                ({ ws } = await connectWebSocket(addr.port));
+                expect(wsServer.clientCount).toBe(1);
 
-            await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
-            const addr = httpServer.address() as AddressInfo;
-            wsServer.attach(httpServer);
+                const closed = once(ws, 'close');
+                ws.close();
+                await closed;
+                // The peer's close event can precede the server's close event.
+                await vi.waitFor(() => expect(wsServer.clientCount).toBe(0));
+            } finally {
+                ws?.terminate();
+                wsServer.closeAll();
+                await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+            }
+        });
 
-            const { ws } = await connectWebSocket(addr.port);
-            expect(wsServer.clientCount).toBe(1);
+        it('should prune a connection that does not answer heartbeat pings', async () => {
+            // Control heartbeat ticks while leaving socket I/O and timeouts real.
+            vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+            const wsServer = new ProcessWebSocketServer();
+            const httpServer = http.createServer();
+            let ws: WebSocket | undefined;
+            try {
+                await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
+                const addr = httpServer.address() as AddressInfo;
+                wsServer.attach(httpServer);
+                ws = new WebSocket(`ws://localhost:${addr.port}/ws`, { autoPong: false });
+                await once(ws, 'open');
+                expect(wsServer.clientCount).toBe(1);
 
-            // Manually set lastSeen to far in the past by accessing internals
-            // We use the broadcastProcessEvent to verify client is there, then gone
-            // Instead, we'll use vi.useFakeTimers approach
+                const ping = once(ws, 'ping');
+                vi.advanceTimersByTime(60_000);
+                await ping;
+                expect(wsServer.clientCount).toBe(1);
 
-            ws.close();
-            await delay(50);
-
-            expect(wsServer.clientCount).toBe(0);
-
-            wsServer.closeAll();
-            httpServer.close();
+                const closed = once(ws, 'close');
+                vi.advanceTimersByTime(60_000);
+                expect(wsServer.clientCount).toBe(0);
+                await closed;
+            } finally {
+                ws?.terminate();
+                wsServer.closeAll();
+                vi.useRealTimers();
+                await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+            }
         });
 
         it('should keep active connections alive', async () => {
