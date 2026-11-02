@@ -2,7 +2,7 @@
  * Uses in-memory stubs to exercise route logic without HTTP I/O.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 import { registerMcpOauthRoutes } from '../../../src/server/mcp-oauth/mcp-oauth-routes';
 import type { Route } from '../../../src/server/types';
@@ -76,6 +76,41 @@ describe('MCP OAuth REST routes', () => {
         manager = new McpOauthManager();
         routes = [];
         registerMcpOauthRoutes(routes, { manager });
+    });
+
+    it.each(['GET', 'DELETE', 'POST'])('rejects %s for another owner before cancellation or retry', async method => {
+        const cancelTeamsOAuth = vi.fn();
+        const executeFollowUp = vi.fn();
+        routes = [];
+        registerMcpOauthRoutes(routes, { manager, cancelTeamsOAuth, executeFollowUp });
+        manager.addPending({ requestId: 'owned', serverName: 'Microsoft Teams', serverUrl: 'https://mcp.example',
+            workspaceId: 'ws-a', processId: 'chat-a', originalMessage: 'hello' });
+        const path = '/api/mcp-oauth/pending/owned' + (method === 'POST' ? '/complete-and-retry' : '');
+        for (const query of ['workspaceId=ws-a&processId=chat-b', 'workspaceId=ws-b&processId=chat-a',
+            'workspaceId=ws-a', 'processId=chat-a']) {
+            expect((await dispatch(routes, method, `${path}?${query}`)).statusCode).toBe(404);
+        }
+        expect(manager.getPending('owned')?.status).toBe('pending');
+        expect(cancelTeamsOAuth).not.toHaveBeenCalled();
+        expect(executeFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('deletes only shown IDs through the cancellation lifecycle and rejects late retries', async () => {
+        const cancelTeamsOAuth = vi.fn();
+        const executeFollowUp = vi.fn();
+        routes = [];
+        registerMcpOauthRoutes(routes, { manager, cancelTeamsOAuth, executeFollowUp });
+        for (const [requestId, workspaceId, processId] of [
+            ['one', 'ws-a', 'chat-a'], ['two', 'ws-a', 'chat-a'], ['future', 'ws-a', 'chat-a'],
+            ['other-chat', 'ws-a', 'chat-b'], ['other-workspace', 'ws-b', 'chat-a'],
+        ]) manager.addPending({ requestId, workspaceId, processId, serverName: 'Server', serverUrl: 'https://mcp.example' });
+        for (const id of ['one', 'two']) {
+            expect((await dispatch(routes, 'DELETE', `/api/mcp-oauth/pending/${id}?workspaceId=ws-a&processId=chat-a`)).body.removed).toBe(true);
+            expect((await dispatch(routes, 'POST', `/api/mcp-oauth/pending/${id}/complete-and-retry?workspaceId=ws-a&processId=chat-a`)).statusCode).toBe(404);
+        }
+        expect(manager.listPending().map(p => p.id).sort()).toEqual(['future', 'other-chat', 'other-workspace']);
+        expect(cancelTeamsOAuth.mock.calls).toEqual([['one'], ['two']]);
+        expect(executeFollowUp).not.toHaveBeenCalled();
     });
 
     it('GET /pending returns empty list when no entries', async () => {

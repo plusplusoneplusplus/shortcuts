@@ -86,6 +86,48 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it('refreshes MCP callbacks when the hydrated chat owner changes', () => {
+        const initial = vi.fn();
+        const hydrated = vi.fn();
+        const options = makeOptions();
+        const { rerender } = renderHook(({ onMcpOAuthRequired }) => useChatSSE({ ...options, onMcpOAuthRequired }), {
+            initialProps: { onMcpOAuthRequired: initial },
+        });
+        const abandoned = MockEventSource.last;
+        rerender({ onMcpOAuthRequired: hydrated });
+        const payload = { requestId: 'auth', serverName: 'Server', serverUrl: 'https://mcp.example' };
+        act(() => {
+            abandoned._emit('mcp-oauth-required', payload);
+            MockEventSource.last._emit('mcp-oauth-required', payload);
+        });
+        expect(initial).not.toHaveBeenCalled();
+        expect(hydrated).toHaveBeenCalledWith(payload);
+    });
+
+    it('ignores MCP auth events from an abandoned owner stream', () => {
+        const onMcpOAuthRequired = vi.fn();
+        const onMcpOAuthCompleted = vi.fn();
+        const options = makeOptions({ onMcpOAuthRequired, onMcpOAuthCompleted });
+        const { rerender } = renderHook(({ workspaceId }) => useChatSSE({ ...options, workspaceId }), {
+            initialProps: { workspaceId: 'ws-a' },
+        });
+        const abandoned = MockEventSource.last;
+        rerender({ workspaceId: 'ws-b' });
+        const payload = { requestId: 'auth', serverName: 'Server', serverUrl: 'https://mcp.example' };
+        act(() => {
+            abandoned._emit('mcp-oauth-required', payload);
+            abandoned._emit('mcp-oauth-completed', payload);
+        });
+        expect(onMcpOAuthRequired).not.toHaveBeenCalled();
+        expect(onMcpOAuthCompleted).not.toHaveBeenCalled();
+        act(() => {
+            MockEventSource.last._emit('mcp-oauth-required', payload);
+            MockEventSource.last._emit('mcp-oauth-completed', payload);
+        });
+        expect(onMcpOAuthRequired).toHaveBeenCalledWith(payload);
+        expect(onMcpOAuthCompleted).toHaveBeenCalledWith(payload);
+    });
+
     it.each(['kusto', 'markdown', undefined])('forwards canvas kind %s from the actual SSE payload', kind => {
         const onCanvasUpdated = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ onCanvasUpdated })));

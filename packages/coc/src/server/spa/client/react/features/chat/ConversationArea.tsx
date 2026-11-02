@@ -12,10 +12,11 @@ import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
 import { BrowserNavigationPrompts } from '../../shared/file-path/BrowserNavigationApprovalCard';
-import { McpOAuthPrompt } from './McpOAuthPrompt';
+import { McpOAuthPrompts } from './McpOAuthPrompt';
+import type { useChatMcpOAuthPrompts } from './hooks/useChatMcpOAuthPrompts';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
-import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData, RalphGrillPlanningProgress } from './hooks/useChatSSE';
+import type { BackgroundTasksState, AskUserBatch, RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import { getProviderLabel, type ChatProvider } from './ProviderBadge';
@@ -162,12 +163,8 @@ export interface ConversationAreaProps {
     inputRef?: React.RefObject<{ focus: () => void } | null> | null;
     /** Sends a generated raw follow-up for interrupted assistant turns. Falls back to focusing input when omitted. */
     onSendInterruptedTurnFollowUp?: (message: string) => void;
-    /** Active MCP OAuth prompts awaiting user authorization. */
-    mcpOAuthPrompts?: McpOAuthPromptData[];
-    /** Called when an MCP OAuth flow completes. */
-    onMcpOAuthCompleted?: (requestId: string) => void;
-    /** Called when an MCP OAuth flow fails. */
-    onMcpOAuthFailed?: (requestId: string) => void;
+    /** Authentication requests owned by this exact chat/server. */
+    mcpOAuth?: ReturnType<typeof useChatMcpOAuthPrompts>;
     /**
      * AI provider that owns this conversation. Threaded into
      * {@link ConversationTurnBubble} so each assistant avatar takes on the
@@ -276,9 +273,7 @@ export function ConversationArea({
     onCancelPendingMessage,
     inputRef,
     onSendInterruptedTurnFollowUp,
-    mcpOAuthPrompts,
-    onMcpOAuthCompleted,
-    onMcpOAuthFailed,
+    mcpOAuth,
     processError,
     provider,
     rewindProvider,
@@ -658,14 +653,7 @@ export function ConversationArea({
                         {showRalphGrillPlanningProgress && (
                             <RalphGrillPlanningProgressCard progress={ralphGrillPlanningProgress} />
                         )}
-                        {mcpOAuthPrompts && mcpOAuthPrompts.length > 0 && mcpOAuthPrompts.map(prompt => (
-                            <McpOAuthPrompt
-                                key={prompt.requestId}
-                                data={prompt}
-                                onCompleted={onMcpOAuthCompleted}
-                                onFailed={onMcpOAuthFailed}
-                            />
-                        ))}
+                        {mcpOAuth && <McpOAuthPrompts controls={mcpOAuth} />}
                         {pendingQueue.length > 0 && (
                             <QueuedFollowUps queue={pendingQueue} onCancel={onCancelPendingMessage} />
                         )}

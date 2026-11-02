@@ -7,6 +7,7 @@
  * useSendMessage, useQueuedTaskPoll, and useChatWindowActions.
  */
 
+import { useChatMcpOAuthPrompts } from './hooks/useChatMcpOAuthPrompts';
 import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getCocClientFor, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
@@ -334,7 +335,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
     const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
-    const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     // Session-scoped, per-conversation memory of which side view is open in each
     // chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed by
     // `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
@@ -445,6 +445,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const browserWorkspaceId = parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId;
+    const mcpOAuth = useChatMcpOAuthPrompts(
+        JSON.stringify([historyBaseUrl, historyOwner, browserWorkspaceId, taskId, processId]), client,
+        browserWorkspaceId, processId, historyOwnerAvailable,
+    );
     const toolInventoryRevision = useToolInventoryUpdates(
         historyBaseUrl, browserWorkspaceId, processDetails?.id,
     );
@@ -1901,15 +1905,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setRalphGrillPlanningProgress(null);
             setPendingAskUserBatch(batch);
         },
-        onMcpOAuthRequired: (data) => {
-            setMcpOAuthPrompts(prev => {
-                if (prev.some(p => p.requestId === data.requestId)) return prev;
-                return [...prev, data];
-            });
-        },
-        onMcpOAuthCompleted: (data) => {
-            setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
-        },
+        onMcpOAuthRequired: mcpOAuth.add,
+        onMcpOAuthCompleted: mcpOAuth.completed,
         onCanvasUpdated: (data) => {
             // Document updates activate their shared-panel tab. Kusto result
             // updates only reconcile mounted views, preserving selection and
@@ -3148,9 +3145,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onCancelPendingMessage={handleCancelPendingMessage}
                         inputRef={richTextRef}
                         onSendInterruptedTurnFollowUp={sendInterruptedTurnFollowUp}
-                        mcpOAuthPrompts={mcpOAuthPrompts}
-                        onMcpOAuthCompleted={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
-                        onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
+                        mcpOAuth={mcpOAuth}
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         rewindProvider={conversationProvider}
