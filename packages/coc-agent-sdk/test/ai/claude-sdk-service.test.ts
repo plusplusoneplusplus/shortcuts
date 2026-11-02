@@ -3872,7 +3872,7 @@ describe.each(['linux', 'win32', 'darwin'] as const)('native Claude quota on %s'
         const [options, signal] = mockAcquireCredential.mock.calls[0];
         expect(options).toEqual({
             homeDir: path.resolve(os.homedir()),
-            coordinationDirectory: path.join(path.resolve(os.homedir()), '.claude', 'coc-auth'),
+            coordinationDirectory: path.join(path.resolve(os.homedir()), '.coc', 'auth', 'claude', 'locks'),
             credentialsFile: path.join(os.tmpdir(), 'explicit-claude-creds.json'), timeoutMs: 30_000,
         });
         expect(quotaMkdir).toHaveBeenCalledWith(options.coordinationDirectory, { recursive: true, mode: 0o700 });

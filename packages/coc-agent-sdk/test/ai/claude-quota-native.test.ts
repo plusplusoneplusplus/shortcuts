@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fetchClaudeOAuthQuota } from '../../src/claude-sdk-service';
@@ -37,8 +37,9 @@ describe('Claude quota with built native auth', () => {
         expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(12);
         expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe('Bearer native-fixture');
         expect(readFileSync(credentialsFile, 'utf8')).toBe(original);
+        expect(existsSync(path.join(homeDir, '.claude'))).toBe(false);
         if (process.platform !== 'win32') {
-            expect(statSync(path.join(homeDir, '.claude', 'coc-auth')).mode & 0o777).toBe(0o700);
+            expect(statSync(path.join(homeDir, '.coc', 'auth', 'claude', 'locks')).mode & 0o777).toBe(0o700);
         }
         writeFileSync(credentialsFile, '{"access_token":"next-fixture"}');
         await fetchClaudeOAuthQuota({ homeDir });

@@ -276,7 +276,7 @@ When the query handle exposes `getContextUsage()`, `TokenUsage` gains `tokenLimi
 platform, then calls `https://api.anthropic.com/api/oauth/usage`. Native auth owns
 credential parsing, source selection, expiry checks, refresh and persistence.
 The host resolves `os.homedir()` and an optional `$CLAUDE_CREDENTIALS_FILE` to
-absolute paths. All workspaces share the private `~/.claude/coc-auth` lock
+absolute paths. All workspaces share the private `~/.coc/auth/claude/locks` lock
 directory because credentials are user-wide; it contains no tokens or repo data.
 
 One 30-second abort signal covers native acquisition, usage HTTP, response parsing

@@ -3354,7 +3354,7 @@ export async function fetchClaudeOAuthQuota(deps: {
         const homeDir = path.resolve(deps.homeDir ?? os.homedir());
         // Credentials are user-wide, so every workspace shares this private lock
         // directory. It contains lock files only, never tokens or per-repo data.
-        const coordinationDirectory = path.join(homeDir, '.claude', 'coc-auth');
+        const coordinationDirectory = path.join(homeDir, '.coc', 'auth', 'claude', 'locks');
         await fs.promises.mkdir(coordinationDirectory, { recursive: true, mode: 0o700 });
         if (signal.aborted) return { quotaSnapshots: {} };
         const override = process.env['CLAUDE_CREDENTIALS_FILE'];
