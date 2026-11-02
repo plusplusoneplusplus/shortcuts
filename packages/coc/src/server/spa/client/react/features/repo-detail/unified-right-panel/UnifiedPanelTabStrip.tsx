@@ -194,7 +194,7 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
  * The site's icon in the globe's 12px slot. A missing or undecodable icon keeps
  * the globe, so the tab never shows a broken image or shifts its label.
  */
-function BrowserTabIcon({ tabId }: { tabId: string }) {
+function BrowserTabIcon({ tabId, testId = true }: { tabId: string; testId?: boolean }) {
     const favicon = useBrowserTabFavicon(tabId);
     const [failed, setFailed] = useState<string | null>(null);
     if (!favicon || failed === favicon) return KIND_ICONS.browser;
@@ -207,11 +207,22 @@ function BrowserTabIcon({ tabId }: { tabId: string }) {
             draggable={false}
             className="block h-3 w-3 object-contain"
             data-icon="browser-favicon"
-            data-testid={`unified-panel-tab-favicon-${tabId}`}
+            data-testid={testId ? `unified-panel-tab-favicon-${tabId}` : undefined}
             onError={() => setFailed(favicon)}
         />
     );
 }
+
+/** A tab's kind, file-type or site icon; menu rows pass `testIds={false}` to keep strip test ids unique. */
+function UnifiedTabIcon({ tab, testIds = true }: { tab: UnifiedPanelTab; testIds?: boolean }) {
+    if (tab.kind === 'file') {
+        return <FileNameIcon fileName={tab.label} showTitle={false} testId={testIds ? `unified-panel-tab-file-icon-${tab.id}` : undefined} />;
+    }
+    if (tab.kind === 'browser') return <BrowserTabIcon tabId={tab.id} testId={testIds} />;
+    return KIND_ICONS[tab.kind];
+}
+
+const renderMenuIcon = (tab: UnifiedPanelTab) => <UnifiedTabIcon tab={tab} testIds={false} />;
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
 const EMPTY_FOLDED_GROUPS: ReadonlySet<UnifiedTabStripGroup> = new Set();
@@ -825,10 +836,7 @@ export function UnifiedPanelTabStrip({
                                 />
                             )}
                             <span className="flex-shrink-0 opacity-80" aria-hidden="true">
-                                {tab.kind === 'file'
-                                    ? <FileNameIcon fileName={tab.label} showTitle={false} testId={`unified-panel-tab-file-icon-${tab.id}`} />
-                                    : tab.kind === 'browser' ? <BrowserTabIcon tabId={tab.id} />
-                                    : KIND_ICONS[tab.kind]}
+                                <UnifiedTabIcon tab={tab} />
                             </span>
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
@@ -928,6 +936,26 @@ export function UnifiedPanelTabStrip({
                                     onToggleGroup?.(group);
                                     setLiveMessage(`${TAB_GROUP_LABELS[group]} ${foldedGroups?.has(group) ? 'expanded' : 'folded'}.`);
                                 }} />
+                            {foldedGroups?.has(group) && (
+                                <UnifiedPanelTabOverflowMenu
+                                    title={`${TAB_GROUP_LABELS[group]} tabs`}
+                                    tabs={section.tabs} activeId={activeId}
+                                    hideBrowserRepoLabels={hideBrowserRepoLabels} renderIcon={renderMenuIcon}
+                                    testIdPrefix={`unified-panel-group-menu-${group}`}
+                                    dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
+                                    onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
+                                    trigger={<button type="button" data-strip-stop data-group-menu
+                                        data-testid={`unified-panel-group-menu-${group}`}
+                                        aria-label={`Show all ${section.tabs.length} ${TAB_GROUP_LABELS[group]} tabs`}
+                                        title={`${TAB_GROUP_LABELS[group]} tabs`}
+                                        className="unified-panel-group-menu -ml-1 mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center self-center rounded-full text-[10px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                                        <span aria-hidden="true">{'\u25BE'}</span>
+                                        {(section.hiddenDirty || section.hiddenError) && <span className="sr-only">
+                                            {section.hiddenDirty ? ' (unsaved changes)' : ''}{section.hiddenError ? ' (unavailable tabs)' : ''}
+                                        </span>}
+                                    </button>}
+                                />
+                            )}
                             {tabNodes}
                             {!foldedGroups?.has(group) && section.hidden.length > 0 && (
                                 <UnifiedPanelTabOverflowMenu

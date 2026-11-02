@@ -590,3 +590,111 @@ describe('UnifiedPanelTabStrip group block reordering', () => {
         expect(blockOrder()).toEqual(['tools', 'files', 'web']);
     });
 });
+
+describe('UnifiedPanelTabStrip folded group menu', () => {
+    afterEach(() => {
+        cleanup();
+        clearUnifiedTabGroupState();
+        localStorage.clear();
+    });
+
+    const shell = tab('terminal', 'Shell');
+    const groupMenu = (group: UnifiedTabStripGroup = 'files') => screen.getByTestId(`unified-panel-group-menu-${group}`);
+    const optionNames = () => screen.getAllByRole('option').map(node => node.textContent);
+
+    it('appears only on folded groups and only when groups are enabled', () => {
+        const tabs = files();
+        const { unmount } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        expect(groupMenu()).toHaveAttribute('aria-label', 'Show all 5 Files tabs');
+        expect(groupMenu()).toHaveAttribute('aria-haspopup', 'listbox');
+        expect(screen.queryByTestId('unified-panel-group-menu-tools')).toBeNull();
+        unmount();
+        renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, groupsEnabled: false, foldedGroups: new Set(['files']) });
+        expect(screen.queryByTestId('unified-panel-group-menu-files')).toBeNull();
+    });
+
+    it('lists every tab with icons and activates one without expanding the group', () => {
+        const tabs = files();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: tabs[1].id, foldedGroups: new Set(['files']) }, true);
+        const label = screen.getByRole('button', { name: 'Files, 5 tabs' });
+        expect(shownIds('files')).toEqual([tabs[1].id]);
+        fireEvent.click(groupMenu());
+        expect(screen.getByRole('listbox', { name: 'Files tabs' })).toBeTruthy();
+        expect(screen.getByText('5 open')).toBeTruthy();
+        expect(optionNames()).toEqual(tabs.map(entry => expect.stringContaining(entry.label)));
+        expect(screen.getByRole('option', { name: /file-2.ts.*\(active\)/ })).toHaveAttribute('aria-selected', 'true');
+        expect(within(screen.getByTestId(`unified-panel-group-menu-files-row-${tabs[3].id}`)).getByTestId('file-type-icon')).toBeTruthy();
+        // Strip icon ids stay unique while the menu is open.
+        expect(screen.getAllByTestId(`unified-panel-tab-file-icon-${tabs[1].id}`)).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole('option', { name: /file-4.ts/ }));
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[3].id);
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(label).toHaveAttribute('aria-expanded', 'false');
+        expect(shownIds('files')).toEqual([tabs[3].id]);
+        expect(tabNode(tabs[3])).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('opens from the keyboard, searches, activates with Enter and returns focus', async () => {
+        const tabs = files();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        groupMenu().focus();
+        fireEvent.keyDown(groupMenu(), { key: 'ArrowDown' });
+        const search = screen.getByRole('textbox', { name: 'Search files tabs' });
+        fireEvent.change(search, { target: { value: 'file-5' } });
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        await Promise.resolve();
+        expect(document.activeElement).toBe(groupMenu());
+    });
+
+    it('dismisses with Escape or outside press without activating, toggling or moving', async () => {
+        const tabs = files();
+        const onMoveGroup = vi.fn();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']), onMoveGroup });
+        fireEvent.pointerDown(groupMenu(), { button: 0, clientX: 10 });
+        fireEvent.pointerMove(window, { clientX: 200 });
+        fireEvent.pointerUp(window);
+        fireEvent.click(groupMenu());
+        expect(screen.getByRole('listbox')).toBeTruthy();
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        await Promise.resolve();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(document.activeElement).toBe(groupMenu());
+        fireEvent.click(groupMenu());
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(props.onActivate).not.toHaveBeenCalled();
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        expect(onMoveGroup).not.toHaveBeenCalled();
+    });
+
+    it('keeps the menu inside the viewport near the right edge', () => {
+        renderStrip({ tabs: [shell, ...files()], activeId: shell.id, foldedGroups: new Set(['files']) });
+        groupMenu().getBoundingClientRect = () => ({ left: window.innerWidth - 4, right: window.innerWidth + 16, bottom: window.innerHeight - 2 } as DOMRect);
+        fireEvent.click(groupMenu());
+        const menu = screen.getByTestId('unified-panel-group-menu-files-menu');
+        expect(parseFloat(menu.style.left)).toBeLessThanOrEqual(window.innerWidth - 328);
+        expect(parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+        expect(parseFloat(menu.style.top)).toBeLessThanOrEqual(window.innerHeight - 420);
+    });
+
+    it('serves Tools, Web and Canvas groups and closes rows through the strip callbacks', () => {
+        const web = [tab('browser', 'Google'), tab('browser', 'Docs')];
+        const canvas = [tab('canvas', 'Plan')];
+        const { props } = renderStrip({
+            tabs: [shell, ...web, ...canvas], activeId: null,
+            foldedGroups: new Set(['tools', 'web', 'canvas']), hideBrowserRepoLabels: true,
+        });
+        for (const [group, entries] of [['tools', [shell]], ['web', web], ['canvas', canvas]] as const) {
+            fireEvent.click(groupMenu(group));
+            expect(optionNames()).toEqual(entries.map(entry => expect.stringContaining(entry.label)));
+            fireEvent.mouseDown(document.body);
+        }
+        fireEvent.click(groupMenu('web'));
+        fireEvent.click(screen.getByTestId(`unified-panel-group-menu-web-close-${web[1].id}`));
+        expect(props.onClose).toHaveBeenCalledWith(web[1].id);
+    });
+});

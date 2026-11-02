@@ -913,6 +913,9 @@ restores the ungrouped strip. `unifiedPanelTabs.css` owns the rounded active
 surface and inline colored group labels in both themes. The cap is three, with
 pinned, active and preview priority; the +N overflow lists the group's hidden
 tabs in a searchable native-view-overlay portal shared with canvas compression.
+A folded group keeps its active and pinned tabs, and a ▾ button beside its pill
+opens that portal over all the group's tabs with their strip icons; picking one
+activates it without unfolding the group.
 Fold state and block order persist per panel scope at
 `unified-right-panel:<scope>:groups` as `{ folded, order }` (a legacy
 folded-only array still reads), independently of chats; saved orders are

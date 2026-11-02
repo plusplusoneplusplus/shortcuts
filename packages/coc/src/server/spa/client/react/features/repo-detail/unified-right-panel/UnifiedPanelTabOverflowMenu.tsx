@@ -1,7 +1,7 @@
 import {
     cloneElement, useEffect, useId, useMemo, useRef, useState,
     type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent,
-    type ReactElement, type Ref, type RefAttributes,
+    type ReactElement, type ReactNode, type Ref, type RefAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../../ui/cn';
@@ -23,6 +23,8 @@ export interface UnifiedPanelTabOverflowMenuProps {
     onCloseMany: (ids: readonly string[]) => void;
     trigger: ReactElement<ButtonHTMLAttributes<HTMLButtonElement> & RefAttributes<HTMLButtonElement>>;
     testIdPrefix?: string;
+    /** The tab's strip icon, shown before its title in each row. */
+    renderIcon?: (tab: UnifiedPanelTab) => ReactNode;
     popupRole?: 'listbox' | 'dialog';
     strings?: {
         searchLabel?: string;
@@ -35,7 +37,7 @@ export interface UnifiedPanelTabOverflowMenuProps {
 
 export function UnifiedPanelTabOverflowMenu({
     title, tabs, entries, activeId, dirtyIds, errorIds, onActivate, onClose, onCloseMany, trigger,
-    hideBrowserRepoLabels = false,
+    hideBrowserRepoLabels = false, renderIcon,
     testIdPrefix = 'unified-panel-tab-overflow', popupRole = 'listbox', strings = {},
 }: UnifiedPanelTabOverflowMenuProps) {
     const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -202,6 +204,7 @@ export function UnifiedPanelTabOverflowMenu({
                                 <span className="w-4 flex-shrink-0 text-center text-[#0078d4] dark:text-[#3794ff]" aria-hidden="true">
                                     {active ? '✓' : !grouped && error ? '⚠' : !grouped && dirty ? '●' : ''}
                                 </span>
+                                {renderIcon && <span className="flex-shrink-0 opacity-80" aria-hidden="true">{renderIcon(tab)}</span>}
                                 {grouped && dirty && <span aria-hidden="true" data-testid={`${testIdPrefix}-dirty-${tab.id}`}>●</span>}
                                 {grouped && error && <span aria-hidden="true" data-testid={`${testIdPrefix}-error-${tab.id}`}>⚠</span>}
                                 <span className="min-w-0 flex-1 truncate">{tab.label}</span>
