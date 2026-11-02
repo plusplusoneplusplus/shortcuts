@@ -42,14 +42,14 @@
  * panel.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../../ui/cn';
 import { POINTER_CONTEXT_DRAG_MIME, type PointerContextDragPayload } from '../../chat/sessionContextDrag';
 import { getHorizontalDropPosition } from '../repoTabModel';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
-import { dirtyCloseLabel } from './unifiedDirtyClose';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
@@ -58,6 +58,7 @@ import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import { useBrowserTabFavicon } from './browserTabFavicons';
 import {
     unifiedPanelTabMenuItems,
+    unifiedTabFilePathLabel,
     type UnifiedPanelFileActionAvailability,
     type UnifiedPanelTabMenuAction,
 } from './unifiedPanelTabMenuModel';
@@ -68,14 +69,14 @@ import './unifiedPanelTabs.css';
  * The tooltip a tab shows on hover: the full label, its repo if any, and — for
  * the preview slot — what the italics mean. Italics alone say "temporary" only
  * to someone who already knows the convention, so the words are always there
- * too, in the tooltip and in the tab's screen-reader text (AC-03). A source file
- * shows only its name on the strip, so its tooltip carries the repo-qualified
- * path that tells same-name files apart.
+ * too, in the tooltip and in the tab's screen-reader text (AC-03). A file-backed
+ * tab (file, note, HTML page) shows a truncated name on the strip, so its
+ * tooltip carries the repo-qualified path that tells same-name files apart.
  */
 export function unifiedTabTooltip(tab: UnifiedPanelTab, hideBrowserRepoLabels = false): string {
     const repoLabel = unifiedTabRepoLabel(tab, hideBrowserRepoLabels);
-    const base = tab.kind === 'file'
-        ? `${tab.label} — ${dirtyCloseLabel(tab)}`
+    const filePath = unifiedTabFilePathLabel(tab);
+    const base = filePath ? `${tab.label} — ${filePath}`
         : repoLabel ? `${tab.label} — ${repoLabel}` : tab.label;
     return tab.preview ? `${base} (preview — double-click to keep open)` : base;
 }
@@ -226,6 +227,8 @@ const renderMenuIcon = (tab: UnifiedPanelTab) => <UnifiedTabIcon tab={tab} testI
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
 const EMPTY_FOLDED_GROUPS: ReadonlySet<UnifiedTabStripGroup> = new Set();
+/** Room, in px, a tab needs above it before its focus path tooltip opens upward. */
+const PATH_TIP_MIN_TOP = 72;
 /** Pointer travel, in px, before pressing a group pill becomes a drag instead of a click. */
 export const GROUP_DRAG_THRESHOLD = 4;
 
@@ -340,6 +343,13 @@ export function UnifiedPanelTabStrip({
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
     const [liveMessage, setLiveMessage] = useState('');
+    // Hover uses the native `title`; keyboard focus gets this tooltip, so a
+    // file tab's full path is reachable without a pointer. It sits above the
+    // tab when there is room and is a native-view passthrough, so it never
+    // blanks a desktop page view below the strip.
+    const pathTipId = useId();
+    const [pathTip, setPathTip] = useState<{ tabId: string; left: number; top: number; above: boolean } | null>(null);
+    const pointerFocus = useRef(false);
     const previousActiveId = useRef(activeId);
     const suppressClickUntil = useRef(0);
     const tabDragChangeRef = useRef(onTabDragChange);
@@ -589,7 +599,24 @@ export function UnifiedPanelTabStrip({
         tabRefs.current.get(tab.id)?.focus?.();
     };
 
+    const showPathTip = (event: ReactFocusEvent<HTMLDivElement>, tab: UnifiedPanelTab) => {
+        const fromPointer = pointerFocus.current;
+        pointerFocus.current = false;
+        if (fromPointer || event.target !== event.currentTarget || !unifiedTabFilePathLabel(tab)) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const width = Math.min(360, window.innerWidth - 16);
+        const above = rect.top >= PATH_TIP_MIN_TOP;
+        setPathTip({
+            tabId: tab.id,
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+            top: above ? rect.top - 4 : rect.bottom + 4,
+            above,
+        });
+    };
+
     const onTabKeyDown = (event: ReactKeyboardEvent, tab: UnifiedPanelTab) => {
+        pointerFocus.current = false;
+        if (event.key === 'Escape') setPathTip(null);
         if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
             event.preventDefault();
             const rect = tabRefs.current.get(tab.id)?.getBoundingClientRect();
@@ -734,6 +761,7 @@ export function UnifiedPanelTabStrip({
                             tabIndex={isActive ? 0 : -1}
                             draggable={tab.id !== pinnedId}
                             title={unifiedTabTooltip(tab, hideBrowserRepoLabels)}
+                            aria-describedby={pathTip?.tabId === tab.id ? pathTipId : undefined}
                             data-testid={`unified-panel-tab-${tab.id}`}
                             data-tab-id={tab.id}
                             data-strip-stop={groupsEnabled ? '' : undefined}
@@ -760,6 +788,12 @@ export function UnifiedPanelTabStrip({
                                 setContextMenu({ tabId: tab.id, x: event.clientX, y: event.clientY });
                             }}
                             onKeyDown={event => onTabKeyDown(event, tab)}
+                            onPointerDown={() => {
+                                pointerFocus.current = true;
+                                setPathTip(null);
+                            }}
+                            onFocus={event => showPathTip(event, tab)}
+                            onBlur={() => setPathTip(current => (current?.tabId === tab.id ? null : current))}
                             onDragStart={event => {
                                 if (tab.id === pinnedId || (event.target as HTMLElement).closest('button')) {
                                     event.preventDefault();
@@ -941,6 +975,7 @@ export function UnifiedPanelTabStrip({
                                     title={`${TAB_GROUP_LABELS[group]} tabs`}
                                     tabs={section.tabs} activeId={activeId}
                                     hideBrowserRepoLabels={hideBrowserRepoLabels} renderIcon={renderMenuIcon}
+                                    describeTab={unifiedTabFilePathLabel}
                                     testIdPrefix={`unified-panel-group-menu-${group}`}
                                     dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
                                     onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
@@ -961,7 +996,7 @@ export function UnifiedPanelTabStrip({
                                 <UnifiedPanelTabOverflowMenu
                                     title={`${TAB_GROUP_LABELS[group]} tabs`}
                                     tabs={section.tabs} entries={section.hidden} activeId={activeId}
-                                    hideBrowserRepoLabels={hideBrowserRepoLabels}
+                                    hideBrowserRepoLabels={hideBrowserRepoLabels} describeTab={unifiedTabFilePathLabel}
                                     dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
                                     onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
                                     trigger={<button type="button" data-strip-stop data-group-overflow
@@ -1027,6 +1062,18 @@ export function UnifiedPanelTabStrip({
 
             {trailing}
             <span role="status" aria-live="polite" className="sr-only">{liveMessage}</span>
+            {pathTip && (() => {
+                const tab = tabs.find(candidate => candidate.id === pathTip.tabId);
+                const path = tab ? unifiedTabFilePathLabel(tab) : null;
+                return path && createPortal(
+                    <div id={pathTipId} role="tooltip" data-native-view-passthrough data-testid="unified-panel-tab-path-tooltip"
+                        className="pointer-events-none fixed z-[1000] max-w-[min(360px,calc(100vw-16px))] break-all rounded border border-[#d0d7de] bg-white px-2 py-1 text-[11px] text-[#24292f] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
+                        style={{ left: pathTip.left, top: pathTip.top, transform: pathTip.above ? 'translateY(-100%)' : undefined }}>
+                        {path}
+                    </div>,
+                    document.body,
+                );
+            })()}
             {contextMenu && (() => {
                 const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);
                 if (!tab) return null;

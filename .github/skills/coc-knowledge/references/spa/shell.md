@@ -916,6 +916,11 @@ tabs in a searchable native-view-overlay portal shared with canvas compression.
 A folded group keeps its active and pinned tabs, and a ▾ button beside its pill
 opens that portal over all the group's tabs with their strip icons; picking one
 activates it without unfolding the group.
+File-backed tabs (`file`, `note`, `html-page`) show `unifiedTabFilePathLabel`,
+the repo-qualified path from the tab's own descriptor (exact trusted/preview
+paths and note task roots; no guessed workspace root): in the hover `title`, in
+a keyboard-focus tooltip (native-view passthrough, above the tab when there is
+room), and as menu row titles plus the highlighted row's detail line.
 Fold state and block order persist per panel scope at
 `unified-right-panel:<scope>:groups` as `{ folded, order }` (a legacy
 folded-only array still reads), independently of chats; saved orders are

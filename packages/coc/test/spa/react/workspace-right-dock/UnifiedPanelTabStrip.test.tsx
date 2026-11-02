@@ -813,6 +813,119 @@ describe('UnifiedPanelTabStrip', () => {
         expect(tabNode(tabs[0]).getAttribute('title')).toBe('util.ts — src/lib/util.ts');
     });
 
+    describe('file path tooltips', () => {
+        function pathTabs(): readonly UnifiedPanelTab[] {
+            let state = EMPTY_UNIFIED_PANEL;
+            state = openTab(state, {
+                kind: 'note', ownerWorkspaceId: 'member-2', chatId: null, label: 'unify-review-chat-tabs.md',
+                resourceId: 'auto||docs/plans/unify-review-chat-tabs.md', repoLabel: 'api',
+            });
+            state = openTab(state, {
+                kind: 'html-page', ownerWorkspaceId: WS, chatId: CHAT, label: 'index.html',
+                resourceId: '/w/pages/index.html', htmlPageId: 'page-1',
+            });
+            state = openTab(state, {
+                kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, label: 'util.ts', resourceId: 'src/lib/util.ts',
+            });
+            state = openTab(state, {
+                kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, label: 'Plan', resourceId: 'cv-1', repoLabel: 'api',
+            });
+            return visibleTabs(state, CHAT);
+        }
+        const byKind = (tabs: readonly UnifiedPanelTab[], kind: UnifiedPanelTab['kind']) => tabs.find(tab => tab.kind === kind)!;
+        const pathTip = () => screen.queryByTestId('unified-panel-tab-path-tooltip');
+
+        it('puts note and HTML page paths in the hover title from their descriptors', () => {
+            const tabs = pathTabs();
+            renderStrip({ tabs });
+            expect(tabNode(byKind(tabs, 'note')).getAttribute('title'))
+                .toBe('unify-review-chat-tabs.md — api: docs/plans/unify-review-chat-tabs.md');
+            expect(tabNode(byKind(tabs, 'html-page')).getAttribute('title')).toBe('index.html — /w/pages/index.html');
+            expect(tabNode(byKind(tabs, 'canvas')).getAttribute('title')).toBe('Plan — api');
+        });
+
+        it('strips the workspace preview marker from a file path', () => {
+            const state = openTab(EMPTY_UNIFIED_PANEL, {
+                kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, label: 'report.md',
+                resourceId: '__workspace_preview__:/remote/out/report.md', repoLabel: 'remote',
+            });
+            const tabs = visibleTabs(state, CHAT);
+            renderStrip({ tabs });
+            expect(tabNode(tabs[0]).getAttribute('title')).toBe('report.md — remote: /remote/out/report.md');
+        });
+
+        it.each([false, true])('shows the path on keyboard focus and hides it on blur or Escape (groups: %s)', groupsEnabled => {
+            const tabs = pathTabs();
+            const note = byKind(tabs, 'note');
+            const file = byKind(tabs, 'file');
+            const props = renderStrip({ tabs, activeId: note.id, groupsEnabled });
+            fireEvent.focus(tabNode(note));
+            const tip = screen.getByRole('tooltip');
+            expect(tip).toHaveTextContent('api: docs/plans/unify-review-chat-tabs.md');
+            // A tooltip must never blank a desktop page view below the strip.
+            expect(tip).toHaveAttribute('data-native-view-passthrough');
+            expect(tip).not.toHaveAttribute('data-native-view-overlay');
+            expect(tabNode(note)).toHaveAttribute('aria-describedby', tip.id);
+            fireEvent.keyDown(tabNode(note), { key: 'Escape' });
+            expect(pathTip()).toBeNull();
+            expect(tabNode(note)).not.toHaveAttribute('aria-describedby');
+            fireEvent.focus(tabNode(file));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('src/lib/util.ts');
+            fireEvent.blur(tabNode(file));
+            expect(pathTip()).toBeNull();
+            expect(props.onActivate).not.toHaveBeenCalled();
+            expect(props.onClose).not.toHaveBeenCalled();
+        });
+
+        it('skips the focus tooltip for pointer focus, focused children and non-file tabs', () => {
+            const tabs = pathTabs();
+            const note = byKind(tabs, 'note');
+            renderStrip({ tabs, activeId: note.id });
+            fireEvent.pointerDown(tabNode(note));
+            fireEvent.focus(tabNode(note));
+            expect(pathTip()).toBeNull();
+            fireEvent.focus(tabNode(byKind(tabs, 'canvas')));
+            expect(pathTip()).toBeNull();
+            const close = tabNode(note).querySelector('button');
+            if (close) {
+                fireEvent.focus(close);
+                expect(pathTip()).toBeNull();
+            }
+            fireEvent.focus(tabNode(note));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('docs/plans/unify-review-chat-tabs.md');
+            fireEvent.pointerDown(tabNode(note));
+            expect(pathTip()).toBeNull();
+        });
+
+        it('keeps the tooltip inside the viewport and opens it above the tab when there is room', () => {
+            const tabs = pathTabs();
+            const file = byKind(tabs, 'file');
+            renderStrip({ tabs, activeId: file.id });
+            tabNode(file).getBoundingClientRect = () => ({ left: window.innerWidth - 20, top: 10, bottom: 40 } as DOMRect);
+            fireEvent.focus(tabNode(file));
+            let tip = screen.getByRole('tooltip');
+            expect(parseFloat(tip.style.left)).toBeLessThanOrEqual(window.innerWidth - Math.min(360, window.innerWidth - 16) - 8);
+            expect(tip.style.top).toBe('44px');
+            expect(tip.style.transform).toBe('');
+            fireEvent.blur(tabNode(file));
+            tabNode(file).getBoundingClientRect = () => ({ left: 100, top: 120, bottom: 150 } as DOMRect);
+            fireEvent.focus(tabNode(file));
+            tip = screen.getByRole('tooltip');
+            expect(tip.style.left).toBe('100px');
+            expect(tip.style.top).toBe('116px');
+            expect(tip.style.transform).toBe('translateY(-100%)');
+        });
+
+        it('leaves a desktop page view placed while its tab shows the focus tooltip', () => {
+            const tabs = pathTabs();
+            const page = byKind(tabs, 'html-page');
+            renderStrip({ tabs, activeId: page.id });
+            fireEvent.focus(tabNode(page));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('/w/pages/index.html');
+            expect(document.querySelector('[data-native-view-overlay]')).toBeNull();
+        });
+    });
+
     it('keeps the repo badge on non-source tabs', () => {
         const state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'canvas', ownerWorkspaceId: 'member-2', chatId: CHAT, resourceId: 'cv-1',

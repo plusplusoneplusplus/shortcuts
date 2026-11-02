@@ -25,6 +25,8 @@ export interface UnifiedPanelTabOverflowMenuProps {
     testIdPrefix?: string;
     /** The tab's strip icon, shown before its title in each row. */
     renderIcon?: (tab: UnifiedPanelTab) => ReactNode;
+    /** A row's detail, e.g. a file's full path: its hover title and, while highlighted, the footer line. */
+    describeTab?: (tab: UnifiedPanelTab) => string | null;
     popupRole?: 'listbox' | 'dialog';
     strings?: {
         searchLabel?: string;
@@ -37,7 +39,7 @@ export interface UnifiedPanelTabOverflowMenuProps {
 
 export function UnifiedPanelTabOverflowMenu({
     title, tabs, entries, activeId, dirtyIds, errorIds, onActivate, onClose, onCloseMany, trigger,
-    hideBrowserRepoLabels = false, renderIcon,
+    hideBrowserRepoLabels = false, renderIcon, describeTab,
     testIdPrefix = 'unified-panel-tab-overflow', popupRole = 'listbox', strings = {},
 }: UnifiedPanelTabOverflowMenuProps) {
     const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -116,6 +118,7 @@ export function UnifiedPanelTabOverflowMenu({
             if (tab) activate(tab, true);
         }
     };
+    const highlightedDetail = filteredTabs[highlighted] ? describeTab?.(filteredTabs[highlighted]) : null;
     const closeTargets = tabs.filter(tab => tab.id !== activeId).map(tab => tab.id);
     const triggerRef = (trigger as typeof trigger & { ref?: Ref<HTMLButtonElement> }).ref;
 
@@ -197,6 +200,7 @@ export function UnifiedPanelTabOverflowMenu({
                                 id={grouped ? `${id}-option-${index}` : undefined}
                                 role={grouped ? 'option' : undefined}
                                 aria-selected={grouped ? active : undefined}
+                                title={describeTab?.(tab) ?? undefined}
                                 onMouseEnter={() => setHighlighted(index)}
                                 onClick={() => activate(tab)}
                                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 py-2 text-left text-xs text-[#333] dark:text-[#ddd]"
@@ -221,6 +225,12 @@ export function UnifiedPanelTabOverflowMenu({
                         </div>;
                     })}
                 </div>
+                {highlightedDetail && (
+                    <div data-testid={`${testIdPrefix}-detail`}
+                        className="break-all border-t border-[#e5e5e5] px-3 py-1.5 text-[10px] text-[#555] dark:border-[#454545] dark:text-[#bbb]">
+                        {highlightedDetail}
+                    </div>
+                )}
                 <div className="flex items-center justify-between border-t border-[#e5e5e5] px-3 py-2 dark:border-[#454545]">
                     <button type="button" disabled={closeTargets.length === 0}
                         data-testid={`${testIdPrefix}-close-others`}

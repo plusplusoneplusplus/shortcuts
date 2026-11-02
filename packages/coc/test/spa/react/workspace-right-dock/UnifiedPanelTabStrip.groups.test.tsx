@@ -697,4 +697,30 @@ describe('UnifiedPanelTabStrip folded group menu', () => {
         fireEvent.click(screen.getByTestId(`unified-panel-group-menu-web-close-${web[1].id}`));
         expect(props.onClose).toHaveBeenCalledWith(web[1].id);
     });
+
+    it('shows file paths on menu rows and the highlighted row, without titles on non-file rows', () => {
+        const note = tab('note', 'plan.md', { resourceId: 'auto||docs/plans/plan.md', repoLabel: 'api' });
+        const paste = tab('paste', 'Clip');
+        const tabs = files(3);
+        renderStrip({ tabs: [shell, note, paste, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        fireEvent.keyDown(groupMenu(), { key: 'ArrowDown' });
+        const option = (name: RegExp) => screen.getByRole('option', { name });
+        expect(option(/plan\.md/)).toHaveAttribute('title', 'api: docs/plans/plan.md');
+        expect(option(/file-2\.ts/)).toHaveAttribute('title', 'file-2.ts');
+        expect(option(/Clip/)).not.toHaveAttribute('title');
+        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('api: docs/plans/plan.md');
+        const search = screen.getByRole('textbox');
+        fireEvent.keyDown(search, { key: 'ArrowDown' });
+        expect(screen.queryByTestId('unified-panel-group-menu-files-detail')).toBeNull();
+        fireEvent.keyDown(search, { key: 'ArrowDown' });
+        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('file-1.ts');
+    });
+
+    it('shows hidden file paths in the expanded group +N menu', () => {
+        const tabs = files().map((entry, index) => index === 4 ? { ...entry, resourceId: 'src/deep/file-5.ts', repoLabel: 'web' } : entry);
+        renderStrip({ tabs, activeId: tabs[0].id });
+        fireEvent.click(overflow());
+        expect(screen.getByRole('option', { name: /file-5\.ts/ })).toHaveAttribute('title', 'web: src/deep/file-5.ts');
+    });
 });
+

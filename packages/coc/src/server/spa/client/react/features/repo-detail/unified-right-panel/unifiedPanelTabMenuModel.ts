@@ -184,6 +184,29 @@ export function unifiedPanelAbsoluteFilePath(
     return absoluteFilePath(tab.resourceId, workspaceRootPath);
 }
 
+/**
+ * The full path a file-backed tab (`file`, `note`, `html-page`) carries in its
+ * own descriptor, prefixed with its repo label when it has one. Saved roots (an
+ * exact trusted/preview path, a note's tasks root) are applied; a workspace root
+ * is never guessed, so a repo file stays repo-relative. Null for other kinds.
+ */
+export function unifiedTabFilePathLabel(tab: UnifiedPanelTab): string | null {
+    const path = descriptorFilePath(tab);
+    if (!path) return null;
+    return tab.repoLabel ? `${tab.repoLabel}: ${path}` : path;
+}
+
+function descriptorFilePath(tab: UnifiedPanelTab): string | null {
+    if (tab.kind === 'html-page') return tab.resourceId.trim() ? tab.resourceId : null;
+    if (tab.kind === 'note') {
+        return unifiedPanelAbsoluteFilePath(tab, null) ?? parseNoteResourceId(tab.resourceId)?.notePath ?? null;
+    }
+    if (tab.kind !== 'file') return null;
+    const prefix = [WORKSPACE_PREVIEW_PREFIX, TRUSTED_PATH_PREFIX].find(entry => tab.resourceId.startsWith(entry));
+    const path = prefix ? tab.resourceId.slice(prefix.length) : tab.resourceId;
+    return path.trim() ? path : null;
+}
+
 /** Pure path arithmetic on the owner's filesystem spelling; never local I/O. */
 function absoluteFilePath(path: string, root: string | null | undefined): string | null {
     if (!path || path.includes('\0')) return null;
