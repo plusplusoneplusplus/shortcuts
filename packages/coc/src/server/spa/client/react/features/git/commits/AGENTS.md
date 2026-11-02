@@ -30,7 +30,10 @@ The file panel retains diff engines, hunk navigation, comments, find, truncation
 and fallback behavior. Review state keys include owner, workspace and comparison.
 The toolbar's "All comments in this commit" sidebar lists every file's comments
 through `useAllCommitComments` (shared `useReviewComments`), grouped by file, whichever
-file is selected. Classification also stays on the toolbar.
+file is selected. Its Send action uses `useSendReviewComments` and the selected
+panel chat's owner-qualified `currentChatSend` publisher, never the commit-bound
+review chat or batch-resolution endpoint. It preserves drafts and comment status.
+Classification also stays on the toolbar.
 
 Icon buttons need accessible names; panel toggles expose pressed state. Review
 openers serialize `attachmentDestinationId` as `sourceSelectionId` and resolve

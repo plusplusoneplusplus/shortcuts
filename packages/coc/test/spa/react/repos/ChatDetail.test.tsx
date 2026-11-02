@@ -30,6 +30,7 @@ import { createFileSelectionContextPayload } from '../../../../src/server/spa/cl
 import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 import type { PrStatusCardItem } from '../../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { useCurrentChatSend } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/currentChatSend';
 import { getBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
 import { clearSentinelTodoExcursion, startSentinelTodoExcursion, getSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
@@ -594,6 +595,75 @@ afterEach(() => {
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────
+
+describe('ChatDetail current-chat review send', () => {
+    function SendProbe() {
+        const sender = useCurrentChatSend();
+        return <button data-testid="review-send" disabled={!!sender.disabledReason}
+            title={sender.disabledReason} onClick={() => { void sender.send('Review comments prompt'); }}>Send</button>;
+    }
+
+    it.each([false, true])('publishes the actual follow-up handler with draft isolation (remote group=%s)', async remote => {
+        const baseUrl = remote ? 'https://owner.example.test' : undefined;
+        const owner = {
+            workspaceId: 'ws-member',
+            selectionId: remote ? 'remote:server-a:ws-member' : 'ws-member',
+            baseUrl,
+        };
+        if (remote) registerCloneBaseUrls([
+            { workspaceId: 'group-review', serverId: 'server-a', baseUrl: baseUrl! },
+            { workspaceId: 'ws-member', serverId: 'server-a', baseUrl: baseUrl! },
+            { workspaceId: 'ws-member', serverId: 'server-b', baseUrl: 'https://other.example.test' },
+        ]);
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'ask', sessionId: 'session' } }));
+        render(<Wrap><UnifiedPanelHostProvider host={{
+            workspaceId: remote ? 'group-review' : 'ws-member', chatId: 'task-1',
+            routingRef: remote ? 'remote:server-a:group-review' : null,
+        }}>
+            <WorkspaceOwnerContext.Provider value={owner}>
+                <ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId={owner.selectionId} />
+            </WorkspaceOwnerContext.Provider>
+            <SendProbe />
+        </UnifiedPanelHostProvider></Wrap>);
+        const button = screen.getByTestId('review-send');
+        await waitFor(() => expect(button).not.toBeDisabled());
+        const attachmentClears = mockState.clearAttachments.mock.calls.length;
+        const draftClears = mockState.clearDraft.mock.calls.length;
+        const composerWrites = [...mockState.richTextSetValueCalls];
+        await act(async () => { fireEvent.click(button); });
+        expect(mockState.sendFollowUp).toHaveBeenCalledExactlyOnceWith('Review comments prompt', 'enqueue', {
+            includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+        });
+        expect(mockState.clearAttachments).toHaveBeenCalledTimes(attachmentClears);
+        expect(mockState.clearDraft).toHaveBeenCalledTimes(draftClears);
+        expect(mockState.richTextSetValueCalls).toEqual(composerWrites);
+        const sendOptions = (globalThis as any).__useSendMessage_opts;
+        expect(sendOptions.selectedMode).toBe('autopilot');
+        expect(sendOptions.messageClient).toBe(sendOptions.compactClient);
+    });
+
+    it('publishes an explanatory disabled state for read-only chats', async () => {
+        setupStandardFetch();
+        render(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-member', chatId: 'task-1' }}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" readOnly /><SendProbe />
+        </UnifiedPanelHostProvider></Wrap>);
+        await waitFor(() => expect(screen.queryByTestId('activity-chat-loading')).toBeNull());
+        expect(screen.getByTestId('review-send')).toBeDisabled();
+        expect(screen.getByTestId('review-send')).toHaveAttribute('title', 'This chat is read-only.');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('does not bypass missing-session composer restrictions', async () => {
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member' } }));
+        render(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-member', chatId: 'task-1' }}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" /><SendProbe />
+        </UnifiedPanelHostProvider></Wrap>);
+        await waitFor(() => expect(screen.queryByTestId('activity-chat-loading')).toBeNull());
+        expect(screen.getByTestId('review-send')).toBeDisabled();
+        expect(screen.getByTestId('review-send')).toHaveAttribute('title', expect.stringContaining('no session'));
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+});
 
 describe('ChatDetail shared paged hydration', () => {
     function CacheProbe() {

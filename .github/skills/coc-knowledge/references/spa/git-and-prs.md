@@ -425,11 +425,14 @@ late reads; owner `diff-comment-updated` events (context on `comment.context`, o
 with line locations. Copy as prompt uses `formatReviewCommentsPrompt`: every unresolved
 comment with review context, file, location, working-tree stage and exact text; resolved
 ones are counted, not copied. Copy shows Copied only after the clipboard write succeeds.
-Send to current chat
-drafts the same prompt into the composer of the chat the hosting unified panel shows
-(`useCurrentChatInsertDraft` → that chat's `insertDraft`: appends after a blank line,
-focuses, never submits), never the source's review chat; it is disabled when no panel
-hosts the diff or the shown chat is not mounted. Anchor relocation
+Batch Send uses `useSendReviewComments` with the existing prompt formatters and
+source workspace identity. `currentChatSend` binds the selected mounted `ChatDetail`
+by panel scope, concrete server route, endpoint and conversation; admission uses its
+captured client and normal enqueue follow-up flow, mode and provider. Unavailable
+owners, read-only chats and empty unresolved sets disable sending; failures remain
+visible and in-flight duplicates reject. Composer drafts, attachments and comment
+resolution stay untouched. Individual card Send to current chat uses
+`useCurrentChatInsertDraft` to append and focus without submitting. Anchor relocation
 matches source rows, excluding patch headers and no-newline annotations during engine
 switches. Both engines share the persisted comment shape.
 

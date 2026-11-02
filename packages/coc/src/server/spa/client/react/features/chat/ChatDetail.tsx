@@ -59,6 +59,7 @@ import { useUnifiedPanelTree } from '../repo-detail/unified-right-panel/unifiedP
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { usePublishCurrentChatSend } from '../repo-detail/unified-right-panel/currentChatSend';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
@@ -1759,6 +1760,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // `/compact` surfaces its result (or error) as a transient toast; the
         // displayed transcript is never rewritten.
         compactClient: client,
+        messageClient: historyOwnerAvailable ? client : undefined,
         compactDisabled: !historyOwnerAvailable || readOnly || isCompacting || compactionQueued || conversationProvider === 'opencode',
         notifyCompact: addToast,
         // Drive the synthetic in-progress compaction bubble + duplicate-send
@@ -1804,6 +1806,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             modeOverride: baseMode === 'ralph' ? 'ask' : baseMode,
         });
     }, [sendFollowUp, selectedMode, metadataProcess]);
+
+    usePublishCurrentChatSend(unifiedPanelHost, {
+        disabledReason: !historyOwnerAvailable ? 'The owning server is unavailable.'
+            : readOnly ? 'This chat is read-only.'
+            : noSessionForFollowUp ? 'This chat has no session available for follow-up messages.'
+            : effectiveNav.kind === 'agent' ? 'Open the main conversation to send comments.'
+            : !processId || inputDisabled ? 'Sending is unavailable in this chat.'
+            : isCompacting || compactionQueued ? 'Wait for chat compaction to finish.'
+            : sending && !isActiveGeneration ? 'Wait for the current message to be sent.'
+            : selectedMode === 'ralph' ? 'Send review comments in a chat mode, not Ralph launch mode.'
+            : hydrationScope?.client !== client || hydrationScope?.key !== conversationStateKey
+                ? 'Wait for the open chat to load.' : undefined,
+        send: message => sendFollowUp(message, 'enqueue', {
+            includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+        }),
+    }, historyBaseUrl);
 
     // A canvas tab in the shared right panel keeps two chat-directed actions:
     // "Ask AI" prefills this chat's composer with a selection prompt (never

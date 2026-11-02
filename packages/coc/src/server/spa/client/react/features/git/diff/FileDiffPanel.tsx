@@ -20,6 +20,7 @@ import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { useSendReviewComments } from '../hooks/useSendReviewComments';
 import { FileLevelComments, revealFileComment, splitFileComments } from './FileLevelComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
@@ -285,8 +286,9 @@ export function FileDiffPanel({
         comments, loading: commentsLoading, addComment, deleteComment, updateComment,
         resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
         clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
-        resolveWithAI, fixWithAI,
+        fixWithAI,
     } = useDiffComments(workspaceId, diffContext, source.routingTarget);
+    const sendComments = useSendReviewComments(workspaceId, comments, diffContext);
     const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     // ── Cross-file navigation ──
@@ -378,26 +380,6 @@ export function FileDiffPanel({
         },
         [askAI],
     );
-
-    const handleResolveAllWithAI = useCallback(() => {
-        if (shouldSkipResolveDialog()) {
-            void resolveWithAI();
-            return;
-        }
-        const openCount = comments.filter(c => c.status === 'open').length;
-        queueDispatch({
-            type: 'OPEN_DIALOG',
-            workspaceId,
-            mode: 'resolve',
-            resolveContext: {
-                title: 'Resolve with AI',
-                commentCount: openCount,
-                onSubmit: (ctx: string, sk: string[]) => {
-                    void resolveWithAI(ctx || undefined, sk.length > 0 ? sk : undefined);
-                },
-            },
-        });
-    }, [resolveWithAI, comments, queueDispatch, workspaceId]);
 
     const handleFixWithAI = useCallback((id: string) => {
         if (shouldSkipResolveDialog()) {
@@ -891,7 +873,7 @@ export function FileDiffPanel({
                         onDelete={(id) => { void deleteComment(id); }}
                         onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
                         onAskAI={handleAskAI}
-                        onResolveAllWithAI={handleResolveAllWithAI}
+                        {...sendComments}
                         onFixWithAI={handleFixWithAI}
                         onCommentClick={handleSidebarCommentClick}
                         aiLoadingIds={aiLoadingIds}

@@ -27,6 +27,9 @@ import { sentinelTodoOwnerKey, type SentinelTodoOwner } from '../../repo-detail/
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
 export interface SendFollowUpOptions {
+    /** Generated sends need explicit admission failures, without waiting for the AI response. */
+    throwOnError?: boolean;
+    waitForCompletion?: boolean;
     /** When false, send exactly the provided content without composer draft/paste/context/attachments. */
     includeComposerContext?: boolean;
     /** Optional mode override for generated sends that should not follow the current composer mode. */
@@ -140,6 +143,8 @@ export interface UseSendMessageOptions {
     setCompacting?: (running: boolean, customInstructions?: string) => void;
     /** Exact hydrated owner client for manual compaction, including explicit remote endpoints. */
     compactClient?: CocClient;
+    /** Captured hydrated conversation client; never re-resolve through an active clone alias. */
+    messageClient?: CocClient;
     /** Additional admission gate for the context-popover action. */
     compactDisabled?: boolean;
 }
@@ -187,6 +192,7 @@ export function useSendMessage({
     ralphGrillSetup,
     onPromotedToRalph,
     compactClient,
+    messageClient: hydratedMessageClient,
     compactDisabled,
     notifyCompact,
     setCompacting,
@@ -206,8 +212,8 @@ export function useSendMessage({
     const scopedOwner = useWorkspaceOwner(workspaceId);
     const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     const scopedClient = useCocClient(workspaceId);
-    const getMessageClient = useCallback(() => scopedOwner
-        ? scopedClient : getCocClientForWorkspace(workspaceId), [scopedOwner, scopedClient, workspaceId]);
+    const getMessageClient = useCallback(() => hydratedMessageClient ?? (scopedOwner
+        ? scopedClient : getCocClientForWorkspace(workspaceId)), [hydratedMessageClient, scopedOwner, scopedClient, workspaceId]);
     const compactingRef = useMemo(() => ({ current: false }),
         [processId, workspaceId, messageOwnerWorkspaceId, compactClient, getMessageClient]);
     const activeCompactionOwner = useRef<typeof compactingRef>();
@@ -365,7 +371,14 @@ export function useSendMessage({
     }, [processId, inputDisabled, sending, isActiveGeneration, compactDisabled, compactConversation]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
-        if (resolvingTodosRef.current) return;
+        const rejectSend = (message: string) => {
+            setError(message);
+            if (options.throwOnError) throw new Error(message);
+        };
+        if (resolvingTodosRef.current) {
+            if (options.throwOnError) throw new Error('The chat is preparing another message.');
+            return;
+        }
         const includeComposerContext = options.includeComposerContext !== false;
         const requestedProvider = options.providerOverride ?? providerOverride;
         const messageMode = options.modeOverride ?? selectedMode;
@@ -382,10 +395,13 @@ export function useSendMessage({
             sentinelTodoOwner,
         });
         if (sessionContextSendError) {
-            setError(sessionContextSendError);
+            rejectSend(sessionContextSendError);
             return;
         }
-        if (!processId || inputDisabled || (sending && !isActiveGeneration) || compactingRef.current) return;
+        if (!processId || inputDisabled || (sending && !isActiveGeneration) || compactingRef.current) {
+            if (options.throwOnError) throw new Error('Sending is unavailable in the open chat.');
+            return;
+        }
         const hasTodoContext = contextItems.some(item => item.kind === 'sentinel-todo');
         if (hasTodoContext && sentinelTodoOwner) {
             const originalItems = contextItems;
@@ -428,8 +444,8 @@ export function useSendMessage({
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
-        if (!hasTodoContext && !scopedOwner && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
-            setError('The owning server is unavailable. Reconnect it before sending this message.');
+        if (!hasTodoContext && !scopedOwner && !hydratedMessageClient && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
+            rejectSend('The owning server is unavailable. Reconnect it before sending this message.');
             return;
         }
         const owner = hasTodoContext && sentinelTodoOwner
@@ -512,16 +528,23 @@ export function useSendMessage({
 
         if (!rawContent) return;
         if (targetSpans(rawContent).length) {
-            if (targetCheck.pending || targetCheck.abort.signal.aborted) return;
+            if (targetCheck.pending || targetCheck.abort.signal.aborted) {
+                if (options.throwOnError) throw new Error('Target verification is unavailable. Retry.');
+                return;
+            }
             targetCheck.pending = true;
             const draft = followUpInputRef.current;
             try {
                 const signal = AbortSignal.any([targetCheck.abort.signal, AbortSignal.timeout(10000)]);
                 await validateSentinelTargetSend(rawContent, messageClient, signal, scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId);
-                if (activeTargetCheck.current !== targetCheck) return;
+                if (activeTargetCheck.current !== targetCheck) {
+                    if (options.throwOnError) throw new Error('The open chat changed during target verification.');
+                    return;
+                }
                 if (includeComposerContext && followUpInputRef.current !== draft) throw new Error('The draft changed while checking targets. Review it and send again.');
             } catch (error) {
                 if (activeTargetCheck.current === targetCheck && !targetCheck.abort.signal.aborted) setError(getSpaCocClientErrorMessage(error, 'Target verification failed. Retry.'));
+                if (options.throwOnError) throw error;
                 return;
             } finally { targetCheck.pending = false; }
         }
@@ -571,6 +594,7 @@ export function useSendMessage({
                 setError(getSpaCocClientErrorMessage(error, 'Failed to send follow-up message.'));
                 lastFailedMessageRef.current = rawContent;
                 if (includeComposerContext) setFollowUpInput(userText);
+                if (options.throwOnError) throw error;
                 return;
             }
 
@@ -614,7 +638,7 @@ export function useSendMessage({
                 clearPaste();
                 clearAttachedContext?.();
             }
-            await waitForSendCompletion(processId);
+            if (options.waitForCompletion !== false) await waitForSendCompletion(processId);
         } catch (err: any) {
             if (err instanceof CocApiError && err.status === 410) {
                 setSessionExpired(true);
@@ -625,6 +649,7 @@ export function useSendMessage({
             lastFailedMessageRef.current = rawContent;
             if (hasTodoContext && includeComposerContext) setFollowUpInput(userText);
             removeStreamingPlaceholder();
+            if (options.throwOnError) throw err;
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });

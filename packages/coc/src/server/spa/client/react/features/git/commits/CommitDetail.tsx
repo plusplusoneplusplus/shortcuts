@@ -11,6 +11,7 @@ import { createCommitDiffSource, getGitReviewClient } from '../diff/diffSource';
 import { toCommitItem } from '../repoGitTab/useRepoGitSelection';
 import { isGitCommitLookupEnabled } from '../../../utils/config';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
+import { useSendReviewComments } from '../hooks/useSendReviewComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitReviewChat } from './CommitReviewChat';
 import { useCommitChatPresentation, type UseCommitChatPresentationReturn } from '../hooks/useCommitChatPresentation';
@@ -148,12 +149,12 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
         copyAllCommentsAsPrompt: copyAllCommitCommentsAsPrompt,
-        resolveWithAI: commitResolveWithAI,
         fixWithAI: commitFixWithAI,
         aiLoadingIds: commitAiLoadingIds,
         aiErrors: commitAiErrors,
         clearAiError: clearCommitAiError,
     } = useAllCommitComments(workspaceId, hash ?? '', attachmentDestinationId === workspaceId ? null : attachmentDestinationId);
+    const sendComments = useSendReviewComments(workspaceId, allCommitComments, { kind: 'commit', hash: hash ?? '' });
 
     const { dispatch: queueDispatch } = useQueue();
     const { markPoppedOut } = useGitReviewPopOut();
@@ -168,26 +169,6 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
         }
     }, [workspaceId, attachmentDestinationId, hash, markPoppedOut]);
-
-    const handleResolveAllCommitWithAI = useCallback(() => {
-        if (shouldSkipResolveDialog()) {
-            void commitResolveWithAI();
-            return;
-        }
-        const openCount = allCommitComments.filter(c => c.status === 'open').length;
-        queueDispatch({
-            type: 'OPEN_DIALOG',
-            workspaceId,
-            mode: 'resolve',
-            resolveContext: {
-                title: 'Resolve with AI',
-                commentCount: openCount,
-                onSubmit: (ctx: string, sk: string[]) => {
-                    void commitResolveWithAI(ctx || undefined, sk.length > 0 ? sk : undefined);
-                },
-            },
-        });
-    }, [commitResolveWithAI, allCommitComments, queueDispatch, workspaceId]);
 
     const handleFixCommitWithAI = useCallback((id: string) => {
         if (shouldSkipResolveDialog()) {
@@ -277,7 +258,7 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
                             if (c) void updateCommitComment(c, { comment: text });
                         }}
                         onAskAI={() => undefined}
-                        onResolveAllWithAI={handleResolveAllCommitWithAI}
+                        {...sendComments}
                         onFixWithAI={handleFixCommitWithAI}
                         aiLoadingIds={commitAiLoadingIds}
                         aiErrors={commitAiErrors}
