@@ -157,10 +157,22 @@ describe('CiFailureEvaluator', () => {
             expect(capped.event).toMatchObject({ repairStatus: expect.stringContaining('exhausted') });
         });
 
-        it('bounds new-head repair/push chains and reports exhaustion without repeated messages', async () => {
-            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
-            const attempts = { a: 1, b: 1, c: 1, d: 1 };
-            const first = await evaluator.evaluate(trigger({ conflictAttempts: attempts }));
+        it('allows ten conflict repairs across heads then reports exhaustion once', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([
+                ...Array.from({ length: 11 }, (_, index) => conflict({
+                    headSha: `head-${index}`, checksHeadSha: `head-${index}`,
+                })),
+                conflict({ headSha: 'head-10', checksHeadSha: 'head-10' }),
+            ]));
+            let event: Partial<ConditionMonitorEvent> = {};
+            for (let attempt = 1; attempt <= 10; attempt++) {
+                const outcome = await evaluator.evaluate(trigger(event));
+                expect(outcome.fire).toBe(true);
+                expect(outcome.repairKind).toBe('conflict');
+                event = outcome.event as ConditionMonitorEvent;
+                expect(Object.values(event.conflictAttempts ?? {}).reduce((sum, n) => sum + n, 0)).toBe(attempt);
+            }
+            const first = await evaluator.evaluate(trigger(event));
             const second = await evaluator.evaluate(trigger(first.event as ConditionMonitorEvent));
             expect(first.fire).toBe(false);
             expect(first.changed).toBe(true);

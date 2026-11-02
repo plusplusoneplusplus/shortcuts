@@ -317,4 +317,4 @@ export const MAX_ACTIVE_TRIGGERS = 50;
 export const MAX_CI_FIX_ATTEMPTS = 10;
 export const MAX_CONFLICT_FIX_ATTEMPTS = 10;
 /** Bounds repair/push chains even when every repair changes the head. */
-export const MAX_CONFLICT_FIX_TOTAL = 4;
+export const MAX_CONFLICT_FIX_TOTAL = 10;
