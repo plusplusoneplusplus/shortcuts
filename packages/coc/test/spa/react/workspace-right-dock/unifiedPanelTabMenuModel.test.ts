@@ -48,6 +48,14 @@ describe('unified panel tab menu model', () => {
             expect(actions.slice(0, 5)).toEqual([
                 'close', 'close-others', 'close-right', 'close-saved', 'close-all',
             ]);
+            const items = unifiedPanelTabMenuItems(current, [current], new Set(), undefined, [current.id], true);
+            // Bulk closes render under the "Close Other" submenu; Move and Close stay top level.
+            expect(items.filter(item => item.group === 'close-other').map(item => item.action)).toEqual([
+                'close-others', 'close-right', 'close-saved', 'close-all', 'close-group', 'close-others-in-group',
+            ]);
+            expect(items.filter(item => item.group !== 'close-other').map(item => item.action).slice(0, 3)).toEqual([
+                'move-left', 'move-right', 'close',
+            ]);
             expect(actions.includes('copy-path')).toBe(kind === 'file' || kind === 'note');
             expect(actions).not.toContain('split-right');
             expect(actions).not.toContain('pin');

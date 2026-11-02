@@ -452,12 +452,14 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         fireEvent.contextMenu(tabNode(tabs[0]));
         expect(screen.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Close all in group' }));
         expect(props.onMenuAction).toHaveBeenCalledWith('close-group', tabs[0].id);
         expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[0].id, 'close-group', new Set()))
             .toEqual(tabs.map(entry => entry.id));
         fireEvent.contextMenu(tabNode(tabs[4]));
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Close others in group' }));
         expect(props.onMenuAction).toHaveBeenCalledWith('close-others-in-group', tabs[4].id);
         expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[4].id, 'close-others-in-group', new Set([tabs[3].id])))
@@ -465,6 +467,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         fireEvent.contextMenu(tabNode(shell));
         expect(screen.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         expect(screen.getByRole('menuitem', { name: 'Close others in group' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close all in group' })).toBeEnabled();
     });

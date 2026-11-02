@@ -256,6 +256,7 @@ describe('UnifiedRightPanel collapses when its last tab closes', () => {
         await screen.findByTestId(`unified-panel-tab-${second}`);
 
         fireEvent.contextMenu(tabNode(first), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
 
         await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${second}`)).toBeNull());
@@ -310,6 +311,7 @@ describe('UnifiedRightPanel collapses when its last tab closes', () => {
         await screen.findByTestId(`unified-panel-tab-${clean}`);
 
         fireEvent.contextMenu(tabNode(clean), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
         await screen.findByTestId('explorer-close-tabs-prompt');
         fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));

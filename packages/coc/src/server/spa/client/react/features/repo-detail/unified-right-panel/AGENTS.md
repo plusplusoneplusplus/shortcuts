@@ -645,8 +645,13 @@ flight.
 
 The tab context menu opens from right-click, the Context Menu key, or Shift+F10,
 keeps keyboard focus inside enabled actions, clamps to the viewport, and restores
-focus to its originating tab on dismissal. Every kind exposes the close group;
-preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
+focus to its originating tab on dismissal. Every kind exposes Close plus a
+**Close Other** submenu (model group `close-other`) holding the bulk closes —
+Close Others, Close to the Right, Close Saved, Close All and, with groups on, the
+two in-group closes — with their own disabled states and dispatch. The submenu
+opens on mouse hover, tap/click, or ArrowRight/Enter/Space; ArrowLeft or Escape
+closes only the submenu and refocuses its row; it flips left and clamps to the
+viewport. Move left/right stay top level. Preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
 Web (`browser`) tabs add Duplicate; HTML previews and other kinds never offer it.
 `duplicateBrowserTabInput` copies owner, route, repo label, title, engine pin and
 the committed URL into a fresh `browserOpenInput` (new view id, so no guest,

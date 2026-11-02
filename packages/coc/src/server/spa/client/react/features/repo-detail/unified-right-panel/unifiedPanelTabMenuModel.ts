@@ -29,7 +29,8 @@ export type UnifiedPanelTabMenuAction =
 export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
     label: string;
-    group: 'keep-open' | 'browser' | 'close' | 'file' | 'move';
+    /** `close-other` items render inside the "Close Other" submenu. */
+    group: 'keep-open' | 'browser' | 'close' | 'close-other' | 'file' | 'move';
     disabled: boolean;
 }
 
@@ -102,32 +103,32 @@ export function unifiedPanelTabMenuItems(
         {
             action: 'close-others',
             label: 'Close Others',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others', dirtyIds).length === 0,
         },
         {
             action: 'close-right',
             label: 'Close to the Right',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-right', dirtyIds).length === 0,
         },
         {
             action: 'close-saved',
             label: 'Close Saved',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-saved', dirtyIds).length === 0,
         },
         {
             action: 'close-all',
             label: 'Close All',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-all', dirtyIds).length === 0,
         },
     );
     if (groupsEnabled) {
         items.push(
-            { action: 'close-group', label: 'Close all in group', group: 'close', disabled: false },
-            { action: 'close-others-in-group', label: 'Close others in group', group: 'close',
+            { action: 'close-group', label: 'Close all in group', group: 'close-other', disabled: false },
+            { action: 'close-others-in-group', label: 'Close others in group', group: 'close-other',
                 disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others-in-group', dirtyIds).length === 0 },
         );
     }
