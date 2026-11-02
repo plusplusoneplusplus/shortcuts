@@ -24,6 +24,7 @@ import { createAskUserTool } from '../../src/server/llm-tools/ask-user-tool';
 import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/server/llm-tools/memory-v2-tools';
 import { createCreatePullRequestTool } from '../../src/server/llm-tools/create-pull-request-tool';
 import { createSystemOneTool } from '../../src/server/llm-tools/system-one-tool';
+import { createMcpScriptTools } from '../../src/server/llm-tools/mcp-script-tools';
 import { createRunToolScriptTool } from '../../src/server/llm-tools/run-tool-script-tool';
 import { createCanvasExtensionTools, type CanvasExtensionToolsDeps } from '../../src/server/llm-tools/canvas-extension-tools';
 import { createQueryPullRequestTool } from '../../src/server/llm-tools/query-pull-request-tool';
@@ -123,6 +124,8 @@ describe('schema mirror drift guard', () => {
         config: () => ({ canvasExtensions: { enabled: true } }),
     } as CanvasExtensionToolsDeps);
     const liveSchemas: Array<{ name: string; parameters: unknown }> = [
+        ...createMcpScriptTools({} as any).filter(tool => tool.name === 'mcp_call')
+            .map(tool => ({ name: tool.name, parameters: tool.parameters })),
         ...extensionTools.map(tool => ({ name: tool.name, parameters: tool.parameters })),
         { name: 'create_pull_request', parameters: createCreatePullRequestTool({} as any).tool.parameters },
         { name: 'suggest_follow_ups', parameters: createSuggestFollowUpsTool().parameters },

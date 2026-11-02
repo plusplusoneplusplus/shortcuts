@@ -311,10 +311,10 @@ export const PerRepoPreferencesSchema = z.object({
             arr.filter((t): t is string => typeof t === 'string' && t.length > 0),
         ))
         .optional(),
-    /** Default-gated tools (DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS) the repo turned approval off for. */
+    /** Approval opt-outs for current defaults and the retained mcp_call opt-out. */
     approvalOptOutLlmTools: z.array(z.unknown())
         .transform(arr => Array.from(new Set(arr.filter((t): t is string =>
-            typeof t === 'string' && DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.includes(t)))))
+            typeof t === 'string' && (DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.includes(t) || t === 'mcp_call')))))
         .optional(),
     defaultModel: z.string().max(100).optional(),
     defaultModels: DefaultModelsByModeSchema.optional(),

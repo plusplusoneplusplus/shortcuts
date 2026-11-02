@@ -21,7 +21,7 @@ its corresponding flag is off: `cronEnabled` for `scheduleWakeup`, `canvasEnable
 for `CANVAS_LLM_TOOL_NAMES`, `canvasExtensionsEnabled` for
 `CANVAS_EXTENSION_LLM_TOOL_NAMES`, `kustoEnabled` for `kusto_query`,
 `llmToolSystemOneEnabled` for `system_one`, `browserControlEnabled` for `browser`,
-`toolScriptingEnabled` for `run_tool_script`, and `queryPullRequestToolEnabled` for
+`toolScriptingEnabled` for `run_tool_script` and `mcp_call`, and `queryPullRequestToolEnabled` for
 `query_pull_request`. Installed-extension tools have their own default-off gate,
 independent of `canvas.enabled`. Route composition reads `canvasExtensions.enabled`
 from live runtime config (or resolved startup config); both GET and PUT tool settings
@@ -868,11 +868,12 @@ holds, `buildChatTurnContext` resolves the turn workspace's servers with
 the script runtime (never the model's direct tools), the `run_tool_script` description lists the
 server names, the turn signal's abort closes the scope, and `ChatTurnContext.dispose()` closes it.
 Flag off or `mcpServers: {}` adds nothing. The pair goes through the turn's LLM-tool approval gate
-(`gateMcpTools`): `mcp_call` is in `DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS`, so
-`readApprovalRequiredLlmTools()` includes it unless the repo's `approvalOptOutLlmTools` lists it;
-the `llm-tools-config` PUT splits the requested effective list with `toApprovalPreferences()`
-(a missing default-gated tool becomes an opt-out) and GET returns the effective list.
-Unattended runs deny it; `mcp_list_tools` is never gated. Tool filters: the config `tools`
+(`gateMcpTools`): `DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS` is empty, so `mcp_call`
+approval defaults off in unset preferences and Repo Settings. Explicit per-repo
+`approvalRequiredLlmTools` choices still gate inner calls; stored `mcp_call` opt-outs
+remain valid. The `llm-tools-config` PUT uses `toApprovalPreferences()` and GET uses
+`readApprovalRequiredLlmTools()` to return the effective list. Unattended runs deny
+approval-required calls; default and opted-out calls can run. `mcp_list_tools` is never gated. Tool filters: the config `tools`
 allowlist (per-repo `enabledMcpTools`, the source of Codex `enabled_tools`) applies as is, and the
 scope's `isToolAllowed` comes from `createExcludedMcpToolFilter()` over the turn's disabled LLM
 tools, `excludeTools` and provider `excludedTools`, matching `<server>-<tool>`,

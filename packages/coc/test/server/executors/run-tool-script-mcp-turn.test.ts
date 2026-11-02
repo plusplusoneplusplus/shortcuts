@@ -163,10 +163,11 @@ describe('run_tool_script MCP access in a chat turn', () => {
             });
         }
 
-        it('asks before mcp_call by default and never before mcp_list_tools', async () => {
+        it('asks before explicitly approval-required mcp_call and never before mcp_list_tools', async () => {
             addWorkspace('ws-a', ['alpha']);
             const records: LlmToolApprovalRecord[] = [];
             const asked: string[] = [];
+            writeRepoPreferences(tmpDir, 'ws-a', { approvalRequiredLlmTools: ['mcp_call'] });
             const ctx = await interactiveTurn(['deny', 'approve-once'], records, asked);
             const run = await runScript(ctx.tools, `
                 await tools.mcp_list_tools({ server: 'alpha' });
@@ -185,6 +186,7 @@ describe('run_tool_script MCP access in a chat turn', () => {
 
         it('denies mcp_call on unattended runs while listing still works', async () => {
             addWorkspace('ws-a', ['alpha']);
+            writeRepoPreferences(tmpDir, 'ws-a', { approvalRequiredLlmTools: ['mcp_call'] });
             const ctx = await turn('ws-a', { unattendedScript: true });
             const run = await runScript(ctx.tools, `
                 const listed = await tools.mcp_list_tools({ server: 'alpha' });
@@ -196,9 +198,13 @@ describe('run_tool_script MCP access in a chat turn', () => {
             expect(run.result.denied).toContain('cannot run in a background script');
         });
 
-        it('lets mcp_call through when the repo turns its approval off', async () => {
+        it.each([
+            ['unset', {}],
+            ['explicitly off', { approvalRequiredLlmTools: [] }],
+            ['opted out', { approvalOptOutLlmTools: ['mcp_call'] }],
+        ])('lets inner mcp_call through with approval %s', async (_label, preferences) => {
             addWorkspace('ws-a', ['alpha']);
-            writeRepoPreferences(tmpDir, 'ws-a', { disabledLlmTools: [], approvalOptOutLlmTools: ['mcp_call'] });
+            writeRepoPreferences(tmpDir, 'ws-a', { disabledLlmTools: [], ...preferences });
             const records: LlmToolApprovalRecord[] = [];
             const asked: string[] = [];
             const interactive = await interactiveTurn([], records, asked);
