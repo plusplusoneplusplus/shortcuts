@@ -112,7 +112,8 @@ describe('Markdown preview source links', () => {
         expect(preview.innerHTML).toContain('md-link');
         const first = click(preview.querySelector('.md-link')!);
         expect(first.defaultPrevented).toBe(true);
-        await waitFor(() => expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])).toHaveLength(1));
+        // Owner discovery and the tab open settle asynchronously; slow macOS runners exceed the 1s default.
+        await waitFor(() => expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])).toHaveLength(1), { timeout: 5_000 });
         const initial = readUnifiedPanelState('panel');
         expect((initial.chatTabs.chat ?? [])[0]).toMatchObject({
             kind: 'file', resourceId: 'src/a file.ts', ownerWorkspaceId: 'ws', ownerRoutingRef: null,
@@ -124,7 +125,7 @@ describe('Markdown preview source links', () => {
         const link = preview.querySelector('.md-link')!;
         link.setAttribute('data-href', '../src/a%20file.ts#L7-L9');
         click(link);
-        await waitFor(() => expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])[0].line).toBe(7));
+        await waitFor(() => expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])[0].line).toBe(7), { timeout: 5_000 });
         expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])).toHaveLength(1);
         expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])[0].id).toBe((initial.chatTabs.chat ?? [])[0].id);
         expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])[0].endLine).toBe(9);
