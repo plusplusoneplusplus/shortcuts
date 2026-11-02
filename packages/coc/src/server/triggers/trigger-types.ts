@@ -314,7 +314,7 @@ export const MAX_ACTIVE_TRIGGERS = 50;
  * stops firing and notifies the human (AC-05). The counter resets when a new
  * commit changes the head SHA.
  */
-export const MAX_CI_FIX_ATTEMPTS = 2;
-export const MAX_CONFLICT_FIX_ATTEMPTS = 2;
+export const MAX_CI_FIX_ATTEMPTS = 10;
+export const MAX_CONFLICT_FIX_ATTEMPTS = 10;
 /** Bounds repair/push chains even when every repair changes the head. */
 export const MAX_CONFLICT_FIX_TOTAL = 4;
