@@ -183,6 +183,12 @@ export interface GitRouteScope {
     workspaceId: string | null;
     /** Owner-qualified commit already read by a navigation surface; never persisted. */
     knownCommit?: { sourceSelectionId: string; commit: GitCommit };
+    /**
+     * Fresh token from an explicit open on another surface. A new token makes
+     * the owning panel apply the route again even when it is unchanged (its
+     * detail was closed meanwhile); never persisted.
+     */
+    openRequest?: object;
 }
 
 export interface OnboardingProgress {
@@ -382,6 +388,7 @@ export type AppAction =
         commitHash: string | null;
         filePath: string | null;
         knownCommit?: GitRouteScope['knownCommit'];
+        openRequest?: object;
     }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
@@ -621,6 +628,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 gitRouteScope: {
                     routeWorkspaceId: action.routeWorkspaceId, workspaceId: action.workspaceId,
                     ...(action.knownCommit && action.knownCommit.commit.hash === action.commitHash ? { knownCommit: action.knownCommit } : {}),
+                    ...(action.openRequest ? { openRequest: action.openRequest } : {}),
                 },
                 selectedGitCommitHash: action.commitHash,
                 selectedGitFilePath: action.filePath,

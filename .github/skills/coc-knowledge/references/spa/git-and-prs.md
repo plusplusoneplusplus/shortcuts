@@ -24,7 +24,14 @@ activation uses `RailControls.onOpenGit`'s detail intent: it cancels sidebar pee
 timers and preserves both collapse flags. It replaces the owner-qualified hash
 and records the route suffix without generic tab navigation, supplying exact
 `SET_GIT_ROUTE.knownCommit` metadata for the matching page/member/SHA/clone owner.
-Paged commits open without enabling SHA lookup.
+Paged commits open without enabling SHA lookup. The repository Changes preview's
+"Open working tree" works the same way when its host supplies `onRevealGitView`
+(`RepoDetail` passes `useSplitGitPanel.revealView`): it focuses the chat's panel
+Git tab on `working-tree-all` and publishes the owner-qualified `working-changes`
+route with a fresh `SET_GIT_ROUTE.openRequest`, so the staged, unstaged and
+untracked diff opens beside the chat and reopens after its tab was closed.
+"Open conflicts", the tile click and hosts without a panel keep the expanded
+sidebar working tree.
 
 Group previews read member repositories, never a group range; their
 compact cards skip history reads and empty subsections only when a successful,

@@ -15,6 +15,10 @@ import { useSplitGitPanel } from '../../../../src/server/spa/client/react/featur
 import { UnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab';
 import { parseGitRoute } from '../../../../src/server/spa/client/react/layout/gitRoute';
 import { routingRefForPanelOwner } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOwnerRouting';
+import { openUnifiedPanelTab, updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { activeTabId, closeTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { unifiedGitTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
@@ -55,6 +59,9 @@ function GitSelection({ scope, page, member, owner }: { scope: string; page: str
         chatId: null, memberId: page === member ? undefined : member, enabled: true });
     useEffect(() => { current.hydrateFromInitialLoad([]); }, [member]);
     useEffect(() => { panel.onViewChange?.(current.view); }, [current.view, panel.onViewChange]);
+    if (panel.detailContainer && current.view?.type === 'working-tree-all') {
+        return createPortal(<div data-testid="working-changes-detail">{member}</div>, panel.detailContainer);
+    }
     return panel.detailContainer && current.selectedCommit
         ? createPortal(<div data-testid="commit-detail">{current.selectedCommit.hash}{current.selectedCommit.body}</div>, panel.detailContainer)
         : null;
@@ -78,7 +85,7 @@ function Harness({ group, remote }: { group: boolean; remote: boolean }) {
                     { workspaceId: 'repo-first', name: 'First', stale: false, readOnly: false },
                     { workspaceId: 'repo-member', name: 'Member', stale: false, readOnly: false },
                 ]} />
-                : <RepoRailGit workspaceId={scope} routingRef={routingRef} client={client} scopeLabel="Repo" />} />
+                : <RepoRailGit workspaceId={scope} routingRef={routingRef} client={client} scopeLabel="Repo" onRevealGitView={panel.revealView} />} />
         <div data-testid="right-panel" data-open={String(panel.detailOpen)}>
             {panel.detailOpen && <UnifiedGitTab scopeWorkspaceId={scope} />}
         </div>
@@ -213,5 +220,68 @@ describe('Sync preview detail-only navigation', () => {
         expect(screen.getByTestId('split-workspace-left')).not.toHaveClass('hidden');
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('repo-expanded'))).toBeNull();
         expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey('repo-expanded'))).toBe('1');
+    });
+});
+
+describe('Working changes preview opens the panel diff', () => {
+    it.each([false, true])('shows the exact repo working tree beside the chat (remote %s), and reopens and refocuses it', async remote => {
+        const scope = 'repo-preview';
+        const routingRef = remote ? `remote:owner:${scope}` : scope;
+        clearUnifiedPanelState();
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(scope), '1');
+        localStorage.setItem(splitWorkspaceGitCollapsedStorageKey(scope), '1');
+        vi.mocked(client.git.getWorkingTreeChanges).mockResolvedValue({
+            changes: [
+                { filePath: 'a.ts', status: 'M', stage: 'staged', repositoryRoot: '', repositoryName: '' },
+                { filePath: 'b.ts', status: 'M', stage: 'unstaged', repositoryRoot: '', repositoryName: '' },
+                { filePath: 'c.ts', status: '?', stage: 'untracked', repositoryRoot: '', repositoryName: '' },
+            ],
+            repoState: { operation: 'none', conflictFiles: [] },
+        });
+        render(<AppProvider><Harness group={false} remote={remote} /></AppProvider>);
+        const trigger = screen.getByTestId('split-workspace-left-git-changes');
+        const tabBefore = JSON.parse(screen.getByTestId('route-state').textContent!).tab;
+        const gitTabId = unifiedGitTabId({ ownerWorkspaceId: scope, ownerRoutingRef: scope, chatId: null });
+        const openWorkingTree = async () => {
+            // A dismissed preview hands focus back to its tile; refocus to reopen it.
+            act(() => { trigger.blur(); trigger.focus(); });
+            await waitFor(() => expect(screen.getByTestId('rail-git-changes-detail')).toHaveTextContent('+1 staged · ~1 modified · ?1 untracked'));
+            fireEvent.click(screen.getByRole('button', { name: 'Open working tree' }));
+        };
+        const assertOpen = () => {
+            expect(selection.view).toEqual({ type: 'working-tree-all' });
+            expect(screen.getByTestId('right-panel')).toHaveAttribute('data-open', 'true');
+            expect(screen.getByTestId('unified-git-tab')).toContainElement(screen.getByTestId('working-changes-detail'));
+            expect(activeTabId(readUnifiedPanelState(scope), null)).toBe(gitTabId);
+            // The chat stays: the sidebar keeps its collapsed rail and the sub-tab is unchanged.
+            expect(screen.getByTestId('split-workspace-left-rail')).toBeInTheDocument();
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(scope))).toBe('1');
+            expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey(scope))).toBe('1');
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(parseGitRoute(location.hash)).toEqual({
+                routeWorkspaceId: routingRef, workspaceId: routingRef, commitHash: 'working-changes', filePath: null,
+            });
+            const route = JSON.parse(screen.getByTestId('route-state').textContent!);
+            expect(route.scope).toMatchObject({ routeWorkspaceId: scope, workspaceId: scope });
+            expect(route).toMatchObject({ hash: 'working-changes', tab: tabBefore, remembered: '/git/working-changes' });
+        };
+
+        await openWorkingTree();
+        assertOpen();
+
+        // Closing the Git tab drops the detail; the unchanged route must open it again.
+        act(() => {
+            selection.clearSelection();
+            updateUnifiedPanelState(scope, state => closeTab(state, gitTabId));
+        });
+        expect(screen.getByTestId('right-panel')).toHaveAttribute('data-open', 'false');
+        await openWorkingTree();
+        assertOpen();
+
+        // Another tab took focus; reopening the same view focuses the Git tab again.
+        act(() => { openUnifiedPanelTab(scope, { kind: 'file', ownerWorkspaceId: scope, chatId: null, resourceId: 'README.md', label: 'README.md' }); });
+        expect(activeTabId(readUnifiedPanelState(scope), null)).not.toBe(gitTabId);
+        await openWorkingTree();
+        assertOpen();
     });
 });

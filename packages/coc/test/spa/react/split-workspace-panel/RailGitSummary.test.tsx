@@ -217,6 +217,48 @@ describe('collapsed rail Git summary · repository', () => {
         expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
     });
 
+    async function openChangesPreview() {
+        act(() => screen.getByTestId('split-workspace-left-git-changes').focus());
+        await waitFor(() => expect(screen.getByTestId('rail-git-changes-detail')).toHaveTextContent('?1 untracked'));
+    }
+
+    it.each([undefined, 'http://remote-b'])('opens owner %s working changes in the panel Git tab and keeps the rail collapsed', async baseUrl => {
+        const routingRef = baseUrl ? 'remote:srv:ws-alpha' : 'ws-alpha';
+        const reveal = vi.fn();
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={routingRef} client={fakeClient(baseUrl)} scopeLabel="Owner" onRevealGitView={reveal} />));
+        await openChangesPreview();
+        fireEvent.click(screen.getByRole('button', { name: 'Open working tree' }));
+        expect(reveal).toHaveBeenCalledWith({ type: 'working-tree-all' });
+        expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
+            { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: routingRef, suffix: '/git/working-changes' },
+            { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: 'working-changes', filePath: null, openRequest: {} },
+        ]);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left-rail')).toBeInTheDocument();
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+    });
+
+    it('keeps conflicts, and hosts without a panel, on the sidebar working tree', async () => {
+        const reveal = vi.fn();
+        const client = fakeClient();
+        client.git.getWorkingTreeChanges.mockResolvedValue({ ...changes, repoState: { operation: 'merge', conflictFiles: ['a.ts'] } });
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={client} scopeLabel="Local" onRevealGitView={reveal} />));
+        await openChangesPreview();
+        fireEvent.click(await screen.findByRole('button', { name: 'Open conflicts' }));
+        expect(reveal).not.toHaveBeenCalled();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
+        cleanup();
+
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'), '1');
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={fakeClient()} scopeLabel="Local" />));
+        await openChangesPreview();
+        fireEvent.click(screen.getByRole('button', { name: 'Open working tree' }));
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
+        expect(screen.getByTestId('working-tree')).toBeInTheDocument();
+    });
+
     it.each([undefined, 'http://remote-b'])('switches through the popup owner %s and refreshes without navigation', async baseUrl => {
         const client = fakeClient(baseUrl);
         render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={baseUrl ? 'remote:srv:ws-alpha' : 'ws-alpha'} client={client} scopeLabel="Owner" />));

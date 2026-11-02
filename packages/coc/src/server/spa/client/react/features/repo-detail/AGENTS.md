@@ -122,6 +122,9 @@ batch on the group's server). The repository preview's branch row embeds the
 shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
+With a host `onRevealGitView`, the Changes preview's "Open working tree" opens
+the repo's pending-change diff in the panel Git tab and keeps the sidebar collapsed;
+conflicts and panel-less hosts keep the expanded sidebar working tree.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
 history paging and outgoing prefix, with shared `CommitIdentity` rows and
 `CommitTooltip`/`useCommitListGestures` metadata panels. Preview focus ownership

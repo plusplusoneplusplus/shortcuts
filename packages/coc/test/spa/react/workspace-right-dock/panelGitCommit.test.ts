@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     chatCommitPanelTarget,
     openPanelGitCommit,
+    openPanelGitWorkingChanges,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
 
 const SHA = '713723222abcdef0123456789abcdef012345678';
@@ -73,5 +74,45 @@ describe('openPanelGitCommit', () => {
         expect(dispatch).toHaveBeenCalledWith({
             type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-g1', workspaceId: 'member-1', commitHash: SHA, filePath: null,
         });
+    });
+});
+
+describe('openPanelGitWorkingChanges', () => {
+    let originalHash: string;
+    beforeEach(() => {
+        originalHash = location.hash;
+        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
+    });
+    afterEach(() => {
+        window.history.replaceState(null, '', originalHash || '#');
+    });
+
+    it.each([
+        { owner: 'local repo', target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'ws-a' },
+            hash: '#repos/ws-a/git/working-changes', repoId: 'ws-a', suffix: '/git/working-changes' },
+        { owner: 'remote repo', target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'remote:srv:ws-a' },
+            hash: `#repos/${encodeURIComponent('remote:srv:ws-a')}/git/working-changes`, repoId: 'remote:srv:ws-a', suffix: '/git/working-changes' },
+        { owner: 'remote group member', target: { routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1', sourceSelectionId: 'remote:srv:member-1' },
+            hash: `#repos/${encodeURIComponent('remote:srv:group-g1')}/git/member/member-1/working-changes`, repoId: 'remote:srv:group-g1', suffix: '/git/member/member-1/working-changes' },
+    ])('publishes the $owner working changes in place with a fresh open request', ({ target, hash, repoId, suffix }) => {
+        const dispatch = vi.fn();
+        const onHashChange = vi.fn();
+        window.addEventListener('hashchange', onHashChange);
+        try {
+            openPanelGitWorkingChanges(dispatch, target);
+            openPanelGitWorkingChanges(dispatch, target);
+        } finally {
+            window.removeEventListener('hashchange', onHashChange);
+        }
+        expect(location.hash).toBe(hash);
+        expect(onHashChange).not.toHaveBeenCalled();
+        const actions = dispatch.mock.calls.map(([action]) => action);
+        expect(actions[0]).toEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix });
+        expect(actions[1]).toEqual({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: target.routeWorkspaceId, workspaceId: target.workspaceId,
+            commitHash: 'working-changes', filePath: null, openRequest: {},
+        });
+        // Each open is its own request, so an unchanged route still reapplies.
+        expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
     });
 });
