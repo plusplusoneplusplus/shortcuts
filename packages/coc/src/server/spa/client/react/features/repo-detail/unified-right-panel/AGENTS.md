@@ -1,6 +1,6 @@
 # unified-right-panel
 
-The workspace's one and only right panel: a Cursor-style resource-tabbed column
+The workspace's one and only right panel: a Chrome-style resource-tabbed column
 holding Terminal, Work Items, Pull Requests, Notes, Settings, files, canvases,
 chat diffs, local HTML pages and web browser tabs, with a Search/Explorer navigator
 at its right edge. It mounts at every breakpoint.
@@ -44,18 +44,20 @@ draft originals remain available for the next new conversation.
 Display grouping is separate from ownership. Default-on `features.panelTabGroups`
 partitions the saved order into Tools, Files, Web and Canvas blocks in one row, with
 three visible slots per group; an explicit `false` restores the ungrouped strip.
-Pinned To-do, active and preview tabs take priority; promoted active/preview tabs
-occupy trailing slots without changing saved order.
-Folded groups retain the active and pinned tabs. Fold state and block order belong
-to the panel scope, not the chat, in `unified-right-panel:<scope>:groups`
-(`{ folded, order }`; legacy arrays read as folds). `normalizeGroupOrder` drops
-unknown/repeated groups and appends missing ones in default order. Searchable +N
-menus list the group's hidden tabs and preserve dirty/error marks and guarded bulk
-closing. Tab drag, Alt+Arrow and menu moves stay within the kind group. A group
-pill moves its whole block: pointer drag past `GROUP_DRAG_THRESHOLD` (shorter
-presses fold; Escape, pointercancel and blur cancel and suppress the trailing
-click) or Alt+Arrow on the focused pill. Block moves only rewrite the order list,
-so members, activation, folds and keyed hosted views are untouched.
+`unifiedPanelTabs.css` owns the rounded tab surfaces, active-tab corners, inline
+colored group labels and group lines in both themes. Pinned To-do, active and
+preview tabs take priority; promoted active/preview tabs occupy trailing slots
+without changing saved order. Folded groups retain the active and pinned tabs.
+Fold state and block order belong to the panel scope, not the chat, in
+`unified-right-panel:<scope>:groups` (`{ folded, order }`; legacy arrays read as
+folds). `normalizeGroupOrder` drops unknown/repeated groups and appends missing
+ones in default order. Searchable +N menus list the group's hidden tabs and
+preserve dirty/error marks and guarded bulk closing. Tab drag, Alt+Arrow and menu
+moves stay within the kind group. A group pill moves its whole block: pointer drag
+past `GROUP_DRAG_THRESHOLD` (shorter presses fold; Escape, pointercancel and blur
+cancel and suppress the trailing click) or Alt+Arrow on the focused pill. Block
+moves only rewrite the order list, so members, activation, folds and keyed hosted
+views are untouched.
 
 With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
 workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.

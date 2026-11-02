@@ -1,5 +1,5 @@
 /**
- * UnifiedPanelTabStrip — the Cursor-style resource tab strip at the top of the
+ * UnifiedPanelTabStrip — the Chrome-style resource tab strip at the top of the
  * unified right panel.
  *
  * Renders the session owned by `useUnifiedPanelTabs`. Inline kind groups cap
@@ -16,7 +16,7 @@
  *    (or pressing Enter on it) makes it permanent; the strip only reports the
  *    gesture, the model owns the one-way rule (AC-04).
  *  - **State without color.** Dirty is a dot, errors a warning sign, and the
- *    active tab carries `aria-selected` plus an underline — the strip stays
+ *    active tab carries `aria-selected` plus a raised surface — the strip stays
  *    readable to anyone who cannot separate the accents.
  *  - **Overflow scrolls, chrome does not.** Tabs are `flex-shrink-0` inside a
  *    scrolling row so labels truncate at a sane width instead of collapsing to
@@ -62,6 +62,7 @@ import {
     type UnifiedPanelTabMenuAction,
 } from './unifiedPanelTabMenuModel';
 import { browserTabAriaKeyShortcut, browserTabShortcutDigits, browserTabShortcutLabel } from './browserTabShortcuts';
+import './unifiedPanelTabs.css';
 
 /**
  * The tooltip a tab shows on hover: the full label, its repo if any, and — for
@@ -623,7 +624,7 @@ export function UnifiedPanelTabStrip({
     return (
         <div
             className={cn(
-                'flex min-w-0 flex-shrink-0 items-stretch border-b border-[#e5e5e5] dark:border-[#333]',
+                'unified-panel-tab-strip flex min-w-0 flex-shrink-0 items-stretch',
                 '[container-type:inline-size] [container-name:unified-panel-strip]',
                 className,
             )}
@@ -635,7 +636,7 @@ export function UnifiedPanelTabStrip({
                 role="tablist"
                 aria-label="Open resources"
                 aria-orientation="horizontal"
-                className="scrollbar-hide flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
+                className="unified-panel-tab-list scrollbar-hide flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
                 data-testid="unified-panel-tab-list"
                 onKeyDown={event => {
                     if (!groupsEnabled || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -705,7 +706,7 @@ export function UnifiedPanelTabStrip({
                                 <div
                                     aria-hidden="true"
                                     data-testid="unified-panel-tab-section-divider"
-                                    className="flex h-[35px] w-4 flex-shrink-0 items-center justify-center border-x border-[#c8c8c8] bg-[#e8e8e8] dark:border-[#3c3c3c] dark:bg-[#252526]"
+                                    className="flex h-[35px] w-4 flex-shrink-0 items-center justify-center"
                                 >
                                     <span className="h-5 w-px bg-[#808080] dark:bg-[#858585]" />
                                 </div>
@@ -806,14 +807,10 @@ export function UnifiedPanelTabStrip({
                                 // `flex-shrink-0` is what makes the row scroll: without it every
                                 // tab squeezes and the labels truncate to nothing long before the
                                 // strip actually overflows. Browser tabs shrink only to a floor.
-                                'group relative flex h-[35px] cursor-pointer select-none',
+                                'unified-panel-tab group relative flex h-[35px] cursor-pointer select-none',
                                 tab.kind === 'browser' ? BROWSER_TAB_SIZE : DEFAULT_TAB_SIZE,
                                 'items-center gap-1.5 whitespace-nowrap px-2.5 text-xs',
-                                'border-r border-[#e5e5e5] dark:border-[#333]',
                                 'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
-                                isActive
-                                    ? 'bg-white text-[#1f1f1f] shadow-[inset_0_-2px_0_0_#0078d4] dark:bg-[#1e1e1e] dark:text-white dark:shadow-[inset_0_-2px_0_0_#3794ff]'
-                                    : 'text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
                                 stackedCanvasTabs.length > 0 && tab.kind === 'canvas' && 'min-w-[160px] max-w-[260px]',
                                 draggedId === tab.id && 'opacity-50',
                             )}
@@ -892,13 +889,14 @@ export function UnifiedPanelTabStrip({
                                 draggable={false}
                                 onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}
                                 className={cn(
-                                    'w-4 flex-shrink-0 cursor-pointer border-none bg-transparent p-0 leading-none',
+                                    'unified-panel-tab-close h-4 w-4 flex-shrink-0 cursor-pointer rounded-full border-none bg-transparent p-0 leading-none',
                                     'text-[#848484] hover:text-[#1f1f1f] dark:hover:text-white',
                                     isDirty && 'hidden group-hover:block group-focus-within:block',
                                 )}
                             >
                                 ✕
                             </button>
+                            <span aria-hidden="true" className="unified-panel-tab-separator" />
                         </div>
                         </Fragment>
                     );
@@ -910,7 +908,7 @@ export function UnifiedPanelTabStrip({
                         <div key={group} role="group" data-strip-group={group}
                             aria-label={`${TAB_GROUP_LABELS[group]}, ${section.tabs.length} tabs, ${section.hidden.length} hidden`}
                             data-dragging={groupDrag?.group === group || undefined}
-                            className={cn('relative flex flex-shrink-0 items-stretch', groupDrag?.group === group && 'opacity-50')}>
+                            className={cn('unified-panel-tab-group flex flex-shrink-0 items-stretch', groupDrag?.group === group && 'opacity-50')}>
                             {groupDropPosition && (
                                 <span
                                     aria-hidden="true"
@@ -941,7 +939,7 @@ export function UnifiedPanelTabStrip({
                                     trigger={<button type="button" data-strip-stop data-group-overflow
                                         data-testid={`unified-panel-group-overflow-${group}`}
                                         aria-label={`Show ${section.hidden.length} hidden ${TAB_GROUP_LABELS[group]} tabs`}
-                                        className="mx-1 my-1 flex flex-shrink-0 items-center gap-1 rounded border border-[#b6b6b6] px-2 text-[11px] text-[#616161] dark:border-[#555] dark:text-[#b8b8b8]">
+                                        className="unified-panel-group-overflow mx-1 flex flex-shrink-0 items-center gap-1 self-center rounded-full px-2 py-1 text-[11px]">
                                         +{section.hidden.length} <span aria-hidden="true">{'\u25BE'}</span>
                                         {section.hiddenDirty && <span data-testid={`unified-panel-group-dirty-${group}`} aria-label="Hidden unsaved changes">{'\u25CF'}</span>}
                                         {section.hiddenError && <span aria-label="Hidden unavailable tabs">{'\u26A0'}</span>}
@@ -989,7 +987,7 @@ export function UnifiedPanelTabStrip({
                     data-testid="unified-panel-open-menu"
                     onClick={onOpenMenu}
                     className={cn(
-                        'flex h-[35px] w-8 flex-shrink-0 items-center justify-center border-l border-[#e5e5e5] dark:border-[#333]',
+                        'unified-panel-open-menu flex w-8 flex-shrink-0 items-center justify-center',
                         'cursor-pointer border-y-0 border-r-0 bg-transparent text-sm leading-none text-[#616161]',
                         'hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset',
                         'focus-visible:ring-[#0078d4] dark:text-[#9d9d9d] dark:hover:text-white dark:focus-visible:ring-[#3794ff]',

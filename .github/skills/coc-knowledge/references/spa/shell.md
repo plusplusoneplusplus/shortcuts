@@ -908,17 +908,19 @@ creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
 Default-on `features.panelTabGroups` partitions saved order into Tools, Files,
-Web and Canvas group blocks in one strip row; an explicit `false` restores the
-ungrouped strip. The cap is three, with pinned, active and preview priority; the
-+N overflow lists the group's hidden tabs in a searchable native-view-overlay
-portal shared with canvas compression. Fold state
-and block order persist per panel scope at `unified-right-panel:<scope>:groups`
-as `{ folded, order }` (a legacy folded-only array still reads), independently of
-chats; saved orders are normalized, with unknown/repeated groups dropped and
-missing ones appended in default order. Dragging a group pill past 4px, or
-Alt+Arrow on it, moves the whole block without touching membership, member order,
-activation or keyed views; a shorter press folds, Escape cancels. Tab moves stay
-within the kind group and bulk closes retain the panel's guards.
+Web and Canvas group blocks in one Chrome-style strip row; an explicit `false`
+restores the ungrouped strip. `unifiedPanelTabs.css` owns the rounded active
+surface and inline colored group labels in both themes. The cap is three, with
+pinned, active and preview priority; the +N overflow lists the group's hidden
+tabs in a searchable native-view-overlay portal shared with canvas compression.
+Fold state and block order persist per panel scope at
+`unified-right-panel:<scope>:groups` as `{ folded, order }` (a legacy
+folded-only array still reads), independently of chats; saved orders are
+normalized, with unknown/repeated groups dropped and missing ones appended in
+default order. Dragging a group pill past 4px, or Alt+Arrow on it, moves the
+whole block without touching membership, member order, activation or keyed
+views; a shorter press folds, Escape cancels. Tab moves stay within the kind
+group and bulk closes retain the panel's guards.
 Canvas uses group overflow without a header count chip.
 With groups explicitly `false` and `features.panelTabReordering` set to `false`, the
 strip divides tools from resources and confines moves to a section. With either

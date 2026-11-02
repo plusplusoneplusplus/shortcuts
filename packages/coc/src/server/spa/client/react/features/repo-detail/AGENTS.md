@@ -70,7 +70,7 @@ and process events cannot replace page-origin queue or process-index state.
 ## Workspace right panel
 
 `unified-right-panel/UnifiedRightPanel.tsx` is the workspace's one right-side
-surface: a single Cursor-style tab strip over Terminal, Notes, files, notes,
+surface: a single Chrome-style tab strip over Terminal, Notes, files, notes,
 canvases, and chat diffs, plus a file-tree column pinned to its right edge.
 `RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
 group; both mount it at every breakpoint and wrap their subtree in
