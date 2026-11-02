@@ -189,12 +189,13 @@ identity stays Ralph. Mode-change invalidations target exact local linked owners
 without advancing ledger/item revisions.
 
 `references` combines owner-verified conversation attachments with typed external
-`pr`/`email`/`link` display entries. Conversations retain their scoped table and
+`pr`/`email`/`teams`/`slack`/`link` display entries. Conversations retain their scoped table and
 missing-kind compatibility; externals use additive item-column `external_references`
 JSON defaulting to `[]`. Default-off live `features.sentinelTodoExternalReferences`
 gates external projection and authoring. Create/update `externalReferences` replaces
 only external entries; omission preserves, `[]` clears. Validation canonicalizes
-supported PRs and deduplicates safe URLs. Metadata never supplies output evidence,
+supported PRs and deduplicates safe URLs; Teams/Slack require supported HTTPS
+message/channel links without content reads. Metadata never supplies output evidence,
 execution/review authority, monitoring or fulfillment, and leaves user verdicts intact.
 
 Startup drops the retired `sentinel_todo_tag_libraries` and

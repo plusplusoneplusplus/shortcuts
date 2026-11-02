@@ -169,6 +169,91 @@ describe('Sentinel typed external references', () => {
         expect(within(detail).getByRole('link', { name: `PR ${label}` }).getAttribute('href')).toBe(url);
     });
 
+    it.each([
+        ['teams', 'Teams', 'https://teams.microsoft.com/l/message/19%3Achat/123'],
+        ['slack', 'Slack', 'https://example.slack.com/archives/C123/p1234567890'],
+        ['link', 'Link', 'https://docs.example.test/spec_(draft)'],
+    ])('pastes Markdown into editable %s title/URL and saves on the exact remote owner', async (kind, label, url) => {
+        const remote = { ...owner, ownerRoutingRef: 'remote-server' };
+        render(<UnifiedTodoTab owner={remote} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = edit();
+        fireEvent.click(detail.getByRole('button', { name: 'Add reference' }));
+        fireEvent.change(detail.getByLabelText('Reference 5 type'), { target: { value: kind } });
+        const input = detail.getByLabelText('Reference 5 URL') as HTMLInputElement;
+        fireEvent.paste(input, { clipboardData: { getData: () => `[Discussion](${url})` } });
+        expect(input.value).toBe(url);
+        const title = detail.getByLabelText('Reference 5 title (optional)') as HTMLInputElement;
+        expect(title.value).toBe('Discussion');
+        fireEvent.change(title, { target: { value: 'Edited discussion' } });
+        fireEvent.change(input, { target: { value: `${url}?view=1` } });
+        fireEvent.click(detail.getByRole('button', { name: 'Save', exact: true }));
+        await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+        expect(api.update.mock.calls[0].slice(0, 3)).toEqual(['ws-owner', 'queue_parent', 'item-one']);
+        expect(api.update.mock.calls[0][3].externalReferences[4]).toEqual({ kind, title: 'Edited discussion', url: `${url}?view=1` });
+        await waitFor(() => expect(detail.queryByRole('button', { name: 'Save', exact: true })).toBeNull());
+        expect(detail.getByRole('link', { name: `${label} Edited discussion` }).getAttribute('href')).toBe(`${url}?view=1`);
+        expect(detail.getByRole('link', { name: 'Related conversation' })).toBeTruthy();
+        expect(routes.every(route => route === remote.ownerRoutingRef)).toBe(true);
+    });
+
+    it.each([
+        ['teams', 'https://teams.microsoft.com/l/channel/19%3Achannel/General'],
+        ['slack', 'https://example.slack.com/archives/C123'],
+    ])('creates a To-do with a Markdown %s reference through the owning client', async (kind, url) => {
+        const remote = { ...owner, ownerRoutingRef: 'remote-server' };
+        render(<UnifiedTodoTab owner={remote} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        fireEvent.click(screen.getByRole('button', { name: 'Add item', exact: true }));
+        const form = within(screen.getByTestId('sentinel-todo-add-form'));
+        fireEvent.change(form.getByLabelText('Title'), { target: { value: 'New task' } });
+        fireEvent.click(form.getByRole('button', { name: 'Add reference' }));
+        fireEvent.change(form.getByLabelText('Reference 1 type'), { target: { value: kind } });
+        fireEvent.paste(form.getByLabelText('Reference 1 URL'), { clipboardData: { getData: () => `[Channel](${url})` } });
+        api.create.mockResolvedValueOnce({});
+        fireEvent.click(form.getByRole('button', { name: 'Add', exact: true }));
+        await waitFor(() => expect(api.create).toHaveBeenCalledTimes(1));
+        expect(api.create.mock.calls[0].slice(0, 2)).toEqual(['ws-owner', 'queue_parent']);
+        expect(api.create.mock.calls[0][2].externalReferences).toEqual([{ kind, url, title: 'Channel' }]);
+        expect(routes.every(route => route === remote.ownerRoutingRef)).toBe(true);
+    });
+
+    it.each(['[Broken](https://example.test', '[Unsafe](javascript:alert(1))', '[ ](https://example.test)',
+        `[${'x'.repeat(201)}](https://example.test)`])('reports invalid Markdown paste and blocks saving until corrected: %s', async text => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = edit();
+        const input = detail.getByLabelText('Reference 4 URL') as HTMLInputElement;
+        fireEvent.paste(input, { clipboardData: { getData: () => text } });
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        expect(detail.getByRole('alert').textContent).toContain('[title](URL)');
+        expect(input.checkValidity()).toBe(false);
+        fireEvent.click(detail.getByRole('button', { name: 'Save', exact: true }));
+        expect(api.update).not.toHaveBeenCalled();
+        fireEvent.change(input, { target: { value: '[Valid](<https://example.test/fixed>)' } });
+        expect(input.value).toBe('https://example.test/fixed');
+        expect(input.checkValidity()).toBe(true);
+        expect(detail.queryByRole('alert')).toBeNull();
+    });
+
+    it('hides unsafe typed links and retains safe Teams/Slack keyboard navigation', async () => {
+        const user = userEvent.setup();
+        render(<SentinelTodoExternalReferences item={item({ references: [
+            { kind: 'teams', url: 'https://teams.microsoft.com/l/channel/19%3Achannel/General', title: 'Channel' },
+            { kind: 'slack', url: 'https://example.slack.com/archives/C123', title: 'Chat' },
+            { kind: 'teams', url: 'http://teams.microsoft.com/l/message/chat/123' },
+            { kind: 'slack', url: 'https://example.slack.com.evil.test/archives/C123' },
+        ] })} />);
+        expect(screen.getAllByRole('link')).toHaveLength(2);
+        screen.getByRole('link', { name: 'Teams Channel' }).focus();
+        panelBrowser.mockReturnValue(true);
+        await user.keyboard('{Enter}');
+        expect(panelBrowser).toHaveBeenCalledWith('https://teams.microsoft.com/l/channel/19%3Achannel/General');
+        const slackLink = screen.getByRole('link', { name: 'Slack Chat' });
+        expect(fireEvent.click(slackLink, { ctrlKey: true })).toBe(true);
+        expect(slackLink.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
     it('omits unchanged external references after a reverted edit and preserves them when saving another field', async () => {
         render(<UnifiedTodoTab owner={owner} />);
         await screen.findByTestId('sentinel-todo-row-item-one');
@@ -195,7 +280,7 @@ describe('Sentinel typed external references', () => {
             fireEvent.click(detail.getByRole('button', { name: 'Add reference' }));
             const index = detail.getAllByLabelText(/Reference \d+ URL/).length;
             fireEvent.change(detail.getByLabelText(`Reference ${index} type`), { target: { value: kind } });
-            fireEvent.change(detail.getByLabelText(`Reference ${index} URL`), { target: { value: kind === 'email' ? 'mailto:other@example.test' : 'https://example.test/path' } });
+            fireEvent.change(detail.getByLabelText(`Reference ${index} URL`), { target: { value: kind === 'email' ? 'mailto:other@example.test' : kind === 'pr' ? 'https://github.com/example/project/pull/44' : 'https://example.test/path' } });
         }
         fireEvent.click(detail.getByRole('button', { name: 'Save', exact: true }));
         await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));

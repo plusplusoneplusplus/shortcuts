@@ -1089,13 +1089,16 @@ never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual trackin
 (missing `kind` also means conversation) render below jobs as compact, truncated
 `Ref` links with owner-correct excursions and no execution or review label.
 Default-off runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
-Email and Link anchors to every card and detail view. PR labels identify their
+Email, Teams, Slack and Link anchors to every card and detail view. PR labels identify their
 provider, repository and number; hover titles retain the complete URL. Only
 HTTP(S), plus `mailto:` for email references, render as links. Native anchors
 preserve keyboard and modified-click behavior, isolate card events, and use the
 desktop panel browser when available. Add/Edit forms manage multiple external
-references within their existing Save, draft, revision and error lifecycle.
-Untouched references are omitted from writes; an explicit empty list clears only
+references within their existing Save, draft, revision and error lifecycle. URL
+fields parse a pasted `[title](URL)` into editable title and URL inputs; invalid
+links show an accessible error and fail native form validation. Shared coc-client
+URL validation requires supported HTTPS message/channel URLs for Teams and Slack
+without fetching contents. Untouched references are omitted from writes; an explicit empty list clears only
 external references, never conversation references.
 
 `SentinelTodoDependencies` is gated by default-off

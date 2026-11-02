@@ -226,10 +226,12 @@ it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given.
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
 Default-off live `features.sentinelTodoExternalReferences` offers create/update
-`externalReferences` with `{ kind: 'pr' | 'email' | 'link', url, title? }` entries.
+`externalReferences` with `{ kind: 'pr' | 'email' | 'teams' | 'slack' | 'link', url, title? }` entries.
 An array replaces external links only, `[]` clears, and omission preserves.
 Output `references` combines these entries with unchanged conversation attachments;
-missing kind identifies a conversation. Safe URLs are validated and deduplicated.
+missing kind identifies a conversation. Shared coc-client validation canonicalizes
+and deduplicates safe URLs; Teams/Slack require supported HTTPS message/channel
+links and never fetch private contents.
 Display references never bind PR outputs, monitor, fulfill dependencies, mark Done
 or authorize work. Native PR verdict-only tools cannot edit them.
 

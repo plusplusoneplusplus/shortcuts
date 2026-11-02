@@ -1012,8 +1012,11 @@ remote labels include the configured server name. Exact-owner target labels and
 last-known offline names provide fallbacks; unavailable metadata stays explicit
 and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
 reference-only conversations keep navigation without job badges. Default-off live
-`sentinelTodoExternalReferencesEnabled` adds typed PR/email/web reference chips to
-cards and an external-link editor in the existing detail form. External replacements
+`sentinelTodoExternalReferencesEnabled` adds typed PR/email/Teams/Slack/web reference chips to
+cards and an external-link editor in the existing detail form. Its URL field parses
+pasted Markdown links into editable title/URL fields with accessible validation.
+Shared coc-client URL validation restricts Teams/Slack to supported HTTPS
+message/channel links without content reads. External replacements
 and clears preserve conversation attachments; omission preserves external links.
 External links follow shared desktop/web navigation without selecting the card or
 starting a conversation excursion. References remain display metadata. Detail notes
