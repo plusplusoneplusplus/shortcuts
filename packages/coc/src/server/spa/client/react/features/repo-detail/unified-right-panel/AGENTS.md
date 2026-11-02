@@ -1151,8 +1151,16 @@ drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
 
-Hosted Refrain history shares To-do's detail column through `RefrainHistoryHostContext`;
-standalone history measures its own list/detail split with `useContainerWidth`.
+Every Refrain card and the Coda strip/built-in row open read-only details from their title
+button (`AutomationTitleButton`, Enter/Space, `aria-pressed`) or a click on blank card space;
+`selectCardOnClick` ignores controls, disclosures, text selection and clicks bubbling back from
+portaled details. Selected cards show `data-selected` hover/selected styling. Refrain details show
+the definition, schedule and the current (else latest) run from the live job list, with a
+never-run hint; `SentinelCodaDetails` shows Coda's schedule plus its active run or the latest run's
+owner-routed `RunDetail`. This overview is distinct from a history run selection and survives
+history collapse. Hosted details share To-do's detail column through `RefrainHistoryHostContext`
+(the Coda key is `CODA_DETAIL_KEY`); standalone Refrain history measures its own list/detail split
+with `useContainerWidth`. Narrow layouts use Back, Escape clears, and focus returns to the title.
 Selection binds a run ID across refreshes and resizing and resets per owner mount.
 Details read the current retained record; pruning reports its absence without
 selecting another run. Exact timing, full errors and clone-qualified job-turn

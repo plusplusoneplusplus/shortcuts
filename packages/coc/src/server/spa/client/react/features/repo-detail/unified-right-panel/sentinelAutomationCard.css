@@ -22,6 +22,25 @@
     gap: 4px;
 }
 .sentinel-automation-title strong { min-width: 0; }
+/* The title is the card's keyboard target; blank card space selects too, but controls do not. */
+.sentinel-automation-card[data-selected] { cursor: pointer; }
+.sentinel-automation-card[data-selected] :is(button, a, summary, input, select, textarea, label, pre, form) { cursor: auto; }
+.sentinel-automation-card[data-selected] :is(button, a, summary, label) { cursor: pointer; }
+.sentinel-automation-card[data-selected="false"]:hover { border-color: rgb(0 120 212 / 50%); }
+.sentinel-automation-card[data-selected="true"],
+.dark .sentinel-automation-card[data-selected="true"] {
+    border-color: #0078d4;
+    background: rgb(0 120 212 / 8%);
+}
+.sentinel-automation-title-button {
+    min-width: 0;
+    margin-left: -4px;
+    border-radius: 4px;
+    padding: 2px 4px;
+    text-align: left;
+}
+.sentinel-automation-title-button:hover { color: #0078d4; text-decoration: underline; }
+.dark .sentinel-automation-title-button:hover { color: #3794ff; }
 .sentinel-automation-card button,
 .sentinel-automation-card summary,
 .sentinel-automation-secondary a {

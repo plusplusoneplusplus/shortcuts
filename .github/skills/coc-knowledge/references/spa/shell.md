@@ -1062,7 +1062,8 @@ launch/retry/cancel or authorization controls.
 The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
 **Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
-and hosts Coda as its pinned built-in row. Refrain history navigation and selection,
+and hosts Coda as its pinned built-in row. Card details (title/blank-space selection into
+To-do's detail column), Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
 three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
