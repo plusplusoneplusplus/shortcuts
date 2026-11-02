@@ -4,7 +4,7 @@ import { CommitDetailIcon } from '../commits/CommitDetailIcon';
 import type { UseClassificationReturn } from './useClassification';
 import type { UseModalJobAiSelectionResult } from '../../../shared/ModalJobAiControls';
 
-/** Short provider · effort/model summary shown on the split-button caret. */
+/** Short provider · effort/model summary exposed on the split-button caret's label and tooltip. */
 export function classifySettingsSummary(selection: UseModalJobAiSelectionResult): string {
     const provider = selection.agentProviders.find(p => p.id === selection.provider)?.label ?? selection.provider;
     const detail = selection.useEffortTierMode
@@ -61,9 +61,8 @@ export function ClassifySplitButton({ classification, aiSelection, testIdPrefix 
             <span className="git-review-md">{label}</span>
         </button>
         <button type="button" ref={caretRef} onClick={() => setOpen(value => !value)} aria-haspopup="dialog" aria-expanded={open}
-            aria-controls={open ? id : undefined} aria-label="Classification settings" title={`Classification settings · ${summary}`}
+            aria-controls={open ? id : undefined} aria-label={`Classification settings: ${summary}`} title={`Classification settings · ${summary}`}
             data-testid={`${testIdPrefix}-classify-settings-toggle`}>
-            <span className="git-review-wide max-w-[160px] truncate" data-testid={`${testIdPrefix}-classify-summary`}>{summary}</span>
             <CommitDetailIcon name={open ? 'up' : 'down'} />
         </button>
         {open && <div ref={popoverRef} id={id} role="dialog" aria-label="Classification settings" className="git-review-popover"

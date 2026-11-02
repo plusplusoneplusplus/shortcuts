@@ -7,14 +7,17 @@ import type { UseClassificationReturn } from '../diff/useClassification';
 import type { UseModalJobAiSelectionResult } from '../../../shared/ModalJobAiControls';
 import { CommitInfoHeader, CommitInfoSummary } from './CommitInfoHeader';
 import type { GitCommitItem } from './commitListTypes';
+import type { CommitPickerOptions } from './CommitHashPicker';
 
 /**
  * Commit identity, Classify split button and below-toolbar details shared by
  * the inline and pop-out commit reviews. Disclosure and copy feedback reset
  * whenever `resetKey` (owner + workspace + commit) changes.
  */
-export function useCommitReviewHeader({ commit, fileCount, classification, aiSelection, classificationEnabled = true, testIdPrefix, actions, resetKey }: {
+export function useCommitReviewHeader({ commit, fileCount, classification, aiSelection, classificationEnabled = true, testIdPrefix, actions, resetKey, commitPicker }: {
     commit?: GitCommitItem | null;
+    /** Turns the toolbar short hash into a commit switcher. */
+    commitPicker?: CommitPickerOptions;
     fileCount: number;
     classification: UseClassificationReturn;
     aiSelection: UseModalJobAiSelectionResult;
@@ -38,7 +41,7 @@ export function useCommitReviewHeader({ commit, fileCount, classification, aiSel
         onCopy: () => { void copyToClipboard(commit.hash).then(() => setCopied(true)); },
     } : null;
     return {
-        identity: info && <CommitInfoSummary {...info} />,
+        identity: info && <CommitInfoSummary {...info} picker={commitPicker} />,
         classify: classificationEnabled && <ClassifySplitButton classification={classification} aiSelection={aiSelection} testIdPrefix={testIdPrefix} />,
         actions,
         below: <>

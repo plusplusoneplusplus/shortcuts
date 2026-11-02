@@ -27,7 +27,7 @@
 .git-review-split{position:relative;display:inline-flex;height:26px}
 .git-review-split>button{color:#fff;background:#0078d4;border-radius:0!important}
 .git-review-split>button:first-child{border-radius:4px 0 0 4px!important}
-.git-review-split>button:nth-child(2){border-radius:0 4px 4px 0!important;border-left:1px solid #005a9e;background:#006cbe;padding:2px 5px}
+.git-review-split>button:nth-child(2){border-radius:0 4px 4px 0!important;border-left:1px solid #005a9e;background:#006cbe;padding:2px 4px;min-width:24px;justify-content:center}
 .git-review-split>button:hover:not(:disabled){background:#005a9e}
 .git-review-popover,.git-review-menu{position:absolute;top:calc(100% + 4px);z-index:40;padding:6px;border:1px solid var(--review-border);border-radius:6px;background:#fff;box-shadow:0 8px 24px #0003;white-space:normal}
 .dark .git-review-popover,.dark .git-review-menu{background:#252526}
@@ -38,6 +38,16 @@
 .git-review-menu-item{width:100%;justify-content:flex-start;text-align:left;gap:8px!important}
 .git-review-menu-item:hover,.git-review-menu-item:focus-visible{background:#007acc15}
 .git-review-menu-item[aria-checked=true]{color:#1674bd}
+.git-review-tools .git-review-hash-trigger{gap:2px;min-width:24px;justify-content:center;padding:2px 3px}
+.git-review-commit-picker{width:min(380px,calc(100vw - 16px));gap:4px}
+.git-review-commit-picker-form{display:flex;gap:4px}
+.git-review-commit-picker-form>input{flex:1;min-width:0;height:28px;padding:3px 6px;font:12px monospace;background:transparent;border:1px solid var(--review-border);border-radius:3px}
+.git-review-commit-picker-form>button{justify-content:center;min-height:28px;padding:2px 10px;color:#fff;background:#0078d4}
+.git-review-commit-picker-list{margin:0;padding:0;list-style:none;max-height:min(320px,60vh);overflow:auto}
+.git-review-commit-picker-list .git-review-menu-item{min-height:28px}
+.git-review-commit-picker-list .git-review-menu-item[aria-current=true]{background:#007acc15}
+.git-review-commit-picker-check{display:inline-flex;width:14px;flex-shrink:0;color:#1674bd}
+.git-review-commit-picker-subject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .git-review-tools button:hover,.git-review-filter-row button:hover{background:var(--review-panel)}
 .git-review-tools button[aria-pressed=true]:not(.git-review-viewed),.git-review-filter-row button[aria-pressed=true]{color:#1674bd;background:#007acc15}
 .git-review-muted{color:var(--review-muted);font-size:11px}.git-review-spacer{flex:1}

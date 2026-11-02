@@ -527,12 +527,23 @@ pickable-model command picker.
 `commits/CommitDetail.tsx` and the commit pop-out build the toolbar header with
 `useCommitReviewHeader`: `CommitInfoSummary` (ellipsized title disclosure whose
 accessible name and tooltip carry the full subject, plus SHA copy), the
-`ClassifySplitButton` (main part runs classification; the caret popover hosts
+`ClassifySplitButton` (main part runs classification; the icon-only caret carries
+the provider/effort summary in its accessible name and tooltip, and its popover hosts
 `ClassifyDiffAiControls` with the workspace-scoped selection, disabled while
 running), and below-row `CommitInfoHeader` details, classification errors and
 `ClassificationFilterBar`. Disclosure resets on owner, workspace or commit
 changes; collapsed metadata stays out of keyboard navigation. The PR pop-out keeps
 `PopOutClassificationToolbar`; `DiffViewToggle` accepts a quiet appearance.
+
+### Commit hash switcher
+
+When a host passes `commitPicker`, `CommitInfoSummary` renders `CommitHashPicker`: the
+short hash opens a portaled dialog of recent loaded commits plus a SHA field, and the
+copy button stays separate. A unique 7–40 hex prefix of a loaded commit opens locally;
+otherwise `CommitDetail` adds a `getCommit` lookup on the data member through the
+owner's `getGitReviewClient` route, only while `gitCommitLookup` is on. Late lookups
+are discarded after close. The Git tab wires `selection.selectCommit`, so switching
+publishes a commit route and never a working-tree view; other hosts omit the picker.
 
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a

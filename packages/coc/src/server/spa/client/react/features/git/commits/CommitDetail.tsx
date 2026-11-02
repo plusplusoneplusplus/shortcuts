@@ -7,7 +7,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useCommitReviewFiles } from '../hooks/useCommitReviewFiles';
 import { GitFileReview } from '../diff/GitFileReview';
-import { createCommitDiffSource } from '../diff/diffSource';
+import { createCommitDiffSource, getGitReviewClient } from '../diff/diffSource';
+import { toCommitItem } from '../repoGitTab/useRepoGitSelection';
+import { isGitCommitLookupEnabled } from '../../../utils/config';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitReviewChat } from './CommitReviewChat';
@@ -24,6 +26,7 @@ import { usePrReviewProgress } from '../diff/usePrReviewProgress';
 import { pickPriorityFile } from '../diff/prPopoutPriority';
 import type { ClassificationKey } from '../diff/diffSource';
 import { CommitDetailIcon } from './CommitDetailIcon';
+import type { CommitPickerOptions } from './CommitHashPicker';
 import { useCommitReviewHeader } from './useCommitReviewHeader';
 import type { GitReviewToolbarAction } from '../diff/GitReviewToolbar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -45,6 +48,8 @@ export interface CommitDetailProps {
     onClassified?: () => void;
     onNavigateToFile?: (path: string, target: 'first' | 'last') => void;
     initialHunkTarget?: 'first' | 'last';
+    /** Recent commits and selection for the header's hash switcher; SHA lookup is added here, scoped to the owner. */
+    commitPicker?: Omit<CommitPickerOptions, 'lookup'>;
 }
 
 export function CommitDetail(props: CommitDetailProps) {
@@ -56,7 +61,7 @@ export function CommitDetail(props: CommitDetailProps) {
     return <CommitDetailBody key={JSON.stringify([owner ?? props.workspaceId, props.workspaceId, props.hash, endpoint])} {...props} />;
 }
 
-function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat, onNavigateToFile, initialHunkTarget }: CommitDetailProps) {
+function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat, onNavigateToFile, initialHunkTarget, commitPicker }: CommitDetailProps) {
     const [focusComment, setFocusComment] = useState<DiffComment | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const localChat = useCommitChatPresentation({ workspaceId, commitHash: hash, supportsChat: !reviewChat });
@@ -220,7 +225,14 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
         { id: 'chat', label: 'Toggle AI chat', icon: <CommitDetailIcon name="spark" />, onClick: toggleChat, pressed: chatOpen, testId: 'toggle-chat-btn' },
         ...(!isPopOut && hash ? [{ id: 'popout', label: 'Open in new window', icon: <CommitDetailIcon name="out" />, onClick: handlePopOut, testId: 'commit-popout-btn' }] : []),
     ];
+    const routingTarget = attachmentDestinationId === workspaceId ? null : attachmentDestinationId;
     const header = useCommitReviewHeader({
+        commitPicker: commitPicker && {
+            ...commitPicker,
+            lookup: isGitCommitLookupEnabled()
+                ? sha => getGitReviewClient(workspaceId, routingTarget).git.getCommit(workspaceId, sha).then(toCommitItem)
+                : undefined,
+        },
         commit, fileCount: fileList.length, classification, aiSelection, testIdPrefix: 'commit', actions,
         resetKey: JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, hash]),
     });
