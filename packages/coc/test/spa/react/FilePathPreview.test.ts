@@ -2028,6 +2028,21 @@ describe('file-preview-tooltip CSS rules', () => {
         expect(block).toContain('min-height: 80px');
     });
 
+    // Regression: hint text must wrap inside the viewport, never ellipsize/clip.
+    it('hint body wraps long unbroken paths instead of ellipsizing', () => {
+        const block = extractBlock('.file-path-link-hint');
+        expect(block).toContain('overflow-wrap: anywhere');
+        expect(block).toContain('white-space: pre-wrap');
+        expect(block).toContain('overflow: auto');
+        expect(block).not.toContain('text-overflow');
+        expect(block).not.toContain('nowrap');
+    });
+
+    it('hint tooltip width is constrained to the viewport', () => {
+        const block = extractBlock('.file-preview-tooltip--hint');
+        expect(block).toContain('max-width: min(calc(100vw - 16px), 640px)');
+    });
+
     it('tooltip CSS does not override pointer-events to auto', () => {
         const block = extractBlock('.file-preview-tooltip');
         expect(block).not.toContain('pointer-events: auto');
@@ -2442,6 +2457,79 @@ describe('conversation-bubble anchor source hint (chat-link-source-hint)', () =>
 
         const tip = tooltip();
         expect(tip === null || tip.style.display === 'none').toBe(true);
+    });
+
+    // Regression: the hint used to be a nowrap + ellipsis single line, so long
+    // managed note paths (saved plans) were cut and the filename was unreadable.
+    it.each([
+        ['saved-plan absolute POSIX path', '/Users/someone/.coc/repos/ws-v2-ee162475bdb9d6a81d02758a/notes/Plans/run-ai-setup/simplification-plan-for-ai-setup-routes.md'],
+        ['Windows absolute path', 'C:/Users/someone/.coc/repos/ws-v2-ee162475bdb9d6a81d02758a/notes/Plans/run-ai-setup/simplification-plan.md'],
+        ['file reference with line/column suffix', 'packages/coc/src/server/spa/client/react/shared/file-path/file-path-preview.ts:812:5'],
+    ])('shows the complete, unshortened target for a %s', async (_label, href) => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant">
+                <a href="${href}">simplification plan</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const anchor = document.querySelector('a') as HTMLElement;
+        await hover(anchor);
+
+        const body = tooltip()?.querySelector('.file-path-link-hint');
+        expect(body?.textContent).toBe(href);
+        expect(body?.textContent).not.toContain('\u2026');
+        // Link destination is untouched.
+        expect(anchor.getAttribute('href')).toBe(href);
+    });
+
+    it('shows the full hint when the link gets keyboard focus and hides it on blur', async () => {
+        const href = '/Users/someone/.coc/repos/ws-v2-ee162475bdb9d6a81d02758a/notes/Plans/run-ai-setup/plan.md';
+        document.body.innerHTML = `
+            <div class="chat-message assistant"><a href="${href}">plan</a></div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const anchor = document.querySelector('a') as HTMLAnchorElement;
+        vi.spyOn(anchor, 'matches').mockImplementation(function (this: Element, sel: string) {
+            return sel === ':focus-visible' ? true : Element.prototype.matches.call(this, sel);
+        });
+        anchor.focus();
+
+        expect(tooltip()?.style.display).toBe('block');
+        expect(tooltip()?.querySelector('.file-path-link-hint')?.textContent).toBe(href);
+
+        anchor.blur();
+        expect(tooltip()?.style.display).toBe('none');
+    });
+
+    it('does not pop the hint for mouse (non-keyboard) focus', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant"><a href="/repo/a.md">a</a></div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const anchor = document.querySelector('a') as HTMLAnchorElement;
+        vi.spyOn(anchor, 'matches').mockImplementation(function (this: Element, sel: string) {
+            return sel === ':focus-visible' ? false : Element.prototype.matches.call(this, sel);
+        });
+        anchor.focus();
+
+        const tip = tooltip();
+        expect(tip === null || tip.style.display === 'none').toBe(true);
+    });
+
+    it('Escape dismisses a visible hint', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant"><a href="/repo/a.md">a</a></div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+        expect(tooltip()?.style.display).toBe('block');
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        expect(tooltip()?.style.display).toBe('none');
     });
 
     it('does not register hover listeners on mobile (pointer: coarse)', async () => {
