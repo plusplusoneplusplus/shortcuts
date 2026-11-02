@@ -294,7 +294,7 @@ waits for the old PID before starting NSIS with `/S --force-run` and a final,
 unquoted `/D=` for the current app directory. Failures retain `install-error.txt`
 and reopen CoC; success removes downloads.
 
-`update-coordinator.ts` owns the user-requested download/restart lifecycle through
+`update-coordinator.ts` owns the shared download/restart lifecycle through
 injected UI and installer hooks. One process-wide instance coalesces clicks,
 reports determinate or indeterminate progress, retains verified bytes for Later
 or cancelled restarts, and discards a retained release before replacing it. It
@@ -311,18 +311,30 @@ unavailable queue data rejects restart; cancellation retains verified bytes.
 `main.ts` shares one coordinator across windows and connects platform helpers,
 normal quit, window progress bars and the native menu. `update-ui.ts` supplies
 injected native release, Restart/Later, running-count confirmation and failure
-dialogs.
+dialogs. The coordinator's silent path skips progress and confirmation dialogs, rechecks an
+injected idle predicate immediately before the same installer handoff, retains
+bytes while busy, and logs failures to stderr.
+
+`update-auto.ts` is an Electron-free scheduler for opt-in Auto Update: When Idle.
+`desktop-update.json` merges `autoUpdate` (`off` by default, or `idle`) with the
+channel and skipped version. Enabled checks run hourly on the current channel,
+share the manual check guard, honor skipped versions and download silently.
+Verified bytes poll every minute for ten minutes of OS idle time plus an empty
+owned-server `/api/queue` across all workspaces. Queue errors prevent install;
+attached servers use only OS idle time and stay running. `main.ts` injects
+`powerMonitor`, starts the scheduler on enable or an enabled packaged launch,
+stops pending installs on Off and disposes it on quit.
 
 Release and retained-download dialogs offer an independent system-browser
-download through `shell.openExternal`, also available after automatic-update failures.
+download through `shell.openExternal`, also available after interactive-update failures.
 `pickDownloadUrl` resolves the selected channel's release asset by platform and
 architecture, excluding container installers, with the same release page as fallback;
 manual downloads require no checksum or updater availability. `update-ui.ts` validates
 HTTP(S) URLs with `validateBrowserUrl` and displays browser-opening failures.
 
-Only Update starts the automatic download; Skip, Later and channel selection retain
+Interactive downloads start with Update; Skip, Later and channel selection retain
 their check semantics. Native dialogs own keyboard access, theme and layout.
-Downloading disables the menu action and displays progress. A retained download exposes Restart to update
+Interactive downloading disables the menu action and displays progress. A retained download exposes Restart to update
 and bypasses release fetching when reopened, including offline.
 `update-recovery.ts` writes `<userData>/pending-update.json` (release, download
 directory, macOS staging) before helper launch and removes it if launch fails.

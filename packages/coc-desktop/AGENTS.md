@@ -40,6 +40,19 @@ effects. Native close/reload warnings belong to registered owning windows;
 Cancel preserves their demos. Do not restart a server or change live settings
 without explicit user authorization.
 
+## Desktop updates
+
+`main.ts` shares one `UpdateCoordinator` between manual updates and opt-in
+Auto Update: When Idle. `update-check.ts` merges the mode, channel and skipped
+version in `desktop-update.json`; invalid modes default to Off. `update-auto.ts`
+owns hourly release checks and minute-long idle polls without Electron imports.
+Install requires ten minutes of OS idle time and an empty unfiltered owned-server
+queue; external servers use OS idle time only and must never be stopped.
+Silent starts reuse the platform helpers without update/restart dialogs; errors
+go to stderr. Turning Off cancels pending automatic installs, and quit disposes
+the scheduler before the coordinator. Keep manual browser downloads, retained
+update dialogs and the Windows helper's real-process coverage intact.
+
 ## Validation
 
 `npm run build` compiles this package. `npm run test:run -- test/<file>` runs
