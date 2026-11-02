@@ -123,6 +123,8 @@ describe('Queue Handler', () => {
             store,
             dataDir,
             fileConfig,
+            // REST tests inspect queued state without racing background execution.
+            queue: { autoStart: false },
             configPath: testConfigPath(),
         });
         return server;
@@ -135,6 +137,7 @@ describe('Queue Handler', () => {
             store,
             dataDir,
             fileConfig: {},
+            queue: { autoStart: false },
             configPath: testConfigPath(),
         });
         return server;
@@ -2039,11 +2042,14 @@ describe('Queue Handler', () => {
     // ========================================================================
 
     describe('GET /api/queue/stats — Stats', () => {
-        it('should return correct queue statistics', async () => {
-            const srv = await startServer();
+        it.each(['file', 'sqlite'] as const)('should return correct queue statistics with %s storage', async storage => {
+            const srv = storage === 'file' ? await startServer() : await startServerWith(createSqliteStore());
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task 1' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task 2' }));
+            for (const displayName of ['Task 1', 'Task 2']) {
+                const created = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName }));
+                expect(created.status).toBe(201);
+                expect(JSON.parse(created.body).task.status).toBe('queued');
+            }
 
             const res = await request(`${srv.url}/api/queue/stats`);
             expect(res.status).toBe(200);
