@@ -323,7 +323,9 @@ Verified bytes poll every minute for ten minutes of OS idle time plus an empty
 owned-server `/api/queue` across all workspaces. Queue errors prevent install;
 attached servers use only OS idle time and stay running. `main.ts` injects
 `powerMonitor`, starts the scheduler on enable or an enabled packaged launch,
-stops pending installs on Off and disposes it on quit.
+stops pending installs on Off and disposes it on quit. Generation checks revoke
+in-flight checks and install eligibility across Off/on transitions; OS idle,
+pending ownership and Skip are revalidated after asynchronous idle checks.
 
 Release and retained-download dialogs offer an independent system-browser
 download through `shell.openExternal`, also available after interactive-update failures.

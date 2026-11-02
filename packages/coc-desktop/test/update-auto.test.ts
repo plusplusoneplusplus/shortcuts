@@ -4,6 +4,7 @@ import {
     AutoUpdater, isAppIdle, type AutoUpdaterOptions,
 } from '../src/update-auto';
 import type { ReleaseInfo, UpdateCheckResult } from '../src/update-check';
+import { UpdateCoordinator } from '../src/update-coordinator';
 
 const release: ReleaseInfo = {
     tag: 'v3.5.3', version: '3.5.3', htmlUrl: 'https://example.com/release', notes: '',
@@ -78,6 +79,12 @@ describe('isAppIdle', () => {
 
     it('is not idle before any server is known', async () => {
         await expect(isAppIdle({ server: null, getSystemIdleSeconds: () => IDLE_SECONDS })).resolves.toBe(false);
+    });
+
+    it.each([NaN, Infinity, -1])('fails closed for an invalid OS idle reading (%s)', async seconds => {
+        await expect(isAppIdle({
+            server: { ...owned, started: false }, getSystemIdleSeconds: () => seconds,
+        })).resolves.toBe(false);
     });
 });
 
@@ -174,6 +181,22 @@ describe('AutoUpdater', () => {
         f.updater.dispose();
     });
 
+    it('does not revive a cancelled check after turning Off and back on', async () => {
+        const check = Promise.withResolvers<UpdateCheckResult>();
+        const f = fixture({ check: vi.fn(() => check.promise) });
+        f.setIdle(true);
+        f.updater.start();
+        const pending = f.updater.checkNow();
+        f.updater.stop();
+        f.updater.start();
+        check.resolve(newer);
+        await pending;
+        expect(f.coordinator.start).not.toHaveBeenCalled();
+        await f.updater.checkNow();
+        expect(f.installed).toEqual(['v3.5.3']);
+        f.updater.dispose();
+    });
+
     it('installs silently right away when already idle', async () => {
         const f = fixture();
         f.setIdle(true);
@@ -183,6 +206,90 @@ describe('AutoUpdater', () => {
         expect(f.installed).toEqual(['v3.5.3']);
         expect(vi.getTimerCount()).toBe(1); // only the hourly timer
         f.updater.dispose();
+    });
+
+    describe('AutoUpdater with the shared coordinator', () => {
+        beforeEach(() => { vi.useFakeTimers(); });
+        afterEach(() => { vi.useRealTimers(); });
+
+        function fixture(isIdle: () => Promise<boolean>) {
+            const cleanup = vi.fn(async () => {});
+            const download = vi.fn(async () => ({ installerPath: 'installer', tempDir: 'temp', cleanup }));
+            const install = vi.fn(async () => {});
+            const quit = vi.fn();
+            const prompt = vi.fn(async () => true);
+            const coordinator = new UpdateCoordinator({
+                downloadOptions: { tempDir: 'temp' }, download, install, quit,
+                setProgress: vi.fn(), promptRestart: prompt, confirmRestart: prompt,
+                promptError: prompt, openBrowser: vi.fn(async () => {}),
+            });
+            let skipped: string | null = null;
+            let checking = false;
+            const updater = new AutoUpdater({
+                check: async () => newer, getSkippedVersion: () => skipped, coordinator, isIdle,
+                tryBeginCheck: () => { if (checking) return false; checking = true; return true; },
+                endCheck: () => { checking = false; },
+            });
+            return {
+                updater, coordinator, download, install, quit, prompt, cleanup,
+                skip() { skipped = release.version; },
+            };
+        }
+
+        it.each(['stop', 'dispose', 'off-on', 'skip'] as const)(
+            'cancels a silent install when %s happens during its final idle check',
+            async action => {
+                const idle = Promise.withResolvers<boolean>();
+                const entered = Promise.withResolvers<void>();
+                const f = fixture(async () => { entered.resolve(); return idle.promise; });
+                f.updater.start();
+                const pending = f.updater.checkNow();
+                await entered.promise;
+                if (action === 'skip') f.skip();
+                else if (action === 'off-on') { f.updater.stop(); f.updater.start(); }
+                else f.updater[action]();
+                idle.resolve(true);
+                await pending;
+                expect(f.install).not.toHaveBeenCalled();
+                expect(f.quit).not.toHaveBeenCalled();
+                expect(f.prompt).not.toHaveBeenCalled();
+                expect(f.coordinator.readyRelease).toBe(release);
+                expect(f.cleanup).not.toHaveBeenCalled();
+                f.updater.dispose();
+                expect(vi.getTimerCount()).toBe(0);
+                await f.coordinator.dispose();
+            },
+        );
+
+        it('retains the download when the user returns during a queue request, then installs on a later poll', async () => {
+            const response = Promise.withResolvers<Response>();
+            const entered = Promise.withResolvers<void>();
+            let idleSeconds = IDLE_SECONDS;
+            const fetchFn: typeof fetch = vi.fn(async () => {
+                entered.resolve();
+                return response.promise;
+            });
+            const f = fixture(() => isAppIdle({
+                server: owned, getSystemIdleSeconds: () => idleSeconds, fetchFn,
+            }));
+            f.updater.start();
+            const pending = f.updater.checkNow();
+            await entered.promise;
+            idleSeconds = 0;
+            response.resolve(new Response(JSON.stringify({ queued: [], running: [] })));
+            await pending;
+            expect(f.install).not.toHaveBeenCalled();
+            expect(f.coordinator.readyRelease).toBe(release);
+            idleSeconds = IDLE_SECONDS;
+            vi.mocked(fetchFn).mockImplementation(queueFetch({ queued: [], running: [] }));
+            await vi.advanceTimersByTimeAsync(AUTO_UPDATE_IDLE_POLL_MS);
+            expect(f.download).toHaveBeenCalledOnce();
+            expect(f.install).toHaveBeenCalledOnce();
+            expect(f.quit).toHaveBeenCalledOnce();
+            expect(f.prompt).not.toHaveBeenCalled();
+            f.updater.dispose();
+            await f.coordinator.dispose();
+        });
     });
 
     it('downloads while busy, polls every minute and installs once idle', async () => {

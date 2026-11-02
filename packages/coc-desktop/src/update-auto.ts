@@ -24,7 +24,11 @@ export interface AppIdleOptions {
  * to stop, so only user idle time counts for it.
  */
 export async function isAppIdle(options: AppIdleOptions): Promise<boolean> {
-    if (options.getSystemIdleSeconds() * 1000 < AUTO_UPDATE_REQUIRED_IDLE_MS) return false;
+    const userIsIdle = () => {
+        const seconds = options.getSystemIdleSeconds();
+        return Number.isFinite(seconds) && seconds * 1000 >= AUTO_UPDATE_REQUIRED_IDLE_MS;
+    };
+    if (!userIsIdle()) return false;
     const server = options.server;
     if (!server) return false;
     if (!server.started) return true;
@@ -48,7 +52,8 @@ export async function isAppIdle(options: AppIdleOptions): Promise<boolean> {
         // Pause markers hold a queue position but are not work.
         const queued = queue.queued.filter((item: unknown) =>
             !(item && typeof item === 'object' && 'kind' in item && item.kind === 'pause-marker'));
-        return queue.running.length === 0 && queued.length === 0;
+        // User input may resume while the queue request is in flight.
+        return queue.running.length === 0 && queued.length === 0 && userIsIdle();
     } catch {
         // Unknown work must not be treated as an idle server.
         return false;
@@ -83,6 +88,7 @@ export class AutoUpdater {
     private enabled = false;
     private disposed = false;
     private polling = false;
+    private generation = 0;
     private readonly timers: AutoUpdaterTimers;
 
     constructor(private readonly options: AutoUpdaterOptions) {
@@ -103,6 +109,7 @@ export class AutoUpdater {
 
     /** Stops checks and any pending install. Verified bytes stay for a manual update. */
     stop(): void {
+        this.generation++;
         this.enabled = false;
         this.pending = undefined;
         if (this.checkTimer !== undefined) this.timers.clearInterval(this.checkTimer);
@@ -117,6 +124,7 @@ export class AutoUpdater {
 
     async checkNow(): Promise<void> {
         if (!this.enabled || !this.options.tryBeginCheck()) return;
+        const generation = this.generation;
         let release: ReleaseInfo | undefined;
         try {
             const result = await this.options.check();
@@ -129,23 +137,33 @@ export class AutoUpdater {
         } finally {
             this.options.endCheck();
         }
-        if (!release || !this.enabled) return;
+        if (!release || !this.enabled || generation !== this.generation) return;
         if (release.version === this.options.getSkippedVersion()) return;
         this.pending = release;
         // Downloads now; installs only if already idle, otherwise polling resumes it.
-        await this.attempt(release);
-        if (this.pending === release && this.options.coordinator.readyRelease?.tag === release.tag) {
+        await this.attempt(release, generation);
+        if (this.isPending(release, generation) && this.options.coordinator.readyRelease?.tag === release.tag) {
             this.startPolling();
         }
     }
 
-    private attempt(release: ReleaseInfo): Promise<void> {
+    private isPending(release: ReleaseInfo, generation: number): boolean {
+        return this.enabled && this.generation === generation && this.pending === release
+            && release.version !== this.options.getSkippedVersion();
+    }
+
+    private async attempt(release: ReleaseInfo, generation: number): Promise<void> {
+        if (!this.isPending(release, generation)) return;
         const startOptions: UpdateStartOptions = {
             silent: true,
-            // Turning auto update off cancels an install that was about to run.
-            isIdle: async () => this.pending === release && this.enabled && await this.options.isIdle(),
+            isIdle: async () => {
+                if (!this.isPending(release, generation)) return false;
+                const idle = await this.options.isIdle();
+                // Off, dispose or Skip during a queue request revoke its result.
+                return idle && this.isPending(release, generation);
+            },
         };
-        return this.options.coordinator.start(release, startOptions);
+        await this.options.coordinator.start(release, startOptions);
     }
 
     private startPolling(): void {
@@ -161,15 +179,16 @@ export class AutoUpdater {
     private async poll(): Promise<void> {
         if (this.polling) return;
         const release = this.pending;
+        const generation = this.generation;
         // A failed download or an install dropped the bytes; the next hourly check retries.
-        if (!release || !this.enabled || this.options.coordinator.readyRelease?.tag !== release.tag) {
+        if (!release || !this.isPending(release, generation) || this.options.coordinator.readyRelease?.tag !== release.tag) {
             this.pending = undefined;
             this.stopPolling();
             return;
         }
         this.polling = true;
         try {
-            if (await this.options.isIdle()) await this.attempt(release);
+            if (await this.options.isIdle()) await this.attempt(release, generation);
         } finally {
             this.polling = false;
         }
