@@ -4,7 +4,10 @@ import { lookupCloneBaseUrl, subscribeCloneBaseUrl } from '../../../repos/cloneR
 
 interface CurrentChatSender {
     disabledReason?: string;
-    send: (message: string) => Promise<void>;
+    requiresAutopilotConfirmation?: boolean;
+    /** Revokes pending confirmation when the hydrated conversation or provider changes. */
+    targetKey?: string;
+    send: (message: string, switchToAutopilot?: boolean) => Promise<void>;
 }
 
 const entries = new Map<string, CurrentChatSender>();
@@ -36,21 +39,29 @@ export function usePublishCurrentChatSend(host: UnifiedPanelHost | null, sender:
     const entry = useMemo(() => {
         const value: CurrentChatSender = {
             disabledReason,
-            send: async message => {
-                if (!key || activeKey.current !== key || entries.get(key) !== value) throw new Error('The open chat changed. Send again from the current review.');
+            requiresAutopilotConfirmation: sender.requiresAutopilotConfirmation,
+            send: async (message, switchToAutopilot = false) => {
+                const currentBaseUrl = host?.routingRef ? lookupCloneBaseUrl(host.routingRef) : undefined;
+                if (!key || activeKey.current !== key || entries.get(key) !== value
+                    || currentBaseUrl !== baseUrl || latest.current.targetKey !== sender.targetKey) {
+                    throw new Error('The open chat changed. Send again from the current review.');
+                }
                 if (disabledReason) throw new Error(disabledReason);
                 if (latest.current.disabledReason) throw new Error(latest.current.disabledReason);
+                if (!!latest.current.requiresAutopilotConfirmation !== switchToAutopilot) {
+                    throw new Error('Confirm switching this Ask chat to Autopilot before sending review comments.');
+                }
                 if (lock.pending) throw new Error('Comments are already being sent.');
                 lock.pending = true;
                 try {
-                    await latest.current.send(message);
+                    await latest.current.send(message, switchToAutopilot);
                 } finally {
                     lock.pending = false;
                 }
             },
         };
         return value;
-    }, [key, disabledReason, lock]);
+    }, [key, disabledReason, lock, sender.requiresAutopilotConfirmation, sender.targetKey]);
     useEffect(() => {
         if (!key) return;
         entries.set(key, entry);

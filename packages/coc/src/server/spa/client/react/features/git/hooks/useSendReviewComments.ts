@@ -11,12 +11,13 @@ export function useSendReviewComments(
     const chat = useCurrentChatSend();
     return {
         sendDisabledReason: chat.disabledReason,
-        onSendPrompt: async () => {
+        confirmAutopilotBeforeSend: chat.requiresAutopilotConfirmation,
+        onSendPrompt: async (switchToAutopilot = false) => {
             if (!unresolvedReviewComments(comments).length) throw new Error('No unresolved comments to send.');
             const prompt = 'kind' in context
                 ? formatReviewCommentsPrompt(context, comments)
                 : formatDiffCommentsPrompt(context, unresolvedReviewComments(comments));
-            await chat.send(`Repository workspace: ${workspaceId}\n\n${prompt}`);
+            await chat.send(`Repository workspace: ${workspaceId}\n\n${prompt}`, switchToAutopilot);
         },
     };
 }

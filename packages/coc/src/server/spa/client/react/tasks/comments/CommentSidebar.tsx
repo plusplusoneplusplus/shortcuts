@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { cn } from '../../ui';
+import { cn, Button, Dialog } from '../../ui';
 import { CommentCard } from './CommentCard';
 import type { AnyComment } from '../../../comments/shared-comment-types';
 import type { DiffComment } from '../../../comments/diff-comment-types';
@@ -47,8 +47,9 @@ export interface CommentSidebarProps {
     deletingIds?: Set<string>;
     onResolveAllWithAI?: () => void;
     /** Sends without resolving comments or consuming the chat's draft. */
-    onSendPrompt?: () => Promise<void>;
+    onSendPrompt?: (switchToAutopilot?: boolean) => Promise<void>;
     sendDisabledReason?: string;
+    confirmAutopilotBeforeSend?: boolean;
     /** Copies all comments as one prompt; a returned rejection shows copy failure. */
     onCopyPrompt?: () => void | Promise<unknown>;
     /** When provided, renders a ✕ close button in the sidebar header. */
@@ -82,6 +83,7 @@ export function CommentSidebar({
     onResolveAllWithAI,
     onSendPrompt,
     sendDisabledReason,
+    confirmAutopilotBeforeSend,
     onCopyPrompt,
     onClose,
 }: CommentSidebarProps) {
@@ -90,22 +92,33 @@ export function CommentSidebar({
     const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
     const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent'>('idle');
     const [sendError, setSendError] = useState<string | null>(null);
+    const [confirmSend, setConfirmSend] = useState<{ send: NonNullable<CommentSidebarProps['onSendPrompt']> } | null>(null);
     const sendPending = useRef(false);
     const sendReason = loading ? 'Wait for comments to load.' : error ? 'Comments are unavailable.'
         : !comments.some(c => c.status !== 'resolved') ? 'No unresolved comments to send.' : sendDisabledReason;
-    const handleSend = async () => {
-        if (!onSendPrompt || sendReason || sendPending.current) return;
+    const sendPrompt = async (send: NonNullable<CommentSidebarProps['onSendPrompt']>, switchToAutopilot = false) => {
+        if (sendPending.current || sendReason) return;
         sendPending.current = true;
         setSendState('sending');
         setSendError(null);
         try {
-            await onSendPrompt();
+            await send(switchToAutopilot);
             setSendState('sent');
         } catch (error) {
             setSendState('idle');
             setSendError(error instanceof Error ? error.message : 'Failed to send comments.');
         } finally {
             sendPending.current = false;
+        }
+    };
+    const handleSend = () => {
+        if (!onSendPrompt || sendReason || sendPending.current || confirmSend) return;
+        if (confirmAutopilotBeforeSend) {
+            setSendError(null);
+            setSendState('idle');
+            setConfirmSend({ send: onSendPrompt });
+        } else {
+            void sendPrompt(onSendPrompt);
         }
     };
 
@@ -232,8 +245,8 @@ export function CommentSidebar({
                             )}
                             {onSendPrompt && (
                                 <button
-                                    onClick={() => { void handleSend(); }}
-                                    disabled={!!sendReason || sendState === 'sending'}
+                                    onClick={handleSend}
+                                    disabled={!!sendReason || sendState === 'sending' || !!confirmSend}
                                     title={sendReason ?? 'Send unresolved comments to the open chat'}
                                     aria-label="Send comments to current chat"
                                     aria-busy={sendState === 'sending'}
@@ -272,6 +285,26 @@ export function CommentSidebar({
                     )}
                 </div>
             )}
+
+            <Dialog
+                open={confirmSend !== null}
+                title="Switch to Autopilot to fix review comments?"
+                onClose={() => setConfirmSend(null)}
+                trapFocus
+                dense
+                footer={<>
+                    <Button variant="secondary" onClick={() => setConfirmSend(null)}>Cancel</Button>
+                    <Button variant="primary" disabled={!!sendReason} onClick={() => {
+                        if (!confirmSend) return;
+                        const { send } = confirmSend;
+                        setConfirmSend(null);
+                        void sendPrompt(send, true);
+                    }}>Switch to Autopilot and send</Button>
+                </>}
+            >
+                <p>This chat is in Ask mode. Fixing review comments needs Autopilot, which can modify files. Switch this chat to Autopilot and send the comments?</p>
+                {sendReason && <p role="status" className="mt-2 text-xs text-[#848484]">{sendReason}</p>}
+            </Dialog>
 
             {onSendPrompt && (sendError || sendReason || sendState === 'sent') && (
                 <div role={sendError ? 'alert' : 'status'} className="px-3 py-1 text-[11px] text-[#848484]">

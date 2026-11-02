@@ -31,6 +31,7 @@ import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../sr
 import type { PrStatusCardItem } from '../../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useCurrentChatSend } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/currentChatSend';
+import { CommentSidebar } from '../../../../src/server/spa/client/react/tasks/comments/CommentSidebar';
 import { getBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
 import { clearSentinelTodoExcursion, startSentinelTodoExcursion, getSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
@@ -602,6 +603,20 @@ describe('ChatDetail current-chat review send', () => {
         return <button data-testid="review-send" disabled={!!sender.disabledReason}
             title={sender.disabledReason} onClick={() => { void sender.send('Review comments prompt'); }}>Send</button>;
     }
+    function ReviewPanel() {
+        const sender = useCurrentChatSend();
+        return <CommentSidebar
+            comments={[{ id: 'review-comment', taskId: 'review', comment: 'Fix this issue', status: 'open',
+                selectedText: 'code', selection: { startLine: 1, endLine: 1, startColumn: 1, endColumn: 2 },
+                createdAt: '', updatedAt: '' }]}
+            loading={false}
+            onResolve={() => {}} onUnresolve={() => {}} onDelete={() => {}} onEdit={() => {}}
+            onAskAI={() => {}} onCommentClick={() => {}}
+            onSendPrompt={(confirmed) => sender.send('Review comments prompt', confirmed)}
+            confirmAutopilotBeforeSend={sender.requiresAutopilotConfirmation}
+            sendDisabledReason={sender.disabledReason}
+        />;
+    }
 
     it.each([false, true])('publishes the actual follow-up handler with draft isolation (remote group=%s)', async remote => {
         const baseUrl = remote ? 'https://owner.example.test' : undefined;
@@ -662,6 +677,94 @@ describe('ChatDetail current-chat review send', () => {
         expect(screen.getByTestId('review-send')).toBeDisabled();
         expect(screen.getByTestId('review-send')).toHaveAttribute('title', expect.stringContaining('no session'));
         expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('confirms Ask mode before using the supported Autopilot selector/send flow (remote=%s)', async remote => {
+        const baseUrl = remote ? 'https://owner.example.test' : undefined;
+        if (remote) registerCloneBaseUrls([
+            { workspaceId: 'group-review', serverId: 'server-a', baseUrl: baseUrl! },
+            { workspaceId: 'ws-member', serverId: 'server-a', baseUrl: baseUrl! },
+        ]);
+        const owner = { workspaceId: 'ws-member', selectionId: remote ? 'remote:server-a:ws-member' : 'ws-member', baseUrl };
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' } }),
+            makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'ask', sessionId: 'session' } }));
+        mockState.getDraft.mockReturnValue({ text: 'Keep my draft', mode: 'ask' });
+        render(<Wrap><UnifiedPanelHostProvider host={{
+            workspaceId: remote ? 'group-review' : 'ws-member', chatId: 'task-1',
+            routingRef: remote ? 'remote:server-a:group-review' : null,
+        }}>
+            <WorkspaceOwnerContext.Provider value={owner}>
+                <ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId={owner.selectionId} />
+            </WorkspaceOwnerContext.Provider><ReviewPanel />
+        </UnifiedPanelHostProvider></Wrap>);
+        const sendButton = screen.getByRole('button', { name: 'Send comments to current chat' });
+        await waitFor(() => expect(sendButton).not.toBeDisabled());
+        const before = (globalThis as any).__useSendMessage_opts;
+        expect(before.selectedMode).toBe('ask');
+        const draft = before.followUpInputRef.current;
+        const clearCount = mockState.clearAttachments.mock.calls.length;
+        fireEvent.click(sendButton);
+        expect(screen.getByRole('dialog')).toHaveTextContent('can modify files');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+        expect((globalThis as any).__useSendMessage_opts.selectedMode).toBe('ask');
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Switch to Autopilot and send' })); });
+        expect(mockState.sendFollowUp).toHaveBeenCalledExactlyOnceWith('Review comments prompt', 'enqueue', {
+            includeComposerContext: false, throwOnError: true, waitForCompletion: false, modeOverride: 'autopilot',
+        });
+        const after = (globalThis as any).__useSendMessage_opts;
+        expect(after.selectedMode).toBe('autopilot');
+        expect(after.followUpInputRef.current).toBe(draft);
+        expect(after.messageClient).toBe(before.messageClient);
+        expect(after.providerOverride).toBe(before.providerOverride);
+        expect(after.activeProvider).toBe(before.activeProvider);
+        expect(mockState.clearAttachments).toHaveBeenCalledTimes(clearCount);
+        expect(mockState.clearDraft).not.toHaveBeenCalled();
+    });
+
+    it.each(['Cancel', 'Escape', 'Close', 'backdrop'])('leaves actual Ask mode unchanged when confirmation ends with %s', async dismiss => {
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' } }),
+            makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'ask', sessionId: 'session' } }));
+        render(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-member', chatId: 'task-1' }}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" /><ReviewPanel />
+        </UnifiedPanelHostProvider></Wrap>);
+        const sendButton = screen.getByRole('button', { name: 'Send comments to current chat' });
+        await waitFor(() => expect(sendButton).not.toBeDisabled());
+        fireEvent.click(sendButton);
+        if (dismiss === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+        else if (dismiss === 'backdrop') fireEvent.click(screen.getByTestId('dialog-overlay'));
+        else fireEvent.click(screen.getByRole('button', { name: dismiss }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((globalThis as any).__useSendMessage_opts.selectedMode).toBe('ask');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('keeps Sentinel in its terminal mode without offering Autopilot', async () => {
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'sentinel' } }),
+            makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'sentinel', sessionId: 'session' } }));
+        render(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-member', chatId: 'task-1' }}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" /><ReviewPanel />
+        </UnifiedPanelHostProvider></Wrap>);
+        const sendButton = screen.getByRole('button', { name: 'Send comments to current chat' });
+        await waitFor(() => expect(sendButton).not.toBeDisabled());
+        await act(async () => { fireEvent.click(sendButton); });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(mockState.sendFollowUp).toHaveBeenCalledExactlyOnceWith('Review comments prompt', 'enqueue', {
+            includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+        });
+        expect((globalThis as any).__useSendMessage_opts.selectedMode).toBe('sentinel');
+    });
+
+    it('does not elevate Ask chats with a pinned mode restriction', async () => {
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' } }),
+            makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'ask', sessionId: 'session' } }));
+        render(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-member', chatId: 'task-1' }}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" allowedModes={['ask']} /><ReviewPanel />
+        </UnifiedPanelHostProvider></Wrap>);
+        await waitFor(() => expect(screen.queryByTestId('activity-chat-loading')).toBeNull());
+        expect(screen.getByRole('button', { name: 'Send comments to current chat' })).toBeDisabled();
+        expect(screen.getByRole('status')).toHaveTextContent('does not support switching');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+        expect((globalThis as any).__useSendMessage_opts.selectedMode).toBe('ask');
     });
 });
 

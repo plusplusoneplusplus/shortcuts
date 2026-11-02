@@ -427,11 +427,16 @@ comment with review context, file, location, working-tree stage and exact text; 
 ones are counted, not copied. Copy shows Copied only after the clipboard write succeeds.
 Batch Send uses `useSendReviewComments` with the existing prompt formatters and
 source workspace identity. `currentChatSend` binds the selected mounted `ChatDetail`
-by panel scope, concrete server route, endpoint and conversation; admission uses its
-captured client and normal enqueue follow-up flow, mode and provider. Unavailable
-owners, read-only chats and empty unresolved sets disable sending; failures remain
-visible and in-flight duplicates reject. Composer drafts, attachments and comment
-resolution stay untouched. Individual card Send to current chat uses
+by panel scope, concrete server route, endpoint and conversation/provider binding.
+Ask requires explicit confirmation to switch that exact chat to Autopilot through
+its mode selector and supported follow-up mode override. Cancel and dismissal do
+nothing; changed targets revoke confirmation. Autopilot sends directly. Mode-locked
+workflows cannot elevate, and Sentinel retains its terminal mode.
+
+Admission uses the captured client and normal enqueue follow-up flow. Unavailable
+owners, read-only chats and empty unresolved sets disable sending; failures stay
+visible and in-flight duplicates reject. Composer drafts, attachments, provider and
+comment resolution stay untouched. Individual card Send to current chat uses
 `useCurrentChatInsertDraft` to append and focus without submitting. Anchor relocation
 matches source rows, excluding patch headers and no-newline annotations during engine
 switches. Both engines share the persisted comment shape.

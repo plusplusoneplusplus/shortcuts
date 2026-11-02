@@ -1807,7 +1807,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         });
     }, [sendFollowUp, selectedMode, metadataProcess]);
 
+    const reviewAutopilotUnavailable = selectedMode === 'ask' && (
+        !(effectiveAllowedModes ?? ['ask', 'autopilot']).includes('autopilot')
+        || !!forEachGeneration || !!mapReduceGeneration || !!getRalphContext(task)
+        || effectiveConversationMode === 'sentinel'
+    );
     usePublishCurrentChatSend(unifiedPanelHost, {
+        targetKey: JSON.stringify([conversationStateKey, processId, owningWorkspaceId, conversationProvider, pendingProvider, selectedMode, effectiveConversationMode]),
+        requiresAutopilotConfirmation: selectedMode === 'ask',
         disabledReason: !historyOwnerAvailable ? 'The owning server is unavailable.'
             : readOnly ? 'This chat is read-only.'
             : noSessionForFollowUp ? 'This chat has no session available for follow-up messages.'
@@ -1815,12 +1822,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             : !processId || inputDisabled ? 'Sending is unavailable in this chat.'
             : isCompacting || compactionQueued ? 'Wait for chat compaction to finish.'
             : sending && !isActiveGeneration ? 'Wait for the current message to be sent.'
+            : reviewAutopilotUnavailable ? 'This chat does not support switching to Autopilot for review fixes.'
+            : effectiveConversationMode === 'sentinel' && selectedMode !== 'sentinel'
+                ? 'Review comments must keep this chat in Sentinel mode.'
             : selectedMode === 'ralph' ? 'Send review comments in a chat mode, not Ralph launch mode.'
             : hydrationScope?.client !== client || hydrationScope?.key !== conversationStateKey
                 ? 'Wait for the open chat to load.' : undefined,
-        send: message => sendFollowUp(message, 'enqueue', {
-            includeComposerContext: false, throwOnError: true, waitForCompletion: false,
-        }),
+        send: (message, switchToAutopilot) => {
+            if (switchToAutopilot) setSelectedModeFromUser('autopilot');
+            return sendFollowUp(message, 'enqueue', {
+                includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+                ...(switchToAutopilot ? { modeOverride: 'autopilot' as const } : {}),
+            });
+        },
     }, historyBaseUrl);
 
     // A canvas tab in the shared right panel keeps two chat-directed actions:
