@@ -24,6 +24,8 @@ import {
     setSkippedVersion,
     getUpdateChannel,
     setUpdateChannel,
+    getAutoUpdateMode,
+    setAutoUpdateMode,
     checkForUpdate,
     LATEST_RELEASE_API,
     RELEASES_LIST_API,
@@ -522,6 +524,74 @@ describe('update-channel persistence', () => {
             ensureDir: () => { throw new Error('EACCES'); },
         };
         expect(() => setUpdateChannel(dataDir, 'stable', throwingStore)).not.toThrow();
+    });
+});
+
+describe('auto-update mode persistence', () => {
+    function memStore(): { store: UpdateStore; files: Map<string, string> } {
+        const files = new Map<string, string>();
+        return {
+            files,
+            store: {
+                readText: (p) => {
+                    if (!files.has(p)) throw new Error('ENOENT');
+                    return files.get(p)!;
+                },
+                writeText: (p, data) => void files.set(p, data),
+                ensureDir: () => undefined,
+            },
+        };
+    }
+
+    const dataDir = path.join('/fake', 'coc');
+    const markerFile = path.join(dataDir, 'desktop-update.json');
+
+    it('defaults to off when nothing is saved', () => {
+        const { store } = memStore();
+        expect(getAutoUpdateMode(dataDir, store)).toBe('off');
+    });
+
+    it('round-trips idle and off', () => {
+        const { store } = memStore();
+        setAutoUpdateMode(dataDir, 'idle', store);
+        expect(getAutoUpdateMode(dataDir, store)).toBe('idle');
+        setAutoUpdateMode(dataDir, 'off', store);
+        expect(getAutoUpdateMode(dataDir, store)).toBe('off');
+    });
+
+    it('reads an invalid or malformed value as off', () => {
+        const { store, files } = memStore();
+        files.set(markerFile, JSON.stringify({ autoUpdate: 'always' }));
+        expect(getAutoUpdateMode(dataDir, store)).toBe('off');
+        files.set(markerFile, JSON.stringify({ autoUpdate: true }));
+        expect(getAutoUpdateMode(dataDir, store)).toBe('off');
+        files.set(markerFile, 'not json');
+        expect(getAutoUpdateMode(dataDir, store)).toBe('off');
+    });
+
+    it('merges with skipVersion and updateChannel without overwriting them', () => {
+        const { store, files } = memStore();
+        setSkippedVersion(dataDir, '3.4.8', store);
+        setUpdateChannel(dataDir, 'prerelease', store);
+        setAutoUpdateMode(dataDir, 'idle', store);
+        expect(JSON.parse(files.get(markerFile)!)).toEqual({
+            skipVersion: '3.4.8',
+            updateChannel: 'prerelease',
+            autoUpdate: 'idle',
+        });
+        // Writing the other fields afterwards keeps the mode.
+        setSkippedVersion(dataDir, '3.4.9', store);
+        setUpdateChannel(dataDir, 'stable', store);
+        expect(getAutoUpdateMode(dataDir, store)).toBe('idle');
+        expect(getSkippedVersion(dataDir, store)).toBe('3.4.9');
+        expect(getUpdateChannel(dataDir, '3.4.0', store)).toBe('stable');
+    });
+
+    it('does not throw on write failure', () => {
+        const throwingStore: UpdateStore = {
+            ensureDir: () => { throw new Error('EACCES'); },
+        };
+        expect(() => setAutoUpdateMode(dataDir, 'idle', throwingStore)).not.toThrow();
     });
 });
 
