@@ -223,6 +223,8 @@ describe('conversation-owned browser tabs in the panel', () => {
     });
 
     it('shows every page in every chat when the flag is off or turns off live', () => {
+        // Four visible pages exceed the Web group's cap.
+        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         seed();
         const view = render(<Shell chatId="chat-b" />);
         expect(stripLabels()).toEqual(['Notes', 'Results', 'Shared']);

@@ -1251,7 +1251,7 @@ timeout: 300
                 '  markdownPanelPreview: false',
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
-                '  panelTabGroups: true',
+                '  panelTabGroups: false',
                 '  binaryFileReveal: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
@@ -1297,6 +1297,7 @@ timeout: 300
             expect(result.resolved.browserControl.framesEnabled).toBe(false);
             expect(result.resolved.browserControl.richPasteEnabled).toBe(false);
             expect(result.resolved.browserControl.backgroundEnabled).toBe(false);
+            expect(result.resolved.features.panelTabGroups).toBe(false);
             expect(result.resolved.features.browserTabShortcuts).toBe(false);
             expect(result.resolved.features.chatScopedBrowserTabs).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
@@ -1621,7 +1622,7 @@ timeout: 300
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
                     "panelSourceSplit": true,
-                    "panelTabGroups": false,
+                    "panelTabGroups": true,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
                     "queryPullRequestTool": true,

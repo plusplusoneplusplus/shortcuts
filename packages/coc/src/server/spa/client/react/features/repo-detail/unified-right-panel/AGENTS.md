@@ -41,10 +41,11 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
-Display grouping is separate from ownership. Default-off `features.panelTabGroups`
+Display grouping is separate from ownership. Default-on `features.panelTabGroups`
 partitions the saved order into Tools, Files, Web and Canvas blocks in one row, with
-three visible slots per group. Pinned To-do, active and preview tabs take priority;
-promoted active/preview tabs occupy trailing slots without changing saved order.
+three visible slots per group; an explicit `false` restores the ungrouped strip.
+Pinned To-do, active and preview tabs take priority; promoted active/preview tabs
+occupy trailing slots without changing saved order.
 Folded groups retain the active and pinned tabs. Fold state and block order belong
 to the panel scope, not the chat, in `unified-right-panel:<scope>:groups`
 (`{ folded, order }`; legacy arrays read as folds). `normalizeGroupOrder` drops

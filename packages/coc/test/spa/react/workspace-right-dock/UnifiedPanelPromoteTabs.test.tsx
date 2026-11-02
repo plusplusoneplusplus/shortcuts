@@ -238,7 +238,7 @@ describe('unified panel tab promotion (AC-04)', () => {
     });
 
     it('promotes when the tab is dragged to a new position with tab reordering opted out', async () => {
-        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false, panelTabGroupsEnabled: false });
         renderPanel();
         await act(async () => { fireEvent.click(screen.getByTestId('tree-open-a')); });
         await act(async () => { fireEvent.click(screen.getByTestId('tree-open-b')); });

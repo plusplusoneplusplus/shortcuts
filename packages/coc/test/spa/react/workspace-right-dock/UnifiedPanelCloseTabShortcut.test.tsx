@@ -543,9 +543,10 @@ describe('unified panel new-browser shortcut', () => {
         expectNewBrowser(2);
         openResource('notes');
         act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
-        expect(tabKinds()).toEqual(['browser', 'browser', 'notes']);
+        // Default tab groups show Tools before Web.
+        expect(tabKinds()).toEqual(['notes', 'browser', 'browser']);
         const latest = readUnifiedPanelState(WS).workspaceTabs[1];
-        fireEvent.click(screen.getAllByRole('tab')[1]);
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${latest.id}`));
         view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
         act(() => { nativeMenu.callback({ viewId: latest.resourceId }); });
         expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(3);

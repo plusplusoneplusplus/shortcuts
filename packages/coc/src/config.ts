@@ -1205,7 +1205,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         markdownPanelPreview: true,
         panelSourceSplit: true,
         panelTabReordering: true,
-        panelTabGroups: false,
+        panelTabGroups: true,
         binaryFileReveal: true,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,

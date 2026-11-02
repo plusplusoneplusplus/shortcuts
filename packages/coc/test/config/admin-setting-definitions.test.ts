@@ -881,23 +881,26 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: false } }).explorerDeleteEnabled).toBe(false);
     });
 
-    it('exposes panel tab groups as a live, experimental default-off Appearance toggle', () => {
+    it('exposes panel tab groups as a live, experimental default-on Appearance toggle', () => {
         const def = getAdminSettingDefinition('features.panelTabGroups')!;
         expect(def.value).toEqual({ kind: 'boolean' });
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('panelTabGroupsEnabled');
         expect(def.ui).toMatchObject({
             tab: 'appearance', group: 'editorFiles', order: 45, badge: 'experimental',
             testId: 'toggle-panel-tab-groups-enabled',
         });
-        expect(DEFAULT_CONFIG.features.panelTabGroups).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).panelTabGroupsEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: {} }).panelTabGroupsEnabled).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).panelTabGroupsEnabled).toBe(false);
+        expect(def.ui?.hint).toContain('Enabled by default.');
+        expect(DEFAULT_CONFIG.features.panelTabGroups).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).panelTabGroupsEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: {} }).panelTabGroupsEnabled).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).panelTabGroupsEnabled).toBe(true);
+        // A saved opt-out survives the default flip.
+        expect(buildRuntimeFeatureFlags({ features: { panelTabGroups: false } }).panelTabGroupsEnabled).toBe(false);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { panelTabGroups: true },
-        })).panelTabGroupsEnabled).toBe(true);
+            features: { panelTabGroups: false },
+        })).panelTabGroupsEnabled).toBe(false);
     });
 
     it('omits panel tab categories from settings, defaults, schema leaves, sources and runtime flags', () => {

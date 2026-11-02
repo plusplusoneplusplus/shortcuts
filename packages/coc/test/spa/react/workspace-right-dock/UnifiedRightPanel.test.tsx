@@ -351,8 +351,8 @@ describe('UnifiedRightPanel', () => {
             expect(readUnifiedPanelState('ws-2')).toBe(otherScope);
         });
 
-        it('renders grouped tabs and replaces the active canvas header count chip with group overflow', async () => {
-            applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
+        it('renders grouped tabs by default and replaces the active canvas header count chip with group overflow', async () => {
+            // No flag set: the shipped default groups the strip.
             const state = seedCanvasBurst();
             const activeId = state.activeByScope['chat-a'];
             renderPanel({ chatId: 'chat-a' });

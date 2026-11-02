@@ -110,7 +110,7 @@ beforeEach(() => {
     client.sentinelTodos.get.mockReset().mockImplementation(async () => ({ revision: 2, items: [item('one'), item('two')] }));
     applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false,
         sentinelPrOutcomeWakeEnabled: false,
-        sessionContextAttachmentsEnabled: false });
+        sessionContextAttachmentsEnabled: false, panelTabGroupsEnabled: true });
 });
 afterEach(() => { cleanup(); clearUnifiedPanelState(); clearUnifiedTreeState(); clearSentinelTodoExcursion(); clearSentinelTodoChats(); });
 
@@ -161,6 +161,8 @@ describe('To-do activation and Explorer presentation', () => {
     });
 
     it.each(['{Enter}', ' ', '{ArrowRight}'])('hides on keyboard tab activation via %s without losing a dirty source buffer', async key => {
+        // ArrowRight from dirty.ts relies on the ungrouped strip order.
+        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         seed(false);
         render(panel());
         const buffer = screen.getByRole('textbox', { name: 'Source buffer' });

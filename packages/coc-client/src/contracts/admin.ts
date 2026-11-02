@@ -368,7 +368,7 @@ export interface RuntimeDashboardConfig {
     markdownPanelPreviewEnabled: boolean;
     /** Mixed-type resource tab ordering; defaults off. */
     panelTabReorderingEnabled: boolean;
-    /** Fixed inline right-panel tab groups (`features.panelTabGroups`); defaults off. */
+    /** Fixed inline right-panel tab groups (`features.panelTabGroups`); defaults on. */
     panelTabGroupsEnabled: boolean;
     /** "Open in Explorer" under a right-panel file tab's binary placeholder (`features.binaryFileReveal`); defaults on. */
     binaryFileRevealEnabled: boolean;

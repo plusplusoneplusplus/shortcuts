@@ -1442,10 +1442,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.panelTabGroups', default: false, runtime: 'live', runtimeFlag: 'panelTabGroupsEnabled',
+        key: 'features.panelTabGroups', default: true, runtime: 'live', runtimeFlag: 'panelTabGroupsEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 45, label: 'Panel tab groups', badge: 'experimental',
-            hint: 'Group right-panel tabs into Tools, Files, Web, and Canvas, with three visible tabs per group and searchable overflow. Disabled by default.',
+            hint: 'Group right-panel tabs into Tools, Files, Web, and Canvas, with three visible tabs per group and searchable overflow. Enabled by default.',
             testId: 'toggle-panel-tab-groups-enabled',
         },
     }),

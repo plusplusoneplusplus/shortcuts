@@ -220,7 +220,8 @@ afterEach(() => {
 });
 
 describe('UnifiedRightPanel — file tabs (AC-04)', () => {
-    it('enables mixed ordering by default', async () => {
+    it('enables mixed ordering by default without tab groups', async () => {
+        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
@@ -232,7 +233,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
     });
 
     it('honors an explicit opt-out and toggles mixed ordering live without remounting views', async () => {
-        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
@@ -254,7 +255,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
 
     it('reorders a dirty file across a mounted terminal without remounting or changing activation', async () => {
         // Edits the raw Monaco buffer, so keep the default-on rendered Markdown view off.
-        applyRuntimeConfigPatch({ panelTabReorderingEnabled: true, markdownPanelPreviewEnabled: false });
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: true, markdownPanelPreviewEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
@@ -387,6 +388,8 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
     });
 
     it('bulk closes collapsed canvas siblings through the panel tab session', async () => {
+        // Canvas compression is the ungrouped overflow; groups use the Canvas group menu.
+        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         const ids = Array.from({ length: 5 }, (_, index) => openUnifiedPanelTab(WS, {
             kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT,
             resourceId: `canvas-${index + 1}`, label: `Canvas ${index + 1}`,
