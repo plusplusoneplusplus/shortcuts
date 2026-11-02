@@ -39,6 +39,7 @@ export async function acquireClaudeCredential(
         if (!options || typeof options.homeDir !== 'string' || typeof options.coordinationDirectory !== 'string'
             || (options.credentialsFile !== undefined && typeof options.credentialsFile !== 'string')
             || (options.skipKeychain !== undefined && typeof options.skipKeychain !== 'boolean')
+            || (options.forceRefresh !== undefined && typeof options.forceRefresh !== 'boolean')
             || (options.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs)
                 || options.timeoutMs < 100 || options.timeoutMs > 900_000))) {
             throw new AuthError('InvalidConfiguration');

@@ -272,19 +272,26 @@ When the query handle exposes `getContextUsage()`, `TokenUsage` gains `tokenLimi
 
 ### Quota
 
-The Claude Agent SDK exposes no direct quota RPC. On **every platform**, `getAccountQuota()` reads OAuth credentials fresh per call and hits `https://api.anthropic.com/api/oauth/usage`, so dashboard refreshes use fresh data rather than cached SDK events. `resolveClaudeCredentialsRaw` priority:
+`getAccountQuota()` uses `acquireClaudeCredential` from coc-native on every
+platform, then calls `https://api.anthropic.com/api/oauth/usage`. Native auth owns
+credential parsing, source selection, expiry checks, refresh and persistence.
+The host resolves `os.homedir()` and an optional `$CLAUDE_CREDENTIALS_FILE` to
+absolute paths. All workspaces share the private `~/.claude/coc-auth` lock
+directory because credentials are user-wide; it contains no tokens or repo data.
 
-1. `$CLAUDE_CREDENTIALS_FILE` when set — used exclusively; the Keychain is not consulted.
-2. `~/.claude/.credentials.json` (resolved via `path.join(os.homedir(), …)`, so Windows works).
-3. macOS only: the Keychain via `readKeychainCredentials`, running `security find-generic-password -s "Claude Code-credentials" -w` with an argument array (no shell interpolation), returning `undefined` on any failure. Its `execFileSync` dependency is injectable so tests never invoke the real binary.
+One 30-second abort signal covers native acquisition, usage HTTP, response parsing
+and the optional retry. A usage `401` permits one native `forceRefresh` acquisition
+and one retry only if the access token changed. Native refresh locks and re-reads
+the selected source before rotation. Refresh secrets stay in Rust; quota checks
+create no SDK session. External Claude CLI writers remain outside SDK locks.
+Cleanup/disposal aborts quota requests and prevents late quota publication.
 
-`extractClaudeAccessToken` prefers the CLI nested shape (`claudeAiOauth.accessToken`, written by `claude login`) and falls back to the flat `access_token` used by `@anthropic-ai/sdk`. The response maps `five_hour` and `seven_day` utilization windows into snapshots; missing/expired credentials, failed or non-2xx calls, and malformed JSON return `{ quotaSnapshots: {} }`.
-
-**Token refresh.** The OAuth access token expires after ~8h and only the Claude CLI refreshes it. CoC never calls the token endpoint or writes credentials (refresh tokens rotate, so a second writer would log the CLI out). Instead, when `claudeAiOauth.expiresAt` is within 60s (`extractClaudeTokenExpiry`) or the usage API answers 401, `fetchClaudeOAuthQuota` invokes its `refreshCredentials` dependency once per call, re-reads credentials, and retries only if the token changed. The service's `refreshClaudeCredentials()` runs a promptless SDK session (`ClaudeInputGate([])`, `settingSources: []`) that awaits the `accountInfo()` control request — which makes the CLI refresh and persist the token — then closes it (30s timeout). Concurrent callers share one probe, and probes are at least 5 min apart.
-
-On every platform, if OAuth yields no snapshots (refresh failed, or on Windows the token lives only in Credential Manager, which has no reader here), `getAccountQuota()` falls through to cached SDK signals: (1) the most recent structured `rate_limit_event` from a session (`mapClaudeRateLimitInfoToQuota`); (2) a synthesized "subscription active, well under all thresholds" snapshot from `accountInfo()` (`mapClaudeAccountInfoToQuota`, keyed by `subscriptionType` such as `Claude Pro`/`Claude Max`/`team`/`enterprise`, falling back to a non-`firstParty` `apiProvider` like `bedrock`/`vertex`, then `subscription`). With neither, `{ quotaSnapshots: {} }`.
-
-`accountInfo()` is cached as a side effect of every real `sendMessage()`: after obtaining the query handle the service fires `handle.accountInfo?.()` fire-and-forget, writing `lastAccountInfo` on resolution. The only probe subprocess is the credential-refresh probe above.
+OAuth usage maps `five_hour` and `seven_day` utilization into common snapshots.
+Credential, network and parse failures yield no OAuth snapshots. The service then
+uses the last `rate_limit_event`, followed by cached `accountInfo()` from a real
+`sendMessage()` turn, or returns an empty result. OAuth usage takes priority over
+both cached sources. The account-info fallback derives its key from subscription
+or API provider and represents an active subscription below warning thresholds.
 
 ### Session persistence
 

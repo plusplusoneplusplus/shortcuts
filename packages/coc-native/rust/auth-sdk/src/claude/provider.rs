@@ -15,11 +15,14 @@ use tokio_util::sync::CancellationToken;
 pub struct ClaudeTokenOptions<'a> {
     pub sources: &'a ClaudeCredentialSources,
     pub coordination_dir: &'a Path,
+    /// Renew even a fresh token, for example after an API rejects it with HTTP 401.
+    pub force_refresh: bool,
     pub refresh: ClaudeRefreshOptions<'a>,
 }
 
-/// Reads credentials and refreshes only a known expiry within the expiry margin.
-/// Unknown expiry is returned unchanged. Missing credentials never trigger login.
+/// Reads credentials and renews known expiries within the expiry margin, or on
+/// explicit force. Unknown expiry is otherwise unchanged. Missing credentials
+/// never trigger login.
 ///
 /// Refresh pins the selected file or Keychain account, locks it, and re-reads it
 /// before exchanging. Rotated credentials are saved to that exact source before
@@ -49,7 +52,7 @@ async fn acquire_with_store(
         .ok_or_else(|| AuthError::new(ErrorCode::LoginRequired))?;
     let token = parse(&raw)?;
     checkpoint(cancel, deadline)?;
-    if !needs_refresh(&token) {
+    if !options.force_refresh && !needs_refresh(&token) {
         return Ok(token);
     }
 
@@ -73,8 +76,12 @@ async fn acquire_with_store(
         ) => result.map_err(|_| AuthError::new(ErrorCode::TimedOut))??,
     };
     checkpoint(cancel, deadline)?;
+    let observed = token;
     let token = parse(read_source(&source, store)?.expose())?;
-    if !needs_refresh(&token) {
+    let changed = token.access_token.expose() != observed.access_token.expose()
+        || token.refresh_token.as_ref().map(Secret::expose)
+            != observed.refresh_token.as_ref().map(Secret::expose);
+    if !needs_refresh(&token) && (!options.force_refresh || changed) {
         checkpoint(cancel, deadline)?;
         return Ok(token);
     }
@@ -254,6 +261,7 @@ mod tests {
             ClaudeTokenOptions {
                 sources: &self.sources,
                 coordination_dir: &self.locks,
+                force_refresh: false,
                 refresh: ClaudeRefreshOptions::default(),
             }
         }
@@ -335,6 +343,26 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(std::fs::metadata(f.path()).unwrap().permissions().mode() & 0o777, 0o600);
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_forced_refresh_renews_a_fresh_token_only_once() {
+        let f = Fixture::new();
+        let mut value = expired();
+        value["claudeAiOauth"]["expiresAt"] = serde_json::json!(u64::MAX);
+        f.write(&value);
+        let mut options = f.options();
+        options.force_refresh = true;
+        let http = Http::default();
+        let store = Store::default();
+        let cancel = CancellationToken::new();
+        let (a, b) = tokio::join!(
+            acquire_with_store(&http, &options, &store, None, &cancel, deadline()),
+            acquire_with_store(&http, &options, &store, None, &cancel, deadline()),
+        );
+        assert_eq!(a.unwrap().access_token.expose(), "new-access");
+        assert_eq!(b.unwrap().access_token.expose(), "new-access");
+        assert_eq!(http.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

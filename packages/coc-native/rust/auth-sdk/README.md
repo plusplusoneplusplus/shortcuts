@@ -102,7 +102,9 @@ a token is within the 5-minute expiry margin.
 `claude::acquire_token(http, options, cancel, deadline)` returns a `ClaudeToken`.
 `ClaudeTokenOptions` supplies credential sources, refresh options and an existing
 private coordination directory. Fresh tokens and tokens with unknown expiry
-return unchanged. Known expiries within the five-minute margin require renewal.
+return unchanged unless `force_refresh` is set. Known expiries within the
+five-minute margin require renewal. Forced acquisition reuses fresh credentials
+if another lock holder has already replaced the observed token.
 The operation pins the selected file or Keychain account, acquires its advisory
 lock, re-reads credentials, and refreshes only if renewal is still needed.
 
@@ -127,7 +129,8 @@ not share this lock protocol, so their concurrent refreshes remain uncoordinated
 The native package exposes `acquireClaudeCredential(options, signal?)` through a
 one-shot `NativeClaudeCredentialRequest`. Options require absolute `homeDir` and
 `coordinationDirectory`, with optional absolute `credentialsFile`, `skipKeychain`
-and `timeoutMs` (100..900,000 ms, default 30,000). The caller resolves home and
+and `timeoutMs` (100..900,000 ms, default 30,000). `forceRefresh` requests renewal
+of a fresh token rejected by a consuming API. The caller resolves home and
 environment overrides explicitly; construction performs no I/O. JavaScript
 cannot override the token endpoint or client registration.
 

@@ -25,6 +25,7 @@ pub struct ClaudeCredentialOptions {
     pub coordination_directory: String,
     pub credentials_file: Option<String>,
     pub skip_keychain: Option<bool>,
+    pub force_refresh: Option<bool>,
     pub timeout_ms: Option<u32>,
 }
 
@@ -77,6 +78,7 @@ async fn acquire(
         coordination_dir: Path::new(&options.coordination_directory),
         // Endpoint/client overrides are deliberately not exposed to JavaScript.
         refresh: ClaudeRefreshOptions::default(),
+        force_refresh: options.force_refresh.unwrap_or(false),
     };
     let token =
         claude::acquire_token(http, &options, cancel, tokio::time::Instant::from_std(deadline))

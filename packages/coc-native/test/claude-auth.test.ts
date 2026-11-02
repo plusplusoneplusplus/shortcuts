@@ -72,6 +72,14 @@ describe('built Claude acquisition boundary with isolated files', () => {
         expect(await acquireClaudeCredential(options)).toMatchObject({ accessToken: 'second-fixture', scopes: [] });
     });
 
+    it('forwards forced renewal of a fresh rejected token without using HTTP when no refresh secret exists', async () => {
+        writeCredentials();
+        const value = snapshot();
+        writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: value }));
+        await expect(acquireClaudeCredential({ ...options, forceRefresh: true }))
+            .rejects.toMatchObject({ code: 'LoginRequired' });
+    });
+
     it('is one-shot and cancellation before dispatch performs no credential I/O', () => {
         const Native = loadNativeClaudeAuth().NativeClaudeCredentialRequest;
         const request = new Native(options);
@@ -84,7 +92,7 @@ describe('built Claude acquisition boundary with isolated files', () => {
         { homeDir: 'relative' }, { coordinationDirectory: '' }, { credentialsFile: 'relative.json' },
         { credentialsFile: path.join(path.parse(process.cwd()).root, 'private\nfixture') },
         ...[0, 99, 900_001, 0.5, Number.NaN].map(timeoutMs => ({ timeoutMs })),
-        { skipKeychain: 'bad' }, { credentialsFile: null },
+        { skipKeychain: 'bad' }, { forceRefresh: 'bad' }, { credentialsFile: null },
     ])('rejects invalid configuration %# with safe errors', async patch => {
         const error = await acquireClaudeCredential({ ...options, ...patch } as ClaudeCredentialOptions).catch(e => e);
         expect(error).toBeInstanceOf(AuthError);

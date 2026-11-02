@@ -110,8 +110,10 @@ pub(crate) fn extract_token(raw: &str) -> Option<ClaudeToken> {
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
 
     // Try nested claudeAiOauth format first.
-    if let Some(nested) = value.get("claudeAiOauth").and_then(|v| v.as_object()) {
-        let access_token = non_empty_str(nested.get("accessToken"))?;
+    if let Some((nested, access_token)) = value.get("claudeAiOauth")
+        .and_then(|v| v.as_object())
+        .and_then(|nested| non_empty_str(nested.get("accessToken")).map(|token| (nested, token)))
+    {
         return Some(ClaudeToken {
             access_token: Secret::new(access_token),
             refresh_token: non_empty_str(nested.get("refreshToken")).map(Secret::new),
@@ -218,6 +220,12 @@ mod tests {
         });
         let token = extract_token(&json.to_string()).unwrap();
         assert_eq!(token.access_token.expose(), "nested-wins");
+    }
+
+    #[test]
+    fn empty_nested_token_preserves_flat_fallback() {
+        let raw = r#"{"claudeAiOauth":{"accessToken":""},"access_token":"flat-access"}"#;
+        assert_eq!(extract_token(raw).unwrap().access_token.expose(), "flat-access");
     }
 
     #[test]

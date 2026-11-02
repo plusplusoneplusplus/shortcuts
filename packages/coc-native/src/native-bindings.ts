@@ -230,6 +230,7 @@ export interface ClaudeCredentialOptions {
   coordinationDirectory: string
   credentialsFile?: string
   skipKeychain?: boolean
+  forceRefresh?: boolean
   timeoutMs?: number
 }
 

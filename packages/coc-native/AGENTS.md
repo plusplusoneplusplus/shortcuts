@@ -118,6 +118,8 @@ workers settle before the promise. Cancellation and a 100..900,000 ms deadline
 (default 30 seconds) cover queueing through Node publication. Refresh secrets stay in Rust. The frozen
 result contains access/expiry/scope/subscription metadata; `ClaudeCredentialError`
 retains only safe SDK codes, HTTP status and allowlisted rejection values.
+`forceRefresh` permits renewal after a consuming API rejects an unexpired token;
+concurrent lock waiters reuse a fresh replacement observed after locking.
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles and
 one-shot `exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`.

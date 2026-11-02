@@ -26,6 +26,7 @@ impl Fixture {
             coordination_directory: self.0.join("locks").to_str().unwrap().into(),
             credentials_file: None,
             skip_keychain: Some(true),
+            force_refresh: None,
             timeout_ms: Some(100),
         }
     }
@@ -288,4 +289,23 @@ fn queued_workers_are_aborted_on_timeout_or_cancel_before_any_io() {
         assert_eq!(http.calls.load(Ordering::SeqCst), 0);
         assert_eq!(std::fs::read(f.0.join(".claude/.credentials.json")).unwrap(), original);
     }
+}
+
+#[tokio::test]
+async fn force_refresh_is_forwarded_for_an_unexpired_rejected_token() {
+    let f = Fixture::new();
+    f.write();
+    let path = f.0.join(".claude/.credentials.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    value["claudeAiOauth"]["expiresAt"] = serde_json::json!(9999999999999u64);
+    std::fs::write(&path, value.to_string()).unwrap();
+    let mut options = f.options();
+    options.force_refresh = Some(true);
+    let request = NativeClaudeCredentialRequest::new(options).unwrap();
+    let http = Http::new();
+    let token =
+        acquire(&request.options, &http, &request.cancel, request.begin().unwrap()).await.unwrap();
+    assert_eq!(token.access_token.expose(), "new-access");
+    assert_eq!(http.calls.load(Ordering::SeqCst), 1);
 }

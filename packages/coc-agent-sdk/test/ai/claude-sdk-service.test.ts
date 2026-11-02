@@ -8,14 +8,10 @@ import { PassThrough, Writable } from 'node:stream';
 import {
     ClaudeSDKService,
     addClaudeContextUsage,
-    extractClaudeAccessToken,
-    extractClaudeTokenExpiry,
     fetchClaudeOAuthQuota,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
     mapOAuthUsageToQuota,
-    readKeychainCredentials,
-    resolveClaudeCredentialsRaw,
     registerClaudeSDKService,
 } from '../../src/claude-sdk-service';
 import {
@@ -27,6 +23,20 @@ import { RewindUnsupportedError, isRewindUnsupportedError, CompactUnsupportedErr
 import type { TokenUsage } from '../../src/types';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 import { MID_TURN_TOKEN_USAGE_INTERVAL_MS } from '../../src/mid-turn-usage';
+import { acquireClaudeCredential, AuthError } from '@plusplusoneplusplus/coc-native';
+
+vi.mock('@plusplusoneplusplus/coc-native', async importOriginal => ({
+    ...await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>(),
+    acquireClaudeCredential: vi.fn(),
+}));
+const mockAcquireCredential = vi.mocked(acquireClaudeCredential);
+let quotaMkdir: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+    mockAcquireCredential.mockReset().mockRejectedValue(new AuthError('LoginRequired'));
+    quotaMkdir = vi.spyOn(fs.promises, 'mkdir').mockResolvedValue(undefined);
+});
+afterEach(() => { quotaMkdir.mockRestore(); });
+
 
 // ============================================================================
 // Module mock for @anthropic-ai/claude-agent-sdk
@@ -3079,757 +3089,8 @@ describe('mapOAuthUsageToQuota', () => {
     });
 });
 
-// ============================================================================
-// extractClaudeAccessToken
-// ============================================================================
-
-describe('extractClaudeAccessToken', () => {
-    it('reads the Claude Code nested claudeAiOauth.accessToken shape', () => {
-        expect(extractClaudeAccessToken({
-            claudeAiOauth: { accessToken: 'nested-tok', refreshToken: 'r' },
-        })).toBe('nested-tok');
-    });
-
-    it('reads the flat access_token shape', () => {
-        expect(extractClaudeAccessToken({ access_token: 'flat-tok' })).toBe('flat-tok');
-    });
-
-    it('prefers the nested token over a flat token', () => {
-        expect(extractClaudeAccessToken({
-            claudeAiOauth: { accessToken: 'nested-tok' },
-            access_token: 'flat-tok',
-        })).toBe('nested-tok');
-    });
-
-    it('falls back to the flat token when the nested token is empty', () => {
-        expect(extractClaudeAccessToken({
-            claudeAiOauth: { accessToken: '' },
-            access_token: 'flat-tok',
-        })).toBe('flat-tok');
-    });
-
-    it('returns undefined when no token is present', () => {
-        expect(extractClaudeAccessToken({})).toBeUndefined();
-        expect(extractClaudeAccessToken({ claudeAiOauth: {} })).toBeUndefined();
-        expect(extractClaudeAccessToken({ claudeAiOauth: { accessToken: 123 } })).toBeUndefined();
-        expect(extractClaudeAccessToken({ access_token: '' })).toBeUndefined();
-        expect(extractClaudeAccessToken({ claudeAiOauth: null })).toBeUndefined();
-    });
-});
-
-// ============================================================================
-// getAccountQuota — Linux OAuth integration
-// ============================================================================
-
-describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
-    let svc: ClaudeSDKService;
-    const queryFn = vi.fn();
-    let fetchSpy: ReturnType<typeof vi.fn>;
-    let tempCredFile: string;
-    let restorePlatform: () => void;
-
-    beforeEach(() => {
-        restorePlatform = stubProcessPlatform('linux');
-        svc = new ClaudeSDKService();
-        mockDynamicImport.mockReset();
-        queryFn.mockReset();
-        mockDynamicImport.mockResolvedValue({ query: queryFn });
-        fetchSpy = vi.fn();
-        vi.stubGlobal('fetch', fetchSpy);
-        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-${Date.now()}.json`);
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
-    });
-
-    afterEach(() => {
-        svc.dispose();
-        restorePlatform();
-        vi.unstubAllGlobals();
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
-    });
-
-    it('fetches quota from OAuth API on Linux with valid credentials', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-123' }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                five_hour: { utilization: 72, resets_at: '2026-06-04T12:00:00.000Z' },
-                seven_day: { utilization: 45, resets_at: '2026-06-11T00:00:00.000Z' },
-            }),
-        });
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer tok-123' }) })
-        );
-        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
-        expect(quota.quotaSnapshots).toHaveProperty('seven_day');
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
-        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(45);
-    });
-
-    it('fetches quota using the Claude Code nested claudeAiOauth.accessToken credential shape', async () => {
-        // Regression: `claude login` writes credentials as
-        // { claudeAiOauth: { accessToken, refreshToken, ... } }, not a flat
-        // { access_token }. The quota lookup must read the nested token.
-        fs.writeFileSync(tempCredFile, JSON.stringify({
-            claudeAiOauth: {
-                accessToken: 'nested-tok-456',
-                refreshToken: 'refresh-789',
-                expiresAt: 9999999999999,
-                scopes: ['user:inference'],
-                subscriptionType: 'max',
-                rateLimitTier: 'default',
-            },
-        }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                five_hour: { utilization: 30, resets_at: '2026-06-04T12:00:00.000Z' },
-                seven_day: { utilization: 12, resets_at: '2026-06-11T00:00:00.000Z' },
-            }),
-        });
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer nested-tok-456' }) })
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(30);
-        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(12);
-    });
-
-    it('returns empty snapshots when the credentials file is missing', async () => {
-        // tempCredFile is never written — it does not exist
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('returns empty snapshots when the credentials file contains invalid JSON', async () => {
-        fs.writeFileSync(tempCredFile, 'not-json{{{');
-
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('returns empty snapshots when access_token is missing from credentials', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ refresh_token: 'refresh-only' }));
-
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('returns empty snapshots on a non-2xx API response', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-bad' }));
-        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
-
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-    });
-
-    it('returns empty snapshots on a network error', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-net' }));
-        fetchSpy.mockRejectedValueOnce(new Error('Network failure'));
-
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-    });
-
-    it('returns empty snapshots when the API response JSON is malformed', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-bad-body' }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => { throw new SyntaxError('Unexpected token'); },
-        });
-
-        const quota = await svc.getAccountQuota();
-        expect(quota).toEqual({ quotaSnapshots: {} });
-    });
-
-    it('prefers fresh OAuth API usage over cached rate-limit and accountInfo data on Linux', async () => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'tok-123' }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ five_hour: { utilization: 10 } }),
-        });
-        const accountInfoFn = vi.fn().mockResolvedValue({ subscriptionType: 'pro' });
-
-        queryFn.mockReturnValueOnce(makeQueryHandle([
-            {
-                type: 'rate_limit_event',
-                rate_limit_info: {
-                    status: 'allowed_warning',
-                    rateLimitType: 'five_hour',
-                    utilization: 0.90,
-                },
-            },
-            { type: 'result', subtype: 'success' },
-        ], accountInfoFn));
-        await svc.sendMessage({ prompt: 'hello' });
-        await Promise.resolve();
-
-        const quota = await svc.getAccountQuota();
-
-        expect(accountInfoFn).toHaveBeenCalled();
-        expect(fetchSpy).toHaveBeenCalledOnce();
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(10);
-    });
-
-    // Regression: the OAuth access token expires after ~8h and only the Claude
-    // CLI refreshes it. Quota previously read the stale token, got a 401, and
-    // silently showed no quota until a Claude turn happened to refresh it.
-    const writeNestedCreds = (accessToken: string, expiresAt: number) => {
-        fs.writeFileSync(tempCredFile, JSON.stringify({
-            claudeAiOauth: { accessToken, refreshToken: 'r', expiresAt },
-        }));
-    };
-    const usageOk = (utilization: number) => ({
-        ok: true,
-        status: 200,
-        json: async () => ({ five_hour: { utilization } }),
-    });
-
-    it('refreshes an expired token through a promptless SDK accountInfo() probe before fetching', async () => {
-        writeNestedCreds('stale-tok', Date.now() - 1000);
-        const accountInfo = vi.fn(async () => {
-            writeNestedCreds('fresh-tok', Date.now() + 8 * 3600_000);
-            return {};
-        });
-        queryFn.mockReturnValueOnce({ accountInfo });
-        fetchSpy.mockResolvedValueOnce(usageOk(33));
-
-        const quota = await svc.getAccountQuota();
-
-        expect(accountInfo).toHaveBeenCalledOnce();
-        const probeOptions = queryFn.mock.calls[0][0];
-        expect(typeof probeOptions.prompt).not.toBe('string');
-        expect(probeOptions.options.settingSources).toEqual([]);
-        expect(probeOptions.abortController.signal.aborted).toBe(true);
-        expect(fetchSpy).toHaveBeenCalledOnce();
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer fresh-tok' }) }),
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(33);
-    });
-
-    it('refreshes and retries once when the usage API answers 401 for an unexpired token', async () => {
-        writeNestedCreds('revoked-tok', Date.now() + 3600_000);
-        const accountInfo = vi.fn(async () => {
-            writeNestedCreds('fresh-tok', Date.now() + 8 * 3600_000);
-            return {};
-        });
-        queryFn.mockReturnValueOnce({ accountInfo });
-        fetchSpy
-            .mockResolvedValueOnce({ ok: false, status: 401 })
-            .mockResolvedValueOnce(usageOk(21));
-
-        const quota = await svc.getAccountQuota();
-
-        expect(accountInfo).toHaveBeenCalledOnce();
-        expect(fetchSpy).toHaveBeenCalledTimes(2);
-        expect(fetchSpy.mock.calls[1][1].headers.Authorization).toBe('Bearer fresh-tok');
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(21);
-    });
-
-    it('does not spawn a refresh probe while the token is still valid', async () => {
-        writeNestedCreds('valid-tok', Date.now() + 3600_000);
-        fetchSpy.mockResolvedValueOnce(usageOk(5));
-
-        const quota = await svc.getAccountQuota();
-
-        expect(queryFn).not.toHaveBeenCalled();
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(5);
-    });
-
-    it('does not retry when the refresh leaves the token unchanged, and spaces out later probes', async () => {
-        writeNestedCreds('stale-tok', Date.now() - 1000);
-        const accountInfo = vi.fn().mockResolvedValue({});
-        queryFn.mockReturnValue({ accountInfo });
-        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
-
-        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
-        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
-
-        // One probe across both polls; each poll makes a single usage request.
-        expect(accountInfo).toHaveBeenCalledOnce();
-        expect(fetchSpy).toHaveBeenCalledTimes(2);
-    });
-
-    it('falls back to the cached rate-limit snapshot on Linux when OAuth yields nothing', async () => {
-        writeNestedCreds('stale-tok', Date.now() - 1000);
-        queryFn.mockReturnValueOnce(makeQueryHandle([
-            {
-                type: 'rate_limit_event',
-                rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42 },
-            },
-            { type: 'result', subtype: 'success' },
-        ]));
-        await svc.sendMessage({ prompt: 'hello' });
-        await Promise.resolve();
-        // The refresh probe fails, so OAuth stays empty.
-        queryFn.mockImplementationOnce(() => { throw new Error('spawn failed'); });
-        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
-
-        const quota = await svc.getAccountQuota();
-
-        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
-    });
-});
-
-describe('fetchClaudeOAuthQuota token refresh', () => {
-    let fetchSpy: ReturnType<typeof vi.fn>;
-    let creds: string;
-    const readFile = () => creds;
-    const setCreds = (accessToken: string, expiresAt?: number) => {
-        creds = JSON.stringify({ claudeAiOauth: { accessToken, ...(expiresAt !== undefined ? { expiresAt } : {}) } });
-    };
-
-    beforeEach(() => {
-        fetchSpy = vi.fn();
-        vi.stubGlobal('fetch', fetchSpy);
-        process.env['CLAUDE_CREDENTIALS_FILE'] = path.join(os.tmpdir(), 'coc-injected-creds.json');
-    });
-
-    afterEach(() => {
-        vi.unstubAllGlobals();
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-    });
-
-    it('treats a token inside the expiry skew window as expired', async () => {
-        setCreds('old', 1_000_000 + 30_000);
-        const refreshCredentials = vi.fn(async () => { setCreds('new', 99_000_000); });
-        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 1 } }) });
-
-        await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
-
-        expect(refreshCredentials).toHaveBeenCalledOnce();
-        expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe('Bearer new');
-    });
-
-    it('still tries the stale token when the refresh throws', async () => {
-        setCreds('old', 1);
-        const refreshCredentials = vi.fn().mockRejectedValue(new Error('timed out'));
-        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 2 } }) });
-
-        const quota = await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
-
-        expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe('Bearer old');
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(2);
-    });
-
-    it('refreshes at most once per call even when the token is expired and the API answers 401', async () => {
-        setCreds('old', 1);
-        const refreshCredentials = vi.fn(async () => { setCreds('newer', 99_000_000); });
-        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
-
-        const quota = await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(refreshCredentials).toHaveBeenCalledOnce();
-        expect(fetchSpy).toHaveBeenCalledOnce();
-    });
-
-    it('never refreshes a token without a known expiry unless the API answers 401', async () => {
-        setCreds('no-expiry');
-        const refreshCredentials = vi.fn();
-        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 3 } }) });
-
-        await fetchClaudeOAuthQuota({ readFile, refreshCredentials });
-
-        expect(refreshCredentials).not.toHaveBeenCalled();
-    });
-});
-
-describe('extractClaudeTokenExpiry', () => {
-    it('reads the nested claudeAiOauth.expiresAt', () => {
-        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: 1790837219453 } })).toBe(1790837219453);
-    });
-
-    it('returns undefined when absent or not a finite number', () => {
-        expect(extractClaudeTokenExpiry({ access_token: 'flat' })).toBeUndefined();
-        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: '123' } })).toBeUndefined();
-        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: NaN } })).toBeUndefined();
-        expect(extractClaudeTokenExpiry({ claudeAiOauth: null })).toBeUndefined();
-    });
-});
-
-// ============================================================================
-// getAccountQuota — Windows OAuth integration
-// ============================================================================
-
-describe('ClaudeSDKService.getAccountQuota (Windows OAuth)', () => {
-    let svc: ClaudeSDKService;
-    const queryFn = vi.fn();
-    let fetchSpy: ReturnType<typeof vi.fn>;
-    let tempCredFile: string;
-    let restorePlatform: () => void;
-
-    beforeEach(() => {
-        restorePlatform = stubProcessPlatform('win32');
-        svc = new ClaudeSDKService();
-        mockDynamicImport.mockReset();
-        queryFn.mockReset();
-        mockDynamicImport.mockResolvedValue({ query: queryFn });
-        fetchSpy = vi.fn();
-        vi.stubGlobal('fetch', fetchSpy);
-        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-win32-${Date.now()}.json`);
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-    });
-
-    afterEach(() => {
-        svc.dispose();
-        restorePlatform();
-        vi.unstubAllGlobals();
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
-    });
-
-    it('routes the win32 branch to the on-disk OAuth path with the Claude Code nested credential shape', async () => {
-        // Regression: Windows previously never called the OAuth usage endpoint, so
-        // the provider panel showed no quota until a live session emitted a
-        // rate_limit_event. `claude login` writes the same nested credential shape
-        // on Windows, so getAccountQuota() must read it and hit the usage API.
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
-        fs.writeFileSync(tempCredFile, JSON.stringify({
-            claudeAiOauth: { accessToken: 'win-tok', subscriptionType: 'max' },
-        }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                five_hour: { utilization: 63, resets_at: '2026-06-04T12:00:00.000Z' },
-                seven_day: { utilization: 27, resets_at: '2026-06-11T00:00:00.000Z' },
-            }),
-        });
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer win-tok' }) }),
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(63);
-        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(27);
-    });
-
-    it('prefers fresh OAuth usage over cached rate-limit data on Windows', async () => {
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'win-tok-2' }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ five_hour: { utilization: 8 } }),
-        });
-
-        queryFn.mockReturnValueOnce(makeQueryHandle([
-            {
-                type: 'rate_limit_event',
-                rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: 0.95 },
-            },
-            { type: 'result', subtype: 'success' },
-        ]));
-        await svc.sendMessage({ prompt: 'hello' });
-        await Promise.resolve();
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).toHaveBeenCalledOnce();
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(8);
-    });
-
-    it('falls back to cached rate-limit snapshot when OAuth yields no snapshots on Windows', async () => {
-        // Point at a missing creds file so the OAuth path is deterministically empty
-        // (env-var file is used exclusively — the real home dir is never consulted).
-        // The cached rate-limit info must then win.
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile; // never written → missing
-        queryFn.mockReturnValueOnce(makeQueryHandle([
-            {
-                type: 'rate_limit_event',
-                rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42 },
-            },
-            { type: 'result', subtype: 'success' },
-        ]));
-        await svc.sendMessage({ prompt: 'hello' });
-        await Promise.resolve();
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).not.toHaveBeenCalled();
-        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
-    });
-
-    it('returns empty snapshots when Windows has neither on-disk creds nor cached info', async () => {
-        // Point at a missing creds file so the OAuth path is deterministically empty
-        // (env-var file is used exclusively — the real home dir is never consulted).
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile; // never written → missing
-
-        const quota = await svc.getAccountQuota();
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-    });
-});
-
-// ============================================================================
-// readKeychainCredentials (macOS Keychain reader — injectable exec)
-// ============================================================================
-
-describe('readKeychainCredentials', () => {
-    it('shells out to `security` with an argument array (no shell interpolation)', () => {
-        const exec = vi.fn().mockReturnValue('{"access_token":"kc-tok"}\n');
-        const result = readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync);
-
-        expect(exec).toHaveBeenCalledWith(
-            'security',
-            ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-            { encoding: 'utf8' },
-        );
-        // Trailing newline from the CLI is stripped.
-        expect(result).toBe('{"access_token":"kc-tok"}');
-    });
-
-    it('returns undefined when `security` exits non-zero / has no matching entry', () => {
-        const exec = vi.fn(() => { throw new Error('SecKeychainSearchCopyNext: not found'); });
-        expect(readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
-    });
-
-    it('returns undefined when the `security` binary is absent (ENOENT)', () => {
-        const exec = vi.fn(() => {
-            const err = new Error('spawn security ENOENT') as NodeJS.ErrnoException;
-            err.code = 'ENOENT';
-            throw err;
-        });
-        expect(readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
-    });
-
-    it('returns undefined for empty / whitespace-only output', () => {
-        const empty = vi.fn().mockReturnValue('');
-        const blank = vi.fn().mockReturnValue('   \n');
-        expect(readKeychainCredentials(empty as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
-        expect(readKeychainCredentials(blank as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
-    });
-});
-
-// ============================================================================
-// resolveClaudeCredentialsRaw (credential source resolution order)
-// ============================================================================
-
-describe('resolveClaudeCredentialsRaw', () => {
-    it('uses $CLAUDE_CREDENTIALS_FILE when set and never reads the Keychain', () => {
-        const readKeychain = vi.fn();
-        const readFile = vi.fn((p: string) => (p === '/env/creds.json' ? '{"access_token":"env"}' : undefined));
-
-        const raw = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: '/env/creds.json',
-            homeDir: '/home/user',
-            readFile,
-            readKeychain,
-        });
-
-        expect(raw).toBe('{"access_token":"env"}');
-        expect(readFile).toHaveBeenCalledWith('/env/creds.json');
-        expect(readKeychain).not.toHaveBeenCalled();
-    });
-
-    it('returns undefined (and never reads the Keychain) when the env-var file is missing', () => {
-        const readKeychain = vi.fn().mockReturnValue('{"access_token":"kc"}');
-        const readFile = vi.fn(() => undefined);
-
-        const raw = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: '/env/missing.json',
-            homeDir: '/home/user',
-            readFile,
-            readKeychain,
-        });
-
-        expect(raw).toBeUndefined();
-        expect(readKeychain).not.toHaveBeenCalled();
-    });
-
-    it('falls back to ~/.claude/.credentials.json when no env var is set', () => {
-        const expected = path.join('/home/user', '.claude', '.credentials.json');
-        const readKeychain = vi.fn();
-        const readFile = vi.fn((p: string) => (p === expected ? '{"access_token":"file"}' : undefined));
-
-        const raw = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: undefined,
-            homeDir: '/home/user',
-            readFile,
-            readKeychain,
-        });
-
-        expect(raw).toBe('{"access_token":"file"}');
-        expect(readKeychain).not.toHaveBeenCalled();
-    });
-
-    it('invokes the Keychain reader when there is no env var and no on-disk file', () => {
-        const readKeychain = vi.fn().mockReturnValue('{"claudeAiOauth":{"accessToken":"kc-tok"}}');
-        const readFile = vi.fn(() => undefined);
-
-        const raw = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: undefined,
-            homeDir: '/home/user',
-            readFile,
-            readKeychain,
-        });
-
-        expect(readFile).toHaveBeenCalledWith(path.join('/home/user', '.claude', '.credentials.json'));
-        expect(readKeychain).toHaveBeenCalledOnce();
-        expect(raw).toBe('{"claudeAiOauth":{"accessToken":"kc-tok"}}');
-    });
-
-    it('returns undefined when neither the file nor the Keychain yield content', () => {
-        const raw = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: undefined,
-            homeDir: '/home/user',
-            readFile: () => undefined,
-            readKeychain: () => undefined,
-        });
-        expect(raw).toBeUndefined();
-    });
-});
-
-// ============================================================================
-// getAccountQuota — macOS / Keychain integration
-// ============================================================================
-
-describe('ClaudeSDKService.getAccountQuota (macOS / Keychain)', () => {
-    let svc: ClaudeSDKService;
-    const queryFn = vi.fn();
-    let fetchSpy: ReturnType<typeof vi.fn>;
-    let tempCredFile: string;
-    let restorePlatform: () => void;
-
-    beforeEach(() => {
-        restorePlatform = stubProcessPlatform('darwin');
-        svc = new ClaudeSDKService();
-        mockDynamicImport.mockReset();
-        queryFn.mockReset();
-        mockDynamicImport.mockResolvedValue({ query: queryFn });
-        fetchSpy = vi.fn();
-        vi.stubGlobal('fetch', fetchSpy);
-        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-darwin-${Date.now()}.json`);
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-    });
-
-    afterEach(() => {
-        svc.dispose();
-        restorePlatform();
-        vi.unstubAllGlobals();
-        delete process.env['CLAUDE_CREDENTIALS_FILE'];
-        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
-    });
-
-    it('routes the darwin branch to the credential-backed OAuth path (AC-01)', async () => {
-        // With the env-var file present, getAccountQuota() must take the OAuth
-        // path on darwin rather than the cached rate-limit fallback.
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'darwin-tok' }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ five_hour: { utilization: 55 }, seven_day: { utilization: 22 } }),
-        });
-
-        const quota = await svc.getAccountQuota();
-
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer darwin-tok' }) }),
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(55);
-        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(22);
-    });
-
-    it('populates five_hour/seven_day from valid Keychain credentials (AC-04)', async () => {
-        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
-        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({
-            claudeAiOauth: { accessToken: 'kc-access-tok', refreshToken: 'r', expiresAt: 9999999999999 },
-        }));
-        fetchSpy.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                five_hour: { utilization: 40, resets_at: '2026-06-04T12:00:00.000Z' },
-                seven_day: { utilization: 18, resets_at: '2026-06-11T00:00:00.000Z' },
-            }),
-        });
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
-
-        expect(readKeychain).toHaveBeenCalledOnce();
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer kc-access-tok' }) }),
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(40);
-        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(18);
-        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
-    });
-
-    it('returns empty snapshots when there is no Keychain entry (AC-04)', async () => {
-        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
-        const readKeychain = vi.fn().mockReturnValue(undefined);
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
-    });
-
-    it('returns empty snapshots for a malformed Keychain payload (AC-04)', async () => {
-        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
-        const readKeychain = vi.fn().mockReturnValue('not-json{{{');
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        expect(fetchSpy).not.toHaveBeenCalled();
-        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
-    });
-
-    it('returns empty snapshots on a 401 from the usage API with Keychain creds (AC-04)', async () => {
-        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
-        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-tok' } }));
-        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
-    });
-
-    it('returns empty snapshots on a network error with Keychain creds (AC-04)', async () => {
-        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
-        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-tok' } }));
-        fetchSpy.mockRejectedValueOnce(new Error('Network failure'));
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
-
-        expect(quota).toEqual({ quotaSnapshots: {} });
-        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
-    });
-
-    it('prefers $CLAUDE_CREDENTIALS_FILE over the Keychain on darwin (AC-02)', async () => {
-        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
-        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'file-wins' }));
-        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-loses' } }));
-        fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => ({ five_hour: { utilization: 5 } }) });
-
-        const quota = await fetchClaudeOAuthQuota({ readKeychain });
-
-        expect(readKeychain).not.toHaveBeenCalled();
-        expect(fetchSpy).toHaveBeenCalledWith(
-            'https://api.anthropic.com/api/oauth/usage',
-            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer file-wins' }) }),
-        );
-        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(5);
-    });
-});
+// Quota credential parsing and storage are tested in coc-native/auth-sdk.
+// These tests exercise the provider's native boundary and HTTP/fallback policy.
 
 describe('ClaudeSDKService session operations', () => {
     let svc: ClaudeSDKService;
@@ -4576,5 +3837,202 @@ describe('ClaudeSDKService.sendMessage rewind anchor (AC-04)', () => {
 
         expect(result.success).toBe(true);
         expect(result.userMessageEventId).toBeUndefined();
+    });
+});
+
+describe.each(['linux', 'win32', 'darwin'] as const)('native Claude quota on %s', platform => {
+    let svc: ClaudeSDKService;
+    let restorePlatform: () => void;
+    const queryFn = vi.fn();
+    const fetchSpy = vi.fn();
+    const credential = (accessToken = 'native-access') => ({ accessToken, scopes: ['user:inference'] });
+    const usage = (utilization = 20) => ({
+        ok: true, status: 200, json: async () => ({ five_hour: { utilization }, seven_day: { utilization: 10 } }),
+    });
+    beforeEach(() => {
+        restorePlatform = stubProcessPlatform(platform);
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset().mockResolvedValue({ query: queryFn });
+        queryFn.mockReset();
+        fetchSpy.mockReset().mockResolvedValue(usage());
+        vi.stubGlobal('fetch', fetchSpy);
+        mockAcquireCredential.mockResolvedValue(credential());
+        vi.stubEnv('CLAUDE_CREDENTIALS_FILE', path.join(os.tmpdir(), 'explicit-claude-creds.json'));
+    });
+    afterEach(() => {
+        svc.dispose();
+        restorePlatform();
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+    });
+
+    it('uses native access credentials without creating an SDK refresh session', async () => {
+        const quota = await svc.getAccountQuota();
+        expect(mockAcquireCredential).toHaveBeenCalledOnce();
+        const [options, signal] = mockAcquireCredential.mock.calls[0];
+        expect(options).toEqual({
+            homeDir: path.resolve(os.homedir()),
+            coordinationDirectory: path.join(path.resolve(os.homedir()), '.claude', 'coc-auth'),
+            credentialsFile: path.join(os.tmpdir(), 'explicit-claude-creds.json'), timeoutMs: 30_000,
+        });
+        expect(quotaMkdir).toHaveBeenCalledWith(options.coordinationDirectory, { recursive: true, mode: 0o700 });
+        expect(fetchSpy).toHaveBeenCalledWith('https://api.anthropic.com/api/oauth/usage', {
+            headers: { Authorization: 'Bearer native-access' }, redirect: 'error', signal,
+        });
+        expect(queryFn).not.toHaveBeenCalled();
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(20);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(10);
+    });
+
+    it('forces native renewal after 401 and retries once with the changed access token', async () => {
+        mockAcquireCredential.mockResolvedValueOnce(credential('rejected')).mockResolvedValueOnce(credential('rotated'));
+        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 }).mockResolvedValueOnce(usage(33));
+        expect((await svc.getAccountQuota()).quotaSnapshots.five_hour.usedRequests).toBe(33);
+        expect(mockAcquireCredential.mock.calls[1][0]).toEqual({
+            ...mockAcquireCredential.mock.calls[0][0], forceRefresh: true,
+        });
+        expect(mockAcquireCredential.mock.calls[1][1]).toBe(mockAcquireCredential.mock.calls[0][1]);
+        expect(fetchSpy.mock.calls[1][1].headers.Authorization).toBe('Bearer rotated');
+        expect(queryFn).not.toHaveBeenCalled();
+    });
+
+    it('does not loop on repeated 401s or retry with an unchanged token', async () => {
+        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
+        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
+        expect(mockAcquireCredential).toHaveBeenCalledTimes(2);
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        mockAcquireCredential.mockClear().mockResolvedValueOnce(credential('old')).mockResolvedValueOnce(credential('new'));
+        fetchSpy.mockClear();
+        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
+        expect(mockAcquireCredential).toHaveBeenCalledTimes(2);
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('gets a fresh native snapshot on each poll, across independent service instances', async () => {
+        const other = new ClaudeSDKService();
+        try {
+            mockAcquireCredential.mockResolvedValueOnce(credential('first')).mockResolvedValueOnce(credential('second'));
+            await svc.getAccountQuota();
+            await other.getAccountQuota();
+            expect(mockAcquireCredential).toHaveBeenCalledTimes(2);
+            expect(mockAcquireCredential.mock.calls[0][0].coordinationDirectory)
+                .toBe(mockAcquireCredential.mock.calls[1][0].coordinationDirectory);
+            expect(fetchSpy.mock.calls[1][1].headers.Authorization).toBe('Bearer second');
+            expect(queryFn).not.toHaveBeenCalled();
+        } finally { other.dispose(); }
+    });
+
+    it('keeps cached rate-limit fallback on native failure and prefers live OAuth when it works', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            { type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42 } },
+            { type: 'result', subtype: 'success' },
+        ]));
+        await svc.sendMessage({ prompt: 'hello' });
+        const calls = queryFn.mock.calls.length;
+        mockAcquireCredential.mockRejectedValueOnce(new AuthError('StorageDenied'));
+        expect((await svc.getAccountQuota()).quotaSnapshots.five_hour.usedRequests).toBe(42);
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect((await svc.getAccountQuota()).quotaSnapshots.five_hour.usedRequests).toBe(20);
+        expect(queryFn).toHaveBeenCalledTimes(calls);
+    });
+
+    it.each(['cleanup', 'dispose'] as const)('%s cancels pending native acquisition without publishing late quota', async action => {
+        let complete!: (value: ReturnType<typeof credential>) => void;
+        mockAcquireCredential.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+        const pending = svc.getAccountQuota();
+        await vi.waitFor(() => expect(mockAcquireCredential).toHaveBeenCalledOnce());
+        const signal = mockAcquireCredential.mock.calls[0][1]!;
+        await svc[action]();
+        expect(signal.aborted).toBe(true);
+        complete(credential());
+        expect(await pending).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('cleanup cancels an in-flight usage request', async () => {
+        fetchSpy.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+        }));
+        const pending = svc.getAccountQuota();
+        await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+        const signal = fetchSpy.mock.calls[0][1].signal as AbortSignal;
+        await svc.cleanup();
+        expect(signal.aborted).toBe(true);
+        expect(await pending).toEqual({ quotaSnapshots: {} });
+    });
+});
+
+describe('fetchClaudeOAuthQuota native failure and HTTP policy', () => {
+    const fetchSpy = vi.fn();
+    const homeDir = path.join(os.tmpdir(), 'coc-quota-home-fixture');
+    beforeEach(() => {
+        vi.stubGlobal('fetch', fetchSpy);
+        fetchSpy.mockReset();
+        mockAcquireCredential.mockResolvedValue({ accessToken: 'native-access', scopes: [] });
+    });
+    afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+    it.each(['LoginRequired', 'StorageDenied', 'TimedOut', 'InvalidTokenResponse'] as const)('returns empty quota for native %s', async code => {
+        mockAcquireCredential.mockRejectedValueOnce(new AuthError(code));
+        expect(await fetchClaudeOAuthQuota({ homeDir })).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it.each(['http', 'network', 'json', 'null', 'array'] as const)('returns empty quota on %s failure', async kind => {
+        if (kind === 'network') fetchSpy.mockRejectedValue(new Error('private-provider-error'));
+        else fetchSpy.mockResolvedValue({
+            ok: kind !== 'http', status: kind === 'http' ? 500 : 200,
+            json: async () => {
+                if (kind === 'json') throw new Error('private-body');
+                return kind === 'null' ? null : [];
+            },
+        });
+        expect(await fetchClaudeOAuthQuota({ homeDir })).toEqual({ quotaSnapshots: {} });
+        expect(mockAcquireCredential).toHaveBeenCalledOnce();
+    });
+
+    it('returns empty quota when forced renewal fails without using a stale token again', async () => {
+        mockAcquireCredential.mockResolvedValueOnce({ accessToken: 'rejected', scopes: [] })
+            .mockRejectedValueOnce(new AuthError('InteractionRequired'));
+        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
+        expect(await fetchClaudeOAuthQuota({ homeDir })).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+
+    it('resolves relative overrides and omits an unset override for native default source selection', async () => {
+        fetchSpy.mockResolvedValue({ ok: false, status: 403 });
+        vi.stubEnv('CLAUDE_CREDENTIALS_FILE', 'relative-creds.json');
+        await fetchClaudeOAuthQuota({ homeDir });
+        expect(mockAcquireCredential.mock.calls[0][0].credentialsFile).toBe(path.resolve('relative-creds.json'));
+        vi.stubEnv('CLAUDE_CREDENTIALS_FILE', '');
+        await fetchClaudeOAuthQuota({ homeDir });
+        expect(mockAcquireCredential.mock.calls[1][0]).not.toHaveProperty('credentialsFile');
+    });
+
+    it('does not acquire credentials when cancelled or the lock directory cannot be prepared', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        expect(await fetchClaudeOAuthQuota({ homeDir, signal: controller.signal })).toEqual({ quotaSnapshots: {} });
+        expect(quotaMkdir).not.toHaveBeenCalled();
+        quotaMkdir.mockRejectedValueOnce(new Error('denied'));
+        expect(await fetchClaudeOAuthQuota({ homeDir })).toEqual({ quotaSnapshots: {} });
+        expect(mockAcquireCredential).not.toHaveBeenCalled();
+    });
+
+    it('uses one 30-second signal for acquisition, usage and the retry', async () => {
+        const controller = new AbortController();
+        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        fetchSpy.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(new Error('deadline')), { once: true });
+        }));
+        try {
+            const pending = fetchClaudeOAuthQuota({ homeDir });
+            await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+            expect(timeout).toHaveBeenCalledWith(30_000);
+            expect(mockAcquireCredential.mock.calls[0][1]).toBe(controller.signal);
+            expect(fetchSpy.mock.calls[0][1].signal).toBe(controller.signal);
+            controller.abort();
+            expect(await pending).toEqual({ quotaSnapshots: {} });
+        } finally { timeout.mockRestore(); }
     });
 });
