@@ -23,8 +23,13 @@ import { getRepoDataPath } from '../paths';
 
 const HTML_EMBED_MAX_BYTES = 4 * 1024 * 1024;
 const HTML_EMBED_TYPES = new Set(['.html', '.htm']);
-const TRUSTED_HTML_DIRS = [
+const TRUSTED_PREVIEW_DIRS = [
     ...TRUSTED_READ_ONLY_DIRS,
+    // macOS keeps the shared temp directory separate from its per-user TMPDIR.
+    ...(process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : []),
+];
+const TRUSTED_HTML_DIRS = [
+    ...TRUSTED_PREVIEW_DIRS,
     path.join(os.homedir(), '.codex'),
     path.join(os.homedir(), '.claude'),
 ];
@@ -188,31 +193,31 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             const isWithinRepoGroupMember = repoGroupReadRoots.some(member => (
                 isWithinDirectory(resolvedPath, member.rootPath)
             ));
-            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinRepoGroupMember && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinRepoGroupMember && !isWithinDirectory(resolvedPath, dataDir) && !TRUSTED_PREVIEW_DIRS.some(root => isWithinDirectory(resolvedPath, root)) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
             try {
+                const realPath = await fs.promises.realpath(resolvedPath);
+                const allowedRoots = [
+                    wsRoot,
+                    ...repoGroupReadRoots.map(member => member.rootPath),
+                    ...TRUSTED_PREVIEW_DIRS,
+                    dataDir,
+                    taskRoot.absolutePath,
+                ].filter(root => isWithinDirectory(resolvedPath, root));
+                let contained = false;
+                for (const root of allowedRoots) {
+                    const realRoot = await realpathIfExists(root);
+                    if (realRoot && isWithinDirectory(realPath, realRoot)) {
+                        contained = true;
+                        break;
+                    }
+                }
+                if (!contained) {
+                    return sendError(res, 403, 'Access denied: path is outside allowed file roots');
+                }
                 if (download || resolve) {
-                    const realPath = await fs.promises.realpath(resolvedPath);
-                    const allowedRoots = [
-                        wsRoot,
-                        ...repoGroupReadRoots.map(member => member.rootPath),
-                        ...TRUSTED_READ_ONLY_DIRS,
-                        dataDir,
-                        taskRoot.absolutePath,
-                    ].filter(root => isWithinDirectory(resolvedPath, root));
-                    let contained = false;
-                    for (const root of allowedRoots) {
-                        const realRoot = await realpathIfExists(root);
-                        if (realRoot && isWithinDirectory(realPath, realRoot)) {
-                            contained = true;
-                            break;
-                        }
-                    }
-                    if (!contained) {
-                        return sendError(res, 403, 'Access denied: path is outside allowed file roots');
-                    }
                     const stat = await fs.promises.stat(realPath);
                     if (resolve) {
                         if (!stat.isFile() && !stat.isDirectory()) {
@@ -255,12 +260,12 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     }
                     return;
                 }
-                const stat = await fs.promises.stat(resolvedPath);
+                const stat = await fs.promises.stat(realPath);
 
                 // ── Directory listing ──────────────────────────────
                 if (stat.isDirectory()) {
                     const MAX_DIR_ENTRIES = 30;
-                    const dirents = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
+                    const dirents = await fs.promises.readdir(realPath, { withFileTypes: true });
                     // Sort: directories first, then files, both alphabetical
                     dirents.sort((a, b) => {
                         const aDir = a.isDirectory() ? 0 : 1;
@@ -315,7 +320,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                             size: stat.size,
                         });
                     }
-                    const buffer = await fs.promises.readFile(resolvedPath);
+                    const buffer = await fs.promises.readFile(realPath);
                     return sendJSON(res, 200, {
                         type: 'image' as const,
                         path: resolvedPath,
@@ -356,7 +361,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendError(res, 400, 'File too large (max 4MB)');
                 }
 
-                const content = await fs.promises.readFile(resolvedPath, 'utf-8');
+                const content = await fs.promises.readFile(realPath, 'utf-8');
                 const allLines = content.split('\n');
                 // Remove trailing empty line from split
                 if (allLines.length > 0 && allLines[allLines.length - 1] === '') {

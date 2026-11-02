@@ -28,6 +28,8 @@ references before editing. Paths are package-relative.
 
 - Support multiple workspaces/servers. Build paths with
   `getRepoDataPath(dataDir, workspaceId, filename)`; do not add top-level per-repo storage.
+  File previews, metadata preflight and downloads validate realpath containment in
+  the read roots documented in the REST reference, including macOS shared temp aliases.
 - Embedded web-page zoom uses desktop browser preference IPC and broadcasts, not
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
