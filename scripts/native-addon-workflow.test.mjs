@@ -84,6 +84,24 @@ test("the cross-platform coc suite uses its matching addon", () => {
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);
 });
 
+test("macOS CI builds and consumes native artifacts on the same pinned Intel runner", () => {
+    for (const name of ["coc-native", "forge-test", "coc-test", "coc-desktop-test"]) {
+        const job = jobBlock(ci, name);
+        const runners = new Set(job.match(/\bmacos-[\w-]+/g));
+        assert.deepEqual(runners, new Set(["macos-15-intel"]),
+            `${name} must use the Intel pool and match the native artifact's architecture`);
+        assert.match(job, /^    runs-on: \$\{\{ matrix\.os \}\}$/m);
+        assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);
+    }
+});
+
+test("macOS consumers cannot restore node_modules cached for another architecture", () => {
+    for (const name of ["forge-test", "coc-test", "coc-desktop-test"]) {
+        assert.match(jobBlock(ci, name), /key: \$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node-modules-/,
+            `${name} must not restore ARM64 native npm dependencies on Intel`);
+    }
+});
+
 test("desktop browser control builds its server contracts and runs the live relay workflow on every platform", () => {
     const job = jobBlock(ci, "coc-desktop-test");
     const server = job.indexOf("npm run build -w packages/coc");
@@ -93,7 +111,7 @@ test("desktop browser control builds its server contracts and runs the live rela
         assert.equal(job.split(`test/e2e/${name}.e2e.test.ts`).length - 1, 2,
             `${name} must run in both the headless Linux and native macOS/Windows selectors`);
     }
-    assert.match(job, /os: \[ubuntu-latest, macos-latest, windows-latest\]/);
+    assert.match(job, /os: \[ubuntu-latest, macos-15-intel, windows-latest\]/);
 });
 
 // The only CI check that launches the real desktop app against its forked
@@ -270,7 +288,7 @@ test('Teams SDK feature coverage is required by the aggregate CI gate', () => {
     assert.match(gate, /\[coc-native\]="\$\{\{ needs\.coc-native\.result \}\}"/);
     assert.doesNotMatch(ci, /^  teams-sdk:|needs\.teams-sdk\.result/m);
     const sdk = jobBlock(ci, 'coc-native');
-    for (const os of ['ubuntu-latest', 'macos-latest', 'windows-latest']) {
+    for (const os of ['ubuntu-latest', 'macos-15-intel', 'windows-latest']) {
         assert.ok(sdk.includes(`os: ${os}`), `native CI must test Teams SDK on ${os}`);
     }
     assert.match(sdk, /workspaces: packages\/coc-native\/rust/);
