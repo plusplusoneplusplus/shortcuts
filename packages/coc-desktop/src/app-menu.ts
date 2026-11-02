@@ -16,7 +16,7 @@
  */
 
 import type { MenuItemConstructorOptions } from 'electron';
-import type { UpdateChannel } from './update-check';
+import type { AutoUpdateMode, UpdateChannel } from './update-check';
 import type { DevTunnelHostState, DevTunnelHostStatus } from './devtunnel-host';
 import { elevationStatusLabel, type ElevationState } from './elevation';
 
@@ -36,6 +36,10 @@ export interface AppMenuHandlers {
     currentChannel?: UpdateChannel;
     /** Invoked when the user selects a new update channel from the menu. */
     onSetUpdateChannel?: (channel: UpdateChannel) => void;
+    /** The current Auto Update mode, used to render the radio checkmarks. Defaults to 'off'. */
+    autoUpdateMode?: AutoUpdateMode;
+    /** Invoked when the user selects a new Auto Update mode from the menu. */
+    onSetAutoUpdateMode?: (mode: AutoUpdateMode) => void;
     /**
      * Windows-only Dev Tunnel menu (AC-01). When present, a top-level
      * "Dev Tunnel" menu is added on win32 (only). Omit it (or pass a non-win32
@@ -118,6 +122,10 @@ export function buildDebugMenu(handlers: DebugMenuHandlers): MenuItemConstructor
 
 /** The "Update Channel" submenu label. */
 export const UPDATE_CHANNEL_LABEL = 'Update Channel';
+/** The "Auto Update" submenu label and its radio items. */
+export const AUTO_UPDATE_LABEL = 'Auto Update';
+export const AUTO_UPDATE_OFF_LABEL = 'Off';
+export const AUTO_UPDATE_IDLE_LABEL = 'When Idle';
 
 /** The top-level "Dev Tunnel" menu label (Windows only). */
 export const DEV_TUNNEL_MENU_LABEL = 'Dev Tunnel';
@@ -343,14 +351,15 @@ export const VIEW_MENU: MenuItemConstructorOptions = {
  *
  * On both macOS and Windows the menu carries a "Check for Updates…" item placed
  * directly after "About <app>" (across the separator that follows it), followed
- * by an "Update Channel" submenu (Stable / Prerelease). The template is a
+ * by an "Update Channel" submenu (Stable / Prerelease) and an "Auto Update"
+ * submenu (Off / When Idle). The template is a
  * complete custom menubar — it reconstructs the standard Edit/View/Window items
  * (via roles) so setting it does not strip the default editing/window commands.
  *
  *   - macOS: a custom app submenu (About, Check for Updates…, Update Channel,
- *     Services, the Hide/Quit cluster) plus the standard Edit/View/Window menus.
+ *     Auto Update, Services, the Hide/Quit cluster) plus the standard Edit/View/Window menus.
  *   - Windows: the standard File/Edit/View/Window menus plus a Help menu holding
- *     "About <app>" then "Check for Updates…" and "Update Channel".
+ *     "About <app>" then "Check for Updates…", "Update Channel" and "Auto Update".
  *
  * Linux shares the non-darwin menu so it also avoids native Ctrl+W window close.
  */
@@ -360,6 +369,7 @@ export function buildAppMenuTemplate(
     handlers: AppMenuHandlers,
 ): MenuItemConstructorOptions[] {
     const channel = handlers.currentChannel ?? 'stable';
+    const autoUpdateMode = handlers.autoUpdateMode ?? 'off';
 
     const aboutItem: MenuItemConstructorOptions = {
         label: `About ${appName}`,
@@ -399,6 +409,23 @@ export function buildAppMenuTemplate(
             },
         ],
     };
+    const autoUpdateItem: MenuItemConstructorOptions = {
+        label: AUTO_UPDATE_LABEL,
+        submenu: [
+            {
+                label: AUTO_UPDATE_OFF_LABEL,
+                type: 'radio',
+                checked: autoUpdateMode === 'off',
+                click: () => handlers.onSetAutoUpdateMode?.('off'),
+            },
+            {
+                label: AUTO_UPDATE_IDLE_LABEL,
+                type: 'radio',
+                checked: autoUpdateMode === 'idle',
+                click: () => handlers.onSetAutoUpdateMode?.('idle'),
+            },
+        ],
+    };
 
     // "Report an Issue…" heads the Help submenu on every platform, separated from
     // the About/update rows below it.
@@ -417,6 +444,7 @@ export function buildAppMenuTemplate(
                     { type: 'separator' },
                     checkForUpdatesItem,
                     updateChannelItem,
+                    autoUpdateItem,
                     { type: 'separator' },
                     { role: 'services' },
                     { type: 'separator' },
@@ -447,6 +475,7 @@ export function buildAppMenuTemplate(
                 { type: 'separator' },
                 checkForUpdatesItem,
                 updateChannelItem,
+                autoUpdateItem,
             ],
         });
         return template;
@@ -491,6 +520,7 @@ export function buildAppMenuTemplate(
             { type: 'separator' },
             checkForUpdatesItem,
             updateChannelItem,
+            autoUpdateItem,
         ],
     });
     return template;

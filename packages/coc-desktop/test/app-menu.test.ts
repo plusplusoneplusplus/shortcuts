@@ -20,6 +20,9 @@ import {
     DEV_TUNNEL_EXPECTED_URL_SUFFIX,
     CHECK_FOR_UPDATES_LABEL,
     UPDATE_CHANNEL_LABEL,
+    AUTO_UPDATE_LABEL,
+    AUTO_UPDATE_OFF_LABEL,
+    AUTO_UPDATE_IDLE_LABEL,
     REPORT_ISSUE_LABEL,
     DEV_TUNNEL_MENU_LABEL,
     DEV_TUNNEL_CONFIGURE_LABEL,
@@ -82,12 +85,17 @@ describe('buildAppMenuTemplate — macOS', () => {
         expect(channelIdx).toBe(checkIdx + 1);
     });
 
-    it('separates the update items from the hide/quit cluster with a separator', () => {
+    it('places "Auto Update" directly after "Update Channel"', () => {
         const channelIdx = labelIdx(appSubmenu, UPDATE_CHANNEL_LABEL);
-        expect(isSeparator(appSubmenu[channelIdx + 1])).toBe(true);
+        expect(labelIdx(appSubmenu, AUTO_UPDATE_LABEL)).toBe(channelIdx + 1);
+    });
+
+    it('separates the update items from the hide/quit cluster with a separator', () => {
+        const autoIdx = labelIdx(appSubmenu, AUTO_UPDATE_LABEL);
+        expect(isSeparator(appSubmenu[autoIdx + 1])).toBe(true);
         const hideIdx = roleIdx(appSubmenu, 'hide');
         const quitIdx = roleIdx(appSubmenu, 'quit');
-        expect(hideIdx).toBeGreaterThan(channelIdx);
+        expect(hideIdx).toBeGreaterThan(autoIdx);
         expect(quitIdx).toBeGreaterThan(hideIdx);
     });
 
@@ -184,6 +192,64 @@ describe('buildAppMenuTemplate — Update Channel submenu', () => {
         const sub = submenuOf(channelItem);
         expect(sub.find((i) => i.label === 'Prerelease')!.checked).toBe(true);
     });
+});
+
+describe('buildAppMenuTemplate — Auto Update submenu', () => {
+    const updateHosts = (template: Item[], platform: NodeJS.Platform): Item[][] =>
+        platform === 'darwin'
+            ? [submenuOf(template[0]), submenuOf(template.find((i) => i.label === 'Help')!)]
+            : [submenuOf(template.find((i) => i.label === 'Help')!)];
+
+    for (const platform of ['darwin', 'win32'] as NodeJS.Platform[]) {
+        describe(platform, () => {
+            it('sits directly after "Update Channel", next to "Check for Updates…"', () => {
+                const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates: vi.fn() });
+                for (const items of updateHosts(template, platform)) {
+                    const checkIdx = labelIdx(items, CHECK_FOR_UPDATES_LABEL);
+                    expect(labelIdx(items, UPDATE_CHANNEL_LABEL)).toBe(checkIdx + 1);
+                    expect(labelIdx(items, AUTO_UPDATE_LABEL)).toBe(checkIdx + 2);
+                }
+            });
+
+            it('defaults to "Off" checked when no mode is provided', () => {
+                const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates: vi.fn() });
+                for (const items of updateHosts(template, platform)) {
+                    const sub = submenuOf(items.find((i) => i.label === AUTO_UPDATE_LABEL)!);
+                    expect(sub.map((i) => i.label)).toEqual([AUTO_UPDATE_OFF_LABEL, AUTO_UPDATE_IDLE_LABEL]);
+                    expect(sub.every((i) => i.type === 'radio')).toBe(true);
+                    expect(sub[0].checked).toBe(true);
+                    expect(sub[1].checked).toBe(false);
+                }
+            });
+
+            it('checks "When Idle" when the mode is idle', () => {
+                const template = buildAppMenuTemplate(platform, 'CoC', {
+                    onCheckForUpdates: vi.fn(),
+                    autoUpdateMode: 'idle',
+                });
+                for (const items of updateHosts(template, platform)) {
+                    const sub = submenuOf(items.find((i) => i.label === AUTO_UPDATE_LABEL)!);
+                    expect(sub[0].checked).toBe(false);
+                    expect(sub[1].checked).toBe(true);
+                }
+            });
+
+            it('calls onSetAutoUpdateMode with the clicked mode', () => {
+                const onSetAutoUpdateMode = vi.fn();
+                const template = buildAppMenuTemplate(platform, 'CoC', {
+                    onCheckForUpdates: vi.fn(),
+                    onSetAutoUpdateMode,
+                });
+                const [items] = updateHosts(template, platform);
+                const sub = submenuOf(items.find((i) => i.label === AUTO_UPDATE_LABEL)!);
+                (sub[1].click as () => void)();
+                expect(onSetAutoUpdateMode).toHaveBeenLastCalledWith('idle');
+                (sub[0].click as () => void)();
+                expect(onSetAutoUpdateMode).toHaveBeenLastCalledWith('off');
+                expect(onSetAutoUpdateMode).toHaveBeenCalledTimes(2);
+            });
+        });
+    }
 });
 
 describe('buildAppMenuTemplate — Windows', () => {
@@ -701,6 +767,7 @@ describe('buildAppMenuTemplate — elevation status row', () => {
         expect(isSeparator(items[aboutIdx + 2])).toBe(true);
         expect(items[aboutIdx + 3].label).toBe(CHECK_FOR_UPDATES_LABEL);
         expect(items[aboutIdx + 4].label).toBe(UPDATE_CHANNEL_LABEL);
+        expect(items[aboutIdx + 5].label).toBe(AUTO_UPDATE_LABEL);
     });
 
     it('renders the standard and unknown states on Windows too', () => {
