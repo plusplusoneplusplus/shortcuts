@@ -50,6 +50,7 @@ import { getHorizontalDropPosition } from '../repoTabModel';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
+import type { UnifiedPanelGitOpenSource } from './panelGitCommit';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
@@ -280,6 +281,8 @@ export interface UnifiedPanelTabStripProps {
     onPromote?: (id: string) => void;
     /** Resolve file-only command availability for a tab. */
     fileActionAvailability?: (tab: UnifiedPanelTab) => UnifiedPanelFileActionAvailability;
+    /** A Git tab's Open submenu source, or null when its owner cannot be named. */
+    gitOpenSource?: (tab: UnifiedPanelTab) => UnifiedPanelGitOpenSource | null;
     /** Context-menu command selected for a tab. */
     onMenuAction?: (action: UnifiedPanelTabMenuAction, tabId: string) => void;
     /** The tab a native drag carries, and `null` once it drops, ends or is cancelled. */
@@ -329,6 +332,7 @@ export function UnifiedPanelTabStrip({
     pinnedId,
     onPromote,
     fileActionAvailability,
+    gitOpenSource,
     onMenuAction,
     onTabDragChange,
     contextDragPayload,
@@ -1078,6 +1082,7 @@ export function UnifiedPanelTabStrip({
             {contextMenu && (() => {
                 const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);
                 if (!tab) return null;
+                const gitOpen = tab.kind === 'git' ? gitOpenSource?.(tab) ?? null : null;
                 const items = unifiedPanelTabMenuItems(
                     tab,
                     tabs,
@@ -1085,12 +1090,14 @@ export function UnifiedPanelTabStrip({
                     fileActionAvailability?.(tab),
                     reorderEnabled ? sectionOf(tab).map(entry => entry.id) : undefined,
                     groupsEnabled,
+                    gitOpen !== null,
                 );
                 return (
                     <UnifiedPanelTabContextMenu
                         x={contextMenu.x}
                         y={contextMenu.y}
                         items={items}
+                        gitOpen={gitOpen}
                         onDismiss={dismissContextMenu}
                         onAction={action => {
                             dismissContextMenu();

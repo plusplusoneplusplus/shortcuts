@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import {
     chatCommitPanelTarget,
+    GIT_OPEN_RECENT_LIMIT,
+    gitTabOpenOwners,
+    gitTabOpenSource,
+    gitTabOwnerClient,
     openPanelGitCommit,
     openPanelGitWorkingChanges,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
+import { getCocClientFor, getSpaCocClient } from '../../../../src/server/spa/client/react/api/cocClient';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const SHA = '713723222abcdef0123456789abcdef012345678';
 
@@ -114,5 +121,112 @@ describe('openPanelGitWorkingChanges', () => {
         });
         // Each open is its own request, so an unchanged route still reapplies.
         expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
+    });
+});
+
+describe('Git tab Open owners', () => {
+    const members = [{ workspaceId: 'member-1', label: 'One' }, { workspaceId: 'member-2', label: 'Two' }];
+
+    it('targets a repo tab at its own repo and server', () => {
+        expect(gitTabOpenOwners({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a' }, members)).toEqual({
+            owner: {
+                workspaceId: 'ws-a', label: 'ws-a',
+                target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'remote:srv:ws-a' },
+            },
+            choices: [],
+        });
+    });
+
+    it('targets a group tab at its named member through the group server', () => {
+        expect(gitTabOpenOwners(
+            { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', gitMemberId: 'member-2' }, members,
+        ).owner).toEqual({
+            workspaceId: 'member-2', label: 'Two',
+            target: { routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-2', sourceSelectionId: 'remote:srv:member-2' },
+        });
+    });
+
+    it('never guesses a member for a group tab without one, even with a single member', () => {
+        const owners = gitTabOpenOwners({ ownerWorkspaceId: 'group-g1', ownerRoutingRef: null }, members.slice(0, 1));
+        expect(owners.owner).toBeNull();
+        expect(owners.choices).toEqual([{
+            workspaceId: 'member-1', label: 'One',
+            target: { routeWorkspaceId: 'group-g1', workspaceId: 'member-1', sourceSelectionId: 'member-1' },
+        }]);
+    });
+});
+
+describe('gitTabOwnerClient', () => {
+    afterEach(() => resetCloneRegistryForTests());
+
+    it('reads an explicit local owner from the page origin', () => {
+        expect(gitTabOwnerClient({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: null }, null)).toBe(getSpaCocClient());
+    });
+
+    it('reads a registered remote owner from its own server', () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-a', baseUrl: 'http://127.0.0.1:7101', cloneKey: 'remote:srv:ws-a' }]);
+        const client = gitTabOwnerClient({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a' }, null);
+        expect(client).toBe(getCocClientFor('http://127.0.0.1:7101'));
+        expect(client).not.toBe(getSpaCocClient());
+    });
+
+    it('returns null, not the page origin, for an unconnected remote owner', () => {
+        expect(gitTabOwnerClient({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a' }, null)).toBeNull();
+    });
+
+    it('reads a remote group through the group server and honours a matching workspace owner', () => {
+        const group = { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1' };
+        expect(gitTabOwnerClient(group, null, 'http://127.0.0.1:7102')).toBe(getCocClientFor('http://127.0.0.1:7102'));
+        const ownerClient = {} as CocClient;
+        expect(gitTabOwnerClient(group, { workspaceId: 'group-g1', selectionId: 'remote:srv:group-g1', client: ownerClient }))
+            .toBe(ownerClient);
+        // An owner context for another workspace is not this tab's owner.
+        expect(gitTabOwnerClient(group, { workspaceId: 'ws-z', selectionId: 'ws-z', client: ownerClient })).toBeNull();
+    });
+});
+
+describe('gitTabOpenSource', () => {
+    let originalHash: string;
+    beforeEach(() => {
+        originalHash = location.hash;
+        window.history.replaceState(null, '', '#repos/group-g1/chats/c1');
+    });
+    afterEach(() => {
+        window.history.replaceState(null, '', originalHash || '#');
+    });
+
+    const tab = { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', gitMemberId: 'member-1' };
+
+    it('reads the owner member recent commits from the given client', async () => {
+        const commits = Array.from({ length: 7 }, (_, index) => ({ hash: `h${index}` }));
+        const listCommits = vi.fn(async () => ({ commits, unpushedCount: 0 }));
+        const source = gitTabOpenSource(tab, [], vi.fn(), { git: { listCommits } } as unknown as CocClient);
+        expect(source.unavailable).toBeUndefined();
+        const recent = await source.loadRecent(source.owner!);
+        expect(listCommits).toHaveBeenCalledWith('member-1', { limit: GIT_OPEN_RECENT_LIMIT, refresh: true });
+        expect(recent).toHaveLength(GIT_OPEN_RECENT_LIMIT);
+    });
+
+    it('reports an unconnected owner instead of reading elsewhere', async () => {
+        const source = gitTabOpenSource(tab, [], vi.fn(), null);
+        expect(source.unavailable).toMatch(/not connected/);
+        await expect(source.loadRecent(source.owner!)).rejects.toThrow(/not connected/);
+    });
+
+    it('opens the working tree or a commit on the member route without switching surfaces', () => {
+        const dispatch = vi.fn();
+        const source = gitTabOpenSource(tab, [], dispatch, null);
+        source.open(source.owner!, null);
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1',
+            commitHash: 'working-changes', filePath: null, openRequest: {},
+        });
+        const commit = { hash: SHA, shortHash: SHA.slice(0, 7), subject: 's', author: 'a', date: '', parentHashes: [] };
+        source.open(source.owner!, commit);
+        expect(dispatch).toHaveBeenLastCalledWith({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1',
+            commitHash: SHA, filePath: null, knownCommit: { sourceSelectionId: 'remote:srv:member-1', commit },
+        });
+        expect(dispatch.mock.calls.map(([action]) => action.type)).not.toContain('SET_REPO_SUB_TAB');
     });
 });

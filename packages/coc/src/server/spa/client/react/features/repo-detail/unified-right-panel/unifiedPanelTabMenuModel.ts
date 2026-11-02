@@ -17,6 +17,7 @@ export type UnifiedPanelBulkCloseAction =
 export type UnifiedPanelTabMenuAction =
     | 'move-left'
     | 'move-right'
+    | 'open-git'
     | 'keep-open'
     | 'duplicate'
     | 'close'
@@ -30,7 +31,7 @@ export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
     label: string;
     /** `close-other` items render inside the "Close Other" submenu. */
-    group: 'keep-open' | 'browser' | 'close' | 'close-other' | 'file' | 'move';
+    group: 'keep-open' | 'browser' | 'git' | 'close' | 'close-other' | 'file' | 'move';
     disabled: boolean;
 }
 
@@ -79,6 +80,8 @@ export function unifiedPanelTabMenuItems(
     },
     movableIds?: readonly string[],
     groupsEnabled = false,
+    /** The Git tab's owner is known to the menu: offer the Open submenu. */
+    gitOpenAvailable = false,
 ): UnifiedPanelTabMenuItem[] {
     const items: UnifiedPanelTabMenuItem[] = [];
     if (movableIds) {
@@ -90,6 +93,9 @@ export function unifiedPanelTabMenuItems(
             { action: 'move-left', label: 'Move left', group: 'move', disabled: index <= 0 },
             { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= permittedIds.length - 1 },
         );
+    }
+    if (tab.kind === 'git' && gitOpenAvailable) {
+        items.push({ action: 'open-git', label: 'Open', group: 'git', disabled: false });
     }
     if (tab.preview) {
         items.push({ action: 'keep-open', label: 'Keep Open', group: 'keep-open', disabled: false });

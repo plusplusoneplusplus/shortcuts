@@ -56,7 +56,10 @@ import { decodeSegment, tokenizeHash } from '../../../layout/routePath';
  */
 
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import type { AppAction } from '../../../contexts/AppContext';
+import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
+import { gitTabOpenSource, gitTabOwnerClient, type UnifiedPanelGitOpenSource } from './panelGitCommit';
 import { cn } from '../../../ui/cn';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import {
@@ -246,6 +249,8 @@ export interface UnifiedRightPanelProps {
         liveRepoCount: number;
         baseUrl?: string;
     };
+    /** The host's app dispatch; Git tab "Open" publishes Git routes with it and is hidden without it. */
+    appDispatch?: (action: AppAction) => void;
 }
 
 type PendingNavigationReplay = UnifiedPanelNavigationLocation & {
@@ -267,6 +272,7 @@ export function UnifiedRightPanel({
     workspaceRootPath,
     targets,
     repoGroup,
+    appDispatch,
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const { toasts, addToast, removeToast } = useToast();
@@ -423,6 +429,21 @@ export function UnifiedRightPanel({
     const stackedCanvasTabs = useMemo(() => groupsEnabled ? [] : compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId, groupsEnabled]);
 
     const targetOptions = targets ?? dock.targets;
+    const workspaceOwner = useContext(WorkspaceOwnerContext);
+    // A Git tab's Open submenu reads and opens on the tab's own owner; a group
+    // tab without a member offers this panel's live members to choose from.
+    const gitOpenSourceFor = useCallback((tab: UnifiedPanelTab): UnifiedPanelGitOpenSource | null => {
+        if (!appDispatch || tab.kind !== 'git') return null;
+        const members = tab.ownerWorkspaceId === workspaceId && repoGroup
+            ? targetOptions
+                .filter(option => !option.disabled && !option.deprioritized && option.workspaceId !== workspaceId)
+                .map(option => ({ workspaceId: option.workspaceId, label: option.label }))
+            : [];
+        const groupBaseUrl = repoGroup?.id === tab.ownerWorkspaceId ? repoGroup.baseUrl : undefined;
+        const source = gitTabOpenSource(tab, members, appDispatch, gitTabOwnerClient(tab, workspaceOwner, groupBaseUrl));
+        // An unchanged view does not refocus the Git tab, so show it explicitly.
+        return { ...source, open: (owner, commit) => { activate(tab.id); source.open(owner, commit); } };
+    }, [activate, appDispatch, repoGroup, targetOptions, workspaceId, workspaceOwner]);
     const targetLabel = useMemo(
         () => targetOptions.find(option => option.workspaceId === target)?.label,
         [targetOptions, target],
@@ -2236,6 +2257,7 @@ export function UnifiedRightPanel({
                         ...unifiedPanelFileActionAvailability(tab, rootPathForTab(tab)),
                         openToSide: splitEnabled,
                     })}
+                    gitOpenSource={gitOpenSourceFor}
                     onMenuAction={handleTabMenuAction}
                     onTabDragChange={handleTabDragChange}
                     contextDragPayload={tab => tab.kind === 'file' && isSessionContextAttachmentsEnabled()

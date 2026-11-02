@@ -33,6 +33,15 @@ untracked diff opens beside the chat and reopens after its tab was closed.
 "Open conflicts", the tile click and hosts without a panel keep the expanded
 sidebar working tree.
 
+### Git tab Open submenu
+
+Right-clicking the panel's Git tab offers Open → Workspace or one of five recent
+commits through the same `openPanelGitWorkingChanges` / `openPanelGitCommit`
+routes, so the chat stays visible. Reads and routes use the Git tab's own owner
+(`gitTabOpenOwners`, `gitTabOwnerClient` in `panelGitCommit.ts`); a group tab
+without a member asks for one, and an unconnected remote owner is never read
+from the page origin.
+
 Group previews read member repositories, never a group range; their
 compact cards skip history reads and empty subsections only when a successful,
 resolved upstream comparison explicitly reports zero ahead. Pending, failed and

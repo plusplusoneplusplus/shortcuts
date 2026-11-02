@@ -128,7 +128,7 @@ export interface RepoGroupViewProps {
 }
 
 export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGroupViewProps) {
-    const { state } = useApp();
+    const { state, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const queueClient = useCocClient(selectionId);
     const queueJobs = useRepoQueueJobs(workspaceId, queueClient, selectionId);
@@ -484,6 +484,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                             liveRepoCount: members?.filter(member => !member.stale).length ?? 0,
                             baseUrl: groupBaseUrl,
                         }}
+                        appDispatch={appDispatch}
                     />
             </div>
 

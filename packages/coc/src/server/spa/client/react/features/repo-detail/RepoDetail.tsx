@@ -820,6 +820,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     chatId={panelChatId}
                     dock={dock}
                     workspaceRootPath={ws.rootPath}
+                    appDispatch={dispatch}
                 />
             </div>
 
