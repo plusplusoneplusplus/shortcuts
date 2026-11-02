@@ -865,11 +865,13 @@
     border-color: #3c3c3c;
 }
 
-/* Compact source-hint variant: a small single-line tooltip that reveals a
-   conversation-bubble link's raw target (no rich content preview). */
+/* Compact source-hint variant: a small tooltip that reveals a
+   conversation-bubble link's full raw target (no rich content preview).
+   Width stays inside the viewport; long paths wrap (even inside unbroken
+   segments) and the body scrolls instead of clipping or ellipsizing. */
 .file-preview-tooltip--hint {
     width: auto;
-    max-width: min(90vw, 640px);
+    max-width: min(calc(100vw - 16px), 640px);
     min-height: 0;
 }
 
@@ -877,9 +879,9 @@
     padding: 6px 10px;
     font-size: 12px;
     font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: auto;
     color: #333333;
 }
 

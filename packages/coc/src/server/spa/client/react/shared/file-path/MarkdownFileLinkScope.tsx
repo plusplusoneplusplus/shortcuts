@@ -1,5 +1,5 @@
 import type { WorkspacesResponse } from '@plusplusoneplusplus/coc-client';
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useUnifiedPanelHost } from '../../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../../features/repo-detail/unified-right-panel/resolveChatFileLink';
 import { openUnifiedPanelTab } from '../../features/repo-detail/unified-right-panel/unifiedPanelOpen';
@@ -38,7 +38,8 @@ export function MarkdownFileLinkScope({ workspaceId, routingRef, sourceFilePath,
         : parseRemoteCloneKey(workspaceId) ? workspaceId
         : getRemoteCloneKey(workspaces.find(ws => ws.id === workspaceId)) ?? undefined;
 
-    useEffect(() => {
+    // Bind before paint so a newly rendered link's first click reaches its owner.
+    useLayoutEffect(() => {
         const element = container.current;
         if (!element) return;
         let request: AbortController | undefined;

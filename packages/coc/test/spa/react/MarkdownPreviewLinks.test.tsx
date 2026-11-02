@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { CanvasBodyRenderer } from '../../../src/server/spa/client/react/features/canvas/components/CanvasBodyRenderer';
 import { PreviewPane } from '../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
@@ -63,6 +64,25 @@ beforeEach(() => {
 
 describe('Markdown preview source links', () => {
 
+    it('handles the first link activation before passive effects run', async () => {
+        // A later sibling's layout effect runs after the scope commits but
+        // before passive effects, exercising a click as soon as the DOM exists.
+        function ActivateLink() {
+            useLayoutEffect(() => {
+                expect(click(screen.getByText('Code')).defaultPrevented).toBe(true);
+            }, []);
+            return null;
+        }
+        render(hosted(<>
+            <MarkdownFileLinkScope workspaceId="ws" routingRef={null}>
+                <MarkdownView html={chatMarkdownToHtml('[Code](src/main.ts:42)')} />
+            </MarkdownFileLinkScope>
+            <ActivateLink />
+        </>));
+        await waitFor(() => expect(readUnifiedPanelState('panel').chatTabs.chat?.[0]).toMatchObject({
+            resourceId: 'src/main.ts', ownerWorkspaceId: 'ws', ownerRoutingRef: null, line: 42,
+        }));
+    });
 
     it('aborts owner discovery and ignores late results after the preview unmounts', async () => {
         let finish!: (value: unknown) => void;

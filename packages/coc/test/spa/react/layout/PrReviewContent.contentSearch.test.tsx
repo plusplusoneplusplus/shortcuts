@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
+import { useDiffContentSearchEnabled } from '../../../../src/server/spa/client/react/hooks/feature-flags/useDiffContentSearchEnabled';
 import { PrReviewContent } from '../../../../src/server/spa/client/react/layout/popoutGitReview/PrReviewContent';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -59,6 +61,7 @@ function search() {
 async function settle() { await act(async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); }); }
 beforeEach(() => {
     vi.clearAllMocks();
+    applyRuntimeConfigPatch({ diffContentSearchEnabled: false });
     mocks.detail.mockResolvedValue({ title: 'Review', headSha: 'head', baseSha: 'base' });
     mocks.diff.mockResolvedValue(patch);
     mocks.content.mockImplementation(async (_origin: string, _pr: string, path: string) => ({
@@ -71,6 +74,19 @@ beforeEach(() => {
 afterEach(() => { cleanup(); act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: false })); registerCloneBaseUrls([]); vi.restoreAllMocks(); });
 
 describe('pop-out PR full-content search', () => {
+    it('observes a setting changed between render and the config subscription', () => {
+        function Setting() {
+            const enabled = useDiffContentSearchEnabled();
+            return <output data-testid="search-setting">{String(enabled)}</output>;
+        }
+        function EnableDuringCommit() {
+            useLayoutEffect(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: true }), []);
+            return null;
+        }
+        render(<><Setting /><EnableDuringCommit /></>);
+        expect(screen.getByTestId('search-setting')).toHaveTextContent('true');
+    });
+
     it('keeps loading lazy and opens exact old/new targets without toggling off repeated selections', async () => {
         render(<PrReviewContent {...props} />);
         await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeDefined());

@@ -820,6 +820,15 @@ function showAnchorHint(anchor: HTMLAnchorElement): void {
     }
 }
 
+/** True when focus came from the keyboard, so mouse clicks do not pop the hint. */
+function isKeyboardFocus(el: HTMLElement): boolean {
+    try {
+        return el.matches(':focus-visible');
+    } catch {
+        return true;
+    }
+}
+
 function isMobile(): boolean {
     return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
         /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
@@ -883,6 +892,33 @@ function initFilePathPreviewDelegation(): void {
                 hoverTimer = null;
             }
             scheduleHide();
+        });
+
+        // Keyboard users get the same source hint on focus; Escape dismisses it.
+        document.body.addEventListener('focusin', (event) => {
+            const anchor = findChatAnchorForHint(event.target);
+            if (!anchor || !isKeyboardFocus(anchor)) return;
+            if (hoverTimer) {
+                clearTimeout(hoverTimer);
+                hoverTimer = null;
+            }
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+            showAnchorHint(anchor);
+        });
+
+        document.body.addEventListener('focusout', (event) => {
+            const anchor = findChatAnchorForHint(event.target);
+            if (!anchor || activeTarget !== anchor) return;
+            hideTooltip();
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || !activeTarget) return;
+            if (!tooltipEl || tooltipEl.style.display === 'none') return;
+            hideTooltip();
         });
     }
 

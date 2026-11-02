@@ -305,10 +305,14 @@ describe('ref resolution before trusted input', () => {
         });
 
         it('stages bounded snapshots and expires pending transport chunks when the generation changes', () => {
-            document.body.innerHTML = '<button aria-label="Bounded snapshot label"></button>'.repeat(1000);
+            // Cross the transport chunk boundary with bounded long names rather
+            // than a large DOM whose repeated layout reads can time out in CI.
+            const count = 400;
+            document.body.innerHTML = `<button aria-label="${'x'.repeat(160)}"></button>`.repeat(count);
             layout();
             const first = run<BrowserDomSnapshotChunk>({ action: 'snapshot', nextRef: 1, scope });
             expect(first.chunk).toHaveLength(64000);
+            expect(first.total).toBeGreaterThan(first.chunk.length);
             expect(first.total).toBeLessThanOrEqual(scope.chars);
             let json = first.chunk;
             while (json.length < first.total) {
@@ -317,9 +321,10 @@ describe('ref resolution before trusted input', () => {
                 json += chunk.chunk;
             }
             const result = JSON.parse(json) as BrowserDomSnapshot;
-            expect(result.elements).toHaveLength(1000);
+            expect(result.elements).toHaveLength(count);
             expect(result.consumed).toBeGreaterThanOrEqual(json.length);
             const pending = run<BrowserDomSnapshotChunk>({ action: 'snapshot', nextRef: result.nextRef, scope });
+            expect(pending.total).toBeGreaterThan(pending.chunk.length);
             expect(() => run({
                 action: 'snapshot-chunk', token: pending.token, offset: 64000,
                 scope: { ...scope, generation: 'replacement-document' },
