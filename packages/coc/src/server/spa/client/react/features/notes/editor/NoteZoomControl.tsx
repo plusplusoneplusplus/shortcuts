@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TOOLBAR_BUTTON_CLASS } from './toolbar/ToolbarDropdown';
 import {
     NOTE_ZOOM_DEFAULT,
     NOTE_ZOOM_PRESETS,
@@ -41,11 +42,10 @@ export function NoteZoomControl({ zoom }: NoteZoomControlProps) {
         };
     }, [menuOpen]);
 
-    const btnCls =
-        'h-7 w-6 rounded flex items-center justify-center text-sm hover:bg-[#e0e0e0] dark:hover:bg-[#505050] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+    const btnCls = TOOLBAR_BUTTON_CLASS + ' w-6';
 
     return (
-        <div className="relative flex items-center" ref={ref} data-testid="note-zoom-control">
+        <div className="relative flex shrink-0 items-center" ref={ref} data-testid="note-zoom-control">
             <button
                 type="button"
                 title="Zoom out"
@@ -62,7 +62,7 @@ export function NoteZoomControl({ zoom }: NoteZoomControlProps) {
                 type="button"
                 title="Zoom level — click to choose a preset"
                 aria-label={`Zoom ${level}% — click to choose a preset`}
-                className="h-7 min-w-[3rem] px-1 rounded text-xs tabular-nums hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={TOOLBAR_BUTTON_CLASS + ' min-w-[2.5rem] px-0.5 tabular-nums'}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setMenuOpen((v) => !v)}
                 data-testid="note-zoom-readout"

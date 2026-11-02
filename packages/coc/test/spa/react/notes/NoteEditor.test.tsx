@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, cleanup, fireEvent, within } from '@testing-library/react';
 import { useEffect } from 'react';
+import userEvent from '@testing-library/user-event';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -1968,6 +1969,26 @@ describe('NoteEditor', () => {
     // ══════════════════════════════════════════════════════════════════════
 
     describe('Run Skill button', () => {
+        it('keeps the compact icon named, keyboard accessible, and preserves focus on pointer down', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'regular.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="regular.md" io={mockIo} />);
+            });
+            const button = await screen.findByRole('button', { name: 'Run Skill' });
+            expect(button.title).toBe('Run Skill');
+            expect(button.textContent).toBe('⚡');
+            expect(button.querySelector('[aria-hidden="true"]')).toBeTruthy();
+            expect(screen.getByTestId('version-history-toggle-btn')).toBeTruthy();
+            expect(fireEvent.mouseDown(button)).toBe(false);
+            button.focus();
+            await userEvent.keyboard('{Enter}');
+            expect(mockQueueDispatch).toHaveBeenCalledTimes(1);
+            expect(mockQueueDispatch).toHaveBeenLastCalledWith({
+                type: 'OPEN_DIALOG', workspaceId: 'ws1',
+                contextFiles: ['regular.md'], contextTaskName: 'regular',
+            });
+        });
+
         it('shows Run Skill button for a regular .md file', async () => {
             mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'regular.md' });
             await act(async () => {

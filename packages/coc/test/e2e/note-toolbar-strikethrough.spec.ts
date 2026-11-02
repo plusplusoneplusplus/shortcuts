@@ -54,6 +54,68 @@ async function openTaskInEditor(
 
 test.describe('Note Editor Toolbar — Strikethrough regression', () => {
 
+    test('compact skill and zoom controls fit one row and wrap without clipping in a narrow editor', async ({ page, serverUrl }, testInfo) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-toolbar-'));
+        try {
+            await page.setViewportSize({ width: 1600, height: 900 });
+            const repoDir = createRepoFixture(tmpDir);
+            createTasksFixture(repoDir);
+            await mockTasksContent(page, 'Keep the editor selection.');
+            await openTaskInEditor(page, serverUrl, repoDir);
+            const toolbar = page.getByTestId('note-editor-toolbar');
+            await toolbar.evaluate(el => { el.style.width = '1040px'; });
+            const skill = page.getByRole('button', { name: 'Run Skill', exact: true });
+            const zoom = page.getByTestId('note-zoom-control');
+            const bold = toolbar.getByRole('button', { name: 'Bold', exact: true });
+            const bounds = async () => ({
+                skill: (await skill.boundingBox())!, zoom: (await zoom.boundingBox())!,
+                bold: (await bold.boundingBox())!, toolbar: (await toolbar.boundingBox())!,
+            });
+            const wide = await bounds();
+            expect(wide.skill.width).toBe(28);
+            expect(wide.skill.height).toBe(wide.bold.height);
+            expect(wide.zoom.width).toBeLessThanOrEqual(88);
+            expect(wide.skill.y).toBe(wide.bold.y);
+            expect(wide.zoom.y).toBe(wide.bold.y);
+            expect((await page.getByTestId('version-history-toggle-btn').boundingBox())!.y).toBe(wide.bold.y);
+            await toolbar.screenshot({ path: testInfo.outputPath('toolbar-wide.png') });
+
+            const editor = page.locator('.ProseMirror');
+            await editor.click();
+            await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+            const selected = await page.evaluate(() => window.getSelection()?.toString());
+            await page.getByTestId('note-zoom-in').click();
+            await expect(editor).toBeFocused();
+            expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(selected);
+            await expect(page.getByTestId('note-zoom-readout')).toHaveText('110%');
+            await page.keyboard.press('ArrowRight');
+
+            await toolbar.evaluate(el => { el.style.width = '360px'; });
+            const narrow = await bounds();
+            expect(narrow.skill.y).toBeGreaterThan(narrow.bold.y);
+            const buttons = await toolbar.locator('button').evaluateAll(elements => elements.map(el => {
+                const rect = el.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+            }));
+            for (const button of buttons) {
+                expect(button.left).toBeGreaterThanOrEqual(narrow.toolbar.x);
+                expect(button.right).toBeLessThanOrEqual(narrow.toolbar.x + narrow.toolbar.width);
+            }
+            for (const control of [skill, ...['out', 'readout', 'in'].map(part => page.getByTestId(`note-zoom-${part}`))]) {
+                const rect = (await control.boundingBox())!;
+                expect(rect.width).toBeGreaterThanOrEqual(24);
+                expect(rect.height).toBe(28);
+            }
+            await toolbar.screenshot({ path: testInfo.outputPath('toolbar-narrow.png') });
+            await skill.focus();
+            await page.keyboard.press('Enter');
+            await expect(page.getByRole('heading', { name: 'Run Skill', exact: true })).toBeVisible();
+            await expect(page.getByTestId('context-file-chip')).toContainText('task-a.md');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
     test('clicking Strikethrough toolbar button applies mark to selected text', async ({
         page,
         serverUrl,

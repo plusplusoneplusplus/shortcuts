@@ -3,9 +3,12 @@ import type { CSSProperties, ReactNode, RefObject, KeyboardEvent as ReactKeyboar
 
 // ── Shared toolbar chrome ───────────────────────────────────────────────────
 
+export const TOOLBAR_BUTTON_CLASS =
+    'h-7 shrink-0 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+
 /** Vertical rule between toolbar groups. */
 export function Sep() {
-    return <div className="w-px h-5 mx-1 bg-[#e0e0e0] dark:bg-[#3c3c3c]" />;
+    return <div className="w-px h-5 mx-0.5 bg-[#e0e0e0] dark:bg-[#3c3c3c]" />;
 }
 
 export interface ToolbarDropdownTriggerArgs {

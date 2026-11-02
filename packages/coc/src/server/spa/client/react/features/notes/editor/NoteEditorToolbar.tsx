@@ -80,7 +80,7 @@ export function NoteEditorToolbar(props: NoteEditorToolbarProps) {
     return (
         <>
             <div
-                className="flex items-center gap-0.5 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap text-[#1e1e1e] dark:text-[#cccccc]"
+                className="flex items-center gap-0.5 px-1.5 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap text-[#1e1e1e] dark:text-[#cccccc]"
                 role="toolbar"
                 aria-label="Formatting toolbar"
                 data-testid="note-editor-toolbar"
