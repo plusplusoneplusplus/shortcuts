@@ -6,10 +6,6 @@ export const TAB_GROUP_LABELS: Record<UnifiedTabStripGroup, string> = {
     tools: 'Tools', files: 'Files', web: 'Web', canvas: 'Canvas',
 };
 
-const ICONS: Record<UnifiedTabStripGroup, string> = {
-    tools: '\uD83E\uDDF0', files: '\uD83D\uDCC4', web: '\uD83C\uDF10', canvas: '\uD83C\uDFA8',
-};
-
 /**
  * A group's pill. When `onPointerDown` is supplied the pill is also the
  * group's drag handle and Alt+Arrow moves the whole block (`onKeyDown`).
@@ -33,21 +29,19 @@ export function UnifiedPanelTabGroupLabel({ group, count, folded, active, draggi
             aria-expanded={!folded}
             aria-keyshortcuts={onPointerDown ? 'Alt+ArrowLeft Alt+ArrowRight' : undefined}
             title={onPointerDown ? `${TAB_GROUP_LABELS[group]}: click to ${folded ? 'expand' : 'fold'}, drag or Alt+Arrow to move` : undefined}
+            data-active={active || undefined}
             data-dragging={dragging || undefined}
             onClick={onToggle}
             onPointerDown={onPointerDown}
             onKeyDown={onKeyDown}
             className={cn(
-                'mx-1 my-1 flex flex-shrink-0 items-center gap-1 rounded border px-2 text-[11px]',
+                'unified-panel-group-label mx-2 flex flex-shrink-0 items-center gap-1 self-center rounded-md px-2 py-1 text-[11px]',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]',
                 dragging && 'cursor-grabbing',
-                active
-                    ? 'border-[#0078d4] bg-[#e8f2fb] text-[#0078d4] dark:bg-[#37373d] dark:text-[#3794ff]'
-                    : 'border-[#b6b6b6] text-[#616161] dark:border-[#555] dark:text-[#b8b8b8]',
             )}
         >
-            <span aria-hidden="true">{folded ? '\u25B8' : '\u25BE'} {ICONS[group]}</span>
-            <span>{TAB_GROUP_LABELS[group]} {count}</span>
+            <span>{TAB_GROUP_LABELS[group]}</span>
+            <span aria-hidden="true" className="unified-panel-group-count">{count}</span>
         </button>
     );
 }

@@ -1013,6 +1013,18 @@ describe('AppContext reducer', () => {
             expect(mismatched.gitRouteScope?.knownCommit).toBeUndefined();
         });
 
+        it('carries an explicit open request token only on the route that supplied it', () => {
+            const openRequest = {};
+            const action: AppAction = {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:owner:repo-a', workspaceId: 'repo-a',
+                commitHash: 'working-changes', filePath: null, openRequest,
+            };
+            const state = appReducer(makeState(), action);
+            expect(state.gitRouteScope?.openRequest).toBe(openRequest);
+            const echo = appReducer(state, { ...action, openRequest: undefined });
+            expect(echo.gitRouteScope).toEqual({ routeWorkspaceId: 'remote:owner:repo-a', workspaceId: 'repo-a' });
+        });
+
         it('publishes the page owner, the data member, the revision and the file at once', () => {
             const result = appReducer(makeState(), {
                 type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',

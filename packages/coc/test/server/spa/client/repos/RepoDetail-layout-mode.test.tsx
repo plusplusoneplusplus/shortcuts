@@ -331,6 +331,8 @@ describe('RepoDetail — panel reordering configuration', () => {
 
     it.each([undefined, false, true])('mounts the real panel and honors reordering=%s', enabled => {
         _resetRuntimeConfig();
+        // Cross-kind reordering is ungrouped behavior; tab groups keep each kind in its own block.
+        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         if (enabled !== undefined) applyRuntimeConfigPatch({ panelTabReorderingEnabled: enabled });
         mockActiveRepoSubTab = 'activity';
         const ids = (['terminal', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {

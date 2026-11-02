@@ -41,6 +41,7 @@ describe.each([
     ['railStatusActionsEnabled', isRailStatusActionsEnabled],
     ['explorerDeleteEnabled', isExplorerDeleteEnabled],
     ['panelTabReorderingEnabled', isPanelTabReorderingEnabled],
+    ['panelTabGroupsEnabled', isPanelTabGroupsEnabled],
     ['explorerEditorTabsEnabled', isExplorerEditorTabsEnabled],
     ['markdownPanelPreviewEnabled', isMarkdownPanelPreviewEnabled],
     ['panelSourceSplitEnabled', isPanelSourceSplitEnabled],
@@ -69,37 +70,6 @@ describe.each([
         expect(isEnabled()).toBe(false);
         applyRuntimeConfigPatch({ [flag]: true });
         expect(isEnabled()).toBe(true);
-    });
-});
-
-describe('panel tab groups runtime flag', () => {
-    it('defaults off with or without bootstrap config', () => {
-        expect(isPanelTabGroupsEnabled()).toBe(false);
-        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
-            configurable: true,
-            value: { features: {} },
-        });
-        expect(isPanelTabGroupsEnabled()).toBe(false);
-    });
-
-    it.each([undefined, null, false, 'true', 1])('rejects a non-enabled capability value %s', value => {
-        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
-            configurable: true,
-            value: { features: { panelTabGroupsEnabled: value } },
-        });
-        expect(isPanelTabGroupsEnabled()).toBe(false);
-    });
-
-    it('reads bootstrap enablement and follows live disablement and enablement', () => {
-        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
-            configurable: true,
-            value: { features: { panelTabGroupsEnabled: true } },
-        });
-        expect(isPanelTabGroupsEnabled()).toBe(true);
-        applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
-        expect(isPanelTabGroupsEnabled()).toBe(false);
-        applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
-        expect(isPanelTabGroupsEnabled()).toBe(true);
     });
 });
 

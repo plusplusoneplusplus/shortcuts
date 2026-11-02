@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { CocClient, RuntimeDashboardConfig, SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun,
     SentinelRefrainInput } from '@plusplusoneplusplus/coc-client';
@@ -12,15 +12,11 @@ import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
 import { SentinelRefrainDialog } from './SentinelRefrainDialog';
 import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
-import { AutomationActions, AutomationError } from './SentinelAutomationCard';
+import { AutomationActions, AutomationError, AutomationTitleButton, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
-/** The hosted To-do view supplies its existing detail column; standalone cards measure their own width. */
-export const RefrainHistoryHostContext = createContext<{
-    target: HTMLDivElement | null; wide: boolean; activeJobId: string | null; detailOpen: boolean;
-    select: (jobId: string) => void; leave: (jobId: string, clear: boolean) => void;
-} | null>(null);
+export { RefrainHistoryHostContext } from './SentinelAutomationCard';
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const ERROR = 'text-[#c72e2e] dark:text-[#f48771]';
@@ -227,10 +223,31 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
 }) {
     const last = job.runs[0];
     const [historyOpen, setHistoryOpen] = useState(false);
-    return <article aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}>
+    const host = useContext(RefrainHistoryHostContext);
+    // Lifted so the title and the card select the same detail slot as history rows.
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [overview, setOverview] = useState(false);
+    const [detailOpen, setDetailOpen] = useState(false);
+    const titleRef = useRef<HTMLButtonElement>(null);
+    const historyRef = useRef<HTMLDetailsElement>(null);
+    const detailId = useId();
+    const cardSelected = overview && (!host || host.activeJobId === job.id);
+    const selectOverview = () => {
+        setSelectedId(null);
+        setOverview(true);
+        setDetailOpen(true);
+        host?.select(job.id);
+        // Standalone details live in the history split, so reveal it.
+        if (!host && historyRef.current && !historyRef.current.open) historyRef.current.open = true;
+    };
+    const selection: RefrainSelection = { selectedId, setSelectedId, overview, setOverview, detailOpen, setDetailOpen, titleRef, historyRef, detailId };
+    return <article aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}
+        data-selected={cardSelected} onClick={event => selectCardOnClick(event, selectOverview)}>
         <div className="sentinel-automation-header">
             <div className="sentinel-automation-title">
-                <strong>{job.name}</strong>
+                <AutomationTitleButton ref={titleRef} name={job.name} selected={cardSelected} controls={detailId} onSelect={selectOverview}>
+                    <strong>{job.name}</strong>
+                </AutomationTitleButton>
                 {job.mode === 'autopilot' && <span className="rounded bg-[#e8912d]/15 px-1.5 text-[#b5650f] dark:text-[#cca700]" title="Can change files and run commands">Autopilot</span>}
                 {!job.enabled && <span className={MUTED}>Paused</span>}
             </div>
@@ -242,9 +259,9 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
                 <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onDelete}>Delete</Button>
                 {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
             </AutomationActions>
-            <RefrainRunHistory job={job} owner={owner} onFollowLink={onFollowLink} onOpenChange={setHistoryOpen} />
+            <RefrainRunHistory job={job} owner={owner} onFollowLink={onFollowLink} onOpenChange={setHistoryOpen} selection={selection} />
         </div>
-        <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}
+        <p className={MUTED}>{modelLabel(job)} · {scheduleLabel(job)}
             {job.enabled && job.nextRunAt && <> · Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></>}
         </p>
         {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
@@ -253,9 +270,17 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
                 : <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>Last run #{last.runNumber}: {runOutcome(last)}</p>)}
     </article>;
 }
+type RefrainSelection = {
+    selectedId: string | null; setSelectedId: (id: string | null) => void;
+    /** The refrain itself is selected rather than one retained run. */
+    overview: boolean; setOverview: (overview: boolean) => void;
+    detailOpen: boolean; setDetailOpen: (open: boolean) => void;
+    titleRef: RefObject<HTMLButtonElement>; historyRef: RefObject<HTMLDetailsElement>; detailId: string;
+};
 /** History follows the To-do panel's measured split, pressed rows and narrow Back navigation. */
-function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
+function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection }: {
     job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; onOpenChange: (open: boolean) => void;
+    selection: RefrainSelection;
 }) {
     const host = useContext(RefrainHistoryHostContext);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -265,13 +290,12 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
     // Match To-do's 280px list + 360px detail allowance, including padding/separator.
     const { width } = useContainerWidth(bodyRef, { throttleMs: 0, wideThreshold: 660 });
     const wide = host?.wide ?? width >= 660;
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [detailOpen, setDetailOpen] = useState(false);
+    const { selectedId, setSelectedId, overview, setOverview, detailOpen, setDetailOpen, titleRef, historyRef, detailId } = selection;
     const active = !host || host.activeJobId === job.id;
     const showingDetail = host ? active && host.detailOpen : detailOpen;
-    const detailId = useId();
     const runs = [...job.runs].sort((a, b) => b.runNumber - a.runNumber);
     const selected = runs.find(run => run.id === selectedId);
+    const shown = overview || !!selected;
     const focusRow = (id: string | null) => {
         const row = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('[data-run-select]') ?? [])]
             .find(button => button.dataset.runSelect === id);
@@ -279,14 +303,15 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
         else listRef.current?.focus({ preventScroll: true });
     };
     const leaveDetails = (clear: boolean) => {
+        const fromOverview = overview;
         setDetailOpen(false);
-        if (clear) setSelectedId(null);
+        if (clear) { setSelectedId(null); setOverview(false); }
         host?.leave(job.id, clear);
-        requestAnimationFrame(() => focusRow(selectedId));
+        requestAnimationFrame(() => fromOverview ? titleRef.current?.focus({ preventScroll: true }) : focusRow(selectedId));
     };
     useLayoutEffect(() => {
         const active = document.activeElement;
-        if (!wide && showingDetail && selected && listRef.current?.contains(active)) {
+        if (!wide && showingDetail && shown && (listRef.current?.contains(active) || (overview && titleRef.current?.contains(active)))) {
             headingRef.current?.focus({ preventScroll: true });
         }
         // Resizing can hide the narrow Back control while it owns keyboard focus.
@@ -298,46 +323,44 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
             host?.leave(job.id, true);
             requestAnimationFrame(() => focusRow(null));
         }
-    }, [wide, showingDetail, selectedId, selected?.id]);
+    }, [wide, showingDetail, selectedId, selected?.id, overview]);
     const leaveHost = host?.leave;
     useEffect(() => () => leaveHost?.(job.id, true), [leaveHost, job.id]);
-    const details = <section ref={detailRef} id={detailId} hidden={!wide && (!showingDetail || !selected)}
-                aria-label={`Run details for ${job.name}`} className="sentinel-refrain-run-detail"
+    const details = <section ref={detailRef} id={detailId} hidden={!wide && (!showingDetail || !shown)}
+                aria-label={overview ? `Refrain details for ${job.name}` : `Run details for ${job.name}`} className="sentinel-refrain-run-detail"
                 onKeyDown={event => {
                     if (event.key !== 'Escape') return;
                     event.preventDefault();
                     event.stopPropagation();
                     leaveDetails(true);
                 }}>
-                {!selected ? <p role="status" className={MUTED}>Select a run to view its details.</p> : <>
+                {overview ? <>
+                    <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leaveDetails(false)}>Back to list</Button></div>
+                    <div className="sentinel-refrain-detail-header">
+                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">{job.name}</h4>
+                        <Button size="sm" variant="ghost" aria-label="Close refrain details" onClick={() => leaveDetails(true)}>×</Button>
+                    </div>
+                    <RefrainOverview job={job} owner={owner} onFollowLink={onFollowLink} />
+                </> : !selected ? <p role="status" className={MUTED}>Select a run to view its details.</p> : <>
                     <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leaveDetails(false)}>Back to runs</Button></div>
                     <div className="sentinel-refrain-detail-header">
                         <h4 ref={headingRef} tabIndex={-1} className="font-semibold">Run #{selected.runNumber}: {selected.status}</h4>
                         <Button size="sm" variant="ghost" aria-label="Close run details" onClick={() => leaveDetails(true)}>×</Button>
                     </div>
-                    <p className={MUTED}>Trigger: {selected.trigger}</p>
-                    {job.processId && selected.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
-                        href={selected.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
-                    <dl>
-                        <RunTime label="Created" value={selected.createdAt} />
-                        <RunTime label="Started" value={selected.startedAt} />
-                        <RunTime label="Finished" value={selected.finishedAt} />
-                        {selected.durationMs !== undefined && <div><dt>Duration</dt><dd>{runDuration(selected.durationMs)}</dd></div>}
-                    </dl>
-                    {selected.skipReason && <p>Skipped: {SKIP_REASONS[selected.skipReason] ?? selected.skipReason}</p>}
-                    {selected.error && <pre role="region" tabIndex={0} aria-label={`Error for run #${selected.runNumber}`} className={ERROR}>{selected.error}</pre>}
+                    <RunFacts run={selected} job={job} owner={owner} onFollowLink={onFollowLink} />
                 </>}
             </section>;
-    return <details className="sentinel-refrain-history" onKeyDown={closeHistoryOnEscape} onToggle={event => {
+    return <details ref={historyRef} className="sentinel-refrain-history" onKeyDown={closeHistoryOnEscape} onToggle={event => {
         if (event.target !== event.currentTarget) return;
         onOpenChange(event.currentTarget.open);
-        if (!event.currentTarget.open) { setSelectedId(null); setDetailOpen(false); host?.leave(job.id, true); }
+        // Collapsing history releases a run selection; the refrain overview does not depend on it.
+        if (!event.currentTarget.open && !overview) { setSelectedId(null); setDetailOpen(false); host?.leave(job.id, true); }
     }}>
         <summary>History ({job.runs.length})</summary>
         {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
         {selectedId && !selected && <p role="status" className={MUTED}>This run is no longer in retained history. Select another run.</p>}
-        <div ref={bodyRef} hidden={!runs.length} className={runs.length ? 'sentinel-refrain-history-body' : undefined} data-layout={wide ? 'split' : 'single'} data-hosted={!!host}>
-            <ol ref={listRef} tabIndex={-1} hidden={!host && !wide && detailOpen && !!selected}
+        <div ref={bodyRef} hidden={!runs.length && (!!host || !overview)} className={runs.length || (!host && overview) ? 'sentinel-refrain-history-body' : undefined} data-layout={wide ? 'split' : 'single'} data-hosted={!!host}>
+            <ol ref={listRef} tabIndex={-1} hidden={!host && !wide && detailOpen && shown}
                 aria-label={`Run history for ${job.name}`} className="sentinel-refrain-runs"
                 style={wide && !host ? { flex: '0 0 43%' } : undefined} onKeyDown={event => {
                     if (!(event.target instanceof HTMLButtonElement) || !event.target.matches('[data-run-select]')) return;
@@ -355,7 +378,7 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
                     return <li key={run.id} aria-label={`Run #${run.runNumber}`} className="sentinel-refrain-run" data-selected={active && run.id === selectedId}>
                         <button type="button" data-run-select={run.id} aria-pressed={active && run.id === selectedId} aria-controls={detailId}
                             aria-label={`Select run #${run.runNumber}: ${runOutcome(run)} (${run.trigger})`}
-                            onClick={() => { setSelectedId(run.id); setDetailOpen(true); host?.select(job.id); }}>
+                            onClick={() => { setOverview(false); setSelectedId(run.id); setDetailOpen(true); host?.select(job.id); }}>
                             <span className="sentinel-refrain-run-state">#{run.runNumber} <span className={run.status === 'failed' || run.status === 'interrupted' ? ERROR : undefined}>{run.status}</span> <span className={MUTED}>· {run.trigger}</span></span>
                             <span className={MUTED}>
                                 <time dateTime={timestamp} aria-label={`${timestampLabel}: ${new Date(timestamp).toLocaleString()}`}>{new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
@@ -365,9 +388,51 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
                     </li>;
                 })}
             </ol>
-            {host ? active && host.target && selected ? createPortal(details, host.target) : null : details}
+            {host ? active && host.target && shown ? createPortal(details, host.target) : null : details}
         </div>
     </details>;
+}
+function modelLabel(job: SentinelRefrain) {
+    return `${job.provider} / ${job.effortTier ? `${job.effortTier} effort tier` : job.model}${job.effort ? ` / ${job.effort}` : ''}`;
+}
+function scheduleLabel(job: SentinelRefrain) {
+    return job.cron ? describeCron(job.cron) || job.cron : 'Manual only';
+}
+/** Definition and schedule always render; the current (else latest) run follows live list refreshes. */
+function RefrainOverview({ job, owner, onFollowLink }: { job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink'] }) {
+    const newest = [...job.runs].sort((a, b) => b.runNumber - a.runNumber)[0];
+    const current = job.activeRun ?? job.latestRun ?? newest;
+    return <>
+        <p className={job.gatePaused ? ERROR : MUTED}>{job.enabled ? 'Enabled' : 'Paused'} · {job.mode === 'autopilot' ? 'Autopilot' : 'Ask'}
+            {job.gateScript && (job.gatePaused ? ' · Gate paused' : ' · Gated')}</p>
+        <dl>
+            <div><dt>Schedule</dt><dd>{scheduleLabel(job)}{job.cron && <> (<code>{job.cron}</code>)</>}</dd></div>
+            {job.enabled && <RunTime label="Next run" value={job.nextRunAt} />}
+            <div><dt>Model</dt><dd>{modelLabel(job)}</dd></div>
+            <div><dt>Runs</dt><dd>{job.runs.length} retained{job.runHistoryTruncated ? ' (older runs expired)' : ''}</dd></div>
+        </dl>
+        {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
+        <h5 className="font-semibold">Instructions</h5>
+        <pre role="region" tabIndex={0} aria-label={`Instructions for ${job.name}`}>{job.instructions}</pre>
+        <h5 className="font-semibold">{current ? `${job.activeRun ? 'Current' : 'Latest'} run #${current.runNumber}: ${current.status}` : 'No runs yet'}</h5>
+        {current ? <RunFacts run={current} job={job} owner={owner} onFollowLink={onFollowLink} />
+            : <p className={MUTED}>{job.cron && job.enabled ? 'The first run starts at its next scheduled time or with Run now.' : 'Use Run now to start the first run.'}</p>}
+    </>;
+}
+function RunFacts({ run, job, owner, onFollowLink }: { run: SentinelRefrainRun; job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink'] }) {
+    return <>
+        <p className={MUTED}>Trigger: {run.trigger}</p>
+        {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
+            href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
+        <dl>
+            <RunTime label="Created" value={run.createdAt} />
+            <RunTime label="Started" value={run.startedAt} />
+            <RunTime label="Finished" value={run.finishedAt} />
+            {run.durationMs !== undefined && <div><dt>Duration</dt><dd>{runDuration(run.durationMs)}</dd></div>}
+        </dl>
+        {run.skipReason && <p>Skipped: {SKIP_REASONS[run.skipReason] ?? run.skipReason}</p>}
+        {run.error && <pre role="region" tabIndex={0} aria-label={`Error for run #${run.runNumber}`} className={ERROR}>{run.error}</pre>}
+    </>;
 }
 function runDuration(durationMs: number) {
     return `${(durationMs / 1000).toFixed(1)}s`;

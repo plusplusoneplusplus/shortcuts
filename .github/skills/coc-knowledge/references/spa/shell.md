@@ -907,19 +907,22 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-Default-off `features.panelTabGroups` partitions saved order into Tools, Files,
-Web and Canvas group blocks in one strip row. The cap is three, with pinned,
-active and preview priority; the +N overflow lists the group's hidden tabs in a
-searchable native-view-overlay portal shared with canvas compression. Fold state
-and block order persist per panel scope at `unified-right-panel:<scope>:groups`
-as `{ folded, order }` (a legacy folded-only array still reads), independently of
-chats; saved orders are normalized, with unknown/repeated groups dropped and
-missing ones appended in default order. Dragging a group pill past 4px, or
-Alt+Arrow on it, moves the whole block without touching membership, member order,
-activation or keyed views; a shorter press folds, Escape cancels. Tab moves stay
-within the kind group and bulk closes retain the panel's guards.
+Default-on `features.panelTabGroups` partitions saved order into Tools, Files,
+Web and Canvas group blocks in one Chrome-style strip row; an explicit `false`
+restores the ungrouped strip. `unifiedPanelTabs.css` owns the rounded active
+surface and inline colored group labels in both themes. The cap is three, with
+pinned, active and preview priority; the +N overflow lists the group's hidden
+tabs in a searchable native-view-overlay portal shared with canvas compression.
+Fold state and block order persist per panel scope at
+`unified-right-panel:<scope>:groups` as `{ folded, order }` (a legacy
+folded-only array still reads), independently of chats; saved orders are
+normalized, with unknown/repeated groups dropped and missing ones appended in
+default order. Dragging a group pill past 4px, or Alt+Arrow on it, moves the
+whole block without touching membership, member order, activation or keyed
+views; a shorter press folds, Escape cancels. Tab moves stay within the kind
+group and bulk closes retain the panel's guards.
 Canvas uses group overflow without a header count chip.
-With groups off and default-on `features.panelTabReordering` set to `false`, the
+With groups explicitly `false` and `features.panelTabReordering` set to `false`, the
 strip divides tools from resources and confines moves to a section. With either
 flag enabled, native drag, Alt+Arrow and tab-menu moves share `moveVisibleTab`:
 per-chat `orderByScope` orders stable ids without changing ownership, activation or keyed views.
@@ -1062,7 +1065,8 @@ launch/retry/cancel or authorization controls.
 The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
 **Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
-and hosts Coda as its pinned built-in row. Refrain history navigation and selection,
+and hosts Coda as its pinned built-in row. Card details (title/blank-space selection into
+To-do's detail column), Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
 three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI

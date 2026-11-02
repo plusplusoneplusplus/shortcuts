@@ -15,7 +15,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain, globalShortcut, powerMonitor } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import {
     createRotatingFileLogger,
@@ -37,12 +37,15 @@ import {
     setSkippedVersion,
     getUpdateChannel,
     setUpdateChannel,
+    getAutoUpdateMode,
+    setAutoUpdateMode,
     UpdateChannel,
     UpdatePrompt,
     ReleaseInfo,
     pickDownloadUrl,
 } from './update-check';
 import { UpdateCoordinator } from './update-coordinator';
+import { AutoUpdater, isAppIdle } from './update-auto';
 import { createUpdateDialogs } from './update-ui';
 import { clearPendingUpdate, recordPendingUpdate, recoverPendingUpdate } from './update-recovery';
 import { confirmUpdateRestart } from './update-restart';
@@ -368,8 +371,40 @@ function runAgentPreflight(): void {
 }
 
 let updateCoordinator: UpdateCoordinator | undefined;
+let autoUpdater: AutoUpdater | undefined;
 let updateDownload: { fraction?: number } | undefined;
 let checkingForUpdate = false;
+
+function tryBeginUpdateCheck(): boolean {
+    if (checkingForUpdate || isQuitting) return false;
+    checkingForUpdate = true;
+    return true;
+}
+
+function endUpdateCheck(): void {
+    checkingForUpdate = false;
+    setupApplicationMenu();
+}
+
+function startAutoUpdates(): void {
+    if (isQuitting) return;
+    autoUpdater ??= new AutoUpdater({
+        check: () => checkForUpdate({
+            currentVersion: app.getVersion(),
+            channel: getUpdateChannel(defaultDataDir(), app.getVersion()),
+        }),
+        getSkippedVersion: () => getSkippedVersion(defaultDataDir()),
+        coordinator: getUpdateCoordinator(),
+        isIdle: () => isAppIdle({
+            server: serverHandle,
+            getSystemIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+        }),
+        tryBeginCheck: tryBeginUpdateCheck,
+        endCheck: endUpdateCheck,
+    });
+    autoUpdater.start();
+    void autoUpdater.checkNow().finally(() => setupApplicationMenu());
+}
 
 /** One updater for every native window; installers launch before the normal quit drain. */
 function getUpdateCoordinator(): UpdateCoordinator {
@@ -445,13 +480,16 @@ async function recoverUpdateThenCheck(): Promise<void> {
     } catch (error) {
         process.stderr.write(`[coc-desktop] update recovery failed: ${String(error)}\n`);
     }
-    await runUpdateCheck(true);
+    if (getAutoUpdateMode(defaultDataDir()) === 'idle') {
+        startAutoUpdates();
+    } else {
+        await runUpdateCheck(true);
+    }
 }
 
 /** Automatic checks honor Skip; manual checks can resume a retained update offline. */
 async function runUpdateCheck(auto: boolean): Promise<void> {
-    if (checkingForUpdate) return;
-    checkingForUpdate = true;
+    if (!tryBeginUpdateCheck()) return;
     try {
         if (updateCoordinator?.readyRelease) {
             if (!auto) await updateCoordinator.start(updateCoordinator.readyRelease);
@@ -484,8 +522,7 @@ async function runUpdateCheck(auto: boolean): Promise<void> {
     } catch {
         // Update checking is a nicety — it must never break the app.
     } finally {
-        checkingForUpdate = false;
-        setupApplicationMenu();
+        endUpdateCheck();
     }
 }
 
@@ -675,6 +712,16 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
         onSetUpdateChannel: (ch) => {
             setUpdateChannel(defaultDataDir(), ch);
             setupApplicationMenu(ch);
+        },
+        autoUpdateMode: getAutoUpdateMode(defaultDataDir()),
+        onSetAutoUpdateMode: (mode) => {
+            setAutoUpdateMode(defaultDataDir(), mode);
+            if (mode === 'idle') {
+                startAutoUpdates();
+            } else {
+                autoUpdater?.stop();
+            }
+            setupApplicationMenu();
         },
         // AC-01: the top-level "Dev Tunnel" menu. Undefined off win32 / before the
         // manager exists; `buildAppMenuTemplate` only inserts it on win32 anyway.
@@ -1300,6 +1347,7 @@ app.on('before-quit', (event) => {
     devTunnelManager?.dispose();
     event.preventDefault();
     isQuitting = true;
+    autoUpdater?.dispose();
     disposeExtensionCanvasIpc();
     void Promise.all([
         disposeBrowserViews()

@@ -10,6 +10,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
+import { readFile } from 'node:fs/promises';
 
 const STRIP = './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip.tsx';
 const TITLES = ['Google', 'Search - Microsoft Bing and a much longer page title', 'YouTube', 'Apple'];
@@ -22,6 +23,7 @@ test.beforeAll(async () => {
         darkMode: 'class',
         corePlugins: { preflight: true },
     })]).process('@tailwind base; @tailwind components; @tailwind utilities;', { from: undefined })).css;
+    css += await readFile('./src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabs.css', 'utf8');
     const bundle = await build({
         stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
             import React from 'react';

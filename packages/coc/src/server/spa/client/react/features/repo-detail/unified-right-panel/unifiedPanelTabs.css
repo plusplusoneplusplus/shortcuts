@@ -1,0 +1,164 @@
+/* Keep the tab surface in sync with the panel body in both themes. */
+.unified-panel-tab-strip {
+    --panel-tab-surface: #fff;
+    --panel-tab-strip: #e5e7eb;
+    --panel-tab-hover: #d6d9df;
+    --panel-tab-text: #616161;
+    --panel-tab-active-text: #1f1f1f;
+    --panel-tab-divider: #b6bac2;
+    background: var(--panel-tab-strip);
+}
+
+.dark .unified-panel-tab-strip {
+    --panel-tab-surface: #1e1e1e;
+    --panel-tab-strip: #252526;
+    --panel-tab-hover: #343438;
+    --panel-tab-text: #b8b8b8;
+    --panel-tab-active-text: #fff;
+    --panel-tab-divider: #55555b;
+}
+
+.unified-panel-tab-list {
+    padding: 6px 8px 0;
+    isolation: isolate;
+}
+
+.unified-panel-tab {
+    border-radius: 10px 10px 0 0;
+    color: var(--panel-tab-text);
+}
+
+.unified-panel-tab:hover {
+    background: var(--panel-tab-hover);
+    color: var(--panel-tab-active-text);
+    z-index: 1;
+}
+
+.unified-panel-tab[data-active] {
+    background: var(--panel-tab-surface);
+    color: var(--panel-tab-active-text);
+    z-index: 2;
+}
+
+/* Inverse corners join the active tab to the content beneath the strip. */
+.unified-panel-tab[data-active]::before,
+.unified-panel-tab[data-active]::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    width: 8px;
+    height: 8px;
+    pointer-events: none;
+}
+
+.unified-panel-tab[data-active]::before {
+    left: -8px;
+    background: radial-gradient(circle at 0 0, transparent 8px, var(--panel-tab-surface) 8.5px);
+}
+
+.unified-panel-tab[data-active]::after {
+    right: -8px;
+    background: radial-gradient(circle at 100% 0, transparent 8px, var(--panel-tab-surface) 8.5px);
+}
+
+.unified-panel-tab-separator {
+    position: absolute;
+    right: 0;
+    top: 10px;
+    width: 1px;
+    height: 15px;
+    background: var(--panel-tab-divider);
+    pointer-events: none;
+}
+
+.unified-panel-tab:is([data-active], :hover) > .unified-panel-tab-separator,
+.unified-panel-tab:has(+ .unified-panel-tab:is([data-active], :hover)) > .unified-panel-tab-separator {
+    visibility: hidden;
+}
+
+.unified-panel-tab-close:hover {
+    background: var(--panel-tab-divider);
+}
+
+.unified-panel-tab-group {
+    position: relative;
+    margin-right: 8px;
+    --panel-group-color: #925b17;
+    --panel-group-label: #f6c98e;
+}
+
+.unified-panel-tab-group[data-strip-group='files'] {
+    --panel-group-color: #3566b0;
+    --panel-group-label: #a8c7fa;
+}
+
+.unified-panel-tab-group[data-strip-group='web'] {
+    --panel-group-color: #347548;
+    --panel-group-label: #a8dab5;
+}
+
+.unified-panel-tab-group[data-strip-group='canvas'] {
+    --panel-group-color: #8257aa;
+    --panel-group-label: #d7aefb;
+}
+
+.dark .unified-panel-tab-group {
+    --panel-group-color: var(--panel-group-label);
+}
+
+.unified-panel-tab-group::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 8px;
+    right: 0;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--panel-group-color);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.unified-panel-group-label {
+    background: var(--panel-group-label);
+    color: #202124;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.unified-panel-group-label:hover {
+    filter: brightness(0.94);
+}
+
+.unified-panel-group-count {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.unified-panel-group-label[aria-expanded='false'] {
+    border-radius: 12px;
+}
+
+.unified-panel-group-overflow {
+    color: var(--panel-tab-text);
+}
+
+.unified-panel-group-overflow:hover {
+    background: var(--panel-tab-hover);
+    color: var(--panel-tab-active-text);
+}
+
+.unified-panel-open-menu {
+    min-height: 41px;
+}
+
+@media (forced-colors: active) {
+    .unified-panel-tab[aria-selected='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    .unified-panel-group-label {
+        outline: 1px solid ButtonText;
+    }
+}

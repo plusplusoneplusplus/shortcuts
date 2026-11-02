@@ -327,7 +327,8 @@ describe('browser tab shortcuts', () => {
     });
 
     it('numbers 1–8 and the last tab as 9 when there are more than nine', () => {
-        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true });
+        // Ten visible browser tabs need the ungrouped strip.
+        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true, panelTabGroupsEnabled: false });
         render(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ width: 4000, maxWidth: 4000 })} />);
         const tabs = Array.from({ length: 10 }, (_, index) => openBrowser(`t${index}.test`));
         focusChrome();

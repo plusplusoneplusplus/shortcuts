@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { persistGitView, persistedViewIdentity } from '../../git/repoGitTab/selectionModel';
-import type { RightPanelView } from '../../git/repoGitTab/types';
+import type { PersistedGitView, RightPanelView } from '../../git/repoGitTab/types';
 import { closeTab, findTab } from './unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import {
@@ -41,10 +41,8 @@ export function useSplitGitPanel({
         });
     }, [enabled, tab, memberMatches, scopeWorkspaceId, tabId, memberId]);
 
-    const openView = useCallback((view: RightPanelView | null) => {
-        if (!enabled || !view) return;
-        const gitView = persistGitView(view);
-        if (memberMatches && tab && persistedViewIdentity(gitView) === persistedViewIdentity(tab.gitView)) return;
+    // Open (or focus) the chat's Git tab on `gitView` and reveal the panel.
+    const revealView = useCallback((gitView: PersistedGitView) => {
         openUnifiedGitTab(scopeWorkspaceId, {
             ownerWorkspaceId: scopeWorkspaceId,
             ownerRoutingRef,
@@ -52,7 +50,14 @@ export function useSplitGitPanel({
             gitView,
             ...(memberId === undefined ? {} : { gitMemberId: memberId }),
         });
-    }, [enabled, memberMatches, tab, scopeWorkspaceId, ownerRoutingRef, chatId, memberId]);
+    }, [scopeWorkspaceId, ownerRoutingRef, chatId, memberId]);
+
+    const openView = useCallback((view: RightPanelView | null) => {
+        if (!enabled || !view) return;
+        const gitView = persistGitView(view);
+        if (memberMatches && tab && persistedViewIdentity(gitView) === persistedViewIdentity(tab.gitView)) return;
+        revealView(gitView);
+    }, [enabled, memberMatches, tab, revealView]);
 
     // The detail reports its unsaved edits to whichever Git tab body is mounted
     // now, so closing that tab prompts like any dirty editor tab.
@@ -69,6 +74,8 @@ export function useSplitGitPanel({
         detailContainer: enabled ? host : null,
         detailActive: enabled,
         onViewChange: enabled ? openView : undefined,
+        /** Explicit opens from other surfaces: focus the tab even when it already shows `gitView`. */
+        revealView: enabled ? revealView : undefined,
         detailOpen: enabled ? !!tab && memberMatches : undefined,
         restoreView: enabled && memberMatches ? tab?.gitView : undefined,
         viewScopeKey: enabled ? chatId : undefined,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import type { CocClient, SentinelCodaConfig, SentinelCodaResponse, SentinelCodaFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
@@ -9,7 +9,8 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
 import { AcceptAllCodaProposals, CodaFindingsContext } from './SentinelCodaFinding';
-import { AutomationActions, AutomationError } from './SentinelAutomationCard';
+import { AutomationActions, AutomationError, AutomationTitleButton, CODA_DETAIL_KEY, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
+import { SentinelCodaDetails, useLeaveCodaHost } from './SentinelCodaDetails';
 import { CodaRunChatLink, SentinelCodaHistory } from './SentinelCodaHistory';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
@@ -66,6 +67,12 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
     const [selecting, setSelecting] = useState(false);
     const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
     const [historyOpen, setHistoryOpen] = useState(false);
+    const host = useContext(RefrainHistoryHostContext);
+    const [detailSelected, setDetailSelected] = useState(false);
+    const titleRef = useRef<HTMLButtonElement>(null);
+    const detailActive = detailSelected && (!host || host.activeJobId === CODA_DETAIL_KEY);
+    const selectDetails = () => { setDetailSelected(true); host?.select(CODA_DETAIL_KEY); };
+    useLeaveCodaHost();
     const busyRef = useRef(false);
     const mounted = useRef(true);
     const sequence = useRef(0);
@@ -217,11 +224,14 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
     return <CodaFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
         {place(children, <>
-        <section aria-label="Coda" data-testid="sentinel-coda-strip"
+        <section aria-label="Coda" data-testid="sentinel-coda-strip" data-selected={detailActive}
+            onClick={event => selectCardOnClick(event, selectDetails)}
             className="sentinel-automation-card rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="sentinel-automation-header">
                 <span className="sentinel-automation-title">
-                    <strong>{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
+                    <AutomationTitleButton ref={titleRef} name="Coda" selected={detailActive} controls={`${id}-details`} onSelect={selectDetails}>
+                        <strong>{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
+                    </AutomationTitleButton>
                     <SentinelAutomationInfo term="Coda" />
                     {builtInRow && config && !config.enabled && <span className="text-[#616161] dark:text-[#9d9d9d]">Paused</span>}
                 </span>
@@ -283,6 +293,8 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
                     <Button size="sm" type="submit" disabled={busy || !!cronError || !!loadError}>Save schedule</Button></div>
             </form>}
         </section>
+        {detailActive && <SentinelCodaDetails id={`${id}-details`} name={builtInRow ? 'Coda · built-in' : 'Coda'} client={client} owner={owner}
+            items={items} data={data} titleRef={titleRef} onFollowLink={onFollowLink} onClose={() => setDetailSelected(false)} />}
         {historyOpen && data && <SentinelCodaHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
         </>)}
     </CodaFindingsContext.Provider>;

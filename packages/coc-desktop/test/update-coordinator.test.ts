@@ -289,4 +289,101 @@ describe('UpdateCoordinator', () => {
             errors.mockRestore();
         });
     });
+
+    describe('silent auto update', () => {
+        function expectNoUi(f: ReturnType<typeof fixture>) {
+            expect(f.options.setProgress).not.toHaveBeenCalled();
+            expect(f.options.promptRestart).not.toHaveBeenCalled();
+            expect(f.options.confirmRestart).not.toHaveBeenCalled();
+            expect(f.options.promptError).not.toHaveBeenCalled();
+            expect(f.options.openBrowser).not.toHaveBeenCalled();
+        }
+
+        it('downloads, re-checks idle, installs and quits with no progress or dialogs', async () => {
+            const f = fixture();
+            const calls: string[] = [];
+            vi.mocked(f.options.download!).mockImplementation(async () => { calls.push('download'); return f.download; });
+            const isIdle = vi.fn(async () => { calls.push('idle'); return true; });
+            vi.mocked(f.options.install).mockImplementation(async () => { calls.push('helper'); });
+            vi.mocked(f.options.quit).mockImplementation(() => { calls.push('quit'); });
+            await f.coordinator.start(release, { silent: true, isIdle });
+            expect(calls).toEqual(['download', 'idle', 'helper', 'quit']);
+            expectNoUi(f);
+            expect(f.coordinator.readyRelease).toBeUndefined();
+        });
+
+        it('keeps verified bytes when activity returned and installs them on a later idle poll', async () => {
+            const f = fixture();
+            const isIdle = vi.fn(async () => false);
+            await f.coordinator.start(release, { silent: true, isIdle });
+            expect(f.options.install).not.toHaveBeenCalled();
+            expect(f.options.quit).not.toHaveBeenCalled();
+            expect(f.cleanup).not.toHaveBeenCalled();
+            expect(f.coordinator.readyRelease).toBe(release);
+            isIdle.mockResolvedValue(true);
+            await f.coordinator.start(release, { silent: true, isIdle });
+            expect(f.options.download).toHaveBeenCalledTimes(1);
+            expect(f.options.install).toHaveBeenCalledTimes(1);
+            expect(f.options.quit).toHaveBeenCalledTimes(1);
+            expectNoUi(f);
+        });
+
+        it('lets a manual Update reuse silently retained bytes with the normal dialogs', async () => {
+            const f = fixture();
+            await f.coordinator.start(release, { silent: true, isIdle: async () => false });
+            await f.coordinator.start(release);
+            expect(f.options.download).toHaveBeenCalledTimes(1);
+            expect(f.options.promptRestart).toHaveBeenCalledTimes(1);
+            expect(f.options.confirmRestart).toHaveBeenCalledTimes(1);
+            expect(f.options.install).toHaveBeenCalledTimes(1);
+        });
+
+        it('runs a manual Update after an active silent run instead of joining it', async () => {
+            const f = fixture();
+            let idle!: (value: boolean) => void;
+            const silent = f.coordinator.start(release, {
+                silent: true, isIdle: () => new Promise(r => { idle = r; }),
+            });
+            await vi.waitFor(() => expect(idle).toBeDefined());
+            const manual = f.coordinator.start(release);
+            expect(manual).not.toBe(silent);
+            idle(false);
+            await manual;
+            expect(f.options.promptRestart).toHaveBeenCalledTimes(1);
+            expect(f.options.install).toHaveBeenCalledTimes(1);
+        });
+
+        it.each([
+            ['download', (f: ReturnType<typeof fixture>) => vi.mocked(f.options.download!).mockRejectedValue(new Error('checksum mismatch'))],
+            ['install', (f: ReturnType<typeof fixture>) => vi.mocked(f.options.install).mockRejectedValue(new Error('spawn failed'))],
+        ])('logs a %s failure to stderr with no dialog and can retry later', async (_stage, arrange) => {
+            const f = fixture();
+            const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+            arrange(f);
+            await f.coordinator.start(release, { silent: true, isIdle: async () => true });
+            expectNoUi(f);
+            expect(f.options.quit).not.toHaveBeenCalled();
+            expect(errors).toHaveBeenCalledWith(expect.stringContaining('Automatic update failed'));
+            expect(f.coordinator.readyRelease).toBeUndefined();
+            vi.mocked(f.options.download!).mockResolvedValue(f.download);
+            vi.mocked(f.options.install).mockResolvedValue();
+            await f.coordinator.start(release, { silent: true, isIdle: async () => true });
+            expect(f.options.quit).toHaveBeenCalledTimes(1);
+            errors.mockRestore();
+        });
+
+        it('does not install when quit begins during the idle re-check', async () => {
+            const f = fixture();
+            let idle!: (value: boolean) => void;
+            const pending = f.coordinator.start(release, {
+                silent: true, isIdle: () => new Promise(r => { idle = r; }),
+            });
+            await vi.waitFor(() => expect(idle).toBeDefined());
+            await f.coordinator.dispose();
+            idle(true);
+            await pending;
+            expect(f.options.install).not.toHaveBeenCalled();
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+        });
+    });
 });

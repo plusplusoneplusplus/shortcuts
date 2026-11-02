@@ -77,7 +77,8 @@ refresh, and the two layouts. Everything else lives here.
   another surface, including rail pages beyond the initial history page. Consume
   it only when page, member, full SHA and `sourceSelectionId` match; this does not
   enable direct SHA lookup or persist a second history cache. A fresh supplied
-  commit requests selection even for a repeated route whose detail was closed.
+  commit, or a fresh `SET_GIT_ROUTE.openRequest` token, requests selection even
+  for a repeated route whose detail was closed.
 - **A route belongs to exactly one panel.** `state.gitRouteScope` must name both
   this page owner and this data member before the selection is consumed, and a
   consumed route is keyed on all four fields (page, member, revision, file) via

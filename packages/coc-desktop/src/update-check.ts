@@ -279,11 +279,11 @@ export function formatUpdatePrompt(
 }
 
 // ---------------------------------------------------------------------------
-// Persistent settings: skip-version and update-channel
+// Persistent settings: skip-version, update-channel and auto-update
 //
-// Both are stored as fields in a shared desktop-update.json in the app data
-// dir. Writes always merge with existing content so neither field clobbers
-// the other.
+// All are stored as fields in a shared desktop-update.json in the app data
+// dir. Writes always merge with existing content so no field clobbers
+// another.
 // ---------------------------------------------------------------------------
 
 /** Injectable filesystem seams for the settings store. */
@@ -368,6 +368,28 @@ export function setUpdateChannel(
 ): void {
     try {
         writeMarker(dataDir, { updateChannel: channel }, store);
+    } catch {
+        // Best-effort.
+    }
+}
+
+/** Auto Update mode. `off` keeps the interactive prompts; `idle` checks hourly
+ *  and installs silently once the app has been idle long enough. */
+export type AutoUpdateMode = 'off' | 'idle';
+
+/** Read the persisted Auto Update mode. A missing or invalid value reads as `off`. */
+export function getAutoUpdateMode(dataDir: string, store: UpdateStore = {}): AutoUpdateMode {
+    return readMarker(dataDir, store)?.autoUpdate === 'idle' ? 'idle' : 'off';
+}
+
+/** Persist the user's Auto Update mode. */
+export function setAutoUpdateMode(
+    dataDir: string,
+    mode: AutoUpdateMode,
+    store: UpdateStore = {},
+): void {
+    try {
+        writeMarker(dataDir, { autoUpdate: mode }, store);
     } catch {
         // Best-effort.
     }

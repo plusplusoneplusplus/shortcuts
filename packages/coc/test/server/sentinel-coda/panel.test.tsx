@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelCodaResponse, SentinelCodaRun, SentinelCodaFindingRecord, SentinelCodaRunDetail, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({ getRun: vi.fn(), accept: vi.fn(), dismiss: vi.fn(), undo: vi.fn(), get: vi.fn(), start: vi.fn(), cancel: vi.fn(), updateConfig: vi.fn(), connect: vi.fn(), route: { kind: 'local' } as { kind: string; baseUrl?: string }, refs: [] as unknown[] }));
@@ -538,5 +538,56 @@ describe('Scrubber row findings', () => {
         view.rerender(rows(item('a'), refresh, { ...owner, processId: 'other' }));
         await act(async () => write.resolve({}));
         expect(refresh).not.toHaveBeenCalled();
+    });
+});
+
+describe('Coda strip details', () => {
+    const summary = { id: 'run-9', status: 'completed' as const, trigger: 'schedule' as const, createdAt: '2026-11-01T09:00:00Z',
+        finishedAt: '2026-11-01T09:01:00Z', childProcessId: 'queue_child9', itemCount: 1, deferredCount: 0, awaitingReviewCount: 0,
+        counts: { done: 1, proposals: 0, unverified: 0 } };
+    const noMutations = () => {
+        for (const mutation of [mock.start, mock.cancel, mock.updateConfig, mock.accept, mock.dismiss, mock.undo]) expect(mutation).not.toHaveBeenCalled();
+    };
+    it('shows schedule and status before any run, from the title or blank strip space', async () => {
+        mock.get.mockResolvedValue(response({ config: { enabled: true, cron: '0 9 * * *', paused: true, consecutiveFailures: 3, revision: 4 } }));
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        const title = await screen.findByRole('button', { name: 'Show details for Coda' });
+        const strip = screen.getByTestId('sentinel-coda-strip');
+        await screen.findByText(/Schedule paused after 3 failures/);
+        await openActions();
+        expect(strip).toHaveAttribute('data-selected', 'false');
+        fireEvent.click(screen.getByText(/Schedule paused after 3 failures/));
+        const detail = screen.getByRole('region', { name: 'Details for Coda' });
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        expect(strip).toHaveAttribute('data-selected', 'true');
+        expect(detail).toHaveTextContent('Schedule paused after 3 failures');
+        expect(detail).toHaveTextContent('0 9 * * *');
+        expect(detail).toHaveTextContent('No Coda runs yet.');
+        fireEvent.click(screen.getByRole('button', { name: 'Close Coda details' }));
+        expect(screen.queryByRole('region', { name: 'Details for Coda' })).toBeNull();
+        await waitFor(() => expect(title).toHaveFocus());
+        noMutations();
+    });
+    it.each(['queued', 'running'] as const)('shows the %s run without reading retained details', async status => {
+        mock.get.mockResolvedValue(response({ activeRun: active(status), runs: [summary] }));
+        render(<SentinelCoda owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
+        const detail = await screen.findByRole('region', { name: 'Details for Coda' });
+        await waitFor(() => expect(detail).toHaveTextContent(`Current run: ${status}`));
+        expect(detail).toHaveTextContent('1 item');
+        expect(within(detail).getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_child');
+        expect(mock.getRun).not.toHaveBeenCalledWith('ws-a', 'queue_parent', 'run-1', expect.anything());
+        noMutations();
+    });
+    it('reads the latest terminal run through the owner without disturbing history selection', async () => {
+        mock.get.mockResolvedValue(response({ runs: [summary] }));
+        mock.getRun.mockResolvedValue({ ...summary, snapshot: [], deferredItemIds: [], awaitingReviewItemIds: [], findings: [] } satisfies SentinelCodaRunDetail);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
+        const detail = await screen.findByRole('region', { name: 'Details for Coda' });
+        await waitFor(() => expect(detail).toHaveTextContent('Latest run: completed'));
+        await waitFor(() => expect(mock.getRun).toHaveBeenCalledWith('ws-a', 'queue_parent', 'run-9', expect.objectContaining({ signal: expect.any(AbortSignal) })));
+        expect(await within(detail).findByText('No findings recorded.')).toBeInTheDocument();
+        noMutations();
     });
 });

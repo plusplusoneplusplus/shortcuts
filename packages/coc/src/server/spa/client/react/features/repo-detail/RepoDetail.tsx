@@ -731,6 +731,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             routingRef={sourceSelectionId}
                                             client={queueClient}
                                             scopeLabel={railScopeLabel}
+                                            onRevealGitView={splitGitPanel.revealView}
                                             status={railGitStatus}
                                         />
                                     ) : undefined}

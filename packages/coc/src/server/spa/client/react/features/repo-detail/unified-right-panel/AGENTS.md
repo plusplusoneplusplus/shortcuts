@@ -1,6 +1,6 @@
 # unified-right-panel
 
-The workspace's one and only right panel: a Cursor-style resource-tabbed column
+The workspace's one and only right panel: a Chrome-style resource-tabbed column
 holding Terminal, Work Items, Pull Requests, Notes, Settings, files, canvases,
 chat diffs, local HTML pages and web browser tabs, with a Search/Explorer navigator
 at its right edge. It mounts at every breakpoint.
@@ -41,20 +41,23 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
-Display grouping is separate from ownership. Default-off `features.panelTabGroups`
+Display grouping is separate from ownership. Default-on `features.panelTabGroups`
 partitions the saved order into Tools, Files, Web and Canvas blocks in one row, with
-three visible slots per group. Pinned To-do, active and preview tabs take priority;
-promoted active/preview tabs occupy trailing slots without changing saved order.
-Folded groups retain the active and pinned tabs. Fold state and block order belong
-to the panel scope, not the chat, in `unified-right-panel:<scope>:groups`
-(`{ folded, order }`; legacy arrays read as folds). `normalizeGroupOrder` drops
-unknown/repeated groups and appends missing ones in default order. Searchable +N
-menus list the group's hidden tabs and preserve dirty/error marks and guarded bulk
-closing. Tab drag, Alt+Arrow and menu moves stay within the kind group. A group
-pill moves its whole block: pointer drag past `GROUP_DRAG_THRESHOLD` (shorter
-presses fold; Escape, pointercancel and blur cancel and suppress the trailing
-click) or Alt+Arrow on the focused pill. Block moves only rewrite the order list,
-so members, activation, folds and keyed hosted views are untouched.
+three visible slots per group; an explicit `false` restores the ungrouped strip.
+`unifiedPanelTabs.css` owns the rounded tab surfaces, active-tab corners, inline
+colored group labels and group lines in both themes. Pinned To-do, active and
+preview tabs take priority; promoted active/preview tabs occupy trailing slots
+without changing saved order. Folded groups retain the active and pinned tabs.
+Fold state and block order belong to the panel scope, not the chat, in
+`unified-right-panel:<scope>:groups` (`{ folded, order }`; legacy arrays read as
+folds). `normalizeGroupOrder` drops unknown/repeated groups and appends missing
+ones in default order. Searchable +N menus list the group's hidden tabs and
+preserve dirty/error marks and guarded bulk closing. Tab drag, Alt+Arrow and menu
+moves stay within the kind group. A group pill moves its whole block: pointer drag
+past `GROUP_DRAG_THRESHOLD` (shorter presses fold; Escape, pointercancel and blur
+cancel and suppress the trailing click) or Alt+Arrow on the focused pill. Block
+moves only rewrite the order list, so members, activation, folds and keyed hosted
+views are untouched.
 
 With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
 workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
@@ -129,7 +132,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu; `unifiedGitTabId` takes the chat id). Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
-| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits use it. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). |
+| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, and `openPanelGitWorkingChanges` all pending working changes, in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits and "Open working tree" use them. Working changes carry a fresh `openRequest` token so an unchanged route reapplies; the caller also calls `useSplitGitPanel.revealView`, which focuses the Git tab even when it already shows that view. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). |
 | `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
 | `sentinelTodoExcursion.ts` + `SentinelTodoOriginBar.tsx` | The way back from a chat opened through a To-do link (see "To-do excursions"). |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
@@ -1151,8 +1154,16 @@ drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
 
-Hosted Refrain history shares To-do's detail column through `RefrainHistoryHostContext`;
-standalone history measures its own list/detail split with `useContainerWidth`.
+Every Refrain card and the Coda strip/built-in row open read-only details from their title
+button (`AutomationTitleButton`, Enter/Space, `aria-pressed`) or a click on blank card space;
+`selectCardOnClick` ignores controls, disclosures, text selection and clicks bubbling back from
+portaled details. Selected cards show `data-selected` hover/selected styling. Refrain details show
+the definition, schedule and the current (else latest) run from the live job list, with a
+never-run hint; `SentinelCodaDetails` shows Coda's schedule plus its active run or the latest run's
+owner-routed `RunDetail`. This overview is distinct from a history run selection and survives
+history collapse. Hosted details share To-do's detail column through `RefrainHistoryHostContext`
+(the Coda key is `CODA_DETAIL_KEY`); standalone Refrain history measures its own list/detail split
+with `useContainerWidth`. Narrow layouts use Back, Escape clears, and focus returns to the title.
 Selection binds a run ID across refreshes and resizing and resets per owner mount.
 Details read the current retained record; pruning reports its absence without
 selecting another run. Exact timing, full errors and clone-qualified job-turn

@@ -190,6 +190,7 @@ export function useRepoGitSelection({
     // the store has not caught up with yet is not "the user navigated away".
     const storeRouteRef = useRef(consumedRouteRef.current);
     const consumedKnownCommitRef = useRef(scope?.knownCommit);
+    const consumedOpenRequestRef = useRef(scope?.openRequest);
     // The current route, readable from callbacks without re-memoizing them.
     const routeRef = useRef({ commitHash: routeCommitHash, filePath: routeFilePath });
     routeRef.current = { commitHash: routeCommitHash, filePath: routeFilePath };
@@ -452,12 +453,13 @@ export function useRepoGitSelection({
         consumedRouteRef.current = identity;
         storeRouteRef.current = identity;
         consumedKnownCommitRef.current = scope?.knownCommit;
+        consumedOpenRequestRef.current = scope?.openRequest;
         if (!commitHash && restore) {
             restorePersistedView(restore, loaded);
             return;
         }
         applyRoute(commitHash, filePath, loaded);
-    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId, scope?.knownCommit]);
+    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId, scope?.knownCommit, scope?.openRequest]);
 
     const switchViewScope = useCallback((restore: PersistedGitView | null) => {
         // A lookup still in flight belongs to the scope being left.
@@ -481,10 +483,12 @@ export function useRepoGitSelection({
     useEffect(() => {
         if (loading || !routeIsOurs) return;
         const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath);
-        // A fresh owner-verified supplied commit is an explicit selection, even
-        // when the same route's detail has since been closed.
-        const suppliedSelection = !!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current;
+        // A fresh owner-verified supplied commit, or a fresh open request, is an
+        // explicit selection, even when the same route's detail has since been closed.
+        const suppliedSelection = (!!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current)
+            || (!!scope?.openRequest && scope.openRequest !== consumedOpenRequestRef.current);
         consumedKnownCommitRef.current = scope?.knownCommit;
+        consumedOpenRequestRef.current = scope?.openRequest;
         if (identity === storeRouteRef.current && !suppliedSelection) return;
         storeRouteRef.current = identity;
         // Our own selection echoing back through the router: already applied,
@@ -499,7 +503,7 @@ export function useRepoGitSelection({
     }, [
         routeIsOurs, routeCommitHash, routeFilePath, pageWorkspaceId, workspaceId,
         loading, applyRoute,
-        scope?.knownCommit,
+        scope?.knownCommit, scope?.openRequest,
     ]);
 
     // ── Derived ───────────────────────────────────────────────────────────────

@@ -51,7 +51,8 @@ export function SentinelCodaHistory({ runs, ...props }: Props) {
     </section>;
 }
 
-function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Props, 'runs'> & { summary: SentinelCodaRunSummary; id: string }) {
+/** Owner-routed read of one retained run; summary changes refresh it and late results are dropped. */
+export function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Props, 'runs'> & { summary: SentinelCodaRunSummary; id: string }) {
     const [detail, setDetail] = useState<SentinelCodaRunDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);

@@ -31,7 +31,8 @@ const client = {
     sentinelTodos: { jobs: mock, scrubber: { get: mock.scrubGet, start: mock.scrubStart, updateConfig: mock.scrubUpdate, getRun: vi.fn().mockResolvedValue({ findings: [] }) } },
     events: { connect: mock.connect }, request: mock.request,
 };
-import { SentinelRefrains } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { RefrainHistoryHostContext, SentinelRefrains } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_sentinel' };
@@ -1032,5 +1033,193 @@ describe('Refrains section collapse under the dashboard stylesheet', () => {
         await waitFor(() => expect(mock.list).toHaveBeenLastCalledWith('ws-b', 'queue_other', expect.anything()));
         await waitFor(() => expect(rendered(screen.getByTestId('sentinel-refrain-j1'))).toBe(true));
         expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+});
+
+/** Mirrors UnifiedTodoTab's shared detail column: one active key, a portal target and narrow detail state. */
+function DetailHost({ wide = true, calls, children }: { wide?: boolean; calls: string[][]; children: ReactNode }) {
+    const [target, setTarget] = useState<HTMLDivElement | null>(null);
+    const [activeJobId, setActiveJobId] = useState<string | null>(null);
+    const [detailOpen, setDetailOpen] = useState(false);
+    const activeRef = useRef(activeJobId);
+    activeRef.current = activeJobId;
+    // Stable like UnifiedTodoTab's callbacks: unmount cleanups key on `leave`.
+    const select = useCallback((jobId: string) => { calls.push(['select', jobId]); setActiveJobId(jobId); setDetailOpen(true); }, [calls]);
+    const leave = useCallback((jobId: string, clear: boolean) => {
+        if (activeRef.current !== jobId) return;
+        calls.push(['leave', jobId, String(clear)]);
+        if (clear) setActiveJobId(null);
+        setDetailOpen(false);
+    }, [calls]);
+    const value = useMemo(() => ({ target, wide, activeJobId, detailOpen, select, leave }), [target, wide, activeJobId, detailOpen, select, leave]);
+    return <RefrainHistoryHostContext.Provider value={value}>
+        <div data-testid="host-list" hidden={!wide && detailOpen && activeJobId !== null}>{children}</div>
+        <div ref={setTarget} data-testid="host-target" hidden={activeJobId === null || (!wide && !detailOpen)} />
+    </RefrainHistoryHostContext.Provider>;
+}
+
+describe('Refrain card details', () => {
+    const noMutations = () => {
+        for (const mutation of [mock.create, mock.start, mock.update, mock.delete, mock.cancel, mock.testGate, mock.resumeGate,
+            mock.scrubStart, mock.scrubUpdate]) expect(mutation).not.toHaveBeenCalled();
+    };
+    it('shows definition, schedule and status for a never-run refrain from the title', async () => {
+        mock.list.mockResolvedValue({ jobs: [job({ cron: '0 14 * * *', nextRunAt: '2026-11-02T14:00:00Z', mode: 'autopilot', effortTier: 'medium' })] });
+        view();
+        const title = await screen.findByRole('button', { name: 'Show details for Daily review' });
+        const card = screen.getByRole('article', { name: 'Daily review' });
+        expect(title).toHaveAttribute('aria-pressed', 'false');
+        expect(card).toHaveAttribute('data-selected', 'false');
+        expect(title.querySelector('button, a, input, select, textarea, summary')).toBeNull();
+        fireEvent.click(title);
+        const detail = screen.getByRole('region', { name: 'Refrain details for Daily review' });
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        expect(card).toHaveAttribute('data-selected', 'true');
+        expect(title).toHaveAttribute('aria-controls', detail.id);
+        expect(within(detail).getByRole('heading', { name: 'Daily review' })).toBeVisible();
+        expect(within(detail).getByText('Enabled · Autopilot')).toBeVisible();
+        expect(within(detail).getByText('0 14 * * *')).toBeVisible();
+        expect(within(detail).getByText('Next run')).toBeVisible();
+        expect(within(detail).getByText(/copilot \/ medium effort tier/)).toBeVisible();
+        expect(within(detail).getByRole('region', { name: 'Instructions for Daily review' })).toHaveTextContent('Review the snapshot.');
+        expect(within(detail).getByRole('heading', { name: 'No runs yet' })).toBeVisible();
+        expect(within(detail).getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_job');
+        expect(screen.getByText('History (0)').parentElement).toHaveAttribute('open');
+        noMutations();
+    });
+    it.each([
+        { state: 'queued', patch: { activeRun: run({ id: 'r8', runNumber: 8, status: 'queued' }) }, heading: 'Current run #8: queued' },
+        { state: 'running', patch: { activeRun: run({ id: 'r8', runNumber: 8, status: 'running', startedAt: '2026-11-01T14:00:01Z' }),
+            runs: [run({ id: 'r8', runNumber: 8 }), run({ id: 'r7', runNumber: 7, status: 'completed' })] }, heading: 'Current run #8: running' },
+        { state: 'completed', patch: { latestRun: run({ id: 'r7', runNumber: 7, status: 'completed', durationMs: 2000 }),
+            runs: [run({ id: 'r7', runNumber: 7, status: 'completed', durationMs: 2000 })] }, heading: 'Latest run #7: completed' },
+        { state: 'failed', patch: { runs: [run({ id: 'r2', runNumber: 2, status: 'failed', error: 'Boom' }), run({ status: 'completed' })] },
+            heading: 'Latest run #2: failed' },
+    ] as const)('shows the current or latest run for a $state refrain', async ({ patch, heading, state }) => {
+        mock.list.mockResolvedValue({ jobs: [job(patch as Partial<SentinelRefrain>)] });
+        view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Daily review' }));
+        const detail = screen.getByRole('region', { name: 'Refrain details for Daily review' });
+        expect(within(detail).getByRole('heading', { name: heading })).toBeVisible();
+        if (state === 'running') expect(within(detail).getByText('2026-11-01T14:00:01Z')).toBeVisible();
+        if (state === 'completed') expect(within(detail).getByText('2.0s')).toBeVisible();
+        if (state === 'failed') expect(within(detail).getByRole('region', { name: 'Error for run #2' })).toHaveTextContent('Boom');
+        noMutations();
+    });
+    it('follows live run updates while the refrain stays selected', async () => {
+        mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ id: 'r8', runNumber: 8 }), runs: [run({ id: 'r8', runNumber: 8 })] })] });
+        view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Daily review' }));
+        await screen.findByRole('heading', { name: 'Current run #8: running' });
+        const finished = run({ id: 'r8', runNumber: 8, status: 'completed', finishedAt: '2026-11-01T14:05:00Z' });
+        mock.list.mockResolvedValue({ jobs: [job({ latestRun: finished, runs: [finished] })] });
+        const options = mock.connect.mock.calls[0][0];
+        await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-a', processId: 'queue_sentinel' }));
+        await screen.findByRole('heading', { name: 'Latest run #8: completed' });
+        expect(screen.getByRole('button', { name: 'Show details for Daily review' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByText('2026-11-01T14:05:00Z')).toBeVisible();
+    });
+    it('selects from blank card space but not from controls, disclosures or text selection', async () => {
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'completed' })] })] });
+        view();
+        const card = await screen.findByRole('article', { name: 'Daily review' });
+        fireEvent.click(screen.getByLabelText('More actions for Daily review'));
+        fireEvent.click(screen.getByText('History (1)'));
+        fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+        await waitFor(() => expect(mock.update).toHaveBeenCalledTimes(1));
+        fireEvent.click(screen.getByLabelText('Select run #1: completed (manual)'));
+        expect(card).toHaveAttribute('data-selected', 'false');
+        expect(screen.getByRole('region', { name: 'Run details for Daily review' })).toBeVisible();
+        // A click inside the run details (same React tree) keeps the exact run selection.
+        fireEvent.click(screen.getByRole('heading', { name: 'Run #1: completed' }));
+        expect(screen.getByLabelText('Select run #1: completed (manual)')).toHaveAttribute('aria-pressed', 'true');
+        const selection = vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'copilot' } as Selection);
+        fireEvent.click(screen.getByText(/copilot \/ test-model/));
+        expect(card).toHaveAttribute('data-selected', 'false');
+        selection.mockRestore();
+        fireEvent.click(screen.getByText(/copilot \/ test-model/));
+        expect(card).toHaveAttribute('data-selected', 'true');
+        expect(screen.getByLabelText('Select run #1: completed (manual)')).toHaveAttribute('aria-pressed', 'false');
+        expect(mock.start).not.toHaveBeenCalled();
+    });
+    it('opens with Enter and Space, switches to exact history runs, and keeps the overview when history collapses', async () => {
+        const user = userEvent.setup();
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ id: 'r2', runNumber: 2, status: 'failed' }), run({ status: 'completed' })] })] });
+        view();
+        const title = await screen.findByRole('button', { name: 'Show details for Daily review' });
+        title.focus();
+        await user.keyboard('{Enter}');
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByLabelText('Select run #1: completed (manual)'));
+        expect(title).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('heading', { name: 'Run #1: completed' })).toBeVisible();
+        title.focus();
+        await user.keyboard(' ');
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByLabelText('Select run #1: completed (manual)')).toHaveAttribute('aria-pressed', 'false');
+        const history = screen.getByText('History (2)');
+        fireEvent.click(history);
+        await waitFor(() => expect(history.parentElement).not.toHaveAttribute('open'));
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.keyDown(screen.getByRole('heading', { name: 'Daily review' }), { key: 'Escape' });
+        await waitFor(() => expect(title).toHaveFocus());
+        expect(title).toHaveAttribute('aria-pressed', 'false');
+        expect(mock.start).not.toHaveBeenCalled();
+    });
+    it('renders into the hosted detail column and ignores clicks bubbling back through the portal', async () => {
+        const calls: string[][] = [];
+        mock.list.mockResolvedValue({ jobs: [job(), job({ id: 'j2', name: 'Weekly sweep', processId: 'queue_job2' })] });
+        render(<DetailHost calls={calls}><SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} /></DetailHost>);
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Daily review' }));
+        const target = screen.getByTestId('host-target');
+        const detail = within(target).getByRole('region', { name: 'Refrain details for Daily review' });
+        // Hosted details never need the history disclosure.
+        expect(within(screen.getByRole('article', { name: 'Daily review' })).getByText('History (0)').parentElement).not.toHaveAttribute('open');
+        fireEvent.click(within(detail).getByText('Schedule'));
+        fireEvent.click(within(detail).getByRole('heading', { name: 'Daily review' }));
+        expect(calls).toEqual([['select', 'j1']]);
+        const link = within(detail).getByRole('link', { name: 'Open chat' });
+        expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_job');
+        fireEvent.click(link);
+        expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:');
+        expect(calls).toEqual([['select', 'j1']]);
+        fireEvent.click(screen.getByRole('button', { name: 'Show details for Weekly sweep' }));
+        expect(within(target).getByRole('region', { name: 'Refrain details for Weekly sweep' })).toBeVisible();
+        expect(within(target).queryByRole('region', { name: 'Refrain details for Daily review' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Show details for Daily review' })).toHaveAttribute('aria-pressed', 'false');
+        noMutations();
+    });
+    it('uses narrow hosted Back navigation with focus on the heading and back on the title', async () => {
+        const calls: string[][] = [];
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        render(<DetailHost wide={false} calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const title = await screen.findByRole('button', { name: 'Show details for Daily review' });
+        title.focus();
+        fireEvent.click(title);
+        const target = screen.getByTestId('host-target');
+        expect(screen.getByTestId('host-list')).not.toBeVisible();
+        expect(within(target).getByRole('heading', { name: 'Daily review' })).toHaveFocus();
+        fireEvent.click(within(target).getByRole('button', { name: 'Back to list' }));
+        expect(calls).toEqual([['select', 'j1'], ['leave', 'j1', 'false']]);
+        await waitFor(() => expect(title).toHaveFocus());
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        expect(target).not.toBeVisible();
+    });
+    it('shows the built-in Coda row details in the same hosted column', async () => {
+        const calls: string[][] = [];
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        render(<DetailHost calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const coda = await screen.findByRole('button', { name: 'Show details for Coda' });
+        await screen.findByText(/Every day at 09:00|0 9 \* \* \*/);
+        fireEvent.click(coda);
+        const target = screen.getByTestId('host-target');
+        const detail = within(target).getByRole('region', { name: 'Details for Coda · built-in' });
+        expect(within(detail).getByText('No Coda runs yet. Use Run now to start the first review.')).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: 'Show details for Daily review' }));
+        expect(within(target).queryByRole('region', { name: 'Details for Coda · built-in' })).toBeNull();
+        expect(coda).toHaveAttribute('aria-pressed', 'false');
+        expect(calls).toEqual([['select', 'coda'], ['select', 'j1']]);
+        noMutations();
     });
 });

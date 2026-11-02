@@ -136,7 +136,7 @@ interface DashboardConfig {
     panelSourceSplitEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
-    /** Whether fixed inline right-panel tab groups are enabled. Default false. */
+    /** Whether fixed inline right-panel tab groups are enabled. Default true. */
     panelTabGroupsEnabled?: boolean;
     /** Whether right-panel binary placeholders offer "Open in Explorer". Default false. */
     binaryFileRevealEnabled?: boolean;
@@ -362,8 +362,9 @@ export function isPanelTabReorderingEnabled(): boolean {
     return getConfig().panelTabReorderingEnabled !== false;
 }
 
+/** Fixed inline right-panel tab groups (`features.panelTabGroups`); on unless the server says off. */
 export function isPanelTabGroupsEnabled(): boolean {
-    return getConfig().panelTabGroupsEnabled === true;
+    return getConfig().panelTabGroupsEnabled !== false;
 }
 
 /** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); on unless the server says off. */

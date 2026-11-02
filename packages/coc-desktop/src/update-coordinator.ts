@@ -20,10 +20,21 @@ export interface UpdateCoordinatorOptions {
     openBrowser(url: string): Promise<void>;
 }
 
+export interface UpdateStartOptions {
+    /**
+     * Auto update: no progress, dialogs or owned-server warning. Failures go
+     * to stderr and verified bytes stay retained when the app is busy.
+     */
+    silent?: boolean;
+    /** Checked right before install on the silent path; false defers install. */
+    isIdle?(): Promise<boolean>;
+}
+
 /** One coordinator per desktop process, shared by every window and menu. */
 export class UpdateCoordinator {
     private ready?: { release: ReleaseInfo; download: DownloadedUpdate };
     private active?: Promise<void>;
+    private activeSilent = false;
     private handedOff = false;
     private installing = false;
     private disposed = false;
@@ -35,22 +46,34 @@ export class UpdateCoordinator {
     get readyRelease(): ReleaseInfo | undefined { return this.ready?.release; }
 
     /** Called only after Update, or to offer a retained download again. */
-    start(release: ReleaseInfo): Promise<void> {
+    start(release: ReleaseInfo, startOptions: UpdateStartOptions = {}): Promise<void> {
         if (this.handedOff || this.disposed) return Promise.resolve();
-        if (this.active) return this.active;
-        this.active = this.run(release).finally(() => { this.active = undefined; });
+        const silent = startOptions.silent === true;
+        if (this.active) {
+            // A user request during a background run still gets its dialogs.
+            if (this.activeSilent && !silent) {
+                return this.active.then(() => this.start(release, startOptions));
+            }
+            return this.active;
+        }
+        this.activeSilent = silent;
+        this.active = this.run(release, silent, startOptions.isIdle)
+            .finally(() => { this.active = undefined; this.activeSilent = false; });
         return this.active;
     }
 
-    private async run(release: ReleaseInfo): Promise<void> {
+    private async run(
+        release: ReleaseInfo, silent: boolean, isIdle?: () => Promise<boolean>,
+    ): Promise<void> {
         const opts = this.options;
+        const setProgress = silent ? () => {} : opts.setProgress;
         try {
             if (this.ready && this.ready.release.tag !== release.tag) {
                 await this.ready.download.cleanup();
                 this.ready = undefined;
             }
             if (!this.ready) {
-                opts.setProgress(undefined);
+                setProgress(undefined);
                 try {
                     const { signal } = opts.downloadOptions;
                     const download = await (opts.download ?? downloadUpdate)({
@@ -58,7 +81,7 @@ export class UpdateCoordinator {
                         signal: signal ? AbortSignal.any([signal, this.abort.signal]) : this.abort.signal,
                         release,
                         onProgress: ({ downloadedBytes, totalBytes }) => {
-                            opts.setProgress(totalBytes
+                            setProgress(totalBytes
                                 ? Math.min(1, Math.max(0, downloadedBytes / totalBytes))
                                 : undefined);
                         },
@@ -70,13 +93,18 @@ export class UpdateCoordinator {
                         return;
                     }
                 } finally {
-                    opts.setProgress(null);
+                    setProgress(null);
                 }
             }
             // Keep the original release paired with the bytes already verified.
             const ready = this.ready;
-            if (!await opts.promptRestart(ready.release) || this.disposed) return;
-            if (!await opts.confirmRestart() || this.disposed) return;
+            if (silent) {
+                // Activity that started during the download defers to a later poll.
+                if ((isIdle && !await isIdle()) || this.disposed) return;
+            } else {
+                if (!await opts.promptRestart(ready.release) || this.disposed) return;
+                if (!await opts.confirmRestart() || this.disposed) return;
+            }
             this.installing = true;
             try {
                 await opts.install(ready.download, ready.release);
@@ -97,6 +125,10 @@ export class UpdateCoordinator {
             }
             if (this.disposed) {
                 console.error(`[coc-desktop] Update stopped during quit: ${reason}`);
+                return;
+            }
+            if (silent) {
+                console.error(`[coc-desktop] Automatic update failed: ${reason}`);
                 return;
             }
             if (await opts.promptError(reason)) {

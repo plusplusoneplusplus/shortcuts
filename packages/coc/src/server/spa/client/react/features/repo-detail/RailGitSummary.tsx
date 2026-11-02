@@ -32,7 +32,8 @@ import {
 import { useGroupRailGit, useRepoRailGit } from './useRailGitSummary';
 import { RailOutgoingCommits } from './RailOutgoingCommits';
 import { routingRefForPanelOwner } from './unified-right-panel/unifiedPanelOwnerRouting';
-import { openPanelGitCommit } from './unified-right-panel/panelGitCommit';
+import { openPanelGitCommit, openPanelGitWorkingChanges } from './unified-right-panel/panelGitCommit';
+import type { PersistedGitView } from '../git/repoGitTab/types';
 
 const TONE_CLASS: Record<RailGitTone, string> = {
     clean: 'text-[#16825d] dark:text-[#3fb950]',
@@ -137,15 +138,20 @@ interface RepoProps {
     routingRef: string;
     client: CocClient;
     scopeLabel: string;
+    /**
+     * Open (or focus) the workspace panel's Git tab on a view. When set, "Open
+     * working tree" shows the pending changes there and keeps the chat on screen.
+     */
+    onRevealGitView?: (view: PersistedGitView) => void;
 }
 
 /** Rail Git tiles for one repository on its owning server. */
-export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: RepoProps) {
+export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel, onRevealGitView }: RepoProps) {
     const status = useRepoRailGit({ client, routingRef, workspaceId, enabled: true });
-    return <RepoRailGitView workspaceId={workspaceId} routingRef={routingRef} client={client} scopeLabel={scopeLabel} status={status} />;
+    return <RepoRailGitView workspaceId={workspaceId} routingRef={routingRef} client={client} scopeLabel={scopeLabel} onRevealGitView={onRevealGitView} status={status} />;
 }
 
-export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, status }: RepoProps & { status: ReturnType<typeof useRepoRailGit> }) {
+export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, onRevealGitView, status }: RepoProps & { status: ReturnType<typeof useRepoRailGit> }) {
     const { input } = status;
     const refresh = useCallback(() => { void status.refresh(); }, [status.refresh]);
     const rail = useRail(refresh);
@@ -168,15 +174,22 @@ export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, s
     const openCommit = (commit: GitCommit) => {
         openOutgoingCommit(rail, dispatch, workspaceId, workspaceId, routingRef, commit);
     };
+    // Conflicts stay in the sidebar list, where they are resolved.
+    const openWorkingTree = onRevealGitView && !input.tree.data?.conflicts.length ? () => {
+        rail.onOpenGit?.('changes', 'detail');
+        onRevealGitView({ type: 'working-tree-all' });
+        openPanelGitWorkingChanges(dispatch, { routeWorkspaceId: workspaceId, workspaceId, sourceSelectionId: routingRef });
+    } : actions.openChanges;
     const body = (dismiss: () => void, syncPreview: boolean) => (
         <RepoPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}:${workspaceId}`}
             routingRef={routingRef} workspaceId={workspaceId} client={client} canSwitch={canSwitch}
-            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} syncPreview={syncPreview} onOpenCommit={openCommit} />
+            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} syncPreview={syncPreview} onOpenCommit={openCommit}
+            onOpenWorkingTree={openWorkingTree} />
     );
     return <RailHoverPreview controls={buildControls(tiles, false, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry, syncPreview, onOpenCommit }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void; syncPreview: boolean; onOpenCommit: (commit: GitCommit) => void }) {
+function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry, syncPreview, onOpenCommit, onOpenWorkingTree }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void; syncPreview: boolean; onOpenCommit: (commit: GitCommit) => void; onOpenWorkingTree: () => void }) {
     const [pickerOpen, setPickerOpen] = useState(false);
     const branchButton = useRef<HTMLButtonElement>(null);
     const closePicker = () => { setPickerOpen(false); branchButton.current?.focus(); };
@@ -206,7 +219,7 @@ function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, ti
                     {tree.conflicts.length > 5 && <li className={META_CLASS}>+{tree.conflicts.length - 5} more</li>}
                 </ul>
             )}
-            <button type="button" className={ACTION_CLASS} onClick={go(actions.openChanges)}>{tree?.conflicts.length ? 'Open conflicts' : 'Open working tree'}</button>
+            <button type="button" className={ACTION_CLASS} onClick={go(onOpenWorkingTree)}>{tree?.conflicts.length ? 'Open conflicts' : 'Open working tree'}</button>
         </li>
         <li className={ROW_CLASS} data-testid="rail-git-sync-detail">
             <div className="font-medium">{tiles.sync.label.replace(/^Sync status: /, '')}</div>

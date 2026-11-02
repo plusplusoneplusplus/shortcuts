@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe('browser tab header site icon', () => {
-    it('replaces the globe with the site icon in the same slot, keeping title, close control and active underline', () => {
+    it('replaces the globe with the site icon in the same slot, keeping title, close control and active surface', () => {
         const tab = renderStrip();
         const label = screen.getByTestId(`unified-panel-tab-label-${tab.id}`);
         const slot = label.parentElement!.querySelector('[aria-hidden="true"]')!;
@@ -59,7 +59,10 @@ describe('browser tab header site icon', () => {
         expect(slot.querySelector('[data-icon="browser-globe"]')).toBeNull();
         expect(label).toHaveTextContent('Google');
         expect(label.parentElement!.className).toContain('h-[35px]');
-        expect(label.parentElement!.className).toContain('shadow-[inset_0_-2px_0_0_#0078d4]');
+        // The Chrome-style raised surface is drawn by unifiedPanelTabs.css from these markers.
+        expect(label.parentElement!.className).toContain('unified-panel-tab');
+        expect(label.parentElement).toHaveAttribute('data-active', 'true');
+        expect(label.parentElement).toHaveAttribute('aria-selected', 'true');
         expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
     });
 

@@ -70,7 +70,7 @@ and process events cannot replace page-origin queue or process-index state.
 ## Workspace right panel
 
 `unified-right-panel/UnifiedRightPanel.tsx` is the workspace's one right-side
-surface: a single Cursor-style tab strip over Terminal, Notes, files, notes,
+surface: a single Chrome-style tab strip over Terminal, Notes, files, notes,
 canvases, and chat diffs, plus a file-tree column pinned to its right edge.
 `RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
 group; both mount it at every breakpoint and wrap their subtree in
@@ -122,6 +122,9 @@ batch on the group's server). The repository preview's branch row embeds the
 shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
+With a host `onRevealGitView`, the Changes preview's "Open working tree" opens
+the repo's pending-change diff in the panel Git tab and keeps the sidebar collapsed;
+conflicts and panel-less hosts keep the expanded sidebar working tree.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
 history paging and outgoing prefix, with shared `CommitIdentity` rows and
 `CommitTooltip`/`useCommitListGestures` metadata panels. Preview focus ownership
