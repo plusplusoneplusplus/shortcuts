@@ -996,7 +996,8 @@ export function UnifiedPanelTabStrip({
                                 <UnifiedPanelTabOverflowMenu
                                     title={`${TAB_GROUP_LABELS[group]} tabs`}
                                     tabs={section.tabs} entries={section.hidden} activeId={activeId}
-                                    hideBrowserRepoLabels={hideBrowserRepoLabels} describeTab={unifiedTabFilePathLabel}
+                                    hideBrowserRepoLabels={hideBrowserRepoLabels} renderIcon={renderMenuIcon}
+                                    describeTab={unifiedTabFilePathLabel}
                                     dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
                                     onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
                                     trigger={<button type="button" data-strip-stop data-group-overflow

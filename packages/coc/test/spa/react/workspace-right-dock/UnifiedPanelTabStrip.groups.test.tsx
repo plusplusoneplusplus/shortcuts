@@ -92,6 +92,55 @@ function overflow(group: UnifiedTabStripGroup = 'files'): HTMLElement {
 describe('UnifiedPanelTabStrip grouped presentation', () => {
     afterEach(cleanup);
 
+    it.each([
+        ['chat-turn-runner.ts', 'TS'],
+        ['client.js', 'JS'],
+        ['package.json', 'NPM'],
+        ['unknown.extension', 'file'],
+    ])('reuses the strip and collapsed-menu icon for expanded overflow file %s', (label, iconLabel) => {
+        const hidden = tab('file', label, { resourceId: `src/${label}`, repoLabel: 'Remote repo' });
+        const tabs = [...files(3), hidden];
+        const { props, rerender } = renderStrip({ tabs, activeId: tabs[0].id });
+        fireEvent.click(overflow());
+        const option = screen.getByRole('option', { name: `${label}Remote repo` });
+        const icon = within(option).getByTestId('file-type-icon');
+        expect(icon).toHaveAttribute('data-icon-label', iconLabel);
+        expect(icon.parentElement).toHaveAttribute('aria-hidden', 'true');
+        expect(icon.parentElement).toHaveClass('flex-shrink-0', 'opacity-80');
+        expect(icon.compareDocumentPosition(within(option).getByText(label)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(option).toHaveAttribute('title', `Remote repo: src/${label}`);
+        const menuIcon = icon.outerHTML;
+        const menuIconClass = icon.parentElement!.className;
+
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        rerender(<UnifiedPanelTabStrip {...props} foldedGroups={new Set(['files'])} />);
+        fireEvent.click(screen.getByTestId('unified-panel-group-menu-files'));
+        const collapsedIcon = within(screen.getByRole('option', { name: `${label}Remote repo` })).getByTestId('file-type-icon');
+        expect(collapsedIcon.outerHTML).toBe(menuIcon);
+        expect(collapsedIcon.parentElement!.className).toBe(menuIconClass);
+
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        rerender(<UnifiedPanelTabStrip {...props} activeId={hidden.id} />);
+        const stripIcon = screen.getByTestId(`unified-panel-tab-file-icon-${hidden.id}`);
+        expect(stripIcon.outerHTML.replace(`unified-panel-tab-file-icon-${hidden.id}`, 'file-type-icon')).toBe(menuIcon);
+        expect(screen.getAllByTestId(`unified-panel-tab-file-icon-${hidden.id}`)).toHaveLength(1);
+    });
+
+    it.each([
+        ['terminal', 'tools'], ['browser', 'web'], ['canvas', 'canvas'],
+    ] as const)('shows the matching %s icon in expanded %s overflow', (kind, group) => {
+        const tabs = Array.from({ length: 4 }, (_, index) => tab(kind, `Resource ${index}`));
+        const { props, rerender } = renderStrip({ tabs });
+        const stripIcon = tabNode(tabs[0]).querySelector('[aria-hidden="true"]')!.innerHTML;
+        fireEvent.click(overflow(group));
+        const option = screen.getByRole('option', { name: tabs[3].label });
+        expect(option.querySelectorAll(':scope > [aria-hidden="true"]')[1].innerHTML).toBe(stripIcon);
+        fireEvent.click(option);
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[3].id);
+        rerender(<UnifiedPanelTabStrip {...props} activeId={tabs[3].id} />);
+        expect(tabNode(tabs[3])).toHaveAttribute('aria-selected', 'true');
+    });
+
     it('keeps repo-group browser overflow labels free of repository names', () => {
         const tabs = Array.from({ length: 5 }, (_, index) => tab('browser', `Page ${index}`, {
             repoLabel: `Repo ${index}`, ownerWorkspaceId: `owner-${index}`,
@@ -153,7 +202,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         const { props } = renderStrip({ tabs, activeId: tabs[0].id }, true);
         fireEvent.click(overflow());
         const list = screen.getByRole('listbox', { name: 'Files tabs' });
-        expect(within(list).getAllByRole('option').map(node => node.textContent)).toEqual(['file-4.ts', 'file-5.ts']);
+        const initialOptions = within(list).getAllByRole('option');
+        expect(initialOptions).toHaveLength(2);
+        expect(initialOptions[0]).toHaveAccessibleName('file-4.ts');
+        expect(initialOptions[1]).toHaveAccessibleName('file-5.ts');
         fireEvent.click(within(list).getByRole('option', { name: /file-5.ts/ }));
 
         expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
@@ -167,7 +219,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         // The promoted tab left the overflow; the tab it displaced joined it.
         expect(overflow()).toHaveTextContent('+2');
         fireEvent.click(overflow());
-        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['file-3.ts', 'file-4.ts']);
+        const updatedOptions = screen.getAllByRole('option');
+        expect(updatedOptions).toHaveLength(2);
+        expect(updatedOptions[0]).toHaveAccessibleName('file-3.ts');
+        expect(updatedOptions[1]).toHaveAccessibleName('file-4.ts');
     });
 
     it('lists only the tabs the strip hides, keyed by id rather than title', () => {
