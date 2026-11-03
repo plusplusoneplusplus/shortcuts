@@ -8,7 +8,7 @@ let root: ShadowRoot;
 let host: HTMLElement;
 let target: HTMLElement;
 
-function run(action: Exclude<BrowserAnnotationCommand['action'], 'remove'>, token = session): BrowserAnnotationResult {
+function run(action: 'start' | 'drain' | 'stop', token = session): BrowserAnnotationResult {
     return window.eval(buildBrowserAnnotationExpression({ action, session: token })) as BrowserAnnotationResult;
 }
 
@@ -320,6 +320,114 @@ describe('closed-shadow comment editor', () => {
         expect(editor().style.left).toBe('10.25px');
         expect(editor().style.top).toBe('58.75px');
         expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    describe('selection screenshot handshake', () => {
+        const input = () => root.querySelector<HTMLTextAreaElement>('textarea')!;
+        const save = () => root.querySelector<HTMLButtonElement>('.save')!;
+        const status = () => root.querySelector<HTMLElement>('[role="status"]')!;
+        const retry = () => root.querySelector<HTMLButtonElement>('.editor button:last-child')!;
+        const execute = (command: BrowserAnnotationCommand): BrowserAnnotationResult =>
+            window.eval(buildBrowserAnnotationExpression(command));
+        const clickControl = (element: Element) => {
+            Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => element });
+            mouse('click', 20, 30, {}, element);
+        };
+        const select = () => {
+            execute({ action: 'start', session, captureRequired: true });
+            mouse('click');
+            const selection = run('drain').events[0];
+            if (selection.type !== 'selection') throw new Error('Expected selection');
+            input().value = 'Preserve this draft';
+            input().dispatchEvent(new InputEvent('input', { bubbles: true, composed: true }));
+            return selection;
+        };
+
+        it('blocks fast Save and keyboard activation until the exact screenshot is acknowledged', () => {
+            const selection = select();
+            expect(selection.captureId).toBe('1');
+            expect(save().disabled).toBe(true);
+            expect(status().textContent).toBe('Capturing screenshot...');
+            clickControl(save());
+            save().focus();
+            save().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+            expect(root.querySelector('.pin')).toBeNull();
+            expect(run('drain').events).toEqual([]);
+            expect(execute({ action: 'captured', session, selection })).toEqual({ active: true, events: [], capture: true });
+            expect(save().disabled).toBe(false);
+            expect(status().hidden).toBe(true);
+            clickControl(save());
+            expect(run('drain').events).toMatchObject([{ type: 'comment', comment: 'Preserve this draft', selection }]);
+        });
+
+        it('shows native failures and retries the original snapshot without losing the draft', () => {
+            const selection = select();
+            expect(execute({ action: 'captured', session, selection, error: 'Native capture failed' }).capture).toBe(false);
+            expect(save().disabled).toBe(true);
+            expect(status().textContent).toContain('Native capture failed');
+            expect(retry().hidden).toBe(false);
+            document.title = 'Page changed';
+            target.textContent = 'Page changed';
+            clickControl(retry());
+            clickControl(retry());
+            expect(run('drain').events).toEqual([selection]);
+            expect(input().value).toBe('Preserve this draft');
+            expect(retry().hidden).toBe(true);
+            expect(status().textContent).toBe('Capturing screenshot...');
+            execute({ action: 'captured', session, selection });
+            clickControl(save());
+            expect(run('drain').events).toMatchObject([{ type: 'comment', selection }]);
+        });
+
+        it('rejects late acknowledgements after cancelling and selecting the identical element again', () => {
+            const original = select();
+            escape();
+            mouse('click');
+            const replacement = run('drain').events[0];
+            expect(replacement).toMatchObject({ captureId: '2', rect: original.rect });
+            expect(execute({ action: 'captured', session, selection: original }).capture).toBe(false);
+            expect(save().disabled).toBe(true);
+            expect(status().textContent).toBe('Capturing screenshot...');
+            expect(input().value).toBe('');
+        });
+
+        it('rejects foreign generation and changed viewport acknowledgements', () => {
+            const selection = select();
+            expect(execute({ action: 'captured', session: 'replacement', selection }).active).toBe(false);
+            const width = window.innerWidth;
+            try {
+                Object.defineProperty(window, 'innerWidth', { configurable: true, value: width - 1 });
+                expect(execute({ action: 'captured', session, selection }).capture).toBe(false);
+                expect(save().disabled).toBe(true);
+                expect(status().textContent).toContain('cancel and select again');
+            } finally { Object.defineProperty(window, 'innerWidth', { configurable: true, value: width }); }
+        });
+
+        it('edits a saved pin without a new screenshot or modifying its selection capture identity', () => {
+            const selection = select();
+            execute({ action: 'captured', session, selection });
+            clickControl(save());
+            run('drain');
+            clickControl(root.querySelector('.pin')!);
+            expect(save().disabled).toBe(false);
+            expect(status().hidden).toBe(true);
+            input().value = 'Updated comment';
+            clickControl(save());
+            expect(run('drain').events).toMatchObject([{ type: 'comment', id: '1', comment: 'Updated comment',
+                selection: { captureId: selection.captureId, immediate: false } }]);
+        });
+
+        it('leaves Cancel and two-step Escape available while a screenshot is pending or failed', () => {
+            const selection = select();
+            execute({ action: 'captured', session, selection, error: 'Unavailable' });
+            escape();
+            expect(root.querySelector<HTMLElement>('.editor')!.hidden).toBe(true);
+            expect(host.isConnected).toBe(true);
+            expect(execute({ action: 'captured', session, selection }).capture).toBe(false);
+            escape();
+            expect(host.isConnected).toBe(false);
+            expect(run('drain').events).toEqual([{ type: 'exit', reason: 'escape' }]);
+        });
     });
 
     it('clamps the editor inside the viewport near the right and bottom edges', () => {

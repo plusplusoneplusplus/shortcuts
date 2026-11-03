@@ -21,6 +21,26 @@ beforeEach(() => {
 });
 
 describe('owner-bound annotation bridge', () => {
+    it('transports main-captured PNGs only through their original owner and request lease', async () => {
+        const other = vi.fn();
+        await bridge.command(10, request('start'), send);
+        await bridge.command(11, request('start'), other);
+        const event = { type: 'selection' as const, kind: 'area' as const, immediate: false, captureId: '1',
+            rect: { x: 10, y: 20, width: 30, height: 40 },
+            page: { url: 'https://fixture.test/', title: 'Fixture', viewport: { width: 800, height: 600, devicePixelRatio: 1 } },
+            image: { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 } };
+        sinks[0].events([event]);
+        expect(send).toHaveBeenCalledExactlyOnceWith({ ...identity, type: 'events', events: [event] });
+        expect(other).not.toHaveBeenCalled();
+        await bridge.command(10, request('stop'), send);
+        await bridge.command(10, request('start', { requestId: 'replacement' }), send);
+        sinks[0].events([event]);
+        expect(send).toHaveBeenCalledTimes(1);
+        bridge.clearOwner(11);
+        sinks[1].events([event]);
+        expect(other).not.toHaveBeenCalled();
+    });
+
     it('passes only exact identity to the manager and tags selections and termination', async () => {
         expect(await bridge.command(10, request('start'), send)).toBe(true);
         expect(manager.startAnnotation).toHaveBeenCalledWith(10, identity.viewId, identity.sessionKey, expect.anything());

@@ -10,7 +10,9 @@ function deferred<T = void>() {
     return { promise, resolve };
 }
 
-function fixture() {
+const fixtureImage = { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 };
+
+function fixture(capture = false) {
     const listeners = new Set<BrowserCdpEventListener>();
     const sink = { events: vi.fn(), ended: vi.fn() };
     const cdp = vi.fn(async (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
@@ -31,6 +33,7 @@ function fixture() {
         cdp,
         onCdpEvent: (listener: BrowserCdpEventListener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
         waitForCdpEvents: vi.fn(async () => {}),
+        ...(capture ? { captureAnnotation: vi.fn(async () => fixtureImage) } : {}),
     };
     const tab = new BrowserAnnotationTab(view, sink, 100);
     const emit = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => {
@@ -44,6 +47,13 @@ function fixture() {
         window.dispatchEvent(new MouseEvent('click', { clientX: 20, clientY: 30, cancelable: true }));
     };
     return { tab, view, cdp, sink, emit, select, listeners };
+}
+
+// Primitive capture tests drain directly so they exercise a single explicitly requested crop.
+function drainSelection(sink: { events: ReturnType<typeof vi.fn> }) {
+    const mode = (window as unknown as { __cocBrowserAnnotation: { session: string } }).__cocBrowserAnnotation;
+    const result = window.eval(buildBrowserAnnotationExpression({ action: 'drain', session: mode.session }));
+    sink.events(result.events);
 }
 
 afterEach(() => {
@@ -276,10 +286,11 @@ describe('BrowserAnnotationTab document transport', () => {
         const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
             return root = attach.call(this, init);
         });
-        const f = fixture();
+        const f = fixture(true);
         try {
             await f.tab.start(); f.select(); await f.tab.poll();
-            const selection = f.sink.events.mock.calls[0][0][0];
+            const { image, ...selection } = f.sink.events.mock.calls[0][0][0];
+            expect(image).toBe(fixtureImage);
             const input = root.querySelector('textarea')!;
             input.value = 'Exact selected element';
             input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
@@ -310,20 +321,23 @@ describe('BrowserAnnotationTab document transport', () => {
         const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
             return root = attach.call(this, init);
         });
-        const f = fixture();
+        const f = fixture(true);
         try {
             await f.tab.start(); f.select();
             root.querySelector('textarea')!.value = 'Remove this pin from its chip';
             Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => root.querySelector('.save') });
             root.querySelector('.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+            expect(root.querySelectorAll('.pin')).toHaveLength(0);
+            await f.tab.poll();
+            root.querySelector('.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
             expect(root.querySelectorAll('.pin')).toHaveLength(1);
-            // Remove also drains queued selection/comment events, preserving their order before deletion.
+            // Remove drains queued comment events before deletion, after selection capture admission.
             await f.tab.remove('1');
-            expect(f.sink.events.mock.calls[0][0].map((event: { type: string }) => event.type)).toEqual(['selection', 'comment', 'delete']);
-            expect(f.sink.events.mock.calls[0][0].at(-1)).toEqual({ type: 'delete', id: '1' });
+            expect(f.sink.events.mock.calls.flatMap(([events]) => events.map((event: { type: string }) => event.type))).toEqual(['selection', 'comment', 'delete']);
+            expect(f.sink.events.mock.calls.at(-1)![0].at(-1)).toEqual({ type: 'delete', id: '1' });
             expect(root.querySelectorAll('.pin')).toHaveLength(0);
             await f.tab.remove('1');
-            expect(f.sink.events).toHaveBeenCalledTimes(1);
+            expect(f.sink.events).toHaveBeenCalledTimes(2);
             expect(f.sink.ended).not.toHaveBeenCalled();
         } finally { await f.tab.stop(); spy.mockRestore(); }
     });
@@ -436,7 +450,7 @@ describe('BrowserAnnotationTab document transport', () => {
             return image;
         });
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
-        await tab.start(); f.select(); await tab.poll();
+        await tab.start(); f.select(); drainSelection(f.sink);
         // Actual CDP sorts nested object keys; matching must be independent of property order.
         const selection = JSON.parse(JSON.stringify(f.sink.events.mock.calls[0][0][0], (_key, part) =>
             part && typeof part === 'object' && !Array.isArray(part)
@@ -447,6 +461,168 @@ describe('BrowserAnnotationTab document transport', () => {
             expect(document.documentElement.querySelector<HTMLElement>('[tabindex="-1"]')!.style.opacity).toBe('1');
             expect(f.sink.ended).not.toHaveBeenCalled();
         } finally { await tab.stop(); }
+    });
+
+    it('automatically delivers a native PNG before admitting a fast-save comment and never injects image bytes', async () => {
+        const attach = Element.prototype.attachShadow;
+        let root!: ShadowRoot;
+        const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+            return root = attach.call(this, init);
+        });
+        const f = fixture(true);
+        const click = (selector: string) => {
+            const element = root.querySelector(selector)!;
+            Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => element });
+            element.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+        };
+        try {
+            await f.tab.start(); f.select();
+            root.querySelector('textarea')!.value = 'Save quickly';
+            click('.save');
+            expect(root.querySelector('.pin')).toBeNull();
+            await f.tab.poll();
+            const { image, ...selection } = f.sink.events.mock.calls[0][0][0];
+            expect(image).toBe(fixtureImage);
+            expect(f.view.captureAnnotation).toHaveBeenCalledExactlyOnceWith(selection.rect, selection.page.viewport);
+            click('.save');
+            await f.tab.poll();
+            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'comment', id: '1', number: 1, comment: 'Save quickly', selection }]);
+            click('.pin'); root.querySelector('textarea')!.value = 'Edit without recapture'; click('.save');
+            await f.tab.poll();
+            expect(f.view.captureAnnotation).toHaveBeenCalledTimes(1);
+            expect(f.cdp.mock.calls.every(([, params]) => !String(params?.expression).includes(fixtureImage.dataUrl))).toBe(true);
+        } finally { await f.tab.stop(); spy.mockRestore(); }
+    });
+
+    it('captures selections collected during a delayed Start reply without needing a polling timer', async () => {
+        const f = fixture(true);
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation(async (method, params = {}) => {
+            const reply = await original(method, params);
+            if (method === 'Runtime.evaluate' && String(params.expression).includes('"action":"start"')) {
+                f.select();
+                const mode = (window as unknown as { __cocBrowserAnnotation: { session: string } }).__cocBrowserAnnotation;
+                return { result: { value: window.eval(buildBrowserAnnotationExpression({ action: 'drain', session: mode.session })) } };
+            }
+            return reply;
+        });
+        expect(await f.tab.start()).toBe(true);
+        expect(f.view.captureAnnotation).toHaveBeenCalledTimes(1);
+        expect(f.sink.events).toHaveBeenCalledWith([expect.objectContaining({ captureId: '1', image: fixtureImage })]);
+        await f.tab.stop();
+    });
+
+    it('does not deadlock the command tail or deliver late images when Stop interrupts automatic capture', async () => {
+        const f = fixture(true), entered = deferred(), release = deferred();
+        f.view.captureAnnotation!.mockImplementation(async () => {
+            entered.resolve(); await release.promise; return fixtureImage;
+        });
+        await f.tab.start(); f.select();
+        const polling = f.tab.poll(); await entered.promise;
+        const stopping = f.tab.stop();
+        expect(f.sink.ended).toHaveBeenCalledExactlyOnceWith('stop', undefined);
+        release.resolve();
+        await Promise.all([polling, stopping]);
+        expect(f.sink.events).not.toHaveBeenCalled();
+        expect(document.documentElement.querySelector('[tabindex="-1"]')).toBeNull();
+    });
+
+    it('reports a recoverable automatic capture failure in the private editor and retries without ending mode', async () => {
+        const attach = Element.prototype.attachShadow;
+        let root!: ShadowRoot;
+        const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+            return root = attach.call(this, init);
+        });
+        const f = fixture(true);
+        f.view.captureAnnotation!.mockRejectedValueOnce(new Error('Native preview unavailable'));
+        try {
+            await f.tab.start(); f.select(); await f.tab.poll();
+            expect(f.sink.events.mock.calls[0][0][0].image).toBeUndefined();
+            expect(root.querySelector('[role="status"]')!.textContent).toContain('Native preview unavailable');
+            expect(root.querySelector<HTMLButtonElement>('.save')!.disabled).toBe(true);
+            const retry = root.querySelector('.editor button:last-child')!;
+            Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => retry });
+            retry.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+            await f.tab.poll();
+            expect(f.sink.events).toHaveBeenLastCalledWith([expect.objectContaining({ captureId: '1', image: fixtureImage })]);
+            expect(f.view.captureAnnotation).toHaveBeenCalledTimes(2);
+            expect(f.sink.ended).not.toHaveBeenCalled();
+        } finally { await f.tab.stop(); spy.mockRestore(); }
+    });
+
+    it('captures only the current draft from multiple selections drained in one batch', async () => {
+        const f = fixture(true);
+        await f.tab.start(); f.select();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        f.select();
+        await f.tab.poll();
+        const delivered = f.sink.events.mock.calls[0][0];
+        expect(delivered).toMatchObject([{ captureId: '1' }, { captureId: '2', image: fixtureImage }]);
+        expect(delivered[0].image).toBeUndefined();
+        expect(f.view.captureAnnotation).toHaveBeenCalledTimes(1);
+        expect(f.sink.ended).not.toHaveBeenCalled();
+        await f.tab.stop();
+    });
+
+    it('rejects an old screenshot when the user reselects between chrome restoration and acknowledgement', async () => {
+        const f = fixture(true);
+        await f.tab.start(); f.select();
+        const original = f.cdp.getMockImplementation()!;
+        let replaced = false;
+        f.cdp.mockImplementation(async (method, params = {}) => {
+            if (!replaced && method === 'Runtime.evaluate' && String(params.expression).includes('"action":"captured"')) {
+                replaced = true;
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                f.select();
+            }
+            return original(method, params);
+        });
+        await f.tab.poll();
+        expect(f.sink.events).not.toHaveBeenCalled();
+        await f.tab.poll();
+        expect(f.sink.events).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ captureId: '2', image: fixtureImage })]);
+        expect(f.view.captureAnnotation).toHaveBeenCalledTimes(2);
+        await f.tab.stop();
+    });
+
+    it('automatically captures the drawn area rather than the hovered element rectangle', async () => {
+        const f = fixture(true);
+        await f.tab.start();
+        for (const [type, x, y] of [['pointerdown', 100, 80], ['pointerup', 50, 40]] as const) {
+            window.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button: 0, shiftKey: true, cancelable: true }));
+        }
+        await f.tab.poll();
+        expect(f.view.captureAnnotation).toHaveBeenCalledWith({ x: 50, y: 40, width: 50, height: 40 }, expect.anything());
+        expect(f.sink.events).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ kind: 'area', captureId: '1',
+            image: fixtureImage, immediate: false })]);
+        await f.tab.stop();
+    });
+
+    it('ends mode and tears down when automatic capture acknowledgement transport fails', async () => {
+        const f = fixture(true);
+        await f.tab.start(); f.select();
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation(async (method, params = {}) => {
+            if (method === 'Runtime.evaluate' && String(params.expression).includes('"action":"captured"')) {
+                throw new Error('Capture acknowledgement failed');
+            }
+            return original(method, params);
+        });
+        await f.tab.poll();
+        expect(f.sink.events).not.toHaveBeenCalled();
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
+        await f.tab.stop();
+        expect(document.documentElement.querySelector('[tabindex="-1"]')).toBeNull();
+    });
+
+    it.each(['0', '01', '9007199254740992', 1])('rejects malformed selection capture identity %j at the CDP boundary', async captureId => {
+        const f = fixture();
+        await f.tab.start(); f.select(); await f.tab.poll();
+        const selection = f.sink.events.mock.calls[0][0][0];
+        f.cdp.mockResolvedValueOnce({ result: { value: { active: true, events: [{ ...selection, captureId }] } } });
+        await f.tab.poll();
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
+        await f.tab.stop();
     });
 
     it.each(['failure', 'navigation', 'scroll', 'resize', 'escape'])('restores or removes capture chrome after %s', async outcome => {
@@ -462,7 +638,7 @@ describe('BrowserAnnotationTab document transport', () => {
         const width = window.innerWidth, scrollY = window.scrollY;
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
         try {
-            await tab.start(); f.select(); await tab.poll();
+            await tab.start(); f.select(); drainSelection(f.sink);
             const selection = f.sink.events.mock.calls[0][0][0];
             await expect(tab.captureSelection(selection)).rejects.toThrow(outcome === 'failure' ? 'Native capture failed' : 'stale');
             if (outcome === 'failure' || outcome === 'escape' || outcome === 'scroll' || outcome === 'resize') {
@@ -481,7 +657,7 @@ describe('BrowserAnnotationTab document transport', () => {
         const f = fixture();
         const captureAnnotation = vi.fn();
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
-        await tab.start(); f.select(); await tab.poll();
+        await tab.start(); f.select(); drainSelection(f.sink);
         const selection = f.sink.events.mock.calls[0][0][0];
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
         await expect(tab.captureSelection(selection)).rejects.toThrow('stale');
@@ -493,7 +669,7 @@ describe('BrowserAnnotationTab document transport', () => {
     it('restores chrome when a suspended document cannot paint before the capture deadline', async () => {
         const f = fixture(); const captureAnnotation = vi.fn();
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
-        await tab.start(); f.select(); await tab.poll();
+        await tab.start(); f.select(); drainSelection(f.sink);
         const raf = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(0);
         try {
             await expect(tab.captureSelection(f.sink.events.mock.calls[0][0][0])).rejects.toThrow('paint timed out');
@@ -510,7 +686,7 @@ describe('BrowserAnnotationTab document transport', () => {
             return { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 };
         });
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
-        await tab.start(); f.select(); await tab.poll();
+        await tab.start(); f.select(); drainSelection(f.sink);
         const capturing = tab.captureSelection(f.sink.events.mock.calls[0][0][0]);
         await entered.promise;
         const stopping = tab.stop();
@@ -530,7 +706,7 @@ describe('BrowserAnnotationTab document transport', () => {
         const tab = new BrowserAnnotationTab({ ...f.view, captureAnnotation }, f.sink);
         const replacementSink = { events: vi.fn(), ended: vi.fn() };
         const replacement = new BrowserAnnotationTab(f.view, replacementSink);
-        await tab.start(); f.select(); await tab.poll();
+        await tab.start(); f.select(); drainSelection(f.sink);
         const capturing = tab.captureSelection(f.sink.events.mock.calls[0][0][0]);
         await entered.promise; await replacement.start();
         release.resolve(); await expect(capturing).rejects.toThrow('stale'); await tab.stop();

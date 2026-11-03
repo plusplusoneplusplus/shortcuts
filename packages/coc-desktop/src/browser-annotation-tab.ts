@@ -6,9 +6,11 @@ import { validateBrowserUrl } from './browser-view-policy';
 export const BROWSER_ANNOTATION_WORLD = 'coc-browser-annotation';
 export const BROWSER_ANNOTATION_POLL_MS = 100;
 export type BrowserAnnotationEndReason = Extract<BrowserAnnotationEvent, { type: 'exit' }>['reason'] | 'unavailable' | 'failed';
+export type BrowserAnnotationDeliveryEvent = Exclude<BrowserAnnotationEvent, BrowserAnnotationSelection>
+    | (BrowserAnnotationSelection & { image?: BrowserAnnotationImage });
 
 export interface BrowserAnnotationTabSink {
-    events(events: BrowserAnnotationEvent[]): void;
+    events(events: BrowserAnnotationDeliveryEvent[]): void;
     ended(reason: BrowserAnnotationEndReason, error?: unknown): void;
 }
 
@@ -75,7 +77,7 @@ export class BrowserAnnotationTab {
             const result = await this.evaluate('start');
             if (this.closed) return false;
             if (!result.active) throw new Error('Annotation overlay did not start.');
-            this.deliver(result);
+            await this.deliver(result);
             if (this.closed) return false;
             this.timer = setInterval(() => { void this.poll(); }, this.pollMs);
             this.timer.unref?.();
@@ -96,7 +98,7 @@ export class BrowserAnnotationTab {
         this.polling = this.enqueue(async () => {
             if (this.closed) return;
             const result = await this.evaluate('drain');
-            if (!this.closed) this.deliver(result);
+            if (!this.closed) await this.deliver(result);
         }).catch(error => {
             if (!this.closed) {
                 this.revoke('failed', error);
@@ -113,7 +115,7 @@ export class BrowserAnnotationTab {
         return this.enqueue(async () => {
             if (this.closed) return;
             const result = await this.evaluate('remove', id);
-            if (!this.closed) this.deliver(result);
+            if (!this.closed) await this.deliver(result);
         }).catch(error => {
             if (!this.closed) {
                 this.revoke('failed', error);
@@ -125,33 +127,36 @@ export class BrowserAnnotationTab {
 
     /** Capture a freshly selected draft in this document only; never recapture saved comments on edit. */
     captureSelection(selection: BrowserAnnotationSelection): Promise<BrowserAnnotationImage> {
-        return this.enqueue(async () => {
-            if (this.closed || !this.timer) throw new Error('Annotation document is no longer active.');
-            if (!this.view.captureAnnotation) throw new Error('This browser host cannot capture annotation images.');
-            let image: BrowserAnnotationImage | undefined;
-            let failure: unknown;
-            let failed = false;
-            try {
-                const hidden = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: true });
-                if (this.closed || !hidden.active || !hidden.capture) throw new Error('Annotation selection is stale.');
-                image = await this.view.captureAnnotation(selection.rect, selection.page.viewport);
-            } catch (error) { failed = true; failure = error; }
-            // Always restore the original generation, including failed or revoked native captures.
-            try {
-                const restored = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: false });
-                if ((this.closed || !restored.active || !restored.capture) && !failed) {
-                    failed = true; failure = new Error('Annotation selection is stale.');
-                }
-            } catch (error) {
-                if (!failed) { failed = true; failure = error; }
-                if (!this.closed) {
-                    this.revoke('failed', error);
-                    void this.cleanup().catch(() => {});
-                }
+        return this.enqueue(() => this.capture(selection));
+    }
+
+    /** Runs within the command tail; delivery must not recursively enqueue and await itself. */
+    private async capture(selection: BrowserAnnotationSelection): Promise<BrowserAnnotationImage> {
+        if (this.closed || this.contextId === undefined) throw new Error('Annotation document is no longer active.');
+        if (!this.view.captureAnnotation) throw new Error('This browser host cannot capture annotation images.');
+        let image: BrowserAnnotationImage | undefined;
+        let failure: unknown;
+        let failed = false;
+        try {
+            const hidden = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: true });
+            if (this.closed || !hidden.active || !hidden.capture) throw new Error('Annotation selection is stale.');
+            image = await this.view.captureAnnotation(selection.rect, selection.page.viewport);
+        } catch (error) { failed = true; failure = error; }
+        // Always restore the original generation, including failed or revoked native captures.
+        try {
+            const restored = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: false });
+            if ((this.closed || !restored.active || !restored.capture) && !failed) {
+                failed = true; failure = new Error('Annotation selection is stale.');
             }
-            if (failed) throw failure;
-            return image!;
-        });
+        } catch (error) {
+            if (!failed) { failed = true; failure = error; }
+            if (!this.closed) {
+                this.revoke('failed', error);
+                void this.cleanup().catch(() => {});
+            }
+        }
+        if (failed) throw failure;
+        return image!;
     }
 
     /** Revokes delivery synchronously; the returned promise includes removal after any in-flight call. */
@@ -186,7 +191,9 @@ export class BrowserAnnotationTab {
 
     private evaluate(action: 'start' | 'drain' | 'stop' | 'remove', id?: string): Promise<BrowserAnnotationResult> {
         return this.evaluateCommand(action === 'remove'
-            ? { action, session: this.session, id: id! } : { action, session: this.session });
+            ? { action, session: this.session, id: id! }
+            : action === 'start' ? { action, session: this.session, captureRequired: true }
+                : { action, session: this.session });
     }
 
     private async evaluateCommand(command: BrowserAnnotationCommand): Promise<BrowserAnnotationResult> {
@@ -198,8 +205,28 @@ export class BrowserAnnotationTab {
         return parseAnnotationResult(reply?.result?.value);
     }
 
-    private deliver(result: BrowserAnnotationResult): void {
-        if (result.events.length) this.sink.events(result.events);
+    private async deliver(result: BrowserAnnotationResult): Promise<void> {
+        const events: BrowserAnnotationDeliveryEvent[] = [];
+        for (const event of result.events) {
+            if (this.closed) return;
+            if (event.type === 'selection' && event.captureId && result.active) {
+                let image: BrowserAnnotationImage;
+                try {
+                    image = await this.capture(event);
+                } catch (error) {
+                    if (this.closed) return;
+                    await this.evaluateCommand({ action: 'captured', session: this.session, selection: event,
+                        error: (error instanceof Error ? error.message : String(error)).slice(0, 500) });
+                    events.push(event);
+                    continue;
+                }
+                if (this.closed) return;
+                const ready = await this.evaluateCommand({ action: 'captured', session: this.session, selection: event });
+                if (this.closed) return;
+                if (ready.capture) events.push({ ...event, image });
+            } else events.push(event);
+        }
+        if (events.length && !this.closed) this.sink.events(events);
         if (!result.active && !this.closed) {
             const exit = result.events.find(event => event.type === 'exit');
             this.revoke(exit?.type === 'exit' ? exit.reason : 'unavailable');
@@ -239,6 +266,7 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
                 || event.comment.length > 8000 || event.selection?.type !== 'selection')) return invalid();
             const selection = event.type === 'comment' ? event.selection : event;
             const { rect, page, element } = selection;
+            if (selection.captureId !== undefined && !isValidBrowserAnnotationId(selection.captureId)) return invalid();
             if (!['element', 'area'].includes(selection.kind) || typeof selection.immediate !== 'boolean'
                 || !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
                 || rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0

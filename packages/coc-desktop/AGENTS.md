@@ -14,7 +14,7 @@ raw debugger transports stay in main.
 
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
-start/drain/stop/remove/capture contract in an isolated world shared by both engines.
+start/drain/stop/remove/capture/captured contract in an isolated world shared by both engines.
 Keep all chrome inside the closed shadow root; exit removes it and releases input
 listeners. Selection uses clipped fractional CSS pixels and opens the editor.
 Escape discards the draft first, then exits on the next press. Preserve native
@@ -37,8 +37,16 @@ captured website content as untrusted context.
 for user comments and bounded page context as separate JSON fields. Supply current pin numbers explicitly, including for a
 single immediate send; use those same numbers for selection image labels.
 Serialization preserves ordering and rejects duplicate or invalid numbers.
-`BrowserAnnotationTab.captureSelection(selection)` serializes a main-only crop of
-an unchanged pending draft. Shared capture commands hide all chrome with opacity,
+Main starts the overlay with `captureRequired:true`; selections carry a unique
+generation-local `captureId`. Save stays disabled until a matching `captured`
+acknowledgement. Failures appear in the private editor with Retry; Cancel and Escape
+retain their draft/exit semantics. Edits keep the original capture ID without recapturing.
+`BrowserAnnotationTab` automatically crops pending selections inside its command
+tail and delivers `{type:'selection',captureId,...,image}` to the original owner.
+PNG bytes stay outside DOM commands and snapshots. Delivery calls the internal
+capture operation directly, never recursively enqueues it. The explicit
+`captureSelection(selection)` primitive serializes a main-only crop of an unchanged
+pending draft. Shared capture commands hide all chrome with opacity,
 retain the input shield and queued events, wait two animation frames (one-second
 paint timeout), and check draft/scroll/viewport/DPR before and after native capture.
 Always restore the original generation, preserve native errors and reject late
@@ -51,7 +59,7 @@ the native helper's memory-only `CapturePreview` PNG, validate full-viewport phy
 dimensions before decoding, then crop without resampling. Full previews share the
 16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
 transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide and zoom
-changes reject late captures. Automatic composer image delivery needs integration;
+changes reject late captures. Composer association and image attachment need integration;
 file previews and popouts expose no annotation capture capability.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership

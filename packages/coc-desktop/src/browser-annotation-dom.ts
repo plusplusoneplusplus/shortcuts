@@ -14,6 +14,8 @@ export interface BrowserAnnotationSelection {
     rect: BrowserAnnotationRect;
     tag?: string;
     immediate: boolean;
+    /** Main-requested capture handshake, unique within this document generation. */
+    captureId?: string;
     page: BrowserAnnotationPageSnapshot;
     element?: BrowserAnnotationElementSnapshot;
 }
@@ -33,8 +35,9 @@ export interface BrowserAnnotationResult {
 export type BrowserAnnotationCommand = {
     /** Every command must match the generation established by the main-owned start. */
     session: string;
-} & ({ action: 'start' | 'drain' | 'stop' } | { action: 'remove'; id: string }
-    | { action: 'capture'; selection: BrowserAnnotationSelection; hidden: boolean });
+} & ({ action: 'start'; captureRequired?: boolean } | { action: 'drain' | 'stop' } | { action: 'remove'; id: string }
+    | { action: 'capture'; selection: BrowserAnnotationSelection; hidden: boolean }
+    | { action: 'captured'; selection: BrowserAnnotationSelection; error?: string });
 
 /** Self-contained selection and comment editor. Hosts execute it only in an owned URL guest's isolated world. */
 function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof browserClipRect, snapshot: typeof browserAnnotationSnapshot): BrowserAnnotationResult {
@@ -45,6 +48,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         events: BrowserAnnotationEvent[];
         remove(id: string): void;
         capture(selection: BrowserAnnotationSelection, hidden: boolean): boolean;
+        captured(selection: BrowserAnnotationSelection, error?: string): boolean;
         dispose(reason: Extract<BrowserAnnotationEvent, { type: 'exit' }>['reason']): void;
     }
     const page = window as Window & { __cocBrowserAnnotation?: Mode };
@@ -84,6 +88,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 border: 2px solid #ffffff; border-radius: 50%; background: #2563eb;
                 color: #ffffff; text-align: center; font: bold 12px/22px sans-serif; cursor: pointer; }
             .editor .save { background: #2563eb; color: #ffffff; }
+            .status { display: block; color: #475569; font: 12px/18px sans-serif; }
             .editor button:disabled { opacity: .5; cursor: default; }
             .editor :focus-visible, .pin:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
             [hidden] { display: none; }
@@ -117,7 +122,15 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         remove.className = 'delete';
         remove.type = 'button';
         remove.hidden = true;
-        editor.append(input, save, cancel, remove);
+        const status = document.createElement('div');
+        status.className = 'status';
+        status.setAttribute('role', 'status');
+        status.hidden = true;
+        const retry = document.createElement('button');
+        retry.textContent = 'Retry screenshot';
+        retry.type = 'button';
+        retry.hidden = true;
+        editor.append(input, status, save, cancel, remove, retry);
         root.append(style, shield, outline, label, editor);
         const listeners: (() => void)[] = [];
         let drag: { x: number; y: number; pointerId: number } | null = null;
@@ -132,16 +145,20 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         let editing: Pin | null = null;
         let selectedScroll = { x: 0, y: 0 };
         let capturing = false;
+        let captureReady = !command.captureRequired;
+        let nextCaptureId = 1;
+        // CDP returns object properties in a different order from the DOM snapshot.
+        const canonical = (value: unknown) => JSON.stringify(value, (_key, part) =>
+            part && typeof part === 'object' && !Array.isArray(part)
+                ? Object.fromEntries(Object.keys(part).sort().map(key => [key, part[key]])) : part);
+        const matches = (selection: BrowserAnnotationSelection) => owned.active && host.isConnected
+            && owned.url === location.href && pending !== null && canonical(pending) === canonical(selection);
+        const updateSave = () => { save.disabled = !captureReady || !input.value.trim() || input.value.length > input.maxLength; };
         const owned: Mode = {
             session: command.session, url: location.href, active: true, events: [],
             capture(selection, hidden) {
                 const viewport = selection.page.viewport;
-                // CDP returns object properties in a different order from the DOM snapshot.
-                const canonical = (value: unknown) => JSON.stringify(value, (_key, part) =>
-                    part && typeof part === 'object' && !Array.isArray(part)
-                        ? Object.fromEntries(Object.keys(part).sort().map(key => [key, part[key]])) : part);
-                const valid = owned.active && host.isConnected && owned.url === location.href
-                    && pending !== null && canonical(pending) === canonical(selection)
+                const valid = matches(selection)
                     && selectedScroll.x === window.scrollX && selectedScroll.y === window.scrollY
                     && viewport.width === window.innerWidth && viewport.height === window.innerHeight
                     && viewport.devicePixelRatio === window.devicePixelRatio;
@@ -149,6 +166,19 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 // Opacity keeps the input shield and editor focus in place while hiding every pixel.
                 host.style.setProperty('opacity', capturing ? '0' : '1', 'important');
                 return valid;
+            },
+            captured(selection, error) {
+                if (!matches(selection) || editing) return false;
+                const viewport = selection.page.viewport;
+                const stale = selectedScroll.x !== window.scrollX || selectedScroll.y !== window.scrollY
+                    || viewport.width !== window.innerWidth || viewport.height !== window.innerHeight
+                    || viewport.devicePixelRatio !== window.devicePixelRatio;
+                captureReady = error === undefined && !stale;
+                status.hidden = captureReady;
+                status.textContent = `Screenshot failed: ${error ?? 'Selection changed; cancel and select again.'}`;
+                retry.hidden = captureReady;
+                updateSave();
+                return captureReady;
             },
             remove(id) {
                 const index = pins.findIndex(pin => pin.id === id);
@@ -244,6 +274,8 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             suppressClick = false;
             input.value = '';
             editor.hidden = true;
+            status.hidden = true;
+            retry.hidden = true;
             hide();
             host.focus({ preventScroll: true });
         };
@@ -261,7 +293,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             });
         };
         const saveComment = () => {
-            if (!pending || !input.value.trim() || input.value.length > input.maxLength) return;
+            if (!pending || !captureReady || !input.value.trim() || input.value.length > input.maxLength) return;
             let pin = editing;
             if (!pin) {
                 const button = document.createElement('button');
@@ -282,7 +314,11 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             pending = selection;
             editing = pin;
             input.value = pin?.comment ?? '';
-            save.disabled = !input.value.trim();
+            captureReady = !!pin || !command.captureRequired;
+            status.hidden = captureReady;
+            status.textContent = 'Capturing screenshot...';
+            retry.hidden = true;
+            updateSave();
             remove.hidden = !pin;
             editor.hidden = false;
             const rect = pin ? { ...selection.rect,
@@ -303,10 +339,21 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 label.textContent = '100 comments maximum; delete a pin to add another';
                 return;
             }
+            if (!Number.isSafeInteger(nextCaptureId)) {
+                label.textContent = 'Selection limit reached; exit and restart annotation';
+                return;
+            }
+            if (command.captureRequired) selection = { ...selection, captureId: String(nextCaptureId++) };
             report(selection);
             if (!owned.active) return;
             selectedScroll = { x: window.scrollX, y: window.scrollY };
             openEditor(selection);
+        };
+        const retryCapture = () => {
+            if (!pending || editing || retry.hidden) return;
+            retry.hidden = true;
+            status.textContent = 'Capturing screenshot...';
+            report(pending);
         };
         // Closed-root event paths are retargeted at the host in window capture. Hit-test
         // inside our private root, then stop propagation here while preserving native editing.
@@ -320,6 +367,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 if (element === save) { event.preventDefault(); saveComment(); }
                 if (element === cancel) { event.preventDefault(); closeEditor(); }
                 if (element === remove && editing) { event.preventDefault(); owned.remove(editing.id); }
+                if (element === retry) { event.preventDefault(); retryCapture(); }
             }
             return true;
         };
@@ -340,7 +388,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             if (capturing) return false;
             if (!pending || event.target !== host || !root.activeElement || !editor.contains(root.activeElement)) return false;
             swallow(event, false);
-            save.disabled = !input.value.trim() || input.value.length > input.maxLength;
+            updateSave();
             return true;
         };
         const area = (x: number, y: number): BrowserAnnotationRect => {
@@ -404,7 +452,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             if (pending && event.key !== 'Escape' && editorInput(event)) {
                 if (event.key === 'Tab') {
                     event.preventDefault();
-                    const stops = [input, ...(!save.disabled ? [save] : []), cancel, ...(!remove.hidden ? [remove] : [])];
+                    const stops = [input, ...(!save.disabled ? [save] : []), cancel, ...(!remove.hidden ? [remove] : []), ...(!retry.hidden ? [retry] : [])];
                     const index = stops.indexOf(root.activeElement as HTMLTextAreaElement | HTMLButtonElement);
                     stops[(index + (event.shiftKey ? stops.length - 1 : 1)) % stops.length].focus({ preventScroll: true });
                 } else if ((event.key === 'Enter' || event.key === ' ') && root.activeElement !== input) {
@@ -412,6 +460,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                     if (!event.repeat) {
                         if (root.activeElement === save) saveComment();
                         else if (root.activeElement === remove && editing) owned.remove(editing.id);
+                        else if (root.activeElement === retry) retryCapture();
                         else closeEditor();
                     }
                 }
@@ -455,6 +504,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
     if (!mode || mode.session !== command.session) return { active: false, events: [] };
     // Capture commands retain queued user events for the normal drain path.
     if (command.action === 'capture') return { active: mode.active, events: [], capture: mode.capture(command.selection, command.hidden) };
+    if (command.action === 'captured') return { active: mode.active, events: [], capture: mode.captured(command.selection, command.error) };
     if (command.action === 'stop') mode.dispose('stop');
     if (command.action === 'remove' && mode.active) mode.remove(command.id);
     const result = { active: mode.active, events: mode.events.splice(0) };

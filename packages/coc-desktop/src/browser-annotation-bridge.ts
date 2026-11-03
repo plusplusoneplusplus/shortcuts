@@ -1,5 +1,4 @@
-import type { BrowserAnnotationEvent } from './browser-annotation-dom';
-import { isValidBrowserAnnotationId, type BrowserAnnotationEndReason } from './browser-annotation-tab';
+import { isValidBrowserAnnotationId, type BrowserAnnotationEndReason, type BrowserAnnotationDeliveryEvent } from './browser-annotation-tab';
 import type { BrowserHostManager } from './browser-host-manager';
 import { isValidBrowserSessionKey, isValidBrowserViewId } from './browser-view-policy';
 
@@ -17,7 +16,7 @@ export type BrowserAnnotationRequest =
     | (BrowserAnnotationIdentity & { action: 'remove'; id: string })
     | { action: 'policy'; sessionKey: string; enabled: boolean };
 export type BrowserAnnotationNotification = BrowserAnnotationIdentity & (
-    | { type: 'events'; events: BrowserAnnotationEvent[] }
+    | { type: 'events'; events: BrowserAnnotationDeliveryEvent[] }
     | { type: 'ended'; reason: BrowserAnnotationEndReason; error?: string }
 );
 

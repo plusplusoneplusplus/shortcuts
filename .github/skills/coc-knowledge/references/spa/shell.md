@@ -527,7 +527,7 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 ### Annotation selection primitive
 
 `packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
-isolated-world expression with generation-matched start/drain/stop/remove/capture commands.
+isolated-world expression with generation-matched start/drain/stop/remove/capture/captured commands.
 Its closed-shadow shield highlights and selects elements or Shift-drag areas,
 reusing `browser-control-clip.ts` for fractional viewport geometry.
 
@@ -569,8 +569,17 @@ SPA exclusion uses main-owned registrations across query/hash changes and never
 grants embedder trust or navigation permission. Missing native document facts fail
 closed; navigation revokes delayed admission replies.
 
-`BrowserAnnotationTab.captureSelection` serializes main-only capture for an
-unchanged pending draft. Shared capture commands hide all chrome, retain the input
+Main starts with `captureRequired:true`; each selection has a generation-local
+`captureId`. Save waits for the matching `captured` acknowledgement. The private
+editor displays capture failures and retries the original draft/snapshot; edits
+preserve its capture identity without recapturing. `BrowserAnnotationTab` captures
+inside its serialized delivery operation and sends selection events enriched with
+the native PNG to the original owner. Image bytes stay outside DOM commands and
+snapshots; delivery never recursively enqueues capture. Composer association and
+attachment remain integration work.
+
+`BrowserAnnotationTab.captureSelection` also exposes an explicit serialized
+main-only crop of an unchanged pending draft. Shared capture commands hide all chrome, retain the input
 shield/events, wait two animation frames with a one-second timeout, and validate
 selection/scroll/viewport/DPR before and after capture. Restoration targets the
 original generation; failures and revocation reject the image. Electron URL guests
@@ -581,8 +590,7 @@ PNG output at 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` wi
 native memory-only `CapturePreview`; validate physical viewport dimensions before
 decoding and crop without resampling. Full previews share the same bounds. Only
 pending capture replies permit 28 MB native transport frames; ordinary CDP/events
-retain their 1 MiB limit. Lifecycle/zoom changes reject late images. Automatic
-composer delivery needs integration.
+retain their 1 MiB limit. Lifecycle/zoom changes reject late images.
 
 The shared main-only CDP interface installs and polls one isolated main-document
 context. Its private generation token, serialized

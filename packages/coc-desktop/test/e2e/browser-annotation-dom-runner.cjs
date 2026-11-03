@@ -139,18 +139,50 @@ function click(x, y, modifiers = []) {
     const cdp = new ElectronBrowserCdp(win.webContents);
     const events = [];
     const endings = [];
-    const hosted = { cdp: cdp.send.bind(cdp), onCdpEvent: cdp.onEvent.bind(cdp),
+    let annotationContext;
+    const annotationEval = async expression => (await cdp.send('Runtime.evaluate', {
+        expression, contextId: annotationContext, returnByValue: true,
+    })).result.value;
+    const hosted = { cdp: async (method, params) => {
+        const reply = await cdp.send(method, params);
+        if (method === 'Page.createIsolatedWorld') {
+            annotationContext = reply.executionContextId;
+            // Test-only closed-root access remains in the exact private world, never the website.
+            await annotationEval(`{
+                const attach = Element.prototype.attachShadow;
+                Element.prototype.attachShadow = function(init) {
+                    const root = attach.call(this, init);
+                    if (init.mode === 'closed') window.captureFixtureRoot = root;
+                    return root;
+                };
+            }; void 0;`);
+        }
+        return reply;
+    }, onCdpEvent: cdp.onEvent.bind(cdp),
         captureAnnotation: (rect, viewport) => captureElectronAnnotation(win.webContents, rect, viewport) };
     const transport = new BrowserAnnotationTab(hosted, {
         events: batch => events.push(...batch), ended: reason => endings.push(reason),
-    });
+    }, 60_000);
     await transport.start();
     click(80, 80);
+    for (const started = Date.now(); Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
+        if (await annotationEval('!!window.captureFixtureRoot.querySelector("textarea") && !window.captureFixtureRoot.querySelector(".editor").hidden')) break;
+    }
+    await win.webContents.insertText('Capture before Save');
+    const captureSaveCenter = () => annotationEval(`(() => {
+        const rect = window.captureFixtureRoot.querySelector('.save').getBoundingClientRect();
+        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+    })()`);
+    const earlySave = await captureSaveCenter();
+    click(earlySave.x, earlySave.y);
+    const fastSaveBlocked = await annotationEval(`!window.captureFixtureRoot.querySelector('.pin')
+        && window.captureFixtureRoot.querySelector('.save').disabled`);
     for (const started = Date.now(); !events.length && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
         await transport.poll();
     }
     if (!events.length) throw new Error('CDP transport did not deliver the selection');
-    const selectionImage = await transport.captureSelection(events[0]);
+    const selectionImage = events[0].image;
+    if (!selectionImage) throw new Error('Automatic selection capture did not deliver a PNG');
     const selectionPixels = nativeImage.createFromDataURL(selectionImage.dataUrl);
     const bitmap = selectionPixels.toBitmap();
     const png = selectionPixels.toPNG();
@@ -163,6 +195,15 @@ function click(x, y, modifiers = []) {
         pixel: [...bitmap.subarray(offset, offset + 4)],
         restored: await cdp.send('Runtime.evaluate', { expression: `document.querySelector('[tabindex="-1"]').style.opacity`, returnByValue: true }) };
     const transportPrivate = await win.webContents.executeJavaScript('!window.__cocBrowserAnnotation');
+    const readySave = await captureSaveCenter();
+    click(readySave.x, readySave.y);
+    for (const started = Date.now(); events.length < 2 && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
+        await transport.poll();
+    }
+    const capturedComment = events.find(event => event.type === 'comment');
+    const handshake = { fastSaveBlocked, saved: capturedComment?.comment,
+        captureMatches: capturedComment?.selection.captureId === events[0].captureId,
+        imagePrivate: capturedComment && !('image' in capturedComment.selection) };
     await transport.stop();
     click(80, 80);
     await until('window.clicks === 2', false);
@@ -180,7 +221,8 @@ function click(x, y, modifiers = []) {
     for (const started = Date.now(); !zoomEvents.length && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
         await zoomed.poll();
     }
-    const fractionalImage = await zoomed.captureSelection(zoomEvents[0]);
+    const fractionalImage = zoomEvents[0].image;
+    if (!fractionalImage) throw new Error('Automatic full-preview capture did not deliver a PNG');
     const zoomRect = zoomEvents[0].rect, zoomDpr = zoomEvents[0].page.viewport.devicePixelRatio;
     const fractional = { width: fractionalImage.width, height: fractionalImage.height,
         expectedWidth: Math.ceil((zoomRect.x + zoomRect.width) * zoomDpr) - Math.floor(zoomRect.x * zoomDpr),
@@ -199,7 +241,7 @@ function click(x, y, modifiers = []) {
     await navigating.stop().catch(() => {}); // Replaced documents can destroy the pinned context before cleanup.
     const noReinstall = await win.webContents.executeJavaScript(`document.querySelectorAll('[tabindex="-1"]').length === 0`);
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
-        endings, navigationEndings, noReinstall, capture: captureResult, fractional };
+        endings, navigationEndings, noReinstall, capture: captureResult, fractional, handshake };
     const deniedCommands = [];
     const deniedHost = { ...hosted, cdp: (method, params) => {
         deniedCommands.push(method);
