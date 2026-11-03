@@ -39,8 +39,12 @@ single immediate send; use those same numbers for selection image labels.
 Serialization preserves ordering and rejects duplicate or invalid numbers.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership
-admission and settled human takeover. Stop revokes delivery synchronously and
-serializes cleanup in the original isolated context; await it before replacing
+admission and settled human takeover, then requires the engine's committed main
+frame URL and MIME type before creating an isolated world. Refuse PDF documents
+(including extensionless URLs), PDF paths, non-HTTP(S) pages and registered SPA
+surfaces. Main's SPA exclusion matches registered origin/path across query/hash
+changes; it grants no embedder trust or navigation permission. Stop revokes delivery
+synchronously and serializes cleanup in the original isolated context; await it before replacing
 an instance. Main-frame navigation and lost contexts end the session. Host-manager
 admission reserves the exact owner/view/session before awaiting human takeover,
 and settles issued input releases before injection. Reservations exclude AI

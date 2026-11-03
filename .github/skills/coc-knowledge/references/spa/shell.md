@@ -563,8 +563,15 @@ an empty queue emits no text. Single-comment sends retain their supplied pin
 number. Image labels must use the same numbers. Composer integration and image
 capture belong to the caller.
 
-`browser-annotation-tab.ts` uses the shared main-only CDP interface to install and
-poll one isolated main-document context. Its private generation token, serialized
+`browser-annotation-tab.ts` checks the engine's committed main-frame URL and MIME
+type before isolated-world creation. PDFs (including extensionless URLs), PDF
+paths, non-HTTP(S) documents and registered SPA origin/path pairs are excluded.
+SPA exclusion uses main-owned registrations across query/hash changes and never
+grants embedder trust or navigation permission. Missing native document facts fail
+closed; navigation revokes delayed admission replies.
+
+The shared main-only CDP interface installs and polls one isolated main-document
+context. Its private generation token, serialized
 commands and synchronous revocation reject late results; Stop removes the overlay
 in the original context. Navigation/lost-context events terminate collection;
 future documents receive no script. `BrowserHostManager.startAnnotation` reserves

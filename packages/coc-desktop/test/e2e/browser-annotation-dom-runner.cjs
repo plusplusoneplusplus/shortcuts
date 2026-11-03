@@ -10,7 +10,13 @@ const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 app.setPath('userData', process.env.COC_BROWSER_E2E_USER_DATA);
 app.setPath('sessionData', path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'session'));
 let win;
-const server = http.createServer((_request, response) => {
+let pdf;
+const server = http.createServer((request, response) => {
+    if (request.url === '/download?id=1') {
+        response.setHeader('Content-Type', 'application/pdf');
+        response.end(pdf);
+        return;
+    }
     response.setHeader('Content-Type', 'text/html');
     response.end(`<!doctype html><title>Annotation fixture</title><style>
         body { margin: 0; }
@@ -155,8 +161,31 @@ function click(x, y, modifiers = []) {
     const noReinstall = await win.webContents.executeJavaScript(`document.querySelectorAll('[tabindex="-1"]').length === 0`);
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
         endings, navigationEndings, noReinstall };
+    const deniedCommands = [];
+    const deniedHost = { ...hosted, cdp: (method, params) => {
+        deniedCommands.push(method);
+        return cdp.send(method, params);
+    } };
+    const deniedSink = { events() { throw new Error('Excluded documents must not emit selections'); }, ended() {} };
+    const expectDenied = async tab => {
+        try { await tab.start(); } catch (error) {
+            if (!error.message.includes('PDFs, previews or the CoC app')) throw error;
+            await tab.stop();
+            return;
+        }
+        throw new Error('Excluded document admitted annotation');
+    };
+    await expectDenied(new BrowserAnnotationTab(deniedHost, deniedSink, 100, () => true));
+    const appDenied = !deniedCommands.includes('Page.createIsolatedWorld');
+    pdf = await win.webContents.printToPDF({});
+    await win.loadURL(`http://127.0.0.1:${server.address().port}/download?id=1`);
+    const pdfTree = await cdp.send('Page.getFrameTree');
+    deniedCommands.length = 0;
+    await expectDenied(new BrowserAnnotationTab(deniedHost, deniedSink));
+    const pdfDenied = !deniedCommands.includes('Page.createIsolatedWorld');
+    const admission = { appDenied, pdfDenied, pdfMimeType: pdfTree.frameTree.frame.mimeType };
     cdp.dispose();
-    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pinStyles, edit, deleted, pinsRemoved, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult }));
+    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pinStyles, edit, deleted, pinsRemoved, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult, admission }));
     win.destroy();
     server.close();
     app.exit(0);

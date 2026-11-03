@@ -16,7 +16,7 @@ function fixture() {
     const cdp = vi.fn(async (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
         switch (method) {
             case 'Page.enable': return {};
-            case 'Page.getFrameTree': return { frameTree: { frame: { id: 'main' } } };
+            case 'Page.getFrameTree': return { frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html' } } };
             case 'Page.createIsolatedWorld':
                 expect(params).toEqual({ frameId: 'main', worldName: BROWSER_ANNOTATION_WORLD });
                 return { executionContextId: 42 };
@@ -54,6 +54,55 @@ afterEach(() => {
 });
 
 describe('BrowserAnnotationTab document transport', () => {
+    it.each([
+        { url: 'https://fixture.test/download?id=1', mimeType: 'application/pdf' },
+        { url: 'https://fixture.test/download', mimeType: 'APPLICATION/PDF' },
+        { url: 'https://fixture.test/download', mimeType: ' application/pdf; charset=binary ' },
+        { url: 'https://fixture.test/download', mimeType: 'application/x-google-chrome-pdf' },
+        { url: 'https://fixture.test/report.PDF?download=1', mimeType: 'text/html' },
+        { url: 'file:///preview.html', mimeType: 'text/html' },
+        { url: 'about:blank', mimeType: 'text/html' },
+        { url: 'chrome-extension://pdf/viewer.html', mimeType: 'text/html' },
+        { url: 'invalid', mimeType: 'text/html' },
+        { url: 'https://fixture.test/' },
+        { url: 'https://fixture.test/', mimeType: '' },
+        { mimeType: 'text/html' },
+    ])('refuses unsupported committed document %j before creating a world', async facts => {
+        const f = fixture();
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation((method, params) => method === 'Page.getFrameTree'
+            ? Promise.resolve({ frameTree: { frame: { id: 'main', ...facts } } }) : original(method, params));
+        await expect(f.tab.start()).rejects.toThrow('PDFs, previews or the CoC app');
+        expect(f.cdp.mock.calls.map(([method]) => method)).toEqual(['Page.enable', 'Page.getFrameTree']);
+        expect(f.sink.ended).toHaveBeenCalledExactlyOnceWith('failed', expect.any(Error));
+        expect(f.listeners.size).toBe(0);
+        expect(await f.tab.start()).toBe(false);
+    });
+
+    it('checks the engine URL against main-owned app registrations before any world creation', async () => {
+        const f = fixture();
+        const isAppUrl = vi.fn(() => true);
+        const tab = new BrowserAnnotationTab(f.view, f.sink, 100, isAppUrl);
+        await expect(tab.start()).rejects.toThrow('CoC app');
+        expect(isAppUrl).toHaveBeenCalledExactlyOnceWith('https://fixture.test/');
+        expect(f.cdp.mock.calls.map(([method]) => method)).toEqual(['Page.enable', 'Page.getFrameTree']);
+    });
+
+    it('drops an allowed frame-tree reply after navigation without creating a world', async () => {
+        const f = fixture();
+        const pending = deferred<unknown>();
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation((method, params) => method === 'Page.getFrameTree' ? pending.promise : original(method, params));
+        const starting = f.tab.start();
+        await vi.waitFor(() => expect(f.cdp).toHaveBeenCalledWith('Page.getFrameTree'));
+        f.emit('Page.frameNavigated', { frame: { id: 'replacement' } });
+        pending.resolve({ frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html' } } });
+        expect(await starting).toBe(false);
+        await f.tab.stop();
+        expect(f.cdp.mock.calls.map(([method]) => method)).toEqual(['Page.enable', 'Page.getFrameTree']);
+        expect(f.sink.ended).toHaveBeenCalledExactlyOnceWith('navigation', undefined);
+    });
+
     it('installs once in the main isolated world, drains actual DOM selections and stops there', async () => {
         const f = fixture();
         const starting = f.tab.start();

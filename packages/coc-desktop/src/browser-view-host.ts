@@ -10,7 +10,7 @@ import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
-import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
+import { installBrowserWebviewGuard, isBrowserAppUrl, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest, validateBrowserControlPlacement } from './browser-control-command';
@@ -135,6 +135,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     }, 60 * 60 * 1000);
     historyMaintenance.unref();
     manager = new BrowserHostManager({
+        isAppUrl: isBrowserAppUrl,
         clickOnce: {
             enabled: () => readBrowserClickOnce(dataDir),
             ownerCurrent: ownerId => {

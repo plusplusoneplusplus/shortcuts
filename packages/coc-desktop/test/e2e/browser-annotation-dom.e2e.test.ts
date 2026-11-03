@@ -58,6 +58,7 @@ describe.skipIf(skip)('shared annotation injection in real Electron', () => {
                 removed: true,
                 transport: { selection: 'element', rect: { x: 40, y: 60, width: 120, height: 40 },
                     private: true, endings: ['stop'], navigationEndings: ['navigation'], noReinstall: true },
+                admission: { appDenied: true, pdfDenied: true, pdfMimeType: 'application/pdf' },
             });
         } finally {
             await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

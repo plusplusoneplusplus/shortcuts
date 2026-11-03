@@ -31,6 +31,17 @@ export function isBrowserEmbedder(contents: WebContents): boolean {
     return contents.getURL().split('#')[0] === owner.url;
 }
 
+/** Annotation exclusion only: query/hash changes still address the registered SPA surface. */
+export function isBrowserAppUrl(value: string): boolean {
+    const candidate = new URL(value);
+    for (const owner of trusted.values()) {
+        if (owner.window.isDestroyed()) continue;
+        const source = new URL(owner.url);
+        if (candidate.origin === source.origin && candidate.pathname === source.pathname) return true;
+    }
+    return false;
+}
+
 export function registerBrowserEmbedder(window: BrowserWindow, url: string): void {
     installBrowserWebviewGuard();
     trusted.set(window.webContents.id, { window, url: new URL(url).href.split('#')[0] });

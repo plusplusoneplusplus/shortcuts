@@ -89,6 +89,8 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 }
 
 export interface BrowserManagerOptions {
+    /** Main-owned SPA registrations; annotation must never install over the application itself. */
+    isAppUrl?(url: string): boolean;
     clickOnce?: ClickOncePolicy;
     richClipboard?: RichClipboard;
     history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'>;
@@ -152,6 +154,7 @@ export class BrowserHostManager {
         if (!view?.cdp || !view.onCdpEvent || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
         const state = view.snapshot();
         if (!entry.shown || state.loading || state.error || !validateBrowserUrl(state.url).ok) throw new Error('Browser annotation requires a visible, loaded page.');
+        if (this.options.isAppUrl?.(state.url)) throw new Error('Browser annotation is unavailable for the CoC app.');
         if (this.annotationDisabled.get(ownerId)?.has(entry.sessionKey)) throw new Error('Browser annotation is disabled.');
         if (entry.annotation && !entry.annotation.failed) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);
         if (this.demos.recordingTab(ownerId, entry.viewId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
@@ -169,7 +172,7 @@ export class BrowserHostManager {
                 if (!annotation.cleanup) this.endAnnotationInBackground(entry, reason);
                 sink.ended(reason, error);
             },
-        });
+        }, undefined, this.options.isAppUrl);
         const annotation: NonNullable<Entry['annotation']> = { tab, stopped: false };
         entry.annotation = annotation;
         try {

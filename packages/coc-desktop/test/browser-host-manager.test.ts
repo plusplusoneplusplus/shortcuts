@@ -1443,7 +1443,7 @@ describe('owner-bound annotation admission and lifecycle', () => {
         view.onCdpEvent = listener => { listeners.add(listener); return () => { listeners.delete(listener); }; };
         const actions: string[] = [];
         const cdp = vi.fn(async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
-            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html' } } };
             if (method === 'Page.createIsolatedWorld') return { executionContextId: 42 };
             if (method === 'Runtime.evaluate') {
                 const action = /"action":"(start|drain|stop|remove)"/.exec(String(params?.expression))?.[1];

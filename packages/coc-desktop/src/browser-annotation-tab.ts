@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationEvent, type BrowserAnnotationResult } from './browser-annotation-dom';
 import type { BrowserHostedView, BrowserCdpEventListener } from './browser-host-contract';
+import { validateBrowserUrl } from './browser-view-policy';
 
 export const BROWSER_ANNOTATION_WORLD = 'coc-browser-annotation';
 export const BROWSER_ANNOTATION_POLL_MS = 100;
@@ -33,7 +34,8 @@ export class BrowserAnnotationTab {
     private tail: Promise<unknown> = Promise.resolve();
 
     constructor(private readonly view: AnnotationView, private readonly sink: BrowserAnnotationTabSink,
-        private readonly pollMs = BROWSER_ANNOTATION_POLL_MS) {
+        private readonly pollMs = BROWSER_ANNOTATION_POLL_MS,
+        private readonly isAppUrl: (url: string) => boolean = () => false) {
         this.cdp = view.cdp?.bind(view);
     }
 
@@ -50,10 +52,20 @@ export class BrowserAnnotationTab {
             if (this.closed) return false;
             await this.cdp('Page.enable');
             if (this.closed) return false;
-            const tree = await this.cdp('Page.getFrameTree') as { frameTree?: { frame?: { id?: unknown } } } | undefined;
+            const tree = await this.cdp('Page.getFrameTree') as {
+                frameTree?: { frame?: { id?: unknown; url?: unknown; mimeType?: unknown } };
+            } | undefined;
             if (this.closed) return false;
-            const frameId = tree?.frameTree?.frame?.id;
+            const frame = tree?.frameTree?.frame;
+            const frameId = frame?.id;
             if (typeof frameId !== 'string' || !frameId) throw new Error('Annotation page has no main frame.');
+            // Engine-owned document facts, never renderer toolbar hints or website DOM metadata.
+            if (typeof frame?.url !== 'string' || !validateBrowserUrl(frame.url).ok
+                || typeof frame.mimeType !== 'string' || !frame.mimeType.trim()
+                || /^application\/(?:pdf|x-google-chrome-pdf)(?:\s*;|$)/i.test(frame.mimeType.trim())
+                || /\.pdf$/i.test(new URL(frame.url).pathname) || this.isAppUrl(frame.url)) {
+                throw new Error('Browser annotation is unavailable for PDFs, previews or the CoC app.');
+            }
             this.frameId = frameId;
             const world = await this.cdp('Page.createIsolatedWorld', { frameId, worldName: BROWSER_ANNOTATION_WORLD }) as { executionContextId?: unknown } | undefined;
             // Retain the context even when revoked: a delayed installation must be cleaned up there only.

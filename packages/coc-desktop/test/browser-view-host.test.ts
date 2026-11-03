@@ -505,14 +505,15 @@ describe('desktop download IPC', () => {
 describe('desktop annotation IPC', () => {
     const identity = { viewId: 'annotated', sessionKey: 'clone:w', requestId: 'mode-1' };
     const request = (action: string, fields = {}) => ({ ...identity, action, ...fields });
-    async function page(spa: ReturnType<typeof owner>, engine: 'electron' | 'webview2' = 'electron') {
+    async function page(spa: ReturnType<typeof owner>, engine: 'electron' | 'webview2' = 'electron',
+        facts: { url?: string; mimeType?: string } = {}) {
         await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, identity.viewId, 'https://fixture.test/', identity.sessionKey, engine);
         const view = mocks.views.at(-1);
         let cdpEvent: (...args: any[]) => void;
         const selections: any[] = [];
         view.onCdpEvent = vi.fn((listener: any) => { cdpEvent = listener; return vi.fn(); });
         view.cdp.mockImplementation(async (method: string) => {
-            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html', ...facts } } };
             if (method === 'Page.createIsolatedWorld') return { executionContextId: 7 };
             if (method === 'Runtime.evaluate') return { result: { value: { active: true, events: selections.splice(0) } } };
             return {};
@@ -522,6 +523,34 @@ describe('desktop annotation IPC', () => {
     }
     const notifications = (spa: ReturnType<typeof owner>) => spa.contents.send.mock.calls
         .filter(call => call[0] === BROWSER_ANNOTATION_EVENT_CHANNEL).map(call => call[1]);
+
+    it.each(['electron', 'webview2'] as const)('refuses the app snapshot before CDP on %s', async engine => {
+        const spa = owner(1);
+        const guest = await page(spa, engine);
+        const snapshot = guest.view.snapshot();
+        guest.view.snapshot = () => ({ ...snapshot, url: 'http://localhost:4000/?workspace=other#chat' });
+        await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).rejects.toThrow('CoC app');
+        expect(guest.view.cdp).not.toHaveBeenCalled();
+    });
+
+    it.each(['electron', 'webview2'] as const)('uses committed document facts to refuse PDFs and app URLs on %s', async engine => {
+        const spa = owner(1);
+        for (const facts of [
+            { url: 'https://fixture.test/download?id=1', mimeType: 'application/pdf' },
+            { url: 'http://localhost:4000/?workspace=other#chat', mimeType: 'text/html' },
+        ]) {
+            const guest = await page(spa, engine, facts);
+            guest.view.cdp.mockClear();
+            // The stale toolbar/view snapshot still says fixture.test; admission uses native facts.
+            await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).rejects.toThrow('PDFs, previews or the CoC app');
+            expect(guest.view.cdp.mock.calls.map(([method]: [string]) => method)).toEqual(['Page.enable', 'Page.getFrameTree']);
+            expect(notifications(spa).at(-1)).toMatchObject({ ...identity, type: 'ended', reason: 'failed' });
+        }
+        // Failed admission releases the reservation so the same view identity can retry normally.
+        const guest = await page(spa, engine);
+        expect(await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).toBe(true);
+        expect(guest.view.cdp).toHaveBeenCalledWith('Page.createIsolatedWorld', expect.anything());
+    });
 
     it.each(['electron', 'webview2'] as const)('round trips generation-bound mode and termination for %s', async engine => {
         const spa = owner(1), other = owner(2);
