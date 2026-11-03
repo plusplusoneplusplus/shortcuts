@@ -1,3 +1,4 @@
+import { serializeBrowserAnnotations } from '@plusplusoneplusplus/coc-client';
 import { useMemo, useSyncExternalStore } from 'react';
 import type { BrowserDemoOwner } from './browser-bridge';
 import { sameChatOwner } from './browser-demo';
@@ -79,4 +80,32 @@ export function useBrowserAnnotationChips(owner: BrowserDemoOwner | null | undef
 
 export function resetBrowserAnnotationChipsForTest(): void {
     set([]);
+}
+
+/** Keep each page mode's pin numbering independent, including chips retained after navigation. */
+export function formatBrowserAnnotationChips(snapshot: readonly BrowserAnnotationChip[]): string {
+    const groups = new Map<BrowserAnnotationSession, BrowserAnnotationChip[]>();
+    for (const chip of snapshot) {
+        const group = groups.get(chip.session) ?? [];
+        group.push(chip);
+        groups.set(chip.session, group);
+    }
+    return [...groups.values()].map((group, index) =>
+        `${groups.size > 1 ? `Browser annotation group ${index + 1}\n` : ''}${serializeBrowserAnnotations(group)}`,
+    ).join('\n\n');
+}
+
+/** Accepted messages consume only unchanged snapshot entries, preserving edits made during admission. */
+export async function acknowledgeBrowserAnnotationChips(snapshot: readonly BrowserAnnotationChip[]): Promise<void> {
+    const consumed = new Set(snapshot.filter(chip => chips.includes(chip)));
+    if (!consumed.size) return;
+    const remaining = chips.filter(chip => !consumed.has(chip));
+    set(remaining.map(chip => {
+        const number = chip.number - [...consumed].filter(gone =>
+            gone.session === chip.session && gone.number < chip.number).length;
+        return number === chip.number ? chip : { ...chip, number };
+    }));
+    const results = await Promise.allSettled([...consumed].map(chip => chip.session.remove(chip.id)));
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
 }

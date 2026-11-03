@@ -555,13 +555,12 @@ open-shadow host chain and null for unavailable bounded selectors. Rendered text
 is capped at 500 UTF-16 units and outerHTML at 2048 UTF-8 bytes without splitting
 characters. Captured website content is untrusted.
 
-`browser-annotation-payload.ts` serializes comments with explicit current pin
-numbers and JSON page context labelled as untrusted website data. It preserves
+`browser-annotation-payload.ts` re-exports the browser-safe coc-client serializer
+for comments with explicit current pin numbers and JSON page context labelled as untrusted website data. It preserves
 input order and complete user comments, bounds DOM text/HTML without splitting
 characters, and keeps selectors whole or null. Duplicate or invalid numbers fail;
 an empty queue emits no text. Single-comment sends retain their supplied pin
-number. Image labels must use the same numbers. Composer integration and image
-capture belong to the caller.
+number. Image labels must use the same numbers; the caller owns image capture.
 
 `browser-annotation-tab.ts` checks the engine's committed main-frame URL and MIME
 type before isolated-world creation. PDFs (including extensionless URLs), PDF
@@ -606,8 +605,17 @@ mode). Comment/delete events feed the in-memory `browser-annotation-chips.ts` st
 keyed by mode request ID plus pin ID; deletion renumbers that mode's survivors to
 match the page. `FollowUpInputArea` renders `BrowserAnnotationChips` for its exact
 workspace/routing/process owner; removing a chip calls its original session's
-`remove(id)`, a no-op once that mode ended, so chips outlive navigation. Sending
-chips, screenshots and the new-chat composer fallback are not wired yet.
+`remove(id)`, a no-op once that mode ended, so chips outlive navigation.
+
+`ChatDetail` passes the same exact annotation owner to `useSendMessage`. Ordinary
+sends snapshot that owner's chips and append serialized page context, grouping
+modes separately to preserve pin numbers across navigation. Page metadata stays
+outside slash-command and target parsing. Server acceptance consumes unchanged
+snapshot entries and removes their original pins; admission failures retain them,
+and comments added or edited during admission stay queued. Generated sends with
+`includeComposerContext:false` preserve the queue. Pin-cleanup errors remain
+observable without marking an accepted message failed. Modifier sends, screenshots
+and the new-chat composer fallback remain separate integration work.
 
 ### Shared web-page zoom
 

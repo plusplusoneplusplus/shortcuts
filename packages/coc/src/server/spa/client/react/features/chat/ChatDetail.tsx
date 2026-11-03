@@ -1740,6 +1740,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         getPastedContent: () => textPaste.pastedContent,
         lastFailedMessageRef,
         setTask,
+        browserAnnotationOwner: browserWorkspaceId && browserRoutingRef && processId
+            ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef, processId } : null,
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,

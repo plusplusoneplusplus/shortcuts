@@ -1,3 +1,5 @@
+import { acknowledgeBrowserAnnotationChips, formatBrowserAnnotationChips, getBrowserAnnotationChips } from '../../../shared/file-path/browser-annotation-chips';
+import type { BrowserDemoOwner } from '../../../shared/file-path/browser-bridge';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { targetSpans } from '../../../../../../shared/sentinel-target-reference';
 import { validateSentinelTargetSend } from '../sentinelTargetDiscovery';
@@ -79,6 +81,8 @@ export interface UseSendMessageOptions {
     getPastedContent?: () => string | null;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
+    /** Exact chat that owns annotation chips; never inferred from the active workspace. */
+    browserAnnotationOwner?: BrowserDemoOwner | null;
     /** Returns the currently attached context items. */
     getAttachedContext?: () => AttachedContextItem[];
     /** Clears attached context after send. */
@@ -176,6 +180,7 @@ export function useSendMessage({
     lastFailedMessageRef,
     setTask,
     getAttachedContext,
+    browserAnnotationOwner,
     clearAttachedContext,
     modelOverride,
     providerOverride,
@@ -380,6 +385,7 @@ export function useSendMessage({
             return;
         }
         const includeComposerContext = options.includeComposerContext !== false;
+        const annotationSnapshot = includeComposerContext ? getBrowserAnnotationChips(browserAnnotationOwner) : [];
         const requestedProvider = options.providerOverride ?? providerOverride;
         const messageMode = options.modeOverride ?? selectedMode;
         const userText = (overrideContent ?? followUpInputRef.current).trim();
@@ -442,7 +448,16 @@ export function useSendMessage({
         const baseContent = pastedContent
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
             : userText;
-        const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
+        const annotationContext = formatBrowserAnnotationChips(annotationSnapshot);
+        const composerContent = contextPrefix + baseContent;
+        const rawContent = [composerContent, annotationContext].filter(Boolean).join('\n\n');
+        const acknowledgeAnnotations = () => {
+            void acknowledgeBrowserAnnotationChips(annotationSnapshot).catch(error => {
+                if (activeTargetCheck.current === targetCheck) {
+                    setError(getSpaCocClientErrorMessage(error, 'Message sent, but could not remove annotation pins.'));
+                }
+            });
+        };
         if (!processId || inputDisabled) return;
         if (!hasTodoContext && !scopedOwner && !hydratedMessageClient && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
             rejectSend('The owning server is unavailable. Reconnect it before sending this message.');
@@ -527,7 +542,7 @@ export function useSendMessage({
         }
 
         if (!rawContent) return;
-        if (targetSpans(rawContent).length) {
+        if (targetSpans(composerContent).length) {
             if (targetCheck.pending || targetCheck.abort.signal.aborted) {
                 if (options.throwOnError) throw new Error('Target verification is unavailable. Retry.');
                 return;
@@ -536,7 +551,7 @@ export function useSendMessage({
             const draft = followUpInputRef.current;
             try {
                 const signal = AbortSignal.any([targetCheck.abort.signal, AbortSignal.timeout(10000)]);
-                await validateSentinelTargetSend(rawContent, messageClient, signal, scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId);
+                await validateSentinelTargetSend(composerContent, messageClient, signal, scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId);
                 if (activeTargetCheck.current !== targetCheck) {
                     if (options.throwOnError) throw new Error('The open chat changed during target verification.');
                     return;
@@ -553,7 +568,7 @@ export function useSendMessage({
             unarchiveChat(taskId);
         }
 
-        const { skills: extractedSkills } = slashCommands.parseAndExtract(rawContent);
+        const { skills: extractedSkills } = slashCommands.parseAndExtract(composerContent);
 
         setSuggestions([]);
         if (includeComposerContext) {
@@ -598,6 +613,7 @@ export function useSendMessage({
                 return;
             }
 
+            acknowledgeAnnotations();
             if (includeComposerContext) {
                 clearImages();
                 clearPaste();
@@ -633,6 +649,7 @@ export function useSendMessage({
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
+            acknowledgeAnnotations();
             if (includeComposerContext) {
                 clearImages();
                 clearPaste();
@@ -655,7 +672,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey, targetCheck]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey, targetCheck, browserAnnotationOwner]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, compactNow, closeFollowUpStream, onSendComplete };
 }

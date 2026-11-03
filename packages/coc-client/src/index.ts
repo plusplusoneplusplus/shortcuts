@@ -112,3 +112,5 @@ export type SentinelTodoTriggerEventInput = SentinelOvertureEventInput;
 export type CreateSentinelTodoTriggerRequest = CreateSentinelOvertureRequest;
 /** @deprecated use EditSentinelOvertureRequest */
 export type EditSentinelTodoTriggerRequest = EditSentinelOvertureRequest;
+
+export { serializeBrowserAnnotations, type BrowserAnnotationComment, type BrowserAnnotationPayloadSelection } from './browser-annotation-payload';

@@ -66,7 +66,13 @@ references before editing. Paths are package-relative.
   upsert/remove chips keyed by mode request ID plus pin ID, renumbering that mode's
   survivors. `FollowUpInputArea` renders only its exact owner's chips; removing one
   calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
-  so chips outlive pins and never touch a replacement.
+  so chips outlive pins and never touch a replacement. `useSendMessage` receives
+  the same exact annotation owner, snapshots chips for ordinary sends and appends
+  the shared coc-client serializer's untrusted page context. Keep page metadata
+  out of command/target parsing. Accepted messages consume only unchanged snapshot
+  entries and remove their original pins; failed sends preserve chips. Generated
+  sends with `includeComposerContext:false` leave the queue untouched. Keep each
+  mode's pin numbering in a separate payload group.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

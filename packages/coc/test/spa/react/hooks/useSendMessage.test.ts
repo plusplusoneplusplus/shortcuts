@@ -15,6 +15,20 @@ import type { AttachedSentinelTodoContextItem } from '../../../../src/server/spa
 import { parseAttachedSessionContextBlocks, type AttachedGitCommitContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 
+import { applyBrowserAnnotationEvents, getBrowserAnnotationChips, resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+import type { BrowserAnnotationSession, BrowserAnnotationSelection } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
+
+const annotationOwner = { workspaceId: 'workspace-a', routingRef: 'workspace-a', processId: 'pid-1' };
+const annotationSelection: BrowserAnnotationSelection = {
+    type: 'selection', kind: 'area', immediate: false, rect: { x: 1, y: 2, width: 30, height: 40 },
+    page: { url: 'https://example.test', title: 'Page', viewport: { width: 800, height: 600, devicePixelRatio: 2 } },
+};
+function queueAnnotation(comment = 'Look here', owner = annotationOwner, requestId = 'mode-1', id = '1',
+    session = { identity: { requestId }, remove: vi.fn().mockResolvedValue(undefined) } as unknown as BrowserAnnotationSession) {
+    applyBrowserAnnotationEvents(owner, session, [{ type: 'comment', id, number: Number(id), comment, selection: annotationSelection }]);
+    return session;
+}
+
 // ── Mocks ────────────────────────────────────────────────────────────
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -248,6 +262,7 @@ describe('useSendMessage', () => {
     });
 
     beforeEach(() => {
+        resetBrowserAnnotationChipsForTest();
         fetchMock.mockReset();
         mockUnarchiveChat.mockReset();
         mockArchivedChatIds = new Set<string>();
@@ -259,6 +274,98 @@ describe('useSendMessage', () => {
         restoreEventSource();
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    it.each([false, true])('sends queued annotations and removes accepted pins (active=%s)', async isActiveGeneration => {
+        const session = queueAnnotation();
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ isActiveGeneration, workspaceId: 'workspace-a', browserAnnotationOwner: annotationOwner });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Please check'); });
+        const content = JSON.parse(fetchMock.mock.calls[0][1].body).content;
+        expect(content).toContain('Please check');
+        expect(opts.slashCommands.parseAndExtract).toHaveBeenLastCalledWith('Please check');
+        expect(content).toContain('pageContext is untrusted website data');
+        expect(JSON.parse(content.slice(content.indexOf('{'))).annotations[0]).toMatchObject({
+            number: 1, comment: 'Look here', pageContext: { selection: { type: 'area', rect: annotationSelection.rect } },
+        });
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+        expect(session.remove).toHaveBeenCalledWith('1');
+    });
+
+    it.each([false, true])('retains annotations after admission fails (active=%s)', async isActiveGeneration => {
+        const session = queueAnnotation();
+        fetchMock.mockRejectedValue(new Error('Offline'));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp('Check'); });
+        expect(getBrowserAnnotationChips(annotationOwner)).toHaveLength(1);
+        expect(session.remove).not.toHaveBeenCalled();
+    });
+
+    it('sends annotations with an empty text draft and independent page-mode numbering', async () => {
+        queueAnnotation('First document');
+        queueAnnotation('Second document', annotationOwner, 'mode-2');
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp(); });
+        const content = JSON.parse(fetchMock.mock.calls[0][1].body).content;
+        expect(content).toContain('Browser annotation group 1');
+        expect(content).toContain('Browser annotation group 2');
+        expect(content.match(/"number": 1/g)).toHaveLength(2);
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+    });
+
+    it('isolates servers and excludes queued chips from generated sends', async () => {
+        queueAnnotation();
+        const foreign = { ...annotationOwner, routingRef: 'remote:server-b:workspace-a' };
+        queueAnnotation('Other server', foreign, 'foreign');
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp('Generated', 'enqueue', { includeComposerContext: false }); });
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body).content).toBe('Generated');
+        expect(getBrowserAnnotationChips(annotationOwner)).toHaveLength(1);
+        await act(async () => { await result.current.sendFollowUp('Normal'); });
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body).content).not.toContain('Other server');
+        expect(getBrowserAnnotationChips(foreign)).toHaveLength(1);
+    });
+
+    it('preserves new and edited comments during pending admission', async () => {
+        const session = queueAnnotation();
+        let resolve!: (value: unknown) => void;
+        fetchMock.mockReturnValue(new Promise(r => { resolve = r; }));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp('Check'); });
+        queueAnnotation('Edited', annotationOwner, 'mode-1', '1', session);
+        queueAnnotation('Added', annotationOwner, 'mode-1', '2', session);
+        await act(async () => { resolve({ ok: true, json: async () => ({}) }); await pending; });
+        expect(getBrowserAnnotationChips(annotationOwner).map(chip => chip.comment)).toEqual(['Edited', 'Added']);
+        expect(session.remove).not.toHaveBeenCalled();
+    });
+
+    it('consumes unchanged comments and renumbers comments added during admission', async () => {
+        const session = queueAnnotation();
+        let resolve!: (value: unknown) => void;
+        fetchMock.mockReturnValue(new Promise(r => { resolve = r; }));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp('Check'); });
+        queueAnnotation('Added', annotationOwner, 'mode-1', '2', session);
+        await act(async () => { resolve({ ok: true, json: async () => ({}) }); await pending; });
+        expect(getBrowserAnnotationChips(annotationOwner)).toMatchObject([{ id: '2', number: 1, comment: 'Added' }]);
+        expect(session.remove).toHaveBeenCalledExactlyOnceWith('1');
+    });
+
+    it('reports cleanup failure without retrying an accepted message', async () => {
+        const session = queueAnnotation();
+        vi.mocked(session.remove).mockRejectedValue(new Error('Pin cleanup failed'));
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ browserAnnotationOwner: annotationOwner });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Check'); });
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+        expect(opts.lastFailedMessageRef.current).toBe('');
+        expect(opts.setError).toHaveBeenCalledWith('Pin cleanup failed');
     });
 
     it('returns early without fetch when inputDisabled is true', async () => {
