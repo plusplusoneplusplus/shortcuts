@@ -34,12 +34,31 @@ export function windowsInstallScript(options: WindowsUpdateOptions): string {
     }
     // NSIS requires /D last and unquoted, including paths containing spaces.
     // ProcessStartInfo avoids cmd.exe and preserves that exact command line.
+    // The helper inherits the app token through cmd/PowerShell. IsInRole checks
+    // the effective token, including UAC filtering. NSIS --force-run deliberately
+    // drops elevation via ExecShellAsUser, so an elevated helper owns the relaunch.
+    // Keep script text compact: cmd's encoded command line has an 8191-char limit.
     return `$ErrorActionPreference = 'Stop'
 $installer = ${literal(installer)}
 $executable = ${literal(executable)}
 $updateDir = ${literal(tempDir)}
 $oldPid = ${options.oldPid}
+function Start-CoC([string] $arguments = '') {
+    $app = New-Object System.Diagnostics.ProcessStartInfo
+    $app.FileName = $executable
+    $app.Arguments = $arguments
+    $app.UseShellExecute = $false
+    $app.WorkingDirectory = ${literal(installDir)}
+    [System.Diagnostics.Process]::Start($app) | Out-Null
+}
 try {
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    try {
+        $principal = New-Object -TypeName System.Security.Principal.WindowsPrincipal -ArgumentList $identity
+        $elevated = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    } finally {
+        $identity.Dispose()
+    }
     $oldProcess = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
     if ($null -ne $oldProcess) {
         if (-not $oldProcess.WaitForExit(300000)) {
@@ -48,7 +67,11 @@ try {
     }
     $start = New-Object System.Diagnostics.ProcessStartInfo
     $start.FileName = $installer
-    $start.Arguments = ${literal(`/S --force-run /D=${installDir}`)}
+    if ($elevated) {
+        $start.Arguments = ${literal(`/S /D=${installDir}`)}
+    } else {
+        $start.Arguments = ${literal(`/S --force-run /D=${installDir}`)}
+    }
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.WorkingDirectory = $updateDir
@@ -57,9 +80,16 @@ try {
     if ($setup.ExitCode -ne 0) {
         throw "Windows installer failed with exit code $($setup.ExitCode)."
     }
+    if ($elevated) {
+        Start-CoC '--updated'
+    }
 } catch {
     $_.Exception.Message | Set-Content -LiteralPath (Join-Path $updateDir 'install-error.txt') -Encoding UTF8
-    Start-Process -FilePath $executable
+    try {
+        Start-CoC
+    } catch {
+        $_.Exception.Message | Add-Content -LiteralPath (Join-Path $updateDir 'install-error.txt') -Encoding UTF8
+    }
     exit 1
 }
 # Installation and relaunch succeeded; cleanup must not relaunch a second instance.
