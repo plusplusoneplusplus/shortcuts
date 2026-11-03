@@ -536,9 +536,16 @@ metadata at selection time, before page mutations or deferred collection.
 Element selectors are unique within a document/shadow root, with an outermost-first
 open-shadow host chain and null for unavailable bounded selectors. Rendered text
 is capped at 500 UTF-16 units and outerHTML at 2048 UTF-8 bytes without splitting
-characters. Captured website content is untrusted. The primitive has jsdom and
-real Electron coverage; toolbar, host, screenshot and composer integration remain
-separate.
+characters. Captured website content is untrusted.
+
+`browser-annotation-tab.ts` uses the shared main-only CDP interface to install and
+poll one isolated main-document context. Its private generation token, serialized
+commands and synchronous revocation reject late results; Stop removes the overlay
+in the original context. Navigation/lost-context events terminate collection;
+future documents receive no script. The caller owns admission, settled takeover
+and lifecycle stops, and awaits Stop before replacing an instance. Transport has
+jsdom and real Electron CDP coverage; manager/toolbar admission, screenshot and
+composer integration remain separate.
 
 ### Shared web-page zoom
 

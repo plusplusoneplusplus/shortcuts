@@ -4,6 +4,8 @@ const http = require('node:http');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { buildBrowserAnnotationExpression } = require('../../dist/browser-annotation-dom.js');
+const { BrowserAnnotationTab } = require('../../dist/browser-annotation-tab.js');
+const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 
 app.setPath('userData', process.env.COC_BROWSER_E2E_USER_DATA);
 app.setPath('sessionData', path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'session'));
@@ -77,7 +79,36 @@ function click(x, y, modifiers = []) {
     await until('!window.__cocBrowserAnnotation.active');
     const escaped = await command('drain');
     const removed = await evaluate('!window.fixtureRoot.host.isConnected');
-    console.log('E2E::' + JSON.stringify({ element, styles, isolation, area, released, escaped, removed }));
+    // Exercise the production main-only CDP adapter, including private-world event drain and revocation.
+    const cdp = new ElectronBrowserCdp(win.webContents);
+    const events = [];
+    const endings = [];
+    const hosted = { cdp: cdp.send.bind(cdp), onCdpEvent: cdp.onEvent.bind(cdp) };
+    const transport = new BrowserAnnotationTab(hosted, {
+        events: batch => events.push(...batch), ended: reason => endings.push(reason),
+    });
+    await transport.start();
+    click(80, 80);
+    for (const started = Date.now(); !events.length && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
+        await transport.poll();
+    }
+    if (!events.length) throw new Error('CDP transport did not deliver the selection');
+    const transportPrivate = await win.webContents.executeJavaScript('!window.__cocBrowserAnnotation');
+    await transport.stop();
+    click(80, 80);
+    await until('window.clicks === 2', false);
+    const navigationEndings = [];
+    const navigating = new BrowserAnnotationTab(hosted, {
+        events() {}, ended: reason => navigationEndings.push(reason),
+    });
+    await navigating.start();
+    await win.loadURL(`http://127.0.0.1:${server.address().port}/?next`);
+    await navigating.stop().catch(() => {}); // Replaced documents can destroy the pinned context before cleanup.
+    const noReinstall = await win.webContents.executeJavaScript(`document.querySelectorAll('[tabindex="-1"]').length === 0`);
+    const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
+        endings, navigationEndings, noReinstall };
+    cdp.dispose();
+    console.log('E2E::' + JSON.stringify({ element, styles, isolation, area, released, escaped, removed, transport: transportResult }));
     win.destroy();
     server.close();
     app.exit(0);
