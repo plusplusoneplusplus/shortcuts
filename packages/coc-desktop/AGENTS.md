@@ -46,8 +46,13 @@ images after revocation. `BrowserHostedView.captureAnnotation` is optional;
 Electron URL guests use `electron-annotation-capture.ts` and `capturePage(rect)`.
 Convert CSS to enclosing DIP bounds using page zoom, then crop the decoded PNG to
 enclosing device pixels without resampling. Bound allocation to 16 Mi pixels and
-PNG output to 20 MiB. WebView2 capture and automatic composer image delivery need
-integration; file previews and popouts expose no annotation capture capability.
+PNG output to 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
+the native helper's memory-only `CapturePreview` PNG, validate full-viewport physical
+dimensions before decoding, then crop without resampling. Full previews share the
+16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
+transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide and zoom
+changes reject late captures. Automatic composer image delivery needs integration;
+file previews and popouts expose no annotation capture capability.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership
 admission and settled human takeover, then requires the engine's committed main

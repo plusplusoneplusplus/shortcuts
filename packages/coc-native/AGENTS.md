@@ -302,11 +302,17 @@ are desktop-main transports, never renderer APIs. Completion callbacks retain th
 original request id. Method names use `Domain.command` and params are objects.
 Results above 900000 UTF-8 bytes produce a small correlated error before stdout;
 desktop read/eval and staged snapshot chunks bound page-owned serialization before
-CDP. Transport bounds each frame/write at 1 MiB, drains oversized CDP replies
+CDP. Transport bounds commands and ordinary replies at 1 MiB, drains oversized CDP replies
 independently, and preserves other views. Native state/history titles cap at 4096
 Unicode characters.
+Typed root-tab `capture-annotation` uses `CapturePreview` into a COM memory stream
+on the STA thread, checks controller dimensions against 16 Mi pixels, and returns
+a PNG data URL capped at 20 MiB. Closed/popup/crashed views are refused. Desktop
+main crops the full physical viewport after validating document/zoom ownership.
+Only that pending request admits a 28 MB reply; oversized replies and 60-second
+timeouts retire the request without stopping other views.
 The desktop transport retires CDP requests on tab close, page/helper crash,
-shutdown or a 30-second timeout, ignoring late replies. CDP timeouts preserve
+shutdown or a 60-second timeout, ignoring late replies. CDP timeouts preserve
 other tabs and the helper process. The helper-process boundary isolates this lifecycle from Electron's
 Node event loop and from server N-API capabilities.
 Native popups publish correlated `popup-opened`, per-popup `state`,

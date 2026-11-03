@@ -8,6 +8,9 @@ import { BrowserControlPage } from '../src/browser-control-page';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { captureWebView2Annotation } from '../src/webview2-annotation-capture';
+
+vi.mock('../src/webview2-annotation-capture', () => ({ captureWebView2Annotation: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
@@ -57,6 +60,75 @@ vi.mock('../src/webview2-process', async importOriginal => ({
 
 const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
+
+describe('WebView2 document-bound annotation capture', () => {
+    beforeEach(() => {
+        vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); mocks.running = true;
+        vi.mocked(captureWebView2Annotation).mockImplementation(async capture => {
+            await capture();
+            return { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 };
+        });
+    });
+    async function opened() {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        await view.setBounds(bounds);
+        const state = { url: 'https://fixture.test/', title: 'Fixture', canGoBack: false, canGoForward: false, loading: false };
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        return { host, view, state };
+    }
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    const viewport = { width: 800, height: 600, devicePixelRatio: 2 };
+
+    it('binds CapturePreview to the exact native root and uses the shared crop', async () => {
+        const h = await opened();
+        mocks.request.mockResolvedValueOnce('native preview');
+        expect(await h.view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.request).toHaveBeenLastCalledWith('capture-annotation', { viewId: '7:tab:1' });
+        expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, viewport);
+        await h.host.dispose();
+    });
+
+    it.each(['loading', 'hidden', 'closed', 'crashed'])('refuses %s views before capture dispatch', async reason => {
+        const h = await opened();
+        if (reason === 'loading') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, loading: true } });
+        if (reason === 'hidden') await h.view.setBounds(null);
+        if (reason === 'closed') await h.view.close();
+        if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, error: 'Crash', errorCode: 'runtime-crashed' } });
+        mocks.request.mockClear();
+        await expect(h.view.captureAnnotation!(rect, viewport)).rejects.toThrow();
+        expect(mocks.request).not.toHaveBeenCalled();
+        await h.host.dispose();
+    });
+
+    it.each(['navigation', 'same-document URL', 'zoom', 'hidden', 'closed', 'crashed'])('rejects late %s captures', async reason => {
+        const h = await opened();
+        let release!: (result: unknown) => void;
+        mocks.request.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const capture = h.view.captureAnnotation!(rect, viewport);
+        const rejected = expect(capture).rejects.toThrow();
+        if (reason === 'navigation') mocks.onEvent({ event: 'document-starting', viewId: '7:tab:1' });
+        if (reason === 'same-document URL') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, url: 'https://fixture.test/#next' } });
+        if (reason === 'zoom') await h.view.setPageZoom!(125);
+        if (reason === 'hidden') await h.view.setBounds(null);
+        if (reason === 'closed') await h.view.close();
+        if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, error: 'Crash', errorCode: 'runtime-crashed' } });
+        release('native preview');
+        await rejected;
+        await h.host.dispose();
+    });
+
+    it('keeps popup capture unavailable', async () => {
+        const h = await opened();
+        const popup = vi.fn();
+        const root = await h.host.create({ ownerId: 7, viewId: 'other', sessionKey: 'workspace', url: 'https://fixture.test/' },
+            { ...sink, controlPopoutOpened: popup });
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:other:2:popup:1', rootId: '7:other:2', url: 'https://fixture.test/' });
+        expect(popup.mock.calls[0][1].captureAnnotation).toBeUndefined();
+        await root.close();
+        await h.host.dispose();
+    });
+});
 
 describe('WebView2 ClickOnce transport', () => {
     beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });

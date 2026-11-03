@@ -410,13 +410,29 @@ pub fn history_message(
 
 /// Mirrors `MAX_BROWSER_FAVICON_BYTES` in coc-desktop's browser-favicon.ts.
 pub const MAX_FAVICON_BYTES: usize = 64 * 1024;
+pub const MAX_ANNOTATION_PNG_BYTES: usize = 20 * 1024 * 1024;
+pub const MAX_ANNOTATION_PIXELS: u64 = 16 * 1024 * 1024;
+
+pub fn annotation_preview_size_allowed(width: i64, height: i64) -> bool {
+    width > 0
+        && height > 0
+        && width.checked_mul(height).is_some_and(|pixels| pixels <= MAX_ANNOTATION_PIXELS as i64)
+}
 
 /// The engine's PNG rendering of the site icon as a bounded data URL. Anything
 /// that is empty, oversized or not a PNG leaves the tab on its default icon.
 pub fn favicon_data_url(png: &[u8]) -> Option<String> {
+    png_data_url(png, MAX_FAVICON_BYTES)
+}
+
+pub fn annotation_data_url(png: &[u8]) -> Option<String> {
+    png_data_url(png, MAX_ANNOTATION_PNG_BYTES)
+}
+
+fn png_data_url(png: &[u8], limit: usize) -> Option<String> {
     const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    if png.len() > MAX_FAVICON_BYTES || !png.starts_with(&SIGNATURE) {
+    if png.len() > limit || !png.starts_with(&SIGNATURE) {
         return None;
     }
     let mut url = String::with_capacity(22 + png.len().div_ceil(3) * 4);
@@ -472,6 +488,34 @@ mod tests {
         assert!(favicon_data_url(&large).is_some());
         large.push(0);
         assert_eq!(favicon_data_url(&large), None);
+    }
+
+    #[test]
+    fn annotations_have_an_independent_bounded_png_transport() {
+        let command: Command =
+            serde_json::from_str(r#"{"id":7,"op":"capture-annotation","viewId":"owned"}"#).unwrap();
+        assert_eq!(command.op, "capture-annotation");
+        assert_eq!(command.view_id.as_deref(), Some("owned"));
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        png.resize(MAX_FAVICON_BYTES + 1, 0);
+        assert!(annotation_data_url(&png).is_some());
+        assert!(favicon_data_url(&png).is_none());
+        png.resize(MAX_ANNOTATION_PNG_BYTES, 0);
+        assert!(annotation_data_url(&png).is_some());
+        png.push(0);
+        assert!(annotation_data_url(&png).is_none());
+        assert!(annotation_data_url(b"not PNG").is_none());
+        assert!(annotation_data_url(&[]).is_none());
+    }
+
+    #[test]
+    fn annotation_preview_dimensions_are_positive_and_allocation_bounded() {
+        assert!(annotation_preview_size_allowed(4096, 4096));
+        for (width, height) in
+            [(0, 600), (-1, 600), (800, 0), (800, -1), (4097, 4096), (i64::MAX, 2)]
+        {
+            assert!(!annotation_preview_size_allowed(width, height));
+        }
     }
 
     fn command_line(expression: &str) -> String {

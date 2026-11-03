@@ -577,7 +577,12 @@ original generation; failures and revocation reject the image. Electron URL gues
 implement optional `BrowserHostedView.captureAnnotation` through
 `electron-annotation-capture.ts`: enclosing DIP `capturePage(rect)` followed by a
 physical-pixel PNG crop, without resampling. Allocation caps at 16 Mi pixels and
-PNG output at 20 MiB; WebView2 and automatic composer delivery need integration.
+PNG output at 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
+native memory-only `CapturePreview`; validate physical viewport dimensions before
+decoding and crop without resampling. Full previews share the same bounds. Only
+pending capture replies permit 28 MB native transport frames; ordinary CDP/events
+retain their 1 MiB limit. Lifecycle/zoom changes reject late images. Automatic
+composer delivery needs integration.
 
 The shared main-only CDP interface installs and polls one isolated main-document
 context. Its private generation token, serialized

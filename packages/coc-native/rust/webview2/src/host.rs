@@ -23,7 +23,10 @@ use windows::{
             GetMonitorInfoW, GetSysColorBrush, MonitorFromWindow, ScreenToClient, COLOR_WINDOW,
             MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
-        System::{Com::*, Threading::*},
+        System::{
+            Com::{StructuredStorage::CreateStreamOnHGlobal, *},
+            Threading::*,
+        },
         UI::{
             HiDpi::*,
             Input::KeyboardAndMouse::{
@@ -92,6 +95,53 @@ struct View {
 }
 
 impl View {
+    fn capture_annotation(self: &Rc<Self>, id: u64) -> Result<()> {
+        if self.popup {
+            return Err(windows::core::Error::from(E_INVALIDARG));
+        }
+        let mut bounds = RECT::default();
+        unsafe { self.controller.Bounds(&mut bounds)? };
+        let width = i64::from(bounds.right) - i64::from(bounds.left);
+        let height = i64::from(bounds.bottom) - i64::from(bounds.top);
+        if !protocol::annotation_preview_size_allowed(width, height) {
+            return Err(windows::core::Error::from(E_INVALIDARG));
+        }
+        let stream = unsafe { CreateStreamOnHGlobal(HGLOBAL::default(), true)? };
+        let captured = stream.clone();
+        let weak = Rc::downgrade(self);
+        let handler = CapturePreviewCompletedHandler::create(Box::new(move |result| {
+            if weak.upgrade().is_none_or(|view| view.closed.get()) {
+                protocol::failure(id, "not-found", "Browser tab closed during annotation capture.");
+            } else if let Err(error) = result {
+                protocol::failure(id, "invalid", error);
+            } else {
+                let png = unsafe { captured.Seek(0, STREAM_SEEK_SET, None) }
+                    .and_then(|_| read_png_stream(&captured, protocol::MAX_ANNOTATION_PNG_BYTES));
+                match png {
+                    Ok(png) => match protocol::annotation_data_url(&png) {
+                        Some(data_url) => {
+                            protocol::emit(json!({ "id": id, "ok": true, "result": data_url }))
+                        }
+                        None => protocol::failure(
+                            id,
+                            "invalid",
+                            "Annotation preview is not a bounded PNG.",
+                        ),
+                    },
+                    Err(error) => protocol::failure(id, "invalid", error),
+                }
+            }
+            Ok(())
+        }));
+        unsafe {
+            self.webview.CapturePreview(
+                COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+                &stream,
+                &handler,
+            )
+        }
+    }
+
     fn clear_cdp_subscriptions(&self) -> Result<()> {
         let subscriptions = std::mem::take(&mut *self.cdp_subscriptions.borrow_mut());
         self.cdp_sessions.borrow_mut().clear();
@@ -562,22 +612,24 @@ impl View {
 
 /// Reads at most one byte past the limit so oversized icons are rejected, not truncated.
 fn read_favicon(stream: &IStream) -> Option<Vec<u8>> {
+    read_png_stream(stream, protocol::MAX_FAVICON_BYTES).ok()
+}
+
+fn read_png_stream(stream: &IStream, limit: usize) -> Result<Vec<u8>> {
     let mut png = Vec::new();
     let mut buffer = [0u8; 8192];
     loop {
         let mut read = 0u32;
-        let status = unsafe {
-            stream.Read(buffer.as_mut_ptr().cast(), buffer.len() as u32, Some(&mut read))
-        };
-        if status.is_err() {
-            return None;
-        }
+        let length = buffer.len().min(limit - png.len() + 1);
+        let status =
+            unsafe { stream.Read(buffer.as_mut_ptr().cast(), length as u32, Some(&mut read)) };
+        status.ok()?;
         if read == 0 {
-            return Some(png);
+            return Ok(png);
         }
         png.extend_from_slice(&buffer[..read as usize]);
-        if png.len() > protocol::MAX_FAVICON_BYTES {
-            return None;
+        if png.len() > limit {
+            return Err(windows::core::Error::from(E_INVALIDARG));
         }
     }
 }
@@ -943,10 +995,20 @@ fn dispatch(state: &State, command: Command) {
         protocol::failure(command.id, "not-found", "Browser view is closed.");
         return;
     }
-    if (command.op == "cdp" || command.op == "cdp-subscribe" && command.enabled == Some(true))
+    if (command.op == "cdp"
+        || command.op == "capture-annotation"
+        || command.op == "cdp-subscribe" && command.enabled == Some(true))
         && view.error.borrow().as_ref().is_some_and(|(code, _)| code == "runtime-crashed")
     {
         protocol::failure(command.id, "runtime-crashed", "Browser page crashed.");
+        return;
+    }
+    if command.op == "capture-annotation" {
+        if command.session_id.is_some() {
+            protocol::failure(command.id, "invalid", "Annotation capture requires a root tab.");
+        } else if let Err(error) = view.capture_annotation(command.id) {
+            protocol::failure(command.id, "invalid", error);
+        }
         return;
     }
     if command.op == "cdp-subscribe" {

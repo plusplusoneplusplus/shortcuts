@@ -44,6 +44,7 @@ describe.skipIf(skip)('shared annotation injection in real Electron', () => {
             expect(result.transport.fractional).toMatchObject({
                 width: result.transport.fractional.expectedWidth, height: result.transport.fractional.expectedHeight,
                 dpr: scale * 1.25, rect: { x: 40.25, y: 60.5, width: 120.5, height: 40.25 },
+                pixel: [40, 20, 200, 255],
             });
             expect(result).toMatchObject({
                 element: { active: true, events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 40, y: 60, width: 120, height: 40 },

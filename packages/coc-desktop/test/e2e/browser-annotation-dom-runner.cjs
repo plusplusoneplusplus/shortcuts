@@ -4,6 +4,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { app, BrowserWindow, nativeImage } = require('electron');
 const { captureElectronAnnotation } = require('../../dist/electron-annotation-capture.js');
+const { captureWebView2Annotation } = require('../../dist/webview2-annotation-capture.js');
 const { buildBrowserAnnotationExpression } = require('../../dist/browser-annotation-dom.js');
 const { BrowserAnnotationTab } = require('../../dist/browser-annotation-tab.js');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
@@ -169,7 +170,11 @@ function click(x, y, modifiers = []) {
         { left: '40.25px', top: '60.5px', width: '120.5px', height: '40.25px' }); void 0;`);
     win.webContents.setZoomFactor(1.25);
     const zoomEvents = [];
-    const zoomed = new BrowserAnnotationTab(hosted, { events: batch => zoomEvents.push(...batch), ended() {} });
+    // Exercise real PNG decoding/cropping of a full-viewport preview, as supplied by WebView2.
+    // This validates shared geometry with native pixels, not the Windows CapturePreview runtime.
+    const previewHosted = { ...hosted, captureAnnotation: (rect, viewport) => captureWebView2Annotation(
+        async () => (await win.webContents.capturePage()).toDataURL(), rect, viewport) };
+    const zoomed = new BrowserAnnotationTab(previewHosted, { events: batch => zoomEvents.push(...batch), ended() {} });
     await zoomed.start();
     click(100, 100);
     for (const started = Date.now(); !zoomEvents.length && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
@@ -180,7 +185,9 @@ function click(x, y, modifiers = []) {
     const fractional = { width: fractionalImage.width, height: fractionalImage.height,
         expectedWidth: Math.ceil((zoomRect.x + zoomRect.width) * zoomDpr) - Math.floor(zoomRect.x * zoomDpr),
         expectedHeight: Math.ceil((zoomRect.y + zoomRect.height) * zoomDpr) - Math.floor(zoomRect.y * zoomDpr),
-        dpr: zoomDpr, rect: zoomRect };
+        dpr: zoomDpr, rect: zoomRect,
+        pixel: [...nativeImage.createFromDataURL(fractionalImage.dataUrl).toBitmap().subarray(
+            (10 * fractionalImage.width + 10) * 4, (10 * fractionalImage.width + 10) * 4 + 4)] };
     await zoomed.stop();
     win.webContents.setZoomFactor(1);
     const navigationEndings = [];

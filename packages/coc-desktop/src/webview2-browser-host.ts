@@ -9,6 +9,7 @@ import { browserMessage, WebView2Process } from './webview2-process';
 import type { HtmlPageBounds } from './html-page-policy';
 import { randomUUID } from 'node:crypto';
 import { isClickOnceRequest, type BrowserApplicationRequest } from './browser-clickonce';
+import { captureWebView2Annotation } from './webview2-annotation-capture';
 
 const execFileAsync = promisify(execFile);
 
@@ -150,6 +151,24 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         };
         return {
             cdp,
+            ...(!entry.root ? { captureAnnotation: async (rect, viewport) => {
+                const generation = entry.documentGeneration;
+                const zoom = entry.pageZoom;
+                const url = entry.state.url;
+                const check = () => {
+                    if (this.views.get(id) !== entry || entry.window.isDestroyed()) throw new BrowserHostError('not-found', 'Browser tab is closed.');
+                    if (entry.state.loading || entry.state.errorCode || entry.state.error || !entry.bounds || entry.documentGeneration !== generation
+                        || entry.pageZoom !== zoom || entry.state.url !== url) throw new BrowserHostError('invalid', 'Annotation document became unavailable.');
+                };
+                check();
+                const image = await captureWebView2Annotation(async () => {
+                    const preview = await this.process.request('capture-annotation', { viewId: id });
+                    check();
+                    return preview;
+                }, rect, viewport);
+                check();
+                return image;
+            } } satisfies Pick<BrowserHostedView, 'captureAnnotation'> : {}),
             onCdpEvent: listener => {
                 if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
                 if (!entry.cdpListeners.size) { this.subscribeCdp(entry, true); }
