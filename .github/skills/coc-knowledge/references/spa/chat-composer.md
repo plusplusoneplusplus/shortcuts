@@ -289,6 +289,10 @@ Chips count as sendable content. First messages append serialized page context a
 validated screenshot attachments after parsing user commands, enforce combined
 attachment limits, and consume only unchanged accepted snapshots even on navigation.
 Failed admission retains comments and PNGs; concurrent edits remain queued.
+`InitialChatComposer` publishes an exact-owner modifier sender that launches only
+that comment and PNG with the current AI/chat settings. It leaves navigation,
+draft text, attachments, context and other chips intact. Workflow launch modes and
+pending submissions refuse immediate sends; uncertain failures never replay.
 
 ### Sentinel to-do context
 

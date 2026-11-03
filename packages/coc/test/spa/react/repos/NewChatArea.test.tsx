@@ -294,7 +294,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 import { BrowserAnnotationSession, type BrowserAnnotationSelection } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
 import { applyBrowserAnnotationEvents, getBrowserAnnotationChips, newChatBrowserAnnotationOwner,
-    resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+    resetBrowserAnnotationChipsForTest, sendImmediateBrowserAnnotation } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
 import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
@@ -506,6 +506,123 @@ describe('NewChatArea', () => {
         expect(mockEnqueueBaseUrls).toEqual([undefined]);
         expect(mockEnqueueTask.mock.calls[0][0].payload.prompt).not.toContain('Remote comment');
         expect(getBrowserAnnotationChips(f.owner)).toEqual([]);
+    });
+
+    it.each(['ws-1', 'remote:server-a:ws-1'])('sends one immediate annotation on %s while preserving draft and other chips', async route => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        setActiveCloneForRouting(route);
+        const f = annotationFixture(route);
+        const other = annotationFixture(route, 'Keep queued');
+        mockFileReader();
+        render(<NewChatArea workspaceId="ws-1" sourceSelectionId={route} />);
+        fireEvent.click(screen.getByTestId('mode-pill-autopilot'));
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '/browser Keep draft' } });
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('new-chat-file-input-hidden'), {
+                target: { files: [new File(['draft'], 'draft.md', { type: 'text/markdown' })] },
+            });
+        });
+        const originalHash = location.hash;
+        await act(async () => { await sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0]); });
+        const payload = mockEnqueueTask.mock.calls[0][0].payload;
+        expect(payload.mode).toBe('autopilot');
+        expect(payload.prompt).toContain('Fix the selected area');
+        expect(payload.prompt).not.toContain('Keep draft');
+        expect(payload.prompt).not.toContain('Keep queued');
+        expect(payload.attachments).toEqual([expect.objectContaining({ dataUrl: f.image.dataUrl })]);
+        expect(mockEnqueueBaseUrls).toEqual([route === 'ws-1' ? undefined : 'https://owner.example']);
+        expect(getBrowserAnnotationChips(f.owner)).toEqual([expect.objectContaining({ session: other.session })]);
+        expect(screen.getByTestId('new-chat-input')).toHaveValue('/browser Keep draft');
+        expect(screen.getByText('draft.md')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toHaveAttribute('aria-checked', 'true');
+        expect(location.hash).toBe(originalHash);
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+        expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
+        sessionStorage.removeItem(attachmentDraftStorageKey('new-chat:ws-1'));
+    });
+
+    it('keeps an immediate local send local with a colliding active remote owner', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        setActiveCloneForRouting('remote:server-a:ws-1');
+        const f = annotationFixture();
+        const remote = annotationFixture('remote:server-a:ws-1', 'Remote comment');
+        render(<WorkspaceOwnerContext.Provider value={{ workspaceId: 'ws-1', selectionId: 'ws-1' }}>
+            <NewChatArea workspaceId="ws-1" sourceSelectionId="ws-1" />
+        </WorkspaceOwnerContext.Provider>);
+        await act(async () => { await sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0]); });
+        expect(mockEnqueueBaseUrls).toEqual([undefined]);
+        expect(mockEnqueueTask.mock.calls[0][0].payload.prompt).not.toContain('Remote comment');
+        expect(getBrowserAnnotationChips(remote.owner)).toHaveLength(1);
+    });
+
+    it('retains an immediate comment and draft after uncertain admission without retrying', async () => {
+        const f = annotationFixture();
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Connection lost'));
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Keep draft' } });
+        await act(async () => {
+            await expect(sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0])).rejects.toThrow('Connection lost');
+        });
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(f.owner)[0].image).toBe(f.image);
+        expect(screen.getByTestId('new-chat-input')).toHaveValue('Keep draft');
+        expect(screen.getByText('Connection lost')).toBeTruthy();
+    });
+
+    it.each(['navigate', 'edit'] as const)('consumes only the accepted immediate snapshot during %s', async change => {
+        const f = annotationFixture();
+        let accept!: (value: any) => void;
+        mockEnqueueTask.mockReturnValueOnce(new Promise(resolve => { accept = resolve; }));
+        const view = render(<NewChatArea workspaceId="ws-1" />);
+        let pending!: Promise<void>;
+        act(() => { pending = sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0]); });
+        if (change === 'navigate') view.unmount();
+        else act(() => { f.save('Newer edit'); });
+        await act(async () => { accept({ task: { id: 'created' } }); await pending; });
+        expect(getBrowserAnnotationChips(f.owner)).toHaveLength(change === 'navigate' ? 0 : 1);
+        if (change === 'edit') expect(getBrowserAnnotationChips(f.owner)[0].comment).toBe('Newer edit');
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+    });
+
+    it('refuses overlapping immediate sends and ordinary sends while admission is pending', async () => {
+        const f = annotationFixture();
+        let accept!: (value: any) => void;
+        mockEnqueueTask.mockReturnValueOnce(new Promise(resolve => { accept = resolve; }));
+        render(<NewChatArea workspaceId="ws-1" />);
+        const chip = getBrowserAnnotationChips(f.owner)[0];
+        let pending!: Promise<void>;
+        act(() => { pending = sendImmediateBrowserAnnotation(chip); });
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('being sent');
+        expect(screen.queryByTestId('new-chat-send-btn')).toBeNull();
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        await act(async () => { accept({ task: { id: 'created' } }); await pending; });
+    });
+
+    it('refuses immediate launch in Ralph mode and retains the comment', async () => {
+        mockRalphEnabled.value = true;
+        const f = annotationFixture();
+        render(<NewChatArea workspaceId="ws-1" />);
+        selectRalphMode();
+        await expect(sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0])).rejects.toThrow('unavailable');
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
+        expect(getBrowserAnnotationChips(f.owner)).toHaveLength(1);
+    });
+
+    it('reports pin cleanup failure after acceptance without making the message retryable', async () => {
+        const f = annotationFixture();
+        vi.spyOn(f.session, 'remove').mockRejectedValueOnce(new Error('Pin removal failed'));
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => { await sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0]); });
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(f.owner)).toEqual([]);
+        expect(screen.getByText('Pin removal failed')).toBeTruthy();
+    });
+
+    it('does not publish an immediate sender from an adapter that has not opted in', async () => {
+        const f = annotationFixture();
+        render(<InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn()} />);
+        await expect(sendImmediateBrowserAnnotation(getBrowserAnnotationChips(f.owner)[0])).rejects.toThrow('Open the annotation chat');
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
     });
 
     it('retains first-message comments, screenshots and text after admission failure', async () => {

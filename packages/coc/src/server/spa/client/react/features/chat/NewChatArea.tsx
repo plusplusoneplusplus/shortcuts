@@ -10,7 +10,7 @@
 import type { BrowserDemoOwner } from '../../shared/file-path/browser-bridge';
 import { BrowserAnnotationChips } from '../../shared/file-path/BrowserAnnotationChips';
 import { acknowledgeBrowserAnnotationChips, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips,
-    getBrowserAnnotationChips, newChatBrowserAnnotationOwner, useBrowserAnnotationChips } from '../../shared/file-path/browser-annotation-chips';
+    getBrowserAnnotationChips, newChatBrowserAnnotationOwner, useBrowserAnnotationChips, usePublishBrowserAnnotationSend } from '../../shared/file-path/browser-annotation-chips';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SentinelTargetInput } from './SentinelTargetInput';
@@ -932,6 +932,48 @@ export function InitialChatComposer({
         const version = navigationVersion.current;
         return () => submissionScope.active && location.hash === hash && navigationVersion.current === version;
     }
+
+    usePublishBrowserAnnotationSend(browserAnnotationOwner ?? null, async chip => {
+        if (!workspaceId || sending || sendInFlight.current || ralphDirectGoalDraft !== null
+            || selectedMode === 'ralph' || selectedMode === 'for-each' || selectedMode === 'map-reduce'
+            || (!sourceBaseUrl && !scopedComposerOwner && resolveCloneRoute(routeId).kind === 'unresolved-remote')) {
+            throw new Error('Sending is unavailable in this composer. The annotation remains queued.');
+        }
+        // This standalone launch leaves the draft and its destination in view.
+        // It must not invoke the post-submit callback that navigates away.
+        const isCurrent = captureSubmissionOwner();
+        sendInFlight.current = true;
+        setSending(true);
+        setError(null);
+        try {
+            const resolvedAi = resolveComposerAiSelection();
+            const context = mergeAutoProviderRoutingContext(resolvedAi);
+            await onSubmit({
+                mode: selectedMode,
+                prompt: formatBrowserAnnotationChips([chip]),
+                workingDirectory: getSelectedWorkspaceRoot(),
+                workspaceId,
+                attachments: buildBrowserAnnotationAttachments([chip], 0),
+                ...(context ? { context } : {}),
+                ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
+                ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                ...(resolvedAi.effortTier ? { config: { effortTier: resolvedAi.effortTier } } : {}),
+                ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(selectedMode) ? { chatStyle: selectedChatStyle } : {}),
+            });
+            // Acceptance consumes only this exact snapshot, even after unmount.
+            try { await acknowledgeBrowserAnnotationChips([chip]); }
+            catch (err) {
+                if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Message sent, but could not remove annotation pins.'));
+            }
+        } catch (err) {
+            if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
+            throw err;
+        } finally {
+            sendInFlight.current = false;
+            setSending(false);
+        }
+    });
 
     async function handleSend() {
         const annotationSnapshot = getBrowserAnnotationChips(browserAnnotationOwner);

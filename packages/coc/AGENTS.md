@@ -85,8 +85,10 @@ references before editing. Paths are package-relative.
   entries and remove their original pins; failed sends preserve chips. Generated
   sends with `includeComposerContext:false` leave the queue untouched unless they
   supply an explicit owner-matched `browserAnnotationSnapshot`. Modifier element
-  creation sends that one snapshot through the uniquely mounted exact-chat sender,
+  creation sends that one snapshot through the uniquely mounted exact-owner sender,
   preserving chat mode, draft, paste, context, attachments and other queued chips.
+  Activity's initial composer submits a standalone annotation chat without navigating
+  or consuming its draft; workflow launch modes refuse immediate sends.
   Missing/ambiguous senders, overlapping sends and admission failures leave the
   comment queued with an observable error; never replay an uncertain send. Edits
   and area selections do not trigger modifier sends. Keep each mode's pin numbering
