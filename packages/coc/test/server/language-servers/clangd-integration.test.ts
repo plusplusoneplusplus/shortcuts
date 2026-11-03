@@ -28,6 +28,8 @@ const BROKEN_SOURCE = SOURCE.replace('return answer();', 'return ; broken');
 // Initial diagnostics can arrive before semantic requests are ready on loaded
 // Windows runners, so exercise clangd with the same timeout as production.
 const CLANGD_REQUEST_TIMEOUT_MS = CLANGD_PRESET.requestTimeoutMs ?? 120_000;
+// clangd can take longer than 45s to answer initialize on loaded Windows runners.
+const CLANGD_START_TIMEOUT_MS = 120_000;
 const discoveredRuntime = resolveClangdRuntime(CLANGD_PRESET);
 const describeWithClangd = discoveredRuntime.origin === 'unavailable' ? describe.skip : describe;
 let root: string;
@@ -85,7 +87,7 @@ describeWithClangd('real clangd runtime', () => {
             rootPath: root,
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
-            startTimeoutMs: 45_000,
+            startTimeoutMs: CLANGD_START_TIMEOUT_MS,
             requestTimeoutMs: CLANGD_REQUEST_TIMEOUT_MS,
             idleTimeoutMs: 10 * 60_000,
         });
@@ -102,7 +104,7 @@ describeWithClangd('real clangd runtime', () => {
                 text: SOURCE,
             },
         });
-    }, 60_000);
+    }, CLANGD_START_TIMEOUT_MS + 30_000);
 
     afterAll(async () => {
         await session?.dispose();
@@ -169,7 +171,7 @@ int main() { return 0; }
             rootPath: databaseRoot,
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
-            startTimeoutMs: 45_000,
+            startTimeoutMs: CLANGD_START_TIMEOUT_MS,
             requestTimeoutMs: CLANGD_REQUEST_TIMEOUT_MS,
         });
         let receivedDiagnostics = false;
@@ -195,5 +197,5 @@ int main() { return 0; }
             await databaseSession.dispose();
             await safeRm(databaseRoot);
         }
-    });
+    }, CLANGD_START_TIMEOUT_MS + 60_000);
 });
