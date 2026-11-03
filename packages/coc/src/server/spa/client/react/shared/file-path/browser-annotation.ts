@@ -1,3 +1,5 @@
+import { estimateDataUrlBytes } from '../../features/chat/utils/screenshotAttachment';
+
 /** Mirrors the desktop annotation bridge. Website metadata is untrusted context. */
 export interface BrowserAnnotationIdentity {
     viewId: string;
@@ -10,17 +12,25 @@ export interface BrowserAnnotationSelection {
     rect: { x: number; y: number; width: number; height: number };
     tag?: string;
     immediate: boolean;
+    captureId?: string;
     page: { url: string; title: string; viewport: { width: number; height: number; devicePixelRatio: number } };
     element?: { selector: string | null; shadowHosts: (string | null)[]; tag: string; id: string;
         classes: string[]; text: string; outerHTML: string };
 }
+export interface BrowserAnnotationImage {
+    dataUrl: string;
+    width: number;
+    height: number;
+}
+export type BrowserAnnotationDeliveryEvent = Exclude<BrowserAnnotationEvent, BrowserAnnotationSelection>
+    | (BrowserAnnotationSelection & { image?: BrowserAnnotationImage });
 export type BrowserAnnotationExitReason = 'escape' | 'navigation' | 'removed' | 'overflow' | 'stop';
 export type BrowserAnnotationEvent = BrowserAnnotationSelection
     | { type: 'comment'; id: string; number: number; comment: string; selection: BrowserAnnotationSelection }
     | { type: 'delete'; id: string }
     | { type: 'exit'; reason: BrowserAnnotationExitReason };
 export type BrowserAnnotationNotification = BrowserAnnotationIdentity & (
-    | { type: 'events'; events: BrowserAnnotationEvent[] }
+    | { type: 'events'; events: BrowserAnnotationDeliveryEvent[] }
     | { type: 'ended'; reason: BrowserAnnotationExitReason | 'unavailable' | 'failed'; error?: string }
 );
 export interface DesktopBrowserAnnotation {
@@ -39,6 +49,7 @@ export class BrowserAnnotationSession {
     private off?: () => void;
     private startup?: Promise<boolean>;
     private stopping?: Promise<void>;
+    private capture?: { id: string; image: BrowserAnnotationImage };
 
     constructor(private readonly bridge: DesktopBrowserAnnotation, viewId: string, sessionKey: string,
         private readonly notify: (event: BrowserAnnotationNotification) => void) {
@@ -78,6 +89,29 @@ export class BrowserAnnotationSession {
         return this.bridge.remove(this.identity, id);
     }
 
+    /** Only the current unsaved selection is retained; saved chips own their PNG. */
+    retainCapture(id: string | undefined, image: BrowserAnnotationImage | undefined): void {
+        this.capture = undefined;
+        if (!image || this.phase === 'stopped') return;
+        if (!id || !/^[1-9][0-9]{0,15}$/.test(id) || !Number.isSafeInteger(Number(id))
+            || !image.dataUrl.startsWith('data:image/png;base64,') || image.dataUrl.length > 28_000_000
+            || estimateDataUrlBytes(image.dataUrl) > 20 * 1024 * 1024
+            || !Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height)
+            || image.width <= 0 || image.height <= 0 || image.width * image.height > 16 * 1024 * 1024) {
+            throw new Error('Invalid browser annotation screenshot. Exit annotation mode and retry.');
+        }
+        this.capture = { id, image };
+    }
+
+    takeCapture(id: string): BrowserAnnotationImage {
+        if (!this.capture || this.capture.id !== id) {
+            throw new Error('Browser annotation screenshot is unavailable. Select the target again.');
+        }
+        const image = this.capture.image;
+        this.capture = undefined;
+        return image;
+    }
+
     /** Revoke UI delivery before waiting for native cleanup; failures remain observable. */
     stop(): Promise<void> {
         if (this.stopping) return this.stopping;
@@ -92,6 +126,7 @@ export class BrowserAnnotationSession {
 
     private revoke(): void {
         this.phase = 'stopped';
+        this.capture = undefined;
         this.off?.();
         this.off = undefined;
     }

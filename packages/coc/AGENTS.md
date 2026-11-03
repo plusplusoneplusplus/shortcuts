@@ -62,9 +62,14 @@ references before editing. Paths are package-relative.
   intent. Match pin IDs with their full mode identity. Each mode fixes its target
   chat (`BrowserDemoOwner`: workspace, concrete routing ref, queue-alias process)
   at start; no target disables Annotate and a target change ends the mode.
-  `browser-annotation-chips.ts` is the in-memory chip store: comment/delete events
-  upsert/remove chips keyed by mode request ID plus pin ID, renumbering that mode's
-  survivors. `FollowUpInputArea` renders only its exact owner's chips; removing one
+  Selection notifications carry native PNGs separately from DOM snapshots. The
+  mode retains only its latest unsaved capture; Stop or native termination releases
+  it. `browser-annotation-chips.ts` transfers the matching capture ID's PNG to
+  saved chips and reuses it on edits. Missing production captures fail visibly
+  and stop the mode. Pending images share native size/dimension bounds; queued
+  PNG URLs cap at 64 MiB across composers. Comment/delete events upsert/remove
+  chips keyed by mode request ID plus pin ID, renumbering that mode's survivors.
+  `FollowUpInputArea` renders only its exact owner's chips; removing one
   calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
   so chips outlive pins and never touch a replacement. `useSendMessage` receives
   the same exact annotation owner, snapshots chips for ordinary sends and appends

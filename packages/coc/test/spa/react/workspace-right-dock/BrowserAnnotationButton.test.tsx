@@ -39,6 +39,30 @@ function emit(event: Partial<BrowserAnnotationNotification>) {
 }
 
 describe('annotation toolbar mode', () => {
+    it('receives native PNGs before Save, retains them after navigation and fails visibly on missing captures', async () => {
+        resetBrowserAnnotationChipsForTest();
+        render(<BrowserAnnotationButton {...props()} />); await start();
+        const image = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        const selection = {
+            type: 'selection' as const, kind: 'area' as const, immediate: false, captureId: '1',
+            rect: { x: 0, y: 0, width: 30, height: 40 },
+            page: { url: 'https://example.com', title: 'Example',
+                viewport: { width: 800, height: 600, devicePixelRatio: 2 } },
+        };
+        emit({ type: 'events', events: [{ ...selection, image }] });
+        emit({ type: 'events', events: [{ type: 'comment', id: '1', number: 1, comment: 'Fix', selection }] });
+        expect(getBrowserAnnotationChips(props().chatOwner)[0].image).toEqual(image);
+        emit({ type: 'ended', reason: 'navigation' });
+        expect(getBrowserAnnotationChips(props().chatOwner)[0].image).toEqual(image);
+        await start();
+        emit({ type: 'events', events: [{ type: 'comment', id: '1', number: 1, comment: 'Missing', selection }] });
+        await waitFor(() => expect(button()).toHaveAttribute('aria-pressed', 'false'));
+        expect(screen.getByRole('alert')).toHaveTextContent('screenshot is unavailable');
+        expect(bridge.stop).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(props().chatOwner)).toHaveLength(1);
+        resetBrowserAnnotationChipsForTest();
+    });
+
     it('publishes policy independently, toggles only after native acknowledgement and stops on Escape', async () => {
         render(<BrowserAnnotationButton {...props()} />);
         expect(bridge.setEnabled).toHaveBeenCalledWith('clone:w', true);

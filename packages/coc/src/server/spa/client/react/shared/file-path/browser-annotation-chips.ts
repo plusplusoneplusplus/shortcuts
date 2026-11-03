@@ -2,7 +2,7 @@ import { serializeBrowserAnnotations } from '@plusplusoneplusplus/coc-client';
 import { useMemo, useSyncExternalStore } from 'react';
 import type { BrowserDemoOwner } from './browser-bridge';
 import { sameChatOwner } from './browser-demo';
-import type { BrowserAnnotationEvent, BrowserAnnotationSelection, BrowserAnnotationSession } from './browser-annotation';
+import type { BrowserAnnotationDeliveryEvent, BrowserAnnotationImage, BrowserAnnotationSelection, BrowserAnnotationSession } from './browser-annotation';
 
 /**
  * Saved page comments queued in one chat composer. In memory only. Each chip
@@ -17,11 +17,13 @@ export interface BrowserAnnotationChip {
     number: number;
     comment: string;
     selection: BrowserAnnotationSelection;
+    image?: BrowserAnnotationImage;
     owner: BrowserDemoOwner;
     session: BrowserAnnotationSession;
 }
 
 let chips: readonly BrowserAnnotationChip[] = [];
+const MAX_SCREENSHOT_CHARACTERS = 64 * 1024 * 1024;
 const listeners = new Set<() => void>();
 
 function set(next: readonly BrowserAnnotationChip[]): void {
@@ -37,16 +39,28 @@ function withoutChip(gone: BrowserAnnotationChip): BrowserAnnotationChip[] {
 
 /** Apply one mode's page events to the chat it targeted when the mode started. */
 export function applyBrowserAnnotationEvents(owner: BrowserDemoOwner, session: BrowserAnnotationSession,
-    events: readonly BrowserAnnotationEvent[]): void {
+    events: readonly BrowserAnnotationDeliveryEvent[]): void {
     for (const event of events) {
-        if (event.type === 'comment') {
+        if (event.type === 'selection') {
+            session.retainCapture(event.captureId, event.image);
+        } else if (event.type === 'comment') {
             const existing = chips.find(chip => chip.session === session && chip.id === event.id);
+            const image = event.selection.captureId
+                ? existing?.selection.captureId === event.selection.captureId && existing.image
+                    ? existing.image : session.takeCapture(event.selection.captureId)
+                : undefined;
+            const total = chips.reduce((size, chip) => size + (chip === existing ? 0 : chip.image?.dataUrl.length ?? 0), 0);
+            if (total + (image?.dataUrl.length ?? 0) > MAX_SCREENSHOT_CHARACTERS) {
+                throw new Error('Browser annotation screenshots are full. Send or remove queued comments before annotating again.');
+            }
             const chip: BrowserAnnotationChip = { key: `${session.identity.requestId}:${event.id}`, id: event.id,
-                number: event.number, comment: event.comment, selection: event.selection, owner, session };
+                number: event.number, comment: event.comment, selection: event.selection, image, owner, session };
             set(existing ? chips.map(other => other === existing ? chip : other) : [...chips, chip]);
         } else if (event.type === 'delete') {
             const existing = chips.find(chip => chip.session === session && chip.id === event.id);
             if (existing) set(withoutChip(existing));
+        } else if (event.type === 'exit') {
+            session.retainCapture(undefined, undefined);
         }
     }
 }

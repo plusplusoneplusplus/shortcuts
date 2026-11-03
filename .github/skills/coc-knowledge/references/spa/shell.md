@@ -575,8 +575,7 @@ editor displays capture failures and retries the original draft/snapshot; edits
 preserve its capture identity without recapturing. `BrowserAnnotationTab` captures
 inside its serialized delivery operation and sends selection events enriched with
 the native PNG to the original owner. Image bytes stay outside DOM commands and
-snapshots; delivery never recursively enqueues capture. Composer association and
-attachment remain integration work.
+snapshots; delivery never recursively enqueues capture.
 
 `BrowserAnnotationTab.captureSelection` also exposes an explicit serialized
 main-only crop of an unchanged pending draft. Shared capture commands hide all chrome, retain the input
@@ -624,8 +623,12 @@ Loaded URL tabs participate; previews, PDF URLs and the SPA document omit the
 button. Active turns require enabled human takeover, with main owning the settled
 injection sequence. Each mode fixes its target chat at start (the tab's linked
 chat, else the panel's chat in view; none disables the button, a change ends the
-mode). Comment/delete events feed the in-memory `browser-annotation-chips.ts` store,
-keyed by mode request ID plus pin ID; deletion renumbers that mode's survivors to
+mode). Selection events retain one pending native PNG in that session, released on
+Stop or native termination. Comment events transfer the matching capture ID's image
+to the in-memory `browser-annotation-chips.ts` store and edits reuse the original
+image. Missing captures or memory bounds fail visibly and stop the mode. Pending
+PNGs share native size/dimension limits; queued PNG URLs cap at 64 MiB across owners.
+Chips use mode request ID plus pin ID; deletion renumbers that mode's survivors to
 match the page. `FollowUpInputArea` renders `BrowserAnnotationChips` for its exact
 workspace/routing/process owner; removing a chip calls its original session's
 `remove(id)`, a no-op once that mode ended, so chips outlive navigation.
@@ -637,8 +640,9 @@ outside slash-command and target parsing. Server acceptance consumes unchanged
 snapshot entries and removes their original pins; admission failures retain them,
 and comments added or edited during admission stay queued. Generated sends with
 `includeComposerContext:false` preserve the queue. Pin-cleanup errors remain
-observable without marking an accepted message failed. Modifier sends, screenshots
-and the new-chat composer fallback remain separate integration work.
+observable without marking an accepted message failed. PNGs remain separate from
+serialized page snapshots/text. Modifier sends, image attachments and the new-chat
+composer fallback remain separate integration work.
 
 ### Shared web-page zoom
 

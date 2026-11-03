@@ -162,6 +162,16 @@ describe('BrowserAnnotationSession', () => {
         expect(f.listeners.size).toBe(0);
     });
 
+    it.each(['navigation', 'failed'] as const)('releases pending screenshots on native %s termination', async reason => {
+        const f = fixture(); await f.session.start();
+        const image = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 2, height: 2 };
+        f.session.retainCapture('1', image);
+        f.emit({ ...f.session.identity, type: 'ended', reason });
+        expect(() => f.session.takeCapture('1')).toThrow('unavailable');
+        f.session.retainCapture('2', image);
+        expect(() => f.session.takeCapture('2')).toThrow('unavailable');
+    });
+
     it('mints immutable, distinct identities for retry and other workspaces', async () => {
         const f = fixture();
         await f.session.start();

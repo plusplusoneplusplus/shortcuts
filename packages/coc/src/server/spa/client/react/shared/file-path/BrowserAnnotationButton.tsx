@@ -140,7 +140,14 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
         setPhase('starting');
         const next = new BrowserAnnotationSession(props.bridge, props.viewId, props.sessionKey, event => {
             // The session drops foreign and late notifications; saved comments outlive the mode.
-            if (event.type === 'events') applyBrowserAnnotationEvents(owner, next, event.events);
+            if (event.type === 'events') {
+                try { applyBrowserAnnotationEvents(owner, next, event.events); }
+                catch (failure) {
+                    setError(failure instanceof Error ? failure.message : String(failure));
+                    void stop();
+                    return;
+                }
+            }
             if (session.current !== next) return;
             if (event.type === 'ended') {
                 session.current = null;
