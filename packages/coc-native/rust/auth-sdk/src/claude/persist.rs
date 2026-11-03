@@ -1,7 +1,7 @@
 use crate::Secret;
 use std::path::{Path, PathBuf};
 
-use super::credentials::{CREDENTIALS_FILE, MACOS_KEYCHAIN_SERVICE};
+use super::credentials::CREDENTIALS_FILE;
 use super::refresh::ClaudeRefreshResponse;
 
 /// Fields to persist into the `claudeAiOauth` section of the credentials JSON.
@@ -61,7 +61,7 @@ pub struct PersistTarget {
 /// ## Write priority (Linux / Windows)
 ///
 /// File-only: writes to `~/.claude/.credentials.json` with mode `0o600`.
-pub fn persist_credentials(
+pub async fn persist_credentials(
     fields: &PersistFields<'_>,
     target: &PersistTarget,
 ) -> PersistResult {
@@ -74,7 +74,7 @@ pub fn persist_credentials(
     };
 
     if !target.skip_keychain {
-        if let Some(result) = try_write_keychain(&json_str) {
+        if let Some(result) = try_write_keychain(&json_str).await {
             return result;
         }
     }
@@ -126,7 +126,7 @@ pub(super) fn merge_fields(
     root
 }
 
-fn try_write_keychain(json_str: &str) -> Option<PersistResult> {
+async fn try_write_keychain(json_str: &str) -> Option<PersistResult> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = json_str;
@@ -134,14 +134,18 @@ fn try_write_keychain(json_str: &str) -> Option<PersistResult> {
     }
     #[cfg(target_os = "macos")]
     {
-        use crate::{CredentialStore, OsCredentialStore};
+        use super::keychain::ClaudeStore;
         let account = match std::env::var("USER") {
             Ok(u) if !u.is_empty() => u,
             _ => return None,
         };
-        let store = OsCredentialStore::new(MACOS_KEYCHAIN_SERVICE);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let store = super::keychain::store(
+            &cancel,
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+        );
         let secret = Secret::new(json_str.to_owned());
-        match store.write(&account, &secret) {
+        match store.write(&account, &secret).await {
             Ok(()) => Some(PersistResult { success: true, warning: None }),
             Err(_) => None,
         }
@@ -277,14 +281,14 @@ mod tests {
         assert_eq!(result["claudeAiOauth"]["accessToken"], "new-access");
     }
 
-    #[test]
-    fn persist_to_file_creates_credentials() {
+    #[tokio::test]
+    async fn persist_to_file_creates_credentials() {
         let dir = tempfile::tempdir().unwrap();
         let target = PersistTarget {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        let result = persist_credentials(&default_fields(), &target);
+        let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
         assert!(result.warning.is_some());
 
@@ -298,8 +302,8 @@ mod tests {
         assert_eq!(parsed["claudeAiOauth"]["refreshToken"], "new-refresh");
     }
 
-    #[test]
-    fn persist_to_file_preserves_existing_content() {
+    #[tokio::test]
+    async fn persist_to_file_preserves_existing_content() {
         let dir = tempfile::tempdir().unwrap();
         let creds_dir = dir.path().join(".claude");
         std::fs::create_dir_all(&creds_dir).unwrap();
@@ -313,7 +317,7 @@ mod tests {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        let result = persist_credentials(&default_fields(), &target);
+        let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
 
         let content = std::fs::read_to_string(
@@ -326,15 +330,15 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn persist_sets_file_permissions_600() {
+    #[tokio::test]
+    async fn persist_sets_file_permissions_600() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let target = PersistTarget {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        persist_credentials(&default_fields(), &target);
+        persist_credentials(&default_fields(), &target).await;
 
         let meta = std::fs::metadata(
             dir.path().join(".claude/.credentials.json"),
@@ -343,14 +347,14 @@ mod tests {
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
     }
 
-    #[test]
-    fn persist_creates_directory_if_missing() {
+    #[tokio::test]
+    async fn persist_creates_directory_if_missing() {
         let dir = tempfile::tempdir().unwrap();
         let target = PersistTarget {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        let result = persist_credentials(&default_fields(), &target);
+        let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
         assert!(dir.path().join(".claude/.credentials.json").exists());
     }

@@ -1,4 +1,5 @@
 mod credentials;
+mod keychain;
 mod persist;
 mod provider;
 mod refresh;

@@ -109,8 +109,12 @@ scheduling and cache ownership stay with the caller. Native OAuth acquisition re
 the exchange within its existing discovery, identity verification and locked rotation.
 `auth_sdk::claude::acquire_token` coordinates demand refresh in Rust, pins reads
 and writes to one credential source, and persists rotation as compact JSON before
-returning. macOS `security -w` hex-encodes multiline Keychain values; Claude CLI
-credential readers require JSON output.
+returning. macOS Claude storage uses `/usr/bin/security` for reads and writes,
+preserving the CLI reader's `apple-tool:` partition rather than a host code hash.
+Writes send one bounded hex command through stdin, never secret arguments;
+oversized commands fail before launch. Reads honor cancellation/deadlines;
+rotation saves finish within a separate five-second bound. Compact JSON keeps
+CLI output parseable.
 Callers sharing credentials must share a private coordination directory; external
 Claude CLI writers do not use these locks. `src/claude-auth.ts` exposes one-shot
 `acquireClaudeCredential(options, signal?)` through `NativeClaudeCredentialRequest`.

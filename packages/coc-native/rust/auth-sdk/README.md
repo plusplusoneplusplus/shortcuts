@@ -67,7 +67,7 @@ JavaScript token strings cannot be zeroized.
 
 ## Claude credentials
 
-`claude::read_credentials(sources)` reads Claude Code OAuth credentials from
+`claude::read_credentials(sources).await` reads Claude Code OAuth credentials from
 the first available source:
 
 1. `credentials_file_override` — an explicit path (e.g. `$CLAUDE_CREDENTIALS_FILE`).
@@ -76,6 +76,15 @@ the first available source:
    Linux/Windows and as a fallback on macOS.
 3. macOS Keychain — service `"Claude Code-credentials"`, account is the current
    `$USER`. Used only on macOS when no file source yields credentials.
+
+macOS Claude reads and writes run `/usr/bin/security`, using the same
+`apple-tool:` Keychain partition as Claude Code's reader. Host-native password
+updates replace that partition with the host's code identity and cause repeated
+access prompts. Reads require JSON. Writes send
+one hex-encoded command through stdin, without credentials in argv or files.
+The command must fit the helper's 4096-byte line buffer; unsupported payloads
+fail before launch, with a preflight check before token rotation. A rotated
+response that cannot be saved returns an error and may require sign-in.
 
 `ClaudeToken` contains `access_token`, optional `refresh_token`, optional
 epoch-millisecond `expires_at` and `refresh_token_expires_at`, a `scopes` list,
@@ -119,9 +128,12 @@ Safe `OAuthRefreshError` codes and endpoint status/rejection propagate.
 
 All SDK callers sharing credentials must use the same coordination directory.
 File aliases use the canonical target path as their lock identity. The lock wait
-and HTTP exchange honor cancellation and the deadline; synchronous store I/O
-must run on a worker and cannot be preempted. Once a rotation response is accepted,
-its save completes before checking cancellation for publication. Failed saves
+and HTTP exchange honor cancellation and the deadline. macOS helper reads share
+that deadline and cancellation; standalone reads have a five-second bound.
+`read_credentials` and `persist_credentials` are async. File I/O still runs on
+the caller's worker. Once a rotation response is accepted, its save completes
+before checking cancellation for publication, with a separate five-second
+macOS helper deadline. Failed saves
 never return the rotated token and may require sign-in; the operation never
 retries an exchange automatically. The Claude CLI and other external writers do
 not share this lock protocol, so their concurrent refreshes remain uncoordinated.

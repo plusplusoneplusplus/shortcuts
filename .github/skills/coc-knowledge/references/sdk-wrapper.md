@@ -275,8 +275,11 @@ When the query handle exposes `getContextUsage()`, `TokenUsage` gains `tokenLimi
 `getAccountQuota()` uses `acquireClaudeCredential` from coc-native on every
 platform, then calls `https://api.anthropic.com/api/oauth/usage`. Native auth owns
 credential parsing, source selection, expiry checks, refresh and persistence.
-Credential writers use compact JSON so macOS `security -w` returns JSON that
-Claude CLI can parse rather than hex-encoding multiline Keychain values.
+macOS storage runs `/usr/bin/security` for both reads and writes, keeping the
+CLI's `apple-tool:` partition identity. Compact JSON writes use bounded secret
+stdin; unsupported command sizes fail before launch. Reads honor the request
+deadline; saves after rotation have a separate five-second bound. No host-native
+Keychain update replaces the shared item's partition with the Electron code hash.
 The host resolves `os.homedir()` and an optional `$CLAUDE_CREDENTIALS_FILE` to
 absolute paths. All workspaces share the private `~/.coc/auth/claude/locks` lock
 directory because credentials are user-wide; it contains no tokens or repo data.

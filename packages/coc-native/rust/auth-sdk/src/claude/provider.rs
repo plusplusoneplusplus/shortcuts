@@ -1,4 +1,5 @@
 use super::credentials::{extract_token, keychain_account, resolve_raw, CredentialSource};
+use super::keychain::ClaudeStore;
 use super::persist::{atomic_write, merge_fields};
 use super::{
     is_expired, refresh_token, ClaudeCredentialSources, ClaudeRefreshOptions, ClaudeToken,
@@ -6,7 +7,7 @@ use super::{
 };
 use crate::contracts::checkpoint;
 use crate::oauth::{CredentialLock, HttpTransport, OAuthRefreshError};
-use crate::{AuthError, CredentialStore, ErrorCode, OsCredentialStore, Secret};
+use crate::{AuthError, ErrorCode, Secret};
 use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
@@ -35,23 +36,23 @@ pub async fn acquire_token(
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<ClaudeToken, OAuthRefreshError> {
-    let store = OsCredentialStore::new(MACOS_KEYCHAIN_SERVICE);
+    let store = super::keychain::store(cancel, deadline);
     acquire_with_store(http, options, &store, keychain_account().as_deref(), cancel, deadline).await
 }
 
 async fn acquire_with_store(
     http: &dyn HttpTransport,
     options: &ClaudeTokenOptions<'_>,
-    store: &dyn CredentialStore,
+    store: &dyn ClaudeStore,
     account: Option<&str>,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<ClaudeToken, OAuthRefreshError> {
     checkpoint(cancel, deadline)?;
-    let (mut source, raw) = resolve_raw(options.sources, store, account)
-        .ok_or_else(|| AuthError::new(ErrorCode::LoginRequired))?;
-    let token = parse(&raw)?;
+    let selected = resolve_raw(options.sources, store, account).await;
     checkpoint(cancel, deadline)?;
+    let (mut source, raw) = selected.ok_or_else(|| AuthError::new(ErrorCode::LoginRequired))?;
+    let token = parse(&raw)?;
     if !options.force_refresh && !needs_refresh(&token) {
         return Ok(token);
     }
@@ -77,7 +78,11 @@ async fn acquire_with_store(
     };
     checkpoint(cancel, deadline)?;
     let observed = token;
-    let token = parse(read_source(&source, store)?.expose())?;
+    let raw = read_source(&source, store).await?;
+    if let CredentialSource::Keychain(account) = &source {
+        store.validate_write(account, &raw)?;
+    }
+    let token = parse(raw.expose())?;
     let changed = token.access_token.expose() != observed.access_token.expose()
         || token.refresh_token.as_ref().map(Secret::expose)
             != observed.refresh_token.as_ref().map(Secret::expose);
@@ -97,7 +102,7 @@ async fn acquire_with_store(
 
     // Re-read for sibling changes and detect an external credential replacement.
     // Do not retry a rotation with an unknown outcome or fall back to another store.
-    let raw = read_source(&source, store)?;
+    let raw = read_source(&source, store).await?;
     let current = parse(raw.expose())?;
     if current.access_token.expose() != token.access_token.expose()
         || current.refresh_token.as_ref().map(Secret::expose) != Some(refresh.expose())
@@ -119,7 +124,7 @@ async fn acquire_with_store(
     match &source {
         CredentialSource::File(path) => atomic_write(path, raw.expose())
             .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?,
-        CredentialSource::Keychain(account) => store.write(account, &raw)?,
+        CredentialSource::Keychain(account) => store.write(account, &raw).await?,
     }
     checkpoint(cancel, deadline)?;
     Ok(parse(raw.expose())?)
@@ -133,13 +138,13 @@ fn parse(raw: &str) -> crate::Result<ClaudeToken> {
     extract_token(raw).ok_or_else(|| AuthError::new(ErrorCode::InvalidTokenResponse))
 }
 
-fn read_source(source: &CredentialSource, store: &dyn CredentialStore) -> crate::Result<Secret> {
+async fn read_source(source: &CredentialSource, store: &dyn ClaudeStore) -> crate::Result<Secret> {
     match source {
         CredentialSource::File(path) => std::fs::read_to_string(path)
             .map(Secret::new)
             .map_err(|_| AuthError::new(ErrorCode::StorageFailed)),
         CredentialSource::Keychain(account) => {
-            store.read(account)?.ok_or_else(|| AuthError::new(ErrorCode::LoginRequired))
+            store.read(account).await?.ok_or_else(|| AuthError::new(ErrorCode::LoginRequired))
         }
     }
 }
@@ -148,6 +153,7 @@ fn read_source(source: &CredentialSource, store: &dyn CredentialStore) -> crate:
 mod tests {
     use super::*;
     use crate::oauth::{HttpResponse, OAuthRefreshRejection};
+    use crate::CredentialStore;
     use async_trait::async_trait;
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
@@ -430,49 +436,55 @@ mod tests {
     #[ignore = "Explicit isolated CLI Keychain fixture"]
     async fn refreshed_keychain_is_json_through_security_cli() {
         let service = format!("coc-claude-format-test-{}", std::process::id());
-        let account = "dummy-refresh-fixture";
-        struct Cleanup(String);
+        let account = "dummy refresh fixture";
+        use core_foundation::base::TCFType;
+        use security_framework::os::macos::keychain::{CreateOptions, SecKeychain};
+        let directory = tempfile::tempdir().unwrap();
+        let keychain_path = directory.path().join("fixture.keychain-db");
+        let keychain =
+            CreateOptions::new().password("dummy-fixture-password").create(&keychain_path).unwrap();
+        struct Cleanup(SecKeychain);
         impl Drop for Cleanup {
             fn drop(&mut self) {
-                let _ = OsCredentialStore::new(&self.0).delete("dummy-refresh-fixture");
+                extern "C" {
+                    fn SecKeychainDelete(keychain: *const std::ffi::c_void) -> i32;
+                }
+                unsafe {
+                    assert_eq!(SecKeychainDelete(self.0.as_CFTypeRef()), 0);
+                }
             }
         }
-        let _cleanup = Cleanup(service.clone());
-        let store = OsCredentialStore::new(&service);
-        let read_cli = || {
-            let output = std::process::Command::new("/usr/bin/security")
-                .args(["find-generic-password", "-s", &service, "-a", account, "-w"])
-                .output()
-                .unwrap();
-            assert!(output.status.success());
-            serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        let _cleanup = Cleanup(keychain.clone());
+        use super::super::keychain::macos::SecurityStore;
+        let cancel = CancellationToken::new();
+        let store = SecurityStore {
+            service: service.clone(),
+            keychain: Some(keychain_path.to_str().unwrap().into()),
+            cancel: cancel.clone(),
+            deadline: tokio::time::Instant::now() + Duration::from_secs(20),
         };
-
-        // Multiline Keychain values are hex-encoded by security, so a CLI JSON
-        // reader rejects them even though native Keychain reads still succeed.
-        store
-            .write(account, &Secret::new(serde_json::to_string_pretty(&expired()).unwrap()))
-            .unwrap();
-        assert!(read_cli().is_err());
-        store.write(account, &Secret::new(expired().to_string())).unwrap();
-        assert!(read_cli().is_ok());
-
+        store.write(account, &Secret::new(expired().to_string())).await.unwrap();
         let mut f = Fixture::new();
         f.sources.skip_keychain = false;
-        acquire_with_store(
-            &Http::default(),
-            &f.options(),
-            &store,
-            Some(account),
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await
-        .unwrap();
-        let saved = read_cli().expect("Claude CLI must be able to parse refreshed credentials");
-        assert_eq!(saved["claudeAiOauth"]["accessToken"], "new-access");
-        assert_eq!(saved["claudeAiOauth"]["refreshToken"], "new-refresh");
-        assert_eq!(saved["mcpOAuth"]["server"], "unrelated");
+        for _ in 0..2 {
+            store.write(account, &Secret::new(expired().to_string())).await.unwrap();
+            acquire_with_store(
+                &Http::default(),
+                &f.options(),
+                &store,
+                Some(account),
+                &cancel,
+                deadline(),
+            )
+            .await
+            .unwrap();
+            let raw = store.read(account).await.unwrap().unwrap();
+            let saved: serde_json::Value = serde_json::from_str(raw.expose()).unwrap();
+            assert_eq!(saved["claudeAiOauth"]["accessToken"], "new-access");
+            assert_eq!(saved["claudeAiOauth"]["refreshToken"], "new-refresh");
+            assert_eq!(saved["mcpOAuth"]["server"], "unrelated");
+            assert!(!raw.expose().contains('\n'));
+        }
         assert!(!f.path().exists());
     }
 
@@ -489,6 +501,48 @@ mod tests {
             error(f.acquire(&Http::default(), &store).await).error.code,
             ErrorCode::StorageDenied
         );
+        assert!(!f.path().exists());
+    }
+
+    #[tokio::test]
+    async fn unsupported_keychain_payload_fails_before_rotating_tokens() {
+        struct Unwritable(Store);
+        #[async_trait]
+        impl ClaudeStore for Unwritable {
+            async fn read(&self, key: &str) -> crate::Result<Option<Secret>> {
+                CredentialStore::read(&self.0, key)
+            }
+            async fn write(&self, _: &str, _: &Secret) -> crate::Result<()> {
+                panic!("Unsupported payload must never be exchanged or saved");
+            }
+            fn validate_write(&self, _: &str, _: &Secret) -> crate::Result<()> {
+                Err(AuthError::new(ErrorCode::InvalidConfiguration))
+            }
+        }
+        let mut f = Fixture::new();
+        f.sources.skip_keychain = false;
+        let store = Unwritable(Store {
+            raw: Mutex::new(Some(Secret::new(expired().to_string()))),
+            ..Store::default()
+        });
+        let http = Http::default();
+        assert_eq!(
+            error(
+                acquire_with_store(
+                    &http,
+                    &f.options(),
+                    &store,
+                    Some("test-account"),
+                    &CancellationToken::new(),
+                    deadline()
+                )
+                .await
+            )
+            .error
+            .code,
+            ErrorCode::InvalidConfiguration
+        );
+        assert_eq!(http.calls.load(Ordering::SeqCst), 0);
         assert!(!f.path().exists());
     }
 

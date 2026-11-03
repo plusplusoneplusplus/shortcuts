@@ -43,9 +43,13 @@ pub struct ClaudeCredentialSources {
 ///
 /// Returns `None` when no source yields a valid token.
 /// This function is read-only — it never writes credentials.
-pub fn read_credentials(sources: &ClaudeCredentialSources) -> Option<ClaudeToken> {
-    let store = crate::OsCredentialStore::new(MACOS_KEYCHAIN_SERVICE);
-    let (_, raw) = resolve_raw(sources, &store, keychain_account().as_deref())?;
+pub async fn read_credentials(sources: &ClaudeCredentialSources) -> Option<ClaudeToken> {
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let store = super::keychain::store(
+        &cancel,
+        tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+    );
+    let (_, raw) = resolve_raw(sources, &store, keychain_account().as_deref()).await?;
     extract_token(&raw)
 }
 
@@ -65,9 +69,9 @@ pub(super) fn keychain_account() -> Option<String> {
     }
 }
 
-pub(super) fn resolve_raw(
+pub(super) async fn resolve_raw(
     sources: &ClaudeCredentialSources,
-    store: &dyn crate::CredentialStore,
+    store: &dyn super::keychain::ClaudeStore,
     account: Option<&str>,
 ) -> Option<(CredentialSource, String)> {
     if let Some(path) = &sources.credentials_file_override {
@@ -81,7 +85,7 @@ pub(super) fn resolve_raw(
         return None;
     }
     let account = account?;
-    let raw = store.read(account).ok()??;
+    let raw = store.read(account).await.ok()??;
     let raw = raw.expose().trim();
     if raw.is_empty() {
         None
@@ -264,8 +268,8 @@ mod tests {
         assert_eq!(token.access_token.expose(), "real-token");
     }
 
-    #[test]
-    fn read_credentials_from_file() {
+    #[tokio::test]
+    async fn read_credentials_from_file() {
         let dir = tempfile::tempdir().unwrap();
         let creds_dir = dir.path().join(".claude");
         std::fs::create_dir_all(&creds_dir).unwrap();
@@ -280,12 +284,12 @@ mod tests {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        let token = read_credentials(&sources).unwrap();
+        let token = read_credentials(&sources).await.unwrap();
         assert_eq!(token.access_token.expose(), "file-token");
     }
 
-    #[test]
-    fn read_credentials_from_override_file() {
+    #[tokio::test]
+    async fn read_credentials_from_override_file() {
         let dir = tempfile::tempdir().unwrap();
         let override_file = dir.path().join("custom-creds.json");
         std::fs::write(
@@ -298,23 +302,23 @@ mod tests {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        let token = read_credentials(&sources).unwrap();
+        let token = read_credentials(&sources).await.unwrap();
         assert_eq!(token.access_token.expose(), "override-token");
     }
 
-    #[test]
-    fn read_credentials_returns_none_for_missing_file() {
+    #[tokio::test]
+    async fn read_credentials_returns_none_for_missing_file() {
         let dir = tempfile::tempdir().unwrap();
         let sources = ClaudeCredentialSources {
             credentials_file_override: None,
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        assert!(read_credentials(&sources).is_none());
+        assert!(read_credentials(&sources).await.is_none());
     }
 
-    #[test]
-    fn read_credentials_returns_none_for_empty_file() {
+    #[tokio::test]
+    async fn read_credentials_returns_none_for_empty_file() {
         let dir = tempfile::tempdir().unwrap();
         let creds_dir = dir.path().join(".claude");
         std::fs::create_dir_all(&creds_dir).unwrap();
@@ -324,11 +328,11 @@ mod tests {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        assert!(read_credentials(&sources).is_none());
+        assert!(read_credentials(&sources).await.is_none());
     }
 
-    #[test]
-    fn read_credentials_override_ignores_default_file() {
+    #[tokio::test]
+    async fn read_credentials_override_ignores_default_file() {
         let dir = tempfile::tempdir().unwrap();
         // Write a real token in the default location.
         let creds_dir = dir.path().join(".claude");
@@ -344,6 +348,6 @@ mod tests {
             home_dir: dir.path().to_owned(),
             skip_keychain: true,
         };
-        assert!(read_credentials(&sources).is_none());
+        assert!(read_credentials(&sources).await.is_none());
     }
 }
