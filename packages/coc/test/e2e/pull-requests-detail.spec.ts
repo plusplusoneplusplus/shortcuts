@@ -90,11 +90,8 @@ test.describe('Pull Requests — detail view', () => {
     });
 
     test('shows status badge in detail panel', async ({ page }) => {
-        // MOCK_PR_OPEN.status === 'open' → renders "🟢 Open"
-        await expect(page.getByTestId('pr-status-badge')).toContainText('🟢', {
-            timeout: 10000,
-        });
-        await expect(page.getByTestId('pr-status-badge')).toContainText('Open', {
+        // MOCK_PR_OPEN.status === 'open' → renders a status dot + "Open" (no emoji)
+        await expect(page.getByTestId('pr-status-badge')).toHaveText('Open', {
             timeout: 10000,
         });
     });
@@ -164,7 +161,7 @@ test.describe('Pull Requests — detail view', () => {
         );
         await expect(page.getByTestId('pr-review-metrics')).toHaveCount(0);
         await expect(page.getByTestId('pr-delta')).toBeVisible({ timeout: 10000 });
-        await expect(page.getByTestId('pr-delta')).toContainText('+2 / -1', { timeout: 10000 });
+        await expect(page.getByTestId('pr-delta')).toHaveText('+2 \u22121', { timeout: 10000 });
     });
 
     test('switching to Files tab renders the AI files panel', async ({ page, serverUrl }) => {
