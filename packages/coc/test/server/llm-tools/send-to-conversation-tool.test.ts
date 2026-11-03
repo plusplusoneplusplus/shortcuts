@@ -13,6 +13,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type {
     SendToConversationResult,
@@ -22,7 +24,12 @@ import type {
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { LaunchRalphFn } from '../../../src/server/ralph/ralph-launch-service';
-import { createWorkspaceDirectory } from '../../../src/server/servers/workspace-directory';
+import { createWorkspaceDirectory, type WorkspaceDirectory } from '../../../src/server/servers/workspace-directory';
+
+function admissionCandidate(parent: string, workspace: string, call: string): string {
+    const hex = createHash('sha256').update(JSON.stringify([parent, workspace, call])).digest('hex').slice(0, 32);
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 // Minimal invocation stub for handler calls (matches the SDK invocation arg).
 const invocationStub = {
@@ -1385,6 +1392,79 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         expect(result).toEqual({ error: 'Remote server "vm" rejected the request (HTTP 400). The chat was not started.', dispatchState: 'rejected' });
         expect(enqueueChat).not.toHaveBeenCalled();
+    });
+});
+
+describe('remote request identities through the public tool', () => {
+    function fixture(parent = DEFAULT_PARENT_ID, workspace = 'ws-1') {
+        const startRemoteChat = vi.fn<WorkspaceDirectory['startRemoteChat']>().mockResolvedValue({
+            serverIdentity: 'destination-owner', processId: 'queue_child',
+        });
+        const postRemoteChat = vi.fn<NonNullable<WorkspaceDirectory['postRemoteChat']>>().mockResolvedValue({
+            serverIdentity: 'destination-owner', processId: 'queue_target', turnIndex: -1,
+        });
+        const directory: WorkspaceDirectory = { list: vi.fn(), listRemoteChats: vi.fn(), startRemoteChat, postRemoteChat };
+        const { tool, enqueueChat } = makeTool({ parentProcessId: parent, workspaceId: workspace,
+            storeWorkspaces: [workspace], runtime: { workspaceDirectory: directory, getRemoteResultsEnabled: () => true } });
+        return { tool, startRemoteChat, postRemoteChat, enqueueChat };
+    }
+
+    it('validates a deterministic corpus and preserves every already-valid candidate byte for byte', async () => {
+        const { tool, startRemoteChat, enqueueChat } = fixture();
+        const ids = new Set<string>();
+        const categories = new Set<string>();
+        for (let index = 0; index < 128; index++) {
+            const call = `synthetic-call-${index}`;
+            const candidate = admissionCandidate(DEFAULT_PARENT_ID, 'ws-1', call);
+            categories.add(`${/[1-8]/.test(candidate[14])}:${/[89ab]/.test(candidate[19])}`);
+            const invocation = { ...invocationStub, toolCallId: call };
+            const args = { content: 'Fixture work', workspaceId: 'remote:alias:target' };
+            asSuccess(await tool.handler(args, invocation));
+            const first = startRemoteChat.mock.lastCall![0].resultOrigin!.requestId!;
+            asSuccess(await tool.handler(args, invocation));
+            expect(startRemoteChat.mock.lastCall![0].resultOrigin!.requestId).toBe(first);
+            expect(z.uuid().parse(first)).toBe(first);
+            expect(first).toBe(first.toLowerCase());
+            if (z.uuid().safeParse(candidate).success) {
+                expect(first).toBe(candidate);
+            } else {
+                expect(first[14]).toBe('8');
+                expect(first[19]).toBe(((parseInt(candidate[19], 16) & 0x3) | 0x8).toString(16));
+                expect(first.slice(0, 14)).toBe(candidate.slice(0, 14));
+                expect(first.slice(15, 19)).toBe(candidate.slice(15, 19));
+                expect(first.slice(20)).toBe(candidate.slice(20));
+            }
+            ids.add(first);
+        }
+        expect(categories).toEqual(new Set(['true:true', 'true:false', 'false:true', 'false:false']));
+        expect(ids.size).toBe(128);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('keeps parent and workspace identity in the request derivation', async () => {
+        const ids: string[] = [];
+        for (const [parent, workspace] of [[DEFAULT_PARENT_ID, 'ws-1'], ['queue_other', 'ws-1'], [DEFAULT_PARENT_ID, 'ws-2']]) {
+            const { tool, startRemoteChat } = fixture(parent, workspace);
+            asSuccess(await tool.handler({ content: 'Work', workspaceId: 'remote:alias:target' }, invocationStub));
+            ids.push(startRemoteChat.mock.lastCall![0].resultOrigin!.requestId!);
+        }
+        expect(new Set(ids).size).toBe(3);
+    });
+
+    it('uses the same remote identity in create and post without changing the local grilling key', async () => {
+        const { tool, startRemoteChat, postRemoteChat } = fixture();
+        asSuccess(await tool.handler({ content: 'Work', workspaceId: 'remote:alias:target' }, invocationStub));
+        asSuccess(await tool.handler({ content: 'Work', processId: 'queue_target', workspaceId: 'remote:alias:target' }, invocationStub));
+        const remoteId = startRemoteChat.mock.lastCall![0].resultOrigin!.requestId;
+        expect(postRemoteChat.mock.lastCall![0].resultOrigin!.requestId).toBe(remoteId);
+        const launchRalph = vi.fn<LaunchRalphFn>().mockResolvedValue({
+            ok: true, processId: 'queue_grill', sessionId: 'ralph-session', phase: 'grilling',
+        });
+        const local = makeTool({ launchRalph, runtime: { getRemoteResultsEnabled: () => true } });
+        asSuccess(await local.tool.handler({ content: 'Work', mode: 'ralph', entryPoint: 'grill' }, invocationStub));
+        expect(launchRalph.mock.lastCall![0].requestId).toBe(admissionCandidate(DEFAULT_PARENT_ID, 'ws-1', invocationStub.toolCallId));
+        asSuccess(await local.tool.handler({ content: 'Work', mode: 'ask' }, invocationStub));
+        expect(local.captured.input).not.toHaveProperty('requestId');
     });
 });
 

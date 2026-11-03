@@ -1495,9 +1495,10 @@ describe('AdminPanel', () => {
             expect(screen.getByTestId('admin-tab-messaging').textContent).toContain('Teams');
             const card = screen.getByTestId('settings-tab-features-teams');
             expect(card.textContent).toContain('Teams features');
-            // TeamsConnectionCard (which hosts the IC3 card) is lazy-loaded; wait for it.
-            expect((await screen.findByTestId('teams-ic3-status')).textContent).toContain('IC3 connectivity');
-            await waitFor(() => expect(screen.getByTestId('teams-connection-card')).toBeDefined());
+            // TeamsConnectionCard (which hosts the IC3 card) is lazy-loaded; slow CI runners can take
+            // longer than the default 1s to resolve the chunk.
+            expect((await screen.findByTestId('teams-ic3-status', {}, { timeout: 10_000 })).textContent).toContain('IC3 connectivity');
+            await waitFor(() => expect(screen.getByTestId('teams-connection-card')).toBeDefined(), { timeout: 10_000 });
             const overview = screen.getByRole('region', { name: 'Teams status' });
             const configuration = screen.getByTestId('teams-connection-card');
             expect(overview.contains(screen.getByTestId('teams-ic3-status'))).toBe(true);

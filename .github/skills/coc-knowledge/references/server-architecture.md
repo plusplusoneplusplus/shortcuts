@@ -157,6 +157,14 @@ require receipt reconciliation. Verified acceptance persists before idempotent
 delegated-job registration. Machine-local receipts are excluded from snapshots and
 cleared with delegated jobs.
 
+Remote result-origin IDs hash the canonical JSON tuple of parent process, parent
+workspace and provider tool-call ID. Strictly valid UUID candidates retain their
+exact bytes for replay safety; other candidates set UUIDv8 and RFC variant bits
+in the same hash bytes. Local grilling admission keys remain independent.
+Reservation validation reads the owner-checked journal first. Invalid new input
+raises `RemoteDelegationNotStartedError`; existing claims and journal integrity
+errors remain authoritative.
+
 `delegation/remote-delegation-auth.ts` defines the sender-only trust model. Only the
 origin makes network requests; the destination never registers, connects to or calls it,
 so it works with zero destination remotes and an unreachable origin. Three concerns stay
@@ -216,13 +224,19 @@ SQLite retains needed terminal tasks independently of capped history.
 `delegation/remote-delegation-return.ts` admits new Sentinel requests under default-off
 `features.sentinelRemoteResults` and a destination advertising `senderPolling: true`; older
 callback-verifying destinations report `unsupported` before any reservation. Origin
-reservations precede execution. A 400 reply to the single claimed POST settles `rejected`
-(nothing started); other failures stay uncertain. Receipt polling persists backoff and
-verifies both identities, request digest and bounded owner-qualified links. Recovery ignores the admission flag and
-never resends work. Transfer state is independent of parent review delivery and To-do assessment.
-Existing review/connector receipts return assessed replies; missing/archived owners fail
-without revival. Trusted review context survives buffering; drain and execution recheck
-the visible Sentinel owner. SQLite retains unacknowledged remote review tasks across restart.
+reservations precede execution. New-input validation failures and failed publication
+with a verified absent claim report `not-started`. Unreadable/corrupt journals and
+ambiguous publication stay `uncertain`. A 400 reply to the single claimed POST settles
+`rejected`; lost/invalid replies and unpersisted acceptance stay uncertain. Known
+accepted children retain tracked results when registration fails.
+
+Admission diagnostics contain only category, phase, hashed correlation and allow-listed
+validation field paths/codes. Receipt polling persists backoff and verifies both identities,
+request digest and bounded owner-qualified links. Recovery ignores the admission flag
+and never resends work. Transfer, parent review delivery and To-do assessment stay
+independent. Review/connector receipts return assessed replies; missing/archived
+owners fail without revival. Trusted review context survives buffering and owner
+rechecks at drain/execution. SQLite retains unacknowledged remote review tasks across restart.
 
 ### Delegated PR receipts
 

@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import { renameSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createQueueInfrastructure } from '../../../src/server/infrastructure/queue-infrastructure';
@@ -13,7 +15,7 @@ import { createRemoteDelegationLaunch } from '../../../src/server/delegation/rem
 import { RemoteDelegationAdmissionStore } from '../../../src/server/delegation/remote-delegation-admission-store';
 import { RemoteDelegationResults } from '../../../src/server/delegation/remote-delegation-results';
 import { RemoteDelegationReturn } from '../../../src/server/delegation/remote-delegation-return';
-import { RemoteDelegationRequestStore } from '../../../src/server/delegation/remote-delegation-request-store';
+import { RemoteDelegationRequestStore, REMOTE_DELEGATION_REQUESTS_FILE } from '../../../src/server/delegation/remote-delegation-request-store';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
 import { REMOTE_DELEGATION_LAUNCH_PATH, REMOTE_DELEGATION_RECEIPT_PATH, registerRemoteDelegationRoutes } from '../../../src/server/delegation/remote-delegation-routes';
@@ -23,6 +25,15 @@ import { createRouter, sendJson, type Route } from '../../../src/server/shared/r
 import type { RemoteServerWithRuntime } from '../../../src/server/servers/remote-server-types';
 import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
 import { MessagingJobNotices } from '../../../src/server/messaging/job-notices';
+import { createSendToConversationTool, type SendToConversationArgs } from '../../../src/server/llm-tools/send-to-conversation-tool';
+import { createWorkspaceDirectory } from '../../../src/server/servers/workspace-directory';
+import { getServerLogger } from '../../../src/server/logging/server-logger';
+import { getRepoDataPath } from '../../../src/server/paths';
+
+vi.mock('node:fs', async importOriginal => {
+    const actual = await importOriginal<typeof import('node:fs')>();
+    return { ...actual, renameSync: vi.fn(actual.renameSync) };
+});
 
 // Raw workspace and process identities deliberately collide across both installations.
 const workspaceId = 'shared-repo';
@@ -54,7 +65,7 @@ describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
     let loseAdmissionReply: boolean;
     let executionPosts: number;
     let receiptAttempts: number;
-    let tamper: 'binding' | 'links' | 'capped' | 'intent' | undefined;
+    let tamper: 'binding' | 'links' | 'capped' | 'intent' | 'admission' | undefined;
     let stalled: boolean;
     const servers: http.Server[] = [];
     const destinationRoutes: Route[] = [];
@@ -99,6 +110,10 @@ describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
         destinationRoutes.splice(0);
         destinationRoutes.push({ method: 'GET', pattern: '/api/health',
             handler: (_req, res) => sendJson(res, { serverIdentity: admissions.serverIdentity }) });
+        destinationRoutes.push({ method: 'GET', pattern: `/api/processes/${parentId}`,
+            handler: async (_req, res) => sendJson(res, { process: await destination.getProcess(parentId, workspaceId) }) });
+        destinationRoutes.push({ method: 'GET', pattern: '/api/ralph-launch/capabilities',
+            handler: (_req, res) => sendJson(res, { version: 1, grilling: true }) });
         // The destination has no remote registry: it cannot contact the origin.
         registerRemoteDelegationRoutes(destinationRoutes, { admissions, store: destination, delivery, launch,
             results: { ready: capture.restore(), capture: () => capture.restore() } });
@@ -136,7 +151,8 @@ describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
                     options = { ...options, body: JSON.stringify(body) };
                 }
                 const response = await fetch(url, options);
-                if (execution && loseAdmissionReply) throw new Error('Fixture lost admission reply');
+                if (execution && loseAdmissionReply) throw new Error(`Fixture lost admission reply: ${String(options?.body)}`);
+                if (execution && tamper === 'admission') return Response.json({ invalid: true });
                 if (tamper && String(url).endsWith('/receipt')) {
                     const body = await response.json() as { parent: { workspaceId: string; processId: string };
                         terminal?: { result: { outcome: string; links: string[] } } };
@@ -158,6 +174,22 @@ describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
             messagingOrigin: { connector: 'teams', chatKey: 'origin-channel', threadId: 'origin-thread' },
         });
         if (!result || 'unavailable' in result) throw new Error('Expected authenticated tracked admission');
+        return result;
+    }
+    async function dispatchTool(args: Partial<SendToConversationArgs> = {}, toolCallId = 'fixture-call-0') {
+        const enqueueChat = vi.fn(async () => { throw new Error('Unexpected local fallback'); });
+        const workspaceDirectory = createWorkspaceDirectory({
+            store: origin, remoteServers: { list: () => originRemotes }, remoteResults: returns,
+        });
+        const { tool } = createSendToConversationTool({
+            store: origin, workspaceId, parentProcessId: parentId, enqueueChat,
+            runtime: { serverIdentity: jobs.serverIdentity, workspaceDirectory, getRemoteResultsEnabled: () => enabled },
+        });
+        const result = await tool.handler({
+            content: 'Inspect fixture work', workspaceId: `remote:destination-alias:${workspaceId}`,
+            mode: 'ask', ...args,
+        }, { sessionId: 'fixture-session', toolCallId, toolName: 'send_to_conversation', arguments: {} });
+        expect(enqueueChat).not.toHaveBeenCalled();
         return result;
     }
     async function complete(requestId: string, outcome: 'completed' | 'failed' | 'cancelled') {
@@ -205,6 +237,220 @@ describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
         }
         closeOrigin(); closeDestination();
         fs.rmSync(directory, { recursive: true, force: true });
+    });
+
+    it.each([
+        { toolCallId: 'fixture-call-0', valid: false },
+        { toolCallId: 'fixture-call-5', valid: true },
+    ])('admits a public invocation once and preserves its identity across restart: %j', async ({ toolCallId, valid }) => {
+        const hex = createHash('sha256').update(JSON.stringify([parentId, workspaceId, toolCallId])).digest('hex').slice(0, 32);
+        const candidate = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+        expect(z.uuid().safeParse(candidate).success).toBe(valid);
+        const result = await dispatchTool({}, toolCallId);
+        expect(result).toMatchObject({ resultDelivery: { status: 'tracked' } });
+        const row = requests.list(workspaceId)[0];
+        expect(z.uuid().parse(row.requestId)).toBe(row.requestId);
+        if (valid) expect(row.requestId).toBe(candidate);
+        expect(row.admission).toMatchObject({ state: 'accepted' });
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+        expect(destinationInfra.queueFacade.getAll()).toHaveLength(1);
+        expect(await dispatchTool({}, toolCallId)).toEqual(result);
+        closeOrigin(); closeDestination(); openOrigin(); openDestination();
+        expect(await dispatchTool({}, toolCallId)).toEqual(result);
+        expect(executionPosts).toBe(1);
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+        expect(jobs.list(workspaceId)).toHaveLength(1);
+    });
+
+    it.each([
+        { mode: 'ask' }, { mode: 'autopilot' },
+        { mode: 'ralph', entryPoint: 'execute' }, { mode: 'ralph', entryPoint: 'grill' },
+        { mode: 'ask', processId: parentId },
+    ] satisfies Partial<SendToConversationArgs>[])('tracks and replays the public tool path %j without execution replay', async args => {
+        const result = await dispatchTool(args);
+        expect(result).toMatchObject({
+            resultDelivery: { status: 'tracked', remote: { serverIdentity: admissions.serverIdentity } },
+            openLink: expect.stringContaining(`#chat-references/${admissions.serverIdentity}/${workspaceId}/`),
+        });
+        const row = requests.list(workspaceId)[0];
+        expect(row.requestId).toBe('7ea01f38-4a84-8b59-80f5-6bf16396de13');
+        expect(row.parent).toEqual({ workspaceId, processId: parentId });
+        expect(row.destination.serverIdentity).toBe(admissions.serverIdentity);
+        expect(await dispatchTool(args)).toEqual(result);
+        expect(executionPosts).toBe(1);
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+        expect(destinationInfra.queueFacade.getAll()).toHaveLength(1);
+    });
+
+    it('replays a public invocation after a lost acknowledgement and restart using receipt reads only', async () => {
+        const warn = vi.spyOn(getServerLogger(), 'warn');
+        loseAdmissionReply = true;
+        const failed = await dispatchTool();
+        expect(failed).toMatchObject({ dispatchState: 'uncertain' });
+        expect(Object.keys(failed).sort()).toEqual(['dispatchState', 'error']);
+        const { requestId, proofToken } = requests.list(workspaceId)[0];
+        const logs = JSON.stringify(warn.mock.calls);
+        expect(logs).not.toContain(proofToken);
+        expect(logs).not.toContain('Inspect fixture work');
+        expect(logs).not.toContain(destinationUrl);
+        expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+            category: 'remote-delegation-admission', phase: 'execution',
+        }), expect.any(String));
+        const child = admissions.list(workspaceId)[0].admission;
+        expect(child.state).toBe('accepted');
+        closeOrigin(); closeDestination(); openOrigin(); openDestination();
+        loseAdmissionReply = false;
+        const recovered = await dispatchTool();
+        expect(recovered).toMatchObject({
+            resultDelivery: { status: 'tracked', remote: { requestId } },
+            ...(child.state === 'accepted' ? { processId: child.child.processId } : {}),
+        });
+        expect(executionPosts).toBe(1);
+        expect(receiptAttempts).toBe(1);
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+    });
+
+    it.each([
+        { field: 'id', post: false }, { field: 'intent', post: false }, { field: 'title', post: false },
+        { field: 'id', post: true },
+    ])('reports proven new validation failure without sending work or leaking input: %j', async ({ field, post }) => {
+        const warn = vi.spyOn(getServerLogger(), 'warn');
+        const dispatch = returns.dispatch.bind(returns);
+        vi.spyOn(returns, 'dispatch').mockImplementationOnce((server, execution, context, identity) =>
+            dispatch(server, field === 'intent' ? { ...execution, workspaceId: 'private/fixture-input' } : execution,
+                { ...context, ...(field === 'id' ? { requestId: 'private-fixture-input' } : {}),
+                    ...(field === 'title' ? { title: '' } : {}) }, identity));
+        const result = await dispatchTool(post ? { processId: parentId } : {});
+        expect(result).toEqual({
+            dispatchState: 'not-started',
+            error: 'Remote request validation failed before dispatch. No remote work was sent.',
+        });
+        expect(executionPosts).toBe(0);
+        expect(requests.list(workspaceId)).toEqual([]);
+        expect(admissions.list(workspaceId)).toEqual([]);
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
+        expect(outbound.some(url => url.endsWith('/api/queue') || url.includes('/message'))).toBe(false);
+        expect(warn).toHaveBeenCalledWith({
+            category: 'remote-delegation-admission', phase: 'validation',
+            correlationId: expect.stringMatching(/^[a-f0-9]{16}$/),
+            issues: expect.arrayContaining([expect.objectContaining({ path: field === 'id' ? 'requestId' : field === 'intent' ? 'workspaceId' : 'title' })]),
+        }, expect.any(String));
+        const logs = JSON.stringify(warn.mock.calls);
+        expect(logs).not.toContain('private');
+        expect(logs).not.toContain('Inspect fixture work');
+        expect(logs).not.toContain(destinationUrl);
+    });
+
+    it('reports verified failed publication as not started through tool serialization', async () => {
+        vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('Private fixture disk error'); });
+        expect(await dispatchTool()).toEqual({
+            dispatchState: 'not-started',
+            error: 'Remote request could not be reserved before dispatch. No remote work was sent.',
+        });
+        expect(requests.list(workspaceId)).toEqual([]);
+        expect(executionPosts).toBe(0);
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
+    });
+
+    it('keeps publication that completes then throws uncertain and never resends it', async () => {
+        const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+        vi.mocked(renameSync).mockImplementationOnce((from, to) => {
+            actual.renameSync(from, to);
+            throw new Error('Private fixture publication error');
+        });
+        expect(await dispatchTool()).toMatchObject({ dispatchState: 'uncertain' });
+        expect(requests.list(workspaceId)[0].admission.state).toBe('dispatching');
+        expect(await dispatchTool()).toMatchObject({ dispatchState: 'uncertain' });
+        expect(executionPosts).toBe(0);
+        expect(receiptAttempts).toBe(1);
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
+    });
+
+    it('keeps an unreadable publication outcome uncertain rather than inferring no admission', async () => {
+        vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('Publication unknown'); });
+        const list = requests.list.bind(requests);
+        let publicationStarted = false;
+        const reserve = requests.reserveDispatch.bind(requests);
+        vi.spyOn(requests, 'reserveDispatch').mockImplementationOnce(input => {
+            publicationStarted = true;
+            return reserve(input);
+        });
+        let reads = 0;
+        vi.spyOn(requests, 'list').mockImplementation(owner => {
+            if (publicationStarted && ++reads > 1) throw new Error('Private fixture journal unreadable');
+            return list(owner);
+        });
+        const result = await dispatchTool();
+        expect(result).toMatchObject({ dispatchState: 'uncertain', error: expect.stringContaining('Inspect the destination') });
+        expect(Object.keys(result).sort()).toEqual(['dispatchState', 'error']);
+        expect(executionPosts).toBe(0);
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
+    });
+
+    it('keeps corrupt journal validation uncertain without exposing its contents or executing', async () => {
+        const file = getRepoDataPath(originDir, workspaceId, REMOTE_DELEGATION_REQUESTS_FILE);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, '[{"private-fixture-input":"secret"}]');
+        const result = await dispatchTool();
+        expect(result).toMatchObject({ dispatchState: 'uncertain' });
+        expect(JSON.stringify(result)).not.toContain('private-fixture-input');
+        expect(JSON.stringify(result)).not.toContain('secret');
+        expect(executionPosts).toBe(0);
+        expect(outbound.some(url => url.endsWith('/api/queue'))).toBe(false);
+        expect(fs.readFileSync(file, 'utf8')).toBe('[{"private-fixture-input":"secret"}]');
+    });
+
+    it('preserves accepted tracking when delegated-job publication fails after admission', async () => {
+        vi.spyOn(jobs, 'register').mockImplementationOnce(() => { throw new Error('Fixture tracking write failed'); });
+        const transfer = vi.spyOn(requests, 'recordTransfer').mockImplementationOnce(() => { throw new Error('Fixture backoff write failed'); });
+        const result = await dispatchTool();
+        expect(result).toMatchObject({ resultDelivery: { status: 'tracked', reason: expect.stringContaining('Execution was admitted') } });
+        expect(requests.list(workspaceId)[0].admission.state).toBe('accepted');
+        expect(transfer).toHaveBeenCalledOnce();
+        expect(await dispatchTool()).toMatchObject({ resultDelivery: { status: 'tracked' } });
+        expect(executionPosts).toBe(1);
+        expect(jobs.list(workspaceId)).toHaveLength(1);
+    });
+
+    it.each(['intent', 'parent-mode', 'archived-parent', 'destination'] as const)(
+        'never labels existing admitted work not started when %s validation fails', async failure => {
+            await dispatchTool();
+            const before = requests.list(workspaceId);
+            if (failure === 'parent-mode') await origin.updateProcess(parentId, { metadata: { workspaceId, mode: 'ask', provider: 'copilot' } });
+            if (failure === 'archived-parent') await origin.updateProcess(parentId, { archived: true });
+            if (failure === 'intent' || failure === 'destination') {
+                const dispatch = returns.dispatch.bind(returns);
+                vi.spyOn(returns, 'dispatch').mockImplementationOnce((server, execution, context, identity) =>
+                    dispatch(server, failure === 'intent' ? { ...execution, workspaceId: 'invalid/workspace' } : execution,
+                        context, failure === 'destination' ? 'different-owner' : identity));
+            }
+            const result = await dispatchTool();
+            expect(result).toMatchObject({ dispatchState: 'uncertain' });
+            expect(requests.list(workspaceId)).toEqual(before);
+            expect(executionPosts).toBe(1);
+            expect(admissions.list(workspaceId)).toHaveLength(1);
+        },
+    );
+
+    it.each(['invalid-receipt', 'acceptance-write'] as const)('recovers %s after destination admission without another execution POST', async failure => {
+        if (failure === 'invalid-receipt') tamper = 'admission';
+        else {
+            const accept = requests.accept.bind(requests);
+            vi.spyOn(requests, 'accept').mockImplementationOnce((owner, receipt) => {
+                vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('Private fixture acceptance write failed'); });
+                return accept(owner, receipt);
+            });
+        }
+        expect(await dispatchTool()).toMatchObject({ dispatchState: 'uncertain' });
+        expect(admissions.list(workspaceId)[0].admission.state).toBe('accepted');
+        expect(requests.list(workspaceId)[0].admission.state).toBe('uncertain');
+        tamper = undefined;
+        closeOrigin(); closeDestination(); openOrigin(); openDestination();
+        expect(await dispatchTool()).toMatchObject({ resultDelivery: { status: 'tracked' } });
+        expect(executionPosts).toBe(1);
+        expect(receiptAttempts).toBe(1);
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+        expect(jobs.list(workspaceId)).toHaveLength(1);
     });
 
     it('returns launch plus two exact follow-up outcomes and queues assessment only in the busy owner', async () => {

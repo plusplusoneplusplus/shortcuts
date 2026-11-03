@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DelegatedJobStore, DELEGATED_JOBS_FILE } from '../../../src/server/delegation/delegated-job-store';
 import {
-    RemoteDelegationRequestStore, REMOTE_DELEGATION_REQUESTS_FILE,
+    RemoteDelegationNotStartedError, RemoteDelegationRequestStore, REMOTE_DELEGATION_REQUESTS_FILE,
     type RemoteDelegationRequest, type RemoteDelegationReservation,
 } from '../../../src/server/delegation/remote-delegation-request-store';
 import { getRepoDataPath } from '../../../src/server/paths';
@@ -91,7 +91,7 @@ describe('RemoteDelegationRequestStore', () => {
 
     it('never grants execution when atomic claim publication fails and diagnoses an interrupted reservation', () => {
         vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk full'); });
-        expect(() => requests.reserveDispatch(reservation)).toThrow('disk full');
+        expect(() => requests.reserveDispatch(reservation)).toThrow(RemoteDelegationNotStartedError);
         expect(restart().list(workspaceId)).toEqual([]);
         const reserved = requests.reserve(reservation);
         restart().rejectReserved(workspaceId, reserved.requestId);
@@ -99,6 +99,37 @@ describe('RemoteDelegationRequestStore', () => {
             state: 'rejected', reason: 'Origin stopped before dispatch; no remote work was sent.',
         });
         expect(requests.beginDispatch(workspaceId, reserved.requestId)).toBe(false);
+    });
+
+    it('does not classify a published claim as not started when publication throws after rename', async () => {
+        const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+        vi.mocked(fs.renameSync).mockImplementationOnce((from, to) => {
+            actual.renameSync(from, to);
+            throw new Error('Failure after publication');
+        });
+        const requestId = randomUUID();
+        expect(() => requests.reserveDispatch({ ...reservation, requestId })).toThrow('Failure after publication');
+        expect(restart().list(workspaceId)[0].admission.state).toBe('dispatching');
+        expect(restart().reserveDispatch({ ...reservation, requestId }).execute).toBe(false);
+    });
+
+    it('keeps publication failure ambiguous when the verification read fails', () => {
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('Publication unknown'); });
+        const list = vi.spyOn(requests, 'list');
+        list.mockImplementationOnce(() => []).mockImplementationOnce(() => { throw new Error('Journal unreadable'); });
+        expect(() => requests.reserveDispatch(reservation)).toThrow('Journal unreadable');
+        expect(restart().list(workspaceId)).toEqual([]);
+    });
+
+    it('only classifies invalid input as not started after excluding an existing request', () => {
+        const requestId = randomUUID();
+        requests.reserveDispatch({ ...reservation, requestId });
+        let failure: unknown;
+        try { requests.reserveDispatch({ ...reservation, requestId, title: '' }); }
+        catch (error) { failure = error; }
+        expect(failure).toBeDefined();
+        expect(failure).not.toBeInstanceOf(RemoteDelegationNotStartedError);
+        expect(restart().list(workspaceId)[0].admission.state).toBe('dispatching');
     });
 
     it('persists the dispatch claim before permission to send and never grants a second attempt', () => {
@@ -234,7 +265,7 @@ describe('RemoteDelegationRequestStore', () => {
         { kind: 'ralph', targetProcessId: 'chat' }, { intentDigest: 'not-a-digest' }, { requestId: 'not-a-uuid' }, { requestId: null },
         { destination: { ...reservation.destination, serverIdentity: ' ' } },
     ])('refuses malformed reservation %j', change => {
-        expect(() => requests.reserve({ ...reservation, ...change } as RemoteDelegationReservation)).toThrow();
+        expect(() => requests.reserve({ ...reservation, ...change } as RemoteDelegationReservation)).toThrow(RemoteDelegationNotStartedError);
         expect(restart().list(workspaceId)).toEqual([]);
     });
 
@@ -252,6 +283,11 @@ describe('RemoteDelegationRequestStore', () => {
             fs.writeFileSync(file(), contents);
             expect(() => restart().list(workspaceId)).toThrow();
             expect(() => restart().reserve(reservation)).toThrow();
+            let failure: unknown;
+            try { restart().reserve({ ...reservation, requestId: 'invalid' }); }
+            catch (error) { failure = error; }
+            expect(failure).toBeDefined();
+            expect(failure).not.toBeInstanceOf(RemoteDelegationNotStartedError);
             expect(fs.readFileSync(file(), 'utf8')).toBe(contents);
         },
     );
