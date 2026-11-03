@@ -49,6 +49,10 @@ references before editing. Paths are package-relative.
   desktop `richPasteSupported`; reject unsupported clients without fallback.
   Native clipboard contents stay desktop-local; results acknowledge delivery,
   not editor persistence, and never echo the payload.
+- Browser annotation uses optional `DesktopBrowserBridge.annotation`. Each
+  `BrowserAnnotationSession` owns one mode entry for an exact view/concrete session,
+  subscribes before Start, and revokes delivery before awaiting Stop. Create a fresh
+  instance after exit or retry; preserve observable startup/cleanup errors.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

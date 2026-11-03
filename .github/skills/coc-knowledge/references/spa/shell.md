@@ -562,10 +562,14 @@ and `setEnabled` through exact-source registered SPA main-frame IPC. Fresh
 renderer request IDs bind notifications to one view/concrete session/mode; stale
 Stop and late startup/events cannot affect replacements. Owner reload/crash/close
 revokes notification leases before native cleanup; delivery rechecks the original
-main frame and registered source. Subscribe with `onEvent` before Start and reject
-late replies in the caller. Availability is independent of AI control; active
-turns require enabled human takeover. Toolbar, screenshot and composer integration
-remain separate.
+main frame and registered source. SPA `shared/file-path/browser-annotation.ts`
+mirrors the preload contract; optional `DesktopBrowserBridge.annotation` keeps
+older hosts compatible. Each single-use `BrowserAnnotationSession` mints an immutable
+view/session/request identity, subscribes before Start, and rejects foreign events
+and late replies. Stop revokes delivery synchronously before native cleanup;
+startup/cleanup failures remain observable. Create a fresh instance for retry.
+Availability is independent of AI control; active turns require enabled human
+takeover. Toolbar, screenshot and composer integration remain separate.
 
 ### Shared web-page zoom
 
