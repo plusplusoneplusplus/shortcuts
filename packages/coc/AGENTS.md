@@ -53,6 +53,9 @@ references before editing. Paths are package-relative.
   `BrowserAnnotationSession` owns one mode entry for an exact view/concrete session,
   subscribes before Start, and revokes delivery before awaiting Stop. Create a fresh
   instance after exit or retry; preserve observable startup/cleanup errors.
+  `BrowserAnnotationButton` publishes owner/session policy independently of AI
+  enablement, reads clone flags on the owning server, and stops on tab/document
+  departure or live disable. Main owns the takeover-before-injection sequence.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

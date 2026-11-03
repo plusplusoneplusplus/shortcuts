@@ -777,6 +777,17 @@ never be handed to the local Electron process.
 
 ## Browser tabs
 
+`BrowserAnnotationButton` uses the optional desktop annotation bridge for a
+per-tab toggle with pending/error state and Escape exit. Loaded URL documents
+participate; file previews, PDF URLs and the SPA document omit the button.
+Owner/session policy follows the live owning-server annotation setting,
+independently of AI control. Remote reads reject stale responses and refresh on
+matching config/reconnect events; unresolved owners fail closed. Document changes,
+hiding, unmount and disable revoke pending startup and stop the overlay. The
+native manager performs settled human takeover before injection; the disabled
+button explains when takeover is required. Selection editing, pins, screenshots
+and composer delivery are separate integration work.
+
 Default-off `browserControl.demoRecordingEnabled` adds `BrowserDemoStrip` and
 `BrowserDemoReview` to `UnifiedBrowserTab`. Their draft and annotation state is
 memory-only and belongs to the concrete chat/workspace/clone owner. Start, Add

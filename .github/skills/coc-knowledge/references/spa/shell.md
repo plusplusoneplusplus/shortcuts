@@ -568,8 +568,15 @@ older hosts compatible. Each single-use `BrowserAnnotationSession` mints an immu
 view/session/request identity, subscribes before Start, and rejects foreign events
 and late replies. Stop revokes delivery synchronously before native cleanup;
 startup/cleanup failures remain observable. Create a fresh instance for retry.
-Availability is independent of AI control; active turns require enabled human
-takeover. Toolbar, screenshot and composer integration remain separate.
+`BrowserAnnotationButton` owns the toolbar toggle and live owner/session policy
+publication independently of AI control. Local flags subscribe to dashboard config;
+clone flags load from the owning server and refresh on matching config/reconnect
+events. Unresolved owners fail closed; stale reads cannot retarget policy. Document
+changes, hiding, unmount, Escape and disable revoke startup and stop the mode.
+Loaded URL tabs participate; previews, PDF URLs and the SPA document omit the
+button. Active turns require enabled human takeover, with main owning the settled
+injection sequence. Comment editing, pins, screenshots and composer delivery remain
+separate integration work.
 
 ### Shared web-page zoom
 

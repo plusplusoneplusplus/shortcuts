@@ -287,6 +287,7 @@ export interface RuntimeDashboardConfig {
     browserBackgroundControlEnabled?: boolean;
     browserNavigationApprovalEnabled?: boolean;
     browserAnnotationEnabled?: boolean;
+    browserHumanTakeoverEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
