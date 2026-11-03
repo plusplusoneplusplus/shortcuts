@@ -1745,6 +1745,41 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('compact-ai-settings-label').textContent).toBe('Codex · Ralph · High');
         });
 
+        it('keeps the compact editor open and applies a provider picked from the portaled menu', async () => {
+            mockAgentProvidersResponse.providers = [
+                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                { id: 'codex', label: 'Codex', enabled: true, available: true },
+            ];
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+            await waitFor(() => {
+                expect((screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement).disabled).toBe(false);
+            });
+
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            const option = screen.getByTestId('agent-option-codex');
+            expect(screen.getByTestId('compact-ai-settings-editor').contains(option)).toBe(false);
+            // A real click starts with mousedown, which reaches the editor's
+            // outside-click handler before the option's click fires.
+            fireEvent.mouseDown(option);
+            expect(screen.getByTestId('compact-ai-settings-editor')).toBeTruthy();
+            fireEvent.click(screen.getByTestId('agent-option-codex'));
+
+            expect(screen.getByTestId('compact-ai-settings-label').textContent).toMatch(/^Codex · /);
+            expect(screen.getByTestId('compact-ai-settings-editor')).toBeTruthy();
+        });
+
+        it('still closes the compact editor on a press outside it', async () => {
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+            expect(screen.getByTestId('compact-ai-settings-editor')).toBeTruthy();
+
+            fireEvent.mouseDown(document.body);
+
+            expect(screen.queryByTestId('compact-ai-settings-editor')).toBeNull();
+        });
+
         it('submits AI settings selected from the compact editor', async () => {
             mockRalphEnabled.value = true;
             mockModelCommand.modelOverride = 'claude-sonnet-4.6';

@@ -535,6 +535,9 @@ export function InitialChatComposer({
             }
         };
         const handleMouseDown = (event: MouseEvent) => {
+            // The provider menu is portaled to document.body; a press there is
+            // still inside the editor, and closing would drop the pick.
+            if ((event.target as Element | null)?.closest?.('[data-testid="agent-selector-menu"]')) return;
             if (settingsEditorRef.current && !settingsEditorRef.current.contains(event.target as Node)) {
                 closeEditor();
             }
