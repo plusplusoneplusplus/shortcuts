@@ -200,6 +200,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: false,
     },
     {
+        name: 'mcp_call',
+        label: 'MCP Call',
+        description: 'Calls a workspace MCP server tool from run_tool_script.',
+        enabledByDefault: true,
+    },
+    {
         name: 'run_tool_script',
         label: 'Tool Scripting',
         description: 'Runs a short JavaScript script that calls other CoC tools in loops or in parallel and returns only the script result.',
@@ -222,7 +228,7 @@ export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
 
 /** Tool names belonging to the tool-scripting feature (gated by `features.toolScripting`). */
-export const TOOL_SCRIPTING_LLM_TOOL_NAMES = ['run_tool_script'] as const;
+export const TOOL_SCRIPTING_LLM_TOOL_NAMES = ['run_tool_script', 'mcp_call'] as const;
 
 /** Tool names belonging to the query-pull-request feature (gated by `features.queryPullRequestTool`). */
 export const QUERY_PULL_REQUEST_LLM_TOOL_NAMES = ['query_pull_request'] as const;
@@ -306,10 +312,10 @@ export function isLlmToolApprovalGateable(toolName: string): boolean {
 
 /**
  * Tools that ask before running unless the repo opts out
- * (`approvalOptOutLlmTools`). `mcp_call` reaches external MCP servers from a
- * script, so it starts gated.
+ * (`approvalOptOutLlmTools`). Approval is opt-in for every tool, including
+ * `mcp_call` inside scripts.
  */
-export const DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS: readonly string[] = ['mcp_call'];
+export const DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS: readonly string[] = [];
 
 /** Drop non-gateable and removed names from an approval-required list. */
 export function filterApprovalRequiredLlmToolNames(toolNames: readonly string[]): string[] {

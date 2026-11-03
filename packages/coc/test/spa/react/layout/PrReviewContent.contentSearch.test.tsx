@@ -54,8 +54,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/usePrReviewPr
 const patch = ['one.ts', 'two.ts'].map(path => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-old\n+new`).join('\n');
 const props = { workspaceId: 'ws', repoId: 'provider-repo', prId: '7', originId: 'origin-1' };
 function latest(): FileDiffPanelProps { return mocks.panel.mock.calls.at(-1)![0]; }
-function search() {
-    fireEvent.click(screen.getByRole('button', { name: 'Search review contents' }));
+async function search() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Search review contents' }));
     fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'target' } });
 }
 async function settle() { await act(async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); }); }
@@ -93,7 +93,7 @@ describe('pop-out PR full-content search', () => {
         expect(mocks.content).not.toHaveBeenCalled();
         expect(screen.queryByRole('button', { name: 'Search review contents' })).toBeNull();
         act(() => applyRuntimeConfigPatch({ diffContentSearchEnabled: true }));
-        search(); await settle();
+        await search(); await settle();
         expect(mocks.content).toHaveBeenCalledTimes(2);
         fireEvent.keyDown(screen.getByTestId('review-content-search-input'), { key: 'F3' });
         expect(latest().contentSearchTarget?.side).toBe('old');
@@ -134,19 +134,19 @@ describe('pop-out PR full-content search', () => {
         const dispose = vi.spyOn(ReviewContentSearchController.prototype, 'dispose');
         const view = render(<PrReviewContent {...props} attachmentDestinationId={owner} />);
         await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeDefined());
-        search(); await settle();
+        await search(); await settle();
         expect(mocks.contentOwner.mock.calls.every(([url]) => url === 'https://one.example')).toBe(true);
         const before = dispose.mock.calls.length;
         act(() => registerCloneBaseUrls([{ workspaceId: 'ws', cloneKey: owner, baseUrl: 'https://replacement.example' }]));
         await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeDefined());
-        search(); await settle();
+        await search(); await settle();
         expect(dispose.mock.calls.length).toBeGreaterThan(before);
         expect(mocks.contentOwner).toHaveBeenLastCalledWith('https://replacement.example');
         expect(mocks.content).toHaveBeenCalledTimes(4);
         view.rerender(<PrReviewContent {...props} prId="8" attachmentDestinationId={owner} />);
         await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith('origin-1', '8', { workspaceId: 'ws', repoId: 'provider-repo' }));
         await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeDefined());
-        search(); await settle();
+        await search(); await settle();
         expect(mocks.content).toHaveBeenLastCalledWith('origin-1', '8', 'two.ts', { workspaceId: 'ws', repoId: 'provider-repo' });
     });
 });

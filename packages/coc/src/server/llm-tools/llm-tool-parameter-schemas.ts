@@ -279,6 +279,15 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['query'],
     },
+    mcp_call: {
+        type: 'object',
+        properties: {
+            server: { type: 'string' },
+            tool: { type: 'string' },
+            args: { type: 'object' },
+        },
+        required: ['server', 'tool'],
+    },
     run_tool_script: {
         type: 'object',
         properties: {

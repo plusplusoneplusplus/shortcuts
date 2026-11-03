@@ -3246,32 +3246,39 @@ describe('readApprovalRequiredLlmTools', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('defaults to the default-gated tools (mcp_call)', () => {
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['mcp_call']);
+    it('defaults to no approval when preferences are unset', () => {
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual([]);
     });
 
     it('round-trips through writeRepoPreferences per workspace', () => {
         writeRepoPreferences(tmpDir, 'ws-1', { approvalRequiredLlmTools: ['send_to_conversation'] });
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['send_to_conversation', 'mcp_call']);
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual(['mcp_call']);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['send_to_conversation']);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual([]);
     });
 
-    it('drops a default-gated tool the repo opted out of', () => {
+    it('preserves a stored mcp_call opt-out and leaves other workspaces independent', () => {
         writeRepoPreferences(tmpDir, 'ws-1', { approvalOptOutLlmTools: ['mcp_call'] });
         expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual([]);
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual(['mcp_call']);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual([]);
+        expect(readRepoPreferences(tmpDir, 'ws-1').approvalOptOutLlmTools).toEqual(['mcp_call']);
     });
 
-    it('toApprovalPreferences stores missing default-gated tools as opt-outs', () => {
+    it.each([[[]], [['mcp_call']]])('round-trips explicit approval %j without changing other tools', (approval) => {
+        writeRepoPreferences(tmpDir, 'ws-1', toApprovalPreferences(['get_conversation', ...approval]));
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['get_conversation', ...approval]);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual([]);
+    });
+
+    it('toApprovalPreferences stores mcp_call approval as an explicit choice', () => {
         expect(toApprovalPreferences(['get_conversation'])).toEqual({
-            approvalRequiredLlmTools: ['get_conversation'], approvalOptOutLlmTools: ['mcp_call'],
-        });
-        expect(toApprovalPreferences(['get_conversation', 'mcp_call'])).toEqual({
             approvalRequiredLlmTools: ['get_conversation'], approvalOptOutLlmTools: [],
         });
+        expect(toApprovalPreferences(['get_conversation', 'mcp_call'])).toEqual({
+            approvalRequiredLlmTools: ['get_conversation', 'mcp_call'], approvalOptOutLlmTools: [],
+        });
     });
 
-    it('validation keeps only default-gated names in approvalOptOutLlmTools', () => {
+    it('validation retains the mcp_call opt-out and filters invalid entries', () => {
         expect(validatePerRepoPreferences({ approvalOptOutLlmTools: ['mcp_call', 'mcp_call', 'browser', 3] })
             .approvalOptOutLlmTools).toEqual(['mcp_call']);
     });

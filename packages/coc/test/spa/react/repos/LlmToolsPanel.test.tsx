@@ -20,6 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => (
     useGlobalToast: () => ({ addToast: mocks.addToast }),
 }));
 
+import { DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS, LLM_TOOL_REGISTRY } from '../../../../src/server/llm-tools/llm-tool-registry';
 import { LlmToolsPanel } from '../../../../src/server/spa/client/react/features/repo-settings/LlmToolsPanel';
 import { getSpaCocClient } from '../../../../src/server/spa/client/react/api/cocClient';
 import { getRepoPreferences, peekRepoPreferences } from '../../../../src/server/spa/client/react/api/repoPreferences';
@@ -296,6 +297,27 @@ describe('LlmToolsPanel', () => {
     });
 
     describe('Require approval toggle', () => {
+        it.each([
+            ['default', [...DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS], false],
+            ['unset', undefined, false],
+            ['explicitly off', [], false],
+            ['explicitly on', ['mcp_call'], true],
+        ] as const)('shows mcp_call approval %s without disabling the tool', async (label, approvalRequiredLlmTools, checked) => {
+            mocks.preferences.getLlmToolsConfig.mockResolvedValue({
+                tools: [{ ...LLM_TOOL_REGISTRY.find(t => t.name === 'mcp_call')!, approvalGateable: true }],
+                disabledLlmTools: [],
+                approvalRequiredLlmTools,
+            });
+            render(<LlmToolsPanel workspaceId={`mcp-approval-${label}`} />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            const approval = screen.getByTestId('llm-tool-approval-toggle-mcp_call') as HTMLInputElement;
+            expect(approval.checked).toBe(checked);
+            expect(approval.disabled).toBe(false);
+            expect((screen.getByTestId('llm-tool-toggle-mcp_call') as HTMLInputElement).checked).toBe(true);
+            expect(mocks.preferences.updateLlmToolsConfig).not.toHaveBeenCalled();
+        });
+
         it('renders unchecked by default and only for gateable tools', async () => {
             render(<LlmToolsPanel workspaceId="approval-default" />);
             await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());

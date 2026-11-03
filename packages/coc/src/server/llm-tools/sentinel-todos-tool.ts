@@ -247,7 +247,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     } : undefined;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
         description: deps.reviewOnly ? SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE : DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
-            + (externalReferencesEnabled ? ' create/update externalReferences replaces ALL external display references with typed {kind: pr|email|link, url, title?} entries; [] clears external links, omission preserves them. Attached conversation references are never replaced by this field. PRs require supported GitHub/ADO HTTPS URLs; email accepts mailto or HTTP(S) email links; link accepts HTTP(S). URLs are validated and deduplicated. References never bind PR outputs, fulfill dependencies, poll, monitor, mark Done or authorize execution; use bind_pr_output only for explicit output selections with provenance.' : '')
+            + (externalReferencesEnabled ? ' create/update externalReferences replaces ALL external display references with typed {kind: pr|email|teams|slack|link, url, title?} entries; [] clears external links, omission preserves them. Attached conversation references are never replaced by this field. PRs require supported GitHub/ADO HTTPS URLs; email accepts mailto or HTTP(S) email links; teams/slack accept supported HTTPS message/channel links without fetching private contents; link accepts HTTP(S). URLs are validated and deduplicated. References never bind PR outputs, fulfill dependencies, poll, monitor, mark Done or authorize execution; use bind_pr_output only for explicit output selections with provenance.' : '')
             + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. bind_pr_output explicitly selects one exact produced PR for outputSlot with tracked_job or owner_selection provenance and reason; never choose the newest implicitly. accept_artifact records acceptance of the exact phase/reference/sha256 content version without marking Done or authorizing work. evaluate_dependencies reads fresh conjunctive readiness only; it never launches or wakes. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
@@ -281,7 +281,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         items: {
                             type: 'object', additionalProperties: false, required: ['kind', 'url'],
                             properties: {
-                                kind: { type: 'string', enum: ['pr', 'email', 'link'] },
+                                kind: { type: 'string', enum: ['pr', 'email', 'teams', 'slack', 'link'] },
                                 url: { type: 'string', minLength: 1, maxLength: 2000 },
                                 title: { type: 'string', minLength: 1, maxLength: 200 },
                             },

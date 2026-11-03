@@ -220,6 +220,7 @@ describe('unified panel browser tab Duplicate', () => {
         const a = openBrowser('a.test');
         openBrowser('b.test');
         openMenu(a.id);
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-others'));
         expect(browserTabs().map(tab => tab.id)).toEqual([a.id]);
     });

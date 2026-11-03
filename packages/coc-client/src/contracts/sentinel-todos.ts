@@ -104,7 +104,7 @@ export interface SentinelTodoConversationReference {
 
 /** Display metadata only: never PR output evidence or execution authority. */
 export interface SentinelTodoExternalReference {
-  kind: 'pr' | 'email' | 'link';
+  kind: 'pr' | 'email' | 'teams' | 'slack' | 'link';
   url: string;
   title?: string;
 }

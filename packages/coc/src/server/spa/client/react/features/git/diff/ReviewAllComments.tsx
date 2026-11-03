@@ -8,6 +8,7 @@ import { Spinner } from '../../../ui';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { useReviewComments, type ReviewCommentScope } from '../hooks/useReviewComments';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { useSendReviewComments } from '../hooks/useSendReviewComments';
 
 export interface ReviewAllCommentsProps {
     workspaceId: string;
@@ -29,6 +30,7 @@ export function ReviewAllComments(props: ReviewAllCommentsProps) {
 
 function ReviewAllCommentsBody({ workspaceId, attachmentDestinationId, scope, title, testId }: ReviewAllCommentsProps) {
     const review = useReviewComments(workspaceId, scope, attachmentDestinationId === workspaceId ? null : attachmentDestinationId);
+    const sendComments = useSendReviewComments(workspaceId, review.comments, scope);
     const withComment = (id: string, action: (comment: typeof review.comments[number]) => Promise<void>) => {
         const comment = review.comments.find(c => c.id === id);
         if (comment) void action(comment);
@@ -68,6 +70,7 @@ function ReviewAllCommentsBody({ workspaceId, attachmentDestinationId, scope, ti
                 onAskAI={() => undefined}
                 onCommentClick={() => undefined}
                 onCopyPrompt={review.copyAllCommentsAsPrompt}
+                {...sendComments}
                 data-testid={`${testId}-sidebar`}
             />
         </div>

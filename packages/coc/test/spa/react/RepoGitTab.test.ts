@@ -2266,4 +2266,15 @@ describe('RepoGitTab', () => {
             expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onSaved={onWorkingTreeFileSaved}');
         });
     });
+
+    describe('commit header hash switcher', () => {
+        it('switches commits through commit selection, never a working-tree route', () => {
+            expect(source).toContain('onSelectCommit={selection.selectCommit}');
+            expect(source).toContain('commitsLoading={data.loading}');
+            expect(source).toContain('commitsError={data.error}');
+            const pane = readRepoGitTabModuleSource('RepoGitDetailPane.tsx');
+            expect(pane).toContain('commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onSelect: onSelectCommit }}');
+            expect(pane).not.toMatch(/onSelectCommit=\{[^}]*WorkingTree/);
+        });
+    });
 });

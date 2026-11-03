@@ -240,6 +240,7 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         });
 
         fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-saved'));
         expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
@@ -249,6 +250,7 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         expect(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`)).toBeTruthy();
 
         fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
         expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
@@ -271,6 +273,7 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         });
 
         fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${fileTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
         expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
 

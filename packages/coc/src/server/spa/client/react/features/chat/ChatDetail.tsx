@@ -7,6 +7,7 @@
  * useSendMessage, useQueuedTaskPoll, and useChatWindowActions.
  */
 
+import { useChatMcpOAuthPrompts } from './hooks/useChatMcpOAuthPrompts';
 import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getCocClientFor, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
@@ -59,6 +60,7 @@ import { useUnifiedPanelTree } from '../repo-detail/unified-right-panel/unifiedP
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { usePublishCurrentChatSend } from '../repo-detail/unified-right-panel/currentChatSend';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
@@ -333,7 +335,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
     const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
-    const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     // Session-scoped, per-conversation memory of which side view is open in each
     // chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed by
     // `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
@@ -444,6 +445,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const browserWorkspaceId = parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId;
+    const mcpOAuth = useChatMcpOAuthPrompts(
+        JSON.stringify([historyBaseUrl, historyOwner, browserWorkspaceId, taskId, processId]), client,
+        browserWorkspaceId, processId, historyOwnerAvailable,
+    );
     const toolInventoryRevision = useToolInventoryUpdates(
         historyBaseUrl, browserWorkspaceId, processDetails?.id,
     );
@@ -1759,6 +1764,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // `/compact` surfaces its result (or error) as a transient toast; the
         // displayed transcript is never rewritten.
         compactClient: client,
+        messageClient: historyOwnerAvailable ? client : undefined,
         compactDisabled: !historyOwnerAvailable || readOnly || isCompacting || compactionQueued || conversationProvider === 'opencode',
         notifyCompact: addToast,
         // Drive the synthetic in-progress compaction bubble + duplicate-send
@@ -1804,6 +1810,36 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             modeOverride: baseMode === 'ralph' ? 'ask' : baseMode,
         });
     }, [sendFollowUp, selectedMode, metadataProcess]);
+
+    const reviewAutopilotUnavailable = selectedMode === 'ask' && (
+        !(effectiveAllowedModes ?? ['ask', 'autopilot']).includes('autopilot')
+        || !!forEachGeneration || !!mapReduceGeneration || !!getRalphContext(task)
+        || effectiveConversationMode === 'sentinel'
+    );
+    usePublishCurrentChatSend(unifiedPanelHost, {
+        targetKey: JSON.stringify([conversationStateKey, processId, owningWorkspaceId, conversationProvider, pendingProvider, selectedMode, effectiveConversationMode]),
+        requiresAutopilotConfirmation: selectedMode === 'ask',
+        disabledReason: !historyOwnerAvailable ? 'The owning server is unavailable.'
+            : readOnly ? 'This chat is read-only.'
+            : noSessionForFollowUp ? 'This chat has no session available for follow-up messages.'
+            : effectiveNav.kind === 'agent' ? 'Open the main conversation to send comments.'
+            : !processId || inputDisabled ? 'Sending is unavailable in this chat.'
+            : isCompacting || compactionQueued ? 'Wait for chat compaction to finish.'
+            : sending && !isActiveGeneration ? 'Wait for the current message to be sent.'
+            : reviewAutopilotUnavailable ? 'This chat does not support switching to Autopilot for review fixes.'
+            : effectiveConversationMode === 'sentinel' && selectedMode !== 'sentinel'
+                ? 'Review comments must keep this chat in Sentinel mode.'
+            : selectedMode === 'ralph' ? 'Send review comments in a chat mode, not Ralph launch mode.'
+            : hydrationScope?.client !== client || hydrationScope?.key !== conversationStateKey
+                ? 'Wait for the open chat to load.' : undefined,
+        send: (message, switchToAutopilot) => {
+            if (switchToAutopilot) setSelectedModeFromUser('autopilot');
+            return sendFollowUp(message, 'enqueue', {
+                includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+                ...(switchToAutopilot ? { modeOverride: 'autopilot' as const } : {}),
+            });
+        },
+    }, historyBaseUrl);
 
     // A canvas tab in the shared right panel keeps two chat-directed actions:
     // "Ask AI" prefills this chat's composer with a selection prompt (never
@@ -1869,15 +1905,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setRalphGrillPlanningProgress(null);
             setPendingAskUserBatch(batch);
         },
-        onMcpOAuthRequired: (data) => {
-            setMcpOAuthPrompts(prev => {
-                if (prev.some(p => p.requestId === data.requestId)) return prev;
-                return [...prev, data];
-            });
-        },
-        onMcpOAuthCompleted: (data) => {
-            setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
-        },
+        onMcpOAuthRequired: mcpOAuth.add,
+        onMcpOAuthCompleted: mcpOAuth.completed,
         onCanvasUpdated: (data) => {
             // Document updates activate their shared-panel tab. Kusto result
             // updates only reconcile mounted views, preserving selection and
@@ -3116,9 +3145,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onCancelPendingMessage={handleCancelPendingMessage}
                         inputRef={richTextRef}
                         onSendInterruptedTurnFollowUp={sendInterruptedTurnFollowUp}
-                        mcpOAuthPrompts={mcpOAuthPrompts}
-                        onMcpOAuthCompleted={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
-                        onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
+                        mcpOAuth={mcpOAuth}
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         rewindProvider={conversationProvider}

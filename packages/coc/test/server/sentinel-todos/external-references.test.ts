@@ -20,7 +20,9 @@ const otherWorkspace = { workspaceId: 'ws-other', processId: 'queue_other' };
 const pr = 'https://github.com/example/project/pull/42';
 const email = { kind: 'email' as const, url: 'mailto:review@example.invalid?subject=Status', title: 'Email' };
 const link = { kind: 'link' as const, url: 'https://docs.example.invalid/design', title: 'Design' };
-const external = [{ kind: 'pr' as const, url: pr }, email, link];
+const teams = { kind: 'teams' as const, url: 'https://teams.microsoft.com/l/message/19%3Achat%40thread.tacv2/123?groupId=group', title: 'Teams discussion' };
+const slack = { kind: 'slack' as const, url: 'https://example.slack.com/archives/C123/p1234567890', title: 'Slack discussion' };
+const external = [{ kind: 'pr' as const, url: pr }, email, teams, slack, link];
 const conversation = {
     processId: 'queue_design', workspaceId: 'ws-other',
     openLink: '#repos/ws-other/chats/queue_design', title: 'Design conversation',
@@ -43,6 +45,16 @@ function errorCode(fn: () => unknown, code: string) {
 }
 
 const invalidReferences: [string, unknown][] = [
+    ...(['teams', 'slack'] as const).flatMap(kind => [
+        [`HTTP ${kind}`, [{ kind, url: (kind === 'teams' ? teams : slack).url.replace('https:', 'http:') }]],
+        [`unsafe ${kind}`, [{ kind, url: 'javascript:alert(1)' }]],
+        [`native scheme ${kind}`, [{ kind, url: `${kind}://message/123` }]],
+        [`spoofed ${kind} host`, [{ kind, url: (kind === 'teams' ? teams : slack).url.replace('.com/', '.com.evil.test/') }]],
+        [`credential ${kind}`, [{ kind, url: (kind === 'teams' ? teams : slack).url.replace('https://', 'https://user:secret@') }]],
+        [`nonstandard port ${kind}`, [{ kind, url: (kind === 'teams' ? teams : slack).url.replace('.com/', '.com:8443/') }]],
+        [`backslash ${kind}`, [{ kind, url: (kind === 'teams' ? teams : slack).url + '\\evil' }]],
+        [`wrong ${kind} path`, [{ kind, url: kind === 'teams' ? 'https://teams.microsoft.com/settings' : 'https://example.slack.com/settings' }]],
+    ] as [string, unknown][]),
     ['null', null],
     ['object instead of array', link],
     ['missing kind', [{ url: link.url }]],
@@ -140,6 +152,20 @@ describe('Sentinel typed external references', () => {
             ];
             const item = todos.create(owner, { ...pending, externalReferences: references }, { actor: 'user' }).item;
             expect(item.references).toEqual(references);
+        });
+
+        it.each([
+            { kind: 'teams' as const, url: 'https://teams.cloud.microsoft/l/channel/19%3Achannel%40thread.tacv2/General?groupId=abc' },
+            { kind: 'teams' as const, url: 'https://teams.live.com/l/message/19%3Achat/123' },
+            { kind: 'slack' as const, url: 'https://example.slack.com/archives/C123' },
+            { kind: 'slack' as const, url: 'https://app.slack.com/client/T123/C123' },
+            { kind: 'slack' as const, url: 'https://app.slack.com/client/T123/C123/thread/C123-123.456' },
+        ])('persists supported message/channel links without private-content reads: $url', reference => {
+            const created = todos.create(owner, { ...pending, externalReferences: [reference, reference] }, { actor: 'user' }).item;
+            expect(new SentinelTodoStore(database.db).get(owner).items[0].references).toEqual([reference]);
+            expect(created).toMatchObject({ status: 'todo', jobs: [], evidence: [], dependsOn: [] });
+            expect(fetchPr).not.toHaveBeenCalled();
+            expect(jobs).not.toHaveBeenCalled();
         });
 
         it('replaces, omits and clears only external references, retaining conversation attachment and bookkeeping', () => {
@@ -255,7 +281,7 @@ describe('Sentinel typed external references', () => {
             expect(updated.item.references).toEqual([]);
             const attached = await service.attachReference(owner, created.item.id, updated.item.revision, conversation, 'user');
             expect(attached.item.references).toHaveLength(1);
-            expect(current(created.item.id).references).toHaveLength(4);
+            expect(current(created.item.id).references).toHaveLength(external.length + 1);
             await expect(service.update(owner, created.item.id, attached.item.revision, { externalReferences: [link] }, 'sentinel'))
                 .rejects.toMatchObject({ code: 'not_found' });
             enabled = true;
@@ -364,7 +390,7 @@ describe('Sentinel typed external references', () => {
             expect(properties.externalReferences).toMatchObject({
                 type: 'array', maxItems: 20, items: { type: 'object', required: expect.arrayContaining(['kind', 'url']) },
             });
-            expect(properties.externalReferences.items.properties.kind.enum).toEqual(['pr', 'email', 'link']);
+            expect(properties.externalReferences.items.properties.kind.enum).toEqual(['pr', 'email', 'teams', 'slack', 'link']);
             expect(properties.externalReferences.items.properties.url.maxLength).toBe(2000);
             expect(properties.externalReferences.items.properties.title.maxLength).toBe(200);
             expect((tool(true).parameters as any).properties.externalReferences).toBeUndefined();
@@ -378,7 +404,7 @@ describe('Sentinel typed external references', () => {
             const id = created.item.id;
             const attached = await call({ action: 'attach_reference', itemId: id, expectedRevision: 1,
                 conversationId: conversation.processId, conversationWorkspaceId: conversation.workspaceId });
-            expect(attached.item.references).toHaveLength(4);
+            expect(attached.item.references).toHaveLength(external.length + 1);
             const replaced = await call({ action: 'update', itemId: id, expectedRevision: 2, externalReferences: [link] });
             expect(replaced.item.references).toEqual([expect.objectContaining({ processId: conversation.processId, attachedBy: 'sentinel' }), link]);
             const omitted = await call({ action: 'update', itemId: id, expectedRevision: 3, priority: 'high' });
@@ -454,7 +480,7 @@ describe('Sentinel typed external references', () => {
 
         it('round-trips typed create/list/update/clear and existing conversation refs through HTTP and CocClient', async () => {
             const created = await client.sentinelTodos.create(owner.workspaceId, owner.processId, {
-                ...pending, externalReferences: [{ kind: 'pr', url: `${pr}/files?view=1` }, email, link],
+                ...pending, externalReferences: [{ kind: 'pr', url: `${pr}/files?view=1` }, email, teams, slack, link],
             });
             expect(created.item.references).toEqual(external);
             expect(created.item.createdBy).toBe('user');

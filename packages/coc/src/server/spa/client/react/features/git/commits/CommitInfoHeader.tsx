@@ -1,9 +1,14 @@
 import type { GitCommitItem } from './commitListTypes';
 import { CommitDetailIcon } from './CommitDetailIcon';
+import { CommitHashPicker, type CommitPickerOptions } from './CommitHashPicker';
 
-/** Toolbar identity: ellipsized title disclosure (full title in its name and tooltip) and SHA copy. */
-export function CommitInfoSummary({ commit, headerCollapsed, headerId, hashCopied, onToggle, onCopy }: {
+/**
+ * Toolbar identity: ellipsized title disclosure (full title in its name and tooltip) and SHA copy.
+ * With `picker`, the short hash is its own commit-switching trigger beside an icon-only copy button.
+ */
+export function CommitInfoSummary({ commit, headerCollapsed, headerId, hashCopied, onToggle, onCopy, picker }: {
     commit: GitCommitItem;
+    picker?: CommitPickerOptions;
     headerCollapsed: boolean;
     headerId: string;
     hashCopied: boolean;
@@ -24,6 +29,7 @@ export function CommitInfoSummary({ commit, headerCollapsed, headerId, hashCopie
                 <CommitDetailIcon name={headerCollapsed ? 'down' : 'up'} />
                 <span>{commit.subject}</span>
             </button>
+            {picker && <CommitHashPicker hash={commit.hash} picker={picker} />}
             <button
                 type="button"
                 onClick={onCopy}
@@ -32,7 +38,7 @@ export function CommitInfoSummary({ commit, headerCollapsed, headerId, hashCopie
                 aria-label={hashCopied ? 'Copied!' : `Copy commit hash ${commit.hash.slice(0, 8)}`}
                 data-testid="commit-summary-copy-hash"
             >
-                <span className="git-review-hash git-review-md">{commit.hash.slice(0, 8)}</span>
+                {!picker && <span className="git-review-hash git-review-md">{commit.hash.slice(0, 8)}</span>}
                 <CommitDetailIcon name={hashCopied ? 'check' : 'copy'} />
             </button>
         </>

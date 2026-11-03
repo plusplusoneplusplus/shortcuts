@@ -10,7 +10,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { UnifiedPanelTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
 import { POINTER_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
@@ -325,15 +325,19 @@ describe('UnifiedPanelTabStrip', () => {
 
             fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 20, clientY: 30 });
             expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-                'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
+                'Close', 'Close Other▶',
+            ]);
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
+            expect(within(screen.getByRole('menu', { name: 'Close Other' })).getAllByRole('menuitem')
+                .map(item => item.textContent)).toEqual([
+                'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
             ]);
             fireEvent.mouseDown(document.body);
 
             const file = tabs.find(tab => tab.kind === 'file')!;
             fireEvent.contextMenu(tabNode(file), { clientX: 20, clientY: 30 });
             expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-                'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
-                'Copy path', 'Copy Relative Path', 'Reveal in Explorer',
+                'Close', 'Close Other▶', 'Copy path', 'Copy Relative Path', 'Reveal in Explorer',
             ]);
             expect(props.onActivate).not.toHaveBeenCalled();
         });
@@ -381,9 +385,150 @@ describe('UnifiedPanelTabStrip', () => {
             expect(document.activeElement).toBe(screen.getByTestId('unified-panel-tab-menu-close'));
 
             fireEvent.keyDown(screen.getByTestId('unified-panel-tab-menu'), { key: 'ArrowDown' });
+            expect(document.activeElement).toBe(screen.getByTestId('unified-panel-tab-menu-close-other'));
+            fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
             expect(document.activeElement).toBe(screen.getByTestId('unified-panel-tab-menu-close-others'));
-            fireEvent.keyDown(screen.getByTestId('unified-panel-tab-menu'), { key: 'Enter' });
+            fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
             expect(props.onMenuAction).toHaveBeenCalledWith('close-others', tabs[0].id);
+        });
+
+        describe('Close Other submenu', () => {
+            const submenu = () => screen.queryByRole('menu', { name: 'Close Other' });
+            const closeOther = () => screen.getByRole('menuitem', { name: 'Close Other' });
+
+            it('keeps Move and Close at the top level and nests all six bulk closes in order', () => {
+                const tabs = sampleTabs();
+                renderStrip({ tabs, activeId: tabs[0].id, groupsEnabled: true });
+                fireEvent.contextMenu(tabNode(tabs[tabs.length - 1]), { clientX: 20, clientY: 30 });
+
+                const menu = screen.getByRole('menu', { name: 'Tab actions' });
+                expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+                    'Move left', 'Move right', 'Close', 'Close Other▶', 'Copy Relative Path', 'Reveal in Explorer',
+                ]);
+                expect(closeOther().getAttribute('aria-haspopup')).toBe('menu');
+                expect(closeOther().getAttribute('aria-expanded')).toBe('false');
+                expect(screen.getByTestId('unified-panel-tab-menu-close-other-chevron')).toBeTruthy();
+                expect(screen.queryByTestId('unified-panel-tab-menu-close-others')).toBeNull();
+
+                fireEvent.click(closeOther());
+                expect(closeOther().getAttribute('aria-expanded')).toBe('true');
+                const children = within(submenu()!).getAllByRole('menuitem');
+                expect(children.map(item => item.textContent)).toEqual([
+                    'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
+                    'Close all in group', 'Close others in group',
+                ]);
+                // The last tab has nothing to its right: the disabled state survives the move.
+                expect(screen.getByRole('menuitem', { name: 'Close to the Right' })).toBeDisabled();
+                expect(screen.getByRole('menuitem', { name: 'Close Others' })).toBeEnabled();
+            });
+
+            it('dispatches each child through the existing menu action and returns focus to the tab', async () => {
+                const tabs = sampleTabs();
+                const props = renderStrip({ tabs, activeId: tabs[0].id });
+                const origin = tabNode(tabs[0]);
+                origin.focus();
+                fireEvent.contextMenu(origin, { clientX: 20, clientY: 30 });
+                fireEvent.click(closeOther());
+                fireEvent.click(screen.getByRole('menuitem', { name: 'Close to the Right' }));
+
+                expect(props.onMenuAction).toHaveBeenCalledWith('close-right', tabs[0].id);
+                expect(props.onClose).not.toHaveBeenCalled();
+                expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+                await Promise.resolve();
+                expect(document.activeElement).toBe(origin);
+            });
+
+            it('navigates with the keyboard; Escape and ArrowLeft close only the submenu', async () => {
+                const tabs = sampleTabs();
+                const props = renderStrip({ tabs, activeId: tabs[0].id });
+                const origin = tabNode(tabs[0]);
+                origin.focus();
+                fireEvent.keyDown(origin, { key: 'F10', shiftKey: true });
+
+                fireEvent.keyDown(screen.getByTestId('unified-panel-tab-menu'), { key: 'ArrowDown' });
+                fireEvent.keyDown(closeOther(), { key: 'ArrowRight' });
+                expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Close Others' }));
+                fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+                expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Close to the Right' }));
+                fireEvent.keyDown(document.activeElement!, { key: 'End' });
+                expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Close All' }));
+                fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+                expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Close Others' }));
+
+                fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+                expect(submenu()).toBeNull();
+                expect(screen.getByTestId('unified-panel-tab-menu')).toBeTruthy();
+                expect(document.activeElement).toBe(closeOther());
+
+                fireEvent.keyDown(closeOther(), { key: ' ' });
+                expect(submenu()).not.toBeNull();
+                fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+                expect(submenu()).toBeNull();
+                expect(document.activeElement).toBe(closeOther());
+
+                fireEvent.keyDown(closeOther(), { key: 'Escape' });
+                await Promise.resolve();
+                expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+                expect(document.activeElement).toBe(origin);
+                expect(props.onMenuAction).not.toHaveBeenCalled();
+            });
+
+            it('opens on mouse hover, not touch hover, and toggles on tap', () => {
+                const tabs = sampleTabs();
+                renderStrip({ tabs, activeId: tabs[0].id });
+                fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 20, clientY: 30 });
+
+                fireEvent.pointerEnter(closeOther(), { pointerType: 'touch' });
+                expect(submenu()).toBeNull();
+                fireEvent.click(closeOther());
+                expect(submenu()).not.toBeNull();
+                fireEvent.click(closeOther());
+                expect(submenu()).toBeNull();
+
+                fireEvent.pointerEnter(closeOther(), { pointerType: 'mouse' });
+                expect(submenu()).not.toBeNull();
+                // Clicking inside the submenu is not an outside click.
+                fireEvent.mouseDown(screen.getByRole('menuitem', { name: 'Close Others' }));
+                expect(submenu()).not.toBeNull();
+                fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Close' }), { pointerType: 'mouse' });
+                expect(submenu()).toBeNull();
+            });
+
+            it('flips left and stays inside the viewport near the right and bottom edges', () => {
+                const originalRect = HTMLElement.prototype.getBoundingClientRect;
+                const originalWidth = window.innerWidth;
+                const originalHeight = window.innerHeight;
+                Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+                Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+                HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+                    const box = this.getAttribute('role') === 'menu' && this.getAttribute('aria-label') === 'Close Other'
+                        ? { top: 0, left: 0, width: 200, height: 150 }
+                        : this.dataset.testid === 'unified-panel-tab-menu-close-other'
+                            ? { top: 560, left: 600, width: 190, height: 24 }
+                            : { top: 0, left: 0, width: 190, height: 100 };
+                    return {
+                        ...box, x: box.left, y: box.top,
+                        right: box.left + box.width, bottom: box.top + box.height,
+                        toJSON: () => ({}),
+                    } as DOMRect;
+                };
+                try {
+                    const tabs = sampleTabs();
+                    renderStrip({ tabs, activeId: tabs[0].id });
+                    fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 790, clientY: 590 });
+                    fireEvent.click(closeOther());
+                    const panel = submenu()!;
+                    // No room right of 790: open on the row's left side.
+                    expect(panel.style.left).toBe('400px');
+                    // 560 + 150 overflows 600; it grows upward from the row bottom (584).
+                    expect(parseFloat(panel.style.top)).toBe(434);
+                    expect(parseFloat(panel.style.top) + 150).toBeLessThanOrEqual(600 - 4);
+                } finally {
+                    HTMLElement.prototype.getBoundingClientRect = originalRect;
+                    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+                    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+                }
+            });
         });
 
         it('keeps the menu inside the viewport', () => {
@@ -811,6 +956,119 @@ describe('UnifiedPanelTabStrip', () => {
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs, activeId: tabs[0].id });
         expect(tabNode(tabs[0]).getAttribute('title')).toBe('util.ts — src/lib/util.ts');
+    });
+
+    describe('file path tooltips', () => {
+        function pathTabs(): readonly UnifiedPanelTab[] {
+            let state = EMPTY_UNIFIED_PANEL;
+            state = openTab(state, {
+                kind: 'note', ownerWorkspaceId: 'member-2', chatId: null, label: 'unify-review-chat-tabs.md',
+                resourceId: 'auto||docs/plans/unify-review-chat-tabs.md', repoLabel: 'api',
+            });
+            state = openTab(state, {
+                kind: 'html-page', ownerWorkspaceId: WS, chatId: CHAT, label: 'index.html',
+                resourceId: '/w/pages/index.html', htmlPageId: 'page-1',
+            });
+            state = openTab(state, {
+                kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, label: 'util.ts', resourceId: 'src/lib/util.ts',
+            });
+            state = openTab(state, {
+                kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, label: 'Plan', resourceId: 'cv-1', repoLabel: 'api',
+            });
+            return visibleTabs(state, CHAT);
+        }
+        const byKind = (tabs: readonly UnifiedPanelTab[], kind: UnifiedPanelTab['kind']) => tabs.find(tab => tab.kind === kind)!;
+        const pathTip = () => screen.queryByTestId('unified-panel-tab-path-tooltip');
+
+        it('puts note and HTML page paths in the hover title from their descriptors', () => {
+            const tabs = pathTabs();
+            renderStrip({ tabs });
+            expect(tabNode(byKind(tabs, 'note')).getAttribute('title'))
+                .toBe('unify-review-chat-tabs.md — api: docs/plans/unify-review-chat-tabs.md');
+            expect(tabNode(byKind(tabs, 'html-page')).getAttribute('title')).toBe('index.html — /w/pages/index.html');
+            expect(tabNode(byKind(tabs, 'canvas')).getAttribute('title')).toBe('Plan — api');
+        });
+
+        it('strips the workspace preview marker from a file path', () => {
+            const state = openTab(EMPTY_UNIFIED_PANEL, {
+                kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, label: 'report.md',
+                resourceId: '__workspace_preview__:/remote/out/report.md', repoLabel: 'remote',
+            });
+            const tabs = visibleTabs(state, CHAT);
+            renderStrip({ tabs });
+            expect(tabNode(tabs[0]).getAttribute('title')).toBe('report.md — remote: /remote/out/report.md');
+        });
+
+        it.each([false, true])('shows the path on keyboard focus and hides it on blur or Escape (groups: %s)', groupsEnabled => {
+            const tabs = pathTabs();
+            const note = byKind(tabs, 'note');
+            const file = byKind(tabs, 'file');
+            const props = renderStrip({ tabs, activeId: note.id, groupsEnabled });
+            fireEvent.focus(tabNode(note));
+            const tip = screen.getByRole('tooltip');
+            expect(tip).toHaveTextContent('api: docs/plans/unify-review-chat-tabs.md');
+            // A tooltip must never blank a desktop page view below the strip.
+            expect(tip).toHaveAttribute('data-native-view-passthrough');
+            expect(tip).not.toHaveAttribute('data-native-view-overlay');
+            expect(tabNode(note)).toHaveAttribute('aria-describedby', tip.id);
+            fireEvent.keyDown(tabNode(note), { key: 'Escape' });
+            expect(pathTip()).toBeNull();
+            expect(tabNode(note)).not.toHaveAttribute('aria-describedby');
+            fireEvent.focus(tabNode(file));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('src/lib/util.ts');
+            fireEvent.blur(tabNode(file));
+            expect(pathTip()).toBeNull();
+            expect(props.onActivate).not.toHaveBeenCalled();
+            expect(props.onClose).not.toHaveBeenCalled();
+        });
+
+        it('skips the focus tooltip for pointer focus, focused children and non-file tabs', () => {
+            const tabs = pathTabs();
+            const note = byKind(tabs, 'note');
+            renderStrip({ tabs, activeId: note.id });
+            fireEvent.pointerDown(tabNode(note));
+            fireEvent.focus(tabNode(note));
+            expect(pathTip()).toBeNull();
+            fireEvent.focus(tabNode(byKind(tabs, 'canvas')));
+            expect(pathTip()).toBeNull();
+            const close = tabNode(note).querySelector('button');
+            if (close) {
+                fireEvent.focus(close);
+                expect(pathTip()).toBeNull();
+            }
+            fireEvent.focus(tabNode(note));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('docs/plans/unify-review-chat-tabs.md');
+            fireEvent.pointerDown(tabNode(note));
+            expect(pathTip()).toBeNull();
+        });
+
+        it('keeps the tooltip inside the viewport and opens it above the tab when there is room', () => {
+            const tabs = pathTabs();
+            const file = byKind(tabs, 'file');
+            renderStrip({ tabs, activeId: file.id });
+            tabNode(file).getBoundingClientRect = () => ({ left: window.innerWidth - 20, top: 10, bottom: 40 } as DOMRect);
+            fireEvent.focus(tabNode(file));
+            let tip = screen.getByRole('tooltip');
+            expect(parseFloat(tip.style.left)).toBeLessThanOrEqual(window.innerWidth - Math.min(360, window.innerWidth - 16) - 8);
+            expect(tip.style.top).toBe('44px');
+            expect(tip.style.transform).toBe('');
+            fireEvent.blur(tabNode(file));
+            tabNode(file).getBoundingClientRect = () => ({ left: 100, top: 120, bottom: 150 } as DOMRect);
+            fireEvent.focus(tabNode(file));
+            tip = screen.getByRole('tooltip');
+            expect(tip.style.left).toBe('100px');
+            expect(tip.style.top).toBe('116px');
+            expect(tip.style.transform).toBe('translateY(-100%)');
+        });
+
+        it('leaves a desktop page view placed while its tab shows the focus tooltip', () => {
+            const tabs = pathTabs();
+            const page = byKind(tabs, 'html-page');
+            renderStrip({ tabs, activeId: page.id });
+            fireEvent.focus(tabNode(page));
+            expect(screen.getByRole('tooltip')).toHaveTextContent('/w/pages/index.html');
+            expect(document.querySelector('[data-native-view-overlay]')).toBeNull();
+        });
     });
 
     it('keeps the repo badge on non-source tabs', () => {

@@ -69,6 +69,17 @@ The OAuth initiator waits for the SDK session's MCP server to finish loading bef
 
 The MCP server panel combines configured status with live tool discovery: a live failure overrides a configured `ok`, OAuth/401/token failures render as `auth`, and other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action; explicit re-authentication sends `force: true` to start a fresh SDK OAuth flow.
 
+### Chat authentication prompts
+
+`useChatMcpOAuthPrompts` owns visible auth requests and retired IDs, scoped by
+server, workspace and chat. Individual and bulk dismissal retire only shown IDs
+for the mounted chat surface, including navigation back; fresh IDs remain eligible.
+Cards use the owning client for polling, retry and DELETE cancellation. Scoped
+pending routes require matching workspace/process query parameters. DELETE uses
+native cancellation and manager removal; holder sessions release removed entries.
+Late poll/SSE results cannot restore retired cards or retry them. Cancellation
+failures expose a scoped retry action.
+
 ### Teams channel connection
 
 Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP

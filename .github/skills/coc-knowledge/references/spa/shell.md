@@ -913,6 +913,14 @@ restores the ungrouped strip. `unifiedPanelTabs.css` owns the rounded active
 surface and inline colored group labels in both themes. The cap is three, with
 pinned, active and preview priority; the +N overflow lists the group's hidden
 tabs in a searchable native-view-overlay portal shared with canvas compression.
+A folded group keeps its active and pinned tabs, and a ▾ button beside its pill
+opens that portal over all the group's tabs with their strip icons; picking one
+activates it without unfolding the group.
+File-backed tabs (`file`, `note`, `html-page`) show `unifiedTabFilePathLabel`,
+the repo-qualified path from the tab's own descriptor (exact trusted/preview
+paths and note task roots; no guessed workspace root): in the hover `title`, in
+a keyboard-focus tooltip (native-view passthrough, above the tab when there is
+room), and as menu row titles plus the highlighted row's detail line.
 Fold state and block order persist per panel scope at
 `unified-right-panel:<scope>:groups` as `{ folded, order }` (a legacy
 folded-only array still reads), independently of chats; saved orders are
@@ -1004,8 +1012,11 @@ remote labels include the configured server name. Exact-owner target labels and
 last-known offline names provide fallbacks; unavailable metadata stays explicit
 and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
 reference-only conversations keep navigation without job badges. Default-off live
-`sentinelTodoExternalReferencesEnabled` adds typed PR/email/web reference chips to
-cards and an external-link editor in the existing detail form. External replacements
+`sentinelTodoExternalReferencesEnabled` adds typed PR/email/Teams/Slack/web reference chips to
+cards and an external-link editor in the existing detail form. Its URL field parses
+pasted Markdown links into editable title/URL fields with accessible validation.
+Shared coc-client URL validation restricts Teams/Slack to supported HTTPS
+message/channel links without content reads. External replacements
 and clears preserve conversation attachments; omission preserves external links.
 External links follow shared desktop/web navigation without selecting the card or
 starting a conversation excursion. References remain display metadata. Detail notes

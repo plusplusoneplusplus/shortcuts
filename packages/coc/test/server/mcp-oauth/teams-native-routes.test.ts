@@ -129,6 +129,26 @@ describe('Teams native authentication through MCP routes', () => {
         expect(f.manager.getPending('pending-native')).toBeUndefined();
     });
 
+    it('rejects late native verification after the exact chat request is dismissed', async () => {
+        const f = await setup();
+        f.manager.addPending({ requestId: 'pending-native', serverName: 'Microsoft Teams', serverUrl: fixture.serverUrl,
+            workspaceId: 'workspace-fixture', processId: 'chat-fixture', originalMessage: 'hello' });
+        let completeToken!: (token: string) => void;
+        fixture.getToken.mockImplementationOnce(() => new Promise<string>(resolve => { completeToken = resolve; }));
+        const path = '/api/mcp-oauth/pending/pending-native';
+        const query = '?workspaceId=workspace-fixture&processId=chat-fixture';
+        const completing = f.post(`${path}/complete-and-retry${query}`);
+        await vi.waitFor(() => expect(completeToken).toBeTypeOf('function'));
+        const dismissed = await fetch(`http://127.0.0.1:${f.port}${path}${query}`, { method: 'DELETE' });
+        expect(dismissed.status).toBe(200);
+        completeToken('fixture-token');
+        expect((await completing).status).toBe(404);
+        expect(f.manager.getPending('pending-native')).toBeUndefined();
+        expect(f.cancelTeamsOAuth).toHaveBeenCalledWith('pending-native');
+        expect(fixture.legacyRead).not.toHaveBeenCalled();
+        expect(fixture.legacyClear).not.toHaveBeenCalled();
+    });
+
     it('does not let old credentials complete a still-running reauthentication', async () => {
         const f = await setup();
         f.isTeamsOAuthPending.mockReturnValue(true);

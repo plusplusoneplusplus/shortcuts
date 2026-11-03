@@ -36,9 +36,9 @@ describe('isScriptableLlmTool', () => {
 });
 
 describe('run_tool_script registry gating', () => {
-    it('is advertised only when the tool scripting flag is on', () => {
-        expect(getEffectiveLlmToolRegistry().map(t => t.name)).not.toContain('run_tool_script');
-        expect(getEffectiveLlmToolRegistry({ toolScriptingEnabled: true }).find(t => t.name === 'run_tool_script'))
+    it.each(['run_tool_script', 'mcp_call'])('%s is advertised only when the tool scripting flag is on', (name) => {
+        expect(getEffectiveLlmToolRegistry().map(t => t.name)).not.toContain(name);
+        expect(getEffectiveLlmToolRegistry({ toolScriptingEnabled: true }).find(t => t.name === name))
             .toMatchObject({ enabledByDefault: true });
     });
 });
@@ -247,8 +247,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, three installed-extension tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 12);
+        // Wakeup, three canvas tools, three installed-extension tools, Kusto, System One, browser, run_tool_script, mcp_call and query_pull_request are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 13);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {

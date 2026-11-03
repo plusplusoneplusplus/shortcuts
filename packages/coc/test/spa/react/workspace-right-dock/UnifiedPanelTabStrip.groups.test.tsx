@@ -92,6 +92,55 @@ function overflow(group: UnifiedTabStripGroup = 'files'): HTMLElement {
 describe('UnifiedPanelTabStrip grouped presentation', () => {
     afterEach(cleanup);
 
+    it.each([
+        ['chat-turn-runner.ts', 'TS'],
+        ['client.js', 'JS'],
+        ['package.json', 'NPM'],
+        ['unknown.extension', 'file'],
+    ])('reuses the strip and collapsed-menu icon for expanded overflow file %s', (label, iconLabel) => {
+        const hidden = tab('file', label, { resourceId: `src/${label}`, repoLabel: 'Remote repo' });
+        const tabs = [...files(3), hidden];
+        const { props, rerender } = renderStrip({ tabs, activeId: tabs[0].id });
+        fireEvent.click(overflow());
+        const option = screen.getByRole('option', { name: `${label}Remote repo` });
+        const icon = within(option).getByTestId('file-type-icon');
+        expect(icon).toHaveAttribute('data-icon-label', iconLabel);
+        expect(icon.parentElement).toHaveAttribute('aria-hidden', 'true');
+        expect(icon.parentElement).toHaveClass('flex-shrink-0', 'opacity-80');
+        expect(icon.compareDocumentPosition(within(option).getByText(label)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(option).toHaveAttribute('title', `Remote repo: src/${label}`);
+        const menuIcon = icon.outerHTML;
+        const menuIconClass = icon.parentElement!.className;
+
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        rerender(<UnifiedPanelTabStrip {...props} foldedGroups={new Set(['files'])} />);
+        fireEvent.click(screen.getByTestId('unified-panel-group-menu-files'));
+        const collapsedIcon = within(screen.getByRole('option', { name: `${label}Remote repo` })).getByTestId('file-type-icon');
+        expect(collapsedIcon.outerHTML).toBe(menuIcon);
+        expect(collapsedIcon.parentElement!.className).toBe(menuIconClass);
+
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        rerender(<UnifiedPanelTabStrip {...props} activeId={hidden.id} />);
+        const stripIcon = screen.getByTestId(`unified-panel-tab-file-icon-${hidden.id}`);
+        expect(stripIcon.outerHTML.replace(`unified-panel-tab-file-icon-${hidden.id}`, 'file-type-icon')).toBe(menuIcon);
+        expect(screen.getAllByTestId(`unified-panel-tab-file-icon-${hidden.id}`)).toHaveLength(1);
+    });
+
+    it.each([
+        ['terminal', 'tools'], ['browser', 'web'], ['canvas', 'canvas'],
+    ] as const)('shows the matching %s icon in expanded %s overflow', (kind, group) => {
+        const tabs = Array.from({ length: 4 }, (_, index) => tab(kind, `Resource ${index}`));
+        const { props, rerender } = renderStrip({ tabs });
+        const stripIcon = tabNode(tabs[0]).querySelector('[aria-hidden="true"]')!.innerHTML;
+        fireEvent.click(overflow(group));
+        const option = screen.getByRole('option', { name: tabs[3].label });
+        expect(option.querySelectorAll(':scope > [aria-hidden="true"]')[1].innerHTML).toBe(stripIcon);
+        fireEvent.click(option);
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[3].id);
+        rerender(<UnifiedPanelTabStrip {...props} activeId={tabs[3].id} />);
+        expect(tabNode(tabs[3])).toHaveAttribute('aria-selected', 'true');
+    });
+
     it('keeps repo-group browser overflow labels free of repository names', () => {
         const tabs = Array.from({ length: 5 }, (_, index) => tab('browser', `Page ${index}`, {
             repoLabel: `Repo ${index}`, ownerWorkspaceId: `owner-${index}`,
@@ -153,7 +202,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         const { props } = renderStrip({ tabs, activeId: tabs[0].id }, true);
         fireEvent.click(overflow());
         const list = screen.getByRole('listbox', { name: 'Files tabs' });
-        expect(within(list).getAllByRole('option').map(node => node.textContent)).toEqual(['file-4.ts', 'file-5.ts']);
+        const initialOptions = within(list).getAllByRole('option');
+        expect(initialOptions).toHaveLength(2);
+        expect(initialOptions[0]).toHaveAccessibleName('file-4.ts');
+        expect(initialOptions[1]).toHaveAccessibleName('file-5.ts');
         fireEvent.click(within(list).getByRole('option', { name: /file-5.ts/ }));
 
         expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
@@ -167,7 +219,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         // The promoted tab left the overflow; the tab it displaced joined it.
         expect(overflow()).toHaveTextContent('+2');
         fireEvent.click(overflow());
-        expect(screen.getAllByRole('option').map(node => node.textContent)).toEqual(['file-3.ts', 'file-4.ts']);
+        const updatedOptions = screen.getAllByRole('option');
+        expect(updatedOptions).toHaveLength(2);
+        expect(updatedOptions[0]).toHaveAccessibleName('file-3.ts');
+        expect(updatedOptions[1]).toHaveAccessibleName('file-4.ts');
     });
 
     it('lists only the tabs the strip hides, keyed by id rather than title', () => {
@@ -397,12 +452,14 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         fireEvent.contextMenu(tabNode(tabs[0]));
         expect(screen.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Close all in group' }));
         expect(props.onMenuAction).toHaveBeenCalledWith('close-group', tabs[0].id);
         expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[0].id, 'close-group', new Set()))
             .toEqual(tabs.map(entry => entry.id));
         fireEvent.contextMenu(tabNode(tabs[4]));
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Close others in group' }));
         expect(props.onMenuAction).toHaveBeenCalledWith('close-others-in-group', tabs[4].id);
         expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[4].id, 'close-others-in-group', new Set([tabs[3].id])))
@@ -410,6 +467,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         fireEvent.contextMenu(tabNode(shell));
         expect(screen.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Close Other' }));
         expect(screen.getByRole('menuitem', { name: 'Close others in group' })).toBeDisabled();
         expect(screen.getByRole('menuitem', { name: 'Close all in group' })).toBeEnabled();
     });
@@ -590,3 +648,137 @@ describe('UnifiedPanelTabStrip group block reordering', () => {
         expect(blockOrder()).toEqual(['tools', 'files', 'web']);
     });
 });
+
+describe('UnifiedPanelTabStrip folded group menu', () => {
+    afterEach(() => {
+        cleanup();
+        clearUnifiedTabGroupState();
+        localStorage.clear();
+    });
+
+    const shell = tab('terminal', 'Shell');
+    const groupMenu = (group: UnifiedTabStripGroup = 'files') => screen.getByTestId(`unified-panel-group-menu-${group}`);
+    const optionNames = () => screen.getAllByRole('option').map(node => node.textContent);
+
+    it('appears only on folded groups and only when groups are enabled', () => {
+        const tabs = files();
+        const { unmount } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        expect(groupMenu()).toHaveAttribute('aria-label', 'Show all 5 Files tabs');
+        expect(groupMenu()).toHaveAttribute('aria-haspopup', 'listbox');
+        expect(screen.queryByTestId('unified-panel-group-menu-tools')).toBeNull();
+        unmount();
+        renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, groupsEnabled: false, foldedGroups: new Set(['files']) });
+        expect(screen.queryByTestId('unified-panel-group-menu-files')).toBeNull();
+    });
+
+    it('lists every tab with icons and activates one without expanding the group', () => {
+        const tabs = files();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: tabs[1].id, foldedGroups: new Set(['files']) }, true);
+        const label = screen.getByRole('button', { name: 'Files, 5 tabs' });
+        expect(shownIds('files')).toEqual([tabs[1].id]);
+        fireEvent.click(groupMenu());
+        expect(screen.getByRole('listbox', { name: 'Files tabs' })).toBeTruthy();
+        expect(screen.getByText('5 open')).toBeTruthy();
+        expect(optionNames()).toEqual(tabs.map(entry => expect.stringContaining(entry.label)));
+        expect(screen.getByRole('option', { name: /file-2.ts.*\(active\)/ })).toHaveAttribute('aria-selected', 'true');
+        expect(within(screen.getByTestId(`unified-panel-group-menu-files-row-${tabs[3].id}`)).getByTestId('file-type-icon')).toBeTruthy();
+        // Strip icon ids stay unique while the menu is open.
+        expect(screen.getAllByTestId(`unified-panel-tab-file-icon-${tabs[1].id}`)).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole('option', { name: /file-4.ts/ }));
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[3].id);
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(label).toHaveAttribute('aria-expanded', 'false');
+        expect(shownIds('files')).toEqual([tabs[3].id]);
+        expect(tabNode(tabs[3])).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('opens from the keyboard, searches, activates with Enter and returns focus', async () => {
+        const tabs = files();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        groupMenu().focus();
+        fireEvent.keyDown(groupMenu(), { key: 'ArrowDown' });
+        const search = screen.getByRole('textbox', { name: 'Search files tabs' });
+        fireEvent.change(search, { target: { value: 'file-5' } });
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(props.onActivate).toHaveBeenCalledWith(tabs[4].id);
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        await Promise.resolve();
+        expect(document.activeElement).toBe(groupMenu());
+    });
+
+    it('dismisses with Escape or outside press without activating, toggling or moving', async () => {
+        const tabs = files();
+        const onMoveGroup = vi.fn();
+        const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']), onMoveGroup });
+        fireEvent.pointerDown(groupMenu(), { button: 0, clientX: 10 });
+        fireEvent.pointerMove(window, { clientX: 200 });
+        fireEvent.pointerUp(window);
+        fireEvent.click(groupMenu());
+        expect(screen.getByRole('listbox')).toBeTruthy();
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        await Promise.resolve();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(document.activeElement).toBe(groupMenu());
+        fireEvent.click(groupMenu());
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(props.onActivate).not.toHaveBeenCalled();
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+        expect(onMoveGroup).not.toHaveBeenCalled();
+    });
+
+    it('keeps the menu inside the viewport near the right edge', () => {
+        renderStrip({ tabs: [shell, ...files()], activeId: shell.id, foldedGroups: new Set(['files']) });
+        groupMenu().getBoundingClientRect = () => ({ left: window.innerWidth - 4, right: window.innerWidth + 16, bottom: window.innerHeight - 2 } as DOMRect);
+        fireEvent.click(groupMenu());
+        const menu = screen.getByTestId('unified-panel-group-menu-files-menu');
+        expect(parseFloat(menu.style.left)).toBeLessThanOrEqual(window.innerWidth - 328);
+        expect(parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+        expect(parseFloat(menu.style.top)).toBeLessThanOrEqual(window.innerHeight - 420);
+    });
+
+    it('serves Tools, Web and Canvas groups and closes rows through the strip callbacks', () => {
+        const web = [tab('browser', 'Google'), tab('browser', 'Docs')];
+        const canvas = [tab('canvas', 'Plan')];
+        const { props } = renderStrip({
+            tabs: [shell, ...web, ...canvas], activeId: null,
+            foldedGroups: new Set(['tools', 'web', 'canvas']), hideBrowserRepoLabels: true,
+        });
+        for (const [group, entries] of [['tools', [shell]], ['web', web], ['canvas', canvas]] as const) {
+            fireEvent.click(groupMenu(group));
+            expect(optionNames()).toEqual(entries.map(entry => expect.stringContaining(entry.label)));
+            fireEvent.mouseDown(document.body);
+        }
+        fireEvent.click(groupMenu('web'));
+        fireEvent.click(screen.getByTestId(`unified-panel-group-menu-web-close-${web[1].id}`));
+        expect(props.onClose).toHaveBeenCalledWith(web[1].id);
+    });
+
+    it('shows file paths on menu rows and the highlighted row, without titles on non-file rows', () => {
+        const note = tab('note', 'plan.md', { resourceId: 'auto||docs/plans/plan.md', repoLabel: 'api' });
+        const paste = tab('paste', 'Clip');
+        const tabs = files(3);
+        renderStrip({ tabs: [shell, note, paste, ...tabs], activeId: shell.id, foldedGroups: new Set(['files']) });
+        fireEvent.keyDown(groupMenu(), { key: 'ArrowDown' });
+        const option = (name: RegExp) => screen.getByRole('option', { name });
+        expect(option(/plan\.md/)).toHaveAttribute('title', 'api: docs/plans/plan.md');
+        expect(option(/file-2\.ts/)).toHaveAttribute('title', 'file-2.ts');
+        expect(option(/Clip/)).not.toHaveAttribute('title');
+        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('api: docs/plans/plan.md');
+        const search = screen.getByRole('textbox');
+        fireEvent.keyDown(search, { key: 'ArrowDown' });
+        expect(screen.queryByTestId('unified-panel-group-menu-files-detail')).toBeNull();
+        fireEvent.keyDown(search, { key: 'ArrowDown' });
+        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('file-1.ts');
+    });
+
+    it('shows hidden file paths in the expanded group +N menu', () => {
+        const tabs = files().map((entry, index) => index === 4 ? { ...entry, resourceId: 'src/deep/file-5.ts', repoLabel: 'web' } : entry);
+        renderStrip({ tabs, activeId: tabs[0].id });
+        fireEvent.click(overflow());
+        expect(screen.getByRole('option', { name: /file-5\.ts/ })).toHaveAttribute('title', 'web: src/deep/file-5.ts');
+    });
+});
+

@@ -101,6 +101,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { CommitDetail }from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
+import { UnifiedPanelHostProvider, useUnifiedPanelHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { usePublishCurrentChatSend } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/currentChatSend';
 
 function makeHook(overrides: Record<string, unknown> = {}) {
     return {
@@ -226,5 +228,38 @@ describe('CommitDetail — comment integration', () => {
         await renderDetail({});
         fireEvent.click(screen.getByTestId('toggle-comments-btn'));
         expect(screen.getByTestId('comments-error').textContent).toBe('Failed to load comments');
+    });
+
+    it('sends the commit-wide prompt to the shown chat without invoking AI resolution', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        const resolveWithAI = vi.fn();
+        const resolveComment = vi.fn();
+        const reviewComment = {
+            id: 'c1', context: { repositoryId: 'ws1', filePath: 'src/example.ts', oldRef: 'abc123^', newRef: 'abc123' },
+            selection: { diffLineStart: 2, diffLineEnd: 3, side: 'added', newLineStart: 12, newLineEnd: 13 },
+            comment: 'Address this issue', status: 'open', createdAt: '', updatedAt: '', selectedText: 'example',
+        };
+        mockUseAllCommitComments.mockReturnValue(makeAllCommitHook({
+            comments: [reviewComment], resolveWithAI, resolveComment,
+        }));
+        function Sender() {
+            usePublishCurrentChatSend(useUnifiedPanelHost(), { send });
+            return <div data-testid="current-chat">Current conversation</div>;
+        }
+        await act(async () => {
+            render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws1', chatId: 'current-chat' }}>
+                <Sender /><CommitDetail workspaceId="ws1" hash="abc123" />
+            </UnifiedPanelHostProvider>);
+        });
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send comments to current chat' })); });
+        expect(send).toHaveBeenCalledOnce();
+        expect(send.mock.calls[0][0]).toContain('commit abc123');
+        expect(send.mock.calls[0][0]).toContain('File: src/example.ts\nLocation: new lines 12');
+        expect(send.mock.calls[0][0]).toContain('Address this issue');
+        expect(resolveWithAI).not.toHaveBeenCalled();
+        expect(resolveComment).not.toHaveBeenCalled();
+        expect(reviewComment.status).toBe('open');
+        expect(screen.getByTestId('current-chat')).toBeVisible();
     });
 });

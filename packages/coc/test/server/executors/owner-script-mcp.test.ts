@@ -114,8 +114,8 @@ describe('owner scripts reach the owner workspace MCP servers', () => {
         expect((run.result as { alpha: string }).alpha).toContain('unknown-server');
     });
 
-    it('denies mcp_call by default on unattended runs but still lists tools', async () => {
-        writeRepoPreferences(dataDir, 'ws-a', { disabledLlmTools: [] });
+    it('denies explicitly approval-required mcp_call on unattended runs but still lists tools', async () => {
+        writeRepoPreferences(dataDir, 'ws-a', { disabledLlmTools: [], approvalRequiredLlmTools: ['mcp_call'] });
         const run = await runOwner(`
             const listed = await tools.mcp_list_tools({ server: 'alpha' });
             let denied;

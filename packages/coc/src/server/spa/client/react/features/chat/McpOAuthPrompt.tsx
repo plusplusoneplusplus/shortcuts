@@ -5,13 +5,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getApiBase } from '../../utils/config';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import type { useChatMcpOAuthPrompts } from './hooks/useChatMcpOAuthPrompts';
 import type { McpOAuthPromptData } from './hooks/useChatSSE';
 
 export type McpOAuthPromptStatus = 'waiting' | 'authorizing' | 'completed' | 'failed';
 
 export interface McpOAuthPromptProps {
     data: McpOAuthPromptData;
+    request: CocClient['request'];
+    onDismiss: (requestId: string) => void;
     /** Called when OAuth flow completes successfully. */
     onCompleted?: (requestId: string) => void;
     /** Called when OAuth flow fails or times out. */
@@ -21,16 +24,17 @@ export interface McpOAuthPromptProps {
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1_000; // 10 min max wait
 
-export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptProps) {
+export function McpOAuthPrompt({ data, request, onDismiss, onCompleted, onFailed }: McpOAuthPromptProps) {
     const [status, setStatus] = useState<McpOAuthPromptStatus>('waiting');
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const mountedRef = useRef(true);
+    const activeRef = useRef(true);
 
     useEffect(() => {
         mountedRef.current = true;
-        return () => { mountedRef.current = false; };
+        return () => { mountedRef.current = false; activeRef.current = false; };
     }, []);
 
     const stopPolling = useCallback(() => {
@@ -39,6 +43,8 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
     }, []);
 
     const handleAuthorize = useCallback(() => {
+        if (!mountedRef.current || !activeRef.current) return;
+        stopPolling();
         // Open the auth URL in a new tab
         if (data.authorizationUrl) {
             window.open(data.authorizationUrl, '_blank', 'noopener,noreferrer');
@@ -48,16 +54,18 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
         // Start polling for completion
         const poll = setInterval(async () => {
             try {
-                const res = await fetch(`${getApiBase()}/mcp-oauth/pending/${encodeURIComponent(data.requestId)}`);
-                if (!res.ok) return;
-                const entry = await res.json();
-                if (!mountedRef.current) { stopPolling(); return; }
+                const entry = await request<{ status: string; error?: string }>(`/mcp-oauth/pending/${encodeURIComponent(data.requestId)}`);
+                if (!mountedRef.current || !activeRef.current) return;
                 if (entry.status === 'completed') {
                     stopPolling();
+                    activeRef.current = false;
                     setStatus('completed');
+                    // Dispatch only while this exact card is active. Dismissal never retries.
+                    void request(`/mcp-oauth/pending/${encodeURIComponent(data.requestId)}/complete-and-retry`, { method: 'POST' }).catch(() => {});
                     onCompleted?.(data.requestId);
                 } else if (entry.status === 'failed') {
                     stopPolling();
+                    activeRef.current = false;
                     setStatus('failed');
                     setErrorMessage(entry.error ?? 'Authorization failed');
                     onFailed?.(data.requestId);
@@ -70,38 +78,29 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
 
         // Timeout after max wait
         timeoutRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
+            if (!mountedRef.current || !activeRef.current) return;
+            activeRef.current = false;
             stopPolling();
             setStatus('failed');
             setErrorMessage('Authorization timed out');
             onFailed?.(data.requestId);
         }, POLL_TIMEOUT_MS);
-    }, [data, onCompleted, onFailed, stopPolling]);
+    }, [data, request, onCompleted, onFailed, stopPolling]);
 
-    const handleCompleteAndRetry = useCallback(async () => {
-        try {
-            await fetch(`${getApiBase()}/mcp-oauth/pending/${encodeURIComponent(data.requestId)}/complete-and-retry`, {
-                method: 'POST',
-            });
-        } catch {
-            // Non-fatal
-        }
-    }, [data.requestId]);
+    const handleDismiss = () => {
+        activeRef.current = false;
+        stopPolling();
+        onDismiss(data.requestId);
+    };
 
     // Auto-open auth URL on mount if available
     useEffect(() => {
+        activeRef.current = true;
         if (data.authorizationUrl && status === 'waiting') {
             handleAuthorize();
         }
         return stopPolling;
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Auto-trigger retry on completion
-    useEffect(() => {
-        if (status === 'completed') {
-            void handleCompleteAndRetry();
-        }
-    }, [status, handleCompleteAndRetry]);
 
     return (
         <div
@@ -110,7 +109,7 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
         >
             <div className="flex items-start gap-3">
                 <span className="text-xl flex-shrink-0" aria-hidden="true">🔐</span>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 break-words">
                     {status === 'waiting' && (
                         <>
                             <p className="text-sm font-medium text-[#1f2328] dark:text-[#e6edf3]">
@@ -137,7 +136,7 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
                     {status === 'authorizing' && (
                         <>
                             <p className="text-sm font-medium text-[#1f2328] dark:text-[#e6edf3]">
-                                Waiting for authorization…
+                                Waiting for {data.serverName} authorization…
                             </p>
                             <p className="text-xs text-[#656d76] dark:text-[#8b949e] mt-1">
                                 Complete the sign-in in your browser. This will auto-detect when done.
@@ -175,7 +174,7 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
                             )}
                             {data.authorizationUrl && (
                                 <button
-                                    onClick={() => { setStatus('waiting'); setErrorMessage(undefined); handleAuthorize(); }}
+                                    onClick={() => { activeRef.current = true; setStatus('waiting'); setErrorMessage(undefined); handleAuthorize(); }}
                                     className="mt-2 px-3 py-1.5 text-xs font-medium rounded-md bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
                                 >
                                     Try Again
@@ -183,8 +182,35 @@ export function McpOAuthPrompt({ data, onCompleted, onFailed }: McpOAuthPromptPr
                             )}
                         </>
                     )}
+                    <button type="button" onClick={handleDismiss}
+                        aria-label={`Dismiss authentication request for ${data.serverName}`}
+                        className="mt-2 min-h-8 px-2 text-xs rounded text-[#656d76] dark:text-[#8b949e] hover:underline focus-visible:outline focus-visible:outline-2">
+                        Dismiss
+                    </button>
                 </div>
             </div>
         </div>
     );
+}
+
+/** Bulk dismissal captures only the requests currently visible in this owner. */
+export function McpOAuthPrompts({ controls }: { controls: ReturnType<typeof useChatMcpOAuthPrompts> }) {
+    if (controls.prompts.length === 0 && !controls.cancellationFailed) return null;
+    return <section aria-label="MCP authentication requests">
+        {controls.prompts.length > 1 && <div className="mx-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-[#656d76] dark:text-[#8b949e]">MCP authentication</span>
+            <button type="button" onClick={() => controls.dismiss(controls.prompts.map(p => p.requestId))}
+                aria-label="Dismiss all MCP authentication requests shown in this chat"
+                className="min-h-8 px-2 text-xs rounded text-[#656d76] dark:text-[#8b949e] hover:underline focus-visible:outline focus-visible:outline-2">
+                Dismiss all ({controls.prompts.length})
+            </button>
+        </div>}
+        {controls.prompts.map(data => <McpOAuthPrompt key={data.requestId} data={data}
+            request={controls.request} onCompleted={controls.remove} onFailed={controls.remove}
+            onDismiss={id => controls.dismiss([id])} />)}
+        {controls.cancellationFailed && <div role="alert" className="mx-2 text-xs text-red-700 dark:text-red-400">
+            A dismissed authentication request could not be cancelled. Sign-in has not been confirmed.
+            <button type="button" className="min-h-8 px-2 underline" onClick={controls.retryDismissal}>Retry dismissal</button>
+        </div>}
+    </section>;
 }

@@ -13,6 +13,7 @@ import {
     unifiedPanelFileActionAvailability,
     unifiedPanelRelativeFilePath,
     unifiedPanelTabMenuItems,
+    unifiedTabFilePathLabel,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabMenuModel';
 
 const WS = 'ws-1';
@@ -46,6 +47,14 @@ describe('unified panel tab menu model', () => {
             }).map(item => item.action);
             expect(actions.slice(0, 5)).toEqual([
                 'close', 'close-others', 'close-right', 'close-saved', 'close-all',
+            ]);
+            const items = unifiedPanelTabMenuItems(current, [current], new Set(), undefined, [current.id], true);
+            // Bulk closes render under the "Close Other" submenu; Move and Close stay top level.
+            expect(items.filter(item => item.group === 'close-other').map(item => item.action)).toEqual([
+                'close-others', 'close-right', 'close-saved', 'close-all', 'close-group', 'close-others-in-group',
+            ]);
+            expect(items.filter(item => item.group !== 'close-other').map(item => item.action).slice(0, 3)).toEqual([
+                'move-left', 'move-right', 'close',
             ]);
             expect(actions.includes('copy-path')).toBe(kind === 'file' || kind === 'note');
             expect(actions).not.toContain('split-right');
@@ -202,5 +211,31 @@ describe('unified panel tab menu model', () => {
         }
         expect(unifiedPanelAbsoluteFilePath(tab('file', 'a.md'), 'relative/root')).toBeNull();
         expect(unifiedPanelAbsoluteFilePath(tab('file', 'a.md'), '/')).toBe('/a.md');
+    });
+
+    describe('unifiedTabFilePathLabel', () => {
+        it.each([
+            ['file', 'src/lib/util.ts', undefined, 'src/lib/util.ts'],
+            ['file', 'src/index.ts', 'api', 'api: src/index.ts'],
+            ['file', TRUSTED_PATH_PREFIX + '/opt/sdk/types.d.ts', undefined, '/opt/sdk/types.d.ts'],
+            ['file', WORKSPACE_PREVIEW_PREFIX + 'C:\\work\\out\\report.md', 'remote', 'remote: C:\\work\\out\\report.md'],
+            ['note', 'auto||docs/plans/unify-review-chat-tabs.md', 'web', 'web: docs/plans/unify-review-chat-tabs.md'],
+            ['note', 'tasks|/home/u/.coc/repos/ws/tasks|plans/a.md', undefined, '/home/u/.coc/repos/ws/tasks/plans/a.md'],
+            ['note', 'tasks|\\\\host\\share\\tasks|plan.md', undefined, '\\\\host\\share\\tasks\\plan.md'],
+            ['note', 'tasks||plans/a.md', undefined, 'plans/a.md'],
+            ['html-page', '/w/pages/index.html', undefined, '/w/pages/index.html'],
+        ] as const)('uses the %s descriptor path %s without guessing a workspace root', (kind, resourceId, repoLabel, expected) => {
+            expect(unifiedTabFilePathLabel(tab(kind, resourceId, { label: 'title', repoLabel }))).toBe(expected);
+        });
+
+        it('returns null for empty paths and non-file kinds', () => {
+            for (const resource of ['', '  ', TRUSTED_PATH_PREFIX, WORKSPACE_PREVIEW_PREFIX]) {
+                expect(unifiedTabFilePathLabel(tab('file', resource))).toBeNull();
+            }
+            expect(unifiedTabFilePathLabel(tab('note', 'not-a-note'))).toBeNull();
+            for (const kind of ['browser', 'canvas', 'diff', 'external', 'paste', 'terminal', 'git', 'notes'] as const) {
+                expect(unifiedTabFilePathLabel(tab(kind, '/looks/like/a/path.md', { repoLabel: 'api' }))).toBeNull();
+            }
+        });
     });
 });

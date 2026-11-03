@@ -7,8 +7,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useCommitReviewFiles } from '../hooks/useCommitReviewFiles';
 import { GitFileReview } from '../diff/GitFileReview';
-import { createCommitDiffSource } from '../diff/diffSource';
+import { createCommitDiffSource, getGitReviewClient } from '../diff/diffSource';
+import { toCommitItem } from '../repoGitTab/useRepoGitSelection';
+import { isGitCommitLookupEnabled } from '../../../utils/config';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
+import { useSendReviewComments } from '../hooks/useSendReviewComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitReviewChat } from './CommitReviewChat';
 import { useCommitChatPresentation, type UseCommitChatPresentationReturn } from '../hooks/useCommitChatPresentation';
@@ -24,6 +27,7 @@ import { usePrReviewProgress } from '../diff/usePrReviewProgress';
 import { pickPriorityFile } from '../diff/prPopoutPriority';
 import type { ClassificationKey } from '../diff/diffSource';
 import { CommitDetailIcon } from './CommitDetailIcon';
+import type { CommitPickerOptions } from './CommitHashPicker';
 import { useCommitReviewHeader } from './useCommitReviewHeader';
 import type { GitReviewToolbarAction } from '../diff/GitReviewToolbar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -45,6 +49,8 @@ export interface CommitDetailProps {
     onClassified?: () => void;
     onNavigateToFile?: (path: string, target: 'first' | 'last') => void;
     initialHunkTarget?: 'first' | 'last';
+    /** Recent commits and selection for the header's hash switcher; SHA lookup is added here, scoped to the owner. */
+    commitPicker?: Omit<CommitPickerOptions, 'lookup'>;
 }
 
 export function CommitDetail(props: CommitDetailProps) {
@@ -56,7 +62,7 @@ export function CommitDetail(props: CommitDetailProps) {
     return <CommitDetailBody key={JSON.stringify([owner ?? props.workspaceId, props.workspaceId, props.hash, endpoint])} {...props} />;
 }
 
-function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat, onNavigateToFile, initialHunkTarget }: CommitDetailProps) {
+function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat, onNavigateToFile, initialHunkTarget, commitPicker }: CommitDetailProps) {
     const [focusComment, setFocusComment] = useState<DiffComment | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const localChat = useCommitChatPresentation({ workspaceId, commitHash: hash, supportsChat: !reviewChat });
@@ -143,12 +149,12 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
         copyAllCommentsAsPrompt: copyAllCommitCommentsAsPrompt,
-        resolveWithAI: commitResolveWithAI,
         fixWithAI: commitFixWithAI,
         aiLoadingIds: commitAiLoadingIds,
         aiErrors: commitAiErrors,
         clearAiError: clearCommitAiError,
     } = useAllCommitComments(workspaceId, hash ?? '', attachmentDestinationId === workspaceId ? null : attachmentDestinationId);
+    const sendComments = useSendReviewComments(workspaceId, allCommitComments, { kind: 'commit', hash: hash ?? '' });
 
     const { dispatch: queueDispatch } = useQueue();
     const { markPoppedOut } = useGitReviewPopOut();
@@ -163,26 +169,6 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
         }
     }, [workspaceId, attachmentDestinationId, hash, markPoppedOut]);
-
-    const handleResolveAllCommitWithAI = useCallback(() => {
-        if (shouldSkipResolveDialog()) {
-            void commitResolveWithAI();
-            return;
-        }
-        const openCount = allCommitComments.filter(c => c.status === 'open').length;
-        queueDispatch({
-            type: 'OPEN_DIALOG',
-            workspaceId,
-            mode: 'resolve',
-            resolveContext: {
-                title: 'Resolve with AI',
-                commentCount: openCount,
-                onSubmit: (ctx: string, sk: string[]) => {
-                    void commitResolveWithAI(ctx || undefined, sk.length > 0 ? sk : undefined);
-                },
-            },
-        });
-    }, [commitResolveWithAI, allCommitComments, queueDispatch, workspaceId]);
 
     const handleFixCommitWithAI = useCallback((id: string) => {
         if (shouldSkipResolveDialog()) {
@@ -220,7 +206,14 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
         { id: 'chat', label: 'Toggle AI chat', icon: <CommitDetailIcon name="spark" />, onClick: toggleChat, pressed: chatOpen, testId: 'toggle-chat-btn' },
         ...(!isPopOut && hash ? [{ id: 'popout', label: 'Open in new window', icon: <CommitDetailIcon name="out" />, onClick: handlePopOut, testId: 'commit-popout-btn' }] : []),
     ];
+    const routingTarget = attachmentDestinationId === workspaceId ? null : attachmentDestinationId;
     const header = useCommitReviewHeader({
+        commitPicker: commitPicker && {
+            ...commitPicker,
+            lookup: isGitCommitLookupEnabled()
+                ? sha => getGitReviewClient(workspaceId, routingTarget).git.getCommit(workspaceId, sha).then(toCommitItem)
+                : undefined,
+        },
         commit, fileCount: fileList.length, classification, aiSelection, testIdPrefix: 'commit', actions,
         resetKey: JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, hash]),
     });
@@ -265,7 +258,7 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
                             if (c) void updateCommitComment(c, { comment: text });
                         }}
                         onAskAI={() => undefined}
-                        onResolveAllWithAI={handleResolveAllCommitWithAI}
+                        {...sendComments}
                         onFixWithAI={handleFixCommitWithAI}
                         aiLoadingIds={commitAiLoadingIds}
                         aiErrors={commitAiErrors}

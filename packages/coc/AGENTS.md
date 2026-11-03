@@ -906,6 +906,8 @@ references before editing. Paths are package-relative.
   Preserve explicit PR-write/final-check/grill exceptions.
   Background script contexts and bundles set `unattendedScript`: omit questions
   and deny configured approval-gated tools before consulting prompts or session approvals.
+  Tool approval defaults off, including `mcp_call` inside `run_tool_script`; retain
+  explicit per-repo approval choices and stored `mcp_call` opt-outs.
   Owner resolution and native/provider permission denial remain caller responsibilities;
   synthetic nested `run_tool_script` calls obey the inherited engine nesting policy.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.

@@ -80,6 +80,14 @@ function getQueryParam(req: http.IncomingMessage, key: string): string | undefin
     return value !== null ? value : undefined;
 }
 
+/** Optional exact-owner guard used by chat; settings retain their server-owned routes. */
+function matchesChatOwner(req: http.IncomingMessage, entry: PendingMcpOAuth): boolean {
+    const workspaceId = getQueryParam(req, 'workspaceId');
+    const processId = getQueryParam(req, 'processId');
+    if (workspaceId === undefined && processId === undefined) return true;
+    return !!workspaceId && !!processId && entry.workspaceId === workspaceId && entry.processId === processId;
+}
+
 const PENDING_LIST = /^\/api\/mcp-oauth\/pending\/?$/;
 const PENDING_ITEM = /^\/api\/mcp-oauth\/pending\/([^/]+)$/;
 const PENDING_RESOLVE = /^\/api\/mcp-oauth\/pending\/([^/]+)\/resolve$/;
@@ -123,10 +131,10 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
     routes.push({
         method: 'GET',
         pattern: PENDING_ITEM,
-        handler: (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+        handler: (req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const id = decodeURIComponent(match![1]);
             const entry = manager.getPending(id);
-            if (!entry) {
+            if (!entry || !matchesChatOwner(req, entry)) {
                 sendError(res, 404, 'Pending OAuth request not found');
                 return;
             }
@@ -177,8 +185,13 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
     routes.push({
         method: 'DELETE',
         pattern: PENDING_ITEM,
-        handler: (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+        handler: (req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const id = decodeURIComponent(match![1]);
+            const pending = manager.getPending(id);
+            if (!pending || !matchesChatOwner(req, pending)) {
+                sendError(res, 404, 'Pending OAuth request not found');
+                return;
+            }
             ctx.cancelTeamsOAuth?.(id);
             const removed = manager.remove(id);
             if (!removed) {
@@ -316,9 +329,13 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
     routes.push({
         method: 'POST',
         pattern: PENDING_COMPLETE_AND_RETRY,
-        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const id = decodeURIComponent(match![1]);
             const pending = manager.getPending(id);
+            if (!pending || !matchesChatOwner(req, pending)) {
+                sendError(res, 404, 'Pending OAuth request not found');
+                return;
+            }
             if (pending?.serverName === 'Microsoft Teams' && ctx.dataDir) {
                 if (ctx.isTeamsOAuthPending?.(id)) {
                     sendError(res, 409, 'Teams native sign-in has not completed');
@@ -330,6 +347,10 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                     sendError(res, 409, 'Teams native sign-in has not completed');
                     return;
                 }
+            }
+            if (manager.getPending(id) !== pending) {
+                sendError(res, 404, 'Pending OAuth request not found');
+                return;
             }
             const entry = manager.resolve(id, 'completed');
             if (!entry) {

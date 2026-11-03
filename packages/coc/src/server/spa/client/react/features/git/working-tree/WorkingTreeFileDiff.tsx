@@ -49,6 +49,7 @@ import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { useSendReviewComments } from '../hooks/useSendReviewComments';
 import { FileLevelComments, revealFileComment, splitFileComments } from '../diff/FileLevelComments';
 import { workingTreeCommentContext } from './workingTreeCommentContext';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
@@ -450,6 +451,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
+    const sendComments = useSendReviewComments(workspaceId, comments, diffContext);
     const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
     const patchGeneration = useRef(0);
@@ -836,6 +838,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                         resolvingIds={resolvingIds}
                         deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
+                        {...sendComments}
                         onClose={() => setSidebarOpen(false)}
                         data-testid="diff-comment-sidebar"
                     />

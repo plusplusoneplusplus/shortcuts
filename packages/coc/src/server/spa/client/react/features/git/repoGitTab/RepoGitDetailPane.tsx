@@ -14,6 +14,7 @@ import { CommitReviewChat } from '../commits/CommitReviewChat';
 import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
+import type { CommitDetailProps } from '../commits/CommitDetail';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
 import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
@@ -28,6 +29,11 @@ export interface RepoGitDetailPaneProps {
     attachmentDestinationId?: string;
     view: RightPanelView | null;
     commits: GitCommitItem[];
+    /** Load state of `commits`, shown by the commit header's hash switcher. */
+    commitsLoading?: boolean;
+    commitsError?: string | null;
+    /** Opens another commit in the detail; never a working-tree route. */
+    onSelectCommit?: (commit: GitCommitItem) => void;
     unpushedCount: number;
     branchRangeData: BranchRangeInfo | null;
     branchRangeFiles: any[];
@@ -56,7 +62,7 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, attachmentDestinationId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onSelectCommit, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
@@ -73,6 +79,7 @@ export function RepoGitDetailPane({
             hunkTarget={hunkTarget}
             onNavigateToCommitFile={onNavigateToCommitFile}
             onCommitClassified={onCommitClassified}
+            commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onSelect: onSelectCommit }}
         />;
     }
 
@@ -186,7 +193,7 @@ export function RepoGitDetailPane({
 
 /** Only workspace/commit changes replace the host and its conversation. */
 function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit, filePath,
-    hunkTarget, onNavigateToCommitFile, onCommitClassified }: {
+    hunkTarget, onNavigateToCommitFile, onCommitClassified, commitPicker }: {
     workspaceId: string;
     attachmentDestinationId?: string;
     hash: string;
@@ -195,6 +202,7 @@ function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit
     hunkTarget?: HunkTarget;
     onNavigateToCommitFile: RepoGitDetailPaneProps['onNavigateToCommitFile'];
     onCommitClassified: RepoGitDetailPaneProps['onCommitClassified'];
+    commitPicker?: CommitDetailProps['commitPicker'];
 }) {
     const chat = useCommitChatPresentation({ workspaceId, commitHash: hash });
     return <div className="relative flex h-full min-h-0 flex-1">
@@ -205,6 +213,7 @@ function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit
                 scrollToFilePath={filePath}
                 onNavigateToFile={(path, target) => onNavigateToCommitFile(hash, path, target)}
                 initialHunkTarget={hunkTarget}
+                commitPicker={commitPicker}
             />
         </div>
         <CommitReviewChat workspaceId={workspaceId} sourceSelectionId={attachmentDestinationId} hash={hash} commitMessage={commit?.subject} chat={chat} />

@@ -129,7 +129,8 @@ describe('File download API', () => {
         const readFile = vi.spyOn(fs.promises, 'readFile');
         const response = await request(filePath);
         expect(response.status).toBe(200);
-        expect(response.body).toEqual(content);
+        // Compare bytes natively without deeply traversing a multi-megabyte object.
+        expect(response.body.equals(content)).toBe(true);
         expect(readFile.mock.calls.some(args => String(args[0]) === filePath)).toBe(false);
     });
 

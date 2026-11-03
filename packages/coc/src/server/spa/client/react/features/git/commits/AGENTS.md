@@ -11,9 +11,13 @@ Classify, file navigation, progress, Mark viewed and actions share one toolbar
 row. `CommitInfoSummary` is the ellipsized title disclosure; `CommitInfoHeader`
 renders subject, body, author, date, parents, file count and copyable SHA below
 the row. Metadata starts collapsed, uses `hidden` outside the keyboard order, and
-resets with the owner and commit. The Classify split-button caret reuses
-`ClassifyDiffAiControls` and the workspace-scoped AI selection; disable selectors
-during classification. Priority navigation, comments, AI chat and pop-out are
+resets with the owner and commit. The icon-only Classify split-button caret
+names the current provider/effort in its label and tooltip and reuses
+`ClassifyDiffAiControls` with the workspace-scoped AI selection; disable selectors
+during classification. With a host `commitPicker`, the toolbar short hash is a
+`CommitHashPicker` trigger (recent commits + SHA entry) beside an icon-only copy
+button; SHA lookup goes through the owner's `getGitReviewClient` route and respects
+`gitCommitLookup`. Priority navigation, comments, AI chat and pop-out are
 toolbar actions that move into the More menu in narrower panes.
 
 `useCommitReviewFiles` reads file metadata through the concrete owner client and
@@ -26,7 +30,10 @@ The file panel retains diff engines, hunk navigation, comments, find, truncation
 and fallback behavior. Review state keys include owner, workspace and comparison.
 The toolbar's "All comments in this commit" sidebar lists every file's comments
 through `useAllCommitComments` (shared `useReviewComments`), grouped by file, whichever
-file is selected. Classification also stays on the toolbar.
+file is selected. Its Send action uses `useSendReviewComments` and the selected
+panel chat's owner-qualified `currentChatSend` publisher, never the commit-bound
+review chat or batch-resolution endpoint. It preserves drafts and comment status.
+Classification also stays on the toolbar.
 
 Icon buttons need accessible names; panel toggles expose pressed state. Review
 openers serialize `attachmentDestinationId` as `sourceSelectionId` and resolve

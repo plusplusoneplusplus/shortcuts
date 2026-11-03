@@ -17,6 +17,7 @@ export type UnifiedPanelBulkCloseAction =
 export type UnifiedPanelTabMenuAction =
     | 'move-left'
     | 'move-right'
+    | 'open-git'
     | 'keep-open'
     | 'duplicate'
     | 'close'
@@ -29,7 +30,8 @@ export type UnifiedPanelTabMenuAction =
 export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
     label: string;
-    group: 'keep-open' | 'browser' | 'close' | 'file' | 'move';
+    /** `close-other` items render inside the "Close Other" submenu. */
+    group: 'keep-open' | 'browser' | 'git' | 'close' | 'close-other' | 'file' | 'move';
     disabled: boolean;
 }
 
@@ -78,6 +80,8 @@ export function unifiedPanelTabMenuItems(
     },
     movableIds?: readonly string[],
     groupsEnabled = false,
+    /** The Git tab's owner is known to the menu: offer the Open submenu. */
+    gitOpenAvailable = false,
 ): UnifiedPanelTabMenuItem[] {
     const items: UnifiedPanelTabMenuItem[] = [];
     if (movableIds) {
@@ -89,6 +93,9 @@ export function unifiedPanelTabMenuItems(
             { action: 'move-left', label: 'Move left', group: 'move', disabled: index <= 0 },
             { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= permittedIds.length - 1 },
         );
+    }
+    if (tab.kind === 'git' && gitOpenAvailable) {
+        items.push({ action: 'open-git', label: 'Open', group: 'git', disabled: false });
     }
     if (tab.preview) {
         items.push({ action: 'keep-open', label: 'Keep Open', group: 'keep-open', disabled: false });
@@ -102,32 +109,32 @@ export function unifiedPanelTabMenuItems(
         {
             action: 'close-others',
             label: 'Close Others',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others', dirtyIds).length === 0,
         },
         {
             action: 'close-right',
             label: 'Close to the Right',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-right', dirtyIds).length === 0,
         },
         {
             action: 'close-saved',
             label: 'Close Saved',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-saved', dirtyIds).length === 0,
         },
         {
             action: 'close-all',
             label: 'Close All',
-            group: 'close',
+            group: 'close-other',
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-all', dirtyIds).length === 0,
         },
     );
     if (groupsEnabled) {
         items.push(
-            { action: 'close-group', label: 'Close all in group', group: 'close', disabled: false },
-            { action: 'close-others-in-group', label: 'Close others in group', group: 'close',
+            { action: 'close-group', label: 'Close all in group', group: 'close-other', disabled: false },
+            { action: 'close-others-in-group', label: 'Close others in group', group: 'close-other',
                 disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others-in-group', dirtyIds).length === 0 },
         );
     }
@@ -182,6 +189,29 @@ export function unifiedPanelAbsoluteFilePath(
         }
     }
     return absoluteFilePath(tab.resourceId, workspaceRootPath);
+}
+
+/**
+ * The full path a file-backed tab (`file`, `note`, `html-page`) carries in its
+ * own descriptor, prefixed with its repo label when it has one. Saved roots (an
+ * exact trusted/preview path, a note's tasks root) are applied; a workspace root
+ * is never guessed, so a repo file stays repo-relative. Null for other kinds.
+ */
+export function unifiedTabFilePathLabel(tab: UnifiedPanelTab): string | null {
+    const path = descriptorFilePath(tab);
+    if (!path) return null;
+    return tab.repoLabel ? `${tab.repoLabel}: ${path}` : path;
+}
+
+function descriptorFilePath(tab: UnifiedPanelTab): string | null {
+    if (tab.kind === 'html-page') return tab.resourceId.trim() ? tab.resourceId : null;
+    if (tab.kind === 'note') {
+        return unifiedPanelAbsoluteFilePath(tab, null) ?? parseNoteResourceId(tab.resourceId)?.notePath ?? null;
+    }
+    if (tab.kind !== 'file') return null;
+    const prefix = [WORKSPACE_PREVIEW_PREFIX, TRUSTED_PATH_PREFIX].find(entry => tab.resourceId.startsWith(entry));
+    const path = prefix ? tab.resourceId.slice(prefix.length) : tab.resourceId;
+    return path.trim() ? path : null;
 }
 
 /** Pure path arithmetic on the owner's filesystem spelling; never local I/O. */

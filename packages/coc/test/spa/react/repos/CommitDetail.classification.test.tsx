@@ -217,7 +217,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
 
     it('reveals the existing model picker through an accessible settings toggle', async () => {
         await renderDetail();
-        const toggle = screen.getByRole('button', { name: 'Classification settings' });
+        const toggle = screen.getByRole('button', { name: /^Classification settings/ });
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
         expect(screen.queryByTestId('commit-classify-model-picker-chip')).toBeNull();
         await act(async () => { fireEvent.click(toggle); });
@@ -231,7 +231,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
     it('keeps AI settings disabled while classification is running', async () => {
         mockClassificationStatus = 'loading';
         await renderDetail();
-        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Classification settings' })); });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Classification settings/ })); });
         expect((screen.getByTestId('commit-classify-model-picker-chip') as HTMLButtonElement).disabled).toBe(true);
     });
 
@@ -255,7 +255,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
     it('resets settings when changing workspace even if the commit hash is the same', async () => {
         let view: ReturnType<typeof render>;
         await act(async () => { view = render(<CommitDetail workspaceId="ws1" hash="abc1234" />); });
-        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Classification settings' })); });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Classification settings/ })); });
         await act(async () => { view!.rerender(<CommitDetail workspaceId="ws2" hash="abc1234" />); });
         expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
     });
@@ -275,8 +275,13 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         mockClassificationStatus = 'ready';
         await renderDetail();
         expect(screen.getByTestId('commit-classify-button').querySelector('span:last-child')!.className).toContain('git-review-md');
-        expect(screen.getByTestId('commit-classify-summary').className).toContain('git-review-wide');
-        expect(screen.getByTestId('commit-classify-summary').textContent).toBe('Copilot · Default model');
+        // The caret is icon-only; the current provider/effort lives in its accessible name and tooltip.
+        const caret = screen.getByTestId('commit-classify-settings-toggle');
+        expect(screen.queryByTestId('commit-classify-summary')).toBeNull();
+        expect(caret.textContent).toBe('');
+        expect(caret.getAttribute('aria-label')).toBe('Classification settings: Copilot · Default model');
+        expect(caret.getAttribute('title')).toBe('Classification settings · Copilot · Default model');
+        expect(screen.getByTestId('commit-classify-button').textContent).toBe('Re-classify');
         const ids = ['commit-prev-priority-btn', 'commit-next-priority-btn', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn'];
         for (const id of ids) expect(screen.getByTestId(id).className).toContain('git-review-wide');
         const more = screen.getByTestId('git-review-more');

@@ -47,7 +47,11 @@ three visible slots per group; an explicit `false` restores the ungrouped strip.
 `unifiedPanelTabs.css` owns the rounded tab surfaces, active-tab corners, inline
 colored group labels and group lines in both themes. Pinned To-do, active and
 preview tabs take priority; promoted active/preview tabs occupy trailing slots
-without changing saved order. Folded groups retain the active and pinned tabs.
+without changing saved order. Folded groups retain the active and pinned tabs;
+a ▾ button beside a folded pill opens the shared searchable menu over all the
+group's tabs (strip icons, active check, row close). Picking one uses normal
+activation without unfolding the group, and the button is separate from the
+pill's toggle and drag handle.
 Fold state and block order belong to the panel scope, not the chat, in
 `unified-right-panel:<scope>:groups` (`{ folded, order }`; legacy arrays read as
 folds). `normalizeGroupOrder` drops unknown/repeated groups and appends missing
@@ -116,10 +120,10 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; Browser tabs in repo groups show page titles and favicons without repository labels in the strip, tooltip or overflow rows; `unifiedTabLabels.ts` controls display only and preserves descriptor ownership. Other tabs retain their repository labels. The menu model owns per-kind availability, group move boundaries, file/note absolute paths and visible-order bulk targets. Path copy uses the clicked descriptor's saved path/task root or a workspace root matching both owner id and clone route, without local filesystem resolution; unavailable paths stay hidden and clipboard results use shared toasts. |
-| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, block order normalization/moves, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state and is the block's drag handle. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with the repo kept in screen-reader text. File, note and HTML page tabs put `unifiedTabFilePathLabel` (the menu model's repo-qualified path from the descriptor alone, never a guessed workspace root) in `unifiedTabTooltip`, in a keyboard-focus `role="tooltip"` (skipped for pointer focus; `data-native-view-passthrough`, so it never hides a page view) and in group menu row titles plus the highlighted row's detail line; Browser tabs in repo groups show page titles and favicons without repository labels in the strip, tooltip or overflow rows; `unifiedTabLabels.ts` controls display only and preserves descriptor ownership. Other tabs retain their repository labels. The menu model owns per-kind availability, group move boundaries, file/note absolute paths and visible-order bulk targets. Path copy uses the clicked descriptor's saved path/task root or a workspace root matching both owner id and clone route, without local filesystem resolution; unavailable paths stay hidden and clipboard results use shared toasts. |
+| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, block order normalization/moves, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state and is the block's drag handle. The strip adds the folded group's ▾ menu trigger next to it. |
 | `unifiedPanelTabGroupStore.ts` | Panel-scope fold state and block order through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears both. |
-| `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
+| `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow, folded-group menus (optional `renderIcon` and `describeTab` row details) and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, the active file's "Reload from disk" button, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
@@ -132,10 +136,10 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu; `unifiedGitTabId` takes the chat id). Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
-| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, and `openPanelGitWorkingChanges` all pending working changes, in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits and "Open working tree" use them. Working changes carry a fresh `openRequest` token so an unchanged route reapplies; the caller also calls `useSplitGitPanel.revealView`, which focuses the Git tab even when it already shows that view. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). |
+| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, and `openPanelGitWorkingChanges` all pending working changes, in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits and "Open working tree" use them. Working changes carry a fresh `openRequest` token so an unchanged route reapplies; the caller also calls `useSplitGitPanel.revealView`, which focuses the Git tab even when it already shows that view. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). The Git tab Open submenu reuses that target through `gitTabOpenOwners` (the tab's repo, its `gitMemberId`, or — for a group tab naming no member — the dock's live members as an explicit choice) and reads `git.listCommits` through `gitTabOwnerClient`: a matching `WorkspaceOwnerContext`, the registered remote, the group's `baseUrl`, or the page origin only for an explicitly local owner; an unconnected remote returns null and the menu shows it unavailable. Its opens also activate the clicked Git tab. |
 | `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
 | `sentinelTodoExcursion.ts` + `SentinelTodoOriginBar.tsx` | The way back from a chat opened through a To-do link (see "To-do excursions"). |
-| `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
+| `unifiedChatCanvasActions.ts` + `currentChatSend.ts` | Canvas actions resolve their originating chat by chat id. Git review batch sends use the selected chat's exact panel, clone, endpoint and hydrated conversation/provider binding. Ask requires explicit Autopilot confirmation; changed bindings revoke it. Mode-locked workflows retain their restrictions and Sentinel stays in its terminal mode. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
 ## Views are reused, never re-implemented
@@ -641,8 +645,16 @@ flight.
 
 The tab context menu opens from right-click, the Context Menu key, or Shift+F10,
 keeps keyboard focus inside enabled actions, clamps to the viewport, and restores
-focus to its originating tab on dismissal. Every kind exposes the close group;
-preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
+focus to its originating tab on dismissal. Every kind exposes Close plus a
+**Close Other** submenu (model group `close-other`) holding the bulk closes —
+Close Others, Close to the Right, Close Saved, Close All and, with groups on, the
+two in-group closes — with their own disabled states and dispatch. Move
+left/right stay top level. Git tabs add an **Open** submenu (`open-git`, shown
+only when the host passes `appDispatch`): Workspace first, then the owner's five
+newest commits (`UnifiedPanelGitOpenSubmenu`, with loading/empty/error/retry and
+unavailable states). Submenus share `SubmenuRow`: mouse hover, tap/click, or
+ArrowRight/Enter/Space open them; ArrowLeft or Escape closes only the submenu and
+refocuses its row; they flip left and clamp to the viewport. Preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
 Web (`browser`) tabs add Duplicate; HTML previews and other kinds never offer it.
 `duplicateBrowserTabInput` copies owner, route, repo label, title, engine pin and
 the committed URL into a fresh `browserOpenInput` (new view id, so no guest,
@@ -1077,13 +1089,16 @@ never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual trackin
 (missing `kind` also means conversation) render below jobs as compact, truncated
 `Ref` links with owner-correct excursions and no execution or review label.
 Default-off runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
-Email and Link anchors to every card and detail view. PR labels identify their
+Email, Teams, Slack and Link anchors to every card and detail view. PR labels identify their
 provider, repository and number; hover titles retain the complete URL. Only
 HTTP(S), plus `mailto:` for email references, render as links. Native anchors
 preserve keyboard and modified-click behavior, isolate card events, and use the
 desktop panel browser when available. Add/Edit forms manage multiple external
-references within their existing Save, draft, revision and error lifecycle.
-Untouched references are omitted from writes; an explicit empty list clears only
+references within their existing Save, draft, revision and error lifecycle. URL
+fields parse a pasted `[title](URL)` into editable title and URL inputs; invalid
+links show an accessible error and fail native form validation. Shared coc-client
+URL validation requires supported HTTPS message/channel URLs for Teams and Slack
+without fetching contents. Untouched references are omitted from writes; an explicit empty list clears only
 external references, never conversation references.
 
 `SentinelTodoDependencies` is gated by default-off

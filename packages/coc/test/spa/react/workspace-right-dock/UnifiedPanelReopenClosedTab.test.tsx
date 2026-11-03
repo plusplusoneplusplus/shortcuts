@@ -221,6 +221,7 @@ describe('unified panel reopen-closed-tab shortcut', () => {
         const c = openBrowser('c.test');
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${c.id}`));
         fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${a.id}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-other'));
         fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
         expect(browserTabs()).toEqual([]);
         act(() => { screen.getByTestId('unified-panel-open-menu').focus(); });

@@ -33,6 +33,15 @@ untracked diff opens beside the chat and reopens after its tab was closed.
 "Open conflicts", the tile click and hosts without a panel keep the expanded
 sidebar working tree.
 
+### Git tab Open submenu
+
+Right-clicking the panel's Git tab offers Open → Workspace or one of five recent
+commits through the same `openPanelGitWorkingChanges` / `openPanelGitCommit`
+routes, so the chat stays visible. Reads and routes use the Git tab's own owner
+(`gitTabOpenOwners`, `gitTabOwnerClient` in `panelGitCommit.ts`); a group tab
+without a member asks for one, and an unconnected remote owner is never read
+from the page origin.
+
 Group previews read member repositories, never a group range; their
 compact cards skip history reads and empty subsections only when a successful,
 resolved upstream comparison explicitly reports zero ahead. Pending, failed and
@@ -425,11 +434,19 @@ late reads; owner `diff-comment-updated` events (context on `comment.context`, o
 with line locations. Copy as prompt uses `formatReviewCommentsPrompt`: every unresolved
 comment with review context, file, location, working-tree stage and exact text; resolved
 ones are counted, not copied. Copy shows Copied only after the clipboard write succeeds.
-Send to current chat
-drafts the same prompt into the composer of the chat the hosting unified panel shows
-(`useCurrentChatInsertDraft` → that chat's `insertDraft`: appends after a blank line,
-focuses, never submits), never the source's review chat; it is disabled when no panel
-hosts the diff or the shown chat is not mounted. Anchor relocation
+Batch Send uses `useSendReviewComments` with the existing prompt formatters and
+source workspace identity. `currentChatSend` binds the selected mounted `ChatDetail`
+by panel scope, concrete server route, endpoint and conversation/provider binding.
+Ask requires explicit confirmation to switch that exact chat to Autopilot through
+its mode selector and supported follow-up mode override. Cancel and dismissal do
+nothing; changed targets revoke confirmation. Autopilot sends directly. Mode-locked
+workflows cannot elevate, and Sentinel retains its terminal mode.
+
+Admission uses the captured client and normal enqueue follow-up flow. Unavailable
+owners, read-only chats and empty unresolved sets disable sending; failures stay
+visible and in-flight duplicates reject. Composer drafts, attachments, provider and
+comment resolution stay untouched. Individual card Send to current chat uses
+`useCurrentChatInsertDraft` to append and focus without submitting. Anchor relocation
 matches source rows, excluding patch headers and no-newline annotations during engine
 switches. Both engines share the persisted comment shape.
 
@@ -527,12 +544,23 @@ pickable-model command picker.
 `commits/CommitDetail.tsx` and the commit pop-out build the toolbar header with
 `useCommitReviewHeader`: `CommitInfoSummary` (ellipsized title disclosure whose
 accessible name and tooltip carry the full subject, plus SHA copy), the
-`ClassifySplitButton` (main part runs classification; the caret popover hosts
+`ClassifySplitButton` (main part runs classification; the icon-only caret carries
+the provider/effort summary in its accessible name and tooltip, and its popover hosts
 `ClassifyDiffAiControls` with the workspace-scoped selection, disabled while
 running), and below-row `CommitInfoHeader` details, classification errors and
 `ClassificationFilterBar`. Disclosure resets on owner, workspace or commit
 changes; collapsed metadata stays out of keyboard navigation. The PR pop-out keeps
 `PopOutClassificationToolbar`; `DiffViewToggle` accepts a quiet appearance.
+
+### Commit hash switcher
+
+When a host passes `commitPicker`, `CommitInfoSummary` renders `CommitHashPicker`: the
+short hash opens a portaled dialog of recent loaded commits plus a SHA field, and the
+copy button stays separate. A unique 7–40 hex prefix of a loaded commit opens locally;
+otherwise `CommitDetail` adds a `getCommit` lookup on the data member through the
+owner's `getGitReviewClient` route, only while `gitCommitLookup` is on. Late lookups
+are discarded after close. The Git tab wires `selection.selectCommit`, so switching
+publishes a commit route and never a working-tree view; other hosts omit the picker.
 
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a

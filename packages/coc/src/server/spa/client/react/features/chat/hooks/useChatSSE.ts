@@ -603,6 +603,7 @@ export function useChatSSE({
         });
 
         es.addEventListener('mcp-oauth-required', (event: Event) => {
+            if (eventSourceRef.current !== es) return;
             try {
                 const data = JSON.parse((event as MessageEvent).data) as McpOAuthPromptData;
                 onMcpOAuthRequired?.(data);
@@ -610,6 +611,7 @@ export function useChatSSE({
         });
 
         es.addEventListener('mcp-oauth-completed', (event: Event) => {
+            if (eventSourceRef.current !== es) return;
             try {
                 const data = JSON.parse((event as MessageEvent).data) as McpOAuthPromptData;
                 onMcpOAuthCompleted?.(data);
@@ -633,7 +635,7 @@ export function useChatSSE({
         });
 
         return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, processId, workspaceId, sourceBaseUrl, refreshConversation, owner, client]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, processId, workspaceId, sourceBaseUrl, refreshConversation, owner, client, onMcpOAuthRequired, onMcpOAuthCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { stopStreaming };
 }

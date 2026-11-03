@@ -7,10 +7,15 @@
  */
 
 import { vi, expect, beforeEach } from 'vitest';
+import { setDefaultResultOrder } from 'node:dns';
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { _clearConfigCache } from '../src/server/spa/client/react/api/staticConfigCache';
 
 expect.extend(matchers);
+
+// Keep localhost listeners and clients on the same address family in every
+// fork worker. macOS can otherwise time out on ::1 before trying IPv4.
+setDefaultResultOrder('ipv4first');
 
 // The static-config client cache is a module-level singleton that persists for
 // the lifetime of a test file. Clear it before every test so a provider/
