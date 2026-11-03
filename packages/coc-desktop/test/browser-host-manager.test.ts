@@ -1432,3 +1432,267 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s blank-tab cookie impo
         expect(h.created).toHaveLength(0);
     });
 });
+
+describe('owner-bound annotation admission and lifecycle', () => {
+    const identity = { workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'clone:w', status: 'agent' as const };
+    async function setup(engine: BrowserEngine = 'electron') {
+        const h = harness(engine);
+        await h.manager.open(1, 'annotated', 'https://fixture.test/', 'clone:w');
+        const { view, sink: hostSink } = h.created[0];
+        const listeners = new Set<import('../src/browser-host-contract').BrowserCdpEventListener>();
+        view.onCdpEvent = listener => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+        const actions: string[] = [];
+        const cdp = vi.fn(async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+            if (method === 'Page.createIsolatedWorld') return { executionContextId: 42 };
+            if (method === 'Runtime.evaluate') {
+                const action = /"action":"(start|drain|stop)"/.exec(String(params?.expression))?.[1];
+                if (action) {
+                    actions.push(action);
+                    return { result: { value: { active: action !== 'stop', events: [] } } };
+                }
+                if (String(params?.expression).includes('__cocHumanContinuation')) return { result: { value: 'document:1' } };
+                return { result: { value: { title: 'Fixture', url: 'https://fixture.test/', elements: [], nextRef: 1 } } };
+            }
+            return {};
+        });
+        view.cdp = cdp;
+        await h.manager.bounds(1, 'annotated', { x: 0, y: 0, width: 800, height: 600 });
+        const sink = { events: vi.fn(), ended: vi.fn() };
+        const start = () => h.manager.startAnnotation(1, 'annotated', 'clone:w', sink);
+        const stop = () => h.manager.stopAnnotation(1, 'annotated', 'clone:w');
+        const command = (humanTakeoverEnabled = true, processId = 'p') => h.manager.executeControl(1, {
+            id: 'request', workspaceId: 'w', processId, turnId: 'turn', selectedTab: 't1:annotated', humanTakeoverEnabled,
+            command: { action: 'press', key: 'Enter' },
+        });
+        return { ...h, view, hostSink, listeners, cdp, actions, sink, start, stop, command };
+    }
+
+    it.each(['electron', 'webview2'] as const)('admits a visible %s URL tab independently of AI control and excludes other callers', async engine => {
+        const h = await setup(engine);
+        try {
+            expect(await h.start()).toBe(true);
+            expect(h.actions).toEqual(['start']);
+            await expect(h.start()).rejects.toThrow('annotation-active');
+            await expect(h.manager.withControlPage(1, 'annotated', 'clone:w', page => page.snapshot())).rejects.toThrow('annotation-active');
+            h.manager.bindControlScope(2, 'w', 'clone:w');
+            await expect(h.manager.executeControl(2, { id: 'other', workspaceId: 'w', processId: 'other',
+                selectedTab: 't1:annotated', command: { action: 'snapshot' } })).rejects.toThrow('annotation-active');
+            await expect(h.manager.demos.start(1, { workspaceId: 'w', processId: 'p', routingRef: 'clone:w' }, 'annotated')).rejects.toThrow(engine === 'electron' ? 'annotating' : 'unavailable in WebView2');
+            await h.stop();
+            expect(h.actions).toEqual(['start', 'stop']);
+            expect(h.sink.ended).toHaveBeenCalledExactlyOnceWith('stop', undefined);
+            await h.manager.withControlPage(1, 'annotated', 'clone:w', page => page.snapshot());
+            expect(h.history.recordVisit).not.toHaveBeenCalled();
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('rejects wrong owners and concrete workspace aliases before any injection', async () => {
+        const h = await setup();
+        try {
+            for (const [owner, session] of [[2, 'clone:w'], [1, 'w'], [1, 'other:w'], [1, '']] as const) {
+                await expect(h.manager.startAnnotation(owner, 'annotated', session, h.sink)).rejects.toMatchObject({ reason: owner === 2 ? 'not-found' : 'bad-session' });
+            }
+            expect(h.cdp).not.toHaveBeenCalled();
+            await h.start();
+            expect(() => h.manager.stopAnnotation(1, 'annotated', 'other:w')).toThrow('another workspace');
+            expect(h.actions).toEqual(['start']);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it.each(['hidden', 'loading', 'error', 'unsupported'] as const)('rejects %s tabs before injection', async reason => {
+        const h = await setup();
+        try {
+            if (reason === 'hidden') await h.manager.bounds(1, 'annotated', null);
+            if (reason === 'unsupported') h.view.onCdpEvent = undefined;
+            if (reason === 'loading' || reason === 'error') {
+                const state = h.view.snapshot();
+                h.view.snapshot = () => ({ ...state, loading: reason === 'loading', error: reason === 'error' ? 'failed' : undefined });
+            }
+            await expect(h.start()).rejects.toThrow();
+            expect(h.cdp).not.toHaveBeenCalled();
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('rejects file previews even if a host accidentally supplies CDP', async () => {
+        const h = await setup();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'annotation-preview-'));
+        try {
+            const file = path.join(directory, 'preview.html');
+            fs.writeFileSync(file, '<h1>Preview</h1>');
+            expect(await h.manager.openFile(1, 'preview', file, 'clone:w')).toMatchObject({ ok: true });
+            h.files[0].view.cdp = h.cdp;
+            h.files[0].view.onCdpEvent = h.view.onCdpEvent;
+            await h.manager.bounds(1, 'preview', { x: 0, y: 0, width: 800, height: 600 });
+            await expect(h.manager.startAnnotation(1, 'preview', 'clone:w', h.sink)).rejects.toThrow('URL tab');
+            expect(h.cdp).not.toHaveBeenCalled();
+        } finally { await h.manager.dispose(); fs.rmSync(directory, { recursive: true, force: true }); }
+    });
+
+    it.each(['hide', 'navigation', 'same-document', 'crash', 'close', 'reload', 'dispose', 'scope'] as const)('tears down on %s and drops late selections', async reason => {
+        const h = await setup();
+        try {
+            await h.start();
+            if (reason === 'hide') await h.manager.bounds(1, 'annotated', null);
+            if (reason === 'navigation') h.hostSink.navigationStarted!();
+            if (reason === 'same-document') h.hostSink.documentCommitted!('https://fixture.test/#next', 'Next');
+            if (reason === 'crash') h.hostSink.state({ ...h.view.snapshot(), errorCode: 'runtime-crashed', error: 'crashed' });
+            if (reason === 'close') await h.manager.close(1, 'annotated');
+            if (reason === 'reload') await h.manager.reloadOwner(1);
+            if (reason === 'dispose') await h.manager.dispose();
+            if (reason === 'scope') h.manager.bindControlScope(1, 'w', 'different-clone:w');
+            expect(h.sink.ended).toHaveBeenCalledOnce();
+            await vi.waitFor(() => expect(h.actions).toEqual(['start', 'stop']));
+            expect(h.listeners.size).toBe(0);
+            expect(h.sink.events).not.toHaveBeenCalled();
+            if (reason === 'close' || reason === 'reload' || reason === 'dispose') expect(h.view.close).toHaveBeenCalledOnce();
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('applies live policy to just the exact owner/server scope and prevents a late startup', async () => {
+        const h = await setup();
+        try {
+            await h.start();
+            await h.manager.setAnnotationEnabled(2, 'clone:w', false);
+            await h.manager.setAnnotationEnabled(1, 'w', false);
+            expect(h.actions).toEqual(['start']);
+            await h.manager.setAnnotationEnabled(1, 'clone:w', false);
+            expect(h.actions).toEqual(['start', 'stop']);
+            await expect(h.start()).rejects.toThrow('disabled');
+            await h.manager.setAnnotationEnabled(1, 'clone:w', true);
+            const ready = deferred<void>();
+            h.view.waitForControlReady = () => ready.promise;
+            const starting = h.start();
+            const disabling = h.manager.setAnnotationEnabled(1, 'clone:w', false);
+            ready.resolve();
+            await disabling;
+            expect(await starting).toBe(false);
+            expect(h.actions).toEqual(['start', 'stop']);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('holds the reservation through native teardown and refuses queued dispatch', async () => {
+        const h = await setup();
+        try {
+            await h.start();
+            const cleanup = deferred<unknown>();
+            const original = h.cdp.getMockImplementation()!;
+            h.cdp.mockImplementation((method, params) => method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"stop"')
+                ? cleanup.promise : original(method, params));
+            const stopping = h.stop();
+            expect(h.sink.ended).toHaveBeenCalledOnce();
+            await expect(h.start()).rejects.toThrow('annotation-active');
+            await expect(h.manager.withControlPage(1, 'annotated', 'clone:w', async () => {})).rejects.toThrow('annotation-active');
+            cleanup.resolve({ result: { value: { active: false, events: [] } } });
+            await stopping;
+            expect(await h.start()).toBe(true);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('rejects annotation while a non-agent queue is busy, then admits it after settlement', async () => {
+        const h = await setup();
+        try {
+            const active = deferred<void>();
+            const entered = deferred<void>();
+            const running = h.manager.withControlPage(1, 'annotated', 'clone:w', async () => { entered.resolve(); await active.promise; });
+            await entered.promise;
+            const operation = vi.fn(async () => {});
+            const queued = h.manager.withControlPage(1, 'annotated', 'clone:w', operation);
+            await expect(h.start()).rejects.toThrow('still finishing');
+            active.resolve();
+            await Promise.all([running, queued]);
+            expect(await h.start()).toBe(true);
+            expect(operation).toHaveBeenCalledOnce();
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('keeps failed teardown excluded from AI control and permits an explicit annotation retry', async () => {
+        const h = await setup();
+        try {
+            await h.start();
+            const original = h.cdp.getMockImplementation()!;
+            h.cdp.mockImplementation((method, params) => {
+                if (method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"stop"')) throw new Error('Document context lost');
+                return original(method, params);
+            });
+            await expect(h.stop()).rejects.toThrow('Document context lost');
+            await expect(h.manager.withControlPage(1, 'annotated', 'clone:w', async () => {})).rejects.toThrow('annotation-active');
+            h.cdp.mockImplementation(original);
+            expect(await h.start()).toBe(true);
+            await h.stop();
+            await h.manager.withControlPage(1, 'annotated', 'clone:w', page => page.snapshot());
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('routes selections to its admitted sink and retires naturally on Escape', async () => {
+        const h = await setup();
+        try {
+            const selection = { type: 'selection', kind: 'area', immediate: false, rect: { x: 1, y: 2, width: 3, height: 4 },
+                page: { url: 'https://fixture.test/', title: 'Fixture', viewport: { width: 800, height: 600, devicePixelRatio: 2 } } };
+            const original = h.cdp.getMockImplementation()!;
+            h.cdp.mockImplementation((method, params) => method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"drain"')
+                ? Promise.resolve({ result: { value: { active: false, events: [selection, { type: 'exit', reason: 'escape' }] } } }) : original(method, params));
+            await h.start();
+            await vi.waitFor(() => expect(h.sink.ended).toHaveBeenCalledExactlyOnceWith('escape', undefined));
+            expect(h.sink.events).toHaveBeenCalledExactlyOnceWith([selection, { type: 'exit', reason: 'escape' }]);
+            await h.stop();
+            expect(h.listeners.size).toBe(0);
+            expect(await h.start()).toBe(true);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('revokes annotation when human takeover is disabled live', async () => {
+        const h = await setup();
+        try {
+            h.manager.bindControlScope(1, 'w', 'clone:w');
+            await h.command();
+            await h.start();
+            h.manager.setHumanTakeoverEnabled(1, 'clone:w', false);
+            expect(h.sink.ended).toHaveBeenCalledOnce();
+            await h.stop();
+            expect(h.actions).toEqual(['start', 'stop']);
+            await expect(h.start()).rejects.toThrow('Enable human takeover');
+        } finally { await h.manager.dispose(); }
+    });
+
+    it('requires the active turn to have human takeover enabled', async () => {
+        const h = await setup();
+        try {
+            h.manager.bindControlScope(1, 'w', 'clone:w');
+            await h.command(false);
+            await expect(h.start()).rejects.toThrow('Enable human takeover');
+            expect(h.actions).toEqual([]);
+        } finally { await h.manager.dispose(); }
+    });
+
+    it.each(['electron', 'webview2'] as const)('settles %s input releases before injection and tears down before Return refresh', async engine => {
+        const h = await setup(engine);
+        try {
+            h.manager.bindControlScope(1, 'w', 'clone:w');
+            const pressed = deferred<unknown>();
+            const original = h.cdp.getMockImplementation()!;
+            h.cdp.mockImplementation((method, params) => method === 'Input.dispatchKeyEvent' && params?.type === 'keyDown'
+                ? pressed.promise : original(method, params));
+            const running = h.command().catch(error => error);
+            await vi.waitFor(() => expect(h.cdp).toHaveBeenCalledWith('Input.dispatchKeyEvent', expect.objectContaining({ type: 'keyDown' })));
+            const queuedOperation = vi.fn(async () => {});
+            const queued = h.manager.withControlPage(1, 'annotated', 'clone:w', queuedOperation).catch(error => error);
+            const starting = h.start();
+            await vi.waitFor(() => expect(h.send.mock.calls.some(([, channel, state]) => channel.includes('takeover-state') && state.status === 'taking-over')).toBe(true));
+            expect(h.actions).toEqual([]);
+            pressed.resolve({});
+            expect((await running).message).toContain('unknown-outcome');
+            expect(await starting).toBe(true);
+            expect((await queued).message).toContain('annotation-active');
+            expect(queuedOperation).not.toHaveBeenCalled();
+            const releaseIndex = h.cdp.mock.calls.findIndex(([method, params]) => method === 'Input.dispatchKeyEvent' && params?.type === 'keyUp');
+            const injectIndex = h.cdp.mock.calls.findIndex(([method]) => method === 'Page.createIsolatedWorld');
+            expect(releaseIndex).toBeGreaterThan(-1);
+            expect(injectIndex).toBeGreaterThan(releaseIndex);
+            await expect(h.command(true, 'conflict')).rejects.toThrow('annotation-active');
+            await h.manager.humanTakeover(1, identity, 'return');
+            expect(h.actions).toEqual(['start', 'stop']);
+            await h.command();
+        } finally { await h.manager.dispose(); }
+    });
+});

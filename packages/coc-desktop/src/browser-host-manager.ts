@@ -14,6 +14,7 @@ import { BrowserControlQueue } from './browser-control-queue';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { BrowserDemoRecorders } from './browser-demo-recorder';
+import { BrowserAnnotationTab, type BrowserAnnotationEndReason, type BrowserAnnotationTabSink } from './browser-annotation-tab';
 import type { BrowserDemoOwner } from './browser-demo-session';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -40,6 +41,7 @@ interface Entry {
     controlStamp?: string;
     popout?: boolean;
     activity?: ControlActivity;
+    humanTakeoverEnabled?: boolean;
     /** CDP focus emulation is on so a background tab takes input without window focus. */
     focusEmulated?: boolean;
     /** The SPA lays this view out on screen (its last placement had bounds). */
@@ -47,6 +49,7 @@ interface Entry {
     /** A foreground reveal asked the SPA to show this view; counts as shown until the SPA reports a placement. */
     revealPending?: boolean;
     hostGeneration?: object;
+    annotation?: { tab: BrowserAnnotationTab; stopped: boolean; cleanup?: Promise<void>; failed?: boolean };
 }
 
 type ControlActivity = BrowserControlActivityEvent & { routingOwnerId: number };
@@ -78,6 +81,7 @@ interface TakeoverTurn {
 }
 
 export const BROWSER_DEMO_RECORDING_ERROR = 'recording-active: the user is recording a browser demo for this chat';
+export const BROWSER_ANNOTATION_ACTIVE_ERROR = 'annotation-active: the user is annotating this browser tab';
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
@@ -120,6 +124,7 @@ export class BrowserHostManager {
     private readonly demoControlReservations = new Set<BrowserDemoOwner>();
     /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
     private readonly tabShortcutOwners = new Set<number>();
+    private readonly annotationDisabled = new Map<number, Set<string>>();
 
     /** Task-demonstration drafts; recorded chats and tabs refuse AI control while capturing. */
     readonly demos: BrowserDemoRecorders;
@@ -133,11 +138,99 @@ export class BrowserHostManager {
             lookup: (ownerId, viewId) => {
                 const entry = this.entry(ownerId, viewId);
                 if (!entry?.view || entry.closed) return undefined;
-                const busy = entry.activity || entry.control?.busy ? 'An AI browser turn is using this tab.'
+                const busy = entry.annotation ? 'Finish annotating this tab first.' : entry.activity || entry.control?.busy ? 'An AI browser turn is using this tab.'
                     : entry.takeover?.paused ? 'Finish the human takeover in this tab first.' : undefined;
                 return { view: entry.view, sessionKey: entry.sessionKey, sourceKind: entry.sourceKind, ...(busy ? { busy } : {}) };
             },
         });
+    }
+
+    /** Main-only admission. IPC callers must already be registered SPA owners. */
+    async startAnnotation(ownerId: number, viewId: unknown, sessionKey: unknown, sink: BrowserAnnotationTabSink): Promise<boolean> {
+        const entry = this.annotationEntry(ownerId, viewId, sessionKey);
+        const view = entry.view;
+        if (!view?.cdp || !view.onCdpEvent || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
+        const state = view.snapshot();
+        if (!entry.shown || state.loading || state.error || !validateBrowserUrl(state.url).ok) throw new Error('Browser annotation requires a visible, loaded page.');
+        if (this.annotationDisabled.get(ownerId)?.has(entry.sessionKey)) throw new Error('Browser annotation is disabled.');
+        if (entry.annotation && !entry.annotation.failed) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);
+        if (this.demos.recordingTab(ownerId, entry.viewId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
+        const takeover = entry.activity ? entry.takeover : undefined;
+        if (entry.activity && (!entry.humanTakeoverEnabled || !takeover || takeover.status === 'terminated'
+            || takeover.owner.turnId !== entry.activity.turnId || takeover.owner.routingRef !== entry.sessionKey
+            || takeover.owner.workspaceId !== entry.activity.workspaceId || takeover.owner.processId !== entry.activity.processId)) {
+            throw new Error('Enable human takeover before annotating during an agent turn.');
+        }
+        if (entry.control?.busy && !entry.activity) throw new Error('An AI browser command is still finishing.');
+        // Reserve before the first await: queued/new commands must fail before dispatch.
+        const tab = new BrowserAnnotationTab(view, {
+            events: events => { if (!annotation.stopped && entry.annotation === annotation) sink.events(events); },
+            ended: (reason, error) => {
+                if (!annotation.cleanup) this.endAnnotationInBackground(entry, reason);
+                sink.ended(reason, error);
+            },
+        });
+        const annotation: NonNullable<Entry['annotation']> = { tab, stopped: false };
+        entry.annotation = annotation;
+        try {
+            if (takeover) {
+                const item = [...this.takeovers.values()].find(item => item.control === takeover);
+                if (!item) throw new Error('Browser takeover owner changed.');
+                await this.humanTakeover(item.ownerId, takeover.state(), 'take');
+                await entry.control?.settled();
+                if (takeover.status !== 'human' || entry.takeover !== takeover) throw new Error('Browser takeover did not settle.');
+            }
+            if (annotation.stopped) return false;
+            return await tab.start();
+        } catch (error) {
+            if (entry.annotation === annotation) await this.endAnnotation(entry, 'failed').catch(() => {});
+            throw error;
+        }
+    }
+
+    private annotationEntry(ownerId: number, viewId: unknown, sessionKey: unknown): Entry {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab not found');
+        if (!isValidBrowserSessionKey(sessionKey) || sessionKey !== entry.sessionKey) throw new BrowserHostError('bad-session', 'Browser tab belongs to another workspace');
+        return entry;
+    }
+
+    stopAnnotation(ownerId: number, viewId: unknown, sessionKey: unknown): Promise<void> {
+        return this.endAnnotation(this.annotationEntry(ownerId, viewId, sessionKey));
+    }
+
+    /** Live owner/server policy, independent of AI browser-control availability. */
+    async setAnnotationEnabled(ownerId: number, sessionKey: unknown, enabled: boolean): Promise<void> {
+        if (!isValidBrowserSessionKey(sessionKey) || typeof enabled !== 'boolean') throw new TypeError('Invalid browser annotation policy');
+        const disabled = this.annotationDisabled.get(ownerId) ?? new Set<string>();
+        if (enabled) disabled.delete(sessionKey); else disabled.add(sessionKey);
+        if (disabled.size) this.annotationDisabled.set(ownerId, disabled); else this.annotationDisabled.delete(ownerId);
+        if (!enabled) {
+            const results = await Promise.allSettled([...this.owners.get(ownerId)?.values() ?? []]
+                .filter(entry => entry.sessionKey === sessionKey).map(entry => this.endAnnotation(entry)));
+            throwRejected(results);
+        }
+    }
+
+    private endAnnotation(entry: Entry, reason: BrowserAnnotationEndReason = 'stop'): Promise<void> {
+        const annotation = entry.annotation;
+        if (!annotation) return Promise.resolve();
+        if (annotation.cleanup) return annotation.cleanup;
+        annotation.stopped = true;
+        // Keep failed teardown excluded from control. An explicit retry installs a replacement generation.
+        annotation.cleanup = Promise.resolve().then(() => annotation.tab.stop(reason)).then(() => {
+            if (entry.annotation === annotation) entry.annotation = undefined;
+        }, error => {
+            annotation.failed = true;
+            throw error;
+        });
+        // stop revokes delivery/readiness synchronously, before any deferred native cleanup.
+        void annotation.tab.stop(reason).catch(() => {});
+        return annotation.cleanup;
+    }
+
+    private endAnnotationInBackground(entry: Entry, reason: BrowserAnnotationEndReason = 'stop'): void {
+        void this.endAnnotation(entry, reason).catch(error => console.error('[coc-desktop] Browser annotation cleanup failed:', error));
     }
 
     finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
@@ -198,6 +291,7 @@ export class BrowserHostManager {
             this.finishedTurns.set(activity.routingOwnerId, turns);
         }
         entry.activity = undefined;
+        entry.humanTakeoverEnabled = false;
         // Turn finish, Stop, tab close and a moved turn take the AI cursor away at once.
         if (!entry.closed) entry.control?.removeCursor();
         this.pruneNavigationChecks();
@@ -231,6 +325,7 @@ export class BrowserHostManager {
         if (entry.activity && entry.activity.turnId !== turnId) this.clearControlEntry(entry, entry.activity.processId === request.processId);
         entry.activity = { workspaceId: request.workspaceId, processId: request.processId, turnId,
             routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId, ...(background ? { background: true } : {}) };
+        entry.humanTakeoverEnabled = request.humanTakeoverEnabled === true;
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
         this.nativeActivity(entry);
         this.nativeNavigationGate(entry);
@@ -251,12 +346,14 @@ export class BrowserHostManager {
     /** Foreground scope; a full clear (`null`, `null`) also drops every retained background scope. */
     bindControlScope(ownerId: number, workspaceId: unknown, sessionKey: unknown): void {
         if (workspaceId === null && sessionKey === null) {
+            for (const entry of this.owners.get(ownerId)?.values() ?? []) this.endAnnotationInBackground(entry);
             this.finishControl(ownerId, undefined, false);
             this.controlScopes.delete(ownerId);
             this.retainedScopes.delete(ownerId);
             return;
         }
         if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId) || !isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
+        for (const entry of this.owners.get(ownerId)?.values() ?? []) if (entry.sessionKey !== sessionKey) this.endAnnotationInBackground(entry);
         this.controlScopes.set(ownerId, { workspaceId, sessionKey });
     }
 
@@ -364,6 +461,7 @@ export class BrowserHostManager {
         } else if (action === 'stop') item.control.stop();
         else await item.control.returnToAgent(async () => {
             if (this.foregroundSessionKey(ownerId) !== identity.routingRef) throw new Error('foreground-required: Return to agent requires the owning workspace on screen');
+            await Promise.all([...item.entries].map(entry => this.endAnnotation(entry)));
             let refreshed: BrowserCommandResult | undefined;
             for (const entry of item.entries) {
                 if (entry.closed || entry.takeover !== item.control) throw new Error('Browser takeover tab closed or owner changed');
@@ -397,6 +495,7 @@ export class BrowserHostManager {
                 turnId: request.turnId ?? request.processId, routingRef: scope.sessionKey }, state => {
                 const live = this.takeovers.get(key);
                 if (live) for (const entry of live.entries) {
+                    if (state.status === 'terminated') this.endAnnotationInBackground(entry);
                     this.nativeActivity(entry); this.nativeNavigationGate(entry);
                     // The human drives now, or the continuation ended: the AI cursor goes at once.
                     if (state.status !== 'agent' && state.status !== 'checking' && !entry.closed) entry.control?.removeCursor();
@@ -525,6 +624,7 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
+        if (selected.annotation) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);
         if (selected.popout) background = scope.background;
         if (!background && !selected.popout && placement?.watch === true && !selected.shown) selected.revealPending = true;
         if (selected.control) queues.add(selected.control);
@@ -823,6 +923,7 @@ export class BrowserHostManager {
                 if (entry.closed) return;
                 if (state.error) entry.committedPage = undefined;
                 if (state.errorCode === 'runtime-crashed') {
+                    this.endAnnotationInBackground(entry, 'unavailable');
                     this.demos.crashed(entry.ownerId, entry.viewId);
                     entry.takeover?.stop('Browser runtime crashed during human takeover');
                     this.clearControlEntry(entry, false);
@@ -832,11 +933,13 @@ export class BrowserHostManager {
             },
             navigationStarted: () => {
                 if (entry.closed) return;
+                this.endAnnotationInBackground(entry, 'navigation');
                 entry.committedPage = undefined;
                 if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
             },
             documentCommitted: (url, title) => {
                 if (entry.closed || entry.sourceKind !== 'url') return;
+                this.endAnnotationInBackground(entry, 'navigation');
                 entry.commitRevision = (entry.commitRevision ?? 0) + 1;
                 entry.committedPage = validateBrowserUrl(url).ok ? { url, title, revision: entry.commitRevision } : undefined;
                 if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
@@ -1141,12 +1244,14 @@ export class BrowserHostManager {
             throw new BrowserHostError('bad-session', 'Browser tab belongs to another workspace');
         }
         if (!entry.control) throw new BrowserHostError('unsupported', 'Browser control supports URL tabs only');
+        if (entry.annotation) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);
         return entry.control.run(async (page, commandSignal) => {
             const view = await entry.ready;
             commandSignal.throwIfAborted();
             if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
+            if (entry.annotation) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);
             if (this.demos.recordingTab(entry.ownerId, entry.viewId)) throw new Error(BROWSER_DEMO_RECORDING_ERROR);
             if (entry.takeover?.paused && !privateRefresh) throw new Error('Browser actions and observation paused for human takeover');
             const result = await operation(page, commandSignal, view);
@@ -1177,6 +1282,7 @@ export class BrowserHostManager {
     bounds(ownerId: number, viewId: unknown, bounds: HtmlPageBounds | null): Promise<void> {
         const entry = this.entry(ownerId, viewId);
         if (entry) { entry.shown = bounds !== null; entry.revealPending = false; }
+        if (entry && bounds === null) this.endAnnotationInBackground(entry);
         return this.command(ownerId, viewId, view => view.setBounds(bounds));
     }
 
@@ -1187,6 +1293,7 @@ export class BrowserHostManager {
 
     private async closeEntry(entry: Entry, notify = false): Promise<void> {
         if (!entry || entry.closed) { return; }
+        const annotationClosed = this.endAnnotation(entry);
         entry.takeover?.stop('Browser controlled tab closed during human takeover');
         this.clearControlEntry(entry, false);
         entry.closed = true;
@@ -1201,8 +1308,9 @@ export class BrowserHostManager {
             if (!(error instanceof BrowserHostError)) { console.error('[coc-desktop] Browser startup failed while closing:', error); }
             return undefined;
         });
-        await demoClosed;
+        const cleanup = await Promise.allSettled([demoClosed, annotationClosed]);
         if (view) { await view.close(); }
+        throwRejected(cleanup);
     }
 
     async closeOwner(ownerId: number): Promise<void> {
@@ -1213,6 +1321,7 @@ export class BrowserHostManager {
         this.finishControl(ownerId);
         this.visibleControl.delete(ownerId);
         this.tabShortcutOwners.delete(ownerId);
+        this.annotationDisabled.delete(ownerId);
         this.controlScopes.delete(ownerId);
         this.retainedScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);

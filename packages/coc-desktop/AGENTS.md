@@ -32,7 +32,13 @@ existing main-only CDP interface shared by both engines. Start follows ownership
 admission and settled human takeover. Stop revokes delivery synchronously and
 serializes cleanup in the original isolated context; await it before replacing
 an instance. Main-frame navigation and lost contexts end the session. Host-manager
-integration must stop on hide, close, crash, owner disposal and setting disable.
+admission reserves the exact owner/view/session before awaiting human takeover,
+and settles issued input releases before injection. Reservations exclude AI
+dispatch and demo recording through teardown. Hide, workspace departure, close,
+crash, owner disposal and owner/session policy disable stop annotation; Return
+awaits removal before its context refresh. Failed teardown stays excluded from
+AI control until an explicit annotation retry or guest closure. The manager's
+main-only start/stop/policy methods require registered-owner IPC at the caller.
 Never install annotation scripts on future documents or expose CDP to the SPA.
 
 For demonstration recording, read

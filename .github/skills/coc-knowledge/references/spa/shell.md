@@ -550,10 +550,17 @@ capture belong to the caller.
 poll one isolated main-document context. Its private generation token, serialized
 commands and synchronous revocation reject late results; Stop removes the overlay
 in the original context. Navigation/lost-context events terminate collection;
-future documents receive no script. The caller owns admission, settled takeover
-and lifecycle stops, and awaits Stop before replacing an instance. Transport has
-jsdom and real Electron CDP coverage; manager/toolbar admission, screenshot and
-composer integration remain separate.
+future documents receive no script. `BrowserHostManager.startAnnotation` reserves
+the exact visible URL owner/view/session before awaiting settled human takeover.
+Reservations exclude AI dispatch and demo recording through teardown. Hide,
+workspace departure, navigation, crash, close and owner/session policy disable
+stop annotation. Return awaits removal before refreshing context. Failed teardown
+retains exclusion until an explicit annotation retry or guest closure.
+
+Manager start/stop/policy methods are main-only and require registered-owner IPC
+at the caller. Availability is independent of AI control; active turns require
+enabled human takeover. Transport has jsdom and real Electron CDP coverage;
+toolbar/IPC, screenshot and composer integration remain separate.
 
 ### Shared web-page zoom
 
