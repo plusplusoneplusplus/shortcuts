@@ -13,14 +13,14 @@ const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || !existsSync(path.join(here, '../../dist/browser-annotation-dom.js'));
 
 describe.skipIf(skip)('shared annotation injection in real Electron', () => {
-    it('isolates closed-shadow styles, swallows trusted clicks, selects an area and tears down on Escape', async () => {
+    it.each([1, 2])('isolates input/styles and captures chrome-free device pixels at scale %s', async scale => {
         const directory = mkdtempSync(path.join(tmpdir(), 'coc-annotation-'));
         try {
             const output = await new Promise<string>((resolve, reject) => {
                 const env = { ...process.env, COC_BROWSER_E2E_USER_DATA: directory };
                 delete env.ELECTRON_RUN_AS_NODE;
                 const electron = createRequire(import.meta.url)('electron') as string;
-                const args = [...(process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : []), path.join(here, 'browser-annotation-dom-runner.cjs')];
+                const args = [`--force-device-scale-factor=${scale}`, ...(process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : []), path.join(here, 'browser-annotation-dom-runner.cjs')];
                 const child = spawn(electron, args, { env });
                 let stdout = '';
                 let stderr = '';
@@ -35,7 +35,17 @@ describe.skipIf(skip)('shared annotation injection in real Electron', () => {
                     else resolve(line.slice(5));
                 });
             });
-            expect(JSON.parse(output)).toMatchObject({
+            const result = JSON.parse(output);
+            expect(result.transport.capture).toMatchObject({
+                width: result.transport.capture.expectedWidth, height: result.transport.capture.expectedHeight,
+                pngWidth: result.transport.capture.expectedWidth, pngHeight: result.transport.capture.expectedHeight,
+                pixel: [40, 20, 200, 255], restored: { result: { value: '1' } },
+            });
+            expect(result.transport.fractional).toMatchObject({
+                width: result.transport.fractional.expectedWidth, height: result.transport.fractional.expectedHeight,
+                dpr: scale * 1.25, rect: { x: 40.25, y: 60.5, width: 120.5, height: 40.25 },
+            });
+            expect(result).toMatchObject({
                 element: { active: true, events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 40, y: 60, width: 120, height: 40 },
                     page: { title: 'Annotation fixture', viewport: { width: expect.any(Number), height: expect.any(Number), devicePixelRatio: expect.any(Number) }, url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/$/) },
                     element: { selector: 'button:nth-of-type(1)', shadowHosts: [], tag: 'button', id: '', classes: [], text: 'Pick me', outerHTML: '<button>Pick me</button>' },

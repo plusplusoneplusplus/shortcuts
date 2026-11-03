@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationEvent, type BrowserAnnotationResult } from './browser-annotation-dom';
-import type { BrowserHostedView, BrowserCdpEventListener } from './browser-host-contract';
+import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationEvent, type BrowserAnnotationResult, type BrowserAnnotationSelection } from './browser-annotation-dom';
+import type { BrowserHostedView, BrowserCdpEventListener, BrowserAnnotationImage } from './browser-host-contract';
 import { validateBrowserUrl } from './browser-view-policy';
 
 export const BROWSER_ANNOTATION_WORLD = 'coc-browser-annotation';
@@ -12,7 +12,7 @@ export interface BrowserAnnotationTabSink {
     ended(reason: BrowserAnnotationEndReason, error?: unknown): void;
 }
 
-type AnnotationView = Pick<BrowserHostedView, 'cdp' | 'onCdpEvent' | 'waitForCdpEvents' | 'waitForControlReady'>;
+type AnnotationView = Pick<BrowserHostedView, 'cdp' | 'onCdpEvent' | 'waitForCdpEvents' | 'waitForControlReady' | 'captureAnnotation'>;
 
 /**
  * Main-only transport for one admitted URL guest and one document. The caller must resolve
@@ -123,6 +123,37 @@ export class BrowserAnnotationTab {
         });
     }
 
+    /** Capture a freshly selected draft in this document only; never recapture saved comments on edit. */
+    captureSelection(selection: BrowserAnnotationSelection): Promise<BrowserAnnotationImage> {
+        return this.enqueue(async () => {
+            if (this.closed || !this.timer) throw new Error('Annotation document is no longer active.');
+            if (!this.view.captureAnnotation) throw new Error('This browser host cannot capture annotation images.');
+            let image: BrowserAnnotationImage | undefined;
+            let failure: unknown;
+            let failed = false;
+            try {
+                const hidden = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: true });
+                if (this.closed || !hidden.active || !hidden.capture) throw new Error('Annotation selection is stale.');
+                image = await this.view.captureAnnotation(selection.rect, selection.page.viewport);
+            } catch (error) { failed = true; failure = error; }
+            // Always restore the original generation, including failed or revoked native captures.
+            try {
+                const restored = await this.evaluateCommand({ action: 'capture', session: this.session, selection, hidden: false });
+                if ((this.closed || !restored.active || !restored.capture) && !failed) {
+                    failed = true; failure = new Error('Annotation selection is stale.');
+                }
+            } catch (error) {
+                if (!failed) { failed = true; failure = error; }
+                if (!this.closed) {
+                    this.revoke('failed', error);
+                    void this.cleanup().catch(() => {});
+                }
+            }
+            if (failed) throw failure;
+            return image!;
+        });
+    }
+
     /** Revokes delivery synchronously; the returned promise includes removal after any in-flight call. */
     stop(reason: BrowserAnnotationEndReason = 'stop'): Promise<void> {
         this.revoke(reason);
@@ -153,11 +184,15 @@ export class BrowserAnnotationTab {
         return result;
     }
 
-    private async evaluate(action: BrowserAnnotationCommand['action'], id?: string): Promise<BrowserAnnotationResult> {
+    private evaluate(action: 'start' | 'drain' | 'stop' | 'remove', id?: string): Promise<BrowserAnnotationResult> {
+        return this.evaluateCommand(action === 'remove'
+            ? { action, session: this.session, id: id! } : { action, session: this.session });
+    }
+
+    private async evaluateCommand(command: BrowserAnnotationCommand): Promise<BrowserAnnotationResult> {
         const reply = await this.cdp!('Runtime.evaluate', {
-            expression: buildBrowserAnnotationExpression(action === 'remove'
-                ? { action, session: this.session, id: id! } : { action, session: this.session }),
-            contextId: this.contextId, returnByValue: true,
+            expression: buildBrowserAnnotationExpression(command),
+            contextId: this.contextId, returnByValue: true, awaitPromise: true,
         }) as { result?: { value?: unknown }; exceptionDetails?: unknown } | undefined;
         if (reply?.exceptionDetails) throw new Error('Annotation script failed in the page.');
         return parseAnnotationResult(reply?.result?.value);
@@ -189,6 +224,7 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
     const result = value as BrowserAnnotationResult | undefined;
     const invalid = () => { throw new Error('Annotation script returned an invalid report.'); };
     if (!result || typeof result.active !== 'boolean' || !Array.isArray(result.events) || result.events.length > 33) return invalid();
+    if (result.capture !== undefined && typeof result.capture !== 'boolean') return invalid();
     // The DOM primitive bounds individual fields; this also bounds aggregate transport data.
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 1_048_576) return invalid();
     for (const event of result.events) {

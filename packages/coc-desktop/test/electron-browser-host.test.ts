@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     owner: { id: 7, focus: vi.fn(), executeJavaScript: vi.fn().mockResolvedValue(true) },
     windowShow: vi.fn(),
     windowFocus: vi.fn(),
+    captureAnnotation: vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 }),
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
         setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
@@ -51,6 +52,7 @@ const mocks = vi.hoisted(() => ({
     },
 }));
 vi.mock('node:fs', () => ({ mkdirSync: vi.fn() }));
+vi.mock('../src/electron-annotation-capture', () => ({ captureElectronAnnotation: mocks.captureAnnotation }));
 vi.mock('../src/browser-profile-lock', () => ({ lockElectronProfile: () => ({ close: vi.fn() }) }));
 vi.mock('../src/browser-webview-guard', () => ({
     isBrowserEmbedder: () => true,
@@ -95,6 +97,24 @@ beforeEach(() => {
 function emit(name: string, ...args: any[]) {
     for (const handler of mocks.handlers.get(name) ?? []) { handler({}, ...args); }
 }
+
+describe('Electron annotation capture routing', () => {
+    it('captures only the adopted guest and refuses unready or closed views', async () => {
+        const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+        mocks.deferAttach = true;
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'capture', sessionKey: 'w', url: 'https://fixture.test/' }, sink);
+        const rect = { x: 10, y: 20, width: 30, height: 40 };
+        const viewport = { width: 800, height: 600, devicePixelRatio: 2 };
+        await expect(view.captureAnnotation!(rect, viewport)).rejects.toThrow('closed');
+        expect(mocks.captureAnnotation).not.toHaveBeenCalled();
+        mocks.attach!();
+        expect(await view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.captureAnnotation).toHaveBeenCalledExactlyOnceWith(mocks.contents, rect, viewport);
+        await view.close();
+        await expect(view.captureAnnotation!(rect, viewport)).rejects.toThrow('closed');
+        expect(mocks.captureAnnotation).toHaveBeenCalledTimes(1);
+    });
+});
 
 describe('Electron site information facts', () => {
     const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };

@@ -27,12 +27,14 @@ export type BrowserAnnotationEvent =
 export interface BrowserAnnotationResult {
     active: boolean;
     events: BrowserAnnotationEvent[];
+    capture?: boolean;
 }
 
 export type BrowserAnnotationCommand = {
     /** Every command must match the generation established by the main-owned start. */
     session: string;
-} & ({ action: 'start' | 'drain' | 'stop' } | { action: 'remove'; id: string });
+} & ({ action: 'start' | 'drain' | 'stop' } | { action: 'remove'; id: string }
+    | { action: 'capture'; selection: BrowserAnnotationSelection; hidden: boolean });
 
 /** Self-contained selection and comment editor. Hosts execute it only in an owned URL guest's isolated world. */
 function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof browserClipRect, snapshot: typeof browserAnnotationSnapshot): BrowserAnnotationResult {
@@ -42,6 +44,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         active: boolean;
         events: BrowserAnnotationEvent[];
         remove(id: string): void;
+        capture(selection: BrowserAnnotationSelection, hidden: boolean): boolean;
         dispose(reason: Extract<BrowserAnnotationEvent, { type: 'exit' }>['reason']): void;
     }
     const page = window as Window & { __cocBrowserAnnotation?: Mode };
@@ -128,8 +131,25 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         let nextId = 1;
         let editing: Pin | null = null;
         let selectedScroll = { x: 0, y: 0 };
+        let capturing = false;
         const owned: Mode = {
             session: command.session, url: location.href, active: true, events: [],
+            capture(selection, hidden) {
+                const viewport = selection.page.viewport;
+                // CDP returns object properties in a different order from the DOM snapshot.
+                const canonical = (value: unknown) => JSON.stringify(value, (_key, part) =>
+                    part && typeof part === 'object' && !Array.isArray(part)
+                        ? Object.fromEntries(Object.keys(part).sort().map(key => [key, part[key]])) : part);
+                const valid = owned.active && host.isConnected && owned.url === location.href
+                    && pending !== null && canonical(pending) === canonical(selection)
+                    && selectedScroll.x === window.scrollX && selectedScroll.y === window.scrollY
+                    && viewport.width === window.innerWidth && viewport.height === window.innerHeight
+                    && viewport.devicePixelRatio === window.devicePixelRatio;
+                capturing = hidden && valid;
+                // Opacity keeps the input shield and editor focus in place while hiding every pixel.
+                host.style.setProperty('opacity', capturing ? '0' : '1', 'important');
+                return valid;
+            },
             remove(id) {
                 const index = pins.findIndex(pin => pin.id === id);
                 if (index < 0) return;
@@ -291,6 +311,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         // Closed-root event paths are retargeted at the host in window capture. Hit-test
         // inside our private root, then stop propagation here while preserving native editing.
         const editorPointer = (event: MouseEvent) => {
+            if (capturing) return false;
             if (!pending || event.target !== host) return false;
             const element = root.elementFromPoint?.(event.clientX, event.clientY);
             if (!element || !editor.contains(element)) return false;
@@ -303,6 +324,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             return true;
         };
         const pinPointer = (event: MouseEvent) => {
+            if (capturing) return false;
             if (pending || drag || suppressClick || event.shiftKey || event.target !== host) return false;
             const element = root.elementFromPoint?.(event.clientX, event.clientY);
             const pin = pins.find(pin => pin.button === element);
@@ -315,6 +337,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             return true;
         };
         const editorInput = (event: Event) => {
+            if (capturing) return false;
             if (!pending || event.target !== host || !root.activeElement || !editor.contains(root.activeElement)) return false;
             swallow(event, false);
             save.disabled = !input.value.trim() || input.value.length > input.maxLength;
@@ -327,7 +350,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         listen('pointerdown', event => {
             if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
-            if (pending) return;
+            if (capturing || pending) return;
             if (event.button !== 0 || event.isPrimary === false) return;
             suppressClick = false;
             if (event.shiftKey) {
@@ -338,7 +361,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         listen('pointermove', event => {
             if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
-            if (pending) return;
+            if (capturing || pending) return;
             if (drag) {
                 if (event.pointerId === drag.pointerId) show(area(event.clientX, event.clientY), 'Area');
             } else {
@@ -349,7 +372,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         listen('pointerup', event => {
             if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
-            if (pending) return;
+            if (capturing || pending) return;
             if (!drag || event.pointerId !== drag.pointerId || event.button !== 0) return;
             const rect = area(event.clientX, event.clientY);
             drag = null;
@@ -361,7 +384,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         listen('click', event => {
             if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
-            if (pending) return;
+            if (capturing || pending) return;
             if (suppressClick) { suppressClick = false; return; }
             if (event.button !== 0 || event.shiftKey) return;
             const target = elementAt(event.clientX, event.clientY);
@@ -371,6 +394,13 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         });
         listen('keydown', event => {
             if (!current()) return;
+            if (capturing) {
+                swallow(event);
+                if (event.key === 'Escape' && !event.repeat) {
+                    if (pending) closeEditor(); else owned.dispose('escape');
+                }
+                return;
+            }
             if (pending && event.key !== 'Escape' && editorInput(event)) {
                 if (event.key === 'Tab') {
                     event.preventDefault();
@@ -423,6 +453,8 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         host.focus({ preventScroll: true });
     }
     if (!mode || mode.session !== command.session) return { active: false, events: [] };
+    // Capture commands retain queued user events for the normal drain path.
+    if (command.action === 'capture') return { active: mode.active, events: [], capture: mode.capture(command.selection, command.hidden) };
     if (command.action === 'stop') mode.dispose('stop');
     if (command.action === 'remove' && mode.active) mode.remove(command.id);
     const result = { active: mode.active, events: mode.events.splice(0) };
@@ -431,5 +463,16 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
 }
 
 export function buildBrowserAnnotationExpression(command: BrowserAnnotationCommand): string {
-    return `(${browserAnnotation.toString()})(${JSON.stringify(command)},(${browserClipRect.toString()}),(${browserAnnotationSnapshot.toString()}))`;
+    const expression = `(${browserAnnotation.toString()})(${JSON.stringify(command)},(${browserClipRect.toString()}),(${browserAnnotationSnapshot.toString()}))`;
+    // Two frames let the compositor commit invisible chrome before either native host captures.
+    // A suspended page must fail promptly so main can restore or remove the shield.
+    if (command.action === 'capture' && command.hidden) return `(async () => {
+        const result = ${expression};
+        if (result.capture) await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Annotation paint timed out.')), 1000);
+            requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timer); resolve(); }));
+        });
+        return result;
+    })()`;
+    return expression;
 }

@@ -2,7 +2,8 @@
 
 const http = require('node:http');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, nativeImage } = require('electron');
+const { captureElectronAnnotation } = require('../../dist/electron-annotation-capture.js');
 const { buildBrowserAnnotationExpression } = require('../../dist/browser-annotation-dom.js');
 const { BrowserAnnotationTab } = require('../../dist/browser-annotation-tab.js');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
@@ -20,7 +21,7 @@ const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html');
     response.end(`<!doctype html><title>Annotation fixture</title><style>
         body { margin: 0; }
-        button { position: absolute; left: 40px; top: 60px; width: 120px; height: 40px; }
+        button { position: absolute; left: 40px; top: 60px; width: 120px; height: 40px; background: rgb(200, 20, 40); }
         [style*="position: fixed"] { background: black !important; display: none !important; }
         .pin { background: black !important; color: black !important; }
         .outline { background: black !important; border: 20px solid red !important; }
@@ -137,7 +138,8 @@ function click(x, y, modifiers = []) {
     const cdp = new ElectronBrowserCdp(win.webContents);
     const events = [];
     const endings = [];
-    const hosted = { cdp: cdp.send.bind(cdp), onCdpEvent: cdp.onEvent.bind(cdp) };
+    const hosted = { cdp: cdp.send.bind(cdp), onCdpEvent: cdp.onEvent.bind(cdp),
+        captureAnnotation: (rect, viewport) => captureElectronAnnotation(win.webContents, rect, viewport) };
     const transport = new BrowserAnnotationTab(hosted, {
         events: batch => events.push(...batch), ended: reason => endings.push(reason),
     });
@@ -147,10 +149,40 @@ function click(x, y, modifiers = []) {
         await transport.poll();
     }
     if (!events.length) throw new Error('CDP transport did not deliver the selection');
+    const selectionImage = await transport.captureSelection(events[0]);
+    const selectionPixels = nativeImage.createFromDataURL(selectionImage.dataUrl);
+    const bitmap = selectionPixels.toBitmap();
+    const png = selectionPixels.toPNG();
+    // A sample inside the element detects the translucent blue highlight leaking into capture.
+    const offset = (10 * selectionImage.width + 10) * 4;
+    const captureResult = { width: selectionImage.width, height: selectionImage.height,
+        pngWidth: png.readUInt32BE(16), pngHeight: png.readUInt32BE(20),
+        expectedWidth: Math.ceil(events[0].rect.width * events[0].page.viewport.devicePixelRatio),
+        expectedHeight: Math.ceil(events[0].rect.height * events[0].page.viewport.devicePixelRatio),
+        pixel: [...bitmap.subarray(offset, offset + 4)],
+        restored: await cdp.send('Runtime.evaluate', { expression: `document.querySelector('[tabindex="-1"]').style.opacity`, returnByValue: true }) };
     const transportPrivate = await win.webContents.executeJavaScript('!window.__cocBrowserAnnotation');
     await transport.stop();
     click(80, 80);
     await until('window.clicks === 2', false);
+    await win.webContents.executeJavaScript(`Object.assign(document.querySelector('button').style,
+        { left: '40.25px', top: '60.5px', width: '120.5px', height: '40.25px' }); void 0;`);
+    win.webContents.setZoomFactor(1.25);
+    const zoomEvents = [];
+    const zoomed = new BrowserAnnotationTab(hosted, { events: batch => zoomEvents.push(...batch), ended() {} });
+    await zoomed.start();
+    click(100, 100);
+    for (const started = Date.now(); !zoomEvents.length && Date.now() - started < 5000; await new Promise(resolve => setTimeout(resolve, 25))) {
+        await zoomed.poll();
+    }
+    const fractionalImage = await zoomed.captureSelection(zoomEvents[0]);
+    const zoomRect = zoomEvents[0].rect, zoomDpr = zoomEvents[0].page.viewport.devicePixelRatio;
+    const fractional = { width: fractionalImage.width, height: fractionalImage.height,
+        expectedWidth: Math.ceil((zoomRect.x + zoomRect.width) * zoomDpr) - Math.floor(zoomRect.x * zoomDpr),
+        expectedHeight: Math.ceil((zoomRect.y + zoomRect.height) * zoomDpr) - Math.floor(zoomRect.y * zoomDpr),
+        dpr: zoomDpr, rect: zoomRect };
+    await zoomed.stop();
+    win.webContents.setZoomFactor(1);
     const navigationEndings = [];
     const navigating = new BrowserAnnotationTab(hosted, {
         events() {}, ended: reason => navigationEndings.push(reason),
@@ -160,7 +192,7 @@ function click(x, y, modifiers = []) {
     await navigating.stop().catch(() => {}); // Replaced documents can destroy the pinned context before cleanup.
     const noReinstall = await win.webContents.executeJavaScript(`document.querySelectorAll('[tabindex="-1"]').length === 0`);
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
-        endings, navigationEndings, noReinstall };
+        endings, navigationEndings, noReinstall, capture: captureResult, fractional };
     const deniedCommands = [];
     const deniedHost = { ...hosted, cdp: (method, params) => {
         deniedCommands.push(method);

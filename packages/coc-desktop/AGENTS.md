@@ -14,7 +14,7 @@ raw debugger transports stay in main.
 
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
-start/drain/stop/remove contract in an isolated world shared by both engines.
+start/drain/stop/remove/capture contract in an isolated world shared by both engines.
 Keep all chrome inside the closed shadow root; exit removes it and releases input
 listeners. Selection uses clipped fractional CSS pixels and opens the editor.
 Escape discards the draft first, then exits on the next press. Preserve native
@@ -25,7 +25,7 @@ are generation-local and stable, numbers reflect current order. Delete emits
 snapshot and clear immediate-send intent. Bound comments to 8000 UTF-16 units and
 saved pins to 100; pins anchor to selection-time document coordinates. Hosts own
 tab/navigation/crash/owner teardown; the primitive also handles document departure,
-host removal and report overflow. Composer synchronization needs an event consumer.
+host removal and report overflow. Comment/delete events feed the exact-chat composer consumer.
 The owner-bound remove command targets the original active generation, drains
 delete events and ignores callbacks after revocation.
 `browser-annotation-snapshot.ts` captures page and bounded element metadata at
@@ -37,6 +37,17 @@ captured website content as untrusted context.
 for user comments and bounded page context as separate JSON fields. Supply current pin numbers explicitly, including for a
 single immediate send; use those same numbers for selection image labels.
 Serialization preserves ordering and rejects duplicate or invalid numbers.
+`BrowserAnnotationTab.captureSelection(selection)` serializes a main-only crop of
+an unchanged pending draft. Shared capture commands hide all chrome with opacity,
+retain the input shield and queued events, wait two animation frames (one-second
+paint timeout), and check draft/scroll/viewport/DPR before and after native capture.
+Always restore the original generation, preserve native errors and reject late
+images after revocation. `BrowserHostedView.captureAnnotation` is optional;
+Electron URL guests use `electron-annotation-capture.ts` and `capturePage(rect)`.
+Convert CSS to enclosing DIP bounds using page zoom, then crop the decoded PNG to
+enclosing device pixels without resampling. Bound allocation to 16 Mi pixels and
+PNG output to 20 MiB. WebView2 capture and automatic composer image delivery need
+integration; file previews and popouts expose no annotation capture capability.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership
 admission and settled human takeover, then requires the engine's committed main

@@ -527,7 +527,7 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 ### Annotation selection primitive
 
 `packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
-isolated-world expression with generation-matched start/drain/stop/remove commands.
+isolated-world expression with generation-matched start/drain/stop/remove/capture commands.
 Its closed-shadow shield highlights and selects elements or Shift-drag areas,
 reusing `browser-control-clip.ts` for fractional viewport geometry.
 
@@ -568,6 +568,16 @@ paths, non-HTTP(S) documents and registered SPA origin/path pairs are excluded.
 SPA exclusion uses main-owned registrations across query/hash changes and never
 grants embedder trust or navigation permission. Missing native document facts fail
 closed; navigation revokes delayed admission replies.
+
+`BrowserAnnotationTab.captureSelection` serializes main-only capture for an
+unchanged pending draft. Shared capture commands hide all chrome, retain the input
+shield/events, wait two animation frames with a one-second timeout, and validate
+selection/scroll/viewport/DPR before and after capture. Restoration targets the
+original generation; failures and revocation reject the image. Electron URL guests
+implement optional `BrowserHostedView.captureAnnotation` through
+`electron-annotation-capture.ts`: enclosing DIP `capturePage(rect)` followed by a
+physical-pixel PNG crop, without resampling. Allocation caps at 16 Mi pixels and
+PNG output at 20 MiB; WebView2 and automatic composer delivery need integration.
 
 The shared main-only CDP interface installs and polls one isolated main-document
 context. Its private generation token, serialized
