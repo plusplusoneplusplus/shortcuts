@@ -38,7 +38,7 @@ describe('browser tab engine-neutral controls', () => {
         open.mockResolvedValue({ ok: true, engine });
         mocks.bridge!.annotation = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}),
             setEnabled: vi.fn(async () => {}), onEvent: vi.fn(() => vi.fn()) };
-        const view = tab();
+        const view = tab({ workspaceId: 'ws', chatId: 'chat-1' });
         await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
         expect(screen.getByRole('button', { name: 'Annotate' })).toBeDisabled();
         const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
@@ -57,6 +57,12 @@ describe('browser tab engine-neutral controls', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).toHaveAttribute('aria-pressed', 'true'));
         act(() => emit({ ...state, loading: true }));
         await waitFor(() => expect(mocks.bridge!.annotation!.stop).toHaveBeenCalledTimes(1));
+        // Comments need a chat composer: the tab's linked chat, else the one in view.
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible
+            onNavigate={vi.fn()} onPageState={vi.fn()} chatId={null} />);
+        act(() => emit(state));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).toBeDisabled());
+        expect(screen.getByRole('button', { name: 'Annotate' }).title).toBe('Open a chat to receive annotation comments.');
         view.unmount();
     });
 

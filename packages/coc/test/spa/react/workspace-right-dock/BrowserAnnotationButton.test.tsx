@@ -5,6 +5,8 @@ import { BrowserAnnotationButton, type BrowserAnnotationButtonProps } from '../.
 import type { BrowserAnnotationNotification, DesktopBrowserAnnotation } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
 import { startBrowserControlActivity, finishBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 import { clearBrowserTakeover, setBrowserTakeover } from '../../../../src/server/spa/client/react/shared/file-path/browser-takeover';
+import { BrowserAnnotationChips } from '../../../../src/server/spa/client/react/shared/file-path/BrowserAnnotationChips';
+import { getBrowserAnnotationChips, resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
 const mock = vi.hoisted(() => ({ enabled: true, takeover: false, route: 'local', request: vi.fn(), baseUrl: undefined as string | undefined }));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'config',
@@ -20,7 +22,7 @@ const client = { request: mock.request };
 let listeners: Set<(event: BrowserAnnotationNotification) => void>;
 let bridge: DesktopBrowserAnnotation;
 const props = (): BrowserAnnotationButtonProps => ({ bridge, sessionKey: 'clone:w', viewId: 'view', tabId: 'tab', workspaceId: 'w',
-    active: true, ready: true, excluded: false, documentKey: 'doc1' });
+    active: true, ready: true, excluded: false, documentKey: 'doc1', chatOwner: { workspaceId: 'w', routingRef: 'clone:w', processId: 'p' } });
 const button = () => screen.getByRole('button', { name: 'Annotate' });
 const owner = { workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'clone:w', viewIds: ['view'] };
 beforeEach(() => {
@@ -181,5 +183,70 @@ describe('annotation toolbar mode', () => {
         mock.route = 'unresolved-remote'; render(<BrowserAnnotationButton {...props()} />);
         expect(screen.queryByRole('button')).toBeNull(); expect(mock.request).not.toHaveBeenCalled();
         expect(bridge.setEnabled).toHaveBeenCalledWith('clone:w', false);
+    });
+});
+
+describe('annotation comments reach the target chat composer', () => {
+    const selection = { type: 'selection' as const, kind: 'area' as const, immediate: false, rect: { x: 1, y: 2, width: 30, height: 40 },
+        page: { url: 'https://example.test/', title: 'Example', viewport: { width: 800, height: 600, devicePixelRatio: 1 } } };
+    const chat = { workspaceId: 'w', routingRef: 'clone:w', processId: 'p' };
+    afterEach(() => resetBrowserAnnotationChipsForTest());
+
+    it('adds, edits and deletes chips from page events, and removing a chip removes its pin', async () => {
+        render(<><BrowserAnnotationButton {...props()} /><BrowserAnnotationChips owner={chat} /></>);
+        await start();
+        emit({ type: 'events', events: [
+            { type: 'comment', id: '1', number: 1, comment: 'first', selection },
+            { type: 'comment', id: '2', number: 2, comment: 'second', selection },
+            { type: 'comment', id: '3', number: 3, comment: 'third', selection },
+        ] });
+        expect(screen.getAllByTestId('browser-annotation-chip').map(chip => chip.textContent)).toEqual([
+            expect.stringMatching(/^1first/), expect.stringMatching(/^2second/), expect.stringMatching(/^3third/)]);
+        emit({ type: 'events', events: [{ type: 'comment', id: '2', number: 2, comment: 'edited', selection }] });
+        expect(screen.getAllByTestId('browser-annotation-chip')[1]).toHaveTextContent('edited');
+        emit({ type: 'events', events: [{ type: 'delete', id: '1' }] });
+        expect(screen.getAllByTestId('browser-annotation-chip').map(chip => chip.textContent?.slice(0, 1))).toEqual(['1', '2']);
+        fireEvent.click(screen.getByRole('button', { name: 'Remove browser comment 1' }));
+        expect(bridge.remove).toHaveBeenCalledWith(vi.mocked(bridge.start).mock.calls[0][0], '2');
+        expect(screen.getAllByTestId('browser-annotation-chip')).toHaveLength(1);
+        expect(screen.getByTestId('browser-annotation-chip')).toHaveTextContent(/^1third/);
+        // The page's own delete echo for the removed pin is harmless.
+        emit({ type: 'events', events: [{ type: 'delete', id: '2' }] });
+        expect(screen.getAllByTestId('browser-annotation-chip')).toHaveLength(1);
+    });
+
+    it('keeps chips after navigation without touching the replacement mode', async () => {
+        const view = render(<><BrowserAnnotationButton {...props()} /><BrowserAnnotationChips owner={chat} /></>);
+        await start();
+        emit({ type: 'events', events: [{ type: 'comment', id: '1', number: 1, comment: 'kept', selection }] });
+        view.rerender(<><BrowserAnnotationButton {...props()} documentKey="doc2" /><BrowserAnnotationChips owner={chat} /></>);
+        await waitFor(() => expect(bridge.stop).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(button()).toHaveAttribute('aria-pressed', 'false'));
+        await start();
+        expect(screen.getByTestId('browser-annotation-chip')).toHaveTextContent('kept');
+        fireEvent.click(screen.getByRole('button', { name: 'Remove browser comment 1' }));
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+        expect(bridge.remove).not.toHaveBeenCalled();
+    });
+
+    it('routes only to the exact chat, and a chat change ends the mode', async () => {
+        const other = { ...chat, processId: 'q' };
+        const view = render(<><BrowserAnnotationButton {...props()} /><BrowserAnnotationChips owner={other} /></>);
+        await start();
+        emit({ type: 'events', events: [{ type: 'comment', id: '1', number: 1, comment: 'mine', selection }] });
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+        expect(getBrowserAnnotationChips({ ...chat, processId: 'queue_p' })).toHaveLength(1);
+        expect(getBrowserAnnotationChips({ ...chat, routingRef: 'remote:s:w' })).toHaveLength(0);
+        view.rerender(<><BrowserAnnotationButton {...props()} chatOwner={other} /><BrowserAnnotationChips owner={other} /></>);
+        await waitFor(() => expect(bridge.stop).toHaveBeenCalledTimes(1));
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+    });
+
+    it('is disabled without a target chat', () => {
+        render(<BrowserAnnotationButton {...props()} chatOwner={null} />);
+        expect(button()).toBeDisabled();
+        expect(button().title).toBe('Open a chat to receive annotation comments.');
+        fireEvent.click(button());
+        expect(bridge.start).not.toHaveBeenCalled();
     });
 });

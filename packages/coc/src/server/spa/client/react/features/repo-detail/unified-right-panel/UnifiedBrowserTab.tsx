@@ -258,7 +258,8 @@ export function UnifiedBrowserTab({
                 workspaceId={workspaceId} tabId={tabId} active={active && visible}
                 ready={opened && Boolean(page) && !page?.loading && !failed}
                 excluded={page?.sourceKind === 'file' || isAnnotationExcludedUrl(currentUrl)}
-                documentKey={siteScope} />}
+                documentKey={siteScope}
+                chatOwner={workspaceId && chatId ? { workspaceId, routingRef: sessionKey, processId: chatId } : null} />}
             <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
             {bridge && <BrowserDemoStrip workspaceId={workspaceId} processId={chatId ?? null} routingRef={sessionKey} viewId={viewId}
                 ready={opened && Boolean(url) && page?.sourceKind !== 'file'} active={active && visible}

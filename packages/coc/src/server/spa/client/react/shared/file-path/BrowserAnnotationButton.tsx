@@ -4,6 +4,8 @@ import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, getFeatureValue } from '../../utils/config';
 import { BrowserAnnotationSession, type DesktopBrowserAnnotation } from './browser-annotation';
+import { applyBrowserAnnotationEvents } from './browser-annotation-chips';
+import type { BrowserDemoOwner } from './browser-bridge';
 import { getBrowserTakeover, subscribeBrowserTakeover } from './browser-takeover';
 import { getBrowserControlActivity, subscribeBrowserControlActivity } from './browser-control-activity';
 
@@ -70,6 +72,8 @@ export interface BrowserAnnotationButtonProps {
     excluded: boolean;
     /** Changes on document commit, load, failure or owner replacement. */
     documentKey: string;
+    /** The chat whose composer receives saved comments; fixed for each mode. */
+    chatOwner: BrowserDemoOwner | null;
 }
 
 /** One tab/document owns a mode; main performs takeover before injecting the overlay. */
@@ -87,6 +91,8 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
     const operation = useRef<object | null>(null);
     const live = useRef(true);
     const allowed = policy.enabled && props.active && props.ready && !props.excluded;
+    // A different target chat ends the mode, so a comment never lands in a chat the user left.
+    const ownerKey = props.chatOwner ? JSON.stringify([props.chatOwner.workspaceId, props.chatOwner.routingRef, props.chatOwner.processId]) : '';
 
     useEffect(() => {
         live.current = true;
@@ -121,17 +127,20 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
     useEffect(() => {
         // Cleanup revokes the old generation synchronously, including pending Start.
         return () => { void stop(); };
-    }, [props.bridge, props.sessionKey, props.viewId, props.documentKey, allowed]);
+    }, [props.bridge, props.sessionKey, props.viewId, props.documentKey, allowed, ownerKey]);
 
     const toggle = async () => {
         if (operation.current) return;
         setError(null);
         if (session.current) { await stop(); return; }
-        if (!allowed) return;
+        const owner = props.chatOwner;
+        if (!allowed || !owner) return;
         const current = {};
         operation.current = current;
         setPhase('starting');
         const next = new BrowserAnnotationSession(props.bridge, props.viewId, props.sessionKey, event => {
+            // The session drops foreign and late notifications; saved comments outlive the mode.
+            if (event.type === 'events') applyBrowserAnnotationEvents(owner, next, event.events);
             if (session.current !== next) return;
             if (event.type === 'ended') {
                 session.current = null;
@@ -172,6 +181,7 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
     const reason = !props.bridge.supported ? 'Annotation is unavailable in this desktop version.'
         : !props.ready ? 'Open a loaded web page to annotate.'
         : !props.active ? 'Select this tab to annotate.'
+        : !props.chatOwner ? 'Open a chat to receive annotation comments.'
         : agent && !policy.takeoverEnabled ? 'Enable human takeover in Admin → Browser to annotate during an agent turn.'
         : takeover?.status === 'taking-over' || takeover?.status === 'checking' ? 'Wait for browser control to settle.' : null;
     const pending = phase === 'starting' || phase === 'stopping';

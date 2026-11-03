@@ -59,10 +59,14 @@ references before editing. Paths are package-relative.
   Guest selections open the shared closed-shadow editor. Save creates or updates
   a numbered pin with a generation-local stable ID; delete renumbers survivors.
   Comment events retain original snapshots; only creation carries modifier-send
-  intent. Match pin IDs with their full mode identity. The toolbar handles lifecycle
-  events; composer delivery requires an event consumer. Session `remove(id)` routes
-  chip removal through owner-bound IPC to the original active generation. Callbacks
-  after navigation/Stop cannot remove pins from a replacement.
+  intent. Match pin IDs with their full mode identity. Each mode fixes its target
+  chat (`BrowserDemoOwner`: workspace, concrete routing ref, queue-alias process)
+  at start; no target disables Annotate and a target change ends the mode.
+  `browser-annotation-chips.ts` is the in-memory chip store: comment/delete events
+  upsert/remove chips keyed by mode request ID plus pin ID, renumbering that mode's
+  survivors. `FollowUpInputArea` renders only its exact owner's chips; removing one
+  calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
+  so chips outlive pins and never touch a replacement.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

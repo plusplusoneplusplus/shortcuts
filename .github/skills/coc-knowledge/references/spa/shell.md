@@ -600,8 +600,14 @@ events. Unresolved owners fail closed; stale reads cannot retarget policy. Docum
 changes, hiding, unmount, Escape and disable revoke startup and stop the mode.
 Loaded URL tabs participate; previews, PDF URLs and the SPA document omit the
 button. Active turns require enabled human takeover, with main owning the settled
-injection sequence. The toolbar consumes lifecycle events; pin synchronization,
-screenshots and composer delivery need consumers of the comment events.
+injection sequence. Each mode fixes its target chat at start (the tab's linked
+chat, else the panel's chat in view; none disables the button, a change ends the
+mode). Comment/delete events feed the in-memory `browser-annotation-chips.ts` store,
+keyed by mode request ID plus pin ID; deletion renumbers that mode's survivors to
+match the page. `FollowUpInputArea` renders `BrowserAnnotationChips` for its exact
+workspace/routing/process owner; removing a chip calls its original session's
+`remove(id)`, a no-op once that mode ended, so chips outlive navigation. Sending
+chips, screenshots and the new-chat composer fallback are not wired yet.
 
 ### Shared web-page zoom
 
