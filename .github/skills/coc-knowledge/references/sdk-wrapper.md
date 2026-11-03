@@ -275,6 +275,8 @@ When the query handle exposes `getContextUsage()`, `TokenUsage` gains `tokenLimi
 `getAccountQuota()` uses `acquireClaudeCredential` from coc-native on every
 platform, then calls `https://api.anthropic.com/api/oauth/usage`. Native auth owns
 credential parsing, source selection, expiry checks, refresh and persistence.
+Credential writers use compact JSON so macOS `security -w` returns JSON that
+Claude CLI can parse rather than hex-encoding multiline Keychain values.
 The host resolves `os.homedir()` and an optional `$CLAUDE_CREDENTIALS_FILE` to
 absolute paths. All workspaces share the private `~/.coc/auth/claude/locks` lock
 directory because credentials are user-wide; it contains no tokens or repo data.

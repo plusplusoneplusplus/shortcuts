@@ -67,7 +67,8 @@ pub fn persist_credentials(
 ) -> PersistResult {
     let existing_json = read_existing_json(target);
     let merged = merge_fields(&existing_json, fields);
-    let json_str = match serde_json::to_string_pretty(&merged) {
+    // Keep Keychain values readable as JSON through the Claude CLI's security -w.
+    let json_str = match serde_json::to_string(&merged) {
         Ok(s) => s,
         Err(_) => return PersistResult { success: false, warning: None },
     };
@@ -292,6 +293,7 @@ mod tests {
         )
         .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(!content.contains('\n'), "Credential JSON must also be safe for CLI Keychain readers");
         assert_eq!(parsed["claudeAiOauth"]["accessToken"], "new-access");
         assert_eq!(parsed["claudeAiOauth"]["refreshToken"], "new-refresh");
     }

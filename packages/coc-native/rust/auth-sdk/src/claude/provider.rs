@@ -112,8 +112,8 @@ async fn acquire_with_store(
     }
     let merged = merge_fields(&existing, &fields);
     let raw = Secret::new(
-        serde_json::to_string_pretty(&merged)
-            .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?,
+        // security -w hex-encodes multiline Keychain values; Claude expects JSON.
+        serde_json::to_string(&merged).map_err(|_| AuthError::new(ErrorCode::StorageFailed))?,
     );
     // Once rotation succeeds, finish saving it even if cancellation arrives here.
     match &source {
@@ -417,10 +417,62 @@ mod tests {
         let store =
             Store { raw: Mutex::new(Some(Secret::new(expired().to_string()))), ..Store::default() };
         f.acquire(&Http::default(), &store).await.unwrap();
+        assert!(!store.raw.lock().unwrap().as_ref().unwrap().expose().contains('\n'));
         let saved: serde_json::Value =
             serde_json::from_str(store.raw.lock().unwrap().as_ref().unwrap().expose()).unwrap();
         assert_eq!(saved["mcpOAuth"]["server"], "unrelated");
         assert_eq!(saved["claudeAiOauth"]["refreshToken"], "new-refresh");
+        assert!(!f.path().exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "Explicit isolated CLI Keychain fixture"]
+    async fn refreshed_keychain_is_json_through_security_cli() {
+        let service = format!("coc-claude-format-test-{}", std::process::id());
+        let account = "dummy-refresh-fixture";
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = OsCredentialStore::new(&self.0).delete("dummy-refresh-fixture");
+            }
+        }
+        let _cleanup = Cleanup(service.clone());
+        let store = OsCredentialStore::new(&service);
+        let read_cli = || {
+            let output = std::process::Command::new("/usr/bin/security")
+                .args(["find-generic-password", "-s", &service, "-a", account, "-w"])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        };
+
+        // Multiline Keychain values are hex-encoded by security, so a CLI JSON
+        // reader rejects them even though native Keychain reads still succeed.
+        store
+            .write(account, &Secret::new(serde_json::to_string_pretty(&expired()).unwrap()))
+            .unwrap();
+        assert!(read_cli().is_err());
+        store.write(account, &Secret::new(expired().to_string())).unwrap();
+        assert!(read_cli().is_ok());
+
+        let mut f = Fixture::new();
+        f.sources.skip_keychain = false;
+        acquire_with_store(
+            &Http::default(),
+            &f.options(),
+            &store,
+            Some(account),
+            &CancellationToken::new(),
+            deadline(),
+        )
+        .await
+        .unwrap();
+        let saved = read_cli().expect("Claude CLI must be able to parse refreshed credentials");
+        assert_eq!(saved["claudeAiOauth"]["accessToken"], "new-access");
+        assert_eq!(saved["claudeAiOauth"]["refreshToken"], "new-refresh");
+        assert_eq!(saved["mcpOAuth"]["server"], "unrelated");
         assert!(!f.path().exists());
     }
 

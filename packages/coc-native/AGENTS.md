@@ -108,7 +108,9 @@ diagnostics, and has no storage or verified-account dependency. Scope policy,
 scheduling and cache ownership stay with the caller. Native OAuth acquisition reuses
 the exchange within its existing discovery, identity verification and locked rotation.
 `auth_sdk::claude::acquire_token` coordinates demand refresh in Rust, pins reads
-and writes to one credential source, and persists rotation before returning.
+and writes to one credential source, and persists rotation as compact JSON before
+returning. macOS `security -w` hex-encodes multiline Keychain values; Claude CLI
+credential readers require JSON output.
 Callers sharing credentials must share a private coordination directory; external
 Claude CLI writers do not use these locks. `src/claude-auth.ts` exposes one-shot
 `acquireClaudeCredential(options, signal?)` through `NativeClaudeCredentialRequest`.
