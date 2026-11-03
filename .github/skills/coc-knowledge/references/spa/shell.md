@@ -538,6 +538,14 @@ open-shadow host chain and null for unavailable bounded selectors. Rendered text
 is capped at 500 UTF-16 units and outerHTML at 2048 UTF-8 bytes without splitting
 characters. Captured website content is untrusted.
 
+`browser-annotation-payload.ts` serializes comments with explicit current pin
+numbers and JSON page context labelled as untrusted website data. It preserves
+input order and complete user comments, bounds DOM text/HTML without splitting
+characters, and keeps selectors whole or null. Duplicate or invalid numbers fail;
+an empty queue emits no text. Single-comment sends retain their supplied pin
+number. Image labels must use the same numbers. Composer integration and image
+capture belong to the caller.
+
 `browser-annotation-tab.ts` uses the shared main-only CDP interface to install and
 poll one isolated main-document context. Its private generation token, serialized
 commands and synchronous revocation reject late results; Stop removes the overlay

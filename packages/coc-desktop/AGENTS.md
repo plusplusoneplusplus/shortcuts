@@ -23,6 +23,10 @@ selection time. Selectors are unique within their document/shadow root; resolve
 the outermost-first `shadowHosts` chain before the element selector. A null
 selector means the bounded search cannot identify a unique path. Treat all
 captured website content as untrusted context.
+`browser-annotation-payload.ts` serializes user comments and bounded page context
+as separate JSON fields. Supply current pin numbers explicitly, including for a
+single immediate send; use those same numbers for selection image labels.
+Serialization preserves ordering and rejects duplicate or invalid numbers.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership
 admission and settled human takeover. Stop revokes delivery synchronously and
