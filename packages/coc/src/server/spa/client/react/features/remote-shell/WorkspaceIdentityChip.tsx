@@ -112,6 +112,8 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
      * either as a bare string would let a remote named like a group id resolve
      * to the wrong scope.
      */
+    // Keep pinning visible on every row, including multi-clone rows without a
+    // per-clone menu and touch layouts where hover cannot reveal an action.
     const renderPinToggle = useCallback((ref: PinnedScopeRef, label: string) => {
         if (!pinnedScopesEnabled) return null;
         const pinned = isPinned(ref);
@@ -127,10 +129,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                 title={blocked ? 'Pin limit reached' : pinned ? 'Unpin from the scope switcher' : 'Pin to the scope switcher'}
                 onClick={e => { e.stopPropagation(); togglePin(ref); }}
                 className={
-                    'flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded transition-opacity '
+                    'flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded '
                     + (pinned
-                        ? 'text-[#0969da] dark:text-[#79c0ff] opacity-100'
-                        : 'text-[#848484] dark:text-[#777] opacity-0 group-hover/row:opacity-100 focus:opacity-100 disabled:opacity-0')
+                        ? 'text-[#0969da] dark:text-[#79c0ff]'
+                        : 'text-[#848484] dark:text-[#777] disabled:opacity-30')
                     + ' hover:bg-black/[0.06] dark:hover:bg-white/[0.10]'
                 }
             >
