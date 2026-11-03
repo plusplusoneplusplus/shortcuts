@@ -128,7 +128,7 @@ describe('PrReviewSummaryPanel', () => {
 });
 
 describe('PrConversationPanel', () => {
-    it('renders the timeline and lets the user draft a reply', () => {
+    it('renders the Activity timeline and an empty reply box without a canned draft button', () => {
         render(
             <PrConversationPanel
                 events={buildTimelineFromRealData(
@@ -141,9 +141,8 @@ describe('PrConversationPanel', () => {
         expect(screen.getAllByTestId('pr-timeline-event').length).toBeGreaterThanOrEqual(2);
         const reply = screen.getByTestId('pr-reply-box') as HTMLTextAreaElement;
         expect(reply.value).toBe('');
-
-        fireEvent.click(screen.getByTestId('pr-draft-reply'));
-        expect(reply.value.length).toBeGreaterThan(0);
+        expect(screen.getByRole('heading', { name: 'Activity' })).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-draft-reply')).not.toBeInTheDocument();
     });
 });
 
@@ -169,10 +168,9 @@ describe('PrAiGroupedThreads', () => {
         expect(screen.getAllByText(/blocking/i).length).toBeGreaterThan(0);
     });
 
-    it('renders an empty-state message when there are no threads', () => {
-        render(<PrAiGroupedThreads groups={buildThreadGroupsFromThreads([])} totalThreads={0} />);
-        expect(screen.getByText(/No comment threads/i)).toBeTruthy();
-        expect(screen.queryAllByTestId('pr-ai-thread-group')).toHaveLength(0);
+    it('renders nothing when there are no threads', () => {
+        const { container } = render(<PrAiGroupedThreads groups={buildThreadGroupsFromThreads([])} totalThreads={0} />);
+        expect(container).toBeEmptyDOMElement();
     });
 });
 
