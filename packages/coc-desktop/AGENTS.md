@@ -59,8 +59,8 @@ the native helper's memory-only `CapturePreview` PNG, validate full-viewport phy
 dimensions before decoding, then crop without resampling. Full previews share the
 16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
 transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide and zoom
-changes reject late captures. Composer association and image attachment need integration;
-file previews and popouts expose no annotation capture capability.
+changes reject late captures. Exact-chat SPA chips retain native PNGs and the composer
+attaches their numbered snapshots through its screenshot validator; file previews and popouts expose no annotation capture capability.
 `browser-annotation-tab.ts` transports one admitted URL document through the
 existing main-only CDP interface shared by both engines. Start follows ownership
 admission and settled human takeover, then requires the engine's committed main
@@ -131,5 +131,9 @@ update dialogs and the Windows helper's real-process coverage intact.
 `npm run build` compiles this package. `npm run test:run -- test/<file>` runs
 targeted Vitest coverage; `npx eslint src/<file> --quiet` checks changed source.
 Browser demos have capture/session/tab-capture/recorder/manager suites and native
-host integration fixtures. Use platform-neutral synthetic data. Real desktop
-interaction and Windows WebView2 behavior require explicit manual verification.
+host integration fixtures. Use platform-neutral synthetic data. `test/e2e/browser-webview-layer.e2e.test.ts` exercises the production URL toolbar,
+preload bridge, host manager, isolated guest, native PNG capture, chips and composer
+request path; its process endpoint is a deterministic receiver. Run with
+`ELECTRON_DISABLE_SANDBOX=1 COC_DESKTOP_E2E_NO_SANDBOX=1 COC_DESKTOP_E2E=1 xvfb-run -a npm run test:run -- test/e2e/browser-webview-layer.e2e.test.ts`
+on Linux after desktop compilation and SPA stylesheet build. Shared DOM e2e covers
+1x/2x pixels and fractional zoom. Windows WebView2 runtime behavior needs a Windows host.
