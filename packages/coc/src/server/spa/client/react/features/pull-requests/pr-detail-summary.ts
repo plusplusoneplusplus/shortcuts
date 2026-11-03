@@ -51,12 +51,12 @@ export function isUnresolvedPullRequestThread(thread: CommentThread): boolean {
     return status == null || status === 'active' || status === 'open';
 }
 
-export function reviewRiskPillClass(risk: PrReviewRiskLevel): string {
+/** Text color for the header risk line. Low/Unknown risk is not shown. */
+export function reviewRiskTextClass(risk: PrReviewRiskLevel): string {
     switch (risk) {
-        case 'Low':     return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200';
-        case 'Medium':  return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-200';
-        case 'High':    return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200';
-        case 'Unknown': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300';
+        case 'High':    return 'text-red-600 dark:text-red-400';
+        case 'Medium':  return 'text-orange-600 dark:text-orange-400';
+        default:        return 'text-gray-500 dark:text-gray-400';
     }
 }
 

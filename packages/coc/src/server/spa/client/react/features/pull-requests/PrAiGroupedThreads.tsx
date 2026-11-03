@@ -29,35 +29,29 @@ function severityClass(severity: ThreadGroupSummary['severity']): string {
 }
 
 export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsProps) {
+    if (totalThreads === 0) return null;
+
     const blockingCount = groups
         .filter(group => group.severity === 'blocking')
         .reduce((sum, group) => sum + group.count, 0);
 
     return (
-        <aside
-            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-            data-testid="pr-ai-thread-groups"
-        >
-            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+        <aside data-testid="pr-ai-thread-groups">
+            <header className="mb-2 flex items-baseline justify-between gap-1.5">
+                <h2 className="m-0 text-[15px] font-semibold text-gray-900 dark:text-gray-100">
                     Grouped threads
                 </h2>
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                     <span data-testid="pr-ai-thread-total">{totalThreads} total</span>
                     {blockingCount > 0 && (
-                        <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                        <span className="text-orange-600 dark:text-orange-400">
                             {blockingCount} blocking
                         </span>
                     )}
                 </div>
             </header>
-            <div className="grid gap-[5px] p-2">
-                {totalThreads === 0 && (
-                    <p className="m-0 px-1.5 py-0.5 text-[11px] italic text-gray-500 dark:text-gray-400">
-                        No comment threads on this pull request yet.
-                    </p>
-                )}
-                {totalThreads > 0 && groups.map(group => (
+            <div className="grid gap-[5px]">
+                {groups.map(group => (
                     <div
                         key={group.id}
                         className={cn(

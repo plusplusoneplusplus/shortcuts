@@ -304,20 +304,21 @@ describe('successful render', () => {
         expect(screen.getByTestId('pr-review-summary-copy').textContent).toContain('Fix flaky network calls.');
     });
 
-    it('shows the fallback copy and Open-in-browser link when description is absent', async () => {
+    it('shows the fallback copy without a duplicate Open-in-browser link in the summary', async () => {
         mockFetchDetail(makePr({ description: undefined, url: 'https://example.com/pr/142' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
         expect(screen.getByTestId('pr-review-summary-copy').textContent).toContain('No PR description provided.');
-        const openLink = screen.getByRole('link', { name: 'Open in browser' });
-        expect(openLink).toHaveAttribute('href', 'https://example.com/pr/142');
+        expect(screen.queryByRole('link', { name: 'Open in browser' })).not.toBeInTheDocument();
     });
 
-    it('does not render an Open-in-browser link when no url', async () => {
-        mockFetchDetail(makePr({ description: undefined, url: undefined }));
+    it('hides Co-authored-by trailers from the summary body', async () => {
+        mockFetchDetail(makePr({ description: 'Fix flaky calls.\n\nCo-authored-by: Bot <bot@example.com>' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
-        expect(screen.queryByRole('link', { name: 'Open in browser' })).not.toBeInTheDocument();
+        const copy = screen.getByTestId('pr-review-summary-copy').textContent ?? '';
+        expect(copy).toContain('Fix flaky calls.');
+        expect(copy).not.toContain('Co-authored-by');
     });
 
     it('renders reviewer list with correct vote icons', async () => {
@@ -341,50 +342,92 @@ describe('successful render', () => {
         await waitFor(() => expect(screen.getAllByTestId('label-chip')).toHaveLength(2));
     });
 
-    it('renders an "Open" external link in the compact hero', async () => {
+    it('renders the external link inside the more-actions menu', async () => {
         mockFetchDetail(makePr({ url: 'https://example.com/pr/1' }));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('pr-more-actions')).toBeInTheDocument());
+        expect(screen.queryByTestId('header-external-link')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('pr-more-actions'));
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
-        expect(screen.getByTestId('header-external-link').textContent).toContain('Open');
+        expect(screen.getByTestId('header-external-link').textContent).toBe('Open in browser');
+    });
+
+    it('omits the external link from the menu when the PR has no url', async () => {
+        mockFetchDetail(makePr({ url: undefined }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-more-actions')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('pr-more-actions'));
+        expect(screen.getByTestId('pr-more-menu')).toBeInTheDocument();
+        expect(screen.queryByTestId('header-external-link')).not.toBeInTheDocument();
     });
 });
 
 // ── Hero / AI badges ───────────────────────────────────────────────────────────
 
 describe('hero metadata', () => {
-    it('renders the AI risk pill on the hero row', async () => {
+    it('hides the risk line for low or unknown risk', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('pr-risk-pill')).toBeInTheDocument());
-        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/Risk:/);
+        await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
+        expect(screen.queryByTestId('pr-risk-pill')).not.toBeInTheDocument();
     });
 
-    it('renders the additions/deletions delta and file count from the real diff', async () => {
+    it('shows medium or high risk as plain text on the status line', async () => {
+        mockFetchDetail(makePr({ diffStats: { additions: 5000, deletions: 3000, changedFiles: 80 } }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-risk-pill')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/^(Medium|High) risk$/);
+    });
+
+    it('shows auto-merge state as text without emoji', async () => {
+        mockFetchDetail(makePr({ autoMerge: { enabled: true, state: 'blocked' } }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-auto-merge-badge')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-auto-merge-badge').textContent).toBe('Auto-merge blocked');
+    });
+
+    it('renders the additions/deletions delta without a duplicate file count', async () => {
         mockFetchDetail(makePr(), [], SAMPLE_DIFF);
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-delta')).toBeInTheDocument());
         // SAMPLE_DIFF: +2 additions, -1 deletion across 2 files.
-        expect(screen.getByTestId('pr-delta').textContent).toBe('+2 / -1');
-        expect(screen.getByTestId('pr-file-count').textContent).toBe('2 files');
+        expect(screen.getByTestId('pr-delta').textContent).toBe('+2 −1');
+        expect(screen.queryByTestId('pr-file-count')).not.toBeInTheDocument();
     });
 
-    it('hides the delta and file-count metadata when the diff is empty', async () => {
+    it('hides the delta metadata when the diff is empty', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
         expect(screen.queryByTestId('pr-delta')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('pr-file-count')).not.toBeInTheDocument();
     });
 
-    it('renders the merge / AI / copy hero actions', async () => {
+    it('shows one primary action and moves secondary actions into the more-actions menu', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('pr-merge-when-ready')).toBeInTheDocument());
-        expect(screen.getByTestId('pr-run-ai-pass')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-copy-summary')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
+        // Dead buttons are gone.
+        expect(screen.queryByTestId('pr-merge-when-ready')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-request-changes')).not.toBeInTheDocument();
+        // Secondary actions stay hidden until the menu opens.
+        for (const id of ['pr-run-ai-pass', 'pr-copy-summary', 'pr-refresh']) {
+            expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+        }
+        fireEvent.click(screen.getByTestId('pr-more-actions'));
+        for (const id of ['pr-run-ai-pass', 'pr-copy-summary', 'pr-refresh']) {
+            expect(screen.getByTestId(id)).toBeInTheDocument();
+        }
+        // Outside click closes the menu.
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('pr-more-menu')).not.toBeInTheDocument();
+    });
+
+    it('hides the grouped-threads sidebar when there are no threads', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('overview-tab')).toBeInTheDocument());
+        expect(screen.queryByTestId('pr-ai-thread-groups')).not.toBeInTheDocument();
     });
 
     it('renders deterministic review-summary facts and copies the PR description', async () => {
@@ -427,6 +470,7 @@ describe('hero metadata', () => {
         expect(findings).toContain('src/retry.ts:44');
         expect(screen.queryByTestId('pr-quick-workflow')).not.toBeInTheDocument();
 
+        fireEvent.click(screen.getByTestId('pr-more-actions'));
         fireEvent.click(screen.getByTestId('pr-copy-summary'));
         expect(clipboardWrite).toHaveBeenCalledWith('Fix flaky network calls with bounded retries.');
     });

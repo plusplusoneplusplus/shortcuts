@@ -15,9 +15,10 @@
  *   - Conversation timeline derived from real threads and commits.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { formatRelativeTime } from '../../utils/format';
 import { useCocClient } from '../../repos/cloneRouting';
 import { formatTimestamp, prStatusBadge, autoMergeBadge } from './pr-utils';
 import { ThreadList } from './ThreadList';
@@ -49,7 +50,7 @@ import {
     buildPrReviewSummary,
     buildPullRequestDiffStats,
     getPullRequestReviewSummaryText,
-    reviewRiskPillClass,
+    reviewRiskTextClass,
 } from './pr-detail-summary';
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import { parseDiffFileList, type FileChange } from '../git/diff';
@@ -72,12 +73,23 @@ export interface PullRequestDetailProps {
 
 const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
     { id: 'overview', label: 'Overview' },
-    { id: 'files',    label: 'Files changed' },
+    { id: 'files',    label: 'Files' },
     { id: 'commits',  label: 'Commits' },
     { id: 'checks',   label: 'Checks' },
 ];
 
 const EMPTY_FILES: FileChange[] = [];
+
+const MENU_ITEM_CLASS = 'block w-full px-3 py-1.5 text-left text-gray-800 hover:bg-gray-100 disabled:opacity-60 dark:text-gray-200 dark:hover:bg-gray-800';
+
+function statusDotClass(status: string): string {
+    switch (status) {
+        case 'open':   return 'bg-green-500';
+        case 'merged': return 'bg-purple-500';
+        case 'closed': return 'bg-red-500';
+        default:       return 'bg-gray-400';
+    }
+}
 
 export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId, remoteUrl, prId, onBack, isMobile = false, selectedTab, onNavigateTab }: PullRequestDetailProps) {
     const cloneClient = useCocClient(workspaceId);
@@ -100,7 +112,17 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
     const [detailTab, setDetailTab] = useState<PrDetailTab>(requestedTab);
     const [aiPassRunning, setAiPassRunning] = useState(false);
     const [aiPassDone, setAiPassDone] = useState(false);
-    const [summaryCopied, setSummaryCopied] = useState(false);
+    const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+    const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!moreMenuOpen) return;
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!moreMenuRef.current?.contains(event.target as Node)) setMoreMenuOpen(false);
+        };
+        document.addEventListener('mousedown', handlePointerDown);
+        return () => document.removeEventListener('mousedown', handlePointerDown);
+    }, [moreMenuOpen]);
 
     // Pop-out context for opening PR review in a separate window
     const { markPoppedOut } = useGitReviewPopOut();
@@ -321,8 +343,6 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
         } catch {
             /* clipboard may not be available in tests; swallow. */
         }
-        setSummaryCopied(true);
-        window.setTimeout(() => setSummaryCopied(false), 1400);
     }
 
     if (loading) {
@@ -353,19 +373,19 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
     }
 
     const badge = prStatusBadge(pr.status);
+    const autoMerge = autoMergeBadge(pr.autoMerge);
     const reviewers = pr.reviewers ?? [];
     const labels = pr.labels ?? [];
     const unresolvedCount = reviewSummary?.unresolvedCount ?? 0;
+    const showRisk = reviewSummary?.risk === 'Medium' || reviewSummary?.risk === 'High';
+    const updatedAt = pr.updatedAt ?? pr.createdAt;
     const deltaText = diffStats
-        ? `+${diffStats.additions} / -${diffStats.deletions}`
-        : '';
-    const fileCountText = diffStats
-        ? `${diffStats.changedFiles} file${diffStats.changedFiles === 1 ? '' : 's'}`
+        ? `+${diffStats.additions} −${diffStats.deletions}`
         : '';
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-gray-950" data-testid="pr-detail">
-            <section className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex h-full flex-col overflow-hidden bg-white dark:bg-gray-900" data-testid="pr-detail">
+            <section className="shrink-0 border-b border-gray-200 dark:border-gray-700">
                 {isMobile && (
                     <button
                         className="px-2 pt-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
@@ -376,156 +396,141 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                     </button>
                 )}
 
-                <div
-                    className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400"
-                    data-testid="pr-hero-row"
-                >
-                    <span
-                        className={cn(
-                            'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                            badge.className,
-                        )}
-                        data-testid="pr-status-badge"
-                    >
-                        {badge.emoji} {badge.label}
-                    </span>
-
-                    <h1 className="m-0 inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate text-[15px] font-semibold leading-[1.2] tracking-normal text-gray-900 dark:text-gray-100">
-                        <span className="truncate" data-testid="pr-title">{pr.title}</span>
-                        {pr.number != null && (
-                            <span className="shrink-0 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
-                                #{pr.number}
-                            </span>
-                        )}
-                    </h1>
-
-                    {reviewSummary && (
-                        <span
-                            className={cn(
-                                'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                                reviewRiskPillClass(reviewSummary.risk),
+                <div className="flex items-start gap-3 px-4 pb-2 pt-3" data-testid="pr-hero-row">
+                    <div className="min-w-0 flex-1">
+                        <h1 className="m-0 flex min-w-0 items-baseline gap-2 text-[18px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+                            <span className="truncate" data-testid="pr-title">{pr.title}</span>
+                            {pr.number != null && (
+                                <span className="shrink-0 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
+                                    #{pr.number}
+                                </span>
                             )}
-                            data-testid="pr-risk-pill"
-                        >
-                            Risk: {reviewSummary.risk}
-                        </span>
-                    )}
-                    {pr.autoMerge?.enabled && (() => {
-                        const badge = autoMergeBadge(pr.autoMerge);
-                        return badge ? (
-                            <span
-                                className={cn(
-                                    'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                                    badge.className,
-                                )}
-                                data-testid="pr-auto-merge-badge"
-                            >
-                                {badge.emoji} {badge.label}
+                        </h1>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex shrink-0 items-center gap-1.5" data-testid="pr-status-badge">
+                                <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', statusDotClass(pr.status))} />
+                                {badge.label}
                             </span>
-                        ) : null;
-                    })()}
-                    {unresolvedCount > 0 && (
-                        <span className="inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
-                            {unresolvedCount} unresolved
-                        </span>
-                    )}
+                            <span aria-hidden="true">·</span>
+                            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 break-all" data-testid="pr-branches">
+                                <span>{pr.author?.displayName ?? 'unknown'}</span>
+                                <span aria-hidden="true">·</span>
+                                <span className="font-mono">{pr.sourceBranch} → {pr.targetBranch}</span>
+                            </span>
+                            {deltaText && (
+                                <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="shrink-0 font-mono tabular-nums" data-testid="pr-delta">{deltaText}</span>
+                                </>
+                            )}
+                            {updatedAt && (
+                                <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="shrink-0" title={formatTimestamp(updatedAt)} data-testid="pr-updated">
+                                        updated {formatRelativeTime(updatedAt)}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        {(autoMerge || showRisk || unresolvedCount > 0) && (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[12px] text-gray-500 dark:text-gray-400" data-testid="pr-status-line">
+                                {autoMerge && (
+                                    <span
+                                        className={pr.autoMerge?.state === 'blocked' ? 'text-orange-600 dark:text-orange-400' : undefined}
+                                        data-testid="pr-auto-merge-badge"
+                                    >
+                                        {autoMerge.label}
+                                    </span>
+                                )}
+                                {showRisk && reviewSummary && (
+                                    <span className={reviewRiskTextClass(reviewSummary.risk)} data-testid="pr-risk-pill">
+                                        {reviewSummary.risk} risk
+                                    </span>
+                                )}
+                                {unresolvedCount > 0 && (
+                                    <span className="text-orange-600 dark:text-orange-400" data-testid="pr-unresolved">
+                                        {unresolvedCount} unresolved
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
-                    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 break-all" data-testid="pr-branches">
-                        <strong className="font-mono text-gray-700 dark:text-gray-300">
-                            {pr.author?.displayName ?? 'unknown'}
-                        </strong>
-                        <span>wants to merge</span>
-                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                            {pr.sourceBranch}
-                        </span>
-                        <span>into</span>
-                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                            {pr.targetBranch}
-                        </span>
-                    </span>
-                    {deltaText && (
-                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
-                            {deltaText}
-                        </span>
-                    )}
-                    {fileCountText && (
-                        <span
-                            className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
-                            data-testid="pr-file-count"
-                        >
-                            {fileCountText}
-                        </span>
-                    )}
-                    {pr.createdAt && (
-                        <span className="shrink-0">· {formatTimestamp(pr.createdAt)}</span>
-                    )}
-                    {pr.updatedAt && pr.updatedAt !== pr.createdAt && (
-                        <span className="shrink-0">· upd {formatTimestamp(pr.updatedAt)}</span>
-                    )}
-
-                    <div className="ml-auto flex max-w-full flex-wrap items-center gap-1">
-                        <button
-                            type="button"
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-green-600 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:bg-green-700"
-                            data-testid="pr-merge-when-ready"
-                        >
-                            Merge
-                        </button>
-                        <button
-                            type="button"
-                            disabled={aiPassRunning}
-                            onClick={handleRunAiPass}
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:opacity-95 disabled:opacity-60"
-                            data-testid="pr-run-ai-pass"
-                        >
-                            {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
-                        </button>
+                    <div className="flex shrink-0 items-center gap-1">
                         <button
                             type="button"
                             onClick={openAssistant}
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-purple-300 bg-purple-50 px-1.5 py-0 text-[11px] font-semibold leading-none text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
+                            className="inline-flex h-7 items-center rounded-full bg-blue-600 px-3 text-[12px] font-medium text-white hover:bg-blue-700"
                             data-testid="pr-open-ai-assistant"
                         >
                             Ask AI
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleCopySummary}
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                            data-testid="pr-copy-summary"
-                        >
-                            {summaryCopied ? 'Copied' : 'Copy'}
-                        </button>
-                        <button
-                            type="button"
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
-                            data-testid="pr-request-changes"
-                        >
-                            Changes
-                        </button>
-                        {pr.url && (
-                            <a
-                                href={pr.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                data-testid="header-external-link"
+                        <div className="relative" ref={moreMenuRef}>
+                            <button
+                                type="button"
+                                aria-label="More actions"
+                                aria-haspopup="menu"
+                                aria-expanded={moreMenuOpen}
+                                onClick={() => setMoreMenuOpen(open => !open)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                data-testid="pr-more-actions"
                             >
-                                Open 🔗
-                            </a>
-                        )}
-                        <button
-                            type="button"
-                            disabled={refreshing}
-                            onClick={handleRefresh}
-                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                            data-testid="pr-refresh"
-                        >
-                            {refreshing ? '↻…' : '↻'}
-                        </button>
+                                ⋯
+                            </button>
+                            {moreMenuOpen && (
+                                <div
+                                    role="menu"
+                                    className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 text-[13px] shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                                    data-testid="pr-more-menu"
+                                >
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={aiPassRunning}
+                                        onClick={() => { setMoreMenuOpen(false); handleRunAiPass(); }}
+                                        className={MENU_ITEM_CLASS}
+                                        data-testid="pr-run-ai-pass"
+                                    >
+                                        {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI review done' : 'AI review'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => { setMoreMenuOpen(false); void handleCopySummary(); }}
+                                        className={MENU_ITEM_CLASS}
+                                        data-testid="pr-copy-summary"
+                                    >
+                                        Copy summary
+                                    </button>
+                                    {pr.url && (
+                                        <a
+                                            href={pr.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            role="menuitem"
+                                            onClick={() => setMoreMenuOpen(false)}
+                                            className={MENU_ITEM_CLASS}
+                                            data-testid="header-external-link"
+                                        >
+                                            Open in browser
+                                        </a>
+                                    )}
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={refreshing}
+                                        onClick={() => { setMoreMenuOpen(false); handleRefresh(); }}
+                                        className={MENU_ITEM_CLASS}
+                                        data-testid="pr-refresh"
+                                    >
+                                        {refreshing ? 'Refreshing…' : 'Refresh'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-                <nav className="flex gap-0.5 overflow-x-auto border-t border-gray-100 px-2.5 dark:border-gray-800" aria-label="Pull request sections">
+                <nav className="flex gap-4 overflow-x-auto px-4" aria-label="Pull request sections">
                     {TAB_DEFINITIONS.map(tab => {
                         const isActive = detailTab === tab.id;
                         const passingChecks = checkRows.filter(r => r.status === 'success').length;
@@ -541,26 +546,18 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                                 key={tab.id}
                                 type="button"
                                 onClick={() => switchTab(tab.id)}
+                                aria-current={isActive ? 'page' : undefined}
                                 className={cn(
-                                    'inline-flex min-h-[32px] items-center gap-1.5 border-b-2 px-2 py-0 text-[13px] font-semibold whitespace-nowrap transition-colors',
+                                    'inline-flex min-h-[32px] items-center gap-1.5 border-b px-0.5 py-0 text-[13px] whitespace-nowrap transition-colors',
                                     isActive
-                                        ? 'border-blue-500 text-gray-900 dark:text-gray-100'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                                        ? 'border-gray-900 font-semibold text-gray-900 dark:border-gray-100 dark:text-gray-100'
+                                        : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200',
                                 )}
                                 data-testid={`tab-${tab.id}`}
                             >
                                 {tab.label}
                                 {count !== null && (
-                                    <span
-                                        className={cn(
-                                            'rounded-full px-1.5 py-px text-[11px] font-semibold leading-[1.4]',
-                                            isActive
-                                                ? 'bg-blue-500 text-white'
-                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300',
-                                        )}
-                                    >
-                                        {count}
-                                    </span>
+                                    <span className="font-normal tabular-nums text-gray-400 dark:text-gray-500">{count}</span>
                                 )}
                             </button>
                         );
@@ -577,38 +574,29 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                 )}
             >
                 {detailTab === 'overview' && (
-                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
-                        <div className={cn("grid gap-2", !isMobile && "lg:grid-cols-[minmax(0,1fr)_264px]")}>
-                            <div className="grid gap-2">
+                    <div className="w-full px-4 pb-7 pt-4" data-testid="overview-tab">
+                        <div className={cn('grid gap-6', !isMobile && threads.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_264px]')}>
+                            <div className="grid gap-5 divide-y divide-gray-200 dark:divide-gray-800 [&>*+*]:pt-5">
                                 {reviewSummary && (
                                     <PrReviewSummaryPanel
                                         summary={reviewSummary}
                                         reviewers={reviewers}
                                         labels={labels}
-                                        url={pr.url}
                                     />
                                 )}
                                 <PrConversationPanel events={timeline} />
                                 {threads.length > 0 && (
-                                    <div
-                                        className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-                                        data-testid="threads-tab"
-                                    >
-                                        <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
-                                            <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                                                All comment threads
-                                            </h2>
-                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                                                {threads.length} total
-                                            </span>
-                                        </header>
+                                    <section data-testid="threads-tab">
+                                        <h2 className="m-0 mb-2 text-[15px] font-semibold text-gray-900 dark:text-gray-100">
+                                            Comment threads <span className="font-normal text-gray-400">{threads.length}</span>
+                                        </h2>
                                         <ThreadList threads={threads} />
-                                    </div>
+                                    </section>
                                 )}
                             </div>
-                            <div className="grid gap-2">
+                            {threads.length > 0 && (
                                 <PrAiGroupedThreads groups={threadGroups} totalThreads={threads.length} />
-                            </div>
+                            )}
                         </div>
                     </div>
                 )}
