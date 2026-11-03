@@ -128,6 +128,17 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.panelTabReorderingEnabled).toBe(enabled);
     });
 
+    it('exposes annotation changes live without enabling AI browser control', () => {
+        const svc = createMockRuntimeConfigService({ browserControl: { ...DEFAULT_CONFIG.browserControl } });
+        const read = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features;
+        expect(read().browserAnnotationEnabled).toBe(true);
+        expect(read().browserControlEnabled).toBe(false);
+        svc.config.browserControl.annotationEnabled = false;
+        expect(read().browserAnnotationEnabled).toBe(false);
+        svc.config.browserControl.annotationEnabled = true;
+        expect(read().browserAnnotationEnabled).toBe(true);
+    });
+
     it.each([false, true])('exposes explicit panel tab groups without a restart (%s)', enabled => {
         const svc = createMockRuntimeConfigService({ features: { panelTabGroups: enabled } });
         expect(buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.panelTabGroupsEnabled).toBe(enabled);

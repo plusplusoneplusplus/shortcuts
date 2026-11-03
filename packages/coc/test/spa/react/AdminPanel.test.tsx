@@ -1579,6 +1579,7 @@ describe('AdminPanel', () => {
         // Browser page and nowhere on Configure → Settings or Teams.
         const BROWSER_TOGGLES = [
             'toggle-browser-control-enabled',
+            'toggle-browser-annotation-enabled',
             'toggle-sensitive-input-enabled',
             'toggle-html-page-tab-enabled',
             'toggle-browser-tab-shortcuts-enabled',
@@ -1655,6 +1656,7 @@ describe('AdminPanel', () => {
             ['toggle-browser-frame-control-enabled', 'framesEnabled'],
             ['toggle-browser-rich-paste-enabled', 'richPasteEnabled'],
             ['toggle-browser-background-control-enabled', 'backgroundEnabled'],
+            ['toggle-browser-annotation-enabled', 'annotationEnabled'],
             ['toggle-browser-tab-shortcuts-enabled', 'browserTabShortcuts'],
         ])('shows %s on by default and off when saved false', async (testId, field) => {
             const saved = (value?: false) => field === 'browserTabShortcuts'
@@ -1671,6 +1673,24 @@ describe('AdminPanel', () => {
             await act(async () => { renderWithProviders(); });
             await gotoBrowserPage();
             expect((screen.getByTestId(testId) as HTMLInputElement).checked).toBe(false);
+        });
+
+        it('saves annotation opt-out independently of AI browser control', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoBrowserPage();
+            const toggle = screen.getByTestId('toggle-browser-annotation-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(true);
+            expect(toggle.disabled).toBe(false);
+            expect((screen.getByTestId('toggle-browser-control-enabled') as HTMLInputElement).checked).toBe(false);
+            await act(async () => { fireEvent.click(toggle); });
+            await act(async () => { fireEvent.click(screen.getByTestId('settings-tab-features-browser-save')); });
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].body).toMatchObject({
+                'browserControl.annotationEnabled': false,
+                'browserControl.enabled': false,
+            });
         });
 
         it('saves only browser feature keys from the Browser page with Ctrl+S, keeping other drafts pending', async () => {
@@ -1701,6 +1721,7 @@ describe('AdminPanel', () => {
                 'browserControl.humanTakeoverEnabled': false,
                 'browserControl.cursorOverlayEnabled': true,
                 'browserControl.demoRecordingEnabled': false,
+                'browserControl.annotationEnabled': true,
                 'features.htmlPageTab': false,
                 'features.browserTabShortcuts': true,
                 'features.chatScopedBrowserTabs': false,

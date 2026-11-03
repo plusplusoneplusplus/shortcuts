@@ -48,6 +48,7 @@ interface DashboardConfig {
     browserHumanTakeoverEnabled?: boolean;
     browserCursorOverlayEnabled?: boolean;
     browserDemoRecordingEnabled?: boolean;
+    browserAnnotationEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
     browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled?: boolean;

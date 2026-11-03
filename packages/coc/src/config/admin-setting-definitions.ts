@@ -898,6 +898,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.annotationEnabled', default: true, runtime: 'live', runtimeFlag: 'browserAnnotationEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 18, label: 'Browser annotations',
+            hint: 'Select page elements or areas and attach screenshot comments to chat messages in desktop browser tabs.',
+            testId: 'toggle-browser-annotation-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',

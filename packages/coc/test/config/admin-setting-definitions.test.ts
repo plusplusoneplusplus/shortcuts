@@ -353,6 +353,7 @@ describe('runtime feature flags', () => {
         ['framesEnabled', 'browserFrameControlEnabled'],
         ['richPasteEnabled', 'browserRichPasteEnabled'],
         ['backgroundEnabled', 'browserBackgroundControlEnabled'],
+        ['annotationEnabled', 'browserAnnotationEnabled'],
     ] as const)('defaults browserControl.%s on while keeping saved false', (field, flag) => {
         const def = getAdminSettingDefinition(`browserControl.${field}`)!;
         expect(def.default).toBe(true);
@@ -1151,6 +1152,7 @@ describe('feature toggle settings-tab placement', () => {
         'browserControl.humanTakeoverEnabled': 'browser',
         'browserControl.cursorOverlayEnabled': 'browser',
         'browserControl.demoRecordingEnabled': 'browser',
+        'browserControl.annotationEnabled': 'browser',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
@@ -1268,18 +1270,20 @@ describe('feature toggle settings-tab placement', () => {
             ['browserControl.navigationApprovalEnabled', 'browserAutomation', true, undefined, 'live', 'browserNavigationApprovalEnabled', 'experimental', 'toggle-browser-navigation-approval-enabled'],
             ['browserControl.cursorOverlayEnabled', 'browserAutomation', true, undefined, 'live', 'browserCursorOverlayEnabled', 'experimental', 'toggle-browser-cursor-overlay-enabled'],
             ['browserControl.demoRecordingEnabled', 'browserAutomation', false, undefined, 'live', 'browserDemoRecordingEnabled', 'experimental', 'toggle-browser-demo-recording-enabled'],
+            ['browserControl.annotationEnabled', 'browserAutomation', true, undefined, 'live', 'browserAnnotationEnabled', undefined, 'toggle-browser-annotation-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
             ['features.browserTabShortcuts', 'browserPages', true, undefined, 'live', 'browserTabShortcutsEnabled', 'experimental', 'toggle-browser-tab-shortcuts-enabled'],
             ['features.chatScopedBrowserTabs', 'browserPages', false, undefined, 'live', 'chatScopedBrowserTabsEnabled', 'experimental', 'toggle-chat-scoped-browser-tabs-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
-        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'browserControl.cursorOverlayEnabled', 'browserControl.demoRecordingEnabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'browserControl.cursorOverlayEnabled', 'browserControl.demoRecordingEnabled', 'browserControl.annotationEnabled', 'features.sensitiveInput']);
         expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.backgroundEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.navigationApprovalEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.humanTakeoverEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         // Demo recording is human-driven, so it does not depend on AI browser control.
         expect(getAdminSettingDefinition('browserControl.demoRecordingEnabled')?.ui?.dependsOn).toBeUndefined();
+        expect(getAdminSettingDefinition('browserControl.annotationEnabled')?.ui?.dependsOn).toBeUndefined();
         expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab', 'features.browserTabShortcuts', 'features.chatScopedBrowserTabs']);
         expect(buildRuntimeFeatureFlags({ features: { panelReopenClosedTab: false } } as never)).not.toHaveProperty('panelReopenClosedTabEnabled');
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
