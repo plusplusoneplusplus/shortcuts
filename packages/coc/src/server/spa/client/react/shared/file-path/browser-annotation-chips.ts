@@ -24,6 +24,11 @@ export interface BrowserAnnotationChip {
     session: BrowserAnnotationSession;
 }
 
+/** Memory-only destination for the Activity workspace's unsent first message. */
+export function newChatBrowserAnnotationOwner(workspaceId: string, routingRef: string): BrowserDemoOwner {
+    return { workspaceId, routingRef, processId: '__browser_annotation_new_chat__' };
+}
+
 let chips: readonly BrowserAnnotationChip[] = [];
 const MAX_SCREENSHOT_CHARACTERS = 64 * 1024 * 1024;
 const listeners = new Set<() => void>();

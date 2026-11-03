@@ -61,7 +61,9 @@ references before editing. Paths are package-relative.
   Comment events retain original snapshots; only creation carries modifier-send
   intent. Match pin IDs with their full mode identity. Each mode fixes its target
   chat (`BrowserDemoOwner`: workspace, concrete routing ref, queue-alias process)
-  at start; no target disables Annotate and a target change ends the mode.
+  at start; a workspace with no chat uses `newChatBrowserAnnotationOwner` for
+  Activity's first-message draft. Missing workspace disables Annotate; target
+  changes end the mode.
   Selection notifications carry native PNGs separately from DOM snapshots. The
   mode retains only its latest unsaved capture; Stop or native termination releases
   it. `browser-annotation-chips.ts` transfers the matching capture ID's PNG to
@@ -69,12 +71,14 @@ references before editing. Paths are package-relative.
   and stop the mode. Pending images share native size/dimension bounds; queued
   PNG URLs cap at 64 MiB across composers. Comment/delete events upsert/remove
   chips keyed by mode request ID plus pin ID, renumbering that mode's survivors.
-  `FollowUpInputArea` renders only its exact owner's chips; removing one
+  `FollowUpInputArea` and Activity's `NewChatArea` render only their exact owner's
+  chips; other initial-composer adapters opt in explicitly. Removing one
   calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
   so chips outlive pins and never touch a replacement. `useSendMessage` receives
   the same exact annotation owner, snapshots chips for ordinary sends and appends
   the shared coc-client serializer's untrusted page context. PNGs use the same
-  screenshot validator as `useFileAttachments`, with group/pin filenames referenced
+  screenshot validator as `useFileAttachments`, including first-message enqueue,
+  with group/pin filenames referenced
   in the text. Validate combined attachment counts and image sizes before clearing
   draft state; over-limit sends retain chips and composer contents. Keep page metadata
   out of command/target parsing. Accepted messages consume only unchanged snapshot

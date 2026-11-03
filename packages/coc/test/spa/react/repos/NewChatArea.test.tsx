@@ -292,6 +292,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
+import { BrowserAnnotationSession, type BrowserAnnotationSelection } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
+import { applyBrowserAnnotationEvents, getBrowserAnnotationChips, newChatBrowserAnnotationOwner,
+    resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
     createFileSelectionContextPayload,
@@ -400,6 +404,7 @@ function selectRalphMode() {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetBrowserAnnotationChipsForTest();
     mockQueueDispatch.mockReset();
     mockRalphRepos.value = [{ workspace: { id: 'ws-1', name: 'repo', rootPath: '/home/user/repo' } }];
     history.replaceState(null, '', '#repos/ws-1/chats');
@@ -453,6 +458,113 @@ afterEach(() => {
 });
 
 describe('NewChatArea', () => {
+    function annotationFixture(routingRef = 'ws-1', comment = 'Fix the selected area') {
+        const owner = newChatBrowserAnnotationOwner('ws-1', routingRef);
+        const session = new BrowserAnnotationSession({ supported: true, start: vi.fn(async () => true),
+            stop: vi.fn(async () => {}), remove: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
+            onEvent: vi.fn(() => vi.fn()) }, 'view', routingRef, vi.fn());
+        const selection: BrowserAnnotationSelection = { type: 'selection', kind: 'area', immediate: false, captureId: '1',
+            rect: { x: 10, y: 20, width: 30, height: 40 },
+            page: { url: 'https://example.test/', title: 'Example', viewport: { width: 800, height: 600, devicePixelRatio: 2 } } };
+        const image = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        const save = (text = comment) => applyBrowserAnnotationEvents(owner, session,
+            [{ type: 'comment', id: '1', number: 1, comment: text, selection }]);
+        applyBrowserAnnotationEvents(owner, session, [{ ...selection, image }]);
+        save();
+        return { owner, session, image, save };
+    }
+
+    it.each(['ws-1', 'remote:server-a:ws-1'])('sends annotation-only first messages to exact owner %s with PNGs', async route => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        setActiveCloneForRouting(route);
+        const f = annotationFixture(route);
+        const other = annotationFixture(route === 'ws-1' ? 'remote:server-a:ws-1' : 'ws-1', 'Other server');
+        render(<NewChatArea workspaceId="ws-1" sourceSelectionId={route} />);
+        expect(screen.getByTestId('browser-annotation-chips').textContent).toContain('Fix the selected area');
+        expect(screen.getByTestId('browser-annotation-chips').textContent).not.toContain('Other server');
+        expect(screen.getByTestId('new-chat-send-btn')).not.toBeDisabled();
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        const payload = mockEnqueueTask.mock.calls[0][0].payload;
+        expect(payload.prompt).toContain('Fix the selected area');
+        expect(payload.prompt).toContain('https://example.test/');
+        expect(payload.prompt).not.toContain(f.image.dataUrl);
+        expect(payload.attachments).toEqual([expect.objectContaining({ dataUrl: f.image.dataUrl, name: 'browser-annotation-group-1-pin-1.png' })]);
+        expect(mockEnqueueBaseUrls).toEqual([route === 'ws-1' ? undefined : 'https://owner.example']);
+        expect(getBrowserAnnotationChips(f.owner)).toEqual([]);
+        expect(getBrowserAnnotationChips(other.owner)).toHaveLength(1);
+    });
+
+    it('keeps explicit local annotation sends on the local owner with a colliding active remote', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        setActiveCloneForRouting('remote:server-a:ws-1');
+        const f = annotationFixture();
+        annotationFixture('remote:server-a:ws-1', 'Remote comment');
+        render(<WorkspaceOwnerContext.Provider value={{ workspaceId: 'ws-1', selectionId: 'ws-1' }}>
+            <NewChatArea workspaceId="ws-1" sourceSelectionId="ws-1" />
+        </WorkspaceOwnerContext.Provider>);
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(mockEnqueueBaseUrls).toEqual([undefined]);
+        expect(mockEnqueueTask.mock.calls[0][0].payload.prompt).not.toContain('Remote comment');
+        expect(getBrowserAnnotationChips(f.owner)).toEqual([]);
+    });
+
+    it('retains first-message comments, screenshots and text after admission failure', async () => {
+        const f = annotationFixture();
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Server unavailable'));
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Keep my draft' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(screen.getByText('Server unavailable')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-input')).toHaveValue('Keep my draft');
+        expect(getBrowserAnnotationChips(f.owner)[0].image).toBe(f.image);
+    });
+
+    it('removes a first-message chip and its original pin', async () => {
+        const f = annotationFixture();
+        await f.session.start();
+        const remove = vi.spyOn(f.session, 'remove');
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => { fireEvent.click(screen.getByLabelText('Remove browser comment 1')); });
+        expect(remove).toHaveBeenCalledWith('1');
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+        expect(screen.getByTestId('new-chat-send-btn')).toBeDisabled();
+    });
+
+    it.each(['navigate', 'edit'] as const)('acknowledges the admitted snapshot safely during %s', async change => {
+        const f = annotationFixture();
+        let accept!: (value: any) => void;
+        mockEnqueueTask.mockReturnValueOnce(new Promise(resolve => { accept = resolve; }));
+        const view = render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledTimes(1));
+        if (change === 'navigate') view.unmount();
+        else act(() => { f.save('Newer edit'); });
+        await act(async () => { accept({ task: { id: 'created' } }); });
+        expect(getBrowserAnnotationChips(f.owner)).toHaveLength(change === 'navigate' ? 0 : 1);
+        if (change === 'edit') expect(getBrowserAnnotationChips(f.owner)[0].comment).toBe('Newer edit');
+        expect(mockEnqueueTask.mock.calls[0][0].payload.prompt).toContain('Fix the selected area');
+    });
+
+    it('rejects too many first-message PNGs without clearing annotations or text', async () => {
+        for (let i = 0; i < 11; i++) annotationFixture('ws-1', `Comment ${i}`);
+        const owner = newChatBrowserAnnotationOwner('ws-1', 'ws-1');
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Keep my text' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
+        expect(screen.getByText(/Maximum 10 attachments/)).toBeTruthy();
+        expect(screen.getByTestId('new-chat-input')).toHaveValue('Keep my text');
+        expect(getBrowserAnnotationChips(owner)).toHaveLength(11);
+    });
+
+    it('keeps Activity annotations out of other initial-composer adapters', () => {
+        const f = annotationFixture();
+        render(<InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn()} />);
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+        expect(screen.getByTestId('new-chat-send-btn')).toBeDisabled();
+        expect(getBrowserAnnotationChips(f.owner)).toHaveLength(1);
+    });
+
     it('restores and sends exact inline targets from an initial Sentinel draft', async () => {
         mockSentinelEnabled.value = true;
         const token = targetToken({ kind: 'workspace', serverIdentity: 'local-durable', workspaceId: 'ws-1' }, '#Local / shortcuts');

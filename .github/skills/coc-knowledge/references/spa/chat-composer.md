@@ -279,6 +279,17 @@ avoid quota errors. The sidecar clears on successful send and Ralph direct-goal 
 resets when switching to a draft key with no saved attachments. Follow-up composers and
 `EnqueueDialog` do not use this path.
 
+### Browser annotation drafts
+
+`browser-annotation-chips.ts` keeps comments and native PNGs in memory under the
+exact workspace, concrete server route and chat. With no chat, browser tabs target
+`newChatBrowserAnnotationOwner`; Activity's `NewChatArea` supplies that same owner
+to `InitialChatComposer`. Other initial-composer adapters opt in explicitly.
+Chips count as sendable content. First messages append serialized page context and
+validated screenshot attachments after parsing user commands, enforce combined
+attachment limits, and consume only unchanged accepted snapshots even on navigation.
+Failed admission retains comments and PNGs; concurrent edits remain queued.
+
 ### Sentinel to-do context
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and

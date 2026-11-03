@@ -63,6 +63,10 @@ describe('browser tab engine-neutral controls', () => {
         act(() => emit(state));
         await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).toBeDisabled());
         expect(screen.getByRole('button', { name: 'Annotate' }).title).toBe('Open a chat to receive annotation comments.');
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" workspaceId="ws" url="https://example.test/" active visible
+            onNavigate={vi.fn()} onPageState={vi.fn()} chatId={null} />);
+        act(() => emit(state));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).not.toBeDisabled());
         view.unmount();
     });
 

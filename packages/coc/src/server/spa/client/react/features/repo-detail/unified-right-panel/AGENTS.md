@@ -785,8 +785,11 @@ independently of AI control. Remote reads reject stale responses and refresh on
 matching config/reconnect events; unresolved owners fail closed. Document changes,
 hiding, unmount and disable revoke pending startup and stop the overlay. The
 native manager performs settled human takeover before injection; the disabled
-button explains when takeover is required. Selection editing, pins, screenshots
-and composer delivery are separate integration work.
+button explains when takeover is required. The linked chat, or the matching
+workspace's active chat, owns saved comments and PNGs. Without a chat,
+`newChatBrowserAnnotationOwner` targets that workspace/server's Activity first-message
+draft; changing the target exits the mode. Pin/chip and attachment contracts live in
+`packages/coc/AGENTS.md`.
 
 Default-off `browserControl.demoRecordingEnabled` adds `BrowserDemoStrip` and
 `BrowserDemoReview` to `UnifiedBrowserTab`. Their draft and annotation state is
