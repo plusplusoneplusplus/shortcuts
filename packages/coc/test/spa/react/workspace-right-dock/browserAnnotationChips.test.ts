@@ -1,8 +1,10 @@
+import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserAnnotationSession, type BrowserAnnotationImage, type BrowserAnnotationSelection,
     type DesktopBrowserAnnotation } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
 import { acknowledgeBrowserAnnotationChips, applyBrowserAnnotationEvents, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips,
     getBrowserAnnotationChips, removeBrowserAnnotationChip, resetBrowserAnnotationChipsForTest,
+    sendImmediateBrowserAnnotation, usePublishBrowserAnnotationSend,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
 
 const owner = { workspaceId: 'workspace-a', routingRef: 'remote:server-a:workspace-a', processId: 'chat-a' };
@@ -142,5 +144,44 @@ describe('browser annotation screenshot chips', () => {
         await removeBrowserAnnotationChip(getBrowserAnnotationChips(owner)[0].key);
         other.capture(selection, largeImage); other.save();
         expect(getBrowserAnnotationChips(owner)).toHaveLength(2);
+    });
+});
+
+
+describe('exact-chat immediate annotation sender', () => {
+    it('fails closed for missing/foreign/ambiguous senders and revokes on unmount', async () => {
+        const f = fixture(); f.capture(); f.save();
+        const chip = getBrowserAnnotationChips(owner)[0];
+        const send = vi.fn(async () => {});
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('Open the annotation chat');
+        const foreign = renderHook(() => usePublishBrowserAnnotationSend({ ...owner, routingRef: 'foreign' }, send));
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('Open the annotation chat');
+        const matched = renderHook(() => usePublishBrowserAnnotationSend({ ...owner, processId: 'queue_chat-a' }, send));
+        await sendImmediateBrowserAnnotation(chip);
+        expect(send).toHaveBeenCalledExactlyOnceWith(chip);
+        const duplicate = renderHook(() => usePublishBrowserAnnotationSend(owner, send));
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('Open the annotation chat');
+        duplicate.unmount(); matched.unmount(); foreign.unmount();
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('Open the annotation chat');
+        expect(getBrowserAnnotationChips(owner)).toEqual([chip]);
+    });
+
+    it('uses current admission rules, prevents overlapping sends and never retries failures', async () => {
+        const f = fixture(); f.capture(); f.save();
+        const chip = getBrowserAnnotationChips(owner)[0];
+        let reject!: (error: Error) => void;
+        const send = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
+        const published = renderHook(({ current }) => usePublishBrowserAnnotationSend(owner, current), { initialProps: { current: send } });
+        const pending = sendImmediateBrowserAnnotation(chip);
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('being sent');
+        reject(new Error('Uncertain outcome'));
+        await expect(pending).rejects.toThrow('Uncertain outcome');
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(owner)).toEqual([chip]);
+        const unavailable = vi.fn(async () => { throw new Error('Read-only chat'); });
+        act(() => published.rerender({ current: unavailable }));
+        await expect(sendImmediateBrowserAnnotation(chip)).rejects.toThrow('Read-only chat');
+        expect(send).toHaveBeenCalledTimes(1);
+        published.unmount();
     });
 });

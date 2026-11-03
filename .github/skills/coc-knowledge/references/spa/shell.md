@@ -643,10 +643,17 @@ across navigation. Page metadata stays
 outside slash-command and target parsing. Server acceptance consumes unchanged
 snapshot entries and removes their original pins; admission failures retain them,
 and comments added or edited during admission stay queued. Generated sends with
-`includeComposerContext:false` preserve the queue. Pin-cleanup errors remain
-observable without marking an accepted message failed. PNGs remain separate from
-serialized page snapshots/text. Modifier sends and the new-chat composer fallback
-remain separate integration work.
+`includeComposerContext:false` preserve the queue unless they supply an explicit
+owner-matched `browserAnnotationSnapshot`. Pin-cleanup errors remain observable
+without marking an accepted message failed. PNGs remain separate from serialized
+page snapshots/text.
+
+`ChatDetail` publishes a modifier-send handler for its concrete annotation owner.
+New element comments with Ctrl/Cmd intent send one snapshot through that handler,
+keeping the current chat mode and all composer state. Edits and areas stay queued.
+Missing/ambiguous owners, overlapping sends and failed admission retain the chip
+with a toolbar error; uncertain sends are never automatically retried. The new-chat
+composer fallback remains separate integration work.
 
 ### Shared web-page zoom
 

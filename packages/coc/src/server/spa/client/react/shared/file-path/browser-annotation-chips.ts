@@ -1,5 +1,5 @@
 import { serializeBrowserAnnotations } from '@plusplusoneplusplus/coc-client';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { buildScreenshotAttachment } from '../../features/chat/utils/screenshotAttachment';
 import type { AttachmentPayload } from '../../types/attachments';
 import type { BrowserDemoOwner } from './browser-bridge';
@@ -41,7 +41,8 @@ function withoutChip(gone: BrowserAnnotationChip): BrowserAnnotationChip[] {
 
 /** Apply one mode's page events to the chat it targeted when the mode started. */
 export function applyBrowserAnnotationEvents(owner: BrowserDemoOwner, session: BrowserAnnotationSession,
-    events: readonly BrowserAnnotationDeliveryEvent[]): void {
+    events: readonly BrowserAnnotationDeliveryEvent[]): BrowserAnnotationChip[] {
+    const immediate: BrowserAnnotationChip[] = [];
     for (const event of events) {
         if (event.type === 'selection') {
             session.retainCapture(event.captureId, event.image);
@@ -58,6 +59,7 @@ export function applyBrowserAnnotationEvents(owner: BrowserDemoOwner, session: B
             const chip: BrowserAnnotationChip = { key: `${session.identity.requestId}:${event.id}`, id: event.id,
                 number: event.number, comment: event.comment, selection: event.selection, image, owner, session };
             set(existing ? chips.map(other => other === existing ? chip : other) : [...chips, chip]);
+            if (!existing && event.selection.kind === 'element' && event.selection.immediate) immediate.push(chip);
         } else if (event.type === 'delete') {
             const existing = chips.find(chip => chip.session === session && chip.id === event.id);
             if (existing) set(withoutChip(existing));
@@ -65,6 +67,7 @@ export function applyBrowserAnnotationEvents(owner: BrowserDemoOwner, session: B
             session.retainCapture(undefined, undefined);
         }
     }
+    return immediate;
 }
 
 /** Removing a chip removes its pin while that mode is still live; a later mode is never touched. */
@@ -145,4 +148,46 @@ export async function acknowledgeBrowserAnnotationChips(snapshot: readonly Brows
     const results = await Promise.allSettled([...consumed].map(chip => chip.session.remove(chip.id)));
     const failure = results.find(result => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
+}
+
+interface AnnotationSender {
+    owner: BrowserDemoOwner;
+    send: (chip: BrowserAnnotationChip) => Promise<void>;
+}
+const senders = new Set<AnnotationSender>();
+
+/** A mounted chat publishes only for its hydrated, concrete owner. */
+export function usePublishBrowserAnnotationSend(owner: BrowserDemoOwner | null,
+    send: (chip: BrowserAnnotationChip) => Promise<void>): void {
+    const latest = useRef({ owner, send });
+    latest.current = { owner, send };
+    const workspaceId = owner?.workspaceId;
+    const routingRef = owner?.routingRef;
+    const processId = owner?.processId;
+    useEffect(() => {
+        if (!workspaceId || !routingRef || !processId) return;
+        let pending = false;
+        const entry: AnnotationSender = {
+            owner: { workspaceId, routingRef, processId },
+            send: async chip => {
+                if (!senders.has(entry) || !latest.current.owner || !sameChatOwner(entry.owner, latest.current.owner)) {
+                    throw new Error('The annotation chat changed. Send the queued comment from its composer.');
+                }
+                if (pending) throw new Error('An annotation is being sent. Send the queued comment from its composer.');
+                pending = true;
+                try { await latest.current.send(chip); }
+                finally { pending = false; }
+            },
+        };
+        senders.add(entry);
+        return () => { senders.delete(entry); };
+    }, [workspaceId, routingRef, processId]);
+}
+
+/** Never retry uncertain sends or fall back to a different chat/server. */
+export async function sendImmediateBrowserAnnotation(chip: BrowserAnnotationChip): Promise<void> {
+    if (!chips.includes(chip)) return;
+    const matches = [...senders].filter(entry => sameChatOwner(entry.owner, chip.owner));
+    if (matches.length !== 1) throw new Error('Open the annotation chat to send this queued comment.');
+    await matches[0].send(chip);
 }

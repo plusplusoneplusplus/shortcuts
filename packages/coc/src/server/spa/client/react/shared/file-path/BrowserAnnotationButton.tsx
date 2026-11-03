@@ -4,7 +4,7 @@ import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, getFeatureValue } from '../../utils/config';
 import { BrowserAnnotationSession, type DesktopBrowserAnnotation } from './browser-annotation';
-import { applyBrowserAnnotationEvents } from './browser-annotation-chips';
+import { applyBrowserAnnotationEvents, sendImmediateBrowserAnnotation } from './browser-annotation-chips';
 import type { BrowserDemoOwner } from './browser-bridge';
 import { getBrowserTakeover, subscribeBrowserTakeover } from './browser-takeover';
 import { getBrowserControlActivity, subscribeBrowserControlActivity } from './browser-control-activity';
@@ -141,7 +141,12 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
         const next = new BrowserAnnotationSession(props.bridge, props.viewId, props.sessionKey, event => {
             // The session drops foreign and late notifications; saved comments outlive the mode.
             if (event.type === 'events') {
-                try { applyBrowserAnnotationEvents(owner, next, event.events); }
+                try {
+                    const immediate = applyBrowserAnnotationEvents(owner, next, event.events);
+                    for (const chip of immediate) void sendImmediateBrowserAnnotation(chip).catch(failure => {
+                        if (live.current) setError(failure instanceof Error ? failure.message : String(failure));
+                    });
+                }
                 catch (failure) {
                     setError(failure instanceof Error ? failure.message : String(failure));
                     void stop();

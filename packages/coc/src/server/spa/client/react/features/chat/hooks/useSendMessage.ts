@@ -1,4 +1,5 @@
-import { acknowledgeBrowserAnnotationChips, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips, getBrowserAnnotationChips } from '../../../shared/file-path/browser-annotation-chips';
+import { acknowledgeBrowserAnnotationChips, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips, getBrowserAnnotationChips, type BrowserAnnotationChip } from '../../../shared/file-path/browser-annotation-chips';
+import { sameChatOwner } from '../../../shared/file-path/browser-demo';
 import type { BrowserDemoOwner } from '../../../shared/file-path/browser-bridge';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { targetSpans } from '../../../../../../shared/sentinel-target-reference';
@@ -48,6 +49,8 @@ export interface SendFollowUpOptions {
      * independent of `includeComposerContext`, which governs draft/paste/context.
      */
     attachmentsOverride?: ChatAttachment[];
+    /** One modifier-click snapshot; independent of the composer and other queued chips. */
+    browserAnnotationSnapshot?: readonly BrowserAnnotationChip[];
 }
 
 export interface UseSendMessageOptions {
@@ -385,7 +388,12 @@ export function useSendMessage({
             return;
         }
         const includeComposerContext = options.includeComposerContext !== false;
-        const annotationSnapshot = includeComposerContext ? getBrowserAnnotationChips(browserAnnotationOwner) : [];
+        const annotationSnapshot = options.browserAnnotationSnapshot
+            ?? (includeComposerContext ? getBrowserAnnotationChips(browserAnnotationOwner) : []);
+        if (annotationSnapshot.some(chip => !browserAnnotationOwner || !sameChatOwner(chip.owner, browserAnnotationOwner))) {
+            rejectSend('The annotation belongs to another chat.');
+            return;
+        }
         const requestedProvider = options.providerOverride ?? providerOverride;
         const messageMode = options.modeOverride ?? selectedMode;
         const userText = (overrideContent ?? followUpInputRef.current).trim();

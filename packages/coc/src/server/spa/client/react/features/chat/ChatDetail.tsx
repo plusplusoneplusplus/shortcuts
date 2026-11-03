@@ -60,6 +60,7 @@ import { useUnifiedPanelTree } from '../repo-detail/unified-right-panel/unifiedP
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { usePublishBrowserAnnotationSend } from '../../shared/file-path/browser-annotation-chips';
 import { usePublishCurrentChatSend } from '../repo-detail/unified-right-panel/currentChatSend';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
@@ -1842,6 +1843,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             });
         },
     }, historyBaseUrl);
+
+    usePublishBrowserAnnotationSend(browserWorkspaceId && browserRoutingRef && processId
+        ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef, processId } : null, async chip => {
+        if (!historyOwnerAvailable || readOnly || noSessionForFollowUp || effectiveNav.kind === 'agent'
+            || isCompacting || compactionQueued || selectedMode === 'ralph'
+            || hydrationScope?.client !== client || hydrationScope?.key !== conversationStateKey) {
+            throw new Error('Sending is unavailable in this chat. The annotation remains queued.');
+        }
+        await sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, throwOnError: true, waitForCompletion: false,
+            browserAnnotationSnapshot: [chip],
+        });
+    });
 
     // A canvas tab in the shared right panel keeps two chat-directed actions:
     // "Ask AI" prefills this chat's composer with a selection prompt (never

@@ -6,7 +6,12 @@ import type { BrowserAnnotationNotification, DesktopBrowserAnnotation } from '..
 import { startBrowserControlActivity, finishBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 import { clearBrowserTakeover, setBrowserTakeover } from '../../../../src/server/spa/client/react/shared/file-path/browser-takeover';
 import { BrowserAnnotationChips } from '../../../../src/server/spa/client/react/shared/file-path/BrowserAnnotationChips';
-import { getBrowserAnnotationChips, resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+import { acknowledgeBrowserAnnotationChips, getBrowserAnnotationChips, resetBrowserAnnotationChipsForTest, usePublishBrowserAnnotationSend } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+import type { BrowserAnnotationChip } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+function Sender({ send }: { send: (chip: BrowserAnnotationChip) => Promise<void> }) {
+    usePublishBrowserAnnotationSend(props().chatOwner, send);
+    return null;
+}
 const mock = vi.hoisted(() => ({ enabled: true, takeover: false, route: 'local', request: vi.fn(), baseUrl: undefined as string | undefined }));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'config',
@@ -39,6 +44,37 @@ function emit(event: Partial<BrowserAnnotationNotification>) {
 }
 
 describe('annotation toolbar mode', () => {
+    it.each([false, true])('sends only new modifier element comments; failures stay queued (failure=%s)', async failure => {
+        resetBrowserAnnotationChipsForTest();
+        const send = vi.fn(async (chip: BrowserAnnotationChip) => {
+            if (failure) throw new Error('Admission failed; comment stays queued');
+            await acknowledgeBrowserAnnotationChips([chip]);
+        });
+        render(<><Sender send={send} /><BrowserAnnotationButton {...props()} /></>); await start();
+        const selection = {
+            type: 'selection' as const, kind: 'element' as const, immediate: false,
+            rect: { x: 0, y: 0, width: 30, height: 40 },
+            page: { url: 'https://example.com', title: 'Example', viewport: { width: 800, height: 600, devicePixelRatio: 1 } },
+            element: { selector: '#target', shadowHosts: [], tag: 'button', id: 'target', classes: [], text: 'Target', outerHTML: '<button id="target">Target</button>' },
+        };
+        emit({ type: 'events', events: [
+            { type: 'comment', id: '1', number: 1, comment: 'Queued', selection },
+            { type: 'comment', id: '2', number: 2, comment: 'Send this', selection: { ...selection, immediate: true } },
+        ] });
+        await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+        expect(send.mock.calls[0][0]).toMatchObject({ id: '2', comment: 'Send this', number: 2 });
+        if (failure) await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Admission failed'));
+        await waitFor(() => expect(getBrowserAnnotationChips(props().chatOwner)).toHaveLength(failure ? 2 : 1));
+        expect(getBrowserAnnotationChips(props().chatOwner)[0].comment).toBe('Queued');
+        emit({ type: 'events', events: [
+            { type: 'comment', id: '1', number: 1, comment: 'Edited', selection: { ...selection, immediate: true } },
+            { type: 'comment', id: '3', number: 3, comment: 'Area', selection: { ...selection, kind: 'area', immediate: true } },
+        ] });
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(button()).toHaveAttribute('aria-pressed', 'true');
+        resetBrowserAnnotationChipsForTest();
+    });
+
     it('receives native PNGs before Save, retains them after navigation and fails visibly on missing captures', async () => {
         resetBrowserAnnotationChipsForTest();
         render(<BrowserAnnotationButton {...props()} />); await start();

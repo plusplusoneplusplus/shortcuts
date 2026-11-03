@@ -79,8 +79,14 @@ references before editing. Paths are package-relative.
   draft state; over-limit sends retain chips and composer contents. Keep page metadata
   out of command/target parsing. Accepted messages consume only unchanged snapshot
   entries and remove their original pins; failed sends preserve chips. Generated
-  sends with `includeComposerContext:false` leave the queue untouched. Keep each
-  mode's pin numbering in a separate payload group.
+  sends with `includeComposerContext:false` leave the queue untouched unless they
+  supply an explicit owner-matched `browserAnnotationSnapshot`. Modifier element
+  creation sends that one snapshot through the uniquely mounted exact-chat sender,
+  preserving chat mode, draft, paste, context, attachments and other queued chips.
+  Missing/ambiguous senders, overlapping sends and admission failures leave the
+  comment queued with an observable error; never replay an uncertain send. Edits
+  and area selections do not trigger modifier sends. Keep each mode's pin numbering
+  in a separate payload group.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

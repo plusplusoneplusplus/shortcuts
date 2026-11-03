@@ -280,6 +280,59 @@ describe('useSendMessage', () => {
         vi.restoreAllMocks();
     });
 
+    it.each([false, true])('sends one explicit annotation PNG and preserves composer state (active=%s)', async isActiveGeneration => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const png = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        queueAnnotation('Keep queued');
+        queueAnnotation('Send alone', annotationOwner, 'mode-2', '2', undefined, png);
+        const snapshot = [getBrowserAnnotationChips(annotationOwner)[1]];
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner,
+            images: ['data:image/png;base64,YQ=='], getPastedContent: () => 'Keep paste',
+            toPayload: () => [{ name: 'draft.png', mimeType: 'image/png', size: 1, dataUrl: 'draft' }] });
+        opts.followUpInputRef.current = 'Keep draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true, waitForCompletion: false,
+        }); });
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toContain('Send alone');
+        expect(body.content).not.toMatch(/Keep queued|Keep draft|Keep paste/);
+        expect(body.images).toEqual([png.dataUrl]);
+        expect(body.attachments).toEqual([expect.objectContaining({ name: 'browser-annotation-group-1-pin-2.png', dataUrl: png.dataUrl })]);
+        expect(getBrowserAnnotationChips(annotationOwner)).toMatchObject([{ comment: 'Keep queued' }]);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.clearImages).not.toHaveBeenCalled();
+        expect(opts.clearPaste).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('retains a failed standalone annotation without clearing the draft (active=%s)', async isActiveGeneration => {
+        queueAnnotation('Retry manually');
+        const snapshot = getBrowserAnnotationChips(annotationOwner);
+        fetchMock.mockRejectedValue(new Error('Connection lost'));
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner });
+        opts.followUpInputRef.current = 'Keep draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await expect(result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true,
+        })).rejects.toThrow(); });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual(snapshot);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.clearImages).not.toHaveBeenCalled();
+        expect(opts.clearPaste).not.toHaveBeenCalled();
+    });
+
+    it('rejects explicit annotation snapshots from another owner before sending', async () => {
+        const foreign = { ...annotationOwner, routingRef: 'foreign' };
+        queueAnnotation('Foreign', foreign);
+        const snapshot = getBrowserAnnotationChips(foreign);
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await expect(result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true,
+        })).rejects.toThrow('another chat'); });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])('sends queued annotations and removes accepted pins (active=%s)', async isActiveGeneration => {
         const session = queueAnnotation();
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
