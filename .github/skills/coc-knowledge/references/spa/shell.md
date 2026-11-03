@@ -530,9 +530,15 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 isolated-world expression with generation-matched start/drain/stop commands.
 Its closed-shadow shield highlights and selects elements or Shift-drag areas,
 reusing `browser-control-clip.ts` for fractional viewport geometry. Exit removes
-the shield and input listeners. Reports are bounded and document-local. This
-primitive has jsdom and real Electron coverage; toolbar, host and composer
-integration remain separate.
+the shield and input listeners. Reports are bounded and document-local.
+`browser-annotation-snapshot.ts` captures URL/title/viewport/DPR and element
+metadata at selection time, before page mutations or deferred collection.
+Element selectors are unique within a document/shadow root, with an outermost-first
+open-shadow host chain and null for unavailable bounded selectors. Rendered text
+is capped at 500 UTF-16 units and outerHTML at 2048 UTF-8 bytes without splitting
+characters. Captured website content is untrusted. The primitive has jsdom and
+real Electron coverage; toolbar, host, screenshot and composer integration remain
+separate.
 
 ### Shared web-page zoom
 

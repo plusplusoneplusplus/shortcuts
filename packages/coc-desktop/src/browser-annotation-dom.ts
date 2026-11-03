@@ -1,4 +1,5 @@
 import { browserClipRect } from './browser-control-clip';
+import { browserAnnotationSnapshot, type BrowserAnnotationPageSnapshot, type BrowserAnnotationElementSnapshot } from './browser-annotation-snapshot';
 
 export interface BrowserAnnotationRect {
     x: number;
@@ -8,7 +9,7 @@ export interface BrowserAnnotationRect {
 }
 
 export type BrowserAnnotationEvent =
-    | { type: 'selection'; kind: 'element' | 'area'; rect: BrowserAnnotationRect; tag?: string; immediate: boolean }
+    | { type: 'selection'; kind: 'element' | 'area'; rect: BrowserAnnotationRect; tag?: string; immediate: boolean; page: BrowserAnnotationPageSnapshot; element?: BrowserAnnotationElementSnapshot }
     | { type: 'exit'; reason: 'escape' | 'navigation' | 'removed' | 'overflow' | 'stop' };
 
 export interface BrowserAnnotationResult {
@@ -23,7 +24,7 @@ export interface BrowserAnnotationCommand {
 }
 
 /** Self-contained selection primitive. Hosts execute it only in an owned URL guest's isolated world. */
-function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof browserClipRect): BrowserAnnotationResult {
+function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof browserClipRect, snapshot: typeof browserAnnotationSnapshot): BrowserAnnotationResult {
     interface Mode {
         session: string;
         url: string;
@@ -178,7 +179,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             suppressClick = true;
             if (rect.width < 3 || rect.height < 3) { hide(); return; }
             show(rect, 'Area');
-            select({ type: 'selection', kind: 'area', rect, immediate: false });
+            select({ type: 'selection', kind: 'area', rect, immediate: false, ...snapshot() });
         });
         listen('click', event => {
             if (!current()) return;
@@ -188,7 +189,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             const target = elementAt(event.clientX, event.clientY);
             if (!target) { hide(); return; }
             show(target.rect, target.element.localName);
-            select({ type: 'selection', kind: 'element', rect: target.rect, tag: target.element.localName, immediate: event.ctrlKey || event.metaKey });
+            select({ type: 'selection', kind: 'element', rect: target.rect, tag: target.element.localName, immediate: event.ctrlKey || event.metaKey, ...snapshot(target.element) });
         });
         listen('keydown', event => {
             if (!current()) return;
@@ -218,5 +219,5 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
 }
 
 export function buildBrowserAnnotationExpression(command: BrowserAnnotationCommand): string {
-    return `(${browserAnnotation.toString()})(${JSON.stringify(command)},(${browserClipRect.toString()}))`;
+    return `(${browserAnnotation.toString()})(${JSON.stringify(command)},(${browserClipRect.toString()}),(${browserAnnotationSnapshot.toString()}))`;
 }

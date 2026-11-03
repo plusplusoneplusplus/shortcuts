@@ -36,11 +36,14 @@ describe.skipIf(skip)('shared annotation injection in real Electron', () => {
                 });
             });
             expect(JSON.parse(output)).toMatchObject({
-                element: { active: true, events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 40, y: 60, width: 120, height: 40 } }] },
+                element: { active: true, events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 40, y: 60, width: 120, height: 40 },
+                    page: { title: 'Annotation fixture', viewport: { width: expect.any(Number), height: expect.any(Number), devicePixelRatio: expect.any(Number) }, url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/$/) },
+                    element: { selector: 'button:nth-of-type(1)', shadowHosts: [], tag: 'button', id: '', classes: [], text: 'Pick me', outerHTML: '<button>Pick me</button>' },
+                }] },
                 styles: { closed: true, position: 'fixed', display: 'block', background: 'rgba(0, 0, 0, 0)',
                     outlineBackground: 'rgba(37, 99, 235, 0.12)', outlineBorder: '2px', label: 'button 120 x 40' },
                 isolation: { clicks: 0, private: true },
-                area: { active: true, events: [{ type: 'selection', kind: 'area', rect: { x: 200, y: 200, width: 100, height: 80 } }] },
+                area: { active: true, events: [{ type: 'selection', kind: 'area', rect: { x: 200, y: 200, width: 100, height: 80 }, page: { title: 'Annotation fixture' } }] },
                 released: 1,
                 escaped: { active: false, events: [{ type: 'exit', reason: 'escape' }] },
                 removed: true,

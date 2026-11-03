@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationResult } from '../src/browser-annotation-dom';
+import { browserAnnotationSnapshot } from '../src/browser-annotation-snapshot';
 
 const session = 'fixture-generation';
 let root: ShadowRoot;
@@ -87,7 +88,7 @@ describe('shared annotation selection injection', () => {
         expect(clicked).not.toHaveBeenCalled();
         expect(run('drain')).toEqual({
             active: true,
-            events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 10.25, y: 20.5, width: 80.5, height: 30.25 }, immediate: false }],
+            events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 10.25, y: 20.5, width: 80.5, height: 30.25 }, immediate: false, ...browserAnnotationSnapshot(target) }],
         });
         expect(run('drain').events).toEqual([]);
     });
@@ -106,7 +107,7 @@ describe('shared annotation selection injection', () => {
         mouse('pointerup', 40.5, 50.25, { shiftKey: true });
         mouse('click', 40.5, 50.25);
         expect(run('drain').events).toEqual([{
-            type: 'selection', kind: 'area', rect: { x: 40.5, y: 50.25, width: 159.5, height: 99.75 }, immediate: false,
+            type: 'selection', kind: 'area', rect: { x: 40.5, y: 50.25, width: 159.5, height: 99.75 }, immediate: false, ...browserAnnotationSnapshot(),
         }]);
     });
 
@@ -139,6 +140,22 @@ describe('shared annotation selection injection', () => {
         geometry(target, -100, -100, 10, 10);
         mouse('click');
         expect(run('drain').events).toEqual([]);
+    });
+
+    it('snapshots metadata at selection time before the page changes or the host drains', () => {
+        document.title = 'Selected page';
+        target.className = 'primary action';
+        Object.defineProperty(target, 'innerText', { configurable: true, value: 'Visible label' });
+        run('start');
+        mouse('click');
+        document.title = 'Changed page';
+        target.id = 'changed';
+        target.remove();
+        expect(run('drain').events).toMatchObject([{
+            page: { title: 'Selected page', url: location.href, viewport: { width: innerWidth, height: innerHeight, devicePixelRatio } },
+            element: { selector: '#target', tag: 'button', id: 'target', classes: ['primary', 'action'], text: 'Visible label', outerHTML: '<button id="target" class="primary action">Pick me</button>' },
+        }]);
+        document.title = '';
     });
 
     it('clears stale hover geometry after resize without swallowing the next selection', () => {
