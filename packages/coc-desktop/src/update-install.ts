@@ -9,6 +9,19 @@ export interface UpdateAssets {
     checksum: ReleaseAsset;
 }
 
+/**
+ * True when the in-app verified download path supports this platform/arch.
+ * {@link selectUpdateAssets} and {@link formatUpdatePrompt} (in update-check.ts)
+ * both reference this so the "Update" button is only offered when we can follow
+ * through with a matching installer.
+ */
+export function isInAppUpdateSupported(
+    platform: NodeJS.Platform, arch: string,
+): boolean {
+    return (platform === 'darwin' && arch === 'arm64')
+        || (platform === 'win32' && arch === 'x64');
+}
+
 /** Never select a container installer or an explicitly incompatible architecture. */
 export function selectUpdateAssets(
     release: ReleaseInfo,

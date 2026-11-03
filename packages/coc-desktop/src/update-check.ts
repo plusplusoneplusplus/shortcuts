@@ -6,6 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isInAppUpdateSupported } from './update-install';
 
 /** GitHub "latest published release" endpoint (stable only — ignores prereleases). */
 export const LATEST_RELEASE_API =
@@ -264,7 +265,7 @@ export function formatUpdatePrompt(
     platform: NodeJS.Platform,
     arch: string = process.arch,
 ): UpdatePrompt {
-    const supported = platform === 'darwin' || platform === 'win32';
+    const supported = isInAppUpdateSupported(platform, arch);
     return {
         version: release.version,
         title: 'Update Available',
