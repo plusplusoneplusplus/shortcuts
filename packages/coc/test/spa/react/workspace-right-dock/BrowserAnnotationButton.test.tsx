@@ -12,7 +12,10 @@ function Sender({ send }: { send: (chip: BrowserAnnotationChip) => Promise<void>
     usePublishBrowserAnnotationSend(props().chatOwner, send);
     return null;
 }
-const mock = vi.hoisted(() => ({ enabled: true, takeover: false, route: 'local', request: vi.fn(), baseUrl: undefined as string | undefined }));
+const mock = vi.hoisted(() => ({ enabled: true, takeover: false, route: 'local', request: vi.fn(), get: vi.fn(), sendMessage: vi.fn(), baseUrl: undefined as string | undefined }));
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getCocClientFor: () => ({ processes: { get: mock.get, sendMessage: mock.sendMessage } }),
+}));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'config',
     getFeatureValue: (key: string) => key === 'browserAnnotationEnabled' ? mock.enabled : mock.takeover,
@@ -33,6 +36,7 @@ const owner = { workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'c
 beforeEach(() => {
     mock.enabled = true; mock.takeover = false; mock.route = 'local'; mock.baseUrl = undefined;
     mock.request.mockReset(); listeners = new Set();
+    mock.get.mockReset(); mock.sendMessage.mockReset();
     bridge = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}), remove: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
         onEvent: callback => { listeners.add(callback); return () => { listeners.delete(callback); }; } };
 });
@@ -44,6 +48,31 @@ function emit(event: Partial<BrowserAnnotationNotification>) {
 }
 
 describe('annotation toolbar mode', () => {
+    it.each([false, true])('sends modifier comments to an unmounted linked chat (failure=%s)', async failure => {
+        resetBrowserAnnotationChipsForTest();
+        mock.get.mockResolvedValue({ process: { id: 'p', type: 'chat', status: 'completed', metadata: { workspaceId: 'w' } } });
+        if (failure) mock.sendMessage.mockRejectedValue(new Error('Uncertain outcome'));
+        else mock.sendMessage.mockResolvedValue({});
+        render(<BrowserAnnotationButton {...props()} />); await start();
+        const selection = {
+            type: 'selection' as const, kind: 'element' as const, immediate: true, captureId: '1',
+            rect: { x: 0, y: 0, width: 30, height: 40 },
+            page: { url: 'https://example.com', title: 'Example', viewport: { width: 800, height: 600, devicePixelRatio: 1 } },
+            element: { selector: '#target', shadowHosts: [], tag: 'button', id: 'target', classes: [], text: 'Target', outerHTML: '<button id="target">Target</button>' },
+        };
+        const image = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 30, height: 40 };
+        emit({ type: 'events', events: [
+            { ...selection, image }, { type: 'comment', id: '1', number: 1, comment: 'Send this', selection },
+        ] });
+        await waitFor(() => expect(mock.sendMessage).toHaveBeenCalledTimes(1));
+        expect(mock.sendMessage).toHaveBeenCalledWith('p', expect.objectContaining({
+            content: expect.stringContaining('Send this'), images: [image.dataUrl],
+        }), { workspace: 'w' });
+        if (failure) await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Uncertain outcome'));
+        await waitFor(() => expect(getBrowserAnnotationChips(props().chatOwner)).toHaveLength(failure ? 1 : 0));
+        resetBrowserAnnotationChipsForTest();
+    });
+
     it.each([false, true])('sends only new modifier element comments; failures stay queued (failure=%s)', async failure => {
         resetBrowserAnnotationChipsForTest();
         const send = vi.fn(async (chip: BrowserAnnotationChip) => {

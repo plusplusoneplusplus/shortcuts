@@ -89,8 +89,12 @@ references before editing. Paths are package-relative.
   preserving chat mode, draft, paste, context, attachments and other queued chips.
   Activity's initial composer submits a standalone annotation chat without navigating
   or consuming its draft; workflow launch modes refuse immediate sends.
-  Missing/ambiguous senders, overlapping sends and admission failures leave the
-  comment queued with an observable error; never replay an uncertain send. Edits
+  Unmounted linked chats use `browser-annotation-standalone-send.ts`: resolve the
+  exact local/clone owner, verify process/workspace and current route before posting
+  one snapshot, and let the server retain the destination mode/provider. Draft
+  targets require a mounted initial composer. Ambiguous senders, overlapping sends
+  and admission failures leave the comment queued with an observable error; never
+  replay an uncertain send. Edits
   and area selections do not trigger modifier sends. Keep each mode's pin numbering
   in a separate payload group.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`

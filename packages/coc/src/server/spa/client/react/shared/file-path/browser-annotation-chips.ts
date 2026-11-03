@@ -160,6 +160,7 @@ interface AnnotationSender {
     send: (chip: BrowserAnnotationChip) => Promise<void>;
 }
 const senders = new Set<AnnotationSender>();
+const pendingSends = new Set<BrowserDemoOwner>();
 
 /** A mounted chat publishes only for its hydrated, concrete owner. */
 export function usePublishBrowserAnnotationSend(owner: BrowserDemoOwner | null,
@@ -171,17 +172,13 @@ export function usePublishBrowserAnnotationSend(owner: BrowserDemoOwner | null,
     const processId = owner?.processId;
     useEffect(() => {
         if (!workspaceId || !routingRef || !processId) return;
-        let pending = false;
         const entry: AnnotationSender = {
             owner: { workspaceId, routingRef, processId },
             send: async chip => {
                 if (!senders.has(entry) || !latest.current.owner || !sameChatOwner(entry.owner, latest.current.owner)) {
                     throw new Error('The annotation chat changed. Send the queued comment from its composer.');
                 }
-                if (pending) throw new Error('An annotation is being sent. Send the queued comment from its composer.');
-                pending = true;
-                try { await latest.current.send(chip); }
-                finally { pending = false; }
+                await latest.current.send(chip);
             },
         };
         senders.add(entry);
@@ -190,9 +187,21 @@ export function usePublishBrowserAnnotationSend(owner: BrowserDemoOwner | null,
 }
 
 /** Never retry uncertain sends or fall back to a different chat/server. */
-export async function sendImmediateBrowserAnnotation(chip: BrowserAnnotationChip): Promise<void> {
+export async function sendImmediateBrowserAnnotation(chip: BrowserAnnotationChip,
+    standalone?: (chip: BrowserAnnotationChip, checkCurrent: () => void) => Promise<void>): Promise<void> {
     if (!chips.includes(chip)) return;
+    if ([...pendingSends].some(owner => sameChatOwner(owner, chip.owner))) {
+        throw new Error('An annotation is being sent. Send the queued comment from its composer.');
+    }
     const matches = [...senders].filter(entry => sameChatOwner(entry.owner, chip.owner));
-    if (matches.length !== 1) throw new Error('Open the annotation chat to send this queued comment.');
-    await matches[0].send(chip);
+    if (matches.length > 1 || (!matches.length && !standalone)) throw new Error('Open the annotation chat to send this queued comment.');
+    pendingSends.add(chip.owner);
+    try {
+        if (matches.length) await matches[0].send(chip);
+        else await standalone!(chip, () => {
+            if (!chips.includes(chip) || [...senders].some(entry => sameChatOwner(entry.owner, chip.owner))) {
+                throw new Error('The annotation chat changed. Send the queued comment from its composer.');
+            }
+        });
+    } finally { pendingSends.delete(chip.owner); }
 }

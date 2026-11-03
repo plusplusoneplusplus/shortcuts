@@ -5,6 +5,7 @@ import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, getFeatureValue } from '../../utils/config';
 import { BrowserAnnotationSession, type DesktopBrowserAnnotation } from './browser-annotation';
 import { applyBrowserAnnotationEvents, sendImmediateBrowserAnnotation } from './browser-annotation-chips';
+import { sendStandaloneBrowserAnnotation } from './browser-annotation-standalone-send';
 import type { BrowserDemoOwner } from './browser-bridge';
 import { getBrowserTakeover, subscribeBrowserTakeover } from './browser-takeover';
 import { getBrowserControlActivity, subscribeBrowserControlActivity } from './browser-control-activity';
@@ -143,7 +144,7 @@ export function BrowserAnnotationButton(props: BrowserAnnotationButtonProps) {
             if (event.type === 'events') {
                 try {
                     const immediate = applyBrowserAnnotationEvents(owner, next, event.events);
-                    for (const chip of immediate) void sendImmediateBrowserAnnotation(chip).catch(failure => {
+                    for (const chip of immediate) void sendImmediateBrowserAnnotation(chip, sendStandaloneBrowserAnnotation).catch(failure => {
                         if (live.current) setError(failure instanceof Error ? failure.message : String(failure));
                     });
                 }

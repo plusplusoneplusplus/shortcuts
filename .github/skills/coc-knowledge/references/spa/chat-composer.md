@@ -294,6 +294,13 @@ that comment and PNG with the current AI/chat settings. It leaves navigation,
 draft text, attachments, context and other chips intact. Workflow launch modes and
 pending submissions refuse immediate sends; uncertain failures never replay.
 
+Linked-chat modifier sends prefer the uniquely mounted exact-owner sender. With
+no mounted composer, `browser-annotation-standalone-send.ts` verifies the process
+and workspace on the exact local/clone route, rejects route/composer changes during
+preflight, and posts one text/PNG snapshot. The server resolves the destination
+mode, provider and session. Per-owner admission excludes overlapping modifier sends;
+accepted snapshots consume only unchanged chips, including after navigation.
+
 ### Sentinel to-do context
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
