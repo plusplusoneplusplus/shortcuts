@@ -31,7 +31,8 @@ function request(
         const parsed = new URL(url);
         const req = http.request(
             {
-                hostname: parsed.hostname,
+                // srv.url advertises localhost even for an explicit IPv4 bind.
+                hostname: parsed.hostname === 'localhost' ? '127.0.0.1' : parsed.hostname,
                 port: parsed.port,
                 path: parsed.pathname + parsed.search,
                 method: options.method || 'GET',
@@ -85,13 +86,13 @@ describe('Admin Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
         return server;
     }
 
     async function startServerWithConfig(configPath: string): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, configPath });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir, configPath });
         return server;
     }
 
@@ -274,7 +275,7 @@ describe('Admin Handler', () => {
         it('should delete queue rows when wiping', async () => {
             // Use SqliteProcessStore so queue rows are counted/deleted from SQLite
             sqliteStore = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
+            server = await createExecutionServer({ port: 0, host: '127.0.0.1', store: sqliteStore, dataDir });
             const srv = server;
 
             // Seed a queue task row directly in SQLite
@@ -2379,7 +2380,7 @@ describe('GET /api/admin/providers/availability', () => {
             // Start a server with a 1 ms token TTL so tokens expire immediately
             const shortTtlStore = new FileProcessStore({ dataDir });
             const shortTtlServer = await createExecutionServer({
-                port: 0, host: 'localhost', store: shortTtlStore, dataDir, tokenTtlMs: 1,
+                port: 0, host: '127.0.0.1', store: shortTtlStore, dataDir, tokenTtlMs: 1,
             });
             try {
                 const tokenRes = await request(`${shortTtlServer.url}/api/admin/data/wipe-token`);

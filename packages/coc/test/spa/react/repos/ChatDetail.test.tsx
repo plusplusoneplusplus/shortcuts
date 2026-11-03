@@ -601,6 +601,7 @@ describe('ChatDetail current-chat review send', () => {
     function SendProbe() {
         const sender = useCurrentChatSend();
         return <button data-testid="review-send" disabled={!!sender.disabledReason}
+            data-requires-autopilot-confirmation={String(!!sender.requiresAutopilotConfirmation)}
             title={sender.disabledReason} onClick={() => { void sender.send('Review comments prompt'); }}>Send</button>;
     }
     function ReviewPanel() {
@@ -630,7 +631,7 @@ describe('ChatDetail current-chat review send', () => {
             { workspaceId: 'ws-member', serverId: 'server-a', baseUrl: baseUrl! },
             { workspaceId: 'ws-member', serverId: 'server-b', baseUrl: 'https://other.example.test' },
         ]);
-        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'ask', sessionId: 'session' } }));
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'autopilot', sessionId: 'session' } }));
         render(<Wrap><UnifiedPanelHostProvider host={{
             workspaceId: remote ? 'group-review' : 'ws-member', chatId: 'task-1',
             routingRef: remote ? 'remote:server-a:group-review' : null,
@@ -641,7 +642,10 @@ describe('ChatDetail current-chat review send', () => {
             <SendProbe />
         </UnifiedPanelHostProvider></Wrap>);
         const button = screen.getByTestId('review-send');
-        await waitFor(() => expect(button).not.toBeDisabled());
+        await waitFor(() => {
+            expect(button).not.toBeDisabled();
+            expect(button).toHaveAttribute('data-requires-autopilot-confirmation', 'false');
+        });
         const attachmentClears = mockState.clearAttachments.mock.calls.length;
         const draftClears = mockState.clearDraft.mock.calls.length;
         const composerWrites = [...mockState.richTextSetValueCalls];
