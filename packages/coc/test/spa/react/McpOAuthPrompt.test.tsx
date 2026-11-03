@@ -25,6 +25,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('chat MCP authentication dismissal', () => {
+    it('leaves no empty section before prompts arrive or after the last dismissal', async () => {
+        const { container } = render(<Harness />);
+        expect(container).toBeEmptyDOMElement();
+        add('one');
+        expect(screen.getByRole('region', { name: 'MCP authentication requests' })).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: /Dismiss authentication/ }));
+        await flush();
+        expect(container).toBeEmptyDOMElement();
+    });
+
     it('dismisses one card without authenticating and preserves its sibling', async () => {
         render(<Harness />);
         add('one', 'two');
@@ -130,6 +140,7 @@ describe('chat MCP authentication dismissal', () => {
         fireEvent.click(screen.getByRole('button', { name: /Dismiss authentication/ }));
         await flush();
         expect(screen.getByRole('alert').textContent).toContain('could not be cancelled');
+        expect(screen.getByRole('region', { name: 'MCP authentication requests' })).toBeVisible();
         add('one');
         expect(screen.queryByTestId('mcp-oauth-prompt')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Retry dismissal' }));

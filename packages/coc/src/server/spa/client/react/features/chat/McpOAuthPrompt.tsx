@@ -195,6 +195,7 @@ export function McpOAuthPrompt({ data, request, onDismiss, onCompleted, onFailed
 
 /** Bulk dismissal captures only the requests currently visible in this owner. */
 export function McpOAuthPrompts({ controls }: { controls: ReturnType<typeof useChatMcpOAuthPrompts> }) {
+    if (controls.prompts.length === 0 && !controls.cancellationFailed) return null;
     return <section aria-label="MCP authentication requests">
         {controls.prompts.length > 1 && <div className="mx-2 flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-[#656d76] dark:text-[#8b949e]">MCP authentication</span>

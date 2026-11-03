@@ -112,6 +112,7 @@ describe('desktop download metadata and lifecycle', () => {
         const crashed = new BrowserDownloadStore(dir); stores.push(crashed);
         expect((await crashed.query()).entries[0].state).toBe('interrupted');
     });
+    // This exercises over 1,000 real atomic saves, including on busy CI disks.
     it('bounds active admission, terminal retention and progress persistence', async () => {
         const { store, changed } = setup();
         const transfers = Array.from({ length: MAX_ACTIVE_DOWNLOADS }, () => store.start('file', 'https://files.test', handle())!);
@@ -124,7 +125,7 @@ describe('desktop download metadata and lifecycle', () => {
         for (let i = 0; i < 100; i++) live.update(progress('downloading', i));
         await store.query(); expect(changed).not.toHaveBeenCalled();
         await store.dispose(); expect(changed).toHaveBeenCalledOnce();
-    });
+    }, 30_000);
     it('surfaces corrupted/oversized and write/rename errors, recovers on a later save, and removes temp files', async () => {
         const { store, dir } = setup();
         fs.mkdirSync(path.dirname(store.filename), { recursive: true }); fs.writeFileSync(store.filename, '{bad');

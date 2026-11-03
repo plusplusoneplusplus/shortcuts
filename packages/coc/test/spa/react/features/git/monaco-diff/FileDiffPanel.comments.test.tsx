@@ -19,6 +19,7 @@ const transport = vi.hoisted(() => ({
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: (target: string) => { transport.route(target); return target?.startsWith('remote:') && transport.ownerClient ? transport.ownerClient : transport.client; },
     lookupCloneBaseUrl: () => undefined,
+    subscribeCloneBaseUrl: () => () => {},
     resolveCloneRoute: () => ({ kind: 'local' }),
 }));
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
