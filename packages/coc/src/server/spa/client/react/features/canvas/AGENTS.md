@@ -4,13 +4,14 @@ The chat-linked canvas editor: an AI-and-user co-edited document that also
 renders as code, an SVG, an Excalidraw scene, a sandboxed extension UI, a
 desktop Copilot extension guest, or a live Kusto query.
 
-`CanvasPanel` has exactly three hosts — a `canvas` tab in the unified right
-panel (`UnifiedCanvasTab`, the primary one), the standalone pop-out window
-(`layout/PopOutCanvasShell.tsx`), and the inline embed's expanded view. The chat
-detail view is **not** one of them: it owns no canvas column, rail, or width.
-Chat-directed props (`onAskAi`, `onSendToAi`) come from the tab's owning chat via
-`unified-right-panel/unifiedChatCanvasActions.ts`; a host that cannot reach a
-chat omits them, which hides those actions.
+`CanvasPanel` is hosted by a `canvas` tab in the unified right panel
+(`UnifiedCanvasTab`) or the standalone pop-out (`layout/PopOutCanvasShell.tsx`).
+Inline embeds render read-only document source through `shared/CanvasEmbed.tsx`.
+The chat detail view owns no canvas column, rail, or width. Chat-directed props
+(`onAskAi`, `onAttachToChat`, `onSendToAi`) come from the tab's owning chat via
+`unified-right-panel/unifiedChatCanvasActions.ts`; unavailable chats omit them.
+Markdown attachment uses that owner's `insertDraft`, preserving its draft without
+sending. Tab chat/server/workspace changes remount the panel's selection state.
 
 `CanvasPanel.tsx` is a **composition root only** — public props, the
 workspace-routed client, fullscreen chrome, layout. Behavior lives in kernels
@@ -25,7 +26,8 @@ component; do not grow `CanvasPanel.tsx` back.
 | `canvas-panel-model.ts` | Pure, React-free: `buildAskAiPrompt`, `buildCommentsMessage`, `isSvgCodeCanvas`, `downloadFilenameFor`, `notesPathFor`, `monacoLanguageFor`, `fenceCode`, `canvasKind`, `previewMarkdownFor`, `saveStatusLabel`, `AUTOSAVE_DELAY_MS`, `ViewMode`/`SaveState`. |
 | `hooks/useCanvasRecord.ts` | The data kernel. Load on mount/canvas switch, `reloadNonce` forced reload (skipped while dirty), live `canvas-updated` reconciliation, debounced revision-checked autosave, 409 → `conflict`. Exposes `canvasRef` (timer-safe) and `loadNonce`. |
 | `hooks/useCanvasVersions.ts` | Version stepper + restore-as-latest (writes a NEW revision, never rewrites history). |
-| `hooks/useCanvasComments.ts` | Selection anchoring, comment CRUD, batch send-to-AI via the host's `onSendToAi` follow-up path. |
+| `hooks/useCanvasComments.ts` | Selection anchoring, comment CRUD, batch send-to-AI via the host's `onSendToAi` follow-up path. Late UI results are bound to the original client/workspace/canvas. |
+| `hooks/useCanvasSelection.ts` | Markdown DOM/textarea selection tracking and geometry; shared code-selection pill focus/dismissal behavior. Content, revision, mode and owner changes revoke actions. |
 | `hooks/useCanvasExport.ts` | Copy / download / save-to-Notes / export-as-HTML. Browser primitives (`copyText`, `downloadBlob`) are injectable via `deps`. |
 | `hooks/useCreateKustoCanvas.ts` | AC-07 blank Kusto canvas creation with best-effort cluster/database prefill. Reports the new id through `onCanvasCreated`, which the panel tab turns into a sibling tab under the same conversation. |
 | `canvasPopOut.ts` | Opens (or focuses) the standalone window for one canvas: `coc-canvas-<id>`, URL routed at the canvas's OWNING workspace, live handles tracked so a repeat click focuses instead of duplicating. |

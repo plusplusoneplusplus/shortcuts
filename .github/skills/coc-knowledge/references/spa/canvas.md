@@ -36,7 +36,7 @@ the rest:
 
 | Layer | Holds |
 |---|---|
-| `features/canvas/hooks/` | `useCanvasRecord` (load, live `canvas-updated` reconciliation, `reloadNonce`, debounced revision-checked autosave, 409 conflicts), `useCanvasVersions`, `useCanvasComments`, `useCanvasExport`, `useCreateKustoCanvas` |
+| `features/canvas/hooks/` | `useCanvasRecord` (load, live `canvas-updated` reconciliation, `reloadNonce`, debounced revision-checked autosave, 409 conflicts), `useCanvasVersions`, `useCanvasComments`, `useCanvasSelection`, `useCanvasExport`, `useCreateKustoCanvas` |
 | `canvas-panel-model.ts` | Pure helpers |
 | `features/canvas/components/` | Header, banners, body renderer, selection toolbar, comments panel |
 
@@ -94,14 +94,21 @@ not unlink the canvas — it stays in the `+` menu and in transcript links.
 
 ### Selection, comments, and copy
 
-Ask AI prefills the follow-up composer with a prompt quoting the selection plus canvas id
-and revision; comments anchor to the selection, and sending them posts one batch message
-that is marked `sent` only after the send succeeds. Both reach the canvas's OWNING
-conversation — never the selected one — through the
-`unified-right-panel/unifiedChatCanvasActions.ts` registry: `ChatDetail` publishes
-`{ askAi, insertDraft, sendToAi }` under its chat id (`sendFollowUp(message, 'enqueue')`, so a busy AI
-receives the batch at the next turn boundary), and the canvas tab looks them up by
-`tab.chatId`. An unmounted chat publishes nothing and the tab hides both actions.
+Markdown Preview and Edit selections use `shared/SelectionActionsGroup`, the code
+selection pill. `useCanvasSelection` owns native range/textarea tracking, clipped
+positioning, focus retention and dismissal. Content, revision, mode and owner changes
+revoke actions; history is read-only. Comments keep selected text as their anchor.
+Attachment appends the selection with canvas id and revision through `onAttachToChat`;
+non-Markdown Ask AI uses `onAskAi`. Neither sends a message.
+
+Chat-directed actions reach the canvas's owning conversation through
+`unified-right-panel/unifiedChatCanvasActions.ts`. `ChatDetail` publishes
+`{ askAi, insertDraft, sendToAi }`; the tab resolves by `tab.chatId` and passes
+`insertDraft` for Markdown attachment. Unmounted chats provide no attachment/send
+actions. Pop-outs permit comments without chat delivery; inline document embeds remain
+read-only source previews. Tab owner changes remount selection state. Comment reads and
+writes discard late UI results after a server/workspace/canvas change; a batch is marked
+`sent` only after its original owner's `sendFollowUp(message, 'enqueue')` succeeds.
 
 `copyImageToClipboard` copies a preview image as an `image/png` bitmap;
 `copySelectionWithInlineImages` (`utils/format.ts`) inlines images in a copied selection as

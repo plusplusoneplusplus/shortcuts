@@ -10,7 +10,7 @@
  * save-to-Notes, Kusto creation) is asserted against the remote client here.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => {
     const remote = {
@@ -67,7 +67,12 @@ function makeCanvas(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CanvasPanel on a remote workspace', () => {
+    const originalRangeRects = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
     beforeEach(() => {
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return this.getAttribute('role') === 'group' ? new DOMRect(0, 0, 230, 28) : new DOMRect(0, 0, 300, 240);
+        });
+        Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [new DOMRect(40, 50, 35, 16)] });
         vi.useFakeTimers({ shouldAdvanceTime: true });
         registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://remote.example' }]);
         mocks.remote.get.mockReset().mockResolvedValue(makeCanvas());
@@ -88,8 +93,12 @@ describe('CanvasPanel on a remote workspace', () => {
     });
 
     afterEach(() => {
+        cleanup();
         vi.useRealTimers();
         resetCloneRegistryForTests();
+        vi.restoreAllMocks();
+        if (originalRangeRects) Object.defineProperty(Range.prototype, 'getClientRects', originalRangeRects);
+        else Reflect.deleteProperty(Range.prototype, 'getClientRects');
     });
 
     async function renderPanel(extra: Record<string, unknown> = {}) {

@@ -21,11 +21,14 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
         'data-testid': 'canvas-panel-mock',
         'data-canvas-id': props.canvasId,
         'data-workspace-id': props.workspaceId,
+        'data-routing-ref': props.routingRef,
+        'data-has-attach': props.onAttachToChat ? 'yes' : 'no',
         'data-has-ask-ai': props.onAskAi ? 'yes' : 'no',
         'data-has-send': props.onSendToAi ? 'yes' : 'no',
         'data-available-count': String(props.availableCanvases?.length ?? 0),
         'data-allow-desktop-guest': String(props.allowDesktopGuest === true),
     },
+        React.createElement('button', { 'data-testid': 'fire-attach', onClick: () => props.onAttachToChat?.('Canvas selection context') }, 'Attach to chat'),
         React.createElement('button', { 'data-testid': 'fire-ask-ai', onClick: () => props.onAskAi?.('Rewrite this') }, 'Ask AI'),
         React.createElement('button', { 'data-testid': 'fire-send', onClick: () => { void props.onSendToAi?.('2 comments'); } }, 'Send'),
         React.createElement('button', { 'data-testid': 'fire-popout', onClick: () => props.onPopOut?.() }, 'Pop out'),
@@ -37,6 +40,7 @@ import { UnifiedCanvasTab } from '../../../../src/server/spa/client/react/featur
 import {
     clearUnifiedChatCanvasActions,
     publishUnifiedChatCanvasActions,
+    withdrawUnifiedChatCanvasActions,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -60,7 +64,7 @@ function renderTab(overrides: Partial<React.ComponentProps<typeof UnifiedCanvasT
 }
 
 function chatActions() {
-    return { askAi: vi.fn(), sendToAi: vi.fn().mockResolvedValue(undefined) };
+    return { askAi: vi.fn(), insertDraft: vi.fn(), sendToAi: vi.fn().mockResolvedValue(undefined) };
 }
 
 beforeEach(() => {
@@ -133,6 +137,51 @@ describe('chat-directed actions', () => {
 
         act(() => { publishUnifiedChatCanvasActions(CHAT, chatActions()); });
         expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-has-send')).toBe('yes');
+    });
+});
+
+describe('Markdown selection attachment ownership', () => {
+    it('appends only to the tab owner across same-workspace chats and servers', () => {
+        const owner = chatActions();
+        const selected = chatActions();
+        const local = chatActions();
+        publishUnifiedChatCanvasActions(CHAT, owner);
+        publishUnifiedChatCanvasActions('selected-chat', selected);
+        publishUnifiedChatCanvasActions('local-chat', local);
+        renderTab({ routingRef: 'remote:server-b:member-repo' });
+        fireEvent.click(screen.getByTestId('fire-attach'));
+        expect(owner.insertDraft).toHaveBeenCalledExactlyOnceWith('Canvas selection context');
+        expect(owner.askAi).not.toHaveBeenCalled();
+        expect(owner.sendToAi).not.toHaveBeenCalled();
+        expect(selected.insertDraft).not.toHaveBeenCalled();
+        expect(local.insertDraft).not.toHaveBeenCalled();
+        expect(screen.getByTestId('canvas-panel-mock')).toHaveAttribute('data-routing-ref', 'remote:server-b:member-repo');
+    });
+
+    it('withdraws attachment on owner unmount without falling through to a selected chat', () => {
+        const owner = chatActions();
+        const selected = chatActions();
+        publishUnifiedChatCanvasActions(CHAT, owner);
+        publishUnifiedChatCanvasActions('selected-chat', selected);
+        renderTab();
+        expect(screen.getByTestId('canvas-panel-mock')).toHaveAttribute('data-has-attach', 'yes');
+        act(() => { withdrawUnifiedChatCanvasActions(CHAT, owner); });
+        expect(screen.getByTestId('canvas-panel-mock')).toHaveAttribute('data-has-attach', 'no');
+        fireEvent.click(screen.getByTestId('fire-attach'));
+        expect(owner.insertDraft).not.toHaveBeenCalled();
+        expect(selected.insertDraft).not.toHaveBeenCalled();
+        act(() => { publishUnifiedChatCanvasActions(CHAT, owner); });
+        expect(screen.getByTestId('canvas-panel-mock')).toHaveAttribute('data-has-attach', 'yes');
+    });
+
+    it('remounts selection state when chat or server ownership changes', () => {
+        const { rerender } = renderTab();
+        const first = screen.getByTestId('canvas-panel-mock');
+        rerender(<UnifiedCanvasTab workspaceId={OWNER} scopeWorkspaceId={SCOPE} canvasId="canvas-1" chatId="chat-b" onClose={vi.fn()} />);
+        expect(screen.getByTestId('canvas-panel-mock')).not.toBe(first);
+        const second = screen.getByTestId('canvas-panel-mock');
+        rerender(<UnifiedCanvasTab workspaceId={OWNER} routingRef="remote:server-b:member-repo" scopeWorkspaceId={SCOPE} canvasId="canvas-1" chatId="chat-b" onClose={vi.fn()} />);
+        expect(screen.getByTestId('canvas-panel-mock')).not.toBe(second);
     });
 });
 

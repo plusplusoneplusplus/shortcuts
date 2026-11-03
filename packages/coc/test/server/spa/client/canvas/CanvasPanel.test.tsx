@@ -122,6 +122,26 @@ function makeCanvasSummary(overrides: Record<string, unknown> = {}) {
     return summary;
 }
 
+let selectionRect: DOMRect;
+const originalRangeRects = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+function mockSelectionLayout() {
+    selectionRect = new DOMRect(85, 50, 45, 16);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+        return this.getAttribute('role') === 'group' ? new DOMRect(0, 0, 230, 28) : new DOMRect(0, 0, 300, 240);
+    });
+    Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [selectionRect] });
+}
+function selectPreview(start = 6, end = 10) {
+    const text = screen.getByTestId('canvas-panel-preview').querySelector('p')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, start);
+    range.setEnd(text, end);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    act(() => { document.dispatchEvent(new Event('selectionchange')); });
+}
+
 function conflictError() {
     return new CocApiError({
         status: 409,
@@ -133,6 +153,7 @@ function conflictError() {
 
 describe('CanvasPanel', () => {
     beforeEach(() => {
+        mockSelectionLayout();
         mocks.get.mockReset();
         mocks.save.mockReset();
         mocks.getExtension.mockReset();
@@ -162,6 +183,10 @@ describe('CanvasPanel', () => {
         // The clone-routed test registers a remote workspace in the module-level
         // registry — clear it so sibling tests resolve to the local client.
         resetCloneRegistryForTests();
+        document.getSelection()?.removeAllRanges();
+        vi.restoreAllMocks();
+        if (originalRangeRects) Object.defineProperty(Range.prototype, 'getClientRects', originalRangeRects);
+        else Reflect.deleteProperty(Range.prototype, 'getClientRects');
     });
 
     it('renders a Copilot extension as a desktop-only view, never as editable JSON', async () => {
@@ -691,7 +716,7 @@ describe('CanvasPanel', () => {
         expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
     });
 
-    it('offers Ask AI for a textarea selection and prefills the composer prompt', async () => {
+    it('attaches a textarea selection with canvas details without sending', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
         const onAskAi = vi.fn();
 
@@ -703,7 +728,7 @@ describe('CanvasPanel', () => {
         editor.setSelectionRange(6, 10); // "beta"
         fireEvent.select(editor);
 
-        fireEvent.click(screen.getByTestId('canvas-panel-ask-ai'));
+        fireEvent.click(screen.getByTestId('canvas-panel-attach-to-chat'));
         expect(onAskAi).toHaveBeenCalledTimes(1);
         const prompt = onAskAi.mock.calls[0][0] as string;
         expect(prompt).toContain('beta');
@@ -738,74 +763,174 @@ describe('CanvasPanel', () => {
         });
     });
 
-    it('renders the selection bar and comment compose box as absolute overlays so toggling them never shifts the preview text (regression)', async () => {
+    it('shares the code pill and preserves the selection on pointer press and comment anchoring', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
-
         render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAskAi={vi.fn()} />);
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
-
-        // Nothing selected yet: the action bar is absent.
+        await screen.findByTestId('canvas-panel-preview');
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview();
+        const pill = screen.getByRole('group', { name: 'Selection actions' });
+        expect(pill.className).toContain('absolute');
+        expect(pill.className).toContain('rounded-full');
+        expect(pill.className).toContain('dark:text-gray-100');
+        expect(pill.style.top).toBe('68px');
+        expect(pill.style.left).toBe('66px');
         expect(screen.queryByTestId('canvas-panel-selection-bar')).toBeNull();
-
-        // Double-clicking a word in the preview selects it and surfaces the bar.
-        const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
-            toString: () => 'beta',
-        } as unknown as Selection);
-        try {
-            fireEvent.mouseUp(screen.getByTestId('canvas-panel-preview'));
-
-            const bar = await screen.findByTestId('canvas-panel-selection-bar');
-            // Out of normal flow (overlay) so it floats over the text instead of pushing it down.
-            expect(bar.className).toContain('absolute');
-            expect(bar.className).toContain('top-0');
-            // The bar must not wrap the preview — the text stays in its own sibling scroll container.
-            const preview = screen.getByTestId('canvas-panel-preview');
-            expect(bar.contains(preview)).toBe(false);
-            // Its offset parent is the relative body wrapper, which also holds the preview.
-            const wrapper = bar.parentElement as HTMLElement;
-            expect(wrapper.className).toContain('relative');
-            expect(wrapper.contains(preview)).toBe(true);
-
-            // The comment compose box replaces the bar and is likewise an overlay.
-            fireEvent.click(screen.getByTestId('canvas-panel-add-comment'));
-            const compose = await screen.findByTestId('canvas-panel-comment-compose');
-            expect(compose.className).toContain('absolute');
-            expect(compose.className).toContain('top-0');
-            expect(compose.contains(preview)).toBe(false);
-        } finally {
-            getSelectionSpy.mockRestore();
-        }
+        expect(screen.queryByTestId('canvas-panel-ask-ai')).toBeNull();
+        expect(fireEvent.pointerDown(screen.getByRole('button', { name: 'Add comment' }))).toBe(false);
+        expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Add comment' }))).toBe(false);
+        expect(document.getSelection()?.toString()).toBe('beta');
+        fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        const compose = screen.getByTestId('canvas-panel-comment-compose');
+        expect(compose.textContent).toContain('On: “beta”');
+        expect(compose.className).toContain('absolute');
+        expect(document.activeElement).toBe(screen.getByTestId('canvas-panel-comment-input'));
+        expect(screen.getByTestId('canvas-panel-comment-submit').className).toContain('dark:text-[#cccccc]');
     });
 
-    it('gives the selection-bar and comment actions an explicit theme-aware text color so they stay readable in dark mode (regression)', async () => {
+    it('appends selection context to the owning draft without sending and stays dismissed until a new selection', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        const onAttachToChat = vi.fn();
+        const onAskAi = vi.fn();
+        const onSendToAi = vi.fn();
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAttachToChat={onAttachToChat} onAskAi={onAskAi} onSendToAi={onSendToAi} />);
+        await screen.findByTestId('canvas-panel-preview');
+        selectPreview();
+        fireEvent.click(screen.getByRole('button', { name: 'Attach to chat' }));
+        expect(onAttachToChat).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('beta'));
+        expect(onAttachToChat.mock.calls[0][0]).toContain('canvasId: doc-abc123, revision 1');
+        expect(onAskAi).not.toHaveBeenCalled();
+        expect(onSendToAi).not.toHaveBeenCalled();
+        expect(document.getSelection()?.toString()).toBe('beta');
+        fireEvent.scroll(screen.getByTestId('canvas-panel-preview').parentElement!);
+        selectPreview();
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview(6, 6);
+        selectPreview();
+        expect(screen.getByRole('group', { name: 'Selection actions' })).toBeTruthy();
+        selectPreview(0, 5);
+        expect(screen.getByRole('group', { name: 'Selection actions' })).toBeTruthy();
+    });
 
-        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAskAi={vi.fn()} />);
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+    it('supports keyboard and touch selection and clears collapsed or outside selections', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        const preview = await screen.findByTestId('canvas-panel-preview');
+        selectPreview();
+        fireEvent.keyUp(preview, { key: 'ArrowRight', shiftKey: true });
+        expect(screen.getByRole('button', { name: 'Add comment' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Attach to chat' })).toBeNull();
+        act(() => {
+            screen.getByRole('button', { name: 'Add comment' }).focus();
+            document.getSelection()?.removeAllRanges();
+            document.dispatchEvent(new Event('selectionchange'));
+        });
+        fireEvent.scroll(preview.parentElement!);
+        fireEvent.click(document.activeElement!);
+        expect(screen.getByTestId('canvas-panel-comment-compose')).toBeTruthy();
+        fireEvent.click(screen.getByText('Cancel'));
+        selectPreview(0, 5);
+        fireEvent.pointerUp(preview, { pointerType: 'touch' });
+        expect(screen.getByRole('button', { name: 'Add comment' })).toBeTruthy();
+        selectPreview(5, 5);
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview();
+        const outside = document.createElement('p');
+        outside.textContent = 'another document';
+        document.body.appendChild(outside);
+        const range = document.createRange();
+        range.selectNodeContents(outside);
+        document.getSelection()!.removeAllRanges();
+        document.getSelection()!.addRange(range);
+        act(() => { document.dispatchEvent(new Event('selectionchange')); });
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        outside.remove();
+    });
 
-        const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
-            toString: () => 'beta',
-        } as unknown as Selection);
-        try {
-            fireEvent.mouseUp(screen.getByTestId('canvas-panel-preview'));
-            await screen.findByTestId('canvas-panel-selection-bar');
+    it('keeps a wrapped pill within narrow bounds, flips above the selection and hides off-screen selections', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        const preview = await screen.findByTestId('canvas-panel-preview');
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return this.getAttribute('role') === 'group' ? new DOMRect(0, 0, 130, 54) : new DOMRect(20, 0, 140, 120);
+        });
+        selectionRect = new DOMRect(120, 95, 35, 16);
+        selectPreview();
+        const pill = screen.getByRole('group', { name: 'Selection actions' });
+        expect(pill.style.maxWidth).toBe('132px');
+        expect(pill.style.left).toBe('6px');
+        expect(pill.style.top).toBe('39px');
+        selectionRect = new DOMRect(40, 30, 35, 16);
+        fireEvent.scroll(preview.parentElement!);
+        expect(pill.style.top).toBe('48px');
+        selectionRect = new DOMRect(40, -100, 35, 16);
+        fireEvent.scroll(preview.parentElement!);
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+    });
 
-            // Without an explicit color these buttons inherit a dark tone that is
-            // unreadable on the dark selection bar. They must set both variants.
-            for (const testId of ['canvas-panel-ask-ai', 'canvas-panel-add-comment']) {
-                const button = screen.getByTestId(testId);
-                expect(button.className).toContain('text-[#1e1e1e]');
-                expect(button.className).toContain('dark:text-[#cccccc]');
-            }
+    it('dismisses on Escape and focus leaving the pill without scrolling it back', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        const preview = await screen.findByTestId('canvas-panel-preview');
+        selectPreview();
+        act(() => { screen.getByRole('button', { name: 'Add comment' }).focus(); });
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        fireEvent.scroll(preview.parentElement!);
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview(0, 5);
+        act(() => { screen.getByRole('button', { name: 'Add comment' }).focus(); });
+        fireEvent.blur(document.activeElement!, { relatedTarget: screen.getByTestId('canvas-panel-mode-edit') });
+        fireEvent.scroll(preview.parentElement!);
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+    });
 
-            // The comment compose "Add" button shares the same overlay and defect.
-            fireEvent.click(screen.getByTestId('canvas-panel-add-comment'));
-            const submit = await screen.findByTestId('canvas-panel-comment-submit');
-            expect(submit.className).toContain('text-[#1e1e1e]');
-            expect(submit.className).toContain('dark:text-[#cccccc]');
-        } finally {
-            getSelectionSpy.mockRestore();
-        }
+    it('revokes actions on document, mode and server owner changes', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        const onAttachToChat = vi.fn();
+        const props = { workspaceId: 'ws-1', canvasId: 'doc-abc123', liveEvent: null, onAttachToChat };
+        const { rerender } = render(<CanvasPanel {...props} />);
+        await screen.findByTestId('canvas-panel-preview');
+        selectPreview();
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        const editor = screen.getByTestId('canvas-panel-editor') as HTMLTextAreaElement;
+        editor.setSelectionRange(6, 10);
+        fireEvent.select(editor);
+        expect(screen.getByRole('group', { name: 'Selection actions' })).toBeTruthy();
+        fireEvent.change(editor, { target: { value: 'other body' } });
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        editor.setSelectionRange(0, 5);
+        fireEvent.select(editor);
+        expect(screen.getByRole('group', { name: 'Selection actions' })).toBeTruthy();
+        rerender(<CanvasPanel {...props} routingRef="different-server-owner" />);
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        expect(onAttachToChat).not.toHaveBeenCalled();
+    });
+
+    it('revokes the pill on a live revision and while browsing history without hiding status banners', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+        mocks.listVersions.mockResolvedValue([
+            { revision: 2, editor: 'ai' }, { revision: 1, editor: 'ai' },
+        ]);
+        mocks.getVersion.mockResolvedValue({ revision: 1, editor: 'ai', content: 'alpha beta gamma' });
+        const props = { workspaceId: 'ws-1', canvasId: 'doc-abc123', liveEvent: null };
+        const { rerender } = render(<CanvasPanel {...props} />);
+        await screen.findByTestId('canvas-panel-preview');
+        selectPreview();
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma', revision: 2 }));
+        rerender(<CanvasPanel {...props} liveEvent={{ canvasId: 'doc-abc123', revision: 2, editor: 'ai', title: 'My Plan' }} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 2'));
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview();
+        fireEvent.click(screen.getByTestId('canvas-panel-version-older'));
+        await screen.findByTestId('canvas-panel-history-banner');
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        selectPreview();
+        expect(screen.queryByRole('group', { name: 'Selection actions' })).toBeNull();
+        expect(screen.getByTestId('canvas-panel-history-banner')).toBeTruthy();
+        expect(screen.getByTestId('canvas-panel-export')).toBeTruthy();
+        expect(screen.getByTestId('canvas-panel-fullscreen')).toBeTruthy();
     });
 
     it('sends open comments to the AI and marks them sent', async () => {

@@ -1329,10 +1329,11 @@ guest lifecycle through `cocDesktop.extensionCanvas`; only local-owned desktop
 tabs attach guests. Other surfaces show the desktop-only message. Extension
 headers retain tab chrome but omit document editing, history and export actions.
 
-- **Ask AI / Send comments** go to the chat named by `tab.chatId` — the
-  *originating* conversation, so a pending send never follows a chat switch. A
-  chat that is not mounted publishes nothing, and the tab then omits both props,
-  which is what hides the actions instead of dropping the work silently.
+- **Selection context / Send comments** go to the chat named by `tab.chatId`.
+  Markdown attachment uses `insertDraft`; Ask AI uses `askAi`, and comment batches
+  use `sendToAi`. A chat that is not mounted publishes nothing, so its chat actions
+  are omitted. The panel remounts on chat, canvas, workspace or route changes to
+  revoke selection state. See the canvas guidance for selection lifecycle rules.
 - **Pop out** goes through `features/canvas/canvasPopOut.ts`, keyed on the
   canvas's OWNING workspace and named `coc-canvas-<id>`, so a repeat click
   focuses the live window. A blocked popup leaves the canvas in its tab.
