@@ -50,6 +50,7 @@ const EXPECTED_ROUTES = [
     'POST /api/admin/storage/import-directory',
     'GET /api/admin/providers/availability',
     'GET /api/admin/browser-approved-sites',
+    'POST /api/admin/browser-approved-sites',
     'DELETE ^\\/api\\/admin\\/browser-approved-sites\\/([^/]+)$',
 ];
 
@@ -99,7 +100,7 @@ describe('Admin Routes Composition', () => {
             ['system', registerSystemRoutes, 2],
             ['storage', registerStorageRoutes, 7],
             ['provider', registerProviderRoutes, 1],
-            ['browser', registerBrowserRoutes, 2],
+            ['browser', registerBrowserRoutes, 3],
         ];
         const seen = new Set<string>();
         for (const [, register, count] of domains) {
