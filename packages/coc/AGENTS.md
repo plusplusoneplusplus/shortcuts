@@ -73,7 +73,10 @@ references before editing. Paths are package-relative.
   calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
   so chips outlive pins and never touch a replacement. `useSendMessage` receives
   the same exact annotation owner, snapshots chips for ordinary sends and appends
-  the shared coc-client serializer's untrusted page context. Keep page metadata
+  the shared coc-client serializer's untrusted page context. PNGs use the same
+  screenshot validator as `useFileAttachments`, with group/pin filenames referenced
+  in the text. Validate combined attachment counts and image sizes before clearing
+  draft state; over-limit sends retain chips and composer contents. Keep page metadata
   out of command/target parsing. Accepted messages consume only unchanged snapshot
   entries and remove their original pins; failed sends preserve chips. Generated
   sends with `includeComposerContext:false` leave the queue untouched. Keep each

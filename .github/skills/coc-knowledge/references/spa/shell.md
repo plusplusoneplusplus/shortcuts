@@ -634,15 +634,19 @@ workspace/routing/process owner; removing a chip calls its original session's
 `remove(id)`, a no-op once that mode ended, so chips outlive navigation.
 
 `ChatDetail` passes the same exact annotation owner to `useSendMessage`. Ordinary
-sends snapshot that owner's chips and append serialized page context, grouping
-modes separately to preserve pin numbers across navigation. Page metadata stays
+sends snapshot that owner's chips and append serialized page context plus native
+PNGs through the existing image/attachment request fields. Group/pin filenames in
+the text identify each PNG. The shared `useFileAttachments` screenshot validator
+enforces combined attachment count and image size before draft state clears;
+rejection retains the draft and chips. Modes stay separate to preserve pin numbers
+across navigation. Page metadata stays
 outside slash-command and target parsing. Server acceptance consumes unchanged
 snapshot entries and removes their original pins; admission failures retain them,
 and comments added or edited during admission stay queued. Generated sends with
 `includeComposerContext:false` preserve the queue. Pin-cleanup errors remain
 observable without marking an accepted message failed. PNGs remain separate from
-serialized page snapshots/text. Modifier sends, image attachments and the new-chat
-composer fallback remain separate integration work.
+serialized page snapshots/text. Modifier sends and the new-chat composer fallback
+remain separate integration work.
 
 ### Shared web-page zoom
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserAnnotationSession, type BrowserAnnotationImage, type BrowserAnnotationSelection,
     type DesktopBrowserAnnotation } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
-import { acknowledgeBrowserAnnotationChips, applyBrowserAnnotationEvents, formatBrowserAnnotationChips,
+import { acknowledgeBrowserAnnotationChips, applyBrowserAnnotationEvents, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips,
     getBrowserAnnotationChips, removeBrowserAnnotationChip, resetBrowserAnnotationChipsForTest,
 } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
 
@@ -29,6 +29,22 @@ function fixture() {
 beforeEach(resetBrowserAnnotationChipsForTest);
 
 describe('browser annotation screenshot chips', () => {
+    it('enforces the combined count atomically and follows pin renumbering in text and filenames', () => {
+        const f = fixture(); f.capture(); f.save();
+        const second = { ...selection, captureId: '2' };
+        f.capture(second); f.save('2', second);
+        const snapshot = getBrowserAnnotationChips(owner);
+        expect(buildBrowserAnnotationAttachments(snapshot, 8)).toHaveLength(2);
+        expect(() => buildBrowserAnnotationAttachments(snapshot, 9)).toThrow('Maximum 10 attachments');
+        expect(getBrowserAnnotationChips(owner)).toEqual(snapshot);
+        applyBrowserAnnotationEvents(owner, f.session, [{ type: 'delete', id: '1' }]);
+        const renumbered = getBrowserAnnotationChips(owner);
+        expect(buildBrowserAnnotationAttachments(renumbered, 9)).toMatchObject([
+            { name: 'browser-annotation-group-1-pin-1.png', dataUrl: image.dataUrl },
+        ]);
+        expect(formatBrowserAnnotationChips(renumbered)).toContain('Pin #1 screenshot: browser-annotation-group-1-pin-1.png');
+    });
+
     it('associates selection and save in one batch without putting PNG bytes in the snapshot or text', () => {
         const f = fixture();
         applyBrowserAnnotationEvents(owner, f.session, [

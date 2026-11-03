@@ -1,4 +1,4 @@
-import { acknowledgeBrowserAnnotationChips, formatBrowserAnnotationChips, getBrowserAnnotationChips } from '../../../shared/file-path/browser-annotation-chips';
+import { acknowledgeBrowserAnnotationChips, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips, getBrowserAnnotationChips } from '../../../shared/file-path/browser-annotation-chips';
 import type { BrowserDemoOwner } from '../../../shared/file-path/browser-bridge';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { targetSpans } from '../../../../../../shared/sentinel-target-reference';
@@ -569,6 +569,21 @@ export function useSendMessage({
         }
 
         const { skills: extractedSkills } = slashCommands.parseAndExtract(composerContent);
+        let messageRequest: ProcessMessageRequest;
+        try {
+            messageRequest = buildMessageRequest(rawContent, deliveryMode, extractedSkills, options);
+            const annotationAttachments = buildBrowserAnnotationAttachments(annotationSnapshot,
+                Math.max(messageRequest.attachments?.length ?? 0, messageRequest.images?.length ?? 0));
+            if (annotationAttachments.length) {
+                messageRequest = { ...messageRequest,
+                    attachments: [...(messageRequest.attachments ?? []), ...annotationAttachments],
+                    images: [...(messageRequest.images ?? []), ...annotationAttachments.map(image => image.dataUrl)],
+                };
+            }
+        } catch (error) {
+            rejectSend(getSpaCocClientErrorMessage(error, 'Could not attach browser annotation screenshots.'));
+            return;
+        }
 
         setSuggestions([]);
         if (includeComposerContext) {
@@ -602,7 +617,7 @@ export function useSendMessage({
             try {
                 await messageClient.processes.sendMessage(
                     processId,
-                    buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
+                    messageRequest,
                     ownerQuery,
                 );
             } catch (error) {
@@ -643,7 +658,7 @@ export function useSendMessage({
             // Idle chat: start the streaming follow-up against the chat's clone (AC-07).
             await messageClient.processes.sendMessage(
                 processId,
-                buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
+                messageRequest,
                 ownerQuery,
             );
 

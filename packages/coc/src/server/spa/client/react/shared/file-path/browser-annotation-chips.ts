@@ -1,5 +1,7 @@
 import { serializeBrowserAnnotations } from '@plusplusoneplusplus/coc-client';
 import { useMemo, useSyncExternalStore } from 'react';
+import { buildScreenshotAttachment } from '../../features/chat/utils/screenshotAttachment';
+import type { AttachmentPayload } from '../../types/attachments';
 import type { BrowserDemoOwner } from './browser-bridge';
 import { sameChatOwner } from './browser-demo';
 import type { BrowserAnnotationDeliveryEvent, BrowserAnnotationImage, BrowserAnnotationSelection, BrowserAnnotationSession } from './browser-annotation';
@@ -96,17 +98,38 @@ export function resetBrowserAnnotationChipsForTest(): void {
     set([]);
 }
 
-/** Keep each page mode's pin numbering independent, including chips retained after navigation. */
-export function formatBrowserAnnotationChips(snapshot: readonly BrowserAnnotationChip[]): string {
+function groupChips(snapshot: readonly BrowserAnnotationChip[]): BrowserAnnotationChip[][] {
     const groups = new Map<BrowserAnnotationSession, BrowserAnnotationChip[]>();
     for (const chip of snapshot) {
         const group = groups.get(chip.session) ?? [];
         group.push(chip);
         groups.set(chip.session, group);
     }
-    return [...groups.values()].map((group, index) =>
-        `${groups.size > 1 ? `Browser annotation group ${index + 1}\n` : ''}${serializeBrowserAnnotations(group)}`,
-    ).join('\n\n');
+    return [...groups.values()];
+}
+
+function screenshotName(groupIndex: number, chip: BrowserAnnotationChip): string {
+    return `browser-annotation-group-${groupIndex + 1}-pin-${chip.number}.png`;
+}
+
+/** Use the composer's screenshot validator without moving images into mutable draft state. */
+export function buildBrowserAnnotationAttachments(snapshot: readonly BrowserAnnotationChip[], currentCount: number): AttachmentPayload[] {
+    return groupChips(snapshot).flatMap((group, index) => group.filter(chip => chip.image).map(chip => {
+        const { attachment, error } = buildScreenshotAttachment(chip.image!.dataUrl, currentCount++);
+        if (!attachment) throw new Error(`Browser annotation #${chip.number}: ${error}`);
+        return { name: screenshotName(index, chip), mimeType: attachment.mimeType,
+            size: attachment.size, dataUrl: attachment.dataUrl };
+    }));
+}
+
+/** Keep each page mode's pin numbering independent, including chips retained after navigation. */
+export function formatBrowserAnnotationChips(snapshot: readonly BrowserAnnotationChip[]): string {
+    const groups = groupChips(snapshot);
+    return groups.map((group, index) => [
+        ...(groups.length > 1 ? [`Browser annotation group ${index + 1}`] : []),
+        ...group.filter(chip => chip.image).map(chip => `Pin #${chip.number} screenshot: ${screenshotName(index, chip)}`),
+        serializeBrowserAnnotations(group),
+    ].join('\n')).join('\n\n');
 }
 
 /** Accepted messages consume only unchanged snapshot entries, preserving edits made during admission. */
