@@ -94,6 +94,23 @@ export class BrowserAnnotationTab {
         return this.polling;
     }
 
+    /** Remove a saved pin only in this active document; return deletion events through the normal sink. */
+    remove(id: string): Promise<void> {
+        if (!isValidBrowserAnnotationId(id)) return Promise.reject(new TypeError('Invalid browser annotation pin'));
+        if (this.closed || !this.timer) return Promise.resolve();
+        return this.enqueue(async () => {
+            if (this.closed) return;
+            const result = await this.evaluate('remove', id);
+            if (!this.closed) this.deliver(result);
+        }).catch(error => {
+            if (!this.closed) {
+                this.revoke('failed', error);
+                void this.cleanup().catch(() => {});
+            }
+            throw error;
+        });
+    }
+
     /** Revokes delivery synchronously; the returned promise includes removal after any in-flight call. */
     stop(reason: BrowserAnnotationEndReason = 'stop'): Promise<void> {
         this.revoke(reason);
@@ -124,9 +141,10 @@ export class BrowserAnnotationTab {
         return result;
     }
 
-    private async evaluate(action: Exclude<BrowserAnnotationCommand['action'], 'remove'>): Promise<BrowserAnnotationResult> {
+    private async evaluate(action: BrowserAnnotationCommand['action'], id?: string): Promise<BrowserAnnotationResult> {
         const reply = await this.cdp!('Runtime.evaluate', {
-            expression: buildBrowserAnnotationExpression({ action, session: this.session }),
+            expression: buildBrowserAnnotationExpression(action === 'remove'
+                ? { action, session: this.session, id: id! } : { action, session: this.session }),
             contextId: this.contextId, returnByValue: true,
         }) as { result?: { value?: unknown }; exceptionDetails?: unknown } | undefined;
         if (reply?.exceptionDetails) throw new Error('Annotation script failed in the page.');
@@ -161,15 +179,14 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
     if (!result || typeof result.active !== 'boolean' || !Array.isArray(result.events) || result.events.length > 33) return invalid();
     // The DOM primitive bounds individual fields; this also bounds aggregate transport data.
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 1_048_576) return invalid();
-    const validId = (id: unknown) => typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id) && Number.isSafeInteger(Number(id));
     for (const event of result.events) {
         if (!event || typeof event !== 'object') return invalid();
         if (event.type === 'exit') {
             if (!['escape', 'navigation', 'removed', 'overflow', 'stop'].includes(event.reason)) return invalid();
         } else if (event.type === 'delete') {
-            if (!validId(event.id)) return invalid();
+            if (!isValidBrowserAnnotationId(event.id)) return invalid();
         } else if (event.type === 'selection' || event.type === 'comment') {
-            if (event.type === 'comment' && (!validId(event.id) || !Number.isInteger(event.number) || event.number < 1 || event.number > 100
+            if (event.type === 'comment' && (!isValidBrowserAnnotationId(event.id) || !Number.isInteger(event.number) || event.number < 1 || event.number > 100
                 || typeof event.comment !== 'string' || !event.comment.trim()
                 || event.comment.length > 8000 || event.selection?.type !== 'selection')) return invalid();
             const selection = event.type === 'comment' ? event.selection : event;
@@ -187,4 +204,9 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
         } else return invalid();
     }
     return result!;
+}
+
+/** Pin IDs are canonical positive decimal safe integers, scoped to a mode generation. */
+export function isValidBrowserAnnotationId(id: unknown): id is string {
+    return typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id) && Number.isSafeInteger(Number(id));
 }

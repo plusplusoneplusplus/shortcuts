@@ -154,7 +154,7 @@ describe('BrowserAnnotationTab document transport', () => {
         await f.tab.stop();
     });
 
-    it.each(['start', 'drain'])('drops delayed %s results after Stop and cleans the original context', async action => {
+    it.each(['start', 'drain', 'remove'])('drops delayed %s results after Stop and cleans the original context', async action => {
         const f = fixture();
         const entered = deferred();
         const release = deferred();
@@ -169,7 +169,7 @@ describe('BrowserAnnotationTab document transport', () => {
         });
         let pending: Promise<unknown>;
         if (action === 'start') pending = f.tab.start();
-        else { await f.tab.start(); f.select(); pending = f.tab.poll(); }
+        else { await f.tab.start(); f.select(); pending = action === 'remove' ? f.tab.remove('1') : f.tab.poll(); }
         await entered.promise;
         const stopping = f.tab.stop();
         expect(f.sink.ended).toHaveBeenCalledTimes(1);
@@ -253,6 +253,70 @@ describe('BrowserAnnotationTab document transport', () => {
             expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'delete', id: '1' }]);
             expect(f.sink.ended).not.toHaveBeenCalled();
         } finally { await f.tab.stop(); spy.mockRestore(); }
+    });
+
+    it('removes actual saved pins, emits deletion once, and retains the active overlay', async () => {
+        const attach = Element.prototype.attachShadow;
+        let root!: ShadowRoot;
+        const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+            return root = attach.call(this, init);
+        });
+        const f = fixture();
+        try {
+            await f.tab.start(); f.select();
+            root.querySelector('textarea')!.value = 'Remove this pin from its chip';
+            Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => root.querySelector('.save') });
+            root.querySelector('.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+            expect(root.querySelectorAll('.pin')).toHaveLength(1);
+            // Remove also drains queued selection/comment events, preserving their order before deletion.
+            await f.tab.remove('1');
+            expect(f.sink.events.mock.calls[0][0].map((event: { type: string }) => event.type)).toEqual(['selection', 'comment', 'delete']);
+            expect(f.sink.events.mock.calls[0][0].at(-1)).toEqual({ type: 'delete', id: '1' });
+            expect(root.querySelectorAll('.pin')).toHaveLength(0);
+            await f.tab.remove('1');
+            expect(f.sink.events).toHaveBeenCalledTimes(1);
+            expect(f.sink.ended).not.toHaveBeenCalled();
+        } finally { await f.tab.stop(); spy.mockRestore(); }
+    });
+
+    it('ignores removal queued behind a drain when navigation revokes the document', async () => {
+        const f = fixture(); await f.tab.start();
+        const entered = deferred(), release = deferred();
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation(async (method, params = {}) => {
+            if (method === 'Runtime.evaluate' && String(params.expression).includes('"action":"drain"')) {
+                entered.resolve(); await release.promise;
+            }
+            return original(method, params);
+        });
+        const poll = f.tab.poll(); await entered.promise;
+        const remove = f.tab.remove('1');
+        f.emit('Page.navigatedWithinDocument', { frameId: 'main' });
+        release.resolve(); await Promise.all([poll, remove]); await f.tab.stop();
+        expect(f.cdp.mock.calls.some(([, params]) => String(params?.expression).includes('"action":"remove"'))).toBe(false);
+    });
+
+    it('rejects removal transport failures, ends delivery and removes the overlay', async () => {
+        const f = fixture(); await f.tab.start();
+        const original = f.cdp.getMockImplementation()!;
+        f.cdp.mockImplementation(async (method, params = {}) => {
+            if (method === 'Runtime.evaluate' && String(params.expression).includes('"action":"remove"')) throw new Error('Removal failed');
+            return original(method, params);
+        });
+        await expect(f.tab.remove('1')).rejects.toThrow('Removal failed');
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
+        await f.tab.stop();
+        const count = f.cdp.mock.calls.length;
+        await f.tab.remove('1');
+        expect(f.cdp).toHaveBeenCalledTimes(count);
+    });
+
+    it.each(['', '0', '01', '9007199254740992'])('rejects invalid removal ID %j without CDP', async id => {
+        const f = fixture(); await f.tab.start();
+        const count = f.cdp.mock.calls.length;
+        await expect(f.tab.remove(id)).rejects.toThrow(TypeError);
+        expect(f.cdp).toHaveBeenCalledTimes(count);
+        await f.tab.stop();
     });
 
     it.each(['', '  ', 'x'.repeat(8001), 42, null])('rejects invalid comment text at the native boundary (case %#)', async comment => {

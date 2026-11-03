@@ -25,8 +25,9 @@ are generation-local and stable, numbers reflect current order. Delete emits
 snapshot and clear immediate-send intent. Bound comments to 8000 UTF-16 units and
 saved pins to 100; pins anchor to selection-time document coordinates. Hosts own
 tab/navigation/crash/owner teardown; the primitive also handles document departure,
-host removal and report overflow. Composer synchronization needs an event consumer
-and an owner-bound command path to its generation-matched remove operation.
+host removal and report overflow. Composer synchronization needs an event consumer.
+The owner-bound remove command targets the original active generation, drains
+delete events and ignores callbacks after revocation.
 `browser-annotation-snapshot.ts` captures page and bounded element metadata at
 selection time. Selectors are unique within their document/shadow root; resolve
 the outermost-first `shadowHosts` chain before the element selector. A null
@@ -47,11 +48,11 @@ dispatch and demo recording through teardown. Hide, workspace departure, close,
 crash, owner disposal and owner/session policy disable stop annotation; Return
 awaits removal before its context refresh. Failed teardown stays excluded from
 AI control until an explicit annotation retry or guest closure.
-`browser-annotation-bridge.ts` exposes start/stop/live policy through registered
+`browser-annotation-bridge.ts` exposes start/stop/remove/live policy through registered
 exact-source SPA main-frame IPC. Each mode uses a fresh renderer request ID;
-notifications include view/session/request identity and stale Stop cannot revoke a
-replacement. Owner reload/crash/closure revokes notification leases before native
-cleanup. Preload exposes `browser.annotation`; subscribe before Start and reject
+notifications and pin-removal commands include view/session/request identity. Stale
+Stop or Remove cannot affect a replacement; pin IDs are validated before dispatch.
+Owner reload/crash/closure revokes notification leases before native cleanup. Preload exposes `browser.annotation`; subscribe before Start and reject
 late notifications/replies in the caller. Never install annotation scripts on
 future documents or expose CDP to the SPA.
 

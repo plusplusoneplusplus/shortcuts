@@ -26,7 +26,7 @@ const owner = { workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'c
 beforeEach(() => {
     mock.enabled = true; mock.takeover = false; mock.route = 'local'; mock.baseUrl = undefined;
     mock.request.mockReset(); listeners = new Set();
-    bridge = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
+    bridge = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}), remove: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
         onEvent: callback => { listeners.add(callback); return () => { listeners.delete(callback); }; } };
 });
 afterEach(() => { cleanup(); clearBrowserTakeover('clone:w', 'p'); });

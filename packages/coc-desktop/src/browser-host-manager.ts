@@ -199,6 +199,11 @@ export class BrowserHostManager {
         return this.endAnnotation(this.annotationEntry(ownerId, viewId, sessionKey));
     }
 
+    removeAnnotation(ownerId: number, viewId: unknown, sessionKey: unknown, id: string): Promise<void> {
+        const annotation = this.annotationEntry(ownerId, viewId, sessionKey).annotation;
+        return annotation && !annotation.stopped ? annotation.tab.remove(id) : Promise.resolve();
+    }
+
     /** Live owner/server policy, independent of AI browser-control availability. */
     async setAnnotationEnabled(ownerId: number, sessionKey: unknown, enabled: boolean): Promise<void> {
         if (!isValidBrowserSessionKey(sessionKey) || typeof enabled !== 'boolean') throw new TypeError('Invalid browser annotation policy');

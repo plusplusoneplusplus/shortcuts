@@ -27,6 +27,7 @@ export interface DesktopBrowserAnnotation {
     supported: boolean;
     start(identity: BrowserAnnotationIdentity): Promise<boolean>;
     stop(identity: BrowserAnnotationIdentity): Promise<void>;
+    remove(identity: BrowserAnnotationIdentity, id: string): Promise<void>;
     setEnabled(sessionKey: string, enabled: boolean): Promise<void>;
     onEvent(callback: (event: BrowserAnnotationNotification) => void): () => void;
 }
@@ -69,6 +70,12 @@ export class BrowserAnnotationSession {
             }
         });
         return this.startup;
+    }
+
+    /** Chips retain this session's identity; removing one after navigation must not touch a replacement. */
+    remove(id: string): Promise<void> {
+        if (this.phase !== 'active') return Promise.resolve();
+        return this.bridge.remove(this.identity, id);
     }
 
     /** Revoke UI delivery before waiting for native cleanup; failures remain observable. */

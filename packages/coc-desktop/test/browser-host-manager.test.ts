@@ -1446,7 +1446,7 @@ describe('owner-bound annotation admission and lifecycle', () => {
             if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
             if (method === 'Page.createIsolatedWorld') return { executionContextId: 42 };
             if (method === 'Runtime.evaluate') {
-                const action = /"action":"(start|drain|stop)"/.exec(String(params?.expression))?.[1];
+                const action = /"action":"(start|drain|stop|remove)"/.exec(String(params?.expression))?.[1];
                 if (action) {
                     actions.push(action);
                     return { result: { value: { active: action !== 'stop', events: [] } } };
@@ -1467,6 +1467,22 @@ describe('owner-bound annotation admission and lifecycle', () => {
         });
         return { ...h, view, hostSink, listeners, cdp, actions, sink, start, stop, command };
     }
+
+    it.each(['electron', 'webview2'] as const)('removes pins only from the active owned %s document', async engine => {
+        const h = await setup(engine);
+        try {
+            await h.manager.removeAnnotation(1, 'annotated', 'clone:w', '1');
+            expect(h.actions).toEqual([]);
+            await h.start();
+            expect(() => h.manager.removeAnnotation(2, 'annotated', 'clone:w', '1')).toThrow('not found');
+            expect(() => h.manager.removeAnnotation(1, 'annotated', 'other:w', '1')).toThrow('another workspace');
+            await h.manager.removeAnnotation(1, 'annotated', 'clone:w', '1');
+            expect(h.actions).toEqual(['start', 'remove']);
+            await h.stop();
+            await h.manager.removeAnnotation(1, 'annotated', 'clone:w', '1');
+            expect(h.actions).toEqual(['start', 'remove', 'stop']);
+        } finally { await h.manager.dispose(); }
+    });
 
     it.each(['electron', 'webview2'] as const)('admits a visible %s URL tab independently of AI control and excludes other callers', async engine => {
         const h = await setup(engine);

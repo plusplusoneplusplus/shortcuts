@@ -171,6 +171,8 @@ describe('preload bridge', () => {
         invoke.mockResolvedValueOnce(true);
         expect(await annotation.start(identity)).toBe(true);
         expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'start' });
+        await annotation.remove(identity, '7');
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'remove', id: '7' });
         await annotation.stop(identity);
         expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'stop' });
         await annotation.setEnabled(identity.sessionKey, false);

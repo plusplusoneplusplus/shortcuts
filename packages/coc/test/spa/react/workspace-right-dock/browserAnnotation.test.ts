@@ -12,7 +12,7 @@ function fixture() {
     const off = vi.fn();
     const bridge = {
         supported: true,
-        start: vi.fn(async () => true), stop: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
+        start: vi.fn(async () => true), stop: vi.fn(async () => {}), remove: vi.fn(async () => {}), setEnabled: vi.fn(async () => {}),
         onEvent: vi.fn((callback: (event: BrowserAnnotationNotification) => void) => {
             listeners.add(callback);
             return () => { listeners.delete(callback); off(); };
@@ -124,6 +124,32 @@ describe('BrowserAnnotationSession', () => {
         else await expect(f.session.start()).resolves.toBe(false);
         expect(f.listeners.size).toBe(0);
         await expect(f.session.start()).resolves.toBe(false);
+    });
+
+    it('binds chip removal to its mode and ignores callbacks before Start or after navigation', async () => {
+        const f = fixture();
+        await f.session.remove('1');
+        expect(f.bridge.remove).not.toHaveBeenCalled();
+        await f.session.start();
+        await f.session.remove('1');
+        expect(f.bridge.remove).toHaveBeenCalledExactlyOnceWith(f.session.identity, '1');
+        f.emit({ ...f.session.identity, type: 'ended', reason: 'navigation' });
+        const replacement = new BrowserAnnotationSession(f.bridge, 'view-a', 'clone-workspace', vi.fn());
+        await replacement.start();
+        await f.session.remove('1');
+        expect(f.bridge.remove).toHaveBeenCalledTimes(1);
+        await replacement.remove('1');
+        expect(f.bridge.remove).toHaveBeenLastCalledWith(replacement.identity, '1');
+        await replacement.stop();
+        await replacement.remove('1');
+        expect(f.bridge.remove).toHaveBeenCalledTimes(2);
+    });
+
+    it('preserves removal failures for the composer', async () => {
+        const f = fixture(); await f.session.start();
+        f.bridge.remove.mockRejectedValueOnce(new Error('Pin removal failed'));
+        await expect(f.session.remove('1')).rejects.toThrow('Pin removal failed');
+        await f.session.stop();
     });
 
     it('preserves stop errors after revoking delivery', async () => {

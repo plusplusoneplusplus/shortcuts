@@ -60,8 +60,9 @@ references before editing. Paths are package-relative.
   a numbered pin with a generation-local stable ID; delete renumbers survivors.
   Comment events retain original snapshots; only creation carries modifier-send
   intent. Match pin IDs with their full mode identity. The toolbar handles lifecycle
-  events; composer delivery and reverse pin removal require an event consumer and
-  owner-bound command path.
+  events; composer delivery requires an event consumer. Session `remove(id)` routes
+  chip removal through owner-bound IPC to the original active generation. Callbacks
+  after navigation/Stop cannot remove pins from a replacement.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

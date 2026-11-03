@@ -316,6 +316,8 @@ const browser = {
             ipcRenderer.invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'start' }),
         stop: (identity: import('./browser-annotation-bridge').BrowserAnnotationIdentity): Promise<void> =>
             ipcRenderer.invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'stop' }),
+        remove: (identity: import('./browser-annotation-bridge').BrowserAnnotationIdentity, id: string): Promise<void> =>
+            ipcRenderer.invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'remove', id }),
         setEnabled: (sessionKey: string, enabled: boolean): Promise<void> =>
             ipcRenderer.invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, { action: 'policy', sessionKey, enabled }),
         onEvent: (callback: (event: import('./browser-annotation-bridge').BrowserAnnotationNotification) => void) =>

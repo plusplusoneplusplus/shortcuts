@@ -540,6 +540,25 @@ describe('desktop annotation IPC', () => {
         expect(notifications(other)).toEqual([]);
     });
 
+    it.each(['electron', 'webview2'] as const)('round trips generation-bound removal and deletion events for %s', async engine => {
+        const spa = owner(1), other = owner(2);
+        const guest = await page(spa, engine);
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'));
+        guest.view.cdp.mockClear();
+        for (const [event, fields] of [[other.event, {}], [spa.event, { requestId: 'stale' }],
+            [spa.event, { sessionKey: 'other:w' }]] as const) {
+            await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, event, request('remove', { id: '1', ...fields }));
+        }
+        expect(guest.view.cdp).not.toHaveBeenCalled();
+        guest.selections.push({ type: 'delete', id: '1' });
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('remove', { id: '1' }));
+        expect(guest.view.cdp).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({
+            contextId: 7, expression: expect.stringContaining('"action":"remove"'),
+        }));
+        expect(notifications(spa)).toEqual([{ ...identity, type: 'events', events: [{ type: 'delete', id: '1' }] }]);
+        expect(notifications(other)).toEqual([]);
+    });
+
     it('refuses all annotation actions from guests, subframes, unregistered and wrong-source windows', () => {
         const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
         const guest = { id: 3, mainFrame: {} };
@@ -547,7 +566,7 @@ describe('desktop annotation IPC', () => {
         mocks.windows.set(unregistered, { webContents: unregistered, isDestroyed: () => false });
         for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} },
             { sender: guest, senderFrame: guest.mainFrame }, { sender: unregistered, senderFrame: unregistered.mainFrame }]) {
-            for (const command of [request('start'), request('stop'), { action: 'policy', sessionKey: identity.sessionKey, enabled: false }]) {
+            for (const command of [request('start'), request('stop'), request('remove', { id: '1' }), { action: 'policy', sessionKey: identity.sessionKey, enabled: false }]) {
                 expect(() => invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, event, command)).toThrow('registered SPA main frame');
             }
         }

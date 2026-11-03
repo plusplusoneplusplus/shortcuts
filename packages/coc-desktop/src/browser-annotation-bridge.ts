@@ -1,5 +1,5 @@
 import type { BrowserAnnotationEvent } from './browser-annotation-dom';
-import type { BrowserAnnotationEndReason } from './browser-annotation-tab';
+import { isValidBrowserAnnotationId, type BrowserAnnotationEndReason } from './browser-annotation-tab';
 import type { BrowserHostManager } from './browser-host-manager';
 import { isValidBrowserSessionKey, isValidBrowserViewId } from './browser-view-policy';
 
@@ -14,13 +14,14 @@ export interface BrowserAnnotationIdentity {
 }
 export type BrowserAnnotationRequest =
     | (BrowserAnnotationIdentity & { action: 'start' | 'stop' })
+    | (BrowserAnnotationIdentity & { action: 'remove'; id: string })
     | { action: 'policy'; sessionKey: string; enabled: boolean };
 export type BrowserAnnotationNotification = BrowserAnnotationIdentity & (
     | { type: 'events'; events: BrowserAnnotationEvent[] }
     | { type: 'ended'; reason: BrowserAnnotationEndReason; error?: string }
 );
 
-type Manager = Pick<BrowserHostManager, 'startAnnotation' | 'stopAnnotation' | 'setAnnotationEnabled'>;
+type Manager = Pick<BrowserHostManager, 'startAnnotation' | 'stopAnnotation' | 'removeAnnotation' | 'setAnnotationEnabled'>;
 type Subscription = BrowserAnnotationIdentity & { stopping: boolean };
 
 /** Registered-main-frame callers only. Main owns transport and never accepts injected code. */
@@ -37,12 +38,19 @@ export class BrowserAnnotationBridge {
             if (typeof request.enabled !== 'boolean') throw new TypeError('Invalid browser annotation policy');
             return this.manager.setAnnotationEnabled(ownerId, request.sessionKey, request.enabled);
         }
-        if ((request.action !== 'start' && request.action !== 'stop') || !isValidBrowserViewId(request.viewId)
+        if ((request.action !== 'start' && request.action !== 'stop' && request.action !== 'remove') || !isValidBrowserViewId(request.viewId)
             || typeof request.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(request.requestId)) {
             throw new TypeError('Invalid browser annotation identity');
         }
         let views = this.owners.get(ownerId);
         const previous = views?.get(request.viewId);
+        if (request.action === 'remove') {
+            if (!isValidBrowserAnnotationId(request.id)) throw new TypeError('Invalid browser annotation pin');
+            // Match before dispatch; a stopped generation cannot target a replacement or another owner.
+            if (!previous || previous.stopping || previous.requestId !== request.requestId
+                || previous.sessionKey !== request.sessionKey) return;
+            return this.manager.removeAnnotation(ownerId, request.viewId, request.sessionKey, request.id);
+        }
         if (request.action === 'stop') {
             // Old cleanup must never remove a replacement mode or another concrete workspace.
             if (!previous || previous.requestId !== request.requestId || previous.sessionKey !== request.sessionKey) return;

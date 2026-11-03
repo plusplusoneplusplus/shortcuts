@@ -3,9 +3,9 @@ import { BrowserAnnotationBridge, type BrowserAnnotationIdentity } from '../src/
 import type { BrowserAnnotationTabSink } from '../src/browser-annotation-tab';
 
 const identity: BrowserAnnotationIdentity = { viewId: 'tab', sessionKey: 'clone/workspace', requestId: 'generation-1' };
-const request = (action: 'start' | 'stop', fields = {}) => ({ ...identity, action, ...fields });
+const request = (action: 'start' | 'stop' | 'remove', fields = {}) => ({ ...identity, action, ...fields });
 let sinks: BrowserAnnotationTabSink[];
-let manager: { startAnnotation: ReturnType<typeof vi.fn>; stopAnnotation: ReturnType<typeof vi.fn>; setAnnotationEnabled: ReturnType<typeof vi.fn> };
+let manager: { startAnnotation: ReturnType<typeof vi.fn>; stopAnnotation: ReturnType<typeof vi.fn>; removeAnnotation: ReturnType<typeof vi.fn>; setAnnotationEnabled: ReturnType<typeof vi.fn> };
 let bridge: BrowserAnnotationBridge;
 let send: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -13,6 +13,7 @@ beforeEach(() => {
     manager = {
         startAnnotation: vi.fn(async (_owner, _view, _session, sink) => { sinks.push(sink); return true; }),
         stopAnnotation: vi.fn(async () => {}),
+        removeAnnotation: vi.fn(async () => {}),
         setAnnotationEnabled: vi.fn(async () => {}),
     };
     bridge = new BrowserAnnotationBridge(manager);
@@ -124,6 +125,45 @@ describe('owner-bound annotation bridge', () => {
         sinks[1].events([]);
         expect(send).toHaveBeenCalledOnce();
         expect(send.mock.calls[0][0].requestId).toBe('replacement');
+    });
+
+    it('routes pin removal only to the current owner, view, workspace and generation', async () => {
+        await bridge.command(10, request('start'), send);
+        for (const [owner, fields] of [[11, {}], [10, { viewId: 'other' }],
+            [10, { sessionKey: 'other/workspace' }], [10, { requestId: 'old' }]] as const) {
+            await bridge.command(owner, request('remove', { id: '1', ...fields }), send);
+        }
+        expect(manager.removeAnnotation).not.toHaveBeenCalled();
+        await bridge.command(10, request('remove', { id: '1' }), send);
+        expect(manager.removeAnnotation).toHaveBeenCalledExactlyOnceWith(10, identity.viewId, identity.sessionKey, '1');
+        sinks[0].events([{ type: 'delete', id: '1' }]);
+        expect(send).toHaveBeenLastCalledWith({ ...identity, type: 'events', events: [{ type: 'delete', id: '1' }] });
+        await bridge.command(10, request('stop'), send);
+        await bridge.command(10, request('start', { requestId: 'replacement' }), send);
+        await bridge.command(10, request('remove', { id: '1' }), send);
+        expect(manager.removeAnnotation).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([undefined, null, 1, '', '0', '01', '-1', '1.5', '9007199254740992'])('rejects malformed removal ID %j', async id => {
+        await bridge.command(10, request('start'), send);
+        await expect(bridge.command(10, request('remove', { id }), send)).rejects.toThrow(TypeError);
+        expect(manager.removeAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('ignores removal during Stop or after owner revocation and preserves removal errors', async () => {
+        await bridge.command(10, request('start'), send);
+        manager.removeAnnotation.mockRejectedValueOnce(new Error('Guest failure'));
+        await expect(bridge.command(10, request('remove', { id: '1' }), send)).rejects.toThrow('Guest failure');
+        manager.removeAnnotation.mockClear();
+        let finish!: () => void;
+        manager.stopAnnotation.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        const stopping = bridge.command(10, request('stop'), send);
+        await bridge.command(10, request('remove', { id: '1' }), send);
+        finish(); await stopping;
+        await bridge.command(10, request('start', { requestId: 'new' }), send);
+        bridge.clearOwner(10);
+        await bridge.command(10, request('remove', { id: '1', requestId: 'new' }), send);
+        expect(manager.removeAnnotation).not.toHaveBeenCalled();
     });
 
     it('forwards live policy with concrete owner/session independently of a mode', async () => {

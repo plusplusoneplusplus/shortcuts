@@ -543,8 +543,10 @@ blocked; Tab traverses editor controls or visible pins.
 Pins cap at 100, anchor to selection-time document coordinates and hide outside
 the viewport. Exit removes all chrome and listeners. Reports remain bounded and
 document-local. The primitive's remove command shares deletion semantics and
-rejects foreign generations; its owner-bound renderer command path belongs to
-composer integration.
+rejects foreign generations. `BrowserAnnotationSession.remove(id)` routes chip
+removal through registered-owner IPC and the manager to the original active tab
+instance. It shares the serialized command queue, drains normal deletion events,
+ignores revoked generations and preserves native failures for the caller.
 
 `browser-annotation-snapshot.ts` captures URL/title/viewport/DPR and element
 metadata at selection time, before page mutations or deferred collection.
@@ -572,11 +574,12 @@ workspace departure, navigation, crash, close and owner/session policy disable
 stop annotation. Return awaits removal before refreshing context. Failed teardown
 retains exclusion until an explicit annotation retry or guest closure.
 
-`browser-annotation-bridge.ts` routes preload `browser.annotation.start/stop`
+`browser-annotation-bridge.ts` routes preload `browser.annotation.start/stop/remove`
 and `setEnabled` through exact-source registered SPA main-frame IPC. Fresh
 renderer request IDs bind notifications to one view/concrete session/mode; stale
-Stop and late startup/events cannot affect replacements. Owner reload/crash/close
-revokes notification leases before native cleanup; delivery rechecks the original
+Stop/Remove and late startup/events cannot affect replacements. Remove validates
+canonical pin IDs and refuses stopped or foreign subscriptions before dispatch.
+Owner reload/crash/close revokes notification leases before native cleanup; delivery rechecks the original
 main frame and registered source. SPA `shared/file-path/browser-annotation.ts`
 mirrors the preload contract; optional `DesktopBrowserBridge.annotation` keeps
 older hosts compatible. Each single-use `BrowserAnnotationSession` mints an immutable
