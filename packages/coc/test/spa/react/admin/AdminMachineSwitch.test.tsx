@@ -21,6 +21,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage, resetSpaCocClientForTests
 import { useMemoryV2Api } from '../../../../src/server/spa/client/react/features/memory/memoryV2Api';
 import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { LogsView } from '../../../../src/server/spa/client/react/features/logs/LogsView';
+import { BrowserApprovedSites } from '../../../../src/server/spa/client/react/admin/BrowserApprovedSites';
 import { Dialog } from '../../../../src/server/spa/client/react/ui/Dialog';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { useAdminFeatureSettings } from '../../../../src/server/spa/client/react/admin/useAdminFeatureSettings';
@@ -509,4 +510,31 @@ it('closing tier configuration with Escape keeps the underlying modal and draft'
     expect(adminClose).toHaveBeenCalledTimes(1);
     expect(outerClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Review draft')).toHaveValue('Unsent review');
+});
+
+describe('browser approved sites exact machine ownership', () => {
+    it('routes list, add and removal only to the selected server with duplicate machine labels', async () => {
+        routes['GET /api/admin/browser-approved-sites'] = () => ({ sites: [] });
+        routes[`GET ${B}/api/admin/browser-approved-sites`] = () => ({ sites: [] });
+        routes[`POST ${B}/api/admin/browser-approved-sites`] = (_url, init) => {
+            expect(JSON.parse(String(init?.body))).toEqual({ url: 'https://docs.example.com/path' });
+            return { site: 'example.com', added: true, sites: ['example.com'] };
+        };
+        routes[`DELETE ${B}/api/admin/browser-approved-sites/example.com`] = () => ({ removed: true, sites: [] });
+        render(<Shell><BrowserApprovedSites /></Shell>);
+        await screen.findByTestId('browser-approved-sites-empty');
+        await selectMachine('server:b');
+        await screen.findByTestId('browser-approved-sites-empty');
+        fireEvent.change(screen.getByLabelText('URL to always allow'), { target: { value: 'https://docs.example.com/path' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        expect(await screen.findByText('Added example.com.')).toBeDefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Remove example.com' }));
+        await screen.findByTestId('browser-approved-sites-empty');
+        const writes = calls.filter(c => c.method !== 'GET');
+        expect(writes.map(c => `${c.method} ${c.url}`)).toEqual([
+            `POST ${B}/api/admin/browser-approved-sites`,
+            `DELETE ${B}/api/admin/browser-approved-sites/example.com`,
+        ]);
+        expect(calls.some(c => c.url.startsWith(`${A}/api/admin/browser-approved-sites`))).toBe(false);
+    });
 });

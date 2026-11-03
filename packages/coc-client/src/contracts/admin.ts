@@ -607,3 +607,14 @@ export interface AgentProvidersQuotaOptions {
   /** Force a live provider refresh and update the server cache. */
   force?: boolean;
 }
+
+/** Manual addition to the owning server's persistent browser approval list. */
+export interface BrowserApprovedSiteAddRequest {
+  url: string;
+}
+
+export interface BrowserApprovedSiteAddResponse {
+  site: string;
+  added: boolean;
+  sites: string[];
+}

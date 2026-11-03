@@ -2,10 +2,12 @@
  * REST endpoints for the global browser-control "Always allow" site list.
  */
 
-import { sendJSON } from '../core/api-handler';
-import { badRequest, handleAPIError, notFound } from '../errors';
+import { parseBody, sendJSON } from '../core/api-handler';
+import { badRequest, handleAPIError, invalidJSON, notFound } from '../errors';
 import type { Route } from '../types';
-import { readBrowserApprovedSites, removeBrowserApprovedSite } from '../llm-tools/browser-navigation-approval';
+import { addBrowserApprovedSite, readBrowserApprovedSites, removeBrowserApprovedSite } from '../llm-tools/browser-navigation-approval';
+import { validateBrowserApprovalUrl } from '../shared/browser-approval-site';
+import type { BrowserApprovedSiteAddResponse } from '@plusplusoneplusplus/coc-client';
 import type { AdminRouteOptions } from './admin-route-types';
 
 export function registerBrowserRoutes(routes: Route[], options: AdminRouteOptions): void {
@@ -17,6 +19,28 @@ export function registerBrowserRoutes(routes: Route[], options: AdminRouteOption
         pattern: '/api/admin/browser-approved-sites',
         handler: async (_req, res) => {
             sendJSON(res, 200, { sites: dataDir ? readBrowserApprovedSites(dataDir) : [] });
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/browser-approved-sites',
+        handler: async (req, res) => {
+            if (!dataDir) return handleAPIError(res, badRequest('dataDir not configured'));
+            let body: unknown;
+            try { body = await parseBody(req); }
+            catch { return handleAPIError(res, invalidJSON()); }
+            const result = validateBrowserApprovalUrl((body as { url?: unknown } | null)?.url);
+            if (result.site === undefined) return handleAPIError(res, badRequest(result.error));
+            const site = result.site;
+            try {
+                const added = !readBrowserApprovedSites(dataDir).includes(site);
+                addBrowserApprovedSite(dataDir, site);
+                const response: BrowserApprovedSiteAddResponse = { site, added, sites: readBrowserApprovedSites(dataDir) };
+                sendJSON(res, 200, response);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
         },
     });
 
