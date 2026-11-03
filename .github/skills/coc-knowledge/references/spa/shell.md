@@ -557,10 +557,15 @@ workspace departure, navigation, crash, close and owner/session policy disable
 stop annotation. Return awaits removal before refreshing context. Failed teardown
 retains exclusion until an explicit annotation retry or guest closure.
 
-Manager start/stop/policy methods are main-only and require registered-owner IPC
-at the caller. Availability is independent of AI control; active turns require
-enabled human takeover. Transport has jsdom and real Electron CDP coverage;
-toolbar/IPC, screenshot and composer integration remain separate.
+`browser-annotation-bridge.ts` routes preload `browser.annotation.start/stop`
+and `setEnabled` through exact-source registered SPA main-frame IPC. Fresh
+renderer request IDs bind notifications to one view/concrete session/mode; stale
+Stop and late startup/events cannot affect replacements. Owner reload/crash/close
+revokes notification leases before native cleanup; delivery rechecks the original
+main frame and registered source. Subscribe with `onEvent` before Start and reject
+late replies in the caller. Availability is independent of AI control; active
+turns require enabled human takeover. Toolbar, screenshot and composer integration
+remain separate.
 
 ### Shared web-page zoom
 

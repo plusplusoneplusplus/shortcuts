@@ -48,6 +48,7 @@ import {
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
+import { BROWSER_ANNOTATION_COMMAND_CHANNEL, BROWSER_ANNOTATION_EVENT_CHANNEL } from '../src/browser-annotation-bridge';
 import { BROWSER_DEMO_COMMAND_CHANNEL, BROWSER_DEMO_STATE_CHANNEL } from '../src/browser-demo-recorder';
 import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL } from '../src/browser-control-command';
 import {
@@ -159,6 +160,28 @@ describe('preload bridge', () => {
         const state = { viewId: 'view', status: 'loaded' };
         listener({}, state);
         expect(callback).toHaveBeenCalledWith(state);
+        unsubscribe();
+        expect(removeListener).toHaveBeenLastCalledWith(channel, listener);
+    });
+
+    it('exposes annotation identity commands, live policy and unsubscribable owner events', async () => {
+        const { annotation } = exposedApi().browser;
+        const identity = { viewId: 'tab', sessionKey: 'clone/workspace', requestId: 'generation' };
+        expect(annotation.supported).toBe(true);
+        invoke.mockResolvedValueOnce(true);
+        expect(await annotation.start(identity)).toBe(true);
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'start' });
+        await annotation.stop(identity);
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { ...identity, action: 'stop' });
+        await annotation.setEnabled(identity.sessionKey, false);
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_ANNOTATION_COMMAND_CHANNEL, { action: 'policy', sessionKey: identity.sessionKey, enabled: false });
+        const callback = vi.fn();
+        const unsubscribe = annotation.onEvent(callback);
+        const [channel, listener] = on.mock.calls.at(-1)!;
+        expect(channel).toBe(BROWSER_ANNOTATION_EVENT_CHANNEL);
+        const notification = { ...identity, type: 'events', events: [] };
+        listener({}, notification);
+        expect(callback).toHaveBeenCalledWith(notification);
         unsubscribe();
         expect(removeListener).toHaveBeenLastCalledWith(channel, listener);
     });

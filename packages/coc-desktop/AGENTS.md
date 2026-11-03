@@ -37,9 +37,14 @@ and settles issued input releases before injection. Reservations exclude AI
 dispatch and demo recording through teardown. Hide, workspace departure, close,
 crash, owner disposal and owner/session policy disable stop annotation; Return
 awaits removal before its context refresh. Failed teardown stays excluded from
-AI control until an explicit annotation retry or guest closure. The manager's
-main-only start/stop/policy methods require registered-owner IPC at the caller.
-Never install annotation scripts on future documents or expose CDP to the SPA.
+AI control until an explicit annotation retry or guest closure.
+`browser-annotation-bridge.ts` exposes start/stop/live policy through registered
+exact-source SPA main-frame IPC. Each mode uses a fresh renderer request ID;
+notifications include view/session/request identity and stale Stop cannot revoke a
+replacement. Owner reload/crash/closure revokes notification leases before native
+cleanup. Preload exposes `browser.annotation`; subscribe before Start and reject
+late notifications/replies in the caller. Never install annotation scripts on
+future documents or expose CDP to the SPA.
 
 For demonstration recording, read
 [browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
