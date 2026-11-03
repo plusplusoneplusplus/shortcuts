@@ -12,18 +12,21 @@ view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
 
-`browser-annotation-dom.ts` owns self-contained selection and comment editing for
-owned URL documents. Execute it in an isolated world; keep its generation-matched
-start/drain/stop contract and closed shadow root shared by both engines.
-Selection rectangles use clipped CSS pixels without rounding. Hosts own tab,
-navigation, crash and owner teardown; the primitive also releases its input
-listeners on document departure, host removal and report overflow. Selection
-opens an editor inside the same closed root. Escape discards the open draft first,
-then exits mode on the next press. Save emits `{type:'comment',comment,selection}`
-with the original snapshot and modifier intent; comments are nonblank and capped
-at 8000 UTF-16 units. Preserve native editor defaults while stopping propagation,
-trap Tab within its controls, and keep page input blocked. Pins and composer
-routing require a consumer of these events.
+`browser-annotation-dom.ts` owns self-contained selection, comment editing and
+saved pins for owned URL documents. Execute its generation-matched
+start/drain/stop/remove contract in an isolated world shared by both engines.
+Keep all chrome inside the closed shadow root; exit removes it and releases input
+listeners. Selection uses clipped fractional CSS pixels and opens the editor.
+Escape discards the draft first, then exits on the next press. Preserve native
+editing defaults while blocking page handlers and trap Tab within editor/pins.
+Save emits `{type:'comment',id,number,comment,selection}` for create/update; IDs
+are generation-local and stable, numbers reflect current order. Delete emits
+`{type:'delete',id}` and renumbers remaining pins. Edits retain the original
+snapshot and clear immediate-send intent. Bound comments to 8000 UTF-16 units and
+saved pins to 100; pins anchor to selection-time document coordinates. Hosts own
+tab/navigation/crash/owner teardown; the primitive also handles document departure,
+host removal and report overflow. Composer synchronization needs an event consumer
+and an owner-bound command path to its generation-matched remove operation.
 `browser-annotation-snapshot.ts` captures page and bounded element metadata at
 selection time. Selectors are unique within their document/shadow root; resolve
 the outermost-first `shadowHosts` chain before the element selector. A null

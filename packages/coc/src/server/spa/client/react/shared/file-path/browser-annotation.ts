@@ -16,7 +16,8 @@ export interface BrowserAnnotationSelection {
 }
 export type BrowserAnnotationExitReason = 'escape' | 'navigation' | 'removed' | 'overflow' | 'stop';
 export type BrowserAnnotationEvent = BrowserAnnotationSelection
-    | { type: 'comment'; comment: string; selection: BrowserAnnotationSelection }
+    | { type: 'comment'; id: string; number: number; comment: string; selection: BrowserAnnotationSelection }
+    | { type: 'delete'; id: string }
     | { type: 'exit'; reason: BrowserAnnotationExitReason };
 export type BrowserAnnotationNotification = BrowserAnnotationIdentity & (
     | { type: 'events'; events: BrowserAnnotationEvent[] }

@@ -8,7 +8,7 @@ let root: ShadowRoot;
 let host: HTMLElement;
 let target: HTMLElement;
 
-function run(action: BrowserAnnotationCommand['action'], token = session): BrowserAnnotationResult {
+function run(action: Exclude<BrowserAnnotationCommand['action'], 'remove'>, token = session): BrowserAnnotationResult {
     return window.eval(buildBrowserAnnotationExpression({ action, session: token })) as BrowserAnnotationResult;
 }
 
@@ -294,7 +294,7 @@ describe('closed-shadow comment editor', () => {
     const input = () => root.querySelector<HTMLTextAreaElement>('textarea')!;
     const editor = () => root.querySelector<HTMLElement>('.editor')!;
     const save = () => root.querySelector<HTMLButtonElement>('.save')!;
-    const cancel = () => root.querySelectorAll<HTMLButtonElement>('button')[1];
+    const cancel = () => root.querySelectorAll<HTMLButtonElement>('.editor button')[1];
     const type = (value: string) => {
         input().value = value;
         return input().dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, cancelable: true }));
@@ -373,7 +373,7 @@ describe('closed-shadow comment editor', () => {
         target.textContent = 'Changed';
         document.title = 'New title';
         clickControl(save());
-        expect(run('drain')).toEqual({ active: true, events: [{ type: 'comment', comment: value, selection }] });
+        expect(run('drain')).toEqual({ active: true, events: [{ type: 'comment', id: '1', number: 1, comment: value, selection }] });
         expect(editor().hidden).toBe(true);
         expect(input().value).toBe('');
         expect(document.activeElement).toBe(host);
@@ -406,7 +406,7 @@ describe('closed-shadow comment editor', () => {
         mouse('pointerup', 100.75, 70.75);
         const selection = run('drain').events[0];
         type('This region'); clickControl(save());
-        expect(run('drain').events).toEqual([{ type: 'comment', comment: 'This region', selection }]);
+        expect(run('drain').events).toEqual([{ type: 'comment', id: '1', number: 1, comment: 'This region', selection }]);
         expect(selection).toMatchObject({ kind: 'area', immediate: false, rect: { x: 10.5, y: 20.5, width: 90.25, height: 50.25 } });
     });
 
@@ -465,6 +465,188 @@ describe('closed-shadow comment editor', () => {
         else if (reason === 'removed') { host.remove(); await Promise.resolve(); }
         else window.dispatchEvent(new Event(reason));
         expect(host.isConnected).toBe(false);
+        expect(input().value).toBe('');
+        expect(mouse('click', 20, 30, {}, target).defaultPrevented).toBe(false);
+    });
+});
+
+
+describe('saved page comment pins', () => {
+    const pins = () => Array.from(root.querySelectorAll<HTMLButtonElement>('.pin'));
+    const input = () => root.querySelector<HTMLTextAreaElement>('textarea')!;
+    const click = (element: Element) => {
+        Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => element });
+        return mouse('click', 20, 30, {}, element);
+    };
+    const write = (value: string) => {
+        input().value = value;
+        input().dispatchEvent(new InputEvent('input', { bubbles: true, composed: true }));
+    };
+    const save = () => click(root.querySelector('.save')!);
+    const create = (value = 'Saved comment', modifiers: MouseEventInit = {}) => {
+        mouse('click', 20, 30, modifiers, target);
+        write(value); save();
+        return run('drain').events.find((event): event is Extract<BrowserAnnotationResult['events'][number], { type: 'comment' }> => event.type === 'comment')!;
+    };
+    const remove = (id: string, token = session) => window.eval(buildBrowserAnnotationExpression({ action: 'remove', session: token, id }));
+
+    it('creates numbered isolated pins for element and area saves', () => {
+        run('start');
+        const first = create('First');
+        mouse('pointerdown', 100, 120, { shiftKey: true }, target);
+        mouse('pointerup', 200, 220, {}, target);
+        write('Second'); save();
+        expect(run('drain').events).toMatchObject([{ type: 'selection' }, { type: 'comment', id: '2', number: 2, selection: { kind: 'area' } }]);
+        expect(first).toMatchObject({ id: '1', number: 1 });
+        expect(pins().map(pin => pin.textContent)).toEqual(['1', '2']);
+        expect(pins()[0].getAttribute('aria-label')).toBe('Edit comment 1');
+        expect(pins()[0].style.left).toBe('10.25px');
+        expect(pins()[1].style.top).toBe('120px');
+        expect(document.querySelector('.pin')).toBeNull();
+    });
+
+    it('edits the same pin using its original snapshot, without repeating immediate-send intent', () => {
+        run('start');
+        const original = create('Original', { ctrlKey: true });
+        const pin = pins()[0];
+        target.textContent = 'Mutated page';
+        click(pin);
+        expect(input().value).toBe('Original');
+        expect(root.activeElement).toBe(input());
+        expect(root.querySelector<HTMLButtonElement>('.delete')!.hidden).toBe(false);
+        write('Revised'); save();
+        expect(run('drain').events).toEqual([{ ...original, comment: 'Revised', selection: { ...original.selection, immediate: false } }]);
+        expect(pins()).toEqual([pin]);
+        click(pin); expect(input().value).toBe('Revised');
+    });
+
+    it('Cancel and Escape keep the saved comment without emitting an edit or deleting the pin', () => {
+        run('start'); create('Keep');
+        const pin = pins()[0];
+        click(pin); write('Discard');
+        click(root.querySelectorAll('.editor button')[1]);
+        click(pin); expect(input().value).toBe('Keep');
+        write('Also discard'); escape();
+        expect(run('drain').events).toEqual([]);
+        click(pin); expect(input().value).toBe('Keep');
+        expect(pins()).toEqual([pin]);
+    });
+
+    it('deletes a middle pin and renumbers remaining pins while keeping stable IDs', () => {
+        run('start');
+        create('One'); create('Two'); create('Three');
+        click(pins()[1]); click(root.querySelector('.delete')!);
+        expect(run('drain').events).toEqual([{ type: 'delete', id: '2' }]);
+        expect(pins().map(pin => pin.textContent)).toEqual(['1', '2']);
+        expect(pins()[1].getAttribute('aria-label')).toBe('Edit comment 2');
+        click(pins()[1]); write('Third revised'); save();
+        expect(run('drain').events).toMatchObject([{ type: 'comment', id: '3', number: 2, comment: 'Third revised' }]);
+        expect(create('Four')).toMatchObject({ id: '4', number: 3 });
+    });
+
+    it('removes an edited pin through a generation-matched command, ignoring missing and foreign IDs', () => {
+        run('start'); create(); click(pins()[0]); write('Unsent draft');
+        expect(remove('1', 'foreign')).toEqual({ active: false, events: [] });
+        expect(pins()).toHaveLength(1);
+        expect(remove('missing')).toEqual({ active: true, events: [] });
+        expect(input().value).toBe('Unsent draft');
+        expect(remove('1')).toEqual({ active: true, events: [{ type: 'delete', id: '1' }] });
+        expect(root.querySelector<HTMLElement>('.editor')!.hidden).toBe(true);
+        expect(input().value).toBe('');
+        expect(pins()).toHaveLength(0);
+        expect(remove('1').events).toEqual([]);
+        expect(create()).toMatchObject({ id: '2', number: 1 });
+        run('start', 'replacement');
+        expect(remove('2')).toEqual({ active: false, events: [] });
+        expect(pins()).toHaveLength(0);
+    });
+
+    it('keeps pin interactions from reaching page handlers or selecting another element', () => {
+        run('start'); create();
+        const handler = vi.fn();
+        document.addEventListener('click', handler);
+        try {
+            click(pins()[0]);
+            expect(handler).not.toHaveBeenCalled();
+            expect(run('drain').events).toEqual([]);
+            expect(input().value).toBe('Saved comment');
+        } finally { document.removeEventListener('click', handler); }
+    });
+
+    it('supports keyboard navigation to pins and reopening their editor', () => {
+        run('start'); create('One'); create('Two');
+        const key = (key: string, shiftKey = false) => (root.activeElement ?? host).dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, composed: true, cancelable: true }));
+        key('Tab', true); expect(root.activeElement).toBe(pins()[1]);
+        key('Tab'); expect(root.activeElement).toBe(pins()[0]);
+        key('Enter'); expect(input().value).toBe('One');
+        expect(root.activeElement).toBe(input());
+        escape(); key('Tab'); key(' ');
+        expect(input().value).toBe('One');
+        expect(run('drain').events).toEqual([]);
+    });
+
+    it('finishes a Shift-drag over an existing pin without reopening it or leaving a stuck drag', () => {
+        run('start'); create('Existing');
+        const pin = pins()[0];
+        Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => pin });
+        mouse('pointerdown', 100, 100, { shiftKey: true });
+        mouse('pointermove', 20, 30, { shiftKey: true });
+        mouse('pointerup', 20, 30, { shiftKey: true });
+        mouse('click', 20, 30);
+        expect(input().value).toBe('');
+        expect(run('drain').events).toMatchObject([{ type: 'selection', kind: 'area', rect: { x: 20, y: 30, width: 80, height: 70 } }]);
+        write('New area'); save();
+        expect(run('drain').events).toMatchObject([{ type: 'comment', id: '2', number: 2 }]);
+        expect(pins()).toHaveLength(2);
+    });
+
+    it('includes Delete in the edit focus cycle and supports keyboard deletion', () => {
+        run('start'); create(); click(pins()[0]);
+        const key = (key: string) => root.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, composed: true, cancelable: true }));
+        key('Tab'); expect(root.activeElement).toBe(root.querySelector('.save'));
+        key('Tab'); key('Tab');
+        expect(root.activeElement).toBe(root.querySelector('.delete'));
+        key('Enter');
+        expect(run('drain').events).toEqual([{ type: 'delete', id: '1' }]);
+        expect(pins()).toHaveLength(0);
+    });
+
+    it('anchors pins to document coordinates and hides those outside the viewport on scroll', () => {
+        run('start'); create();
+        vi.spyOn(window, 'scrollY', 'get').mockReturnValue(10);
+        window.dispatchEvent(new Event('scroll'));
+        expect(pins()[0].style.top).toBe('10.5px');
+        vi.spyOn(window, 'scrollY', 'get').mockReturnValue(100);
+        window.dispatchEvent(new Event('scroll'));
+        expect(pins()[0].hidden).toBe(true);
+        vi.spyOn(window, 'scrollY', 'get').mockReturnValue(0);
+        window.dispatchEvent(new Event('resize'));
+        expect(pins()[0].hidden).toBe(false);
+    });
+
+    it('bounds saved pins at 100 while permitting edits and deletion to free a slot', () => {
+        run('start');
+        for (let i = 0; i < 100; i++) create(String(i));
+        mouse('click', 20, 30, {}, target);
+        expect(root.querySelector<HTMLElement>('.editor')!.hidden).toBe(true);
+        expect(root.querySelector('.label')!.textContent).toContain('100 comments maximum');
+        expect(run('drain').events).toEqual([]);
+        expect(pins()).toHaveLength(100);
+        click(pins()[99]); write('Updated at limit'); save();
+        expect(run('drain').events).toMatchObject([{ id: '100', number: 100 }]);
+        remove('50');
+        expect(create('Replacement')).toMatchObject({ id: '101', number: 100 });
+        expect(pins()).toHaveLength(100);
+    });
+
+    it.each(['stop', 'pagehide', 'removed'])('removes saved pins and their editor on %s', async reason => {
+        run('start'); create(); click(pins()[0]);
+        const pin = pins()[0];
+        if (reason === 'stop') run('stop');
+        else if (reason === 'removed') { host.remove(); await Promise.resolve(); }
+        else window.dispatchEvent(new Event(reason));
+        expect(host.isConnected).toBe(false);
+        expect(pin.isConnected).toBe(false);
         expect(input().value).toBe('');
         expect(mouse('click', 20, 30, {}, target).defaultPrevented).toBe(false);
     });

@@ -16,6 +16,7 @@ const server = http.createServer((_request, response) => {
         body { margin: 0; }
         button { position: absolute; left: 40px; top: 60px; width: 120px; height: 40px; }
         [style*="position: fixed"] { background: black !important; display: none !important; }
+        .pin { background: black !important; color: black !important; }
         .outline { background: black !important; border: 20px solid red !important; }
         </style><button>Pick me</button><script>
         window.clicks = 0;
@@ -81,6 +82,31 @@ function click(x, y, modifiers = []) {
     click(savePoint.x, savePoint.y);
     await until(`window.__cocBrowserAnnotation.events.some(event => event.type === 'comment')`);
     const comment = await command('drain');
+    const pinStyles = await evaluate(`(() => {
+        const pin = window.fixtureRoot.querySelector('.pin');
+        return { text: pin.textContent, background: getComputedStyle(pin).backgroundColor,
+            private: document.querySelector('.pin') === null };
+    })()`);
+    const center = selector => evaluate(`(() => {
+        const rect = window.fixtureRoot.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+    })()`);
+    const pinPoint = await center('.pin');
+    click(pinPoint.x, pinPoint.y);
+    await until(`!window.fixtureRoot.querySelector('.editor').hidden`);
+    await evaluate(`{ const input = window.fixtureRoot.querySelector('textarea'); input.setSelectionRange(input.value.length, input.value.length); } void 0;`);
+    await win.webContents.insertText(' revised');
+    const editSavePoint = await center('.save');
+    click(editSavePoint.x, editSavePoint.y);
+    await until(`window.__cocBrowserAnnotation.events.some(event => event.type === 'comment')`);
+    const edit = await command('drain');
+    click(pinPoint.x, pinPoint.y);
+    await until(`!window.fixtureRoot.querySelector('.editor').hidden`);
+    const deletePoint = await center('.delete');
+    click(deletePoint.x, deletePoint.y);
+    await until(`window.__cocBrowserAnnotation.events.some(event => event.type === 'delete')`);
+    const deleted = await command('drain');
+    const pinsRemoved = await evaluate(`!window.fixtureRoot.querySelector('.pin')`);
     const pageKeys = await win.webContents.executeJavaScript('window.pageKeys');
     for (const [type, x, y] of [['mouseDown', 200, 200], ['mouseMove', 300, 280], ['mouseUp', 300, 280]]) {
         win.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1, modifiers: ['shift'] });
@@ -130,7 +156,7 @@ function click(x, y, modifiers = []) {
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
         endings, navigationEndings, noReinstall };
     cdp.dispose();
-    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult }));
+    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pinStyles, edit, deleted, pinsRemoved, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult }));
     win.destroy();
     server.close();
     app.exit(0);

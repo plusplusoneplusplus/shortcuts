@@ -234,10 +234,23 @@ describe('BrowserAnnotationTab document transport', () => {
             const input = root.querySelector('textarea')!;
             input.value = 'Exact selected element';
             input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            Object.defineProperty(root, 'elementFromPoint', { value: () => root.querySelector('.save') });
+            Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => root.querySelector('.save') });
             root.querySelector('.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
             await f.tab.poll();
-            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'comment', comment: 'Exact selected element', selection }]);
+            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'comment', id: '1', number: 1, comment: 'Exact selected element', selection }]);
+            const click = (element: Element) => {
+                Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => element });
+                element.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+            };
+            click(root.querySelector('.pin')!);
+            input.value = 'Revised comment';
+            click(root.querySelector('.save')!);
+            await f.tab.poll();
+            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'comment', id: '1', number: 1,
+                comment: 'Revised comment', selection: { ...selection, immediate: false } }]);
+            click(root.querySelector('.pin')!); click(root.querySelector('.delete')!);
+            await f.tab.poll();
+            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'delete', id: '1' }]);
             expect(f.sink.ended).not.toHaveBeenCalled();
         } finally { await f.tab.stop(); spy.mockRestore(); }
     });
@@ -250,7 +263,7 @@ describe('BrowserAnnotationTab document transport', () => {
         f.cdp.mockImplementation(async (method, params) => {
             if (method === 'Runtime.evaluate' && drain) {
                 drain = false;
-                return { result: { value: { active: true, events: [{ type: 'comment', comment, selection }] } } };
+                return { result: { value: { active: true, events: [{ type: 'comment', id: '1', number: 1, comment, selection }] } } };
             }
             return original(method, params);
         });
@@ -266,7 +279,30 @@ describe('BrowserAnnotationTab document transport', () => {
         f.cdp.mockImplementation(async (method, params) => {
             if (method === 'Runtime.evaluate' && drain) {
                 drain = false;
-                return { result: { value: { active: true, events: [{ type: 'comment', comment: 'Comment', selection }] } } };
+                return { result: { value: { active: true, events: [{ type: 'comment', id: '1', number: 1, comment: 'Comment', selection }] } } };
+            }
+            return original(method, params);
+        });
+        await f.tab.poll();
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
+        await f.tab.stop();
+    });
+
+    it.each([
+        { type: 'delete', id: '' }, { type: 'delete', id: 1 }, { type: 'delete', id: '0' },
+        { type: 'delete', id: '9007199254740992' }, { type: 'delete', id: '1.5' },
+        { type: 'comment', id: '1', number: 0 }, { type: 'comment', id: '1', number: 101 },
+        { type: 'comment', id: '1', number: 1.5 }, { type: 'comment', id: '1', number: '1' },
+        { type: 'comment', id: '-1', number: 1 }, { type: 'comment', id: '01', number: 1 },
+    ])('rejects malformed pin identity/number at the native boundary (case %#)', async fields => {
+        const f = fixture(); await f.tab.start(); f.select(); await f.tab.poll();
+        const selection = f.sink.events.mock.calls[0][0][0];
+        const original = f.cdp.getMockImplementation()!;
+        let drain = true;
+        f.cdp.mockImplementation(async (method, params) => {
+            if (method === 'Runtime.evaluate' && drain) {
+                drain = false;
+                return { result: { value: { active: true, events: [{ comment: 'Comment', selection, ...fields }] } } };
             }
             return original(method, params);
         });

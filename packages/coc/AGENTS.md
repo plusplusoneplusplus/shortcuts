@@ -56,9 +56,12 @@ references before editing. Paths are package-relative.
   `BrowserAnnotationButton` publishes owner/session policy independently of AI
   enablement, reads clone flags on the owning server, and stops on tab/document
   departure or live disable. Main owns the takeover-before-injection sequence.
-  Guest selections open the shared closed-shadow editor; its `comment` event keeps
-  the original selection snapshot and immediate-send intent. The toolbar handles
-  lifecycle events; pins and composer delivery require their own event consumer.
+  Guest selections open the shared closed-shadow editor. Save creates or updates
+  a numbered pin with a generation-local stable ID; delete renumbers survivors.
+  Comment events retain original snapshots; only creation carries modifier-send
+  intent. Match pin IDs with their full mode identity. The toolbar handles lifecycle
+  events; composer delivery and reverse pin removal require an event consumer and
+  owner-bound command path.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

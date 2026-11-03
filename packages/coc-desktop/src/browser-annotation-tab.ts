@@ -124,7 +124,7 @@ export class BrowserAnnotationTab {
         return result;
     }
 
-    private async evaluate(action: BrowserAnnotationCommand['action']): Promise<BrowserAnnotationResult> {
+    private async evaluate(action: Exclude<BrowserAnnotationCommand['action'], 'remove'>): Promise<BrowserAnnotationResult> {
         const reply = await this.cdp!('Runtime.evaluate', {
             expression: buildBrowserAnnotationExpression({ action, session: this.session }),
             contextId: this.contextId, returnByValue: true,
@@ -161,12 +161,16 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
     if (!result || typeof result.active !== 'boolean' || !Array.isArray(result.events) || result.events.length > 33) return invalid();
     // The DOM primitive bounds individual fields; this also bounds aggregate transport data.
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 1_048_576) return invalid();
+    const validId = (id: unknown) => typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id) && Number.isSafeInteger(Number(id));
     for (const event of result.events) {
         if (!event || typeof event !== 'object') return invalid();
         if (event.type === 'exit') {
             if (!['escape', 'navigation', 'removed', 'overflow', 'stop'].includes(event.reason)) return invalid();
+        } else if (event.type === 'delete') {
+            if (!validId(event.id)) return invalid();
         } else if (event.type === 'selection' || event.type === 'comment') {
-            if (event.type === 'comment' && (typeof event.comment !== 'string' || !event.comment.trim()
+            if (event.type === 'comment' && (!validId(event.id) || !Number.isInteger(event.number) || event.number < 1 || event.number > 100
+                || typeof event.comment !== 'string' || !event.comment.trim()
                 || event.comment.length > 8000 || event.selection?.type !== 'selection')) return invalid();
             const selection = event.type === 'comment' ? event.selection : event;
             const { rect, page, element } = selection;

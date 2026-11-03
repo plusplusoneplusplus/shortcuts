@@ -527,16 +527,24 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 ### Annotation selection primitive
 
 `packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
-isolated-world expression with generation-matched start/drain/stop commands.
+isolated-world expression with generation-matched start/drain/stop/remove commands.
 Its closed-shadow shield highlights and selects elements or Shift-drag areas,
 reusing `browser-control-clip.ts` for fractional viewport geometry.
 
-Selection opens an editor in the same root, retaining its original snapshot while typing. Save
-emits `{type:'comment',comment,selection}`; blank drafts and comments over 8000
-UTF-16 units are refused. Cancel or first Escape discards the draft; next Escape
-exits mode. Window capture preserves native editor defaults while blocking page
-handlers; Tab cycles within controls. Exit removes the shield, draft and listeners.
-Reports are bounded and document-local.
+Selection opens the private editor with its original snapshot. Save emits
+`{type:'comment',id,number,comment,selection}` for create/update and creates a pin;
+blank drafts and comments over 8000 UTF-16 units are refused. IDs are stable within
+one generation; display numbers reflect array order. Clicking a pin reopens its
+saved text; edits clear modifier-send intent. Delete emits `{type:'delete',id}`
+and renumbers survivors. Cancel/first Escape discards only the draft; next Escape
+exits. Native editing defaults survive window capture while page handlers stay
+blocked; Tab traverses editor controls or visible pins.
+
+Pins cap at 100, anchor to selection-time document coordinates and hide outside
+the viewport. Exit removes all chrome and listeners. Reports remain bounded and
+document-local. The primitive's remove command shares deletion semantics and
+rejects foreign generations; its owner-bound renderer command path belongs to
+composer integration.
 
 `browser-annotation-snapshot.ts` captures URL/title/viewport/DPR and element
 metadata at selection time, before page mutations or deferred collection.

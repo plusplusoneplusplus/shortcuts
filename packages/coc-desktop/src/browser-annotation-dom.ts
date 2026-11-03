@@ -20,7 +20,8 @@ export interface BrowserAnnotationSelection {
 
 export type BrowserAnnotationEvent =
     | BrowserAnnotationSelection
-    | { type: 'comment'; comment: string; selection: BrowserAnnotationSelection }
+    | { type: 'comment'; id: string; number: number; comment: string; selection: BrowserAnnotationSelection }
+    | { type: 'delete'; id: string }
     | { type: 'exit'; reason: 'escape' | 'navigation' | 'removed' | 'overflow' | 'stop' };
 
 export interface BrowserAnnotationResult {
@@ -28,11 +29,10 @@ export interface BrowserAnnotationResult {
     events: BrowserAnnotationEvent[];
 }
 
-export interface BrowserAnnotationCommand {
-    action: 'start' | 'drain' | 'stop';
-    /** Drains and stops must match the generation established by the main-owned start. */
+export type BrowserAnnotationCommand = {
+    /** Every command must match the generation established by the main-owned start. */
     session: string;
-}
+} & ({ action: 'start' | 'drain' | 'stop' } | { action: 'remove'; id: string });
 
 /** Self-contained selection and comment editor. Hosts execute it only in an owned URL guest's isolated world. */
 function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof browserClipRect, snapshot: typeof browserAnnotationSnapshot): BrowserAnnotationResult {
@@ -41,6 +41,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         url: string;
         active: boolean;
         events: BrowserAnnotationEvent[];
+        remove(id: string): void;
         dispose(reason: Extract<BrowserAnnotationEvent, { type: 'exit' }>['reason']): void;
     }
     const page = window as Window & { __cocBrowserAnnotation?: Mode };
@@ -76,9 +77,12 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             .editor button { display: inline-block; margin: 8px 8px 0 0; padding: 4px 10px;
                 border-radius: 4px; background: #e2e8f0; color: #0f172a; font: 14px/20px sans-serif;
                 cursor: pointer; }
+            .pin { position: absolute; display: block; width: 26px; height: 26px;
+                border: 2px solid #ffffff; border-radius: 50%; background: #2563eb;
+                color: #ffffff; text-align: center; font: bold 12px/22px sans-serif; cursor: pointer; }
             .editor .save { background: #2563eb; color: #ffffff; }
             .editor button:disabled { opacity: .5; cursor: default; }
-            .editor :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+            .editor :focus-visible, .pin:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
             [hidden] { display: none; }
         `;
         const shield = document.createElement('div');
@@ -105,20 +109,45 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         const cancel = document.createElement('button');
         cancel.textContent = 'Cancel';
         cancel.type = 'button';
-        editor.append(input, save, cancel);
+        const remove = document.createElement('button');
+        remove.textContent = 'Delete';
+        remove.className = 'delete';
+        remove.type = 'button';
+        remove.hidden = true;
+        editor.append(input, save, cancel, remove);
         root.append(style, shield, outline, label, editor);
         const listeners: (() => void)[] = [];
         let drag: { x: number; y: number; pointerId: number } | null = null;
         let suppressClick = false;
         let pending: BrowserAnnotationSelection | null = null;
+        interface Pin {
+            id: string; comment: string; selection: BrowserAnnotationSelection;
+            scrollX: number; scrollY: number; button: HTMLButtonElement;
+        }
+        const pins: Pin[] = [];
+        let nextId = 1;
+        let editing: Pin | null = null;
+        let selectedScroll = { x: 0, y: 0 };
         const owned: Mode = {
             session: command.session, url: location.href, active: true, events: [],
+            remove(id) {
+                const index = pins.findIndex(pin => pin.id === id);
+                if (index < 0) return;
+                const pin = pins[index];
+                if (editing === pin) closeEditor();
+                pins.splice(index, 1);
+                pin.button.remove();
+                renderPins();
+                report({ type: 'delete', id });
+            },
             dispose(reason) {
                 if (!owned.active) return;
                 owned.active = false;
                 drag = null;
                 pending = null;
                 input.value = '';
+                editing = null;
+                pins.length = 0;
                 observer.disconnect();
                 for (const off of listeners) off();
                 host.remove();
@@ -191,32 +220,73 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         };
         const closeEditor = () => {
             pending = null;
+            editing = null;
             suppressClick = false;
             input.value = '';
             editor.hidden = true;
             hide();
             host.focus({ preventScroll: true });
         };
+        const renderPins = () => {
+            pins.forEach((pin, index) => {
+                const x = pin.selection.rect.x + pin.scrollX - window.scrollX;
+                const y = pin.selection.rect.y + pin.scrollY - window.scrollY;
+                pin.button.textContent = String(index + 1);
+                pin.button.setAttribute('aria-label', `Edit comment ${index + 1}`);
+                pin.button.hidden = x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
+                Object.assign(pin.button.style, {
+                    left: `${Math.max(0, Math.min(x, window.innerWidth - 26))}px`,
+                    top: `${Math.max(0, Math.min(y, window.innerHeight - 26))}px`,
+                });
+            });
+        };
         const saveComment = () => {
             if (!pending || !input.value.trim() || input.value.length > input.maxLength) return;
-            report({ type: 'comment', comment: input.value, selection: pending });
+            let pin = editing;
+            if (!pin) {
+                const button = document.createElement('button');
+                button.className = 'pin';
+                button.type = 'button';
+                pin = { id: String(nextId++), comment: input.value, selection: pending,
+                    scrollX: selectedScroll.x, scrollY: selectedScroll.y, button };
+                pins.push(pin);
+                // Keep the editor above pins, including when their selection rectangles overlap.
+                root.insertBefore(button, editor);
+            } else pin.comment = input.value;
+            renderPins();
+            report({ type: 'comment', id: pin.id, number: pins.indexOf(pin) + 1,
+                comment: pin.comment, selection: pending });
             if (owned.active) closeEditor();
         };
-        const select = (selection: BrowserAnnotationSelection) => {
-            report(selection);
-            if (!owned.active) return;
+        const openEditor = (selection: BrowserAnnotationSelection, pin: Pin | null = null) => {
             pending = selection;
-            input.value = '';
-            save.disabled = true;
+            editing = pin;
+            input.value = pin?.comment ?? '';
+            save.disabled = !input.value.trim();
+            remove.hidden = !pin;
             editor.hidden = false;
+            const rect = pin ? { ...selection.rect,
+                x: selection.rect.x + pin.scrollX - window.scrollX,
+                y: selection.rect.y + pin.scrollY - window.scrollY } : selection.rect;
+            show(rect, selection.kind === 'area' ? 'Area' : selection.tag ?? selection.element!.tag);
             const width = Math.min(300, window.innerWidth);
             const height = Math.min(editor.getBoundingClientRect().height || 150, window.innerHeight);
-            const below = selection.rect.y + selection.rect.height + 8;
+            const below = rect.y + rect.height + 8;
             Object.assign(editor.style, {
-                left: `${Math.max(0, Math.min(selection.rect.x, window.innerWidth - width))}px`,
-                top: `${Math.max(0, Math.min(below + height <= window.innerHeight ? below : selection.rect.y - height - 8, window.innerHeight - height))}px`,
+                left: `${Math.max(0, Math.min(rect.x, window.innerWidth - width))}px`,
+                top: `${Math.max(0, Math.min(below + height <= window.innerHeight ? below : rect.y - height - 8, window.innerHeight - height))}px`,
             });
             input.focus({ preventScroll: true });
+        };
+        const select = (selection: BrowserAnnotationSelection) => {
+            if (pins.length >= 100) {
+                label.textContent = '100 comments maximum; delete a pin to add another';
+                return;
+            }
+            report(selection);
+            if (!owned.active) return;
+            selectedScroll = { x: window.scrollX, y: window.scrollY };
+            openEditor(selection);
         };
         // Closed-root event paths are retargeted at the host in window capture. Hit-test
         // inside our private root, then stop propagation here while preserving native editing.
@@ -228,6 +298,19 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             if (event.type === 'click') {
                 if (element === save) { event.preventDefault(); saveComment(); }
                 if (element === cancel) { event.preventDefault(); closeEditor(); }
+                if (element === remove && editing) { event.preventDefault(); owned.remove(editing.id); }
+            }
+            return true;
+        };
+        const pinPointer = (event: MouseEvent) => {
+            if (pending || drag || suppressClick || event.shiftKey || event.target !== host) return false;
+            const element = root.elementFromPoint?.(event.clientX, event.clientY);
+            const pin = pins.find(pin => pin.button === element);
+            if (!pin) return false;
+            swallow(event);
+            if (event.type === 'click' && event.button === 0) {
+                // Modifier intent applies once, on creation, never to later edits.
+                openEditor({ ...pin.selection, immediate: false }, pin);
             }
             return true;
         };
@@ -242,7 +325,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             return { x: Math.min(drag!.x, end.x), y: Math.min(drag!.y, end.y), width: Math.abs(end.x - drag!.x), height: Math.abs(end.y - drag!.y) };
         };
         listen('pointerdown', event => {
-            if (!current() || editorPointer(event)) return;
+            if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
             if (pending) return;
             if (event.button !== 0 || event.isPrimary === false) return;
@@ -253,7 +336,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             }
         });
         listen('pointermove', event => {
-            if (!current() || editorPointer(event)) return;
+            if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
             if (pending) return;
             if (drag) {
@@ -264,7 +347,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             }
         });
         listen('pointerup', event => {
-            if (!current() || editorPointer(event)) return;
+            if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
             if (pending) return;
             if (!drag || event.pointerId !== drag.pointerId || event.button !== 0) return;
@@ -276,7 +359,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             select({ type: 'selection', kind: 'area', rect, immediate: false, ...snapshot() });
         });
         listen('click', event => {
-            if (!current() || editorPointer(event)) return;
+            if (!current() || editorPointer(event) || pinPointer(event)) return;
             swallow(event);
             if (pending) return;
             if (suppressClick) { suppressClick = false; return; }
@@ -291,16 +374,30 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             if (pending && event.key !== 'Escape' && editorInput(event)) {
                 if (event.key === 'Tab') {
                     event.preventDefault();
-                    const stops = [input, ...(!save.disabled ? [save] : []), cancel];
+                    const stops = [input, ...(!save.disabled ? [save] : []), cancel, ...(!remove.hidden ? [remove] : [])];
                     const index = stops.indexOf(root.activeElement as HTMLTextAreaElement | HTMLButtonElement);
                     stops[(index + (event.shiftKey ? stops.length - 1 : 1)) % stops.length].focus({ preventScroll: true });
                 } else if ((event.key === 'Enter' || event.key === ' ') && root.activeElement !== input) {
                     event.preventDefault();
-                    if (!event.repeat) { if (root.activeElement === save) saveComment(); else closeEditor(); }
+                    if (!event.repeat) {
+                        if (root.activeElement === save) saveComment();
+                        else if (root.activeElement === remove && editing) owned.remove(editing.id);
+                        else closeEditor();
+                    }
                 }
                 return;
             }
             swallow(event);
+            if (!pending && event.key === 'Tab') {
+                const stops = pins.filter(pin => !pin.button.hidden).map(pin => pin.button);
+                const index = stops.indexOf(root.activeElement as HTMLButtonElement);
+                const next = index < 0 ? (event.shiftKey ? stops.length - 1 : 0)
+                    : (index + (event.shiftKey ? stops.length - 1 : 1)) % stops.length;
+                stops[next]?.focus({ preventScroll: true });
+            } else if (!pending && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
+                const pin = pins.find(pin => pin.button === root.activeElement);
+                if (pin) openEditor({ ...pin.selection, immediate: false }, pin);
+            }
             if (event.key === 'Escape' && !event.repeat) {
                 if (pending) closeEditor(); else owned.dispose('escape');
             }
@@ -308,12 +405,12 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         const cancelDrag = () => { if (drag) suppressClick = true; drag = null; if (!pending) hide(); };
         listen('pointercancel', event => { swallow(event); cancelDrag(); });
         listen('blur', event => { if (event.target === window) cancelDrag(); });
-        listen('resize', cancelDrag);
-        listen('scroll', cancelDrag);
+        listen('resize', () => { cancelDrag(); renderPins(); });
+        listen('scroll', () => { cancelDrag(); renderPins(); });
         for (const name of ['mousedown', 'mouseup', 'dblclick', 'auxclick', 'contextmenu', 'touchstart', 'touchmove', 'touchend', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'copy', 'cut', 'paste', 'submit', 'dragstart', 'drop', 'wheel'] as const) {
             listen(name, event => {
                 if (!current()) return;
-                if (event instanceof MouseEvent && editorPointer(event)) return;
+                if (event instanceof MouseEvent && (editorPointer(event) || pinPointer(event))) return;
                 if (['keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'copy', 'cut', 'paste'].includes(name) && editorInput(event)) return;
                 swallow(event);
             });
@@ -327,6 +424,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
     }
     if (!mode || mode.session !== command.session) return { active: false, events: [] };
     if (command.action === 'stop') mode.dispose('stop');
+    if (command.action === 'remove' && mode.active) mode.remove(command.id);
     const result = { active: mode.active, events: mode.events.splice(0) };
     if (!mode.active) Reflect.deleteProperty(page, '__cocBrowserAnnotation');
     return result;

@@ -47,7 +47,9 @@ describe('BrowserAnnotationSession', () => {
             ...(kind === 'element' ? { element: { selector: '#target', shadowHosts: [], tag: 'div',
                 id: 'target', classes: ['content'], text: 'Rendered text', outerHTML: '<div>Rendered text</div>' } } : {}),
         };
-        const notification: BrowserAnnotationNotification = { ...f.session.identity, type: 'events', events: [selection, { type: 'comment', comment: 'Please fix this', selection }] };
+        const notification: BrowserAnnotationNotification = { ...f.session.identity, type: 'events', events: [
+            selection, { type: 'comment', id: '1', number: 1, comment: 'Please fix this', selection }, { type: 'delete', id: '1' },
+        ] };
         f.emit(notification);
         expect(f.notify).toHaveBeenCalledWith(notification);
         expect(f.notify.mock.calls[0][0]).toBe(notification);
