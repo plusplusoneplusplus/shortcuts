@@ -15,7 +15,9 @@ export interface BrowserAnnotationSelection {
         classes: string[]; text: string; outerHTML: string };
 }
 export type BrowserAnnotationExitReason = 'escape' | 'navigation' | 'removed' | 'overflow' | 'stop';
-export type BrowserAnnotationEvent = BrowserAnnotationSelection | { type: 'exit'; reason: BrowserAnnotationExitReason };
+export type BrowserAnnotationEvent = BrowserAnnotationSelection
+    | { type: 'comment'; comment: string; selection: BrowserAnnotationSelection }
+    | { type: 'exit'; reason: BrowserAnnotationExitReason };
 export type BrowserAnnotationNotification = BrowserAnnotationIdentity & (
     | { type: 'events'; events: BrowserAnnotationEvent[] }
     | { type: 'ended'; reason: BrowserAnnotationExitReason | 'unavailable' | 'failed'; error?: string }

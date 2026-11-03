@@ -529,8 +529,15 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 `packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
 isolated-world expression with generation-matched start/drain/stop commands.
 Its closed-shadow shield highlights and selects elements or Shift-drag areas,
-reusing `browser-control-clip.ts` for fractional viewport geometry. Exit removes
-the shield and input listeners. Reports are bounded and document-local.
+reusing `browser-control-clip.ts` for fractional viewport geometry.
+
+Selection opens an editor in the same root, retaining its original snapshot while typing. Save
+emits `{type:'comment',comment,selection}`; blank drafts and comments over 8000
+UTF-16 units are refused. Cancel or first Escape discards the draft; next Escape
+exits mode. Window capture preserves native editor defaults while blocking page
+handlers; Tab cycles within controls. Exit removes the shield, draft and listeners.
+Reports are bounded and document-local.
+
 `browser-annotation-snapshot.ts` captures URL/title/viewport/DPR and element
 metadata at selection time, before page mutations or deferred collection.
 Element selectors are unique within a document/shadow root, with an outermost-first
@@ -575,8 +582,8 @@ events. Unresolved owners fail closed; stale reads cannot retarget policy. Docum
 changes, hiding, unmount, Escape and disable revoke startup and stop the mode.
 Loaded URL tabs participate; previews, PDF URLs and the SPA document omit the
 button. Active turns require enabled human takeover, with main owning the settled
-injection sequence. Comment editing, pins, screenshots and composer delivery remain
-separate integration work.
+injection sequence. The toolbar consumes lifecycle events; pin synchronization,
+screenshots and composer delivery need consumers of the comment events.
 
 ### Shared web-page zoom
 

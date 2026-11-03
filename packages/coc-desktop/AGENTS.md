@@ -12,12 +12,18 @@ view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
 
-`browser-annotation-dom.ts` is the self-contained selection primitive for owned
-URL documents. Execute it in an isolated world; keep its generation-matched
+`browser-annotation-dom.ts` owns self-contained selection and comment editing for
+owned URL documents. Execute it in an isolated world; keep its generation-matched
 start/drain/stop contract and closed shadow root shared by both engines.
 Selection rectangles use clipped CSS pixels without rounding. Hosts own tab,
 navigation, crash and owner teardown; the primitive also releases its input
-listeners on Escape, document departure, host removal and report overflow.
+listeners on document departure, host removal and report overflow. Selection
+opens an editor inside the same closed root. Escape discards the open draft first,
+then exits mode on the next press. Save emits `{type:'comment',comment,selection}`
+with the original snapshot and modifier intent; comments are nonblank and capped
+at 8000 UTF-16 units. Preserve native editor defaults while stopping propagation,
+trap Tab within its controls, and keep page input blocked. Pins and composer
+routing require a consumer of these events.
 `browser-annotation-snapshot.ts` captures page and bounded element metadata at
 selection time. Selectors are unique within their document/shadow root; resolve
 the outermost-first `shadowHosts` chain before the element selector. A null

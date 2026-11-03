@@ -20,6 +20,9 @@ const server = http.createServer((_request, response) => {
         </style><button>Pick me</button><script>
         window.clicks = 0;
         document.addEventListener('click', () => window.clicks++, true);
+        window.pageKeys = 0;
+        document.addEventListener('keydown', () => window.pageKeys++, true);
+        document.addEventListener('input', () => window.pageKeys++, true);
         </script>`);
 });
 const evaluate = code => win.webContents.executeJavaScriptInIsolatedWorld(991, [{ code }]);
@@ -64,11 +67,30 @@ function click(x, y, modifiers = []) {
             outlineBorder: outline.borderTopWidth, label: root.querySelector('.label').textContent };
     })()`);
     const isolation = await win.webContents.executeJavaScript('({ clicks: window.clicks, private: !window.__cocBrowserAnnotation && !window.fixtureRoot })');
+    // Trusted keyboard defaults must still edit the private textarea despite window capture.
+    for (const type of ['keyDown', 'char', 'keyUp']) {
+        win.webContents.sendInputEvent({ type, keyCode: 'F' });
+    }
+    await until(`window.fixtureRoot.querySelector('textarea').value === 'F'`);
+    await win.webContents.insertText('ix this element');
+    await until(`!window.fixtureRoot.querySelector('.save').disabled`);
+    const savePoint = await evaluate(`(() => {
+        const rect = window.fixtureRoot.querySelector('.save').getBoundingClientRect();
+        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+    })()`);
+    click(savePoint.x, savePoint.y);
+    await until(`window.__cocBrowserAnnotation.events.some(event => event.type === 'comment')`);
+    const comment = await command('drain');
+    const pageKeys = await win.webContents.executeJavaScript('window.pageKeys');
     for (const [type, x, y] of [['mouseDown', 200, 200], ['mouseMove', 300, 280], ['mouseUp', 300, 280]]) {
         win.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1, modifiers: ['shift'] });
     }
     await until('window.__cocBrowserAnnotation.events.length > 0');
     const area = await command('drain');
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' });
+    await until(`window.fixtureRoot.querySelector('.editor').hidden`);
+    const editorEscape = await command('drain');
     await command('stop');
     click(80, 80);
     await until('window.clicks === 1', false);
@@ -108,7 +130,7 @@ function click(x, y, modifiers = []) {
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
         endings, navigationEndings, noReinstall };
     cdp.dispose();
-    console.log('E2E::' + JSON.stringify({ element, styles, isolation, area, released, escaped, removed, transport: transportResult }));
+    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult }));
     win.destroy();
     server.close();
     app.exit(0);

@@ -18,6 +18,10 @@ function mouse(type: string, x = 20, y = 30, init: MouseEventInit = {}, recipien
     return event;
 }
 
+function escape() {
+    host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+}
+
 function geometry(element: Element, x = 10.25, y = 20.5, width = 80.5, height = 30.25) {
     vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({ x, y, width, height, left: x, top: y, right: x + width, bottom: y + height, toJSON() {} });
 }
@@ -116,6 +120,7 @@ describe('shared annotation selection injection', () => {
         mouse('pointerdown', 10, 20, { shiftKey: true });
         mouse('pointerup', 100000, 100000);
         expect(run('drain').events).toMatchObject([{ rect: { x: 10, y: 20, width: window.innerWidth - 10, height: window.innerHeight - 20 } }]);
+        escape();
         mouse('pointerdown', 10, 20, { shiftKey: true });
         mouse('pointerup', 11, 21);
         expect(run('drain').events).toEqual([]);
@@ -188,6 +193,7 @@ describe('shared annotation selection injection', () => {
         run('start');
         mouse('click');
         expect(run('drain').events).toMatchObject([{ tag: 'button' }]);
+        escape();
         const frame = document.createElement('iframe');
         document.body.append(frame);
         geometry(frame);
@@ -274,11 +280,192 @@ describe('shared annotation selection injection', () => {
 
     it('bounds reports and removes the overlay when the host stops draining', () => {
         run('start');
-        for (let i = 0; i < 40; i++) mouse('click', 20, 30, {}, target);
+        for (let i = 0; i < 40 && host.isConnected; i++) { mouse('click', 20, 30, {}, target); escape(); }
         expect(host.isConnected).toBe(false);
         const result = run('drain');
         expect(result.active).toBe(false);
         expect(result.events).toHaveLength(33);
         expect(result.events.at(-1)).toEqual({ type: 'exit', reason: 'overflow' });
+    });
+});
+
+
+describe('closed-shadow comment editor', () => {
+    const input = () => root.querySelector<HTMLTextAreaElement>('textarea')!;
+    const editor = () => root.querySelector<HTMLElement>('.editor')!;
+    const save = () => root.querySelector<HTMLButtonElement>('.save')!;
+    const cancel = () => root.querySelectorAll<HTMLButtonElement>('button')[1];
+    const type = (value: string) => {
+        input().value = value;
+        return input().dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, cancelable: true }));
+    };
+    const clickControl = (element: Element) => {
+        Object.defineProperty(root, 'elementFromPoint', { configurable: true, value: () => element });
+        return mouse('click', 20, 30, {}, element);
+    };
+    const key = (value: string, init: KeyboardEventInit = {}) => {
+        const event = new KeyboardEvent('keydown', { key: value, bubbles: true, composed: true, cancelable: true, ...init });
+        (root.activeElement ?? host).dispatchEvent(event);
+        return event;
+    };
+
+    it('opens and focuses an accessible editor next to the picked element without exposing it to page CSS', () => {
+        run('start'); mouse('click');
+        expect(editor().hidden).toBe(false);
+        expect(editor().getAttribute('role')).toBe('dialog');
+        expect(input().getAttribute('aria-label')).toBe('Comment');
+        expect(input().maxLength).toBe(8000);
+        expect(root.activeElement).toBe(input());
+        expect(save().disabled).toBe(true);
+        expect(editor().style.left).toBe('10.25px');
+        expect(editor().style.top).toBe('58.75px');
+        expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it('clamps the editor inside the viewport near the right and bottom edges', () => {
+        geometry(target, innerWidth - 40, innerHeight - 40, 30, 30);
+        run('start'); mouse('click');
+        expect(parseFloat(editor().style.left)).toBe(innerWidth - 300);
+        expect(parseFloat(editor().style.top)).toBe(innerHeight - 198);
+    });
+
+    it('keeps native typing, composition, caret keys and user paste defaults while stopping page handlers', () => {
+        run('start'); mouse('click');
+        const pageInput = vi.fn();
+        const names = ['keydown', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'paste', 'copy', 'cut'];
+        for (const name of names) window.addEventListener(name, pageInput);
+        try {
+            expect(key('a').defaultPrevented).toBe(false);
+            expect(key('ArrowLeft').defaultPrevented).toBe(false);
+            expect(key('Enter').defaultPrevented).toBe(false);
+            for (const name of names.filter(name => name !== 'keydown')) {
+                const event = new Event(name, { bubbles: true, composed: true, cancelable: true });
+                input().dispatchEvent(event);
+                expect(event.defaultPrevented).toBe(false);
+            }
+            expect(type('hello')).toBe(true);
+            expect(save().disabled).toBe(false);
+            expect(pageInput).not.toHaveBeenCalled();
+            const pageEvent = new Event('input', { bubbles: true, cancelable: true });
+            target.dispatchEvent(pageEvent);
+            expect(pageEvent.defaultPrevented).toBe(true);
+        } finally { for (const name of names) window.removeEventListener(name, pageInput); }
+    });
+
+    it('preserves pointer defaults inside the textarea without exposing them to page listeners', () => {
+        run('start'); mouse('click');
+        Object.defineProperty(root, 'elementFromPoint', { value: () => input() });
+        const pageClick = vi.fn();
+        document.addEventListener('click', pageClick);
+        try {
+            for (const name of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'wheel']) {
+                expect(mouse(name, 20, 30, {}, input()).defaultPrevented).toBe(false);
+            }
+            expect(pageClick).not.toHaveBeenCalled();
+        } finally { document.removeEventListener('click', pageClick); }
+    });
+
+    it.each([{ ctrlKey: true }, { metaKey: true }, {}])('saves original metadata and the full comment once, with modifier intent %j', modifiers => {
+        run('start'); mouse('click', 20, 30, modifiers);
+        const selection = run('drain').events[0];
+        const value = '  Please fix this\n<script>untrusted text</script>  ';
+        type(value);
+        target.textContent = 'Changed';
+        document.title = 'New title';
+        clickControl(save());
+        expect(run('drain')).toEqual({ active: true, events: [{ type: 'comment', comment: value, selection }] });
+        expect(editor().hidden).toBe(true);
+        expect(input().value).toBe('');
+        expect(document.activeElement).toBe(host);
+        expect(run('drain').events).toEqual([]);
+        document.title = '';
+    });
+
+    it.each([['empty', ''], ['whitespace', '   \n'], ['oversized', 'x'.repeat(8001)]])('refuses %s drafts', (_name, value) => {
+        run('start'); mouse('click'); run('drain');
+        type(value);
+        expect(save().disabled).toBe(true);
+        clickControl(save());
+        expect(editor().hidden).toBe(false);
+        expect(run('drain').events).toEqual([]);
+    });
+
+    it('accepts a comment exactly at the 8000-unit limit without trimming or truncation', () => {
+        run('start'); mouse('click'); run('drain');
+        const value = ' ' + '😀'.repeat(3999) + ' ';
+        type(value);
+        expect(value.length).toBe(8000);
+        expect(save().disabled).toBe(false);
+        clickControl(save());
+        expect(run('drain').events).toMatchObject([{ type: 'comment', comment: value }]);
+    });
+
+    it('saves an area with its original fractional rectangle and no immediate-send intent', () => {
+        run('start');
+        mouse('pointerdown', 10.5, 20.5, { shiftKey: true });
+        mouse('pointerup', 100.75, 70.75);
+        const selection = run('drain').events[0];
+        type('This region'); clickControl(save());
+        expect(run('drain').events).toEqual([{ type: 'comment', comment: 'This region', selection }]);
+        expect(selection).toMatchObject({ kind: 'area', immediate: false, rect: { x: 10.5, y: 20.5, width: 90.25, height: 50.25 } });
+    });
+
+    it('keeps the draft and selection fixed when clicking or dragging outside the editor', () => {
+        run('start'); mouse('click'); run('drain'); type('Keep this');
+        mouse('pointermove', 200, 200);
+        mouse('click', 200, 200, {}, target);
+        mouse('pointerdown', 200, 200, { shiftKey: true });
+        mouse('pointerup', 300, 300);
+        expect(input().value).toBe('Keep this');
+        expect(root.querySelector('.label')?.textContent).toBe('button 81 x 30');
+        expect(run('drain').events).toEqual([]);
+    });
+
+    it('Cancel discards the draft and permits another selection', () => {
+        run('start'); mouse('click'); run('drain'); type('Discard');
+        clickControl(cancel());
+        expect(run('drain')).toEqual({ active: true, events: [] });
+        expect(editor().hidden).toBe(true);
+        expect(input().value).toBe('');
+        mouse('click', 20, 30, {}, target);
+        expect(editor().hidden).toBe(false);
+        expect(input().value).toBe('');
+    });
+
+    it('first Escape closes the editor; a second press exits, while key repeat does not', () => {
+        run('start'); mouse('click'); run('drain'); type('Discard');
+        expect(key('Escape').defaultPrevented).toBe(true);
+        expect(editor().hidden).toBe(true);
+        expect(run('drain')).toEqual({ active: true, events: [] });
+        key('Escape', { repeat: true });
+        expect(run('drain')).toEqual({ active: true, events: [] });
+        key('Escape');
+        expect(run('drain')).toEqual({ active: false, events: [{ type: 'exit', reason: 'escape' }] });
+    });
+
+    it('traps Tab in editor controls, skips disabled Save and supports keyboard Save and Cancel', () => {
+        run('start'); mouse('click'); run('drain');
+        expect(key('Tab').defaultPrevented).toBe(true);
+        expect(root.activeElement).toBe(cancel());
+        key('Tab'); expect(root.activeElement).toBe(input());
+        key('Tab', { shiftKey: true }); expect(root.activeElement).toBe(cancel());
+        key('Tab'); type('Keyboard save');
+        key('Tab'); expect(root.activeElement).toBe(save());
+        key('Enter');
+        expect(run('drain').events).toMatchObject([{ type: 'comment', comment: 'Keyboard save' }]);
+        mouse('click'); run('drain');
+        key('Tab'); key(' ');
+        expect(editor().hidden).toBe(true);
+        expect(run('drain').events).toEqual([]);
+    });
+
+    it.each(['stop', 'pagehide', 'removed'])('removes an open editor and releases input on %s', async reason => {
+        run('start'); mouse('click'); run('drain'); type('Private draft');
+        if (reason === 'stop') run('stop');
+        else if (reason === 'removed') { host.remove(); await Promise.resolve(); }
+        else window.dispatchEvent(new Event(reason));
+        expect(host.isConnected).toBe(false);
+        expect(input().value).toBe('');
+        expect(mouse('click', 20, 30, {}, target).defaultPrevented).toBe(false);
     });
 });

@@ -165,15 +165,18 @@ function parseAnnotationResult(value: unknown): BrowserAnnotationResult {
         if (!event || typeof event !== 'object') return invalid();
         if (event.type === 'exit') {
             if (!['escape', 'navigation', 'removed', 'overflow', 'stop'].includes(event.reason)) return invalid();
-        } else if (event.type === 'selection') {
-            const { rect, page, element } = event;
-            if (!['element', 'area'].includes(event.kind) || typeof event.immediate !== 'boolean'
+        } else if (event.type === 'selection' || event.type === 'comment') {
+            if (event.type === 'comment' && (typeof event.comment !== 'string' || !event.comment.trim()
+                || event.comment.length > 8000 || event.selection?.type !== 'selection')) return invalid();
+            const selection = event.type === 'comment' ? event.selection : event;
+            const { rect, page, element } = selection;
+            if (!['element', 'area'].includes(selection.kind) || typeof selection.immediate !== 'boolean'
                 || !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
                 || rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0
                 || !page || typeof page.url !== 'string' || typeof page.title !== 'string'
                 || !page.viewport || ![page.viewport.width, page.viewport.height, page.viewport.devicePixelRatio].every(number => Number.isFinite(number) && number > 0)
                 || rect.x + rect.width > page.viewport.width || rect.y + rect.height > page.viewport.height) return invalid();
-            if (event.kind === 'element' && (!element || !(element.selector === null || typeof element.selector === 'string')
+            if (selection.kind === 'element' && (!element || !(element.selector === null || typeof element.selector === 'string')
                 || !Array.isArray(element.shadowHosts) || !element.shadowHosts.every(selector => selector === null || typeof selector === 'string')
                 || !Array.isArray(element.classes) || !element.classes.every(name => typeof name === 'string')
                 || ![element.tag, element.id, element.text, element.outerHTML].every(text => typeof text === 'string'))) return invalid();

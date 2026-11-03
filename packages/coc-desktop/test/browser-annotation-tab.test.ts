@@ -83,6 +83,7 @@ describe('BrowserAnnotationTab document transport', () => {
         const first = f.tab.poll();
         expect(f.tab.poll()).toBe(first);
         await first;
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
         f.select();
         await vi.advanceTimersByTimeAsync(100);
         expect(f.sink.events).toHaveBeenCalledTimes(2);
@@ -204,6 +205,73 @@ describe('BrowserAnnotationTab document transport', () => {
         await f.tab.poll();
         expect(f.sink.events).toHaveBeenCalledWith([{ type: 'exit', reason: 'escape' }]);
         expect(f.sink.ended).toHaveBeenCalledExactlyOnceWith('escape', undefined);
+        await f.tab.stop();
+    });
+
+    it('keeps the mode after editor Escape, then ends on the next Escape', async () => {
+        const f = fixture(); await f.tab.start(); f.select(); await f.tab.poll();
+        f.sink.events.mockClear();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await f.tab.poll();
+        expect(f.sink.events).not.toHaveBeenCalled();
+        expect(f.sink.ended).not.toHaveBeenCalled();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await f.tab.poll();
+        expect(f.sink.ended).toHaveBeenCalledWith('escape', undefined);
+        await f.tab.stop();
+    });
+
+    it('drains actual editor submissions through the document-bound transport', async () => {
+        const attach = Element.prototype.attachShadow;
+        let root!: ShadowRoot;
+        const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+            return root = attach.call(this, init);
+        });
+        const f = fixture();
+        try {
+            await f.tab.start(); f.select(); await f.tab.poll();
+            const selection = f.sink.events.mock.calls[0][0][0];
+            const input = root.querySelector('textarea')!;
+            input.value = 'Exact selected element';
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            Object.defineProperty(root, 'elementFromPoint', { value: () => root.querySelector('.save') });
+            root.querySelector('.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }));
+            await f.tab.poll();
+            expect(f.sink.events).toHaveBeenLastCalledWith([{ type: 'comment', comment: 'Exact selected element', selection }]);
+            expect(f.sink.ended).not.toHaveBeenCalled();
+        } finally { await f.tab.stop(); spy.mockRestore(); }
+    });
+
+    it.each(['', '  ', 'x'.repeat(8001), 42, null])('rejects invalid comment text at the native boundary (case %#)', async comment => {
+        const f = fixture(); await f.tab.start(); f.select(); await f.tab.poll();
+        const selection = f.sink.events.mock.calls[0][0][0];
+        const original = f.cdp.getMockImplementation()!;
+        let drain = true;
+        f.cdp.mockImplementation(async (method, params) => {
+            if (method === 'Runtime.evaluate' && drain) {
+                drain = false;
+                return { result: { value: { active: true, events: [{ type: 'comment', comment, selection }] } } };
+            }
+            return original(method, params);
+        });
+        await f.tab.poll();
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
+        await f.tab.stop();
+    });
+
+    it.each([null, { type: 'exit', reason: 'stop' }, { type: 'selection', kind: 'area', rect: {} }])('rejects invalid nested comment selections (case %#)', async selection => {
+        const f = fixture(); await f.tab.start();
+        const original = f.cdp.getMockImplementation()!;
+        let drain = true;
+        f.cdp.mockImplementation(async (method, params) => {
+            if (method === 'Runtime.evaluate' && drain) {
+                drain = false;
+                return { result: { value: { active: true, events: [{ type: 'comment', comment: 'Comment', selection }] } } };
+            }
+            return original(method, params);
+        });
+        await f.tab.poll();
+        expect(f.sink.ended).toHaveBeenCalledWith('failed', expect.any(Error));
         await f.tab.stop();
     });
 
