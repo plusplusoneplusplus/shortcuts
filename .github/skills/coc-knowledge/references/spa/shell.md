@@ -524,6 +524,16 @@ Trusted paste delivery is acknowledged, not persistence; errors after dispatch
 report unknown outcomes without automatic retry. Synthetic real-engine rich-paste
 tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS clipboard.
 
+### Annotation selection primitive
+
+`packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
+isolated-world expression with generation-matched start/drain/stop commands.
+Its closed-shadow shield highlights and selects elements or Shift-drag areas,
+reusing `browser-control-clip.ts` for fractional viewport geometry. Exit removes
+the shield and input listeners. Reports are bounded and document-local. This
+primitive has jsdom and real Electron coverage; toolbar, host and composer
+integration remain separate.
+
 ### Shared web-page zoom
 
 `browser.setPageZoom(percent)` validates 50-200% in 25-point steps; reset is 100%.

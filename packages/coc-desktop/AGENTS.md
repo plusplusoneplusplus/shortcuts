@@ -12,6 +12,13 @@ view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
 
+`browser-annotation-dom.ts` is the self-contained selection primitive for owned
+URL documents. Execute it in an isolated world; keep its generation-matched
+start/drain/stop contract and closed shadow root shared by both engines.
+Selection rectangles use clipped CSS pixels without rounding. Hosts own tab,
+navigation, crash and owner teardown; the primitive also releases its input
+listeners on Escape, document departure, host removal and report overflow.
+
 For demonstration recording, read
 [browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
 The feature is default off, Electron-only and memory-only until reviewed Send.
