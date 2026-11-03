@@ -29,9 +29,14 @@ const server = http.createServer((request, response) => {
         </style><button>Pick me</button><script>
         window.clicks = 0;
         document.addEventListener('click', () => window.clicks++, true);
+        window.captureClicks = 0;
+        window.addEventListener('click', () => window.captureClicks++, true);
         window.pageKeys = 0;
         document.addEventListener('keydown', () => window.pageKeys++, true);
         document.addEventListener('input', () => window.pageKeys++, true);
+        window.captureKeys = 0;
+        window.addEventListener('keydown', () => window.captureKeys++, true);
+        window.addEventListener('input', () => window.captureKeys++, true);
         </script>`);
 });
 const evaluate = code => win.webContents.executeJavaScriptInIsolatedWorld(991, [{ code }]);
@@ -125,10 +130,14 @@ function click(x, y, modifiers = []) {
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' });
     await until(`window.fixtureRoot.querySelector('.editor').hidden`);
     const editorEscape = await command('drain');
+    const captureReactions = await win.webContents.executeJavaScript('({ clicks: window.captureClicks, keys: window.captureKeys })');
     await command('stop');
     click(80, 80);
     await until('window.clicks === 1', false);
     const released = await win.webContents.executeJavaScript('window.clicks');
+    for (const type of ['keyDown', 'keyUp']) win.webContents.sendInputEvent({ type, keyCode: 'A' });
+    await until('window.captureKeys === 1', false);
+    const captureReleased = await win.webContents.executeJavaScript('({ clicks: window.captureClicks, keys: window.captureKeys })');
     await command('start');
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' });
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' });
@@ -266,7 +275,7 @@ function click(x, y, modifiers = []) {
     const pdfDenied = !deniedCommands.includes('Page.createIsolatedWorld');
     const admission = { appDenied, pdfDenied, pdfMimeType: pdfTree.frameTree.frame.mimeType };
     cdp.dispose();
-    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pinStyles, edit, deleted, pinsRemoved, pageKeys, area, editorEscape, released, escaped, removed, transport: transportResult, admission }));
+    console.log('E2E::' + JSON.stringify({ element, styles, isolation, comment, pinStyles, edit, deleted, pinsRemoved, pageKeys, area, editorEscape, released, captureReactions, captureReleased, escaped, removed, transport: transportResult, admission }));
     win.destroy();
     server.close();
     app.exit(0);

@@ -200,6 +200,13 @@ app.whenReady().then(async () => {
     // sender are production code. Only the receiving process endpoint is a fixture.
     await js(`document.querySelector('[aria-label="Browser options"]').click()`);
     await guest.executeJavaScript('scrollTo(0,0)');
+    await guest.executeJavaScript(`{
+        window.annotationCaptureClicks = 0;
+        window.annotationCaptureKeys = 0;
+        window.addEventListener('click', () => window.annotationCaptureClicks++, true);
+        window.addEventListener('keydown', () => window.annotationCaptureKeys++, true);
+        window.addEventListener('input', () => window.annotationCaptureKeys++, true);
+    }`);
     if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
     const frame = await guest.debugger.sendCommand('Page.getFrameTree');
     const world = await guest.debugger.sendCommand('Page.createIsolatedWorld', {
@@ -270,9 +277,13 @@ app.whenReady().then(async () => {
     assert(png.readUInt32BE(16) === 120 * retained[0].dpr && png.readUInt32BE(20) === 40 * retained[0].dpr, 'Crop dimensions do not match selection');
     assert(pixel(crop, 5, 5).join() === '200,20,40', 'Annotation chrome contaminated the native crop');
     assert(await guest.executeJavaScript('window.annotationClicks === 0 && !window.__cocBrowserAnnotation'), 'Annotation input or private state leaked into website');
+    assert(await guest.executeJavaScript('window.annotationCaptureClicks === 0 && window.annotationCaptureKeys === 0'), 'Pre-existing page window capture handlers reacted to annotation input');
     assert(await js(`document.getElementById('composer-error').textContent === ''`), 'Composer reported an error');
     await js(`document.querySelector('[aria-label="Annotate"]').click()`);
     await until(() => rootEval('!root.host.isConnected'), 'toolbar tears down overlay');
+    guestClick(90, 80);
+    for (const type of ['keyDown', 'keyUp']) guest.sendInputEvent({ type, keyCode: 'A' });
+    await until(() => guest.executeJavaScript('window.annotationCaptureClicks === 1 && window.annotationCaptureKeys === 1'), 'ordinary page input restored');
     console.log('E2E::' + JSON.stringify({ step: 'annotation', ok: true }));
 
     // Background control: the panel unmounts (another workspace is on screen) while a turn drives the tab.

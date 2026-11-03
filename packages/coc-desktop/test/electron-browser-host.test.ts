@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
         sendInputEvent: vi.fn(), insertText: vi.fn().mockResolvedValue(undefined), selectAll: vi.fn(),
         reload: vi.fn(), reloadIgnoringCache: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
+        isLoadingMainFrame: vi.fn(() => false),
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
 }));
@@ -85,6 +86,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.handlers.clear();
     mocks.deferAttach = false;
+    mocks.contents.isLoadingMainFrame.mockReturnValue(false);
     mocks.contents.on.mockImplementation((name: string, handler: (...args: any[]) => void) => {
         const handlers = mocks.handlers.get(name) ?? [];
         handlers.push(handler);
@@ -373,6 +375,27 @@ describe('Electron ClickOnce routing', () => {
 });
 
 describe('Electron browser CDP capability', () => {
+    it('reports main-document loading without treating annotation or page subframe loads as navigation', async () => {
+        const { sink, hosted } = await view();
+        const loading = vi.spyOn(mocks.contents, 'isLoading').mockReturnValue(true);
+        try {
+            emit('did-start-loading');
+            expect(hosted.snapshot().loading).toBe(false);
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ loading: false }));
+            expect(sink.navigationStarted).not.toHaveBeenCalled();
+            mocks.contents.isLoadingMainFrame.mockReturnValue(true);
+            emit('did-start-loading');
+            expect(hosted.snapshot().loading).toBe(true);
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ loading: true }));
+            mocks.contents.isLoadingMainFrame.mockReturnValue(false);
+            emit('did-stop-loading');
+            expect(hosted.snapshot().loading).toBe(false);
+        } finally {
+            loading.mockRestore();
+            await hosted.close();
+        }
+    });
+
     it('invalidates the copy identity only for a new main document, not subframes or same-document navigation', async () => {
         const { sink, hosted } = await view();
         emit('did-start-navigation', 'https://frame.test/', false, false);

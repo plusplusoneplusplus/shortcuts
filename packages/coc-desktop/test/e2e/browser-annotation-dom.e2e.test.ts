@@ -65,6 +65,8 @@ describe.skipIf(skip)('shared annotation injection in real Electron', () => {
                 editorEscape: { active: true, events: [] },
                 area: { active: true, events: [{ type: 'selection', kind: 'area', rect: { x: 200, y: 200, width: 100, height: 80 }, page: { title: 'Annotation fixture' } }] },
                 released: 1,
+                captureReactions: { clicks: 0, keys: 0 },
+                captureReleased: { clicks: 1, keys: 1 },
                 escaped: { active: false, events: [{ type: 'exit', reason: 'escape' }] },
                 removed: true,
                 transport: { selection: 'element', rect: { x: 40, y: 60, width: 120, height: 40 },

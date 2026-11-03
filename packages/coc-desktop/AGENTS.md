@@ -15,8 +15,14 @@ raw debugger transports stay in main.
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
 start/drain/stop/remove/capture/captured contract in an isolated world shared by both engines.
-Keep all chrome inside the closed shadow root; exit removes it and releases input
-listeners. Selection uses clipped fractional CSS pixels and opens the editor.
+Keep all chrome inside a closed shadow root in a full-viewport, unscripted
+`about:blank` iframe sandboxed with only `allow-same-origin`. Child-document input
+cannot traverse pre-existing page window handlers; preserve native editor defaults.
+Hit testing and capture hide the outer frame, while geometry and snapshots belong
+to the original page. Exit removes the frame/root and releases input listeners;
+frame removal or document replacement revokes the generation.
+Electron URL-tab loading uses main-frame state so child-frame initialization cannot
+terminate annotation. Selection uses clipped fractional CSS pixels and opens the editor.
 Escape discards the draft first, then exits on the next press. Preserve native
 editing defaults while blocking page handlers and trap Tab within editor/pins.
 Save emits `{type:'comment',id,number,comment,selection}` for create/update; IDs

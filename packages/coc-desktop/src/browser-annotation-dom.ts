@@ -57,7 +57,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
     if (command.action === 'start' && (!mode?.active || mode.session !== command.session)) {
         mode?.dispose('stop');
         const host = document.createElement('div');
-        // The host is the only light-DOM node. Inline !important also neutralizes page !important rules.
+        // Inline !important neutralizes page !important rules on the outer input frame.
         const hostStyles: Record<string, string> = {
             all: 'initial', position: 'fixed', inset: '0', width: '100vw', height: '100vh',
             display: 'block', 'z-index': '2147483647', background: 'transparent', opacity: '1',
@@ -65,6 +65,20 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             'pointer-events': 'auto', 'touch-action': 'none', margin: '0', padding: '0', border: '0',
         };
         for (const [name, value] of Object.entries(hostStyles)) host.style.setProperty(name, value, 'important');
+        // Input in a child document never traverses the page's pre-existing window
+        // listeners. Scripts stay forbidden; the editor remains in a closed root.
+        const frame = document.createElement('iframe');
+        frame.setAttribute('sandbox', 'allow-same-origin');
+        frame.setAttribute('title', 'Page annotation');
+        frame.tabIndex = -1;
+        for (const [name, value] of Object.entries(hostStyles)) frame.style.setProperty(name, value, 'important');
+        document.documentElement.append(frame);
+        const inputDocument = frame.contentDocument;
+        const inputWindow = frame.contentWindow;
+        if (!inputDocument || !inputWindow) {
+            frame.remove();
+            throw new Error('Annotation input document is unavailable.');
+        }
         host.tabIndex = -1;
         const root = host.attachShadow({ mode: 'closed' });
         const style = document.createElement('style');
@@ -151,7 +165,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         const canonical = (value: unknown) => JSON.stringify(value, (_key, part) =>
             part && typeof part === 'object' && !Array.isArray(part)
                 ? Object.fromEntries(Object.keys(part).sort().map(key => [key, part[key]])) : part);
-        const matches = (selection: BrowserAnnotationSelection) => owned.active && host.isConnected
+        const matches = (selection: BrowserAnnotationSelection) => current()
             && owned.url === location.href && pending !== null && canonical(pending) === canonical(selection);
         const updateSave = () => { save.disabled = !captureReady || !input.value.trim() || input.value.length > input.maxLength; };
         const owned: Mode = {
@@ -165,6 +179,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 capturing = hidden && valid;
                 // Opacity keeps the input shield and editor focus in place while hiding every pixel.
                 host.style.setProperty('opacity', capturing ? '0' : '1', 'important');
+                frame.style.setProperty('opacity', capturing ? '0' : '1', 'important');
                 return valid;
             },
             captured(selection, error) {
@@ -199,19 +214,28 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 editing = null;
                 pins.length = 0;
                 observer.disconnect();
+                inputObserver.disconnect();
                 for (const off of listeners) off();
                 host.remove();
+                frame.remove();
                 owned.events.push({ type: 'exit', reason });
             },
         };
         mode = owned;
         Object.defineProperty(page, '__cocBrowserAnnotation', { value: owned, configurable: true });
         const observer = new MutationObserver(() => {
+            if (!frame.isConnected || !host.isConnected) owned.dispose('removed');
+        });
+        const inputObserver = new MutationObserver(() => {
             if (!host.isConnected) owned.dispose('removed');
         });
-        const listen = <K extends keyof WindowEventMap>(name: K, handler: (event: WindowEventMap[K]) => void) => {
-            window.addEventListener(name, handler, { capture: true, passive: false });
-            listeners.push(() => window.removeEventListener(name, handler, true));
+        const listen = <K extends keyof WindowEventMap>(name: K, handler: (event: WindowEventMap[K]) => void, target = inputWindow) => {
+            target.addEventListener(name, handler, { capture: true, passive: false });
+            listeners.push(() => target.removeEventListener(name, handler, true));
+            if (target === inputWindow) {
+                window.addEventListener(name, handler, { capture: true, passive: false });
+                listeners.push(() => window.removeEventListener(name, handler, true));
+            }
         };
         const swallow = (event: Event, preventDefault = true) => {
             if (preventDefault && event.cancelable) event.preventDefault();
@@ -219,9 +243,12 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         };
         const current = () => {
             if (owned.active && owned.url !== location.href) owned.dispose('navigation');
-            if (owned.active && !host.isConnected) owned.dispose('removed');
+            if (owned.active && (!frame.isConnected || !host.isConnected || frame.contentDocument !== inputDocument)) owned.dispose('removed');
             return owned.active;
         };
+        const frameLoaded = () => { current(); };
+        frame.addEventListener('load', frameLoaded);
+        listeners.push(() => frame.removeEventListener('load', frameLoaded));
         const point = (x: number, y: number) => ({
             x: Math.max(0, Math.min(window.innerWidth, x)),
             y: Math.max(0, Math.min(window.innerHeight, y)),
@@ -233,6 +260,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         };
         const hit = (x: number, y: number): Element | null => {
             host.style.setProperty('display', 'none', 'important');
+            frame.style.setProperty('display', 'none', 'important');
             try {
                 let element = document.elementFromPoint(x, y);
                 // Open shadows can identify their actual target; closed roots and frames stay opaque.
@@ -244,6 +272,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
                 return element;
             } finally {
                 host.style.setProperty('display', 'block', 'important');
+                frame.style.setProperty('display', 'block', 'important');
             }
         };
         const hide = () => { outline.hidden = true; label.hidden = true; };
@@ -259,7 +288,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         };
         const elementAt = (x: number, y: number) => {
             const element = hit(x, y);
-            if (!element || !element.isConnected || element === host) return null;
+            if (!element || !element.isConnected || element === frame) return null;
             const rect = clipped(element.getBoundingClientRect(), clipRect(element));
             return rect ? { element, rect } : null;
         };
@@ -355,7 +384,7 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
             status.textContent = 'Capturing screenshot...';
             report(pending);
         };
-        // Closed-root event paths are retargeted at the host in window capture. Hit-test
+        // Closed-root event paths are retargeted at the host in child-window capture. Hit-test
         // inside our private root, then stop propagation here while preserving native editing.
         const editorPointer = (event: MouseEvent) => {
             if (capturing) return false;
@@ -483,22 +512,23 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         });
         const cancelDrag = () => { if (drag) suppressClick = true; drag = null; if (!pending) hide(); };
         listen('pointercancel', event => { swallow(event); cancelDrag(); });
-        listen('blur', event => { if (event.target === window) cancelDrag(); });
-        listen('resize', () => { cancelDrag(); renderPins(); });
-        listen('scroll', () => { cancelDrag(); renderPins(); });
+        listen('blur', event => { if (event.target === inputWindow) cancelDrag(); });
+        listen('resize', () => { cancelDrag(); renderPins(); }, window);
+        listen('scroll', () => { cancelDrag(); renderPins(); }, window);
         for (const name of ['mousedown', 'mouseup', 'dblclick', 'auxclick', 'contextmenu', 'touchstart', 'touchmove', 'touchend', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'copy', 'cut', 'paste', 'submit', 'dragstart', 'drop', 'wheel'] as const) {
             listen(name, event => {
                 if (!current()) return;
-                if (event instanceof MouseEvent && (editorPointer(event) || pinPointer(event))) return;
+                if ('clientX' in event && (editorPointer(event) || pinPointer(event))) return;
                 if (['keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'copy', 'cut', 'paste'].includes(name) && editorInput(event)) return;
                 swallow(event);
             });
         }
         for (const name of ['pagehide', 'beforeunload', 'hashchange', 'popstate'] as const) {
-            listen(name, () => owned.dispose('navigation'));
+            listen(name, () => owned.dispose('navigation'), window);
         }
-        document.documentElement.append(host);
+        inputDocument.documentElement.append(host);
         observer.observe(document.documentElement, { childList: true, subtree: true });
+        inputObserver.observe(inputDocument.documentElement, { childList: true, subtree: true });
         host.focus({ preventScroll: true });
     }
     if (!mode || mode.session !== command.session) return { active: false, events: [] };

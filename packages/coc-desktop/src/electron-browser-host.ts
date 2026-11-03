@@ -129,7 +129,7 @@ function snapshot(entry: BrowserEntry): BrowserViewState {
         title: entry.error ? '' : wc.getTitle(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
-        loading: wc.isLoading(),
+        loading: wc.isLoadingMainFrame(),
         ...(entry.favicon && !entry.error ? { favicon: entry.favicon } : {}),
         ...(entry.error ? { error: entry.error } : {}),
         ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),

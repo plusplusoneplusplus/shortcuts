@@ -528,8 +528,12 @@ tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS cli
 
 `packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
 isolated-world expression with generation-matched start/drain/stop/remove/capture/captured commands.
-Its closed-shadow shield highlights and selects elements or Shift-drag areas,
-reusing `browser-control-clip.ts` for fractional viewport geometry.
+Its closed-shadow shield lives in a full-viewport unscripted `about:blank` iframe
+sandboxed with only `allow-same-origin`. Child-document input cannot traverse
+pre-existing page window-capture handlers. Hit testing and capture hide the outer
+frame; selection/snapshot geometry belongs to the original page and reuses
+`browser-control-clip.ts`. Frame removal or document replacement revokes the mode.
+Electron URL-tab loading tracks the main frame, excluding child-frame initialization.
 
 Selection opens the private editor with its original snapshot. Save emits
 `{type:'comment',id,number,comment,selection}` for create/update and creates a pin;
@@ -537,7 +541,7 @@ blank drafts and comments over 8000 UTF-16 units are refused. IDs are stable wit
 one generation; display numbers reflect array order. Clicking a pin reopens its
 saved text; edits clear modifier-send intent. Delete emits `{type:'delete',id}`
 and renumbers survivors. Cancel/first Escape discards only the draft; next Escape
-exits. Native editing defaults survive window capture while page handlers stay
+exits. Native editing defaults survive child-window capture while page handlers stay
 blocked; Tab traverses editor controls or visible pins.
 
 Pins cap at 100, anchor to selection-time document coordinates and hide outside

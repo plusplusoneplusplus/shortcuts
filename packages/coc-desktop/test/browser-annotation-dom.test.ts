@@ -55,7 +55,8 @@ describe('shared annotation selection injection', () => {
         const firstHost = host;
         expect(host.shadowRoot).toBeNull();
         expect(root.mode).toBe('closed');
-        expect(host.parentElement).toBe(document.documentElement);
+        expect(host.parentElement).toBe(host.ownerDocument.documentElement);
+        expect(host.ownerDocument.defaultView?.frameElement?.parentElement).toBe(document.documentElement);
         expect(host.style.getPropertyValue('all')).toBe('initial');
         expect(setProperty).toHaveBeenCalledWith('all', 'initial', 'important');
         expect(host.style.zIndex).toBe('2147483647');
@@ -95,6 +96,56 @@ describe('shared annotation selection injection', () => {
             events: [{ type: 'selection', kind: 'element', tag: 'button', rect: { x: 10.25, y: 20.5, width: 80.5, height: 30.25 }, immediate: false, ...browserAnnotationSnapshot(target) }],
         });
         expect(run('drain').events).toEqual([]);
+    });
+
+    it.each(['stop', 'escape', 'removed'] as const)('isolates clicks and editor keys from earlier page window capture listeners, restoring input after %s', async exit => {
+        const clicks = vi.fn();
+        const keys = vi.fn();
+        window.addEventListener('click', clicks, true);
+        window.addEventListener('keydown', keys, true);
+        try {
+            run('start');
+            const frame = host.ownerDocument.defaultView!.frameElement as HTMLIFrameElement;
+            expect(frame.getAttribute('sandbox')).toBe('allow-same-origin');
+            expect(frame.hasAttribute('src')).toBe(false);
+            expect(frame.contentDocument!.querySelector('textarea')).toBeNull();
+            mouse('click');
+            const input = root.querySelector<HTMLTextAreaElement>('textarea')!;
+            const key = new KeyboardEvent('keydown', { key: 'a', bubbles: true, composed: true, cancelable: true });
+            input.dispatchEvent(key);
+            expect(key.defaultPrevented).toBe(false);
+            expect(root.activeElement).toBe(input);
+            expect(clicks).not.toHaveBeenCalled();
+            expect(keys).not.toHaveBeenCalled();
+            if (exit === 'stop') run('stop');
+            else if (exit === 'escape') { escape(); escape(); run('drain'); }
+            else { frame.remove(); await Promise.resolve(); run('drain'); }
+            expect(document.querySelector('iframe')).toBeNull();
+            mouse('click', 20, 30, {}, target);
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+            expect(clicks).toHaveBeenCalledOnce();
+            expect(keys).toHaveBeenCalledOnce();
+        } finally {
+            window.removeEventListener('click', clicks, true);
+            window.removeEventListener('keydown', keys, true);
+        }
+    });
+
+    it('fails explicitly without leaving an input frame when its document is unavailable', () => {
+        vi.spyOn(HTMLIFrameElement.prototype, 'contentDocument', 'get').mockReturnValue(null);
+        expect(() => run('start')).toThrow('Annotation input document is unavailable.');
+        expect(document.querySelector('iframe')).toBeNull();
+        expect(Reflect.has(window, '__cocBrowserAnnotation')).toBe(false);
+    });
+
+    it('revokes the mode and removes its frame if the input document is replaced', () => {
+        run('start');
+        const frame = host.ownerDocument.defaultView!.frameElement as HTMLIFrameElement;
+        Object.defineProperty(frame, 'contentDocument', { value: document.implementation.createHTMLDocument() });
+        frame.dispatchEvent(new Event('load'));
+        expect(run('drain')).toEqual({ active: false, events: [{ type: 'exit', reason: 'removed' }] });
+        expect(frame.isConnected).toBe(false);
+        expect(host.isConnected).toBe(false);
     });
 
     it.each([{ ctrlKey: true }, { metaKey: true }])('marks a modifier click for an immediate comment: %j', modifiers => {
@@ -484,7 +535,7 @@ describe('closed-shadow comment editor', () => {
         expect(run('drain')).toEqual({ active: true, events: [{ type: 'comment', id: '1', number: 1, comment: value, selection }] });
         expect(editor().hidden).toBe(true);
         expect(input().value).toBe('');
-        expect(document.activeElement).toBe(host);
+        expect(host.ownerDocument.activeElement).toBe(host);
         expect(run('drain').events).toEqual([]);
         document.title = '';
     });
