@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { MessagingJobOrigin } from '../messaging/job-notices';
 import { buildDashboardChatReference, parseDashboardChatReference } from '../shared/chat-reference';
@@ -7,7 +8,8 @@ import { RemoteChatAdmissionError } from '../servers/workspace-directory';
 import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from './remote-delegation-admission';
 import { remoteDelegationBindingSchema, sameRemoteDelegationBinding, type RemoteDelegationClaim } from './remote-delegation-auth';
 import { delegatedJobResultSchema, type DelegatedJob, type DelegatedJobStore } from './delegated-job-store';
-import { RemoteDelegationRequestStore, type RemoteDelegationRequest } from './remote-delegation-request-store';
+import { RemoteDelegationNotStartedError, RemoteDelegationRequestStore, type RemoteDelegationRequest } from './remote-delegation-request-store';
+import { getServerLogger } from '../logging/server-logger';
 
 const receiptSchema = remoteDelegationBindingSchema.extend({
     admission: z.discriminatedUnion('state', [
@@ -68,24 +70,44 @@ export class RemoteDelegationReturn {
     }
 
     async dispatch(serverId: string, execution: RemoteDelegationIntent, origin: RemoteResultOrigin, expectedIdentity?: string) {
-        try { return await this.dispatchRequest(serverId, execution, origin, expectedIdentity); }
+        const diagnostic = { phase: 'journal' };
+        try { return await this.dispatchRequest(serverId, execution, origin, diagnostic, expectedIdentity); }
         catch (error) {
             if (error instanceof RemoteChatAdmissionError) throw error;
-            throw new RemoteChatAdmissionError('Remote tracking could not be reconciled. Inspect the recorded request before retrying; no automatic work retry will be made.', 'uncertain');
+            this.diagnose(error instanceof RemoteDelegationNotStartedError ? error.phase : diagnostic.phase, origin,
+                error instanceof RemoteDelegationNotStartedError ? error.issues : []);
+            if (error instanceof RemoteDelegationNotStartedError) {
+                throw new RemoteChatAdmissionError(error.message, 'not-started');
+            }
+            throw new RemoteChatAdmissionError('Remote tracking could not be reconciled. Inspect the destination and origin journal before retrying; no automatic work retry will be made.', 'uncertain');
         }
     }
 
-    private async dispatchRequest(serverId: string, execution: RemoteDelegationIntent, origin: RemoteResultOrigin, expectedIdentity?: string) {
+    private diagnose(phase: string, origin: RemoteResultOrigin, issues: { path: string; code: string }[] = []): void {
+        getServerLogger().warn({
+            category: 'remote-delegation-admission', phase,
+            correlationId: createHash('sha256').update(JSON.stringify([
+                origin.parent.workspaceId, origin.parent.processId, origin.requestId,
+            ])).digest('hex').slice(0, 16),
+            issues,
+        }, 'Remote delegation admission could not be completed');
+    }
+
+    private async dispatchRequest(serverId: string, execution: RemoteDelegationIntent, origin: RemoteResultOrigin,
+        diagnostic: { phase: string }, expectedIdentity?: string) {
         const existing = origin.requestId
             ? this.deps.requests.list(origin.parent.workspaceId).find(row => row.requestId === origin.requestId) : undefined;
         if (!existing && !this.deps.enabled()) return undefined;
+        diagnostic.phase = 'validation';
         const parent = await this.deps.store.getProcess(origin.parent.processId, origin.parent.workspaceId);
         if (parent?.id !== origin.parent.processId || parent.type !== 'chat' || parent.archived
             || parent.metadata?.workspaceId !== origin.parent.workspaceId) {
-            throw new RemoteChatAdmissionError('Originating conversation is unavailable. No remote work was sent.', 'not-started');
+            throw new RemoteChatAdmissionError(existing
+                ? 'Originating conversation is unavailable. Inspect the recorded remote work; it will not be repeated.'
+                : 'Originating conversation is unavailable. No remote work was sent.', existing ? 'uncertain' : 'not-started');
         }
         if (parent.metadata.mode !== 'sentinel') {
-            if (existing) throw new RemoteChatAdmissionError('Originating Sentinel changed; existing work will not be repeated.', 'not-started');
+            if (existing) throw new RemoteChatAdmissionError('Originating Sentinel changed; inspect existing work, which will not be repeated.', 'uncertain');
             return undefined;
         }
         const remote = this.deps.remotes.list().find(row => row.id === serverId);
@@ -93,19 +115,21 @@ export class RemoteDelegationReturn {
             const { digest } = captureRemoteDelegationIntent(execution);
             if (existing.parent.processId !== origin.parent.processId || existing.intentDigest !== digest
                 || (expectedIdentity && existing.destination.serverIdentity !== expectedIdentity)) {
-                throw new RemoteChatAdmissionError('Remote request identity cannot be reassigned. No work was sent.', 'not-started');
+                throw new RemoteChatAdmissionError('Remote request identity cannot be reassigned. Inspect existing work; it will not be repeated.', 'uncertain');
             }
             if (existing.admission.state === 'reserved' || existing.admission.state === 'rejected') {
                 throw new RemoteChatAdmissionError(existing.admission.state === 'reserved'
                     ? 'Origin stopped before dispatch; no remote work was sent.'
                     : existing.admission.reason, existing.admission.state === 'reserved' ? 'not-started' : 'rejected');
             }
+            diagnostic.phase = 'receipt';
             try {
                 const job = await this.receive(existing, await this.request(existing.destination.serverIdentity,
                     existing.destination.serverId, '/api/remote-delegations/receipt', this.claim(existing)));
                 if (!job) throw new Error('Admission is uncertain');
                 return this.tracked(existing, job.child);
             } catch {
+                this.diagnose('receipt', origin);
                 if (existing.admission.state === 'accepted') {
                     return this.tracked(existing, existing.admission.child, 'Execution was admitted; result delivery recovery is pending. Do not repeat the work.');
                 }
@@ -141,20 +165,32 @@ export class RemoteDelegationReturn {
             || currentParent.metadata?.workspaceId !== origin.parent.workspaceId || currentParent.metadata.mode !== 'sentinel') {
             throw new RemoteChatAdmissionError('Originating Sentinel changed before admission. No remote work was sent.', 'not-started');
         }
-        const { intent, digest } = captureRemoteDelegationIntent(execution);
+        let captured: ReturnType<typeof captureRemoteDelegationIntent>;
+        try { captured = captureRemoteDelegationIntent(execution); }
+        catch (error) {
+            // Recheck after preflight awaits: an earlier or concurrent claim wins.
+            const rows = this.deps.requests.list(origin.parent.workspaceId);
+            if (rows.some(row => row.requestId === origin.requestId)) throw error;
+            throw new RemoteDelegationNotStartedError('validation', error);
+        }
+        const { intent, digest } = captured;
+        diagnostic.phase = 'reservation';
         const { request, execute: claimed } = this.deps.requests.reserveDispatch({
             ...origin, destination: { serverId, serverIdentity: remote.serverIdentity, workspaceId: intent.workspaceId },
             kind: intent.kind, intentDigest: digest,
             ...(intent.targetProcessId ? { targetProcessId: intent.targetProcessId } : {}),
         });
+        diagnostic.phase = claimed ? 'execution' : 'receipt';
         try {
             const response = await this.request(request.destination.serverIdentity, serverId,
                 claimed ? `/api/remote-delegations/${intent.kind === 'follow-up' ? 'follow-up' : 'launch'}` : '/api/remote-delegations/receipt',
                 claimed ? { claim: this.claim(request), intent } : this.claim(request));
+            diagnostic.phase = 'receipt';
             const job = await this.receive(request, response);
             if (!job) throw new Error('Remote admission has not been confirmed');
             return this.tracked(request, job.child);
         } catch (error) {
+            this.diagnose(diagnostic.phase, origin);
             // Only the first claimed POST can prove non-admission: the destination refuses
             // with 400 before any durable claim, and no earlier send of this request exists.
             if (claimed && error instanceof RemoteResultHttpError && error.status === 400) {
@@ -165,7 +201,12 @@ export class RemoteDelegationReturn {
             const current = this.deps.requests.list(request.parent.workspaceId).find(row => row.requestId === request.requestId)!;
             if (current.admission.state !== 'rejected') this.deps.requests.settleDispatch(request.parent.workspaceId, request.requestId,
                 'uncertain', 'Remote admission is uncertain; receipt recovery will not repeat execution.');
-            this.deps.requests.recordTransfer(request.parent.workspaceId, request.requestId, 'Remote receipt is unavailable; recovery is pending.');
+            try {
+                this.deps.requests.recordTransfer(request.parent.workspaceId, request.requestId, 'Remote receipt is unavailable; recovery is pending.');
+            } catch (transferError) {
+                if (current.admission.state !== 'accepted') throw transferError;
+                this.diagnose('receipt', origin);
+            }
             if (current.admission.state === 'accepted') {
                 return this.tracked(current, current.admission.child, 'Execution was admitted; result delivery recovery is pending. Do not repeat the work.');
             }

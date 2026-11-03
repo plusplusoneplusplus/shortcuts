@@ -57,6 +57,22 @@ export type RemoteDelegationRequest = z.infer<typeof requestSchema>;
 export type RemoteDelegationReservation = Omit<RemoteDelegationRequest,
     'requestId' | 'originServerIdentity' | 'createdAt' | 'admission' | 'proofToken' | 'transfer'> & { requestId?: string };
 
+/** Only raised after a readable, owner-checked journal rules out an earlier claim. */
+export class RemoteDelegationNotStartedError extends Error {
+    readonly issues: { path: string; code: string }[];
+
+    constructor(readonly phase: 'validation' | 'reservation', error?: unknown) {
+        super(phase === 'validation'
+            ? 'Remote request validation failed before dispatch. No remote work was sent.'
+            : 'Remote request could not be reserved before dispatch. No remote work was sent.');
+        const fields = new Set(['version', 'requestId', 'parent', 'destination', 'kind', 'targetProcessId',
+            'intentDigest', 'title', 'messagingOrigin', 'workspaceId', 'body']);
+        this.issues = error instanceof z.ZodError ? error.issues.map(issue => ({
+            path: fields.has(String(issue.path[0])) ? String(issue.path[0]) : 'input', code: issue.code,
+        })) : [];
+    }
+}
+
 /**
  * Origin-owned admission journal, separate from terminal-result delivery.
  * Persist a dispatch claim before I/O. A claimed request is reconciliation-only,
@@ -92,11 +108,18 @@ export class RemoteDelegationRequestStore {
     }
 
     private reserveClaim(input: RemoteDelegationReservation, dispatch: boolean): { request: RemoteDelegationRequest; execute: boolean } {
-        const request = requestSchema.parse({ ...input, proofToken: randomBytes(32).toString('hex'),
-            requestId: input.requestId === undefined ? randomUUID() : input.requestId,
+        // Read and verify ownership before classifying new-input failures as not started.
+        const rows = this.list(input.parent.workspaceId);
+        const requestId = input.requestId === undefined ? randomUUID() : input.requestId;
+        const existing = rows.find(row => row.requestId === requestId);
+        const parsed = requestSchema.safeParse({ ...input, proofToken: randomBytes(32).toString('hex'),
+            requestId,
             originServerIdentity: this.jobs.serverIdentity, createdAt: new Date().toISOString(), admission: { state: dispatch ? 'dispatching' : 'reserved' } });
-        const rows = this.list(request.parent.workspaceId);
-        const existing = rows.find(row => row.requestId === request.requestId);
+        if (!parsed.success) {
+            if (existing) throw parsed.error;
+            throw new RemoteDelegationNotStartedError('validation', parsed.error);
+        }
+        const request = parsed.data;
         if (existing) {
             const identity = (row: RemoteDelegationRequest) => JSON.stringify({
                 parent: row.parent, destination: row.destination, kind: row.kind, targetProcessId: row.targetProcessId,
@@ -106,7 +129,15 @@ export class RemoteDelegationRequestStore {
             return { request: existing, execute: false };
         }
         rows.push(request);
-        this.save(request.parent.workspaceId, rows);
+        try { this.save(request.parent.workspaceId, rows); }
+        catch (error) {
+            // Publication may have completed before an error. Only a verified absent
+            // claim proves non-admission; unreadable/corrupt journals stay uncertain.
+            if (!this.list(request.parent.workspaceId).some(row => row.requestId === request.requestId)) {
+                throw new RemoteDelegationNotStartedError('reservation');
+            }
+            throw error;
+        }
         return { request, execute: dispatch };
     }
 

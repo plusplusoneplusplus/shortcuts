@@ -37,6 +37,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
@@ -526,7 +527,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                             ...(runtime?.getRemoteResultsEnabled && parentProcessId && callerWorkspaceId ? { resultOrigin: {
                                 parent: { workspaceId: callerWorkspaceId, processId: parentProcessId },
                                 title: 'Remote follow-up',
-                                requestId: grillingAdmissionId(parentProcessId, callerWorkspaceId, invocation.toolCallId),
+                                requestId: remoteRequestId(parentProcessId, callerWorkspaceId, invocation.toolCallId),
                                 ...(runtime.getRemoteResultsEnabled() ? { messagingOrigin: runtime.messagingOrigin?.() } : {}),
                             } } : {}),
                         });
@@ -596,7 +597,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 messagingOrigin: runtime?.messagingOrigin,
                 trackMessagingJob: runtime?.trackMessagingJob,
                 remoteRequestId: runtime?.getRemoteResultsEnabled
-                    ? grillingAdmissionId(parentProcessId ?? invocation.sessionId, callerWorkspaceId, invocation.toolCallId) : undefined,
+                    ? remoteRequestId(parentProcessId ?? invocation.sessionId, callerWorkspaceId, invocation.toolCallId) : undefined,
                 remoteResultsAvailable: runtime?.getRemoteResultsEnabled !== undefined,
                 remoteResultsEnabled: runtime?.getRemoteResultsEnabled?.() === true,
                 track: todoTracking && todoItemId ? job => todoTracking.link(todoItemId, job) : undefined,
@@ -1332,4 +1333,13 @@ function normalizeProcessProvider(proc: AIProcess): ChatProvider {
 function grillingAdmissionId(parent: string, workspaceId: string | undefined, toolCallId: string): string {
     const hex = createHash('sha256').update(JSON.stringify([parent, workspaceId, toolCallId])).digest('hex').slice(0, 32);
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function remoteRequestId(parent: string, workspaceId: string | undefined, toolCallId: string): string {
+    const candidate = grillingAdmissionId(parent, workspaceId, toolCallId);
+    // Preserve valid durable identities so invocation replay cannot admit another job.
+    if (z.uuid().safeParse(candidate).success) return candidate;
+    const hex = candidate.replace(/-/g, '');
+    const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20)}`;
 }

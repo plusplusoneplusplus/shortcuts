@@ -139,8 +139,13 @@ references before editing. Paths are package-relative.
   responses use the same result-return contract. Never infer remote ownership
   from a process prefix or send its content to the local delivery capability. Admission
   errors expose `dispatchState` (`not-started`, `rejected`, `uncertain`);
-  timeouts, lost/invalid replies and HTTP 408/5xx remain uncertain and prohibit blind
-  resubmission. Public POST errors omit private transport details. Never substitute
+  new-input validation or failed publication proves `not-started` only with an
+  owner-checked journal ruling out an earlier claim. Journal/publication ambiguity,
+  timeouts, lost/invalid replies and HTTP 408/5xx stay uncertain and prohibit blind
+  resubmission. Remote result-origin UUIDs preserve valid deterministic candidates;
+  invalid candidates use UUIDv8 bits without changing local grilling keys. See the
+  server architecture reference for replay and safe-diagnostic boundaries.
+  Public POST errors omit private transport details. Never substitute
   a transport alias, endpoint or viewer's server identity.
   Remote delegation is sender-only: the origin submits admission, then polls the destination
   receipt. Never make the destination register, connect to or call the origin (no callback,
