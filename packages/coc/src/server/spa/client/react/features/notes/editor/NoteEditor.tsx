@@ -14,6 +14,7 @@ import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { NoteZoomControl } from './NoteZoomControl';
+import { TOOLBAR_BUTTON_CLASS } from './toolbar/ToolbarDropdown';
 import { useNoteZoom } from './useNoteZoom';
 import { handleNoteZoomKey } from './noteZoomKeyboard';
 import { RichEditorCore } from './RichEditorCore';
@@ -1363,7 +1364,7 @@ export function NoteEditor({
                             {canRunSkill && (
                                 <button
                                     type="button"
-                                    className="h-7 px-2 rounded flex items-center gap-1 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                                    className={TOOLBAR_BUTTON_CLASS + ' w-7'}
                                     title="Run Skill"
                                     aria-label="Run Skill"
                                     data-testid="note-run-skills-btn"
@@ -1375,7 +1376,7 @@ export function NoteEditor({
                                         contextTaskName,
                                     })}
                                 >
-                                    <span>⚡</span> Run Skill
+                                    <span aria-hidden="true">⚡</span>
                                 </button>
                             )}
                             {isGoal && canRunSkill && ralphEnabled && (
@@ -1395,7 +1396,7 @@ export function NoteEditor({
                             <button
                                 type="button"
                                 className={
-                                    'text-xs px-2 py-0.5 rounded ' +
+                                    TOOLBAR_BUTTON_CLASS + ' w-7 ' +
                                     (versionHistoryOpen
                                         ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
                                         : 'text-[#888] hover:text-[#333] dark:hover:text-white')

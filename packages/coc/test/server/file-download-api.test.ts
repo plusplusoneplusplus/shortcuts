@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { FileProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { registerTaskRoutes } from '../../src/server/tasks/tasks-read-handler';
 import { createRouter } from '../../src/server/shared/router';
 import { createRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
 import type { Route } from '../../src/server/types';
+
+const TEMP_ROOTS = [...new Set([os.tmpdir(), ...(process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : [])])];
 
 describe('File download API', () => {
     let fixtureDir: string;
@@ -55,6 +58,51 @@ describe('File download API', () => {
         fs.writeFileSync(filePath, content);
         return filePath;
     }
+
+    it.each(TEMP_ROOTS)(
+        'previews, resolves and downloads artifacts in the temporary root %s',
+        async tempRoot => {
+            const directory = fs.mkdtempSync(path.join(tempRoot, 'coc-preview-'));
+            try {
+                const content = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+                const file = writeFile(path.join(directory, 'toolbar.png'), content);
+                const preview = await request(file, workspace.id, 'false');
+                expect(preview.status).toBe(200);
+                expect(JSON.parse(preview.body.toString())).toMatchObject({
+                    type: 'image', mimeType: 'image/png', content: content.toString('base64'),
+                    resolvedWorkspaceId: workspace.id,
+                });
+                const listing = await request(directory, workspace.id, 'false');
+                expect(listing.status).toBe(200);
+                expect(JSON.parse(listing.body.toString())).toMatchObject({
+                    type: 'directory', entries: [{ name: 'toolbar.png', isDirectory: false }],
+                });
+                const metadata = await request(file, workspace.id, 'false', true);
+                expect(metadata.status).toBe(200);
+                expect(JSON.parse(metadata.body.toString())).toMatchObject({ type: 'file', size: content.length });
+                const download = await request(file);
+                expect(download.status).toBe(200);
+                expect(download.body).toEqual(content);
+            } finally {
+                fs.rmSync(directory, { recursive: true, force: true });
+            }
+        },
+    );
+
+    it.each(TEMP_ROOTS)('rejects symlinks escaping %s in every read mode', async tempRoot => {
+        const directory = fs.mkdtempSync(path.join(tempRoot, 'coc-preview-escape-'));
+        try {
+            const outside = path.join(fixtureDir, 'outside');
+            writeFile(path.join(outside, 'secret.txt'), 'private');
+            fs.symlinkSync(outside, path.join(directory, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+            const file = path.join(directory, 'escape', 'secret.txt');
+            for (const [download, resolve] of [['false', false], ['false', true], ['true', false]] as const) {
+                expect((await request(file, workspace.id, download, resolve)).status).toBe(403);
+            }
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
 
     it.each([
         ['readme.txt', Buffer.from('first line\r\nsecond line\nUTF-8: café')],

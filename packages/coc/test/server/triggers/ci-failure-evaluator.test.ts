@@ -19,7 +19,7 @@ import type {
     ConditionMonitorEvent,
     Trigger,
 } from '../../../src/server/triggers/trigger-types';
-import { MAX_CI_FIX_ATTEMPTS } from '../../../src/server/triggers/trigger-types';
+import { MAX_CI_FIX_ATTEMPTS, MAX_CONFLICT_FIX_ATTEMPTS } from '../../../src/server/triggers/trigger-types';
 
 // ============================================================================
 // Helpers
@@ -143,17 +143,36 @@ describe('CiFailureEvaluator', () => {
             expect(outcome.event).not.toHaveProperty('conflictAttempts');
         });
 
+        it('allows a third conflict repair within the total budget', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
+            const outcome = await evaluator.evaluate(trigger({ conflictAttempts: { [key]: 2 } }));
+            expect(outcome.fire).toBe(true);
+            expect(outcome.event).toMatchObject({ conflictAttempts: { [key]: 3 } });
+        });
+
         it('enforces the per-PR/head/base attempt cap', async () => {
             const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
-            const capped = await evaluator.evaluate(trigger({ conflictAttempts: { [key]: 2 } }));
+            const capped = await evaluator.evaluate(trigger({ conflictAttempts: { [key]: MAX_CONFLICT_FIX_ATTEMPTS } }));
             expect(capped.fire).toBe(false);
             expect(capped.event).toMatchObject({ repairStatus: expect.stringContaining('exhausted') });
         });
 
-        it('bounds new-head repair/push chains and reports exhaustion without repeated messages', async () => {
-            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
-            const attempts = { a: 1, b: 1, c: 1, d: 1 };
-            const first = await evaluator.evaluate(trigger({ conflictAttempts: attempts }));
+        it('allows ten conflict repairs across heads then reports exhaustion once', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([
+                ...Array.from({ length: 11 }, (_, index) => conflict({
+                    headSha: `head-${index}`, checksHeadSha: `head-${index}`,
+                })),
+                conflict({ headSha: 'head-10', checksHeadSha: 'head-10' }),
+            ]));
+            let event: Partial<ConditionMonitorEvent> = {};
+            for (let attempt = 1; attempt <= 10; attempt++) {
+                const outcome = await evaluator.evaluate(trigger(event));
+                expect(outcome.fire).toBe(true);
+                expect(outcome.repairKind).toBe('conflict');
+                event = outcome.event as ConditionMonitorEvent;
+                expect(Object.values(event.conflictAttempts ?? {}).reduce((sum, n) => sum + n, 0)).toBe(attempt);
+            }
+            const first = await evaluator.evaluate(trigger(event));
             const second = await evaluator.evaluate(trigger(first.event as ConditionMonitorEvent));
             expect(first.fire).toBe(false);
             expect(first.changed).toBe(true);
@@ -451,39 +470,24 @@ describe('CiFailureEvaluator', () => {
             expect(outcome.retryLimitReached).toBe(true);
         });
 
-        it('drives a detect → fire ×2 → cap sequence keyed by one SHA', async () => {
-            // Each fire re-detects the failure on the SAME head SHA (the fix made
-            // no commit). The manager persists outcome.event between ticks; here
-            // we feed the resulting attemptCount into the next tick's trigger to
-            // mimic that, with lastSeenChecks reset so the failure re-fires.
+        it('allows ten CI repairs on one head and blocks the eleventh', async () => {
             const evaluator = new CiFailureEvaluator(
-                queuedFetcher([failingAtSha('sha1'), failingAtSha('sha1'), failingAtSha('sha1')]),
+                queuedFetcher(Array.from({ length: 11 }, () => failingAtSha('sha1'))),
             );
+            let event: Partial<ConditionMonitorEvent> = { attemptSha: 'sha1', attemptCount: 0 };
 
-            // Tick 1: green → failure, attempt 1 fires.
-            let outcome = await evaluator.evaluate(
-                makeTrigger({ build: 'success' }, {}, { attemptSha: 'sha1', attemptCount: 0 }),
-            );
-            expect(outcome.fire).toBe(true);
-            expect((outcome.event as ConditionMonitorEvent).attemptCount).toBe(1);
+            // Re-detect failure on the same head and persist each returned counter.
+            for (let attempt = 1; attempt <= 10; attempt++) {
+                const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }, {}, event));
+                expect(outcome.fire).toBe(true);
+                expect((outcome.event as ConditionMonitorEvent).attemptCount).toBe(attempt);
+                event = { ...outcome.event as ConditionMonitorEvent, lastSeenChecks: { build: 'success' } };
+            }
 
-            // Tick 2: failure re-detected, attempt 2 fires (reaches the cap).
-            outcome = await evaluator.evaluate(
-                makeTrigger({ build: 'success' }, {}, { attemptSha: 'sha1', attemptCount: 1 }),
-            );
-            expect(outcome.fire).toBe(true);
-            expect((outcome.event as ConditionMonitorEvent).attemptCount).toBe(MAX_CI_FIX_ATTEMPTS);
-
-            // Tick 3: count is at the cap → withheld + notified once.
-            outcome = await evaluator.evaluate(
-                makeTrigger(
-                    { build: 'success' },
-                    {},
-                    { attemptSha: 'sha1', attemptCount: MAX_CI_FIX_ATTEMPTS },
-                ),
-            );
-            expect(outcome.fire).toBe(false);
-            expect(outcome.retryLimitReached).toBe(true);
+            const capped = await evaluator.evaluate(makeTrigger({ build: 'success' }, {}, event));
+            expect(capped.fire).toBe(false);
+            expect(capped.retryLimitReached).toBe(true);
+            expect((capped.event as ConditionMonitorEvent).attemptCount).toBe(10);
         });
     });
 

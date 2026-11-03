@@ -41,6 +41,17 @@ describe('NoteZoomControl (AC-01)', () => {
         expect(readout()).toBe('90%');
     });
 
+    it('preserves editor focus on pointer down and restores the persisted level on remount', () => {
+        const { unmount } = render(<Harness />);
+        for (const id of ['note-zoom-out', 'note-zoom-readout', 'note-zoom-in']) {
+            expect(fireEvent.mouseDown(screen.getByTestId(id))).toBe(false);
+        }
+        fireEvent.click(screen.getByTestId('note-zoom-in'));
+        unmount();
+        render(<Harness />);
+        expect(readout()).toBe('110%');
+    });
+
     it('clamps at 200% and disables + at the max', () => {
         render(<Harness />);
         for (let i = 0; i < 20; i++) fireEvent.click(screen.getByTestId('note-zoom-in'));

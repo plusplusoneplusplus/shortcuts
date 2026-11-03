@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
+import { ToolbarDropdown, MenuItem, Sep, TOOLBAR_BUTTON_CLASS } from './ToolbarDropdown';
 import { AlignIcon } from './AlignIcon';
 import { ToolbarIcon, hasToolbarIcon } from './ToolbarIcon';
 import { ColorDropdown } from './ColorDropdown';
@@ -61,7 +61,7 @@ export function TB({ editor, label, icon, iconId, command, activeName, activeAtt
             title={label}
             aria-label={label}
             className={
-                'h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                TOOLBAR_BUTTON_CLASS + ' w-7 ' +
                 (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '') +
                 (className ? ' ' + className : '')
             }

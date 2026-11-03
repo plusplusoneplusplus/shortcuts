@@ -110,8 +110,8 @@ Canvas tools use `canvas.enabled` (default on); installed Copilot extension oper
 | GET | `/api/fs/browse` | Browse local directories for repo path selection |
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read one file under CoC trusted data dirs (`~/.copilot`, server data dir, OS temp) or any registered workspace/repo root; arbitrary paths rejected |
-| GET | `/api/workspaces/:id/files/preview?path=<path>` | Bounded preview; groups probe live members and return `resolvedWorkspaceId`. `resolve=true` returns file/folder metadata without content; `download=true` streams regular-file bytes with attachment headers. Both modes validate realpath containment; writes remain workspace-scoped |
-| GET | `/api/workspaces/:id/files/html?path=<path>` | Serve a sandboxed HTML preview from the workspace, its repo output data, OS temp, `~/.copilot`, `~/.codex`, or `~/.claude`; canonical-path checks reject symlink escapes |
+| GET | `/api/workspaces/:id/files/preview?path=<path>` | Bounded preview from workspace/member roots, task roots, server data, `~/.copilot`, or OS temp (including macOS `/tmp` and `/private/tmp`); groups return `resolvedWorkspaceId`. `resolve=true` returns metadata; `download=true` streams regular-file bytes with attachment headers. Every mode validates realpath containment; writes remain workspace-scoped |
+| GET | `/api/workspaces/:id/files/html?path=<path>` | Serve a sandboxed HTML preview from the workspace, its repo output data, OS temp (including macOS `/tmp` and `/private/tmp`), `~/.copilot`, `~/.codex`, or `~/.claude`; canonical-path checks reject symlink escapes |
 | GET | `/api/workspaces/:id/files/html/resolve?path=<path>` | Validate the same HTML allowlist and return `{ path }` with the canonical absolute path for a local desktop HTML tab |
 
 ## Repository browsing
