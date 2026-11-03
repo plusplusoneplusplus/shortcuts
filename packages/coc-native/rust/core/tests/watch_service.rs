@@ -295,16 +295,19 @@ fn a_missing_root_is_rearmed_after_creation_and_after_recreation() {
     let parent = directory();
     let root = parent.path().join("missing");
     let (service, receiver) = service();
-    service.subscribe(options(&root, "lifetime")).unwrap();
+    let id = service.subscribe(options(&root, "lifetime")).unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
     std::fs::create_dir(&root).unwrap();
     receive(&receiver, |batch| batch.rescan);
+    // A health-check rescan can precede FSEvents startup events after each rearm.
+    settle(&receiver, &root, "md", &[id]);
     std::fs::write(root.join("created.md"), "created").unwrap();
     receive(&receiver, |batch| batch.paths.contains(&"created.md".into()));
     std::fs::remove_dir_all(&root).unwrap();
     receive(&receiver, |batch| batch.rescan);
     std::fs::create_dir(&root).unwrap();
     receive(&receiver, |batch| batch.rescan);
+    settle(&receiver, &root, "md", &[id]);
     std::fs::write(root.join("recreated.md"), "recreated").unwrap();
     receive(&receiver, |batch| batch.paths.contains(&"recreated.md".into()));
 }
