@@ -590,11 +590,13 @@ shield/events, wait two animation frames with a one-second timeout, and validate
 selection/scroll/viewport/DPR before and after capture. Restoration targets the
 original generation; failures and revocation reject the image. Electron URL guests
 implement optional `BrowserHostedView.captureAnnotation` through
-`electron-annotation-capture.ts`: enclosing DIP `capturePage(rect)` followed by a
-physical-pixel PNG crop, without resampling. Allocation caps at 16 Mi pixels and
+`electron-annotation-capture.ts`: `capturePage(rect)` around the selection, starting
+on a whole device pixel, then a shared `browser-annotation-crop.ts` physical-pixel crop
+without resampling. The crop absorbs float32 DPR noise and trims far-edge selections
+to the fractional surface behind the rounded viewport. Allocation caps at 16 Mi pixels and
 PNG output at 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
 native memory-only `CapturePreview`; validate physical viewport dimensions before
-decoding and crop without resampling. Full previews share the same bounds. Only
+decoding and use the same crop. Full previews share the same bounds. Only
 pending capture replies permit 28 MB native transport frames; ordinary CDP/events
 retain their 1 MiB limit. Lifecycle/zoom changes reject late images.
 

@@ -15,7 +15,8 @@ raw debugger transports stay in main.
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
 start/drain/stop/remove/capture/captured contract in an isolated world shared by both engines.
-Keep all chrome inside a closed shadow root in a full-viewport, unscripted
+Keep all chrome inside a closed shadow root (its reset `*` rule must not render the
+hidden `<style>`) in a full-viewport, unscripted
 `about:blank` iframe sandboxed with only `allow-same-origin`. Child-document input
 cannot traverse pre-existing page window handlers; preserve native editor defaults.
 Hit testing and capture hide the outer frame, while geometry and snapshots belong
@@ -57,13 +58,17 @@ retain the input shield and queued events, wait two animation frames (one-second
 paint timeout), and check draft/scroll/viewport/DPR before and after native capture.
 Always restore the original generation, preserve native errors and reject late
 images after revocation. `BrowserHostedView.captureAnnotation` is optional;
-Electron URL guests use `electron-annotation-capture.ts` and `capturePage(rect)`.
-Convert CSS to enclosing DIP bounds using page zoom, then crop the decoded PNG to
-enclosing device pixels without resampling. Bound allocation to 16 Mi pixels and
-PNG output to 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
-the native helper's memory-only `CapturePreview` PNG, validate full-viewport physical
-dimensions before decoding, then crop without resampling. Full previews share the
-16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
+Electron URL guests use `electron-annotation-capture.ts` and `capturePage(rect)`
+around the selection only, so large viewports keep small captures. Start the DIP
+rect on a whole device pixel (native capture rounds fractional origins per platform)
+and pad its far edge by one DIP. Both engines crop through `browser-annotation-crop.ts`:
+enclosing device pixels without resampling, tolerant of float32 DPR noise. Rounded
+innerWidth/innerHeight can exceed a fractional guest surface, so selections at the
+far viewport edge trim to the last displayed pixel within bounded slack; elsewhere a
+short image fails. Bound capture allocation to 16 Mi pixels and PNG output to 20 MiB.
+WebView2 root tabs use `webview2-annotation-capture.ts` with the native helper's
+memory-only `CapturePreview` PNG and validate full-viewport physical dimensions,
+within the same slack, before decoding. Full previews share the 16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
 transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide and zoom
 changes reject late captures. Exact-chat SPA chips retain native PNGs and the composer
 attaches their numbered snapshots through its screenshot validator; file previews and popouts expose no annotation capture capability.
@@ -142,4 +147,7 @@ preload bridge, host manager, isolated guest, native PNG capture, chips and comp
 request path; its process endpoint is a deterministic receiver. Run with
 `ELECTRON_DISABLE_SANDBOX=1 COC_DESKTOP_E2E_NO_SANDBOX=1 COC_DESKTOP_E2E=1 xvfb-run -a npm run test:run -- test/e2e/browser-webview-layer.e2e.test.ts`
 on Linux after desktop compilation and SPA stylesheet build. Shared DOM e2e covers
-1x/2x pixels and fractional zoom. Windows WebView2 runtime behavior needs a Windows host.
+1x/2x pixels, fractional zoom and overlay stylesheet ink. `browser-annotation-capture.e2e.test.ts`
+compares both engines' crops byte-for-byte with a full native capture of a fractional
+`<webview>` at 1x/1.5x/2x, four zooms and every viewport edge. Windows WebView2
+runtime behavior needs a Windows host.
