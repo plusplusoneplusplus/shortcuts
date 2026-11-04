@@ -23,6 +23,13 @@ describe('escapeHtml', () => {
         expect(escapeHtml('"value"')).toBe('&quot;value&quot;');
     });
 
+    it('preserves apostrophes and escapes existing entities in the plain-code fallback', () => {
+        const code = `'<tag title="x">&amp;</tag>'`;
+        const escaped = `'&lt;tag title=&quot;x&quot;&gt;&amp;amp;&lt;/tag&gt;'`;
+        expect(highlightLine(code, null)).toBe(escaped);
+        expect(highlightBlock([code], null)).toEqual([escaped]);
+    });
+
     it('returns empty string unchanged', () => {
         expect(escapeHtml('')).toBe('');
     });

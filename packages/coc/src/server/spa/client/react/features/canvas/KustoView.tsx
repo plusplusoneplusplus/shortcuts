@@ -13,6 +13,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { escapeHtmlAttribute as escapeHtml } from '../../../shared/html';
 import type {
     Canvas,
     KustoCellValue,
@@ -73,12 +74,6 @@ export function parseKustoContent(content: string | undefined | null): KustoCanv
         ...(obj.chartConfig && typeof obj.chartConfig === 'object' ? { chartConfig: obj.chartConfig as KustoCanvasState['chartConfig'] } : {}),
         ...(obj.lastRun && typeof obj.lastRun === 'object' ? { lastRun: obj.lastRun as KustoCanvasState['lastRun'] } : {}),
     };
-}
-
-const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-function escapeHtml(text: string): string {
-    return text.replace(/[&<>"']/g, ch => HTML_ESCAPES[ch] ?? ch);
 }
 
 /** Render a cell value as display text (null → empty). */

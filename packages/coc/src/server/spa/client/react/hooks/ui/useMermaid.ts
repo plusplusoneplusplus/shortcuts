@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { escapeHtmlText as escapeHtmlForMermaid } from '../../../shared/html';
 
 const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 const MIN_ZOOM = 0.25;
@@ -62,10 +63,6 @@ export function ensureMermaid(): Promise<void> {
         document.head.appendChild(script);
     });
     return mermaidLoadPromise;
-}
-
-function escapeHtmlForMermaid(str: string): string {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function buildToolbarHTML(): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeLanguageDocumentPath } from '../../../../src/server/spa/client/react/features/language-servers/documentPath';
 import { browserDocumentUri } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
+import { resolveDiffDefinitionRoute } from '../../../../src/server/spa/client/react/features/git/diff/diffDefinitionRoute';
 
 describe('language document path identity', () => {
     it.each([
@@ -24,5 +25,15 @@ describe('language document path identity', () => {
             .not.toBe(browserDocumentUri('workspace', 'src/mixed.ts'));
         expect(browserDocumentUri('workspace', './src/Mixed.ts'))
             .not.toBe(browserDocumentUri('workspace', 'src/Mixed.ts'));
+    });
+
+    it('does not adopt the definition router policy that removes a leading dot segment', () => {
+        expect(normalizeLanguageDocumentPath('./src/Mixed.ts')).toBe('./src/Mixed.ts');
+        expect(resolveDiffDefinitionRoute({
+            workspaceId: 'workspace',
+            filePath: 'src/Mixed.ts',
+            reviewFiles: [],
+            target: { workspaceId: 'workspace', path: './src/Mixed.ts', line: 1, column: 1 },
+        })).toEqual({ kind: 'same-file', side: 'modified', line: 1, column: 1 });
     });
 });

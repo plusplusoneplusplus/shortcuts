@@ -22,6 +22,8 @@
  * completes.
  */
 
+import { errorMessage } from '../../../utils/errorMessage';
+
 /** The subset of a mermaid render result this layer consumes. */
 export interface MermaidRenderResult {
     /** The rendered diagram as a standalone `<svg>…</svg>` string. */
@@ -69,10 +71,6 @@ function unescapeHtml(escaped: string): string {
         .replace(/&#0?39;/g, "'")
         .replace(/&#0?10;/g, '\n')
         .replace(/&amp;/g, '&');
-}
-
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 /**

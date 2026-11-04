@@ -47,6 +47,12 @@ describe('buildCanvasHtmlDocument — standalone document scaffold', () => {
         const html = build({ title: '   ' });
         expect(html).toContain('<title>Untitled canvas</title>');
     });
+
+    it('escapes title markup and double quotes while preserving apostrophes', () => {
+        const html = build({ title: `A "'<&amp;>` });
+        expect(html).toContain(`<title>A &quot;'&lt;&amp;amp;&gt;</title>`);
+        expect(html).toContain(`<h1 class="canvas-export__title">A &quot;'&lt;&amp;amp;&gt;</h1>`);
+    });
 });
 
 describe('buildCanvasHtmlDocument — embedded math (KaTeX) CSS', () => {

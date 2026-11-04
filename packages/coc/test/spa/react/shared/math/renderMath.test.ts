@@ -1,7 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import katex from 'katex';
 import { renderMath, getMathError } from '../../../../../src/server/spa/client/shared/math/renderMath';
 
 describe('renderMath — safe rendering', () => {
+    it('escapes both quote delimiters in thrown-error attributes and source text', () => {
+        const spy = vi.spyOn(katex, 'renderToString').mockImplementationOnce(() => {
+            throw new Error(`bad "'<&>`);
+        });
+        try {
+            const html = renderMath(`source "'<&>`);
+            expect(html).toContain('aria-label="Math error: bad &quot;&#39;&lt;&amp;&gt;"');
+            expect(html).toContain('title="bad &quot;&#39;&lt;&amp;&gt;"');
+            expect(html).toContain('>source &quot;&#39;&lt;&amp;&gt;</span>');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     it('renders inline math to HTML+MathML markup', () => {
         const html = renderMath('a+b', { display: false });
         expect(html).toContain('katex');
