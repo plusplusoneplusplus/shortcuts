@@ -15,6 +15,7 @@ import { popOutOpened } from '../../../utils/popOutWindow';
 import { GitFileReview } from '../diff/GitFileReview';
 import { createBranchRangeDiffSource } from '../diff/diffSource';
 import { CommitDetail } from '../commits/CommitDetail';
+import { BranchSubmitPrButton } from './BranchSubmitPrButton';
 
 export interface BranchRangeOverviewProps {
     workspaceId: string;
@@ -93,6 +94,7 @@ function BranchReview({ workspaceId, attachmentDestinationId, range, files = [],
             <span className="flex-1" />
             {onAskAI && <button type="button" className="min-h-7 px-1" aria-label="Ask AI about branch changes" onClick={onAskAI} data-testid="branch-range-ask-ai-btn">Ask AI</button>}
             {onQueueTask && <button type="button" className="min-h-7 px-1" onClick={onQueueTask}>Task</button>}
+            {!isPopOut && <BranchSubmitPrButton workspaceId={workspaceId} range={range} />}
             {onAllCommentsClick && <button type="button" className="min-h-7 px-1" aria-label="Show all branch comments" onClick={onAllCommentsClick}>Comments{branchCommentCount ? ` · ${branchCommentCount}` : ''}</button>}
             {!isPopOut && <button type="button" className="min-h-7 px-1" aria-label="Open in new window" title="Open in new window" onClick={handlePopOut} data-testid="branch-range-popout-btn">↗</button>}
         </div>

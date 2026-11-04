@@ -37,8 +37,11 @@ describe('WhatsApp topic overtures', () => {
         triggers = new TriggerStore(database.db);
         todos = new SentinelTodoStore(database.db);
         bindings = new WhatsAppBindings(database.dataDir);
+        // One shared start time: topics rank by recency, so a millisecond tick
+        // between two `new Date()` calls would reorder the numbered list.
+        const startTime = new Date();
         const processes = workspaces.map(ws => ({
-            id: 'same-chat', title: `${ws.name} chat`, startTime: new Date(), status: 'running',
+            id: 'same-chat', title: `${ws.name} chat`, startTime, status: 'running',
             metadata: { workspaceId: ws.id, mode: 'sentinel' },
         }));
         store = {

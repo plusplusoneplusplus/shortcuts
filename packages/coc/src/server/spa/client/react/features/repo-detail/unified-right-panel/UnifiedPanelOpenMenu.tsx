@@ -64,7 +64,7 @@ import {
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
-import { SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
+import { GIT_ICON, SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -89,8 +89,10 @@ export interface UnifiedPanelOpenMenuProps {
     todoInput?: OpenUnifiedTabInput | null;
     /** The panel's workspace owns a Settings page; see `openMenuActions`. */
     settingsAvailable?: boolean;
+    /** The panel can host the target repo's Git tab; see `openMenuActions`. */
+    gitAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (action: 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
+    onOpenWorkspaceResource: (action: 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
 }
@@ -104,6 +106,7 @@ export function UnifiedPanelOpenMenu({
     onOpenResource,
     todoInput = null,
     settingsAvailable = false,
+    gitAvailable = false,
     onOpenWorkspaceResource,
     onClose,
 }: UnifiedPanelOpenMenuProps) {
@@ -139,11 +142,12 @@ export function UnifiedPanelOpenMenu({
         chatHasChanges: chatChanges !== null,
         todoAvailable: todoInput !== null,
         settingsAvailable,
+        gitAvailable,
         extensionsAvailable: extensions.length > 0,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoInput, settingsAvailable, extensions.length, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoInput, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
@@ -646,6 +650,7 @@ const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
     'pull-requests': PULL_REQUESTS_ICON,
     settings: SETTINGS_ICON,
     terminal: '▶',
+    git: GIT_ICON,
     explorer: '🗂',
     notes: '🗒',
     browser: '🌐',

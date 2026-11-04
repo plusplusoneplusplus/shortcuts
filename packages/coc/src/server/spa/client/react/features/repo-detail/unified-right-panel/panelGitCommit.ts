@@ -17,7 +17,7 @@ import { buildGitRouteHash, buildGitRouteSuffix } from '../../../layout/gitRoute
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { WorkspaceOwner } from '../../../repos/workspaceOwnerContext';
-import { WORKING_CHANGES_DEEP_LINK } from '../../git/repoGitTab/useRepoGitSelection';
+import { BRANCH_RANGE_DEEP_LINK, WORKING_CHANGES_DEEP_LINK } from '../../git/repoGitTab/useRepoGitSelection';
 import type { UnifiedPanelHost } from './unifiedPanelHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { routingRefForPanelOwner } from './unifiedPanelOwnerRouting';
@@ -64,6 +64,17 @@ export function openPanelGitWorkingChanges(
     target: PanelGitCommitTarget,
 ): void {
     publishPanelGitRoute(dispatch, target, WORKING_CHANGES_DEEP_LINK, { openRequest: {} });
+}
+
+/**
+ * Open the target's branch changes (its commits against the base branch) in
+ * the panel's Git tab, with a fresh open request like the working changes.
+ */
+export function openPanelGitBranchChanges(
+    dispatch: (action: AppAction) => void,
+    target: PanelGitCommitTarget,
+): void {
+    publishPanelGitRoute(dispatch, target, BRANCH_RANGE_DEEP_LINK, { openRequest: {} });
 }
 
 /**
