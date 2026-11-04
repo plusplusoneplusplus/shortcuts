@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/ui/useCodeBlockActions';
 
 describe('useCodeBlockActions', () => {
@@ -190,6 +190,26 @@ describe('useCodeBlockActions', () => {
         expect(() => {
             renderHook(() => useCodeBlockActions(ref));
         }).not.toThrow();
+    });
+
+    it('keeps the checked container for events and cleanup after its ref is cleared', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText }, writable: true, configurable: true,
+        });
+        container.innerHTML = '<div class="code-block-container" data-raw="complete source"><button class="code-block-copy">Copy all</button></div>';
+        const button = container.querySelector('button')!;
+        const ref: { current: HTMLElement | null } = createRef(container);
+        const { unmount } = renderHook(() => useCodeBlockActions(ref));
+
+        ref.current = null;
+        button.click();
+        await waitFor(() => expect(button.textContent).toBe('Copied!'));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('complete source');
+
+        unmount();
+        button.click();
+        expect(writeText).toHaveBeenCalledTimes(1);
     });
 
     // ── Cleanup ──────────────────────────────────────────────────────

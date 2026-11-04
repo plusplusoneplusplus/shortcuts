@@ -65,7 +65,7 @@ export function useCodeBlockActions(
             }, 3000));
         }
 
-        function handleClick(e: MouseEvent) {
+        const handleClick = (e: MouseEvent) => {
             const target = e.target instanceof Element
                 ? e.target.closest<HTMLElement>('.code-block-copy, .code-block-collapse, .code-block-collapsed-indicator, .md-table-copy-btn')
                 : null;
@@ -92,7 +92,7 @@ export function useCodeBlockActions(
                 handleTableCopy(target);
                 return;
             }
-        }
+        };
 
         container.addEventListener('click', handleClick);
         return () => {
