@@ -6,6 +6,12 @@ export default defineConfig({
         environment: 'node',
         include: ['test/**/*.test.ts'],
         globalSetup: ['test/setup.ts'],
+        server: {
+            deps: {
+                // Keep workspace CommonJS imports and barrel requires in one Node module cache.
+                external: [/[/\\]coc-workflow[/\\]dist[/\\]/],
+            },
+        },
         coverage: {
             provider: 'v8',
             reporter: ['text', 'html', 'lcov', 'cobertura'],

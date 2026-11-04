@@ -64,10 +64,11 @@ describe('workflow cancellation and error identity', () => {
         );
     });
 
-    it('workflow cancellation identity is distinct from Forge runtime cancellation', () => {
-        // Forge keeps its own runtime concurrency/cancellation utilities for map-reduce and the
-        // task queue; those are a separate class identity from the canonical workflow package.
+    it('shares the limiter while preserving the runtime cancellation base class', () => {
+        // The limiter error is a subclass of the runtime error, not a second implementation.
         expect(forgeRoot.CancellationError).not.toBe(workflowPackage.CancellationError);
-        expect(forgeRoot.ConcurrencyLimiter).not.toBe(workflowPackage.ConcurrencyLimiter);
+        expect(new workflowPackage.CancellationError()).toBeInstanceOf(forgeRoot.CancellationError);
+        expect(new workflowPackage.WorkflowCancellationError()).toBeInstanceOf(forgeRoot.CancellationError);
+        expect(forgeRoot.ConcurrencyLimiter).toBe(workflowPackage.ConcurrencyLimiter);
     });
 });
