@@ -17,6 +17,33 @@
       ],
       "errors": [
         "dist/errors/index.d.ts"
+      ],
+      "errors/error-codes": [
+        "dist/errors/error-codes.d.ts"
+      ],
+      "errors/pipeline-core-error": [
+        "dist/errors/pipeline-core-error.d.ts"
+      ],
+      "runtime/cancellation": [
+        "dist/runtime/cancellation.d.ts"
+      ],
+      "runtime/concurrency-limiter": [
+        "dist/runtime/concurrency-limiter.d.ts"
+      ],
+      "config/defaults": [
+        "dist/config/defaults.d.ts"
+      ],
+      "utils/prompt-resolver": [
+        "dist/utils/prompt-resolver.d.ts"
+      ],
+      "utils/csv-reader": [
+        "dist/utils/csv-reader.d.ts"
+      ],
+      "utils/template-engine": [
+        "dist/utils/template-engine.d.ts"
+      ],
+      "skills/skill-resolver": [
+        "dist/skills/skill-resolver.d.ts"
       ]
     }
   },
@@ -25,7 +52,16 @@
     "./workflow": "./dist/workflow/index.js",
     "./ralph": "./dist/ralph/index.js",
     "./logger": "./dist/logger.js",
-    "./errors": "./dist/errors/index.js"
+    "./errors": "./dist/errors/index.js",
+    "./errors/error-codes": "./dist/errors/error-codes.js",
+    "./errors/pipeline-core-error": "./dist/errors/pipeline-core-error.js",
+    "./runtime/cancellation": "./dist/runtime/cancellation.js",
+    "./runtime/concurrency-limiter": "./dist/runtime/concurrency-limiter.js",
+    "./config/defaults": "./dist/config/defaults.js",
+    "./utils/prompt-resolver": "./dist/utils/prompt-resolver.js",
+    "./utils/csv-reader": "./dist/utils/csv-reader.js",
+    "./utils/template-engine": "./dist/utils/template-engine.js",
+    "./skills/skill-resolver": "./dist/skills/skill-resolver.js"
   },
   "files": [
     "dist"
