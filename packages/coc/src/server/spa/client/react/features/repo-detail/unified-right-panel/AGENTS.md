@@ -1183,16 +1183,22 @@ drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
 
-Every Refrain card and the Coda strip/built-in row open read-only details from their title
+Every Refrain card and the Coda strip/built-in row open details from their title
 button (`AutomationTitleButton`, Enter/Space, `aria-pressed`) or a click on blank card space;
 `selectCardOnClick` ignores controls, disclosures, text selection and clicks bubbling back from
-portaled details. Selected cards show `data-selected` hover/selected styling. Refrain details show
+portaled details. Cards contain identity/status and accessible selection only; collection-level
+New refrain stays in the list header. The selected detail title has a wrapping action group:
+Refrain run/pause/cancel and More (edit/delete), gate actions, and history all use the
+existing owner-bound callbacks. Coda's run, schedule, selection, proposal, recovery and history
+controls share this detail-column placement. Forms, errors and run details stay in that column.
+Selected cards show `data-selected` hover/selected styling. Refrain details show
 the definition, schedule and the current (else latest) run from the live job list, with a
 never-run hint; `SentinelCodaDetails` shows Coda's schedule plus its active run or the latest run's
 owner-routed `RunDetail`. This overview is distinct from a history run selection and survives
 history collapse. Hosted details share To-do's detail column through `RefrainHistoryHostContext`
-(the Coda key is `CODA_DETAIL_KEY`); standalone Refrain history measures its own list/detail split
-with `useContainerWidth`. Narrow layouts use Back, Escape clears, and focus returns to the title.
+(the Coda key is `CODA_DETAIL_KEY`); standalone Refrain details measure their width
+with `useContainerWidth`. Narrow layouts use Back; run navigation returns to history,
+and leaving the overview restores title focus.
 Selection binds a run ID across refreshes and resizing and resets per owner mount.
 Details read the current retained record; pruning reports its absence without
 selecting another run. Exact timing, full errors and clone-qualified job-turn
@@ -1203,7 +1209,7 @@ server's `effortLevelsEnabled` is on and the provider has tiers, the dialog show
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
 Autopilot displays a permission warning. The optional Gate script field needs a
 cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged
-script keeps its server gate state; blank clears it. Gated cards show active or
+script keeps its server gate state; blank clears it. Gated details show active or
 paused status, the failure streak, the last gate error and a truncated last-result
 preview (full JSON in its title). Test gate calls `jobs.testGate` outside the
 mutation lock and shows the outcome inline; a changed script or unmount aborts it
@@ -1219,9 +1225,9 @@ when the independent Coda flag (`sentinelTodoScrubberEnabled`) is enabled, retai
 routes and execution engine. With Refrains disabled, it renders the Coda strip.
 The wrapper is gated by the
 live, default-off Coda flag. `UnifiedTodoTab` passes a function child that places
-the single strip (and its history) in the list column below Overtures, beside the
-detail pane; a plain child renders the strip first. The strip is not sticky and its
-schedule editor and selection wrap inline. Its owner/endpoint-keyed strip uses
+the single selection strip in the list column below Overtures, beside the
+detail pane; a plain child renders the strip first. The strip is not sticky; its
+schedule editor, selection and history render inside its selected details. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued
@@ -1231,7 +1237,8 @@ Config drafts keep their captured revision through refresh; conflicts reload
 without retrying writes. The schedule editor shares browser-safe validation and
 presets from `server/schedule/scrub-cron.ts`; Resume saves the current revision.
 Completed run details feed an owner-local findings context shared by row badges,
-the strip and the To-do toolbar slot.
+details and the To-do toolbar slot. Finding-action errors and batch results remain
+collection-visible when Coda details are inactive or hidden in a narrow layout.
 The newest finding wins, including hidden dismissed/suppressed/undone findings;
 auto-Done attribution requires the item's exact applied revision. Accept uses the
 snapshot revision, Undo the applied revision, and conflicts require a fresh Coda run.
@@ -1241,7 +1248,7 @@ stops on other errors, reports partial results and reloads ledger/findings.
 Owner/endpoint remounts or flag disabling stop remaining batch requests.
 Successful actions reload the ledger for derived job states. Evidence links allow
 HTTP(S) only; other references render as text. `SentinelCodaHistory` lists
-retained summaries after the strip and lazily reads owner-routed details.
+retained summaries in the selected detail column and lazily reads owner-routed details.
 Run changes refresh selected details; switching, pruning or closing aborts reads
 and rejects late results. The read-only log retains all finding states and audit
 actors, timestamps, before/after revisions, outcomes, exclusions and evidence.

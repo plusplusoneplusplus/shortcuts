@@ -19,13 +19,15 @@ type Props = {
     titleRef: RefObject<HTMLButtonElement>;
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
     onClose: () => void;
+    actions?: ReactNode;
+    children?: ReactNode;
 };
 
 /**
  * Coda's counterpart to the Refrain overview: its schedule plus the current (else latest)
  * run, rendered from the strip's live owner data in To-do's detail column when hosted.
  */
-export function SentinelCodaDetails({ id, name, client, owner, items, data, titleRef, onFollowLink, onClose }: Props) {
+export function SentinelCodaDetails({ id, name, client, owner, items, data, titleRef, onFollowLink, onClose, actions, children }: Props) {
     const host = useContext(RefrainHistoryHostContext);
     const headingRef = useRef<HTMLHeadingElement>(null);
     const wide = host?.wide ?? true;
@@ -42,7 +44,7 @@ export function SentinelCodaDetails({ id, name, client, owner, items, data, titl
     const active = data?.activeRun;
     const latest = data?.runs[0];
     const details = <section id={id} hidden={!wide && !showing} aria-label={`Details for ${name}`}
-        className="sentinel-refrain-run-detail" data-testid="sentinel-coda-details" onKeyDown={event => {
+        className="sentinel-refrain-run-detail sentinel-coda-details" data-testid="sentinel-coda-details" onKeyDown={event => {
             if (event.key !== 'Escape') return;
             event.preventDefault();
             event.stopPropagation();
@@ -53,6 +55,8 @@ export function SentinelCodaDetails({ id, name, client, owner, items, data, titl
             <h4 ref={headingRef} tabIndex={-1} className="font-semibold">{name}</h4>
             <Button size="sm" variant="ghost" aria-label="Close Coda details" onClick={() => leave(true)}>×</Button>
         </div>
+        {actions}
+        {children}
         {!config ? <p role="status" className={MUTED}>Loading Coda…</p> : <>
             <p className={config.paused ? 'text-[#b5650f] dark:text-[#cca700]' : MUTED}>{config.enabled
                 ? config.paused ? `Schedule paused after ${config.consecutiveFailures} failures` : 'Scheduled' : 'Manual only'}</p>
@@ -71,7 +75,8 @@ export function SentinelCodaDetails({ id, name, client, owner, items, data, titl
                 </dl>
             </> : latest ? <>
                 <h5 className="font-semibold">Latest run: {latest.status.replace(/_/g, ' ')}</h5>
-                <RunDetail key={latest.id} client={client} owner={owner} items={items} summary={latest} id={`${id}-latest`} onFollowLink={onFollowLink} />
+                <CodaRunChatLink owner={owner} childProcessId={latest.childProcessId} onFollowLink={onFollowLink} />
+                <RunDetail key={latest.id} client={client} owner={owner} items={items} summary={latest} id={`${id}-latest`} onFollowLink={onFollowLink} showChatLink={false} />
             </> : <p className={MUTED}>No Coda runs yet. Use Run now to start the first review.</p>}
         </>}
     </section>;

@@ -762,10 +762,10 @@ describe('UnifiedTodoTab', () => {
         const finding = { runId: 'r1', itemId: 'i1', itemRevision: 1, state: 'proposed', fingerprint: 'f1', audit: [],
             finding: { itemId: 'i1', verdict: 'obsolete', confidence: 'high', summary: 'Superseded', rationale: 'Replacement landed', autoApply: false,
                 evidence: [{ kind: 'pr', ref: '#902', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] } };
-        scrubGetRun.mockResolvedValue({ findings: [finding] });
+        scrubGetRun.mockResolvedValue({ status: 'completed', deferredItemIds: [], awaitingReviewItemIds: [], findings: [finding] });
         scrubAccept.mockImplementation(async () => {
             get.mockResolvedValue(ledger([item({ status: 'done', archived: true, revision: 2, outcome: { summary: 'Obsolete: Superseded', recordedAt: '2026-10-11T01:00:00Z', recordedBy: 'user' } })], 2));
-            scrubGetRun.mockResolvedValue({ findings: [{ ...finding, state: 'accepted' }] });
+            scrubGetRun.mockResolvedValue({ status: 'completed', deferredItemIds: [], awaitingReviewItemIds: [], findings: [{ ...finding, state: 'accepted' }] });
             return {};
         });
         render(<UnifiedTodoTab owner={OWNER} />);
@@ -773,8 +773,11 @@ describe('UnifiedTodoTab', () => {
         expect(screen.queryByTestId('sentinel-todo-i1-details')).toBeNull();
         const row = screen.getByTestId('sentinel-todo-row-i1');
         if (entryPoint === 'row') fireEvent.click(within(row).getByRole('button', { name: 'Accept' }));
-        else fireEvent.click(within(entryPoint === 'strip' ? screen.getByTestId('sentinel-coda-strip')
-            : screen.getByRole('toolbar', { name: 'To-do actions' })).getByRole('button', { name: 'Accept all proposals' }));
+        else {
+            if (entryPoint === 'strip') fireEvent.click(screen.getByRole('button', { name: 'Show details for Coda' }));
+            fireEvent.click(within(entryPoint === 'strip' ? screen.getByTestId('sentinel-coda-details')
+                : screen.getByRole('toolbar', { name: 'To-do actions' })).getByRole('button', { name: 'Accept all proposals' }));
+        }
         await waitFor(() => expect(screen.queryByText('◇ Proposal: Obsolete (high)')).toBeNull());
         expect(scrubAccept).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'r1', 'i1', { expectedItemRevision: 1 });
         expect(get).toHaveBeenCalledTimes(2);
@@ -782,7 +785,7 @@ describe('UnifiedTodoTab', () => {
         await screen.findByTestId('sentinel-todo-row-i1');
     });
 
-    it('mounts the enabled scrubber once in the list column below triggers only after the ledger loads', async () => {
+    it('keeps one selection-only Coda card below triggers and its controls in the shared detail column', async () => {
         applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         const read = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValue(read.promise);
@@ -804,17 +807,25 @@ describe('UnifiedTodoTab', () => {
         expect(follows(addTrigger, strip)).toBe(true);
         expect(follows(screen.getByRole('toolbar', { name: 'To-do actions' }), list)).toBe(true);
         expect(strip.className).not.toMatch(/\bsticky\b/);
-        for (const name of ['Run now', 'Schedule ▾', 'History (0)', 'Select items']) within(strip).getByRole('button', { name });
-        fireEvent.click(within(strip).getByRole('button', { name: 'Select items' }));
-        expect(list.contains(within(strip).getByRole('group', { name: 'Select open items' }))).toBe(true);
-        fireEvent.click(within(strip).getByRole('button', { name: 'Schedule ▾' }));
-        const schedule = within(list).getByRole('form', { name: 'Coda schedule' });
+        expect(within(strip).getAllByRole('button')).toHaveLength(1);
+        fireEvent.click(within(strip).getByRole('button', { name: 'Show details for Coda' }));
+        const host = screen.getByTestId('sentinel-refrain-details-host');
+        const details = within(host).getByTestId('sentinel-coda-details');
+        expect(list.contains(details)).toBe(false);
+        expect(within(list).queryByRole('button', { name: 'Run now' })).toBeNull();
+        fireEvent.click(within(details).getByLabelText('More actions for Coda'));
+        for (const name of ['Run now', 'Schedule ▾', 'History (0)', 'Select items']) within(details).getByRole('button', { name });
+        fireEvent.click(within(details).getByRole('button', { name: 'Select items' }));
+        expect(host.contains(within(details).getByRole('group', { name: 'Select open items' }))).toBe(true);
+        fireEvent.click(within(details).getByRole('button', { name: 'Schedule ▾' }));
+        const schedule = within(host).getByRole('form', { name: 'Coda schedule' });
         expect(schedule.className).not.toMatch(/\babsolute\b/);
-        fireEvent.click(within(strip).getByRole('button', { name: 'History (0)' }));
-        const history = within(list).getByRole('region', { name: 'Coda run history' });
-        expect(follows(strip, history)).toBe(true);
+        fireEvent.click(within(details).getByRole('button', { name: 'History (0)' }));
+        expect(within(host).getByRole('region', { name: 'Coda run history' })).toBeVisible();
+        expect(within(list).queryByRole('region', { name: 'Coda run history' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /Fix login/ }));
         expect(screen.getAllByTestId('sentinel-coda-strip')).toHaveLength(1);
+        expect(within(host).queryByTestId('sentinel-coda-details')).toBeNull();
         expect(scrubGet).toHaveBeenCalledOnce();
     });
 
@@ -2720,13 +2731,16 @@ describe('UnifiedTodoTab split layout', () => {
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
             runs: [{ id: 'r1', childProcessId: 'scrub-chat', status: 'completed', trigger: 'manual', createdAt: '2026-10-11T00:00:00Z',
                 counts: { done: 0, proposals: 1, unverified: 0 }, itemCount: 1, deferredCount: 0, awaitingReviewCount: 0 }] });
-        scrubGetRun.mockResolvedValue({ findings: [{ runId: 'r1', itemId: 'i1', itemRevision: 1, state: 'proposed', fingerprint: 'f1', audit: [],
+        scrubGetRun.mockResolvedValue({ status: 'completed', deferredItemIds: [], awaitingReviewItemIds: [], findings: [{ runId: 'r1', itemId: 'i1', itemRevision: 1, state: 'proposed', fingerprint: 'f1', audit: [],
             finding: { itemId: 'i1', verdict: 'obsolete', confidence: 'high', summary: 'Superseded', rationale: 'Replacement landed', autoApply: false,
                 evidence: [{ kind: 'pr', ref: '#902', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] } }] });
         render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId={OWNER.processId} />);
         await screen.findByText('◇ Proposal: Obsolete (high)');
+        fireEvent.click(screen.getByRole('button', { name: 'Show details for Coda' }));
+        const coda = screen.getByTestId('sentinel-coda-details');
+        fireEvent.click(within(coda).getByLabelText('More actions for Coda'));
+        fireEvent.click(within(coda).getAllByRole('link', { name: 'Open chat' })[0]);
         select();
-        fireEvent.click(within(screen.getByTestId('sentinel-coda-strip')).getByRole('link', { name: 'Open chat' }));
         expect(screen.getByRole('heading', { name: /Fix login/ })).toBeTruthy();
         expect(screen.getByRole('button', { pressed: true, name: /Fix login/ })).toBeTruthy();
         fireEvent.click(within(detail()).getByRole('button', { name: 'Accept' }));

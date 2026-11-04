@@ -1211,16 +1211,18 @@ launch/retry/cancel or authorization controls.
 The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
 **Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
-and hosts Coda as its pinned built-in row. Card details (title/blank-space selection into
-To-do's detail column), Refrain history navigation and selection,
+and hosts Coda as its pinned built-in row. Selection-only cards open To-do's detail column;
+per-item controls use the selected detail toolbar, with history and run details in that column.
+Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
 three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
 boundary while API/storage retain positive safe integer tokens.
 
 `SentinelCoda` mounts after the ledger loads when both live ledger and
-Coda flags are enabled; its function child places one inline strip and history in
-the list column below Overtures, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
+Coda flags are enabled; its function child places one selection strip in
+the list column below Overtures. Its controls, forms and history use the selected detail pane.
+Owner/endpoint remounts isolate async state and drafts.
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do

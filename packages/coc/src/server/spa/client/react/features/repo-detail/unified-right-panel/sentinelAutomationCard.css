@@ -92,6 +92,23 @@
 }
 .sentinel-automation-last-run > .sentinel-automation-error { flex: 1 1 140px; }
 .sentinel-automation-secondary > details { flex-basis: 100%; }
+.sentinel-automation-toolbar {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0;
+}
+.sentinel-automation-toolbar > * { max-width: 100%; }
+.sentinel-refrain-run-detail summary {
+    min-height: 32px;
+    max-width: 100%;
+    padding: 6px 4px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.sentinel-refrain-run-detail summary:focus-visible { outline: 2px solid #0078d4; outline-offset: 1px; }
 
 .sentinel-refrain-history { min-width: 0; }
 .sentinel-refrain-history[open] { flex-basis: 100%; }
@@ -131,7 +148,7 @@
     text-align: left;
 }
 .sentinel-refrain-run-state { flex-basis: 100%; min-width: 0; }
-.sentinel-refrain-run-detail { padding: 2px; }
+.sentinel-refrain-run-detail { padding: 2px; overflow-wrap: anywhere; }
 .sentinel-refrain-history-body[data-layout="split"] > .sentinel-refrain-run-detail {
     border-left: 1px solid #e0e0e0;
     padding-left: 8px;
@@ -168,5 +185,6 @@
 .sentinel-refrain-run-detail button:focus-visible,
 .sentinel-refrain-run-detail pre:focus-visible { outline: 2px solid #0078d4; outline-offset: 1px; }
 @media (max-width: 767px), (pointer: coarse) {
-    .sentinel-refrain-run-detail button { min-height: 44px; }
+    .sentinel-refrain-run-detail button,
+    .sentinel-refrain-run-detail summary { min-height: 44px; }
 }
