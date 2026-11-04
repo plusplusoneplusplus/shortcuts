@@ -61,6 +61,7 @@ import type { ChatAttachment } from '../../types/attachments';
 import { getPrewarmDebounceMs, isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { SENTINEL_TODO_CONTEXT_DRAG_KIND, type SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import { resolveSentinelTodoContext, sentinelTodoContextScopeError } from './sentinelTodoContext';
+import { hasSentinelRefrainDrag, readSentinelRefrainDrag, resolveSentinelRefrainInstructions } from './sentinelRefrainDrop';
 import { useCommitContextOwner } from './gitCommitContext';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import {
@@ -382,7 +383,7 @@ export function FollowUpInputArea({
         // The recording note below says why; the draft stays in the composer.
         if (demoCapturing) return Promise.resolve();
         if (pendingTodoReads.current.size > 0) {
-            setSessionContextDropError('Wait for the to-do context to finish loading before sending.');
+            setSessionContextDropError('Wait for the dropped content to finish loading before sending.');
             return Promise.resolve();
         }
         return mode === undefined ? send(content) : send(content, mode);
@@ -423,6 +424,11 @@ export function FollowUpInputArea({
     const providerChipRef = useRef<HTMLButtonElement>(null);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
+    const [refrainDragActive, setRefrainDragActive] = useState(false);
+    const refrainComposerReady = useRef(false);
+    refrainComposerReady.current = !inputDisabled && !sending;
+    const latestDraftRef = useRef(followUpInput);
+    latestDraftRef.current = followUpInput;
     const sessionContextDragDepthRef = useRef(0);
     const rootRef = useRef<HTMLDivElement>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
@@ -815,6 +821,7 @@ export function FollowUpInputArea({
     function resetSessionContextDragState() {
         sessionContextDragDepthRef.current = 0;
         setSessionContextDragActive(false);
+        setRefrainDragActive(false);
     }
 
     function getUnsupportedSessionContextDropError(): string {
@@ -834,35 +841,38 @@ export function FollowUpInputArea({
     function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
-        if (!dataTransferHasFilePath(e.dataTransfer)
+        if (!hasSentinelRefrainDrag(e.dataTransfer) && !dataTransferHasFilePath(e.dataTransfer)
             && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         sessionContextDragDepthRef.current += 1;
         setSessionContextDragActive(true);
+        setRefrainDragActive(hasSentinelRefrainDrag(e.dataTransfer));
     }
 
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
-        if (!dataTransferHasFilePath(e.dataTransfer)
+        if (!hasSentinelRefrainDrag(e.dataTransfer) && !dataTransferHasFilePath(e.dataTransfer)
             && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setSessionContextDragActive(true);
+        setRefrainDragActive(hasSentinelRefrainDrag(e.dataTransfer));
     }
 
     function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
-        if (!dataTransferHasFilePath(e.dataTransfer)
+        if (!hasSentinelRefrainDrag(e.dataTransfer) && !dataTransferHasFilePath(e.dataTransfer)
             && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
         if (sessionContextDragDepthRef.current === 0) {
             setSessionContextDragActive(false);
+            setRefrainDragActive(false);
         }
     }
 
@@ -904,6 +914,43 @@ export function FollowUpInputArea({
     }
 
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (hasSentinelRefrainDrag(e.dataTransfer)) {
+            e.preventDefault();
+            e.stopPropagation();
+            resetSessionContextDragState();
+            const source = readSentinelRefrainDrag(e.dataTransfer);
+            if (!source || inputDisabled || sending) {
+                setSessionContextDropError(source ? 'The composer is unavailable.' : 'Invalid refrain drag. Drag it again from Refrains.');
+                return;
+            }
+            const key = `refrain:${contextOwnerKey}:${source.refrainId}`;
+            if (pendingTodoReads.current.has(key)) return;
+            pendingTodoReads.current.add(key);
+            setPendingContextReads(pendingTodoReads.current.size);
+            setSessionContextDropError(null);
+            const epoch = todoReadEpoch.current;
+            const ownerKey = contextOwnerKey;
+            void resolveSentinelRefrainInstructions(source, sentinelTodoOwner).then(instructions => {
+                if (todoReadEpoch.current !== epoch || contextOwnerRef.current !== ownerKey || !refrainComposerReady.current) return;
+                // Read at completion so text typed while loading is retained too.
+                const current = richTextRef.current?.getValue() ?? latestDraftRef.current;
+                const text = current + (current && !current.endsWith('\n') ? '\n\n' : '') + instructions;
+                skipNextSyncRef.current = true;
+                setFollowUpInput(text);
+                richTextRef.current?.setValue(text, text.length);
+                setFollowUpCursorPos(text.length);
+                followUpCursorTouchedRef.current = true;
+                richTextRef.current?.focus();
+            }).catch(error => {
+                if (todoReadEpoch.current === epoch && contextOwnerRef.current === ownerKey) {
+                    setSessionContextDropError(error instanceof Error ? error.message : 'Could not load the refrain instructions.');
+                }
+            }).finally(() => {
+                if (todoReadEpoch.current !== epoch || contextOwnerRef.current !== ownerKey || !pendingTodoReads.current.delete(key)) return;
+                setPendingContextReads(pendingTodoReads.current.size);
+            });
+            return;
+        }
         if (handleFilePathDrop(e)) return;
         if (!sessionContextAttachmentsEnabled) return;
         if (!dataTransferHasSessionContext(e.dataTransfer)) {
@@ -1183,7 +1230,7 @@ export function FollowUpInputArea({
                 </div>
             )}
             {pendingContextReads > 0 && (
-                <div role="status" className="text-xs text-[#616161] dark:text-[#9d9d9d]">Loading to-do context…</div>
+                <div role="status" className="text-xs text-[#616161] dark:text-[#9d9d9d]">Loading dropped content…</div>
             )}
             {attachmentError && (
                 <div className="text-xs text-[#f14c4c]" data-testid="follow-up-attachment-error">{attachmentError}</div>
@@ -1259,7 +1306,7 @@ export function FollowUpInputArea({
                                 className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
                                 data-testid="session-context-drop-hint"
                             >
-                                Drop to copy context
+                                {refrainDragActive ? 'Drop to copy saved refrain instructions into this draft' : 'Drop to copy context'}
                             </div>
                         )}
                         {prComposerChips}

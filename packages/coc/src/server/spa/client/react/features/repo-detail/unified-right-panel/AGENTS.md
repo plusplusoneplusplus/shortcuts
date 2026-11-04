@@ -1187,7 +1187,10 @@ Every Refrain card and the Coda strip/built-in row open details from their title
 button (`AutomationTitleButton`, Enter/Space, `aria-pressed`) or a click on blank card space;
 `selectCardOnClick` ignores controls, disclosures, text selection and clicks bubbling back from
 portaled details. Cards contain identity/status and accessible selection only; collection-level
-New refrain stays in the list header. The selected detail title has a wrapping action group:
+New refrain stays in the list header. Each Refrain has a copy-drag grip carrying
+only its ID and exact workspace/Sentinel/server owner. Its owning Sentinel composer
+reads saved instructions into the existing draft; dropping never runs or changes
+the refrain. The selected detail title has a wrapping action group:
 Refrain run/pause/cancel and More (edit/delete), gate actions, and history all use the
 existing owner-bound callbacks. Coda's run, schedule, selection, proposal, recovery and history
 controls share this detail-column placement. Forms, errors and run details stay in that column.

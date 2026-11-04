@@ -813,7 +813,10 @@ references before editing. Paths are package-relative.
   Bind workspace, parent Sentinel and concrete server identity; remote selections
   never fall back locally. Serialize only user-facing tracking fields, not job links
   or internal audit metadata. Attaching is read-only and grants no execution authority;
-  manual items remain tracking-only. See the composer knowledge reference for lifecycle rules.
+  manual items remain tracking-only. Refrain copy drags carry the exact owner and ID;
+  the owning Sentinel composer reads saved instructions into its existing draft.
+  Dropping never runs, edits or schedules a refrain. See the composer knowledge
+  reference for lifecycle rules.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

@@ -12,7 +12,8 @@ import userEvent from '@testing-library/user-event';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
-const { tracker, mockBrowserEnabled, mockPatchMetadata, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockGetSentinelTodos } = vi.hoisted(() => ({
+const { tracker, mockRefrains, refrainOrigins, mockBrowserEnabled, mockPatchMetadata, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockGetSentinelTodos } = vi.hoisted(() => ({
+    mockRefrains: vi.fn(), refrainOrigins: [] as string[],
     mockBrowserEnabled: { value: false },
     mockPatchMetadata: vi.fn(),
     tracker: {
@@ -62,18 +63,20 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getCocClientFor: () => ({
+    getCocClientFor: (origin: string) => { refrainOrigins.push(origin); return ({
+        request: vi.fn().mockResolvedValue({ features: {} }),
         processes: { patchMetadata: mockPatchMetadata },
-        sentinelTodos: { get: mockGetSentinelTodos },
+        sentinelTodos: { get: mockGetSentinelTodos, jobs: { list: mockRefrains } },
         preferences: { getLlmToolsConfig: mockGetLlmToolsConfig },
-    }),
-    getSpaCocClient: () => ({
+    }); },
+    getSpaCocClient: () => { refrainOrigins.push('local'); return ({
+        request: vi.fn().mockResolvedValue({ features: {} }),
         processes: { patchMetadata: mockPatchMetadata },
-        sentinelTodos: { get: mockGetSentinelTodos },
+        sentinelTodos: { get: mockGetSentinelTodos, jobs: { list: mockRefrains } },
         preferences: {
             getLlmToolsConfig: mockGetLlmToolsConfig,
         },
-    }),
+    }); },
 }));
 
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
@@ -97,6 +100,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { createWorkingTreeFileContextPayload } from '../../../../src/server/spa/client/react/features/chat/gitFileContext';
 import { createSentinelTodoContextPayload } from '../../../../src/server/spa/client/react/features/chat/sentinelTodoContext';
+import { createSentinelRefrainDragPayload, SENTINEL_REFRAIN_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sentinelRefrainDrop';
 import { useAttachedContext } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -117,6 +121,8 @@ beforeEach(() => {
     mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockGetSentinelTodos.mockReset();
+    mockRefrains.mockReset().mockResolvedValue({ jobs: [{ id: 'j1', instructions: 'Saved instructions.\nKeep formatting.' }] });
+    refrainOrigins.length = 0;
     resetActiveChatAttach();
     mockGetLlmToolsConfig.mockResolvedValue({
         tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
@@ -497,6 +503,117 @@ describe('FollowUpInputArea — dismiss suggestions', () => {
         });
         expect(screen.getByTestId('suggestion-chips')).toBeTruthy();
         expect(screen.getByTestId('dismiss-suggestions-btn')).toBeTruthy();
+    });
+});
+
+describe('FollowUpInputArea — saved refrain instructions', () => {
+    const owner = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'current-process' };
+    const payload = createSentinelRefrainDragPayload(owner, { id: 'j1' });
+    const transfer = (source: unknown = payload) => makeSessionDataTransfer(source, SENTINEL_REFRAIN_DRAG_MIME);
+    const props = (overrides: Partial<FollowUpInputAreaProps> = {}) => makeProps({
+        selectedMode: 'sentinel', sentinelTodoOwner: owner, followUpInput: 'Keep draft', ...overrides,
+    });
+    const drop = async (source: unknown = payload) => {
+        await act(async () => { fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer(source) }); });
+    };
+
+    it('shows copy feedback and appends current saved instructions without sending or attaching', async () => {
+        const p = props();
+        render(<FollowUpInputArea {...p} />);
+        const dataTransfer = transfer();
+        fireEvent.dragEnter(screen.getByTestId('chat-input-bar'), { dataTransfer });
+        expect(dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint').textContent).toContain('saved refrain instructions');
+        fireEvent.dragLeave(screen.getByTestId('chat-input-bar'), { dataTransfer });
+        expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
+        fireEvent.dragOver(screen.getByTestId('chat-input-bar'), { dataTransfer });
+        await drop();
+        expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
+        expect(mockRefrains).toHaveBeenCalledWith('ws-1', 'current-process');
+        expect(p.setFollowUpInput).toHaveBeenCalledWith('Keep draft\n\nSaved instructions.\nKeep formatting.');
+        expect(p.onSend).not.toHaveBeenCalled();
+        expect(p.onAttachSessionContext).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { ...payload, sourceWorkspaceId: 'another-repo' },
+        { ...payload, sourceProcessId: 'another-sentinel' },
+        { ...payload, sourceRoutingRef: 'remote:unknown:ws-1' },
+        { ...payload, version: 2 },
+        { ...payload, refrainId: '' },
+        null,
+    ])('rejects malformed or wrong-owner drops before reading saved instructions', async source => {
+        const p = props();
+        render(<FollowUpInputArea {...p} />);
+        await drop(source);
+        expect(screen.getByTestId('follow-up-session-context-error')).toBeTruthy();
+        expect(mockRefrains).not.toHaveBeenCalled();
+        expect(p.setFollowUpInput).not.toHaveBeenCalled();
+    });
+
+    it('fills an empty draft without adding whitespace', async () => {
+        const p = props({ followUpInput: '' });
+        render(<FollowUpInputArea {...p} />);
+        await drop();
+        expect(p.setFollowUpInput).toHaveBeenCalledWith('Saved instructions.\nKeep formatting.');
+    });
+
+    it.each([{ inputDisabled: true }, { sending: true }, { sentinelTodoOwner: null }])('preserves unavailable drafts (%j)', async overrides => {
+        const p = props(overrides);
+        render(<FollowUpInputArea {...p} />);
+        await drop();
+        expect(mockRefrains).not.toHaveBeenCalled();
+        expect(p.setFollowUpInput).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error')).toBeTruthy();
+    });
+
+    it.each(['missing', 'failed', 'empty'])('keeps the draft when the read is %s', async kind => {
+        if (kind === 'failed') mockRefrains.mockRejectedValue(new Error('Read failed'));
+        else mockRefrains.mockResolvedValue({ jobs: kind === 'missing' ? [] : [{ id: 'j1', instructions: ' ' }] });
+        const p = props();
+        render(<FollowUpInputArea {...p} />);
+        await drop();
+        expect(screen.getByTestId('follow-up-session-context-error')).toBeTruthy();
+        expect(p.setFollowUpInput).not.toHaveBeenCalled();
+        expect(tracker.domValue).toBe('Keep draft');
+    });
+
+    it.each(['typed', 'owner', 'unmount', 'disabled', 'route'] as const)('handles %s changes during the authoritative read', async change => {
+        const remoteOwner = { ...owner, ownerRoutingRef: 'remote:a:ws-1' };
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'a', baseUrl: 'https://a.example' }]);
+        let resolve!: (value: unknown) => void;
+        mockRefrains.mockReturnValue(new Promise(done => { resolve = done; }));
+        const p = props({ sentinelTodoOwner: remoteOwner, sentinelNextStepsEnabled: true, suggestions: ['Continue'] });
+        const mounted = render(<FollowUpInputArea {...p} />);
+        await drop(createSentinelRefrainDragPayload(remoteOwner, { id: 'j1' }));
+        await drop(createSentinelRefrainDragPayload(remoteOwner, { id: 'j1' }));
+        expect(mockRefrains).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('activity-chat-send-btn')).toBeDisabled();
+        fireEvent.click(screen.getByTestId('suggestion-chip'));
+        expect(p.onSend).not.toHaveBeenCalled();
+        if (change === 'typed') tracker.domValue = 'Keep draft plus typing';
+        if (change === 'owner') mounted.rerender(<FollowUpInputArea {...p} sentinelTodoOwner={{ ...remoteOwner, processId: 'new-owner' }} />);
+        if (change === 'disabled') mounted.rerender(<FollowUpInputArea {...p} inputDisabled />);
+        if (change === 'unmount') mounted.unmount();
+        if (change === 'route') registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'a', baseUrl: 'https://replacement.example' }]);
+        await act(async () => { resolve({ jobs: [{ id: 'j1', instructions: 'Fresh saved text' }] }); });
+        if (change === 'typed') expect(p.setFollowUpInput).toHaveBeenCalledWith('Keep draft plus typing\n\nFresh saved text');
+        else expect(p.setFollowUpInput).not.toHaveBeenCalled();
+        expect(p.onSend).not.toHaveBeenCalled();
+    });
+
+    it('uses the concrete remote group owner and rejects a colliding server', async () => {
+        registerCloneBaseUrls(['a', 'b'].map(serverId => ({ workspaceId: 'ws-1', serverId, baseUrl: 'https://a.example' })));
+        const remoteOwner = { ...owner, ownerRoutingRef: 'remote:a:ws-1' };
+        const p = props({ workspaceId: 'group-view', sentinelTodoOwner: remoteOwner });
+        render(<FollowUpInputArea {...p} />);
+        await drop(createSentinelRefrainDragPayload(remoteOwner, { id: 'j1' }));
+        expect(mockRefrains).toHaveBeenCalledWith('ws-1', 'current-process');
+        expect(refrainOrigins).toContain('https://a.example');
+        mockRefrains.mockClear();
+        await drop(createSentinelRefrainDragPayload({ ...remoteOwner, ownerRoutingRef: 'remote:b:ws-1' }, { id: 'j1' }));
+        expect(mockRefrains).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toContain('owning server');
     });
 });
 
