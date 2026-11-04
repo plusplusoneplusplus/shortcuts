@@ -149,6 +149,7 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
         expect(zone).toMatchObject({ side: 'modified', afterLineNumber: 4 });
         const card = within(zone.domNode).getByTestId('comment-card-c1');
         expect(card.textContent).toContain('note c1');
+        expect(within(card).queryByRole('button', { name: 'Fix with AI' })).toBeNull();
         fireEvent.click(within(card).getByTitle('Resolve'));
         expect(hooks.resolveComment).toHaveBeenCalledWith('c1');
         view.unmount();
