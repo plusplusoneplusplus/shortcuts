@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQueuedTaskPoll } from '../../../../src/server/spa/client/react/queue/hooks/useQueuedTaskPoll';
+import { ObsoleteChatReadError } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatHistoryPaging';
 
 const client = vi.hoisted(() => ({
     queue: { getTask: vi.fn() },
@@ -57,6 +58,17 @@ describe('queued chat bounded hydration seam', () => {
         await act(async () => resolve({ process: { conversationTurns: [{ role: 'user', content: 'late', timeline: [] }] } }));
         expect(opts.setTurnsAndRef).not.toHaveBeenCalled();
         expect(opts.setProcessDetails).not.toHaveBeenCalled();
+    });
+    it('does not publish an obsolete shared read or fall back to another reader', async () => {
+        client.queue.getTask.mockResolvedValue({ task: { status: 'completed', processId: 'queue_chat' } });
+        const readProcess = vi.fn().mockRejectedValue(new ObsoleteChatReadError());
+        const opts = options({ readProcess });
+        renderHook(() => useQueuedTaskPoll(opts));
+        await act(async () => vi.advanceTimersByTime(2000));
+        expect(readProcess).toHaveBeenCalledWith('queue_chat');
+        expect(opts.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(opts.setProcessDetails).not.toHaveBeenCalled();
+        expect(client.processes.get).not.toHaveBeenCalled();
     });
     it('preserves the unparameterized default reader for other callers', async () => {
         client.queue.getTask.mockResolvedValue({ task: { status: 'completed', processId: 'queue_chat' } });

@@ -1385,6 +1385,261 @@ describe('ChatDetail owner WebSocket refresh batching', () => {
         expect(screen.getByText('CoC API request failed before receiving a response')).toBeTruthy();
         await act(async () => fixture.notify());
         expect(fixture.reads()).toBe(initialReads + 2);
+        expect(screen.queryByText('CoC API request failed before receiving a response')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it.each([undefined, 'https://owner.example.test'])('does not report same-owner revision cancellation as failure at %s', async baseUrl => {
+        const fixture = ownerFixture(baseUrl, 'sentinel');
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        let signal!: AbortSignal;
+        fetchMock.mockImplementationOnce((_url, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+            signal = init.signal!;
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }));
+        await act(async () => fixture.notify());
+        expect(signal.aborted).toBe(false);
+        await act(async () => {
+            mockState.sseOptions.onConversationSnapshot(
+                [{ role: 'assistant', content: 'revision snapshot', turnIndex: 0, timeline: [] }],
+                { oldestTurnIndex: 0, hasMore: false, totalTurns: 1, historyRevision: 1 },
+            );
+        });
+        expect(signal.aborted).toBe(true);
+        expect(screen.getByText('revision snapshot')).toBeTruthy();
+        expect(screen.queryByText('CoC API request was aborted')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('real failure')));
+        await act(async () => fixture.notify());
+        expect(screen.getByText('CoC API request failed before receiving a response')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Refresh chat' })).toBeTruthy();
+    });
+
+    it('retries the owner read without resending a remembered failed message or clearing its error', async () => {
+        const fixture = ownerFixture('https://owner.example.test', 'sentinel');
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const options = (globalThis as any).__useSendMessage_opts;
+        act(() => {
+            options.setError('Message submission failed');
+            options.lastFailedMessageRef.current = 'Failed message';
+        });
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('read failure')));
+        await act(async () => fixture.notify());
+        const beforeRetry = fixture.reads();
+        let resolveRead!: (response: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveRead = resolve; }));
+        act(() => {
+            fireEvent.click(screen.getByRole('button', { name: 'Refresh chat' }));
+            fireEvent.click(screen.getByTestId('retry-btn'));
+        });
+        expect(fixture.reads()).toBe(beforeRetry + 1);
+        expect(screen.getByTestId('retry-btn')).toBeDisabled();
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        await act(async () => resolveRead(new Response(JSON.stringify(fixture.data('recovered history')), {
+            headers: { 'content-type': 'application/json' },
+        })));
+        expect(screen.getByText('recovered history')).toBeTruthy();
+        expect(screen.queryByText('CoC API request failed before receiving a response')).toBeNull();
+        expect(screen.getByText('Message submission failed')).toBeTruthy();
+        act(() => {
+            fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+            fireEvent.click(screen.getByTestId('retry-btn'));
+        });
+        expect(mockState.sendFollowUp).toHaveBeenCalledExactlyOnceWith('Failed message', 'enqueue', expect.any(Object));
+    });
+
+    it('reloads a failed initial read without submitting any message', async () => {
+        const fixture = ownerFixture();
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { status: 500, body: { error: 'History unavailable' } },
+        });
+        render(fixture.tree());
+        await screen.findByRole('button', { name: 'Reload chat' });
+        const reads = fixture.reads();
+        const attachmentClears = mockState.clearAttachments.mock.calls.length;
+        const options = (globalThis as any).__useSendMessage_opts;
+        act(() => options.setFollowUpInput('Unsent draft'));
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: fixture.data('loaded history') },
+        });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reload chat' })));
+        expect(screen.getByText('loaded history')).toBeTruthy();
+        expect(fixture.reads()).toBe(reads + 1);
+        expect(mockState.clearAttachments).toHaveBeenCalledTimes(attachmentClears);
+        expect((globalThis as any).__useSendMessage_opts.followUpInputRef.current).toBe('Unsent draft');
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    });
+
+    it('does not offer message retry for an unrelated error after a failed submission', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const options = (globalThis as any).__useSendMessage_opts;
+        act(() => {
+            options.setError('Send failed');
+            options.lastFailedMessageRef.current = 'Failed message';
+        });
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        act(() => options.setSessionExpired(true));
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+        expect(options.lastFailedMessageRef.current).toBe('Failed message');
+        act(() => options.setSessionExpired(false));
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        act(() => options.setError('Target verification failed'));
+        expect(screen.getByText('Target verification failed')).toBeTruthy();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('retains a real refresh failure until that read succeeds', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const refresh = (globalThis as any).__useSendMessage_opts.refreshConversation;
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('unavailable')));
+        await act(async () => refresh(processId));
+        expect(screen.getByRole('button', { name: 'Refresh chat' })).toBeTruthy();
+        fetchMock.mockImplementationOnce(() => new Response(JSON.stringify({ error: 'Still unavailable' }), {
+            status: 503, headers: { 'content-type': 'application/json' },
+        }));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh chat' })));
+        expect(screen.getByText('Still unavailable')).toBeTruthy();
+        await act(async () => fixture.notify());
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it('ignores a late failure after a newer read succeeds', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        let rejectRead!: (error: Error) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectRead = reject; }));
+        await act(async () => fixture.notify());
+        await act(async () => fixture.notify());
+        await act(async () => rejectRead(new Error('old request failed')));
+        expect(screen.queryByText('CoC API request failed before receiving a response')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it.each(['direct refresh', 'WebSocket notification'] as const)('does not let an older refresh overwrite a newer %s', async source => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const refresh = (globalThis as any).__useSendMessage_opts.refreshConversation;
+        let resolveOld!: (response: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve; }));
+        let older!: Promise<void>;
+        act(() => { older = refresh(processId); });
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: fixture.data('newest history') },
+        });
+        await act(async () => {
+            if (source === 'direct refresh') await refresh(processId);
+            else fixture.notify();
+        });
+        const stale = fixture.data('obsolete history');
+        stale.history.historyRevision = 1;
+        await act(async () => {
+            resolveOld(new Response(JSON.stringify(stale), { headers: { 'content-type': 'application/json' } }));
+            await older;
+        });
+        expect(screen.getByText('newest history')).toBeTruthy();
+        expect(screen.queryByText('obsolete history')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it('hydrates from a newer owner notification when the initial read becomes obsolete', async () => {
+        const fixture = ownerFixture();
+        let resolveInitial!: (response: Response) => void;
+        let reads = 0;
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': () => {
+                if (++reads === 1) return new Promise<Response>(resolve => { resolveInitial = resolve; });
+                return new Response(JSON.stringify(fixture.data('newest history')), {
+                    headers: { 'content-type': 'application/json' },
+                });
+            },
+        });
+        await act(async () => { render(fixture.tree()); });
+        await act(async () => fixture.notify());
+        await act(async () => resolveInitial(new Response(JSON.stringify(fixture.data('obsolete initial history')), {
+            headers: { 'content-type': 'application/json' },
+        })));
+        expect(screen.getByText('newest history')).toBeTruthy();
+        expect(screen.queryByText('obsolete initial history')).toBeNull();
+        expect((globalThis as any).__useSendMessage_opts.inputDisabled).toBe(false);
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it('does not let an obsolete transport that ignores abort block read recovery', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        let resolveOld!: (response: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve; }));
+        await act(async () => fixture.notify());
+        await act(async () => mockState.sseOptions.onConversationSnapshot(
+            [{ role: 'assistant', content: 'revision snapshot', turnIndex: 0, timeline: [] }],
+            { oldestTurnIndex: 0, hasMore: false, totalTurns: 1, historyRevision: 1 },
+        ));
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('current failure')));
+        await act(async () => fixture.notify());
+        expect(screen.getByRole('button', { name: 'Refresh chat' })).not.toBeDisabled();
+        const recovered = fixture.data('recovered history');
+        recovered.history.historyRevision = 1;
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: recovered },
+        });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh chat' })));
+        await act(async () => resolveOld(new Response(JSON.stringify(fixture.data('obsolete history')), {
+            headers: { 'content-type': 'application/json' },
+        })));
+        expect(screen.getByText('recovered history')).toBeTruthy();
+        expect(screen.queryByText('obsolete history')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it.each(['resolve', 'reject'] as const)('discards pending old-owner reads that %s after replacement', async outcome => {
+        const fixture = ownerFixture();
+        const view = render(fixture.tree());
+        await screen.findByText('initial history');
+        let resolveRead!: (response: Response) => void;
+        let rejectRead!: (error: Error) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve, reject) => {
+            resolveRead = resolve;
+            rejectRead = reject;
+        }));
+        await act(async () => fixture.notify());
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: fixture.data('new owner history') },
+        });
+        view.rerender(fixture.tree({ ...fixture.owner, selectionId: 'replacement-owner' }));
+        await screen.findByText('new owner history');
+        await act(async () => {
+            if (outcome === 'reject') rejectRead(new Error('old owner failure'));
+            else resolveRead(new Response(JSON.stringify(fixture.data('old owner history')), {
+                headers: { 'content-type': 'application/json' },
+            }));
+        });
+        expect(screen.getByText('new owner history')).toBeTruthy();
+        expect(screen.queryByText('old owner history')).toBeNull();
+        expect(screen.queryByText('CoC API request failed before receiving a response')).toBeNull();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
     });
 
     it.each(['unmount', 'owner-change'])('discards scheduled work on %s', async action => {

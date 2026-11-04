@@ -636,6 +636,7 @@ export function useSendMessage({
                 return;
             }
 
+            lastFailedMessageRef.current = '';
             acknowledgeAnnotations();
             if (includeComposerContext) {
                 clearImages();

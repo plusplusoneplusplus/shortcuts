@@ -216,6 +216,26 @@ function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInp
     };
 }
 
+describe('error recovery actions', () => {
+    it('shows an error without a retry action when no recovery is supplied', () => {
+        render(<FollowUpInputArea {...makeProps({ error: 'Could not mark as read', onRetry: undefined })} />);
+        expect(screen.getByText('Could not mark as read')).toBeTruthy();
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
+    it('labels and disables read recovery independently of message sending', () => {
+        const onRetry = vi.fn();
+        const props = makeProps({ error: 'Read failed', onRetry, retryLabel: 'Refresh chat' });
+        const view = render(<FollowUpInputArea {...props} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh chat' }));
+        expect(onRetry).toHaveBeenCalledOnce();
+        view.rerender(<FollowUpInputArea {...props} retrying />);
+        expect(screen.getByTestId('retry-btn')).toBeDisabled();
+        fireEvent.click(screen.getByTestId('retry-btn'));
+        expect(onRetry).toHaveBeenCalledOnce();
+    });
+});
+
 describe('FollowUpInputArea browser mode', () => {
     it('uses the concrete conversation owner rather than the selected repo group', async () => {
         mockBrowserEnabled.value = true;

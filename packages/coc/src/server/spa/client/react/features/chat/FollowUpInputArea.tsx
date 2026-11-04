@@ -116,7 +116,10 @@ export interface FollowUpInputAreaProps {
     selectedMode: ChatMode;
     setSelectedMode: (mode: ChatMode) => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
-    onRetry: () => void;
+    /** Recovery for the displayed error; omit unless that operation can be retried. */
+    onRetry?: () => void;
+    retryLabel?: string;
+    retrying?: boolean;
     onStop?: () => void;
     skills: SkillItem[];
     attachments: ChatAttachment[];
@@ -295,6 +298,8 @@ export function FollowUpInputArea({
     setSelectedMode,
     onSend: send,
     onRetry,
+    retryLabel = 'Retry',
+    retrying = false,
     onStop,
     skills,
     attachments,
@@ -1128,16 +1133,16 @@ export function FollowUpInputArea({
                 </div>
             )}
             {!nonRetryableError && error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
-            {!nonRetryableError && error && (
+            {!nonRetryableError && error && onRetry && (
                 <Button
                     variant="danger"
                     size="sm"
                     data-testid="retry-btn"
-                    loading={sending}
-                    disabled={sending}
+                    loading={sending || retrying}
+                    disabled={sending || retrying}
                     onClick={onRetry}
                 >
-                    Retry
+                    {retryLabel}
                 </Button>
             )}
             {suggestions.length > 0 && !sending && !isActiveGeneration && !suggestionsDismissed && (
