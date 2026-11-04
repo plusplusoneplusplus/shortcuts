@@ -1,4 +1,5 @@
 import { getEditingSessionId } from './editingSession';
+import { normalizeLanguageDocumentPath as normalizePath } from './documentPath';
 /**
  * Authoritative browser-side document buffers for language support (AC-02).
  *
@@ -762,10 +763,6 @@ function subscribe<T>(set: Set<T>, listener: T): () => void {
     return () => {
         set.delete(listener);
     };
-}
-
-function normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 /**

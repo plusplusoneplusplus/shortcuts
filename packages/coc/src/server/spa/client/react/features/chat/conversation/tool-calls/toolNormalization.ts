@@ -1,3 +1,5 @@
+import { isRecord } from '../../../../utils/typeGuards';
+
 export interface ToolLikeForNormalization {
     toolName?: string;
     name?: string;
@@ -15,10 +17,6 @@ export interface ToolLikeForNormalization {
 export interface CodexFileChange {
     path: string;
     kind: 'add' | 'delete' | 'update' | string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function normalizeToolName(rawName: string | undefined): string {

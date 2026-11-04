@@ -19,7 +19,7 @@
  * This mirrors what `App.tsx`'s handler used to compute inline; keeping it in
  * one place keeps the floating dialog and the canvas editor in sync.
  */
-import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { toForwardSlashes as normalizePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 import {
     deriveHomeDirFromWorkspaces,
     expandTildePath,
@@ -58,10 +58,6 @@ export interface MarkdownReviewInput {
     sourceFilePath?: string;
     /** Absolute task-root path hint carried by the event, if any. */
     taskRootPath?: string;
-}
-
-function normalizePath(pathValue: string): string {
-    return toForwardSlashes(pathValue);
 }
 
 /**

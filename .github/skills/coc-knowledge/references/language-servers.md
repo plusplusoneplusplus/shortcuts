@@ -19,7 +19,10 @@ saved master/per-definition enable fields, including false values, without
 rewriting the file. Missing or corrupt files use built-in defaults; corrupt files
 retain warnings. Acquisition and settings GET never seed configuration.
 
-File paths preserve spelling through normalization and URI mapping.
+File paths preserve spelling through normalization and URI mapping. Browser
+transport, document buffers and diff eligibility share
+`features/language-servers/documentPath.ts`: forward slashes and no leading slash,
+without case folding, whitespace trimming or dot-segment resolution.
 `file-identity.ts` resolves directory-entry spelling on the owning filesystem;
 `GET /api/repos/:id/file-identity?path=...` exposes that relative path. Alias
 resolution requires filesystem proof, including within Windows case-sensitive

@@ -1,4 +1,5 @@
 import { decodeSegment } from '../../layout/routePath';
+import { isRecord } from '../../utils/typeGuards';
 import { useReposOptional } from '../../contexts/ReposContext';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useWorkspaceSettingsRepos } from '../repo-settings/workspaceSettingsClient';
@@ -144,10 +145,6 @@ class PullRequestOpenError extends Error {
         this.name = 'PullRequestOpenError';
         this.status = status;
     }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function extractRecentPrWebUrl(value: unknown): string | undefined {

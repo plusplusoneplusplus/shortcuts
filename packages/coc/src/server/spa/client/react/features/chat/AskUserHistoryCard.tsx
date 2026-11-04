@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isRecord } from '../../utils/typeGuards';
 import { AskUserMarkdown } from './AskUserMarkdown';
 
 interface AskUserOption {
@@ -32,10 +33,6 @@ export interface AskUserHistoryToolCall {
     args?: unknown;
     result?: unknown;
     status?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function normalizeOption(value: unknown): AskUserOption | null {

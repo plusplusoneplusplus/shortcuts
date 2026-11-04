@@ -30,6 +30,7 @@ import {
 } from '../../repos/cloneRegistry';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { getEditingSessionId } from './editingSession';
+import { normalizeLanguageDocumentPath as normalizePath } from './documentPath';
 import type { ExternalSourceContent } from './externalSource';
 import { readSemanticTokensSupport, translateSemanticTokens } from './semanticTokens';
 
@@ -1241,11 +1242,6 @@ function emit<T>(listeners: Set<(value: T) => void>, value: T): void {
     for (const listener of [...listeners]) {
         listener(value);
     }
-}
-
-/** The bridge wants a workspace-relative POSIX path with no leading slash. */
-function normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 function defaultCreateSocket(url: string): SocketLike {

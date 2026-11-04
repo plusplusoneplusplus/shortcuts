@@ -12,6 +12,7 @@
  */
 
 import { browserDocumentUri } from '../../language-servers/documentStore';
+import { normalizeLanguageDocumentPath as normalizePath } from '../../language-servers/documentPath';
 import { isDiffRefUri, type DiffModelsInput, type MonacoDiffStage } from './monacoDiffOptions';
 
 /**
@@ -37,10 +38,6 @@ export interface DiffLanguageTargetInput {
     relativePath: string;
     stage: MonacoDiffStage;
     models: DiffModelsInput;
-}
-
-function normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 /** The document a diff may open with the language server, or why it may not. */

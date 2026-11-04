@@ -1,3 +1,5 @@
+import { isRecord } from './typeGuards';
+
 export interface ApplyPatchFileChange {
     path: string;
     insertions: number;
@@ -5,10 +7,6 @@ export interface ApplyPatchFileChange {
     isCreate: boolean;
     isDelete: boolean;
     fromPath?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function getApplyPatchText(args: unknown): string {

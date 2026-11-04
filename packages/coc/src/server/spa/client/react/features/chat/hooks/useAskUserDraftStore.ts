@@ -5,6 +5,8 @@
  * leak answers into one another.
  */
 
+import { isRecord } from '../../../utils/typeGuards';
+
 export type AskUserDraftValue = string | string[] | boolean | null;
 export type AskUserQuestionDisposition = 'answer' | 'skip' | 'needs-context';
 
@@ -24,10 +26,6 @@ type AskUserDraftMap = Record<string, Record<string, AskUserBatchDraft>>;
 
 const STORAGE_KEY = 'coc-ask-user-drafts';
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');

@@ -7,6 +7,7 @@ import { detectCommitsInToolGroup } from '../commitDetection';
 import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 import { detectPushesInToolGroup, type DetectedPush } from '../pushDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
+import { isRecord } from '../../../../utils/typeGuards';
 import { getCodexFileChanges, normalizeToolName } from './toolNormalization';
 import { classifyShellCommand, type ShellSemanticFamily } from './shellCommandClassifier';
 
@@ -52,10 +53,6 @@ export function getToolGroupCategory(
     const canonicalName = normalizeToolName(toolName);
     if (canonicalName === 'read_agent' && isRecord(args) && args.agent_id) return 'agent';
     return CATEGORY_MAP[canonicalName] ?? null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
