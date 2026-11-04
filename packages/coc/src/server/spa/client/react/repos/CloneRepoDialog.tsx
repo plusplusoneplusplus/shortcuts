@@ -3,13 +3,16 @@ import { Dialog, Button } from '../ui';
 import { useApp } from '../contexts/AppContext';
 import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 import {
-    browseWorkspaceFolders,
     cloneRepository,
     getRepositoryApiErrorMessage,
     registerWorkspace,
 } from './repositoryService';
 import { describeServerFailure, useServerSelection } from './useServerSelection';
 import { LOCAL_REPO_GROUP_SERVER_ID } from './repoGroupService';
+import { getPathLeaf, joinBrowserPath, useRepositoryFolderBrowser, type BrowserEntry } from './useRepositoryFolderBrowser';
+import { RepositoryBrowseRoots } from './RepositoryBrowseRoots';
+import { RepositoryServerField } from './RepositoryServerField';
+import { useRepositoryDialogSession } from './useRepositoryDialogSession';
 
 interface CloneRepoDialogProps {
     open: boolean;
@@ -22,38 +25,6 @@ interface CloneRepoDialogProps {
     serverId?: string;
     /** That server's base URL, so it is targetable before the list loads. */
     baseUrl?: string;
-}
-
-interface BrowserEntry {
-    name: string;
-    isGitRepo?: boolean;
-}
-
-interface BrowserResponse {
-    path: string;
-    parent?: string | null;
-    entries?: BrowserEntry[];
-    drives?: string[];
-    browseRoots?: Array<{ label: string; path: string }>;
-}
-
-function getPathLeaf(pathValue: string): string {
-    return pathValue
-        .replace(/[/\\]+$/, '')
-        .split(/[/\\]+/)
-        .filter(Boolean)
-        .pop() || '';
-}
-
-function joinBrowserPath(basePath: string, childName: string): string {
-    if (!basePath) {
-        return childName;
-    }
-    if (/[/\\]$/.test(basePath)) {
-        return `${basePath}${childName}`;
-    }
-    const separator = basePath.includes('\\') ? '\\' : '/';
-    return `${basePath}${separator}${childName}`;
 }
 
 /**
@@ -93,6 +64,7 @@ export function suggestNonConflictingName(
 export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }: CloneRepoDialogProps) {
     const { dispatch } = useApp();
     const server = useServerSelection(open, serverId, baseUrl);
+    const { capture } = useRepositoryDialogSession(open, server);
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const [url, setUrl] = useState('');
     const [parentDir, setParentDir] = useState('');
@@ -103,40 +75,8 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
     const [cloning, setCloning] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [browserPath, setBrowserPath] = useState('');
-    const [browserEntries, setBrowserEntries] = useState<BrowserEntry[]>([]);
-    const [browserParent, setBrowserParent] = useState<string | null>(null);
-    const [browserLoading, setBrowserLoading] = useState(false);
-    const [browserDrives, setBrowserDrives] = useState<string[]>([]);
-    const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
-    const [browserError, setBrowserError] = useState<string | null>(null);
-
-    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
-        // The server is passed explicitly when it just changed, since this
-        // callback still closes over the previous selection at that moment.
-        const target = server.resolveServer(targetServerId ?? server.serverId);
-        setBrowserLoading(true);
-        setBrowserError(null);
-        try {
-            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
-            setBrowserPath(data.path);
-            setParentDir(data.path);
-            setBrowserParent(data.parent || null);
-            setBrowserEntries(data.entries || []);
-            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-        } catch (browseError) {
-            setBrowserEntries([]);
-            setBrowserParent(null);
-            setBrowseRoots([]);
-            setBrowserError(describeServerFailure(
-                getRepositoryApiErrorMessage(browseError, 'Unable to browse this path'),
-                target,
-            ));
-        } finally {
-            setBrowserLoading(false);
-        }
-    }, [server]);
+    const browser = useRepositoryFolderBrowser({ open, server, onSelect: data => setParentDir(data.path) });
+    const { browserPath, browserEntries, browserParent, browserLoading, browserError, navigateTo, resetBrowser } = browser;
 
     // A path only means something on the server it came from, so switching
     // servers drops every path-scoped bit of state and re-roots at the new
@@ -145,14 +85,9 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
         server.selectServer(nextServerId);
         setParentDir('');
         setError(null);
-        setBrowserPath('');
-        setBrowserEntries([]);
-        setBrowserParent(null);
-        setBrowserDrives([]);
-        setBrowseRoots([]);
-        setBrowserError(null);
+        resetBrowser();
         void navigateTo('~', nextServerId);
-    }, [server, navigateTo]);
+    }, [server, navigateTo, resetBrowser]);
 
     useEffect(() => {
         if (!open) {
@@ -165,20 +100,12 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
         isAutoFolderNameRef.current = true;
         setCloning(false);
         setError(null);
-        setBrowserPath('');
-        setBrowserEntries([]);
-        setBrowserParent(null);
-        setBrowserDrives([]);
-        setBrowseRoots([]);
-        setBrowserError(null);
+        resetBrowser();
         // The target is passed explicitly: `useServerSelection` re-pins to the
         // launching context on the same flush, so the id captured by this
         // closure can still be the previous open's pick.
         void navigateTo('~', serverId || LOCAL_REPO_GROUP_SERVER_ID);
-        // `navigateTo` is deliberately not a dependency: it closes over the
-        // server selection, whose object identity changes every render, so
-        // including it would re-run this reset in a loop.
-    }, [open, serverId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [open, serverId, baseUrl, navigateTo, resetBrowser]);
 
     // Stable ref so the browserEntries effect can read the latest value without
     // re-running every time browserEntries changes.
@@ -242,6 +169,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
         }
 
         setCloning(true);
+        const isCurrent = capture();
         setError(null);
         try {
             const target = server.selected;
@@ -250,12 +178,14 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
                 parentDir: trimmedParentDir,
                 dirName: trimmedFolderName || undefined,
             }, target.baseUrl);
+            if (!isCurrent()) return;
             // Id is server-authoritative (machine-scoped); the server computes
             // the canonical workspace id from the cloned path.
             const workspace = await registerWorkspace({
                 name: getPathLeaf(clonedPath) || 'repo',
                 rootPath: clonedPath,
             }, target.baseUrl);
+            if (!isCurrent()) return;
             // Local and remote targets diverge here. A local id is immediately
             // routable, so we seed the store and jump straight into the repo.
             // A remote id only becomes routable once `aggregateRemoteWorkspaces`
@@ -270,14 +200,15 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
             onSuccess();
             onClose();
         } catch (cloneError) {
+            if (!isCurrent()) return;
             setError(describeServerFailure(
                 getRepositoryApiErrorMessage(cloneError, 'Failed to clone repository', 'Network error'),
                 server.selected,
             ));
         } finally {
-            setCloning(false);
+            if (isCurrent()) setCloning(false);
         }
-    }, [dispatch, folderName, navigateToWorkspace, onClose, onSuccess, parentDir, server, url]);
+    }, [dispatch, folderName, navigateToWorkspace, onClose, onSuccess, parentDir, server, url, capture]);
 
     return (
         <Dialog
@@ -303,21 +234,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
         >
             <div className="flex flex-col gap-3">
                 {/* Server — which CoC box runs the clone and registers the result */}
-                <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="clone-repo-server-select">
-                    Server
-                </label>
-                <select
-                    id="clone-repo-server-select"
-                    data-testid="clone-repo-server-select"
-                    className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
-                    value={server.serverId}
-                    onChange={event => changeServer(event.target.value)}
-                    disabled={cloning}
-                >
-                    {server.choices.map(option => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                </select>
+                <RepositoryServerField id="clone-repo-server-select" server={server} onChange={changeServer} disabled={cloning} />
 
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="clone-repo-url">
                     Git URL
@@ -353,41 +270,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }:
                     <div className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
                         {browserPath || '...'}
                     </div>
-                    {browseRoots.length > 0 && (
-                        <div className="mb-1 flex flex-wrap gap-1">
-                            {browseRoots.map(root => (
-                                <button
-                                    key={root.path}
-                                    type="button"
-                                    className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(root.path.toLowerCase())
-                                        ? 'border-[#0078d4] text-[#0078d4]'
-                                        : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                    data-testid={`clone-browse-root-${root.label}`}
-                                    disabled={cloning}
-                                    onClick={() => navigateTo(root.path)}
-                                >
-                                    {root.label}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                    {browseRoots.length === 0 && browserDrives.length > 1 && (
-                        <div className="mb-1 flex flex-wrap gap-1">
-                            {browserDrives.map(drive => (
-                                <button
-                                    key={drive}
-                                    type="button"
-                                    className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(drive.toLowerCase())
-                                        ? 'border-[#0078d4] text-[#0078d4]'
-                                        : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                    disabled={cloning}
-                                    onClick={() => navigateTo(drive)}
-                                >
-                                    {drive}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <RepositoryBrowseRoots browser={browser} disabled={cloning} testIdPrefix="clone-browse-root" />
                     {browserLoading ? (
                         <div className="text-[#848484]">Loading...</div>
                     ) : (

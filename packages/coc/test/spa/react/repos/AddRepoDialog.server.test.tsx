@@ -225,6 +225,38 @@ describe('container-agent mode', () => {
         containerAgents.agents = [{ id: 'agent-1', name: 'Agent One', address: 'https://agent-1.test' }];
     });
 
+    describe('dialog session ownership', () => {
+        it('does not replace the new server path or auto-name with a late old-server browse', async () => {
+            let finishOldBrowse!: (data: unknown) => void;
+            repositoryServiceMocks.browseWorkspaceFolders
+                .mockImplementationOnce(() => new Promise(resolve => { finishOldBrowse = resolve; }))
+                .mockResolvedValueOnce({ path: '/remote/current', entries: [] });
+            renderDialog();
+            await waitFor(() => expect(serverSelect().options.length).toBe(2));
+            fireEvent.click(screen.getByTestId('browse-btn'));
+            fireEvent.change(serverSelect(), { target: { value: 'srv-dev' } });
+            await waitFor(() => expect(pathInput().value).toBe('/remote/current'));
+            await act(async () => { finishOldBrowse({ path: '/local/stale', entries: [] }); });
+            expect(pathInput().value).toBe('/remote/current');
+            expect(screen.getByTestId('repo-alias')).toHaveValue('current');
+        });
+
+        it('does not close or report success for a cancelled registration', async () => {
+            let finishRegister!: (data: unknown) => void;
+            repositoryServiceMocks.registerWorkspace.mockImplementationOnce(() => new Promise(resolve => { finishRegister = resolve; }));
+            const onSuccess = vi.fn();
+            const onClose = vi.fn();
+            renderDialog({ onSuccess, onClose });
+            fireEvent.change(pathInput(), { target: { value: '/projects/repo' } });
+            fireEvent.click(screen.getByText('Add Repo'));
+            fireEvent.click(screen.getByText('Cancel'));
+            await act(async () => { finishRegister({ id: 'created' }); });
+            expect(onSuccess).not.toHaveBeenCalled();
+            expect(onClose).toHaveBeenCalledTimes(1);
+            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
+        });
+    });
+
     it('saves and restores the agent id around a Local browse', async () => {
         renderDialog();
         await waitFor(() => expect(serverSelect().options.length).toBe(2));

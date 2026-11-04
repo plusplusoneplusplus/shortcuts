@@ -251,6 +251,76 @@ describe('container-agent mode', () => {
         containerAgents.agents = [{ id: 'agent-1', name: 'Agent One', address: 'https://agent-1.test' }];
     });
 
+    it('restarts a pending initial browse on the newly selected agent and enables Scan', async () => {
+        containerAgents.agents.push({ id: 'agent-2', name: 'Agent Two', address: 'https://agent-2.test' });
+        let finishOldBrowse!: (data: unknown) => void;
+        repositoryServiceMocks.browseWorkspaceFolders
+            .mockImplementationOnce(() => new Promise(resolve => { finishOldBrowse = resolve; }))
+            .mockResolvedValueOnce({ path: '/second-agent/projects', entries: [] });
+        renderDialog();
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(1));
+        const agentSelect = screen.getAllByRole('combobox').find(select => select !== serverSelect())!;
+        fireEvent.change(agentSelect, { target: { value: 'agent-2' } });
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(screen.getByTestId('scan-folder-btn')).not.toBeDisabled());
+        expect(configMocks.setCurrentAgentId).toHaveBeenCalledWith('agent-2');
+        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenLastCalledWith('~', undefined);
+        await act(async () => { finishOldBrowse({ path: '/first-agent/stale', entries: [] }); });
+        fireEvent.click(screen.getByTestId('scan-folder-btn'));
+        await waitFor(() => expect(repositoryServiceMocks.discoverWorkspaces).toHaveBeenCalledWith('/second-agent/projects', undefined));
+    });
+
+    it('preserves the current directory intent when switching agents after browsing', async () => {
+        containerAgents.agents.push({ id: 'agent-2', name: 'Agent Two', address: 'https://agent-2.test' });
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
+            path: '/srv/code', entries: [{ name: 'nested' }],
+        });
+        renderDialog();
+        await screen.findByText('nested');
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({ path: '/srv/code/nested', entries: [] });
+        fireEvent.click(screen.getByTestId('folder-browser-entry'));
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('/srv/code/nested', undefined));
+        const agentSelect = screen.getAllByRole('combobox').find(select => select !== serverSelect())!;
+        fireEvent.change(agentSelect, { target: { value: 'agent-2' } });
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(3, '/srv/code/nested', undefined));
+        await waitFor(() => expect(screen.getByTestId('scan-folder-btn')).not.toBeDisabled());
+    });
+
+    describe('dialog session ownership', () => {
+        it('ignores a scan from the old server after switching owners and clears its loading state', async () => {
+            let finishScan!: (data: unknown) => void;
+            repositoryServiceMocks.discoverWorkspaces.mockImplementationOnce(() => new Promise(resolve => { finishScan = resolve; }));
+            renderDialog();
+            await waitFor(() => expect(serverSelect().options.length).toBe(2));
+            await waitFor(() => expect(screen.getByTestId('scan-folder-btn')).not.toBeDisabled());
+            fireEvent.click(screen.getByTestId('scan-folder-btn'));
+            fireEvent.change(serverSelect(), { target: { value: 'srv-dev' } });
+            await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenLastCalledWith('~', REMOTE_URL));
+            await act(async () => { finishScan({ repos: DISCOVERED }); });
+            expect(screen.queryByTestId('repo-checklist')).toBeNull();
+            expect(screen.getByTestId('scan-folder-btn')).not.toBeDisabled();
+            expect(serverSelect()).toHaveValue('srv-dev');
+        });
+
+        it('does not resume an old bulk-add loop into a reopened dialog', async () => {
+            let finishRegister!: (data: unknown) => void;
+            repositoryServiceMocks.registerWorkspace.mockImplementationOnce(() => new Promise(resolve => { finishRegister = resolve; }));
+            const onClose = vi.fn();
+            const onAdded = vi.fn();
+            const { rerender } = renderDialog({ onClose, onAdded });
+            await scan();
+            fireEvent.click(screen.getByTestId('add-selected-btn'));
+            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
+            rerender(<AddFolderDialog open={false} onClose={onClose} onAdded={onAdded} />);
+            rerender(<AddFolderDialog open onClose={onClose} onAdded={onAdded} />);
+            await act(async () => { finishRegister({ id: 'created' }); });
+            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
+            expect(screen.queryByTestId('adding-done')).toBeNull();
+            expect(screen.getByTestId('scan-folder-btn')).toBeTruthy();
+            expect(onAdded).not.toHaveBeenCalled();
+        });
+    });
+
     it('switches to the selected agent on the Local path', async () => {
         renderDialog();
         await waitFor(() => expect(serverSelect().options.length).toBe(2));

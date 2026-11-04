@@ -228,6 +228,41 @@ describe('post-clone navigation', () => {
         expect(onSuccess).toHaveBeenCalledTimes(1);
     });
 
+    describe('dialog session ownership', () => {
+        it('keeps new-owner path and conflict suggestions when an old browse completes late', async () => {
+            let finishOldBrowse!: (data: unknown) => void;
+            repositoryServiceMocks.browseWorkspaceFolders
+                .mockImplementationOnce(() => new Promise(resolve => { finishOldBrowse = resolve; }))
+                .mockResolvedValueOnce({ path: '/remote/projects', entries: [{ name: 'repo' }] });
+            renderDialog();
+            await waitFor(() => expect(serverSelect().options.length).toBe(2));
+            fireEvent.change(urlInput(), { target: { value: 'https://github.com/org/repo.git' } });
+            fireEvent.change(serverSelect(), { target: { value: 'srv-dev' } });
+            await waitFor(() => expect(screen.getByTestId('clone-folder-name')).toHaveValue('repo-2'));
+            await act(async () => { finishOldBrowse({ path: '/local/old', entries: [] }); });
+            expect(screen.getByTestId('clone-parent-dir')).toHaveValue('/remote/projects');
+            expect(screen.getByTestId('clone-folder-name')).toHaveValue('repo-2');
+        });
+
+        it('does not register or navigate a clone after the dialog is retargeted', async () => {
+            let finishClone!: (data: unknown) => void;
+            repositoryServiceMocks.cloneRepository.mockImplementationOnce(() => new Promise(resolve => { finishClone = resolve; }));
+            const onClose = vi.fn();
+            const onSuccess = vi.fn();
+            const { rerender } = renderDialog({ onClose, onSuccess });
+            await screen.findByText('/projects');
+            fireEvent.change(urlInput(), { target: { value: 'https://github.com/org/repo.git' } });
+            fireEvent.click(screen.getByTestId('clone-repo-submit'));
+            rerender(<Wrap><CloneRepoDialog open onClose={onClose} onSuccess={onSuccess} serverId="srv-dev" baseUrl={REMOTE_URL} /></Wrap>);
+            await waitFor(() => expect(serverSelect()).toHaveValue('srv-dev'));
+            await act(async () => { finishClone({ clonedPath: '/projects/repo' }); });
+            expect(repositoryServiceMocks.registerWorkspace).not.toHaveBeenCalled();
+            expect(onSuccess).not.toHaveBeenCalled();
+            expect(location.hash).toBe('');
+            expect(screen.getByTestId('clone-repo-submit')).not.toBeDisabled();
+        });
+    });
+
     it('does not navigate for a remote target — the id is only routable after aggregation', async () => {
         const onSuccess = vi.fn();
         renderDialog({ serverId: 'srv-dev', baseUrl: REMOTE_URL, onSuccess });
