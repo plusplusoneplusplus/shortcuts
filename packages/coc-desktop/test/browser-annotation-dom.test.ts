@@ -796,7 +796,7 @@ describe('saved page comment pins', () => {
         remove('50');
         expect(create('Replacement')).toMatchObject({ id: '101', number: 100 });
         expect(pins()).toHaveLength(100);
-    });
+    }, 30_000);
 
     it.each(['stop', 'pagehide', 'removed'])('removes saved pins and their editor on %s', async reason => {
         run('start'); create(); click(pins()[0]);

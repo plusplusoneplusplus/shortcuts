@@ -416,8 +416,11 @@ never enter handoff state persistence. Runtime state and optional notes stay in 
 
 With default-on `browserControl.backgroundEnabled` (runtime flag
 `browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
-switching workspace keeps every scope with an active turn retained: the relay
-retains it before rebinding, advertises it in `background`, and runs its commands
+switching workspace keeps every scope with an active turn retained: before any
+relay rebinds, every server socket's relay (module-level `retainers`) retains its
+turns, because the desktop finishes unretained turns on any rebind and the remote
+clone bridge's effect runs before the local socket's. Each relay advertises its
+retained scopes in `background` and runs their commands
 with `execute(request, routingRef, { hiddenTargets: true })` without cancelling
 them. Background reveals create the guest unseen and never change the hash or
 any tab selection.
