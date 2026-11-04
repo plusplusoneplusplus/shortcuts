@@ -98,8 +98,7 @@ struct View {
     tab_shortcuts: Cell<bool>,
     /// A forwarded Ctrl hold that has not been reported released yet.
     tab_modifier_held: Cell<bool>,
-    /// One approved URL the next non-redirected navigation may load without asking again.
-    gate_bypass: RefCell<Option<String>>,
+    gate_approvals: RefCell<protocol::NavigationApprovals>,
     /// Current document's PNG icon data URL; cleared when a new document starts.
     favicon: RefCell<Option<String>>,
     /// Superseded documents and icon requests cannot publish a late icon.
@@ -1249,7 +1248,7 @@ fn dispatch(state: &State, command: Command) {
                 Some(enabled) if !view.closed.get() => {
                     view.navigation_gate.set(enabled);
                     if !enabled {
-                        view.gate_bypass.borrow_mut().take();
+                        view.gate_approvals.borrow_mut().clear();
                     }
                     Ok(())
                 }
@@ -1281,10 +1280,14 @@ fn dispatch(state: &State, command: Command) {
             }
             "navigate" => {
                 if let Some(url) = command.url.filter(|url| allowed_url(url, false)) {
+                    if command.approved == Some(true) && view.navigation_gate.get() {
+                        if let Err(error) = view.gate_approvals.borrow_mut().allow(&url) {
+                            protocol::failure(command.id, "invalid", error);
+                            return;
+                        }
+                    }
                     *view.requested.borrow_mut() = url.clone();
                     *view.error.borrow_mut() = None;
-                    *view.gate_bypass.borrow_mut() =
-                        (command.approved == Some(true)).then(|| url.clone());
                     view.navigate(|| view.webview.Navigate(&HSTRING::from(url)))
                 } else {
                     Err(windows::core::Error::from(E_INVALIDARG))
@@ -1582,7 +1585,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             navigation_gate: Cell::new(command.navigation_gate == Some(true)),
                             tab_shortcuts: Cell::new(command.tab_shortcuts == Some(true)),
                             tab_modifier_held: Cell::new(false),
-                            gate_bypass: RefCell::new(None),
+                            gate_approvals: RefCell::new(protocol::NavigationApprovals::default()),
                             favicon: RefCell::new(None),
                             favicon_generation: Cell::new(0),
                         });
@@ -1821,8 +1824,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     if let Ok(args) = args.cast::<ICoreWebView2NavigationStartingEventArgs3>() {
                         args.NavigationKind(&mut kind)?;
                     }
-                    let bypass = view.gate_bypass.borrow_mut().take();
-                    let approved = !redirected.as_bool() && bypass.as_deref() == Some(url.as_str());
+                    let approved = view.gate_approvals.borrow().contains(&url);
                     let mut current = PWSTR::null();
                     view.webview.Source(&mut current)?;
                     let current = CoTaskMemPWSTR::from(current).to_string();

@@ -15,6 +15,10 @@ WebView2 control readiness waits for pending site decisions, approved navigation
 dispatch and document loading before CDP inspection. A cancelled pre-approval
 load cannot make the blank document ready. Denial and dispatch failures reach
 the caller; cancellation, replacement and closure retire the exact view's wait.
+Native WebView2 approvals retain exact HTTP(S) origins only for the active view's
+control lease. Return navigations to approved origins preserve their method and
+body without cancellation. Disabling the gate clears approvals; turn replacement
+must dispatch disable before enable, even within one microtask interval.
 
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched

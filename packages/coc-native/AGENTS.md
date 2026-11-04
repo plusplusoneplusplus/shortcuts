@@ -359,6 +359,11 @@ dispatch and publish state before acknowledgement; asynchronous `NavigationStart
 binds the navigation ID. Matching completion clears loading; committed same-document
 source changes settle fragment/history requests. Stop, crash and dispatch failure
 retire readiness. Navigation IDs reject superseded, stopped and repeated completions.
+Native navigation gating retains up to 256 exact HTTP(S) origins per active
+view control lease. An approved `navigate` authorizes its origin; subsequent
+return navigations preserve POST bodies without cancellation. Other origins
+still require approval. Disabling the gate clears this view-local authorization;
+new views and popups start with an empty set.
 
 `NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
 emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful

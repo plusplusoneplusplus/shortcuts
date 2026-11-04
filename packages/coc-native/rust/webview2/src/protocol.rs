@@ -247,6 +247,36 @@ pub fn gate_navigation(current: &str, target: &str, new_document: bool) -> bool 
     host(current).is_none() || host(current) != host(target)
 }
 
+/// Exact origins approved for one view's active control lease, never shared across views.
+#[derive(Default)]
+pub struct NavigationApprovals(std::collections::HashSet<String>);
+
+impl NavigationApprovals {
+    fn origin(value: &str) -> Option<String> {
+        url::Url::parse(value)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .map(|url| url.origin().ascii_serialization())
+    }
+
+    pub fn allow(&mut self, value: &str) -> Result<(), &'static str> {
+        let origin = Self::origin(value).ok_or("Invalid navigation approval origin.")?;
+        if self.0.len() >= 256 && !self.0.contains(&origin) {
+            return Err("Navigation approval origin limit exceeded.");
+        }
+        self.0.insert(origin);
+        Ok(())
+    }
+
+    pub fn contains(&self, value: &str) -> bool {
+        Self::origin(value).is_some_and(|origin| self.0.contains(&origin))
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
 #[cfg(test)]
 mod navigation_gate_tests {
     use super::*;
@@ -262,6 +292,36 @@ mod navigation_gate_tests {
         assert!(!gate_navigation("https://a.test/", "about:blank", true));
         assert!(!gate_navigation("https://a.test/", "data:text/html,x", true));
         assert!(!gate_navigation("https://a.test/", "file:///C:/x.html", true));
+    }
+
+    #[test]
+    fn approved_origins_preserve_return_posts_without_authorizing_other_origins() {
+        let mut approvals = NavigationApprovals::default();
+        approvals.allow("https://portal.test/start?query=value").unwrap();
+        assert!(approvals.contains("https://PORTAL.test:443/return"));
+        for target in ["http://portal.test/return", "https://portal.test:8443/return",
+            "https://child.portal.test/return", "https://portal.test.other.test/return",
+            "https://other.test/", "about:blank", "file:///synthetic"] {
+            assert!(!approvals.contains(target));
+        }
+        assert!(!NavigationApprovals::default().contains("https://portal.test/return"));
+        approvals.clear();
+        assert!(!approvals.contains("https://portal.test/return"));
+    }
+
+    #[test]
+    fn origin_approvals_are_bounded_and_reject_non_web_urls() {
+        let mut approvals = NavigationApprovals::default();
+        for value in ["invalid", "about:blank", "file:///synthetic", "data:text/html,test"] {
+            assert!(approvals.allow(value).is_err());
+        }
+        for index in 0..256 {
+            approvals.allow(&format!("https://site{index}.test/")).unwrap();
+        }
+        assert!(approvals.allow("https://extra.test/").is_err());
+        assert!(approvals.allow("https://site0.test/new").is_ok());
+        approvals.clear();
+        assert!(approvals.allow("https://extra.test/").is_ok());
     }
 
     #[test]

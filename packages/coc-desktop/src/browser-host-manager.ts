@@ -341,7 +341,8 @@ export class BrowserHostManager {
 
     /** Engines without in-flight request holds cancel gated navigations natively only during a turn. */
     private nativeNavigationGate(entry: Entry): void {
-        void Promise.resolve().then(() => entry.closed ? undefined : entry.view?.setNavigationGate?.(!!this.gateActivity(entry)))
+        const enabled = !!this.gateActivity(entry);
+        void Promise.resolve().then(() => entry.closed ? undefined : entry.view?.setNavigationGate?.(enabled))
             .catch(error => console.error('[coc-desktop] Browser navigation gate update failed:', error));
     }
 

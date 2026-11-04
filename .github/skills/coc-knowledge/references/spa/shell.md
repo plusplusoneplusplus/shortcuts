@@ -497,9 +497,13 @@ Site approval (live `browserControl.navigationApprovalEnabled`, default on) gate
 agent-driven main-frame loads while a control turn is active on the view, its
 control popout or a tab `open` is creating. Electron holds the profile session's
 mainFrame `webRequest.onBeforeRequest` callback (before any request, per redirect
-hop, POST bodies kept); WebView2 cancels cross-host http(s) new documents in
-native `NavigationStarting` and re-issues `navigate {approved:true}` on Allow
-(back/forward/reload and same-host loads pass; a re-issued POST becomes GET).
+hop, POST bodies kept); WebView2 cancels cross-host http(s) new documents to
+unapproved origins in native `NavigationStarting` and re-issues
+`navigate {approved:true}` on Allow. Each view retains bounded exact-origin
+approvals for its active control lease, so sign-in returns to approved origins
+preserve POST bodies. Gate disable clears approvals; turn replacement dispatches
+disable before enable. Back/forward/reload and same-host loads pass; a POST to
+an origin requiring its first approval is re-issued as GET.
 WebView2 control readiness retains the pending decision through approved dispatch
 and document loading, even when cancellation reports the previous document idle.
 Denial and dispatch failures fail observation explicitly; manual navigation

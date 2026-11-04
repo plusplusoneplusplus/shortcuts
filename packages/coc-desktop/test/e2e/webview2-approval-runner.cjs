@@ -8,10 +8,23 @@ const { WebView2BrowserHost } = require('../../dist/webview2-browser-host');
 app.setPath('userData', process.env.COC_APPROVAL_TEST_DATA);
 app.whenReady().then(async () => {
     const window = new BrowserWindow({ show: false });
+    let postPreserved = false;
     const server = createServer((req, res) => {
-        if (req.url === '/start') {
-            res.writeHead(302, { location: `http://localhost:${server.address().port}/destination` });
+        if (req.url.startsWith('/start')) {
+            res.writeHead(302, { location: `http://localhost:${server.address().port}/login` });
             res.end();
+        } else if (req.url === '/login') {
+            res.setHeader('content-type', 'text/html');
+            res.end(`<!doctype html><form method="post" action="http://127.0.0.1:${server.address().port}/return">
+                <input name="assertion" value="synthetic-value"></form><script>document.forms[0].submit()</script>`);
+        } else if (req.url === '/return') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                postPreserved = req.method === 'POST' && body === 'assertion=synthetic-value';
+                res.writeHead(302, { location: postPreserved ? '/destination' : '/start' });
+                res.end();
+            });
         } else {
             res.setHeader('content-type', 'text/html');
             res.end('<!doctype html><title>Approved destination</title><p>Redirect completed</p>');
@@ -47,13 +60,25 @@ app.whenReady().then(async () => {
             const result = await manager.executeControl(owner, {
                 id: 'open', processId: 'conversation', workspaceId: 'workspace',
                 framesEnabled: true,
-                command: { action: 'open', url: `http://127.0.0.1:${server.address().port}/start` },
+                command: { action: 'open', url: `http://127.0.0.1:${server.address().port}/start?fixture=%7B%22sample%22%3A%22synthetic%22%7D` },
             }, controller.signal);
             completed = true;
-            if (!checks || premature || result.title !== 'Approved destination' || !result.url.endsWith('/destination')) {
+            if (!checks || premature || !postPreserved || result.title !== 'Approved destination' || !result.url.endsWith('/destination')) {
                 throw new Error(`Unexpected readiness result: ${JSON.stringify({ checks, premature, result })}`);
             }
-            console.log('E2E::' + JSON.stringify({ checks, premature, title: result.title, redirected: true }));
+            const firstTurnChecks = checks;
+            manager.finishControl(owner, 'conversation');
+            completed = false;
+            const next = await manager.executeControl(owner, {
+                id: 'next', processId: 'replacement', workspaceId: 'workspace',
+                selectedTab: result.tab, framesEnabled: true,
+                command: { action: 'open', url: `http://localhost:${server.address().port}/destination` },
+            }, controller.signal);
+            if (next.title !== 'Approved destination' || checks !== firstTurnChecks + 1) {
+                throw new Error('Replacement turn inherited navigation approval.');
+            }
+            console.log('E2E::' + JSON.stringify({ checks: firstTurnChecks, premature, title: result.title,
+                redirected: true, postPreserved, approvalRevoked: true }));
         } finally { clearTimeout(timeout); }
     } finally {
         await manager.dispose();
