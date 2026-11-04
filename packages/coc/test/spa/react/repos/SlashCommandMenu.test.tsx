@@ -669,11 +669,11 @@ describe('SlashCommandMenu — per-row kind icons', () => {
     });
 
     it('keeps icons correct per kind when the list is filtered', () => {
-        // "/co" narrows to compact (builtin) + coc-chat (skill); order builtin-first.
+        // "/co" narrows to compact (builtin) + code-review (skill); order builtin-first.
         render(
             <SlashCommandMenu
                 skills={[
-                    { name: 'coc-chat', description: 'chat skill', kind: 'skill' },
+                    { name: 'code-review', description: 'review skill', kind: 'skill' },
                     { name: 'compact', description: 'Compact the conversation', kind: 'builtin' },
                     { name: 'impl', description: 'unrelated', kind: 'skill' },
                 ]}
@@ -688,7 +688,7 @@ describe('SlashCommandMenu — per-row kind icons', () => {
         expect(rows.length).toBe(2);
         expect(rows[0].textContent).toContain('/compact');
         expect(rowKind(rows[0])).toBe('builtin');
-        expect(rows[1].textContent).toContain('/coc-chat');
+        expect(rows[1].textContent).toContain('/code-review');
         expect(rowKind(rows[1])).toBe('skill');
     });
 });

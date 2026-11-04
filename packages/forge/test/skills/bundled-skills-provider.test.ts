@@ -21,11 +21,9 @@ describe('getBundledSkills', () => {
         fs.rmdirSync(tmpDir);
     });
 
-    it('does not bundle obsolete work-item skills (superseded by the create_update_work_item tool)', () => {
-        // Regression guard: these skills were removed from the bundle in favor of
-        // the unified create_update_work_item LLM tool. They must not reappear in the
-        // registry or as resolved bundled-skill payloads.
-        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item'];
+    it('does not bundle removed skills', () => {
+        // Removed skills must stay absent from discovery and packaged resources.
+        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item', 'coc-chat'];
         const registryNames = getBundledSkillsRegistry().map(s => s.name);
         for (const removedSkill of removedSkills) {
             expect(registryNames).not.toContain(removedSkill);
@@ -45,6 +43,12 @@ describe('getBundledSkills', () => {
         for (const removedSkill of removedSkills) {
             expect(fs.existsSync(path.join(bundledPath, removedSkill))).toBe(false);
         }
+    });
+
+    it('does not expose the removed conversation skill in project skills', () => {
+        const projectSkillsPath = path.resolve(__dirname, '../../../../.github/skills');
+        // Directory entries also catch a dangling symlink to deleted resources.
+        expect(fs.readdirSync(projectSkillsPath)).not.toContain('coc-chat');
     });
 
     it('marks skills as alreadyExists when they are installed', () => {
