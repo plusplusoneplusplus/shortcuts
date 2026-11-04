@@ -116,3 +116,5 @@ export { useWorktreeCleanup } from './useWorktreeCleanup';
 export type { WorktreeCleanupState } from './useWorktreeCleanup';
 export { SelectionActionsGroup, SELECTION_ACTION_BUTTON_CLASS } from './SelectionActionsGroup';
 export type { SelectionActionsGroupProps } from './SelectionActionsGroup';
+export { enqueueReviewChat } from './reviewChatRequest';
+export type { ReviewChatComposerSendOptions } from './reviewChatRequest';

@@ -16,6 +16,7 @@ import * as pipelineApi from '../../../src/server/spa/client/react/features/work
 
 // Mock the typed client used by WorkflowRunHistory (rendered inside WorkflowDetail).
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClientErrorMessage: (_error: unknown, fallback: string) => fallback,
     getSpaCocClient: () => ({
         workflow: {
             runHistory: vi.fn().mockResolvedValue({ history: [] }),

@@ -43,6 +43,7 @@ const mockModelsList = vi.fn();
 const mockAgentProviderModelsList = vi.fn();
 const mockReportActiveWorkspace = vi.fn();
 vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClientErrorMessage: (_error: unknown, fallback: string) => fallback,
     getCocClientFor: (baseUrl?: string) => ({ options: { baseUrl: baseUrl ?? '' } }),
     getSpaCocClient: () => ({
         agentProviders: {

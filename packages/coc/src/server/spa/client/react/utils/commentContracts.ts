@@ -25,14 +25,17 @@ function isSelection(value: unknown): value is CommentSelection {
         && isNumber(value.startColumn) && isNumber(value.endColumn);
 }
 
+/** Classic selections store NaN (null after JSON) for the side with no line; both mean "missing". */
+function isOptionalLine(value: unknown): boolean {
+    return value === undefined || value === null || typeof value === 'number';
+}
+
 function isDiffSelection(value: unknown): value is DiffCommentSelection {
     return isRecord(value) && isNumber(value.diffLineStart) && isNumber(value.diffLineEnd)
         && (value.side === 'added' || value.side === 'removed' || value.side === 'context')
         && isNumber(value.startColumn) && isNumber(value.endColumn)
-        && (value.oldLineStart === undefined || isNumber(value.oldLineStart))
-        && (value.oldLineEnd === undefined || isNumber(value.oldLineEnd))
-        && (value.newLineStart === undefined || isNumber(value.newLineStart))
-        && (value.newLineEnd === undefined || isNumber(value.newLineEnd));
+        && isOptionalLine(value.oldLineStart) && isOptionalLine(value.oldLineEnd)
+        && isOptionalLine(value.newLineStart) && isOptionalLine(value.newLineEnd);
 }
 
 function isDiffContext(value: unknown): value is DiffCommentContext {

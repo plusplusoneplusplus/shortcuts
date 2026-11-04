@@ -42,6 +42,19 @@ describe('comment domain boundaries', () => {
         expect(readDiffComment(diff).anchor).toBe(anchor);
     });
 
+    it('accepts null or NaN line numbers for the missing side of a Classic selection', () => {
+        const added = {
+            ...diff,
+            selection: {
+                diffLineStart: 7, diffLineEnd: 7, side: 'added', startColumn: 0, endColumn: 4,
+                oldLineStart: null, oldLineEnd: null, newLineStart: 2, newLineEnd: 2,
+            },
+        };
+        expect(readDiffComment(added)).toBe(added);
+        const unserialized = { ...added, selection: { ...added.selection, oldLineStart: Number.NaN, oldLineEnd: Number.NaN } };
+        expect(readDiffComment(unserialized)).toBe(unserialized);
+    });
+
     it('accepts file-level comments only with their distinct no-selection/empty-text shape', () => {
         const { selection, ...fields } = diff;
         const file = { ...fields, scope: 'file', selectedText: '' };
