@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
-import type { AttachmentPayload } from '../../../types/attachments';
+import { useRequestScope } from '../../../hooks/useRequestScope';
+import { enqueueReviewChat, type ReviewChatComposerSendOptions } from '../../../shared/reviewChatRequest';
+export type { ReviewChatComposerSendOptions } from '../../../shared/reviewChatRequest';
 
 export interface UsePullRequestChatBindingOptions {
     /** Workspace ID for the concrete clone used by queue/fresh-chat actions. */
@@ -16,19 +18,6 @@ export interface UsePullRequestChatBindingOptions {
     prTitle?: string;
     /** Repo identifier the PR belongs to (used when different from workspaceId). */
     repoId?: string;
-}
-
-export interface ReviewChatComposerSendOptions {
-    mode?: string;
-    context?: Record<string, unknown>;
-    attachments?: AttachmentPayload[];
-    provider?: string;
-    model?: string;
-    reasoningEffort?: string;
-    /** Response style for this chat; validated server-side at the queue boundary. */
-    chatStyle?: string;
-    config?: { effortTier?: string };
-    workingDirectory?: string;
 }
 
 export interface UsePullRequestChatBindingReturn {
@@ -53,24 +42,10 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [startingFresh, setStartingFresh] = useState(false);
-    const mountedRef = useRef(false);
-    const currentRequestRef = useRef({ workspaceId, originId, prId });
-    currentRequestRef.current = { workspaceId, originId, prId };
+    const isCurrentRequest = useRequestScope(cloneClient, JSON.stringify([workspaceId, originId, prId]));
 
     useEffect(() => {
-        mountedRef.current = true;
-        return () => { mountedRef.current = false; };
-    }, []);
-
-    const isCurrentRequest = useCallback((requestedWorkspaceId: string, requestedOriginId: string, requestedPrId: string | undefined) => (
-        mountedRef.current
-        && currentRequestRef.current.workspaceId === requestedWorkspaceId
-        && currentRequestRef.current.originId === requestedOriginId
-        && currentRequestRef.current.prId === requestedPrId
-    ), []);
-
-    useEffect(() => {
-        if (!prId) { setTaskId(null); setStartingFresh(false); return; }
+        if (!prId) { setTaskId(null); setStartingFresh(false); setLoading(false); setError(null); return; }
         let cancelled = false;
         setLoading(true);
         setError(null);
@@ -78,60 +53,36 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
         setStartingFresh(false);
 
         cloneClient.pullRequests.getChatBindingForOrigin(originId, prId)
-            .then(data => { if (!cancelled) setTaskId(data.taskId); })
+            .then(data => { if (!cancelled && isCurrentRequest()) setTaskId(data.taskId); })
             .catch(err => {
-                if (cancelled) return;
+                if (cancelled || !isCurrentRequest()) return;
                 if (err?.status === 404 || err?.message?.includes('404')) setTaskId(null);
                 else setError('Failed to load pull request chat');
             })
-            .finally(() => { if (!cancelled) setLoading(false); });
+            .finally(() => { if (!cancelled && isCurrentRequest()) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [workspaceId, originId, prId, cloneClient]);
+    }, [workspaceId, originId, prId, cloneClient, isCurrentRequest]);
 
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!prId) return null;
-        const requestedWorkspaceId = workspaceId;
-        const requestedOriginId = originId;
-        const requestedPrId = prId;
-        if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
+        if (isCurrentRequest()) {
             setError(null);
         }
         try {
-            const res = await cloneClient.queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                payload: {
-                    kind: 'chat',
-                    mode: options.mode ?? 'ask',
-                    prompt,
-                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
-                    workspaceId,
-                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
-                    ...(options.provider ? { provider: options.provider } : {}),
-                    ...(options.model ? { model: options.model } : {}),
-                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-                    ...(options.chatStyle ? { chatStyle: options.chatStyle } : {}),
-                    context: {
-                        ...(options.context ?? {}),
-                        pullRequestChat: { prId, prNumber, prTitle, repoId, originId },
-                    },
-                },
-                ...(options.config ? { config: options.config } : {}),
-            });
-            const newTaskId = res.task?.id ?? (res as { id?: string }).id;
+            const newTaskId = await enqueueReviewChat(cloneClient, workspaceId, prompt, { prId, prNumber, prTitle, repoId, originId }, options);
             if (!newTaskId) throw new Error('Failed to create pull request chat task');
 
             await cloneClient.pullRequests.createChatBindingForOrigin(originId, prId, newTaskId);
 
-            if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
+            if (isCurrentRequest()) {
                 setError(null);
                 setTaskId(newTaskId);
             }
             return newTaskId;
-        } catch (err: any) {
-            if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
-                setError(err?.message ?? 'Failed to create pull request chat');
+        } catch (err) {
+            if (isCurrentRequest()) {
+                setError(err instanceof Error ? err.message : 'Failed to create pull request chat');
             }
             return null;
         }
@@ -139,27 +90,24 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
 
     const startFreshChat = useCallback(async (): Promise<boolean> => {
         if (!prId) return false;
-        const requestedWorkspaceId = workspaceId;
-        const requestedOriginId = originId;
-        const requestedPrId = prId;
-        if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
+        if (isCurrentRequest()) {
             setStartingFresh(true);
             setError(null);
         }
         try {
             await cloneClient.pullRequests.startFreshChatForOrigin(originId, prId, workspaceId);
-            if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
+            if (isCurrentRequest()) {
                 setTaskId(null);
                 setError(null);
             }
             return true;
-        } catch (err: any) {
-            if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
-                setError(err?.message ?? 'Failed to start fresh pull request chat');
+        } catch (err) {
+            if (isCurrentRequest()) {
+                setError(err instanceof Error ? err.message : 'Failed to start fresh pull request chat');
             }
             return false;
         } finally {
-            if (isCurrentRequest(requestedWorkspaceId, requestedOriginId, requestedPrId)) {
+            if (isCurrentRequest()) {
                 setStartingFresh(false);
             }
         }

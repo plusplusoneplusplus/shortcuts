@@ -9,8 +9,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getWsPath } from '../../../utils/config';
-import { useCocClient } from '../../../repos/cloneRouting';
-import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
+import { useCocClient, useCloneBaseUrl } from '../../../repos/cloneRouting';
+import { useRequestScope } from '../../../hooks/useRequestScope';
+import { useCommentCollection } from '../../../hooks/useCommentCollection';
+import { useCommentMutations } from '../../../hooks/useCommentMutations';
+import { useCommentSubscription } from '../../../hooks/useCommentSubscription';
+import { isRecord } from '../../../utils/typeGuards';
+import { readDiffComment } from '../../../utils/commentContracts';
 import { getGitReviewClient } from '../diff/diffSource';
 import { cloneWsUrl } from '../../../api/wsUrl';
 import { isLineDiffComment, type DiffComment, type DiffCommentContext, type DiffCommentSelection } from '../../../../comments/diff-comment-types';
@@ -54,8 +59,8 @@ export interface UseDiffCommentsReturn {
     ) => Promise<DiffComment>;
     updateComment: (id: string, req: UpdateDiffCommentRequest) => Promise<DiffComment>;
     deleteComment: (id: string) => Promise<void>;
-    resolveComment: (id: string) => Promise<DiffComment>;
-    unresolveComment: (id: string) => Promise<DiffComment>;
+    resolveComment: (id: string) => Promise<DiffComment | undefined>;
+    unresolveComment: (id: string) => Promise<DiffComment | undefined>;
     askAI: (id: string, options?: AskAIOptions) => Promise<void>;
     resolveWithAI: (userContext?: string, skills?: string[]) => Promise<{ totalCount: number }>;
     fixWithAI: (id: string, userContext?: string, skills?: string[]) => Promise<void>;
@@ -79,17 +84,25 @@ export interface UseDiffCommentsReturn {
 // computeStorageKey, patchDiffComment, deleteDiffCommentById are imported from ../utils/diffCommentApi.
 
 /** Poll a queued task until it completes or fails. Returns the task result. */
-async function pollTaskResult<T>(client: CocClient, taskId: string, timeoutMs = 180_000): Promise<T> {
+async function pollTaskResult(
+    client: CocClient,
+    taskId: string,
+    isCurrent: () => boolean,
+    wait: (delay: number) => Promise<void>,
+): Promise<unknown> {
     const start = Date.now();
     let delay = 1000;
-    while (Date.now() - start < timeoutMs) {
-        await new Promise(r => setTimeout(r, delay));
+    while (Date.now() - start < 180_000) {
+        if (!isCurrent()) throw new Error('Diff context changed');
+        await wait(delay);
+        if (!isCurrent()) throw new Error('Diff context changed');
         const { task } = await client.queue.getTask(taskId);
+        if (!isCurrent()) throw new Error('Diff context changed');
         if (task.status === 'completed') {
-            return task.result as T;
+            return task.result;
         }
         if (task.status === 'failed' || task.status === 'cancelled') {
-            throw new Error(task.error || `Task ${task.status}`);
+            throw new Error(String(task.error || `Task ${task.status}`));
         }
         delay = Math.min(delay * 1.5, 5000);
     }
@@ -106,6 +119,10 @@ function contextMatches(comment: DiffComment, ctx: DiffCommentContext): boolean 
     );
 }
 
+function commentLoadError(error: unknown): string {
+    return error instanceof Error ? error.message : 'Failed to load diff comments';
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -118,28 +135,41 @@ export function useDiffComments(
     // Reads, mutations and subscriptions share the concrete review owner.
     const defaultClient = useCocClient(wsId);
     const cloneClient = routingTarget === undefined ? defaultClient : getGitReviewClient(wsId, routingTarget);
-    const [comments, setComments] = useState<DiffComment[]>([]);
-    const [loading, setLoading]   = useState(true);
-    const [error, setError]       = useState<string | null>(null);
+    const ownerBaseUrl = useCloneBaseUrl(routingTarget ?? wsId);
+    const contextKey = context
+        ? JSON.stringify([context.repositoryId, context.oldRef, context.newRef, context.filePath])
+        : null;
+    const isCurrent = useRequestScope(cloneClient, JSON.stringify([wsId, routingTarget, contextKey]));
+    const pendingPolls = useRef(new Set<() => void>());
+    useEffect(() => {
+        const pending = new Set<() => void>();
+        pendingPolls.current = pending;
+        return () => { for (const cancel of pending) cancel(); };
+    }, [isCurrent]);
+    const waitForPoll = useCallback((delay: number) => new Promise<void>((resolve, reject) => {
+        if (!isCurrent()) { reject(new Error('Diff context changed')); return; }
+        const pending = pendingPolls.current;
+        const cancel = () => {
+            clearTimeout(timer);
+            pending.delete(cancel);
+            reject(new Error('Diff context changed'));
+        };
+        const timer = setTimeout(() => {
+            pending.delete(cancel);
+            resolve();
+        }, delay);
+        pending.add(cancel);
+    }), [isCurrent]);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors]         = useState<Map<string, string>>(new Map());
-    const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
-    const [deletingIds, setDeletingIds]   = useState<Set<string>>(new Set());
     const [resolving, setResolving]               = useState(false);
-    const mountedRef  = useRef(true);
     const contextRef  = useRef(context);
     contextRef.current = context; // always up-to-date without being a dep
-    const commentsRef = useRef<DiffComment[]>([]);
-    commentsRef.current = comments; // always up-to-date
-
     useEffect(() => {
-        mountedRef.current = true;
-        return () => { mountedRef.current = false; };
-    }, []);
-
-    const contextKey = context
-        ? `${context.repositoryId}:${context.oldRef}:${context.newRef}:${context.filePath}`
-        : null;
+        setAiLoadingIds(new Set());
+        setAiErrors(new Map());
+        setResolving(false);
+    }, [isCurrent]);
 
     const isEphemeral = context?.newRef === 'working-tree';
 
@@ -147,36 +177,20 @@ export function useDiffComments(
     // fetchComments — GET collection URL (query-param based), filter client-side
     // ------------------------------------------------------------------
 
-    const fetchComments = useCallback(async () => {
+    const loadComments = useCallback(async (): Promise<DiffComment[]> => {
+        if (!isCurrent()) return [];
         const ctx = contextRef.current;
-        if (!wsId || !ctx) { setLoading(false); return; }
-        setLoading(true);
-        setError(null);
-        try {
-            const data = await cloneClient.git.listDiffComments(wsId, {
-                oldRef: ctx.oldRef,
-                newRef: ctx.newRef,
-            });
-            if (mountedRef.current) {
-                // Server may return all workspace comments; keep only those for this context.
-                const filtered = (data.comments ?? [] as DiffComment[]).filter(
-                    (c: DiffComment) => contextMatches(c, ctx)
-                );
-                setComments(filtered);
-            }
-        } catch (err) {
-            if (mountedRef.current) {
-                setError(err instanceof Error ? err.message : 'Failed to load diff comments');
-                setComments([]);
-            }
-        } finally {
-            if (mountedRef.current) setLoading(false);
-        }
-    }, [wsId, cloneClient]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-        void fetchComments();
-    }, [contextKey]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (!wsId || !ctx) return [];
+        const data = await cloneClient.git.listDiffComments(wsId, {
+            oldRef: ctx.oldRef,
+            newRef: ctx.newRef,
+        });
+        return (data.comments ?? []).map(readDiffComment).filter(comment => contextMatches(comment, ctx));
+    }, [wsId, cloneClient, isCurrent]);
+    const { comments, setComments, loading, error, refresh: fetchComments } =
+        useCommentCollection(loadComments, isCurrent, commentLoadError);
+    const commentsRef = useRef<DiffComment[]>([]);
+    commentsRef.current = comments;
 
     // ------------------------------------------------------------------
     // addComment — POST to collection, context in body
@@ -188,6 +202,7 @@ export function useDiffComments(
         text: string,
         category?: string,
     ): Promise<DiffComment> => {
+        if (!isCurrent()) throw new Error('Diff context changed');
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         const data = await cloneClient.git.createDiffComment(wsId, {
@@ -197,77 +212,50 @@ export function useDiffComments(
             comment: text,
             ...(category !== undefined ? { category } : {}),
         });
-        const comment: DiffComment = data.comment;
-        if (mountedRef.current) {
+        const comment = readDiffComment(data.comment);
+        if (isCurrent()) {
             setComments(prev => [...prev, comment]);
         }
         return comment;
-    }, [wsId, cloneClient]);
+    }, [wsId, cloneClient, isCurrent]);
 
     // ------------------------------------------------------------------
     // updateComment — PATCH /api/diff-comments/:wsId/:storageKey/:id
     // ------------------------------------------------------------------
 
     const updateCommentFn = useCallback(async (id: string, req: UpdateDiffCommentRequest): Promise<DiffComment> => {
+        if (!isCurrent()) throw new Error('Diff context changed');
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         const storageKey = await computeStorageKey(ctx);
-        const comment = await patchDiffComment(wsId, storageKey, id, req, cloneClient);
-        if (mountedRef.current) {
+        const comment = readDiffComment(await patchDiffComment(wsId, storageKey, id, req, cloneClient));
+        if (isCurrent()) {
             setComments(prev => prev.map(c => c.id === id ? comment : c));
         }
         return comment;
-    }, [wsId, cloneClient]);
+    }, [wsId, cloneClient, isCurrent]);
 
     // ------------------------------------------------------------------
     // deleteComment — DELETE /api/diff-comments/:wsId/:storageKey/:id
     // ------------------------------------------------------------------
 
-    const deleteCommentFn = useCallback(async (id: string): Promise<void> => {
-        if (deletingIds.has(id)) return;
-        setDeletingIds(prev => new Set(prev).add(id));
-        try {
-            const ctx = contextRef.current;
-            if (!ctx) throw new Error('No diff context');
-            const storageKey = await computeStorageKey(ctx);
-            await deleteDiffCommentById(wsId, storageKey, id, cloneClient);
-            if (mountedRef.current) {
-                setComments(prev => prev.filter(c => c.id !== id));
-            }
-        } finally {
-            if (mountedRef.current) {
-                setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [wsId, cloneClient, deletingIds]);
+    const removeComment = useCallback(async (id: string): Promise<void> => {
+        if (!isCurrent()) throw new Error('Diff context changed');
+        const ctx = contextRef.current;
+        if (!ctx) throw new Error('No diff context');
+        const storageKey = await computeStorageKey(ctx);
+        await deleteDiffCommentById(wsId, storageKey, id, cloneClient);
+        if (isCurrent()) setComments(prev => prev.filter(c => c.id !== id));
+    }, [wsId, cloneClient, isCurrent]);
 
     // ------------------------------------------------------------------
     // resolveComment / unresolveComment
     // ------------------------------------------------------------------
 
-    const resolveComment = useCallback(async (id: string): Promise<DiffComment> => {
-        if (resolvingIds.has(id)) return {} as DiffComment;
-        setResolvingIds(prev => new Set(prev).add(id));
-        try {
-            return await updateCommentFn(id, { status: 'resolved' });
-        } finally {
-            if (mountedRef.current) {
-                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [updateCommentFn, resolvingIds]);
-
-    const unresolveComment = useCallback(async (id: string): Promise<DiffComment> => {
-        if (resolvingIds.has(id)) return {} as DiffComment;
-        setResolvingIds(prev => new Set(prev).add(id));
-        try {
-            return await updateCommentFn(id, { status: 'open' });
-        } finally {
-            if (mountedRef.current) {
-                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [updateCommentFn, resolvingIds]);
+    const updateStatus = useCallback((id: string, status: 'open' | 'resolved') =>
+        updateCommentFn(id, { status }), [updateCommentFn]);
+    const { deleteComment: deleteCommentFn, resolveComment, unresolveComment, resolvingIds, deletingIds } =
+        useCommentMutations(updateStatus, removeComment, isCurrent);
 
     // ------------------------------------------------------------------
     // askAI — POST /api/diff-comments/:wsId/:storageKey/:id/ask-ai
@@ -275,6 +263,7 @@ export function useDiffComments(
     // ------------------------------------------------------------------
 
     const askAI = useCallback(async (id: string, options: AskAIOptions = {}): Promise<void> => {
+        if (!isCurrent()) return;
         const { commandId, customQuestion } = options;
         const ctx = contextRef.current;
         if (!ctx) return;
@@ -285,25 +274,28 @@ export function useDiffComments(
             const data = await cloneClient.git.askDiffCommentAI(wsId, storageKey, id, { commandId, customQuestion });
             let aiResponse: string | undefined;
             if (data.aiResponse) {
-                aiResponse = data.aiResponse as string;
+                aiResponse = data.aiResponse;
             } else if (data.taskId) {
-                const result = await pollTaskResult<{ aiResponse: string }>(cloneClient, data.taskId as string);
+                const result = await pollTaskResult(cloneClient, data.taskId, isCurrent, waitForPoll);
+                if (!isRecord(result) || typeof result.aiResponse !== 'string') {
+                    throw new Error('Invalid diff comment AI response');
+                }
                 aiResponse = result.aiResponse;
             }
-            if (mountedRef.current && aiResponse !== undefined) {
+            if (isCurrent() && aiResponse !== undefined) {
                 setComments(prev => prev.map(c => c.id === id ? { ...c, aiResponse } : c));
             }
         } catch (err) {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 const msg = err instanceof Error ? err.message : 'AI request failed';
                 setAiErrors(prev => new Map(prev).set(id, msg));
             }
         } finally {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, cloneClient]);
+    }, [wsId, cloneClient, isCurrent, waitForPoll]);
 
     // ------------------------------------------------------------------
     // clearAiError
@@ -320,13 +312,14 @@ export function useDiffComments(
 
     const runRelocation = useCallback(async (lines: DiffLine[]): Promise<void> => {
         for (const comment of commentsRef.current) {
+            if (!isCurrent()) return;
             if (!comment.anchor || !isLineDiffComment(comment)) continue;
 
             const newIndex = relocateDiffAnchor(comment, lines);
 
             if (newIndex === null) {
                 // Mark orphaned locally — no server round-trip needed for status
-                if (mountedRef.current) {
+                if (isCurrent()) {
                     setComments((prev) =>
                         prev.map((c) =>
                             c.id === comment.id ? { ...c, status: 'orphaned' as const } : c
@@ -344,7 +337,7 @@ export function useDiffComments(
                 });
             }
         }
-    }, [wsId, updateCommentFn]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [wsId, updateCommentFn, isCurrent]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ------------------------------------------------------------------
     // copyAllCommentsAsPrompt — formats all comments into a prompt and
@@ -365,6 +358,7 @@ export function useDiffComments(
     // ------------------------------------------------------------------
 
     const resolveWithAI = useCallback(async (userContext?: string, skills?: string[]): Promise<{ totalCount: number }> => {
+        if (!isCurrent()) throw new Error('Diff context changed');
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         setResolving(true);
@@ -377,20 +371,21 @@ export function useDiffComments(
                 ...(skills?.length ? { skills } : {}),
             });
             if (data.taskId) {
-                await pollTaskResult(cloneClient, data.taskId as string);
+                await pollTaskResult(cloneClient, data.taskId, isCurrent, waitForPoll);
             }
-            await fetchComments();
+            if (isCurrent()) await fetchComments();
             return { totalCount: data.totalCount ?? 0 };
         } finally {
-            if (mountedRef.current) setResolving(false);
+            if (isCurrent()) setResolving(false);
         }
-    }, [wsId, cloneClient, fetchComments]);
+    }, [wsId, cloneClient, fetchComments, isCurrent, waitForPoll]);
 
     // ------------------------------------------------------------------
     // fixWithAI — resolve a single comment via AI
     // ------------------------------------------------------------------
 
     const fixWithAI = useCallback(async (id: string, userContext?: string, skills?: string[]): Promise<void> => {
+        if (!isCurrent()) return;
         const ctx = contextRef.current;
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
@@ -404,20 +399,20 @@ export function useDiffComments(
                 ...(skills?.length ? { skills } : {}),
             });
             if (data.taskId) {
-                await pollTaskResult(cloneClient, data.taskId as string);
+                await pollTaskResult(cloneClient, data.taskId, isCurrent, waitForPoll);
             }
-            await fetchComments();
+            if (isCurrent()) await fetchComments();
         } catch (err) {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 const msg = err instanceof Error ? err.message : 'Fix with AI failed';
                 setAiErrors(prev => new Map(prev).set(id, msg));
             }
         } finally {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, cloneClient, fetchComments]);
+    }, [wsId, cloneClient, fetchComments, isCurrent, waitForPoll]);
 
     // ------------------------------------------------------------------
     // copyResolvePrompt — copy a resolve prompt to clipboard
@@ -467,27 +462,23 @@ export function useDiffComments(
     // WebSocket subscription for instant refresh on diff-comment-updated
     // ------------------------------------------------------------------
 
-    useEffect(() => {
-        if (!context) return;
-        const ws = new WebSocket(cloneWsUrl(getWsPath(), routingTarget === null ? undefined : lookupCloneBaseUrl(routingTarget ?? wsId)));
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'subscribe-diff', context }));
-        });
-        ws.addEventListener('message', (event) => {
-            try {
-                const msg = JSON.parse(event.data as string) as { type: string; context?: DiffCommentContext };
-                const isSameDiff =
-                    msg.context?.repositoryId === context.repositoryId &&
-                    msg.context?.oldRef       === context.oldRef &&
-                    msg.context?.newRef       === context.newRef &&
-                    msg.context?.filePath     === context.filePath;
-                if (msg.type === 'diff-comment-updated' && isSameDiff && mountedRef.current) {
-                    void fetchComments();
-                }
-            } catch { /* ignore parse errors */ }
-        });
-        return () => { ws.close(); };
-    }, [contextKey, fetchComments]); // eslint-disable-line react-hooks/exhaustive-deps
+    const onCommentMessage = useCallback((message: unknown) => {
+        const ctx = contextRef.current;
+        if (!ctx || !isCurrent() || !isRecord(message)
+            || message.type !== 'diff-comment-updated' || !isRecord(message.context)) return;
+        const eventContext = message.context;
+        if (eventContext.repositoryId === ctx.repositoryId
+            && eventContext.oldRef === ctx.oldRef
+            && eventContext.newRef === ctx.newRef
+            && eventContext.filePath === ctx.filePath) {
+            void fetchComments();
+        }
+    }, [fetchComments, isCurrent]);
+    useCommentSubscription(
+        cloneWsUrl(getWsPath(), routingTarget === null ? undefined : ownerBaseUrl),
+        context ? JSON.stringify({ type: 'subscribe-diff', context }) : null,
+        onCommentMessage,
+    );
 
     // ------------------------------------------------------------------
     // BroadcastChannel — refetch when pop-out window notifies comment changes
@@ -498,12 +489,12 @@ export function useDiffComments(
         if (typeof BroadcastChannel === 'undefined') return;
         const channel = new BroadcastChannel(GIT_REVIEW_POPOUT_CHANNEL);
         channel.onmessage = (event: MessageEvent<GitReviewPopOutMessage>) => {
-            if (event.data.type === 'git-review-comments-updated' && mountedRef.current) {
+            if (event.data.type === 'git-review-comments-updated' && isCurrent()) {
                 void fetchComments();
             }
         };
         return () => { channel.close(); };
-    }, [context, fetchComments]);
+    }, [contextKey, fetchComments, isCurrent]);
 
     return {
         comments,
