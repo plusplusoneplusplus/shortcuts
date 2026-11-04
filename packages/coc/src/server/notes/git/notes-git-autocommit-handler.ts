@@ -9,7 +9,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../../shared/handler-utils';
 import type { Route } from '../../types';
-import { getRepoDataPath } from '../../paths';
+import { getNotesRoot } from '../notes-paths';
 import type { ScheduleManager } from '../../schedule/schedule-manager';
 import type { NotesGitTimerManager } from './notes-git-timer-manager';
 import { DEFAULT_AUTOCOMMIT_INTERVAL_MS } from './notes-git-timer-manager';
@@ -70,7 +70,7 @@ export function registerNotesGitAutoCommitRoutes(
             }
 
             // Start (or restart with new interval)
-            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            const notesDir = getNotesRoot(dataDir, wsId);
             timerManager.startForWorkspace(wsId, notesDir, intervalMs);
 
             sendJSON(res, 200, { enabled: true, intervalMs });
@@ -126,7 +126,7 @@ export function registerNotesGitAutoCommitRoutes(
             const { committedAt, error } = timer?.getLastResult() ?? { committedAt: null, error: null };
             const intervalMs = prefs.notesGit?.autoCommit?.intervalMs ?? DEFAULT_AUTOCOMMIT_INTERVAL_MS;
 
-            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            const notesDir = getNotesRoot(dataDir, wsId);
             let gitInitialized = false;
             try {
                 await fs.promises.access(`${notesDir}/.git`);

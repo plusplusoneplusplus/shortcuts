@@ -78,7 +78,7 @@ export function normalizeToolName(name: string): string {
     return name.toLowerCase().replace(/^mcp__.+?__/, '');
 }
 
-function isImageDataUrl(text: string): boolean {
+function isBase64DataUrl(text: string): boolean {
     return /^data:[^;,]+;base64,/.test(text);
 }
 
@@ -100,7 +100,7 @@ export function trimToBudget(text: string, maxBytes: number): { content: string;
 
 function toolContent(entry: LedgerEntry): string {
     const result = entry.result ?? '';
-    if (isImageDataUrl(result) || isBinary(result)) {
+    if (isBase64DataUrl(result) || isBinary(result)) {
         throw new SourceFailure('SOURCE_UNSUPPORTED', `The ${entry.name} result (toolCallId ${entry.id}) is image or binary content.`);
     }
     return result;

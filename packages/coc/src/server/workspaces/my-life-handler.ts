@@ -10,18 +10,10 @@ import * as fs from 'fs';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { MY_LIFE_WORKSPACE_ID } from './my-life-workspace';
 
 import { formatSyncDate, getISOWeek, getWeekDateRange } from './date-helpers';
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function getNotesRoot(dataDir: string): string {
-    return getRepoDataPath(dataDir, MY_LIFE_WORKSPACE_ID, 'notes');
-}
 
 // ============================================================================
 // Route Registration
@@ -41,7 +33,7 @@ export function registerMyLifeRoutes(
         pattern: /^\/api\/my-life\/sync$/,
         handler: async (req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_LIFE_WORKSPACE_ID);
                 await fs.promises.mkdir(notesRoot, { recursive: true });
 
                 // Parse optional body with personal data
@@ -95,7 +87,7 @@ export function registerMyLifeRoutes(
         pattern: /^\/api\/my-life\/generate-summary$/,
         handler: async (_req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_LIFE_WORKSPACE_ID);
                 const weeklyDir = path.join(notesRoot, 'Weekly');
                 await fs.promises.mkdir(weeklyDir, { recursive: true });
 
@@ -159,7 +151,7 @@ export function registerMyLifeRoutes(
         pattern: /^\/api\/my-life\/status$/,
         handler: async (_req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_LIFE_WORKSPACE_ID);
                 const exists = fs.existsSync(path.join(notesRoot, 'Goals.md'));
                 sendJSON(res, 200, { initialized: exists, workspaceId: MY_LIFE_WORKSPACE_ID });
             } catch (err: any) {

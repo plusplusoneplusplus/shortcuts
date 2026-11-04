@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Attachment } from '@plusplusoneplusplus/forge';
+export { isImageDataUrl } from './image-data-url';
 
 /**
  * Maximum decoded byte size for a single image / attachment buffer (10 MB).
@@ -65,14 +66,6 @@ export function saveImagesToTempFiles(
     }
 
     return { tempDir, attachments };
-}
-
-/**
- * Fast check whether a string is a base64 image data URL.
- * Unlike `parseDataUrl`, this does not decode the buffer — O(1) regex test only.
- */
-export function isImageDataUrl(value: string): boolean {
-    return /^data:image\/[\w+]+;base64,.+/.test(value);
 }
 
 /** Best-effort cleanup of a temp directory and its contents. */

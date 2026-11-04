@@ -17,6 +17,7 @@ import { BottomSheet } from '../../../../ui/BottomSheet';
 import { useChatRenderContext } from '../ChatRenderContext';
 import { getToolResultPresentation } from './toolResultPresentation';
 import { ToolResultThumbnails } from './ToolResultThumbnails';
+import { isDisplayImageDataUrl as isImageDataUrl } from '../../../../../../../core/image-data-url';
 
 const MAX_PREVIEW_LENGTH = 2000;
 
@@ -27,10 +28,6 @@ const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-
 
 function stripAnsi(s: string): string {
     return s.replace(ANSI_REGEX, '');
-}
-
-function isImageDataUrl(s: string): boolean {
-    return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
 }
 
 function shortenPath(p: string): string {

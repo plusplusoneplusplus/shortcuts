@@ -17,6 +17,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { APIError, handleAPIError, badRequest } from '../errors';
 import {
+    bodyWorkspaceId,
     queryWorkspaceId,
     resolveWorkItemRouteScope,
     type WorkItemRouteScope,
@@ -70,12 +71,6 @@ export interface WorkItemExecutionRouteContext {
      *  created in the workspace tasks folder as soon as execution is enqueued so that
      *  the Tasks panel shows live activity immediately. */
     dataDir?: string;
-}
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
 async function resolveExecutionRouteScope(

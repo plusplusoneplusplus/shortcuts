@@ -35,6 +35,12 @@ export interface WorkItemRouteScope {
     workspaceId?: string;
 }
 
+export function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
 export function queryWorkspaceId(req: http.IncomingMessage): string | undefined {
     const parsed = url.parse(req.url || '/', true);
     const raw = parsed.query.workspaceId;

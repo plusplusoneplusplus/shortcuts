@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { clampIntegerLimit } from '../core/limit-utils';
 import { NativeAddonLoadError, NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type {
     NativeCopilotSessionDetail,
@@ -131,13 +132,6 @@ function parseTimestamp(value: string | null | undefined): number {
     return Date.parse(value);
 }
 
-function clampLimit(limit: number | undefined): number {
-    if (limit === undefined || !Number.isFinite(limit)) {
-        return DEFAULT_NATIVE_SESSION_LIST_LIMIT;
-    }
-    return Math.min(Math.max(Math.floor(limit), 1), MAX_NATIVE_SESSION_LIST_LIMIT);
-}
-
 function clampOffset(offset: number | undefined): number {
     if (offset === undefined || !Number.isFinite(offset)) {
         return 0;
@@ -220,7 +214,7 @@ export class NativeCopilotSessionService {
         scope: NativeSessionWorkspaceScope,
         options: NativeCopilotSessionListOptions = {},
     ): NativeCopilotSessionListResult & { limit: number; offset: number } {
-        const limit = clampLimit(options.limit);
+        const limit = clampIntegerLimit(options.limit, DEFAULT_NATIVE_SESSION_LIST_LIMIT, 1, MAX_NATIVE_SESSION_LIST_LIMIT);
         const offset = clampOffset(options.offset);
         const opened = this.openReadOnly();
         if (!opened.ok) {

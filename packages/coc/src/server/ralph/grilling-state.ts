@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { AIProcess, CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { getRalphContext } from '../tasks/task-types';
 import { RalphSessionStore } from './ralph-session-store';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
@@ -35,7 +35,7 @@ export class RalphGrillingStore {
 
     goalPath(workspaceId: string, sessionId: string): string {
         this.file(workspaceId, sessionId);
-        return path.resolve(getRepoDataPath(this.dataDir, workspaceId, path.join('notes', 'Plans', `${sessionId}.goal.md`)));
+        return path.resolve(path.join(getNotesRoot(this.dataDir, workspaceId), 'Plans', `${sessionId}.goal.md`));
     }
 
     async read(workspaceId: string, sessionId: string): Promise<RalphGrillingState | undefined> {

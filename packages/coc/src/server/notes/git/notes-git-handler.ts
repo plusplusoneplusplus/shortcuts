@@ -12,15 +12,11 @@ import { execGitAsync } from '@plusplusoneplusplus/forge/git';
 import { sendJSON, sendError } from '../../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../../shared/handler-utils';
 import type { Route } from '../../types';
-import { getRepoDataPath } from '../../paths';
+import { getNotesRoot } from '../notes-paths';
 import { NotesGitService } from './notes-git-service';
 import { readRepoPreferences, writeRepoPreferences } from '../../preferences-handler';
 import { DEFAULT_AUTOCOMMIT_INTERVAL_MS } from './notes-git-timer-manager';
 import type { NotesGitTimerManager } from './notes-git-timer-manager';
-
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
-}
 
 /**
  * Register notes git API routes on the given route table.

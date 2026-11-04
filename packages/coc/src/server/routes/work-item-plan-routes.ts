@@ -16,6 +16,7 @@ import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, forbidden } from '../errors';
 import {
+    bodyWorkspaceId,
     queryWorkspaceId,
     resolveWorkItemRouteScope,
     type WorkItemRouteScope,
@@ -108,12 +109,6 @@ function parsePositiveVersion(value: string | null, field: string): number {
         throw badRequest(`${field} must be a positive integer version`);
     }
     return version;
-}
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
 async function resolvePlanRouteScope(

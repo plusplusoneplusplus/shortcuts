@@ -11,7 +11,7 @@ import type * as http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { MY_WORK_WORKSPACE_ID } from './my-work-workspace';
 import {
     parse,
@@ -86,16 +86,12 @@ function syncItemsToLines(items: unknown): string[] {
     return items.map((item) => syncItemToLine(item as SyncItem)).filter((l): l is string => l !== null);
 }
 
-function getNotesRoot(dataDir: string): string {
-    return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
-}
-
 function actionItemsPath(dataDir: string): string {
-    return path.join(getNotesRoot(dataDir), 'Action Items.md');
+    return path.join(getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID), 'Action Items.md');
 }
 
 function followUpsPath(dataDir: string): string {
-    return path.join(getNotesRoot(dataDir), 'Follow Ups.md');
+    return path.join(getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID), 'Follow Ups.md');
 }
 
 /**
@@ -104,7 +100,7 @@ function followUpsPath(dataDir: string): string {
  * file rather than a general file-read endpoint.
  */
 function timelinePath(dataDir: string): string {
-    return path.join(getNotesRoot(dataDir), ...TIMELINE_NOTE_PATH.split('/'));
+    return path.join(getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID), ...TIMELINE_NOTE_PATH.split('/'));
 }
 
 /** Read a notes file, treating a missing file as empty content. */
@@ -143,7 +139,7 @@ export function registerMyWorkRoutes(
         pattern: /^\/api\/my-work\/sync$/,
         handler: async (req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID);
                 await fs.promises.mkdir(notesRoot, { recursive: true });
 
                 // Parse optional body with Work IQ data
@@ -201,7 +197,7 @@ export function registerMyWorkRoutes(
         pattern: /^\/api\/my-work\/generate-summary$/,
         handler: async (_req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID);
                 const weeklyDir = path.join(notesRoot, 'Weekly');
                 await fs.promises.mkdir(weeklyDir, { recursive: true });
 
@@ -286,7 +282,7 @@ export function registerMyWorkRoutes(
         pattern: /^\/api\/my-work\/status$/,
         handler: async (_req, res) => {
             try {
-                const notesRoot = getNotesRoot(dataDir);
+                const notesRoot = getNotesRoot(dataDir, MY_WORK_WORKSPACE_ID);
                 const exists = fs.existsSync(path.join(notesRoot, 'Action Items.md'));
                 sendJSON(res, 200, { initialized: exists, workspaceId: MY_WORK_WORKSPACE_ID });
             } catch (err: any) {

@@ -15,6 +15,7 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { PullRequestChatBindingStore } from '../processes/pull-request-chat-binding-store';
 import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
+import { bodyWorkspaceId } from './work-item-route-scope';
 
 // PR IDs are typically numeric (GitHub, ADO) but can be longer opaque strings
 // in the future. Allow URL-safe characters (alphanumerics, hyphen, underscore)
@@ -40,12 +41,6 @@ function queryTaskId(req: import('http').IncomingMessage): string | undefined {
     const parsed = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const raw = parsed.searchParams.get('taskId')?.trim();
     return raw || undefined;
-}
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
 async function workspaceOriginId(

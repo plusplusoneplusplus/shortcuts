@@ -7,7 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON } from '../core/api-handler';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from './notes-paths';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { NoteEditSnapshot } from '../executors/note-chat-executor';
@@ -78,7 +78,7 @@ export function registerNotesEditsRoutes(routes: Route[], store: ProcessStore, d
                 }
 
                 // Resolve the note file path with security check
-                const notesRoot = getRepoDataPath(dataDir, wsId, 'notes');
+                const notesRoot = getNotesRoot(dataDir, wsId);
                 const resolved = path.resolve(notesRoot, snapshot.notePath);
                 const normalizedResolved = path.normalize(resolved);
                 const normalizedRoot = path.normalize(notesRoot);

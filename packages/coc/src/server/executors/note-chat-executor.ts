@@ -26,7 +26,7 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools, readRepoPreferences } from '../preferences-handler';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 
 // ============================================================================
 // Executor
@@ -208,7 +208,7 @@ export async function appendNoteEditSnapshot(
  */
 export async function readNoteContent(dataDir: string, wsId: string, notePath: string): Promise<string | undefined> {
     if (!wsId || !notePath) return undefined;
-    const notesRoot = getRepoDataPath(dataDir, wsId, 'notes');
+    const notesRoot = getNotesRoot(dataDir, wsId);
     const resolved = path.resolve(notesRoot, notePath);
 
     // Security: ensure path stays within notes dir

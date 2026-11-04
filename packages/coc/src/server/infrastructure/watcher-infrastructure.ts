@@ -14,7 +14,7 @@ import { NotesWatcher } from '../notes/notes-watcher';
 import { resolveTaskRoot } from '../tasks/task-root-resolver';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from '../tasks/task-migration';
 import { taskCache } from '../tasks/task-cache';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -79,7 +79,7 @@ export async function createWatcherInfrastructure(
             pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
             templateWatcher.watchWorkspace(ws.id, ws.rootPath);
         }
-        notesWatcher.watchWorkspace(ws.id, getRepoDataPath(dataDir, ws.id, 'notes'));
+        notesWatcher.watchWorkspace(ws.id, getNotesRoot(dataDir, ws.id));
         bridge.registerRepoId(ws.id, ws.rootPath);
     }
 
@@ -100,7 +100,7 @@ export async function createWatcherInfrastructure(
             pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
             templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         }
-        notesWatcher.watchWorkspace(workspace.id, getRepoDataPath(dataDir, workspace.id, 'notes'));
+        notesWatcher.watchWorkspace(workspace.id, getNotesRoot(dataDir, workspace.id));
         notesSearchService?.activateWorkspace(workspace.id);
         bridge.registerRepoId(workspace.id, workspace.rootPath);
     };

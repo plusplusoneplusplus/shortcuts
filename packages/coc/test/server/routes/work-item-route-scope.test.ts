@@ -1,9 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
+    bodyWorkspaceId,
     resolveWorkItemRouteScope,
     scopedRoutePattern,
 } from '../../../src/server/routes/work-item-route-scope';
+
+describe('bodyWorkspaceId', () => {
+    it.each([undefined, null, false, 1, 'workspace-a', [], [{ workspaceId: 'workspace-a' }],
+        {}, { workspaceId: 1 }, { workspaceId: null }, { workspaceId: ['workspace-a'] },
+        { workspaceId: '' }, { workspaceId: ' \t\n' }])('ignores malformed or empty bodies: %j', body => {
+        expect(bodyWorkspaceId(body)).toBeUndefined();
+    });
+
+    it('trims an id without changing case or interpreting its contents', () => {
+        expect(bodyWorkspaceId({ workspaceId: ' \tWorkspace-A\n' })).toBe('Workspace-A');
+    });
+
+    it('leaves origin ownership validation to the route scope resolver', async () => {
+        const ctx = makeCtx([
+            workspace({ id: 'clone-a', remoteUrl: 'https://github.com/owner/repo.git' }),
+            workspace({ id: 'clone-b', remoteUrl: 'https://github.com/owner/other.git' }),
+        ]);
+        await expect(resolveWorkItemRouteScope(ctx, 'origins', 'gh_owner_repo',
+            bodyWorkspaceId({ workspaceId: ' clone-a ' }))).resolves.toMatchObject({ commandRepoId: 'clone-a' });
+        await expect(resolveWorkItemRouteScope(ctx, 'origins', 'gh_owner_repo',
+            bodyWorkspaceId({ workspaceId: ' clone-b ' }))).rejects.toMatchObject({ statusCode: 400 });
+        await expect(resolveWorkItemRouteScope(ctx, 'origins', 'gh_owner_repo',
+            bodyWorkspaceId({ workspaceId: ' missing ' }))).rejects.toMatchObject({ statusCode: 400 });
+    });
+});
 
 function makeCtx(workspaces: WorkspaceInfo[]): { processStore: ProcessStore } {
     const store = {

@@ -36,7 +36,7 @@ import type { WorkItem, WorkItemChange, WorkItemPlanVersion, WorkItemStore, Work
 import { WORK_ITEM_TYPES, HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
-import { resolveWorkItemRouteScope, type WorkItemRouteScope } from './work-item-route-scope';
+import { bodyWorkspaceId, resolveWorkItemRouteScope, type WorkItemRouteScope } from './work-item-route-scope';
 
 // ============================================================================
 // Public Types
@@ -309,12 +309,6 @@ function extractPlanContent(result: DraftResponse): string | undefined {
 
 function optionalTrimmedString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
 async function resolveAiRouteScope(
