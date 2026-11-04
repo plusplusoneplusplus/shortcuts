@@ -140,7 +140,9 @@ function createChatMarked(
 
                 const classAttr = language ? ` class="language-${escapeAttr(language)}"` : '';
                 const html = escaped ? code : escapeHtml(code);
-                return `<pre><code${classAttr}>${html}</code></pre>\n`;
+                return `<div class="code-block-container" data-raw="${escapeAttr(code)}">` +
+                    '<div class="code-block-header"><button type="button" class="code-block-copy" title="Copy all" aria-label="Copy all" aria-live="polite">Copy all</button></div>' +
+                    `<pre class="code-block-content"><code${classAttr}>${html}</code></pre></div>\n`;
             },
             html(raw: string) {
                 return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');

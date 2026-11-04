@@ -109,7 +109,7 @@ describe('useCodeBlockActions', () => {
 
         const block = document.createElement('div');
         block.className = 'code-block-container';
-        block.setAttribute('data-raw', 'const x = 1;&#10;const y = 2;');
+        block.setAttribute('data-raw', 'const x = 1;\nconst y = 2;');
 
         const btn = document.createElement('button');
         btn.className = 'code-block-copy';
@@ -124,7 +124,7 @@ describe('useCodeBlockActions', () => {
         expect(writeTextSpy).toHaveBeenCalledWith('const x = 1;\nconst y = 2;');
     });
 
-    it('decodes HTML entities in data-raw before copying', async () => {
+    it('preserves literal HTML entities in the DOM data-raw value', async () => {
         const writeTextSpy = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', {
             value: { writeText: writeTextSpy },
@@ -145,7 +145,7 @@ describe('useCodeBlockActions', () => {
 
         btn.click();
 
-        expect(writeTextSpy).toHaveBeenCalledWith('<div>&"test"</div>');
+        expect(writeTextSpy).toHaveBeenCalledWith('&lt;div&gt;&amp;&quot;test&quot;&lt;/div&gt;');
     });
 
     // ── Table copy ───────────────────────────────────────────────────

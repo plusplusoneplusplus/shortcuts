@@ -83,7 +83,7 @@ describe('chatMarkdownToHtml', () => {
 
     it('renders fenced code block with <pre><code>', () => {
         const html = chatMarkdownToHtml('```js\nconst x = 1;\n```');
-        expect(html).toContain('<pre>');
+        expect(html).toContain('<pre class="code-block-content">');
         expect(html).toContain('<code');
         expect(html).toContain('class="language-js"');
         expect(html).toContain('const x = 1;');
@@ -327,7 +327,7 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('<h3');
         expect(html).toContain('<strong>Key points:</strong>');
         expect(html).toContain('<ol>');
-        expect(html).toContain('<pre>');
+        expect(html).toContain('<pre class="code-block-content">');
         expect(html).toContain('<blockquote>');
         // Should NOT contain raw ** markers
         expect(html).not.toContain('**Key points:**');

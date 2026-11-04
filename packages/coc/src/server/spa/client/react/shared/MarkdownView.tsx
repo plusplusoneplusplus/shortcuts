@@ -23,6 +23,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CopySectionBtn } from '../ui/CopySectionBtn';
+import { useCodeBlockActions } from '../hooks/ui/useCodeBlockActions';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { useSvgFences } from './svg/useSvgFences';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
@@ -101,6 +102,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
     const { lightboxSrc, openFromTarget, closeLightbox } = useInlineImageLightbox();
 
+    useCodeBlockActions(containerRef, [html, conversationOwnerKey, wsId, chatId]);
     useMermaid(containerRef, html);
     useSvgFences(containerRef, html);
 
@@ -145,7 +147,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         const hljs = (window as any).hljs;
         if (hljs && containerRef.current) {
             containerRef.current.querySelectorAll('pre code').forEach((block: Element) => {
-                if (block.closest('.code-block-container')) return;
+                if (block.querySelector('.code-line')) return;
                 hljs.highlightElement(block);
             });
         }
