@@ -524,6 +524,141 @@ Trusted paste delivery is acknowledged, not persistence; errors after dispatch
 report unknown outcomes without automatic retry. Synthetic real-engine rich-paste
 tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS clipboard.
 
+### Annotation selection primitive
+
+`packages/coc-desktop/src/browser-annotation-dom.ts` builds a self-contained
+isolated-world expression with generation-matched start/drain/stop/remove/capture/captured commands.
+Its closed-shadow shield lives in a full-viewport unscripted `about:blank` iframe
+sandboxed with only `allow-same-origin`. Child-document input cannot traverse
+pre-existing page window-capture handlers. Hit testing and capture hide the outer
+frame; selection/snapshot geometry belongs to the original page and reuses
+`browser-control-clip.ts`. Frame removal or document replacement revokes the mode.
+Electron URL-tab loading tracks the main frame, excluding child-frame initialization.
+
+Selection opens the private editor with its original snapshot. Save emits
+`{type:'comment',id,number,comment,selection}` for create/update and creates a pin;
+blank drafts and comments over 8000 UTF-16 units are refused. IDs are stable within
+one generation; display numbers reflect array order. Clicking a pin reopens its
+saved text; edits clear modifier-send intent. Delete emits `{type:'delete',id}`
+and renumbers survivors. Cancel/first Escape discards only the draft; next Escape
+exits. Native editing defaults survive child-window capture while page handlers stay
+blocked; Tab traverses editor controls or visible pins.
+
+Pins cap at 100, anchor to selection-time document coordinates and hide outside
+the viewport. Exit removes all chrome and listeners. Reports remain bounded and
+document-local. The primitive's remove command shares deletion semantics and
+rejects foreign generations. `BrowserAnnotationSession.remove(id)` routes chip
+removal through registered-owner IPC and the manager to the original active tab
+instance. It shares the serialized command queue, drains normal deletion events,
+ignores revoked generations and preserves native failures for the caller.
+
+`browser-annotation-snapshot.ts` captures URL/title/viewport/DPR and element
+metadata at selection time, before page mutations or deferred collection.
+Element selectors are unique within a document/shadow root, with an outermost-first
+open-shadow host chain and null for unavailable bounded selectors. Rendered text
+is capped at 500 UTF-16 units and outerHTML at 2048 UTF-8 bytes without splitting
+characters. Captured website content is untrusted.
+
+`browser-annotation-payload.ts` re-exports the browser-safe coc-client serializer
+for comments with explicit current pin numbers and JSON page context labelled as untrusted website data. It preserves
+input order and complete user comments, bounds DOM text/HTML without splitting
+characters, and keeps selectors whole or null. Duplicate or invalid numbers fail;
+an empty queue emits no text. Single-comment sends retain their supplied pin
+number. Image labels must use the same numbers; the caller owns image capture.
+
+`browser-annotation-tab.ts` checks the engine's committed main-frame URL and MIME
+type before isolated-world creation. PDFs (including extensionless URLs), PDF
+paths, non-HTTP(S) documents and registered SPA origin/path pairs are excluded.
+SPA exclusion uses main-owned registrations across query/hash changes and never
+grants embedder trust or navigation permission. Missing native document facts fail
+closed; navigation revokes delayed admission replies.
+
+Main starts with `captureRequired:true`; each selection has a generation-local
+`captureId`. Save waits for the matching `captured` acknowledgement. The private
+editor displays capture failures and retries the original draft/snapshot; edits
+preserve its capture identity without recapturing. `BrowserAnnotationTab` captures
+inside its serialized delivery operation and sends selection events enriched with
+the native PNG to the original owner. Image bytes stay outside DOM commands and
+snapshots; delivery never recursively enqueues capture.
+
+`BrowserAnnotationTab.captureSelection` also exposes an explicit serialized
+main-only crop of an unchanged pending draft. Shared capture commands hide all chrome, retain the input
+shield/events, wait two animation frames with a one-second timeout, and validate
+selection/scroll/viewport/DPR before and after capture. Restoration targets the
+original generation; failures and revocation reject the image. Electron URL guests
+implement optional `BrowserHostedView.captureAnnotation` through
+`electron-annotation-capture.ts`: enclosing DIP `capturePage(rect)` followed by a
+physical-pixel PNG crop, without resampling. Allocation caps at 16 Mi pixels and
+PNG output at 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
+native memory-only `CapturePreview`; validate physical viewport dimensions before
+decoding and crop without resampling. Full previews share the same bounds. Only
+pending capture replies permit 28 MB native transport frames; ordinary CDP/events
+retain their 1 MiB limit. Lifecycle/zoom changes reject late images.
+
+The shared main-only CDP interface installs and polls one isolated main-document
+context. Its private generation token, serialized
+commands and synchronous revocation reject late results; Stop removes the overlay
+in the original context. Navigation/lost-context events terminate collection;
+future documents receive no script. `BrowserHostManager.startAnnotation` reserves
+the exact visible URL owner/view/session before awaiting settled human takeover.
+Reservations exclude AI dispatch and demo recording through teardown. Hide,
+workspace departure, navigation, crash, close and owner/session policy disable
+stop annotation. Return awaits removal before refreshing context. Failed teardown
+retains exclusion until an explicit annotation retry or guest closure.
+
+`browser-annotation-bridge.ts` routes preload `browser.annotation.start/stop/remove`
+and `setEnabled` through exact-source registered SPA main-frame IPC. Fresh
+renderer request IDs bind notifications to one view/concrete session/mode; stale
+Stop/Remove and late startup/events cannot affect replacements. Remove validates
+canonical pin IDs and refuses stopped or foreign subscriptions before dispatch.
+Owner reload/crash/close revokes notification leases before native cleanup; delivery rechecks the original
+main frame and registered source. SPA `shared/file-path/browser-annotation.ts`
+mirrors the preload contract; optional `DesktopBrowserBridge.annotation` keeps
+older hosts compatible. Each single-use `BrowserAnnotationSession` mints an immutable
+view/session/request identity, subscribes before Start, and rejects foreign events
+and late replies. Stop revokes delivery synchronously before native cleanup;
+startup/cleanup failures remain observable. Create a fresh instance for retry.
+`BrowserAnnotationButton` owns the toolbar toggle and live owner/session policy
+publication independently of AI control. Local flags subscribe to dashboard config;
+clone flags load from the owning server and refresh on matching config/reconnect
+events. Unresolved owners fail closed; stale reads cannot retarget policy. Document
+changes, hiding, unmount, Escape and disable revoke startup and stop the mode.
+Loaded URL tabs participate; previews, PDF URLs and the SPA document omit the
+button. Active turns require enabled human takeover, with main owning the settled
+injection sequence. Each mode fixes its target chat at start (the tab's linked
+chat, else the panel's chat in view; none disables the button, a change ends the
+mode). Selection events retain one pending native PNG in that session, released on
+Stop or native termination. Comment events transfer the matching capture ID's image
+to the in-memory `browser-annotation-chips.ts` store and edits reuse the original
+image. Missing captures or memory bounds fail visibly and stop the mode. Pending
+PNGs share native size/dimension limits; queued PNG URLs cap at 64 MiB across owners.
+Chips use mode request ID plus pin ID; deletion renumbers that mode's survivors to
+match the page. `FollowUpInputArea` renders `BrowserAnnotationChips` for its exact
+workspace/routing/process owner; removing a chip calls its original session's
+`remove(id)`, a no-op once that mode ended, so chips outlive navigation.
+
+`ChatDetail` passes the same exact annotation owner to `useSendMessage`. Ordinary
+sends snapshot that owner's chips and append serialized page context plus native
+PNGs through the existing image/attachment request fields. Group/pin filenames in
+the text identify each PNG. The shared `useFileAttachments` screenshot validator
+enforces combined attachment count and image size before draft state clears;
+rejection retains the draft and chips. Modes stay separate to preserve pin numbers
+across navigation. Page metadata stays
+outside slash-command and target parsing. Server acceptance consumes unchanged
+snapshot entries and removes their original pins; admission failures retain them,
+and comments added or edited during admission stay queued. Generated sends with
+`includeComposerContext:false` preserve the queue unless they supply an explicit
+owner-matched `browserAnnotationSnapshot`. Pin-cleanup errors remain observable
+without marking an accepted message failed. PNGs remain separate from serialized
+page snapshots/text.
+
+`ChatDetail` publishes a modifier-send handler for its concrete annotation owner.
+New element comments with Ctrl/Cmd intent send one snapshot through that handler,
+keeping the current chat mode and all composer state. Edits and areas stay queued.
+Missing/ambiguous owners, overlapping sends and failed admission retain the chip
+with a toolbar error; uncertain sends are never automatically retried. The new-chat
+composer fallback remains separate integration work.
+
 ### Shared web-page zoom
 
 `browser.setPageZoom(percent)` validates 50-200% in 25-point steps; reset is 100%.
@@ -1076,16 +1211,18 @@ launch/retry/cancel or authorization controls.
 The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
 **Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
-and hosts Coda as its pinned built-in row. Card details (title/blank-space selection into
-To-do's detail column), Refrain history navigation and selection,
+and hosts Coda as its pinned built-in row. Selection-only cards open To-do's detail column;
+per-item controls use the selected detail toolbar, with history and run details in that column.
+Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
 three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
 boundary while API/storage retain positive safe integer tokens.
 
 `SentinelCoda` mounts after the ledger loads when both live ledger and
-Coda flags are enabled; its function child places one inline strip and history in
-the list column below Overtures, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
+Coda flags are enabled; its function child places one selection strip in
+the list column below Overtures. Its controls, forms and history use the selected detail pane.
+Owner/endpoint remounts isolate async state and drafts.
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do

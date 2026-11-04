@@ -43,11 +43,11 @@ describe('useCanvasComments', () => {
 
     function mount(props: Record<string, unknown> = {}) {
         return renderHook(
-            ({ canvas, loadNonce, canvasId }: any) => {
+            ({ canvas, loadNonce, canvasId, ownerClient = client, workspaceId = 'ws-1' }: any) => {
                 const canvasRef = useRef(canvas);
                 canvasRef.current = canvas;
                 return useCanvasComments({
-                    client, workspaceId: 'ws-1', canvasId, canvas, canvasRef, loadNonce, onAskAi, onSendToAi,
+                    client: ownerClient, workspaceId, canvasId, canvas, canvasRef, loadNonce, onAskAi, onSendToAi,
                 });
             },
             { initialProps: { canvas: makeCanvas(), loadNonce: 1, canvasId: 'doc-abc123', ...props } as any },
@@ -224,4 +224,55 @@ describe('useCanvasComments', () => {
         expect(result.current.commentAnchor).toBeNull();
         expect(result.current.commentDraft).toBe('');
     });
+    it('ignores delayed comment reads from a different server with the same workspace and canvas IDs', async () => {
+        let finish!: (comments: any[]) => void;
+        listComments.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const { result, rerender } = mount();
+        const otherClient = { canvases: { ...client.canvases, listComments: vi.fn().mockResolvedValue([comment('other-owner')]) } };
+        rerender({ canvas: makeCanvas(), canvasId: 'doc-abc123', loadNonce: 1, ownerClient: otherClient } as any);
+        await waitFor(() => expect(result.current.comments.map(c => c.id)).toEqual(['other-owner']));
+        await act(async () => { finish([comment('late-original')]); });
+        expect(result.current.comments.map(c => c.id)).toEqual(['other-owner']);
+    });
+
+    it('ignores a delayed comment write after owner change and retains the new owner draft', async () => {
+        let finish!: (comment: any) => void;
+        addComment.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const { result, rerender } = mount();
+        act(() => result.current.startComment('original anchor'));
+        act(() => result.current.setCommentDraft('original comment'));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.submitComment(); });
+        const otherClient = { canvases: { ...client.canvases, listComments: vi.fn().mockResolvedValue([]) } };
+        rerender({ canvas: makeCanvas(), canvasId: 'doc-abc123', loadNonce: 1, ownerClient: otherClient } as any);
+        act(() => result.current.startComment('new anchor'));
+        act(() => result.current.setCommentDraft('new draft'));
+        await act(async () => { finish(comment('late-original')); await pending; });
+        expect(result.current.comments).toEqual([]);
+        expect(result.current.commentAnchor).toBe('new anchor');
+        expect(result.current.commentDraft).toBe('new draft');
+        expect(addComment).toHaveBeenCalledExactlyOnceWith('ws-1', 'doc-abc123', { anchorText: 'original anchor', body: 'original comment' });
+    });
+
+    it('marks comments sent only after acceptance and keeps an in-flight send on its original server', async () => {
+        let accept!: () => void;
+        onSendToAi.mockReturnValue(new Promise<void>(resolve => { accept = resolve; }));
+        listComments.mockResolvedValue([comment('same-id')]);
+        const { result, rerender } = mount();
+        await waitFor(() => expect(result.current.openComments).toHaveLength(1));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendComments(); });
+        expect(result.current.sendingComments).toBe(true);
+        expect(setCommentStatus).not.toHaveBeenCalled();
+        const otherStatus = vi.fn();
+        const otherClient = { canvases: { ...client.canvases, listComments: vi.fn().mockResolvedValue([comment('same-id')]), setCommentStatus: otherStatus } };
+        rerender({ canvas: makeCanvas(), canvasId: 'doc-abc123', loadNonce: 1, ownerClient: otherClient } as any);
+        await waitFor(() => expect(result.current.openComments).toHaveLength(1));
+        await act(async () => { accept(); await pending; });
+        expect(setCommentStatus).toHaveBeenCalledExactlyOnceWith('ws-1', 'doc-abc123', 'same-id', 'sent');
+        expect(otherStatus).not.toHaveBeenCalled();
+        expect(result.current.comments[0].status).toBe('open');
+        expect(result.current.sendingComments).toBe(false);
+    });
+
 });

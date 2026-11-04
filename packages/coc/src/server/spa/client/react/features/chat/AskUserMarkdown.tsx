@@ -14,18 +14,12 @@
 import { useMemo } from 'react';
 import { Marked } from 'marked';
 import { mathMarkedExtension } from '../../../shared/math/mathMarkedExtension';
+import { escapeHtmlText as escapeHtml } from '../../../shared/html';
 
 function escapeAttr(value: string): string {
     return value
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }

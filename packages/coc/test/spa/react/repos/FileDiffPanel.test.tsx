@@ -297,6 +297,17 @@ function makePrSource(overrides: Partial<DiffSource> = {}): DiffSource {
 // --- Tests ---
 
 describe('FileDiffPanel', () => {
+    it('resets comment drafts when the exact clone owner changes with the same workspace, source and file', async () => {
+        const source = makeBranchSource({ routingTarget: 'remote:server-a:ws1' });
+        const { rerender } = render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={source} />);
+        fireEvent.click(await screen.findByTestId('trigger-add-comment'));
+        expect(screen.getByTestId('inline-comment-popup')).toBeTruthy();
+        rerender(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts"
+            source={makeBranchSource({ routingTarget: 'remote:server-b:ws1' })} />);
+        expect(screen.queryByTestId('inline-comment-popup')).toBeNull();
+        expect(mockAddComment).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         setDiffFilePicker(true);

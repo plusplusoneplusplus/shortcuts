@@ -1,14 +1,21 @@
 /**
- * CanvasSelectionToolbar — the selection action bar and the anchored comment
- * compose box.
+ * CanvasSelectionToolbar — the shared Markdown selection pill, other canvas
+ * selection actions, and the anchored comment compose box.
  *
  * Both are absolute overlays on purpose: toggling them must not shift the
  * canvas text underneath (regression — a static bar re-flowed the preview and
  * moved the very text the user had just selected).
  */
 
+import type { CSSProperties, RefObject } from 'react';
+import { SELECTION_ACTION_BUTTON_CLASS, SelectionActionsGroup } from '../../../shared/SelectionActionsGroup';
+
 export interface CanvasSelectionToolbarProps {
     selection: string | null;
+    floating?: boolean;
+    actionsRef?: RefObject<HTMLDivElement>;
+    position?: CSSProperties | null;
+    onDismiss?: () => void;
     /** Hidden while browsing an older revision — history views are read-only. */
     visible: boolean;
     onAskAi?: () => void;
@@ -21,12 +28,18 @@ export interface CanvasSelectionToolbarProps {
 }
 
 export function CanvasSelectionToolbar({
-    selection, visible, onAskAi, onStartComment,
+    selection, visible, floating, actionsRef, position, onDismiss, onAskAi, onStartComment,
     commentAnchor, commentDraft, onCommentDraftChange, onSubmitComment, onCancelComment,
 }: CanvasSelectionToolbarProps) {
     return (
         <>
-            {visible && selection && (
+            {visible && selection && floating && position && (
+                <SelectionActionsGroup ref={actionsRef} style={position} onDismiss={onDismiss ?? (() => {})}>
+                    <button type="button" className={SELECTION_ACTION_BUTTON_CLASS} onClick={onStartComment} data-testid="canvas-panel-add-comment">Add comment</button>
+                    {onAskAi && <button type="button" className={SELECTION_ACTION_BUTTON_CLASS} onClick={onAskAi} data-testid="canvas-panel-attach-to-chat">Attach to chat</button>}
+                </SelectionActionsGroup>
+            )}
+            {visible && selection && !floating && (
                 <div className="absolute top-0 inset-x-0 z-10 flex items-center gap-2 px-3 py-1.5 text-[11px] border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-selection-bar">
                     <span className="flex-1 truncate italic text-[#848484]">“{selection}”</span>
                     {onAskAi && (
@@ -48,6 +61,7 @@ export function CanvasSelectionToolbar({
                             type="text"
                             className="flex-1 text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] outline-none"
                             placeholder="Comment for the AI…"
+                            autoFocus
                             value={commentDraft}
                             onChange={e => onCommentDraftChange(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') onSubmitComment(); }}

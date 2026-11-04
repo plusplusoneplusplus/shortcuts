@@ -9,7 +9,6 @@ import { normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
 import { resolveAutoColor } from '../features/git/diff/colorUtils';
 import {
-    browseWorkspaceFolders,
     getRepositoryApiErrorMessage,
     registerWorkspace,
     updateWorkspace,
@@ -17,7 +16,10 @@ import {
 import { describeServerFailure, useServerSelection } from './useServerSelection';
 import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
-import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { useRepositoryDialogSession } from './useRepositoryDialogSession';
+import { getPathLeaf, joinBrowserPath, useRepositoryFolderBrowser } from './useRepositoryFolderBrowser';
+import { RepositoryBrowseRoots } from './RepositoryBrowseRoots';
+import { RepositoryServerField } from './RepositoryServerField';
 
 const AUTO_VALUE = 'auto';
 
@@ -50,38 +52,6 @@ interface AddRepoDialogProps {
     baseUrl?: string;
 }
 
-interface BrowserEntry {
-    name: string;
-    isGitRepo?: boolean;
-}
-
-interface BrowserResponse {
-    path: string;
-    parent?: string | null;
-    entries?: BrowserEntry[];
-    drives?: string[];
-    browseRoots?: Array<{ label: string; path: string }>;
-}
-
-function getPathLeaf(pathValue: string): string {
-    return pathValue
-        .replace(/[/\\]+$/, '')
-        .split(/[/\\]+/)
-        .filter(Boolean)
-        .pop() || '';
-}
-
-function joinBrowserPath(basePath: string, childName: string): string {
-    if (!basePath) {
-        return childName;
-    }
-    if (/[/\\]$/.test(basePath)) {
-        return `${basePath}${childName}`;
-    }
-    const separator = basePath.includes('\\') ? '\\' : '/';
-    return `${basePath}${separator}${childName}`;
-}
-
 function getPathPlaceholder(): string {
     if (typeof navigator !== 'undefined' && /win/i.test(navigator.platform)) {
         return 'C:\\path\\to\\repo';
@@ -101,6 +71,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
     const selectedServer = server.selected;
 
     const [selectedAgentId, setSelectedAgentId] = useState('');
+    const { capture, invalidate } = useRepositoryDialogSession(open, server, editId || (selectedServer.baseUrl ? undefined : selectedAgentId));
+    const handleClose = () => { invalidate(); onClose(); };
     const [path, setPath] = useState('');
     const [name, setName] = useState('');
     // Mirrors `name` synchronously so the browser can decide whether to re-derive
@@ -127,13 +99,21 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
 
     // Browser state
     const [showBrowser, setShowBrowser] = useState(false);
-    const [browserPath, setBrowserPath] = useState('');
-    const [browserEntries, setBrowserEntries] = useState<BrowserEntry[]>([]);
-    const [browserParent, setBrowserParent] = useState<string | null>(null);
-    const [browserLoading, setBrowserLoading] = useState(false);
-    const [browserDrives, setBrowserDrives] = useState<string[]>([]);
-    const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
-    const [browserError, setBrowserError] = useState<string | null>(null);
+    const browser = useRepositoryFolderBrowser({
+        open,
+        server,
+        agent: isContainerMode() ? availableAgents.find(a => a.id === selectedAgentId) : undefined,
+        formatError: () => 'Unable to browse this path',
+        onSelect: data => {
+            if (data.path) {
+                setPath(data.path);
+                if (!nameRef.current.trim() || nameRef.current === autoFilledNameRef.current) {
+                    writeName(getPathLeaf(data.path), true);
+                }
+            }
+        },
+    });
+    const { browserPath, browserEntries, browserParent, browserLoading, browserError, navigateTo, resetBrowser } = browser;
 
     // Pre-fill for edit mode
     useEffect(() => {
@@ -147,97 +127,10 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
             setColor(AUTO_VALUE);
         }
         setValidation(null);
+        setSubmitting(false);
         setShowBrowser(false);
-        setBrowserDrives([]);
-        setBrowseRoots([]);
-        setBrowserError(null);
-    }, [open, isEdit, editRepo, writeName]);
-
-    // Browsing is selecting: the Path field tracks whatever directory the tree is
-    // showing, so the dialog's own "Add Repo" button stays the only confirm.
-    const applyBrowseResult = useCallback((data: BrowserResponse) => {
-        setBrowserPath(data.path);
-        setBrowserParent(data.parent || null);
-        setBrowserEntries(data.entries || []);
-        setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-        setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-        if (data.path) {
-            setPath(data.path);
-            if (!nameRef.current.trim() || nameRef.current === autoFilledNameRef.current) {
-                writeName(getPathLeaf(data.path), true);
-            }
-        }
-    }, [writeName]);
-
-    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
-        // The server is passed explicitly when it just changed, since this
-        // callback still closes over the previous selection at that moment.
-        const target = server.resolveServer(targetServerId ?? server.serverId);
-        // Container agents and remote servers are two different ways to reach
-        // another filesystem and do not compose: a remote pick bypasses the
-        // agent-id dance entirely.
-        const isLocalTarget = !target.baseUrl;
-        setBrowserLoading(true);
-        setBrowserError(null);
-        const prevAgentId = getCurrentAgentId();
-        try {
-            if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
-            applyBrowseResult(data);
-        } catch (err) {
-            setBrowserEntries([]);
-            setBrowserParent(null);
-            setBrowseRoots([]);
-            const errStatus = (err as any)?.status;
-            const errMsg = err instanceof Error ? err.message : String(err);
-            const isAuthError = (errStatus === 401 || errStatus === 403)
-                || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
-            console.warn('[AddRepoDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
-            if (isLocalTarget && isAuthError && isContainerMode() && selectedAgentId) {
-                const agent = availableAgents.find(a => a.id === selectedAgentId);
-                if (agent?.address) {
-                    // Open browse-helper on the agent domain (same-origin, so auth cookies work).
-                    // The helper page fetches /api/fs/browse same-origin and posts results back via postMessage.
-                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
-                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
-                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
-                    const onMessage = (event: MessageEvent) => {
-                        if (event.data?.type === 'browse-result') {
-                            window.removeEventListener('message', onMessage);
-                            const data = event.data.data as BrowserResponse;
-                            applyBrowseResult(data);
-                            setBrowserError(null);
-                            setBrowserLoading(false);
-                        } else if (event.data?.type === 'browse-error') {
-                            window.removeEventListener('message', onMessage);
-                            setBrowserError(`Browse failed: ${event.data.error}`);
-                            setBrowserLoading(false);
-                        }
-                    };
-                    window.addEventListener('message', onMessage);
-                    // Cleanup if popup is closed without posting
-                    if (popup) {
-                        const cleanup = setInterval(() => {
-                            if (popup.closed) {
-                                clearInterval(cleanup);
-                                window.removeEventListener('message', onMessage);
-                                // Only update if still in auth state
-                                setBrowserLoading(false);
-                            }
-                        }, 1000);
-                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
-                    }
-                } else {
-                    setBrowserError('Authentication required. Please authenticate with this agent first.');
-                }
-            } else {
-                setBrowserError(describeServerFailure('Unable to browse this path', target));
-            }
-        } finally {
-            setCurrentAgentId(prevAgentId);
-        }
-        setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents, server, applyBrowseResult]);
+        resetBrowser();
+    }, [open, isEdit, editRepo, writeName, serverId, baseUrl, resetBrowser]);
 
     // A path only means something on the server it came from, so switching
     // servers drops it and re-roots the browser at the new box's home.
@@ -245,16 +138,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
         server.selectServer(nextServerId);
         setPath('');
         setValidation(null);
-        setBrowserPath('');
-        setBrowserEntries([]);
-        setBrowserParent(null);
-        setBrowserDrives([]);
-        setBrowseRoots([]);
-        setBrowserError(null);
+        setSubmitting(false);
+        resetBrowser();
         if (showBrowser) {
             navigateTo('~', nextServerId);
         }
-    }, [server, showBrowser, navigateTo]);
+    }, [server, showBrowser, navigateTo, resetBrowser]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);
@@ -268,6 +157,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
             return;
         }
 
+        const isCurrent = capture();
         setSubmitting(true);
         setValidation(null);
         setShowBrowser(false);
@@ -293,6 +183,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                     rootPath: trimmedPath,
                     color: resolvedColor,
                 }, selectedServer.baseUrl);
+                if (!isCurrent()) return;
 
                 // Clone detection
                 if (created?.remoteUrl) {
@@ -313,10 +204,11 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
 
             // Restore agent ID before triggering refresh so fetchRepos uses the correct base
             setCurrentAgentId(prevAgentId);
+            if (!isCurrent()) return;
             onSuccess();
             onClose();
         } catch (error) {
-            setCurrentAgentId(prevAgentId);
+            if (!isCurrent()) return;
             setValidation({
                 msg: describeServerFailure(
                     getRepositoryApiErrorMessage(
@@ -328,19 +220,21 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                 ),
                 ok: false,
             });
+        } finally {
+            setCurrentAgentId(prevAgentId);
+            if (isCurrent()) setSubmitting(false);
         }
-        setSubmitting(false);
     };
 
     return (
         <Dialog
             id="add-repo-overlay"
             open={open}
-            onClose={onClose}
+            onClose={handleClose}
             title={isEdit ? 'Edit Repository' : 'Add Repository'}
             footer={
                 <>
-                    <Button variant="secondary" id="add-repo-cancel-btn" onClick={onClose}>Cancel</Button>
+                    <Button variant="secondary" id="add-repo-cancel-btn" onClick={handleClose}>Cancel</Button>
                     <Button variant="primary" id="add-repo-submit" loading={submitting} onClick={handleSubmit}>
                         {isEdit ? 'Save Changes' : 'Add Repo'}
                     </Button>
@@ -370,20 +264,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                 )}
                 {/* Server — which CoC registry the repo is added to */}
                 {!isEdit && (
-                    <>
-                        <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="add-repo-server-select">Server</label>
-                        <select
-                            id="add-repo-server-select"
-                            data-testid="add-repo-server-select"
-                            value={server.serverId}
-                            onChange={e => changeServer(e.target.value)}
-                            className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
-                        >
-                            {server.choices.map(option => (
-                                <option key={option.id} value={option.id}>{option.label}</option>
-                            ))}
-                        </select>
-                    </>
+                    <RepositoryServerField id="add-repo-server-select" server={server} onChange={changeServer} />
                 )}
 
                 {/* Path */}
@@ -411,39 +292,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                         <div id="path-breadcrumb" className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
                             {browserPath}
                         </div>
-                        {browseRoots.length > 0 && (
-                            <div className="mb-1 flex flex-wrap gap-1">
-                                {browseRoots.map(root => (
-                                    <button
-                                        key={root.path}
-                                        type="button"
-                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(root.path.toLowerCase())
-                                            ? 'border-[#0078d4] text-[#0078d4]'
-                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                        data-testid={`browse-root-${root.label}`}
-                                        onClick={() => navigateTo(root.path)}
-                                    >
-                                        {root.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {browseRoots.length === 0 && browserDrives.length > 1 && (
-                            <div className="mb-1 flex flex-wrap gap-1">
-                                {browserDrives.map(drive => (
-                                    <button
-                                        key={drive}
-                                        type="button"
-                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(drive.toLowerCase())
-                                            ? 'border-[#0078d4] text-[#0078d4]'
-                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                        onClick={() => navigateTo(drive)}
-                                    >
-                                        {drive}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                        <RepositoryBrowseRoots browser={browser} />
                         {browserLoading ? (
                             <div className="text-[#848484]">Loading...</div>
                         ) : (

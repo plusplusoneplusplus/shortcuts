@@ -19,20 +19,11 @@
  */
 
 import katex from 'katex';
+import { escapeHtmlAttribute as escapeHtml } from '../html';
 
 export interface RenderMathOptions {
     /** Render as display (block) math when true, inline otherwise. */
     display?: boolean;
-}
-
-/** Escape text for safe inclusion in HTML (used by the error fallback). */
-function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
 }
 
 /**

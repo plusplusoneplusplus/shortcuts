@@ -11,7 +11,7 @@ import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedul
 import { AcceptAllCodaProposals, CodaFindingsContext } from './SentinelCodaFinding';
 import { AutomationActions, AutomationError, AutomationTitleButton, CODA_DETAIL_KEY, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
 import { SentinelCodaDetails, useLeaveCodaHost } from './SentinelCodaDetails';
-import { CodaRunChatLink, SentinelCodaHistory } from './SentinelCodaHistory';
+import { SentinelCodaHistory } from './SentinelCodaHistory';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
@@ -71,6 +71,7 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
     const [detailSelected, setDetailSelected] = useState(false);
     const titleRef = useRef<HTMLButtonElement>(null);
     const detailActive = detailSelected && (!host || host.activeJobId === CODA_DETAIL_KEY);
+    const detailVisible = detailActive && (!host || host.wide || host.detailOpen);
     const selectDetails = () => { setDetailSelected(true); host?.select(CODA_DETAIL_KEY); };
     useLeaveCodaHost();
     const busyRef = useRef(false);
@@ -140,7 +141,6 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
     const active = data?.activeRun;
     const last = data?.runs[0];
     const config = data?.config;
-    const chatId = active?.childProcessId ?? last?.childProcessId;
     const cronError = useMemo(() => schedule ? validateScrubCron(schedule.cron) : undefined, [schedule?.cron]);
     const saveConfig = (draft: SentinelCodaConfig) => mutate(() => api.updateConfig(owner.ownerWorkspaceId, owner.processId, {
         enabled: draft.enabled, cron: draft.cron.trim(), expectedRevision: draft.revision,
@@ -221,8 +221,17 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
             if (mounted.current) setBusy(false);
         }
     };
+    const actionFeedback = <>
+        {error && <p role="alert">{error}</p>}
+        {batchResult && <p role="status">{batchResult}</p>}
+    </>;
     return <CodaFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
+        {!detailVisible && <>
+            {loadError && <p role="alert">{loadError}</p>}
+            {findingsError && <p role="alert">Could not load findings: {findingsError}</p>}
+            {actionFeedback}
+        </>}
         {place(children, <>
         <section aria-label="Coda" data-testid="sentinel-coda-strip" data-selected={detailActive}
             onClick={event => selectCardOnClick(event, selectDetails)}
@@ -232,41 +241,49 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
                     <AutomationTitleButton ref={titleRef} name="Coda" selected={detailActive} controls={`${id}-details`} onSelect={selectDetails}>
                         <strong>{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
                     </AutomationTitleButton>
-                    <SentinelAutomationInfo term="Coda" />
                     {builtInRow && config && !config.enabled && <span className="text-[#616161] dark:text-[#9d9d9d]">Paused</span>}
                 </span>
-                <AcceptAllCodaProposals />
+            </div>
+            {!data && <p role="status">{loadError ? 'Coda unavailable' : 'Loading Coda…'}</p>}
+            {config && <div className="text-[#616161] dark:text-[#9d9d9d]">
+                {config.enabled ? describeCron(config.cron) || config.cron : 'Manual only'}
+                {config.enabled && !config.paused && config.nextRunAt && <> · next <time dateTime={config.nextRunAt} title={new Date(config.nextRunAt).toLocaleString()}>{formatRelativeTime(config.nextRunAt)}</time></>}
+            </div>}
+            {config?.paused && <p role="status" className="text-[#b5650f] dark:text-[#cca700]">Schedule paused after {config.consecutiveFailures} failures</p>}
+            {active ? <div role="status" className="flex flex-wrap items-center gap-1">
+                <Spinner size="sm" /> {active.status === 'queued' ? 'Queued' : `Checking ${active.snapshot.length} items…`} · {formatRelativeTime(active.startedAt ?? active.createdAt)}
+            </div> : last && <div>
+                {last.status === 'failed' || last.status === 'timed_out' ? 'Last run failed'
+                    : <>Last run {formatRelativeTime(last.finishedAt ?? last.createdAt)} · {last.status} · ✓ {last.counts.done} done · {last.counts.proposals} proposal{last.counts.proposals === 1 ? '' : 's'} · {last.counts.unverified} unverified</>}
+                {last.deferredCount > 0 && <p>{last.deferredCount} deferred to next run</p>}
+                {last.awaitingReviewCount > 0 && <p>{last.awaitingReviewCount} awaiting Sentinel review</p>}
+            </div>}
+        </section>
+        {detailActive && <SentinelCodaDetails id={`${id}-details`} name={builtInRow ? 'Coda · built-in' : 'Coda'} client={client} owner={owner}
+            items={items} data={data} titleRef={titleRef} onFollowLink={onFollowLink} onClose={() => setDetailSelected(false)}
+            actions={<div className="sentinel-automation-toolbar" role="group" aria-label="Actions for Coda">
                 <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Run now</Button>
+                <AcceptAllCodaProposals />
                 {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}
                     onClick={() => { void saveConfig({ ...config, enabled: !config.enabled }); }}>{config.enabled ? 'Pause' : 'Resume'}</Button>}
+                {config?.paused && <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void saveConfig(config); }}>Resume failure pause</Button>}
+                {active && <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, active.id)); }}>Cancel</Button>}
+                {!active && (last?.status === 'failed' || last?.status === 'timed_out') && <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void start(); }}>Retry</Button>}
                 <AutomationActions name="Coda">
                     <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
-                    <CodaRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
                     {data && <>
                         <button type="button" className="rounded px-2 py-1 text-[#0078d4] dark:text-[#3794ff]" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Hide history' : 'History'} ({data.runs.length})</button>
                         <button type="button" className="rounded px-2 py-1 text-[#0078d4] dark:text-[#3794ff]" aria-expanded={selecting} onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</button>
                     </>}
                 </AutomationActions>
-            </div>
-            {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh Coda</Button></p>}
-            {findingsError && <p role="alert">Could not load findings: {findingsError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh findings</Button></p>}
-            {!data && !loadError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading Coda…</div>}
-            {config && <div className="text-[#616161] dark:text-[#9d9d9d]">
-                {config.enabled ? describeCron(config.cron) || config.cron : 'Manual only'}
-                {config.enabled && !config.paused && config.nextRunAt && <> · next <time dateTime={config.nextRunAt} title={new Date(config.nextRunAt).toLocaleString()}>{formatRelativeTime(config.nextRunAt)}</time></>}
-            </div>}
-            {config?.paused && <p role="status" className="text-[#b5650f] dark:text-[#cca700]">Schedule paused after {config.consecutiveFailures} failures · <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void saveConfig(config); }}>Resume</Button></p>}
-            {active ? <div role="status" className="flex flex-wrap items-center gap-1">
-                <Spinner size="sm" /> {active.status === 'queued' ? 'Queued' : `Checking ${active.snapshot.length} items…`} · {formatRelativeTime(active.startedAt ?? active.createdAt)}
-                <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, active.id)); }}>Cancel</Button>
-            </div> : last && <div className={last.status === 'failed' || last.status === 'timed_out' ? 'sentinel-automation-last-run flex min-w-0 flex-wrap items-center gap-1 text-[#c72e2e] dark:text-[#f48771]' : ''}>
-                {last.status === 'failed' || last.status === 'timed_out' ? <><AutomationError label="Last run failed" error={last.error ?? last.status} /><Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void start(); }}>Retry</Button></>
-                    : <>Last run {formatRelativeTime(last.finishedAt ?? last.createdAt)} · {last.status} · ✓ {last.counts.done} done · {last.counts.proposals} proposal{last.counts.proposals === 1 ? '' : 's'} · {last.counts.unverified} unverified</>}
-                {last.deferredCount > 0 && <p>{last.deferredCount} deferred to next run</p>}
-                {last.awaitingReviewCount > 0 && <p>{last.awaitingReviewCount} awaiting Sentinel review</p>}
-            </div>}
-            {error && <p role="alert">{error}</p>}
-            {batchResult && <p role="status">{batchResult}</p>}
+                <SentinelAutomationInfo term="Coda" />
+            </div>}>
+            {detailVisible && <>
+                {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh Coda</Button></p>}
+                {findingsError && <p role="alert">Could not load findings: {findingsError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh findings</Button></p>}
+                {actionFeedback}
+            </>}
+            {!active && last && (last.status === 'failed' || last.status === 'timed_out') && <AutomationError label="Last run failed" error={last.error ?? last.status} />}
             {data && selecting && <div className="flex flex-wrap gap-1">
                 <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Run on selected ({selectedIds.length})</Button>
             </div>}
@@ -292,10 +309,8 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
                 <div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={busy} onClick={() => setSchedule(null)}>Close schedule</Button>
                     <Button size="sm" type="submit" disabled={busy || !!cronError || !!loadError}>Save schedule</Button></div>
             </form>}
-        </section>
-        {detailActive && <SentinelCodaDetails id={`${id}-details`} name={builtInRow ? 'Coda · built-in' : 'Coda'} client={client} owner={owner}
-            items={items} data={data} titleRef={titleRef} onFollowLink={onFollowLink} onClose={() => setDetailSelected(false)} />}
-        {historyOpen && data && <SentinelCodaHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
+            {historyOpen && data && <SentinelCodaHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
+        </SentinelCodaDetails>}
         </>)}
     </CodaFindingsContext.Provider>;
 }

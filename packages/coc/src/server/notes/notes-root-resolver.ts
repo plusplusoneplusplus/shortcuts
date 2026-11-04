@@ -7,7 +7,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from './notes-paths';
 import { resolveExistingTaskRoots, taskRootPathComparisonKey } from '../tasks/task-root-resolver';
 import { readTasksSettingsSync } from '../tasks/tasks-handler-utils';
 
@@ -96,7 +96,7 @@ export function resolveNotesRoot(
     // Default root
     if (!rootParam || rootParam === DEFAULT_ROOT_ID) {
         return {
-            absolutePath: getRepoDataPath(dataDir, workspaceId, 'notes'),
+            absolutePath: getNotesRoot(dataDir, workspaceId),
             isDefault: true,
             isTaskDerived: false,
             rootId: DEFAULT_ROOT_ID,

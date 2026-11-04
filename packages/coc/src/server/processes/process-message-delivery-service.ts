@@ -19,7 +19,7 @@ import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@pluspluson
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { buildChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
@@ -120,14 +120,14 @@ export function normalizeFollowUpInput(
     // queueing and retry.
     let requestedProvider: ChatProvider | undefined;
     if (body.provider !== undefined && body.provider !== null) {
-        if (typeof body.provider !== 'string' || !VALID_CHAT_PROVIDERS.has(body.provider as ChatProvider)) {
+        requestedProvider = resolveChatProvider(body.provider);
+        if (!requestedProvider) {
             return {
                 ok: false,
                 code: 'INVALID_PROVIDER',
                 error: `Invalid provider: must be one of ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
             };
         }
-        requestedProvider = body.provider as ChatProvider;
     }
     // The provider that will actually run the turn — what the model override
     // must be valid for. Validating against the conversation provider instead

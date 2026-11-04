@@ -74,6 +74,8 @@ test.beforeAll(async () => {
                         get: async () => ({ config: { ...scrub }, runs: state.seeded ? [{ id: 'coda-failed', status: 'failed', error: diagnostic, childProcessId: 'queue_coda', createdAt: at, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 0, unverified: 0 } }] : [] }),
                         updateConfig: async (ws, process, input) => { record('scrubber-config', ws, process); Object.assign(scrub, input); return scrub; },
                         start: async (ws, process) => { record('scrubber-start', ws, process); return { runId: 'scrub' }; },
+                        getRun: async (ws, process, id) => ({ id, status: 'failed', trigger: 'manual', error: diagnostic, childProcessId: 'queue_coda',
+                            createdAt: at, deferredItemIds: [], awaitingReviewItemIds: [], findings: [] }),
                     },
                 },
             };
@@ -147,16 +149,22 @@ for (const dark of [false, true]) {
             await expect(job).toBeVisible();
             await expect(job.getByText('Autopilot', { exact: true })).toBeVisible();
             expect(await job.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-            await job.getByRole('button', { name: 'Run now' }).click();
-            await expect(job.getByText('Run #1 running')).toBeVisible();
-            await expect(job.getByRole('button', { name: 'Run now' })).toBeDisabled();
-            await job.getByRole('button', { name: 'Cancel', exact: true }).click();
-            await expect(job.getByText(/Last run #1: cancelled/)).toBeVisible();
-            await job.getByRole('button', { name: 'Pause', exact: true }).click();
-            await expect(job.getByText('Paused', { exact: true })).toBeVisible();
+            // Cards are selection-only; run, cancel, pause and delete live in the selected details.
+            await expect(job.getByRole('button')).toHaveCount(1);
+            await job.getByRole('button', { name: 'Show details for Browser audit' }).click();
+            const details = page.getByRole('region', { name: 'Refrain details for Browser audit' });
+            await expect(details).toBeVisible();
+            await details.getByRole('button', { name: 'Run now' }).click();
+            await expect(details.getByText('Current run #1: running')).toBeVisible();
+            await expect(details.getByRole('button', { name: 'Run now' })).toBeDisabled();
+            await details.getByRole('button', { name: 'Cancel', exact: true }).click();
+            await expect(details.getByText('Latest run #1: cancelled')).toBeVisible();
+            await details.getByRole('button', { name: 'Pause', exact: true }).click();
+            await expect(details.getByText('Paused · Autopilot')).toBeVisible();
+            expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
             await page.screenshot({ path: info.outputPath('sentinel-jobs.png'), fullPage: true });
-            await job.getByLabel('More actions for Browser audit').click();
-            await job.getByRole('button', { name: 'Delete', exact: true }).click();
+            await details.getByLabel('More actions for Browser audit').click();
+            await details.getByRole('button', { name: 'Delete', exact: true }).click();
             await page.getByRole('dialog', { name: 'Delete refrain' }).getByRole('button', { name: 'Delete refrain', exact: true }).click();
             await expect(jobs.getByText(/No refrains yet/)).toBeVisible();
             expect(errors).toEqual([]);
@@ -165,7 +173,8 @@ for (const dark of [false, true]) {
 }
 test('flag-off keeps the Coda strip and makes no Refrains calls', async ({ page }) => {
     await mount(page, { enabled: false });
-    await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();
+    await page.getByTestId('sentinel-coda-strip').getByRole('button', { name: 'Show details for Coda' }).click();
+    await expect(page.getByTestId('sentinel-coda-details').getByRole('button', { name: 'Run now' })).toBeVisible();
     await expect(page.getByTestId('sentinel-refrains')).toHaveCount(0);
     expect(await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[] } }).jobsFixture.calls)).toEqual([]);
 });
@@ -224,11 +233,14 @@ test('gated job requires a schedule and shows Test gate results inline at 320px'
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await dialog.getByRole('button', { name: 'Create refrain' }).click();
     const job = page.getByRole('article', { name: 'Gated audit' });
-    await expect(job.getByText('Gate active')).toBeVisible();
-    await job.getByRole('button', { name: 'Test gate' }).click();
-    await expect(job.getByText(/a tick would start a run/)).toBeVisible();
-    await expect(job.getByText(/item-119/)).toBeVisible();
-    expect(await job.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(job.getByText('Gated', { exact: true })).toBeVisible();
+    await job.getByRole('button', { name: 'Show details for Gated audit' }).click();
+    const details = page.getByRole('region', { name: 'Refrain details for Gated audit' });
+    await expect(details.getByText('Gate active')).toBeVisible();
+    await details.getByRole('button', { name: 'Test gate' }).click();
+    await expect(details.getByText(/a tick would start a run/)).toBeVisible();
+    await expect(details.getByText(/item-119/)).toBeVisible();
+    expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[][] } }).jobsFixture.calls);
     expect(calls).toContainEqual(['test-gate', 'ws-owner', 'queue_sentinel']);
     expect(calls.some(call => call[0] === 'start')).toBe(false);
@@ -244,10 +256,12 @@ for (const dark of [false, true]) {
             await mount(page, { dark, width, seeded: true });
             const coda = page.getByTestId('sentinel-coda-strip');
             const job = page.getByTestId('sentinel-refrain-seed-2');
-            await expect(job.getByRole('button', { name: 'Run now' })).toBeVisible();
             await expect(job.getByText('Paused', { exact: true })).toBeVisible();
-            await expect(page.getByText('Gate paused after', { exact: false })).toBeVisible();
+            await expect(job.getByText('Last run #1: failed')).toBeVisible();
+            await expect(page.getByTestId('sentinel-refrain-seed-3').getByText('Gate paused', { exact: true })).toBeVisible();
+            // Cards hold identity and status with one selection control; actions live in the selected details.
             for (const card of [coda, ...await page.getByRole('article').all()]) {
+                await expect(card.getByRole('button')).toHaveCount(1);
                 expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
             }
             await info.attach('card-bounds', { body: JSON.stringify({ coda: await coda.boundingBox(), refrain: await job.boundingBox() }), contentType: 'application/json' });
@@ -255,52 +269,64 @@ for (const dark of [false, true]) {
                 expect((await coda.boundingBox())!.height).toBeLessThan(120);
                 expect((await job.boundingBox())!.height).toBeLessThan(120);
             }
-            const more = job.getByLabel('More actions for Implement feature or bug fix');
-            for (const control of [job.getByRole('button', { name: 'Run now' }), job.getByRole('button', { name: 'Resume', exact: true }), more]) {
+            await job.getByRole('button', { name: 'Show details for Implement feature or bug fix' }).click();
+            const details = page.getByRole('region', { name: 'Refrain details for Implement feature or bug fix' });
+            await expect(details).toBeVisible();
+            const more = details.getByLabel('More actions for Implement feature or bug fix');
+            for (const control of [details.getByRole('button', { name: 'Run now' }), details.getByRole('button', { name: 'Resume', exact: true }), more]) {
                 expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
             }
-            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
             await more.focus();
             await page.keyboard.press('Enter');
-            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
             await page.keyboard.press('Tab');
-            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
+            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
             await page.keyboard.press('Escape');
             await expect(more).toBeFocused();
-            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
-            await page.keyboard.press('Space');
-            const history = job.getByText('History (1)', { exact: true });
+            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+            await expect(details).toBeVisible();
+            const history = details.getByText('History (1)', { exact: true });
             await expect(history.locator('..')).not.toHaveAttribute('open', '');
             await history.focus();
             await page.keyboard.press('Enter');
-            await expect(job.getByLabel('Select run #1: failed (manual)')).toBeVisible();
+            await expect(details.getByLabel('Select run #1: failed (manual)')).toBeVisible();
             await history.press('Enter');
-            await more.press('Escape');
-            for (const card of [job, coda]) {
-                const summary = card.locator('.sentinel-automation-error > summary');
-                await summary.focus();
-                await summary.press('Enter');
-                const full = card.getByLabel('Full error', { exact: true });
-                await expect(full).toBeVisible();
-                await expect(full).toContainText('Full error ending');
-                await page.keyboard.press('Tab');
-                await expect(full).toBeFocused();
-                // The whole diagnostic can be selected for native Copy, including its ending.
-                expect(await full.evaluate(el => {
-                    const range = document.createRange(); range.selectNodeContents(el);
-                    const selection = window.getSelection(); if (!selection) return false;
-                    selection.removeAllRanges(); selection.addRange(range);
-                    return selection.toString() === el.textContent;
-                })).toBe(true);
-                expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-                await summary.press('Space');
-                await expect(full).toBeHidden();
-            }
-            const codaMore = coda.getByLabel('More actions for Coda');
+            const selectAll = (el: Element) => {
+                const range = document.createRange(); range.selectNodeContents(el);
+                const selection = window.getSelection(); if (!selection) return false;
+                selection.removeAllRanges(); selection.addRange(range);
+                return selection.toString() === el.textContent;
+            };
+            // The whole diagnostic stays selectable for native Copy, including its ending.
+            const refrainError = details.getByRole('region', { name: 'Error for run #1', exact: true });
+            await expect(refrainError).toContainText('Full error ending');
+            await refrainError.focus();
+            await expect(refrainError).toBeFocused();
+            expect(await refrainError.evaluate(selectAll)).toBe(true);
+            expect(await details.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.evaluate(() => window.getSelection()?.removeAllRanges());
+            await coda.getByRole('button', { name: 'Show details for Coda' }).click();
+            const codaDetails = page.getByTestId('sentinel-coda-details');
+            await expect(codaDetails).toBeVisible();
+            const summary = codaDetails.locator('.sentinel-automation-error > summary');
+            await summary.focus();
+            await summary.press('Enter');
+            const full = codaDetails.getByLabel('Full error', { exact: true });
+            await expect(full).toBeVisible();
+            await expect(full).toContainText('Full error ending');
+            await page.keyboard.press('Tab');
+            await expect(full).toBeFocused();
+            expect(await full.evaluate(selectAll)).toBe(true);
+            expect(await codaDetails.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.evaluate(() => window.getSelection()?.removeAllRanges());
+            await summary.press('Space');
+            await expect(full).toBeHidden();
+            const codaMore = codaDetails.getByLabel('More actions for Coda');
             await codaMore.focus();
             await codaMore.press('Space');
-            for (const name of ['Schedule ▾', 'Select items', 'History (1)']) await expect(coda.getByRole('button', { name, exact: true })).toBeVisible();
-            await expect(coda.getByRole('link', { name: 'Open chat' })).toBeVisible();
+            for (const name of ['Schedule ▾', 'Select items', 'History (1)']) await expect(codaDetails.getByRole('button', { name, exact: true })).toBeVisible();
+            await expect(codaDetails.getByRole('link', { name: 'Open chat' })).toBeVisible();
             await codaMore.press('Escape');
             await expect(codaMore).toBeFocused();
             await coda.scrollIntoViewIfNeeded();
@@ -320,14 +346,20 @@ for (const dark of [false, true]) {
             page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
             await mount(page, { dark, width, seeded: true, history: true, remote: true, hosted: true });
             const job = page.getByTestId('sentinel-refrain-history');
-            const history = job.getByText('History (7)', { exact: true });
+            const title = job.getByRole('button', { name: 'Show details for New stable revision release' });
+            await expect(job.getByLabel('Last run #7: failed. Show full error')).toHaveCount(0);
+            await expect(job.getByText(/copilot \/ medium effort tier/)).toContainText('Next');
+            // History, run details and actions share the selected detail pane.
+            await title.click();
+            const detail = page.getByRole('region', { name: /^(Refrain|Run) details for New stable revision release$/ });
+            await expect(detail).toBeVisible();
+            const history = detail.getByText('History (7)', { exact: true });
             await history.focus();
             await history.press('Enter');
-            const body = job.locator('.sentinel-refrain-history-body');
+            const body = detail.locator('.sentinel-refrain-history-body');
             await expect(body).toHaveAttribute('data-layout', width === 800 ? 'split' : 'single');
-            const list = job.locator('.sentinel-refrain-runs');
+            const list = detail.locator('.sentinel-refrain-runs');
             await expect(list).toHaveAttribute('aria-label', 'Run history for New stable revision release');
-            const detail = page.locator('.sentinel-refrain-run-detail');
             const rows = list.getByRole('listitem');
             await expect(rows).toHaveCount(7);
             for (const row of await rows.all()) {
@@ -338,9 +370,8 @@ for (const dark of [false, true]) {
                 await expect(button).toHaveAttribute('aria-pressed', 'false');
                 await expect(row.getByRole('link')).toHaveCount(0);
             }
-            await expect(job.getByLabel('Last run #7: failed. Show full error')).toHaveCount(0);
-            await expect(job.getByText(/copilot \/ medium effort tier/)).toContainText('Next');
             await page.screenshot({ path: info.outputPath('run-history-list.png'), fullPage: true });
+            const heading = detail.getByRole('heading', { level: 4 });
             const failed = list.locator('[data-run-select="history-7"]');
             const completed = list.locator('[data-run-select="history-6"]');
             const skipped = list.locator('[data-run-select="history-4"]');
@@ -355,25 +386,20 @@ for (const dark of [false, true]) {
             await expect(failed).toBeFocused();
             await expect(failed).toHaveAttribute('aria-pressed', 'false');
             await failed.press('Space');
-            await expect(detail).toBeVisible();
-            await expect(detail.getByRole('heading')).toHaveText('Run #7: failed');
+            await expect(heading).toHaveText('Run #7: failed');
             if (width === 280) {
                 await expect(list).toBeHidden();
-                await expect(detail.getByRole('heading')).toBeFocused();
+                await expect(heading).toBeFocused();
             } else {
                 await expect(list).toBeVisible();
-                const listBounds = (await list.boundingBox())!;
-                const detailBounds = (await detail.boundingBox())!;
-                expect(listBounds.x + listBounds.width).toBeLessThan(detailBounds.x);
+                await expect(failed).toHaveAttribute('aria-pressed', 'true');
             }
             const error = detail.getByRole('region', { name: 'Error for run #7', exact: true });
             await expect(error).toContainText('Full error ending');
             for (const timestamp of ['2026-10-28T08:47:01.123Z', '2026-10-28T08:47:02.456Z', '2026-10-28T08:48:53.789Z']) await expect(detail.getByText(timestamp)).toBeVisible();
             const close = detail.getByRole('button', { name: 'Close run details' });
-            await close.focus();
-            await close.press('Tab');
             const link = detail.getByRole('link', { name: 'Job turn' });
-            await expect(link).toBeFocused();
+            await link.focus();
             await page.keyboard.press('Tab');
             await expect(error).toBeFocused();
             expect(await error.evaluate(el => {
@@ -393,11 +419,11 @@ for (const dark of [false, true]) {
             if (width === 280) {
                 await detail.getByRole('button', { name: 'Back to runs' }).click();
                 await expect(failed).toBeFocused();
-                await expect(failed).toHaveAttribute('aria-pressed', 'true');
+                await expect(list).toBeVisible();
             }
             await completed.focus();
             await completed.press('Enter');
-            await expect(detail.getByRole('heading')).toHaveText('Run #6: completed');
+            await expect(heading).toHaveText('Run #6: completed');
             await expect(error).toHaveCount(0);
             if (width === 280) await detail.getByRole('button', { name: 'Back to runs' }).click();
             await skipped.focus();
@@ -409,9 +435,9 @@ for (const dark of [false, true]) {
             await expect(skipped).toHaveAttribute('aria-pressed', 'false');
             await completed.press('Enter');
             await page.evaluate(() => (window as Window & { jobsFixture: { addRun: () => void } }).jobsFixture.addRun());
-            await expect(job.getByText('History (8)', { exact: true })).toHaveText('History (8)');
+            await expect(detail.getByText('History (8)', { exact: true })).toHaveText('History (8)');
             await expect(completed).toHaveAttribute('aria-pressed', 'true');
-            await expect(detail.getByRole('heading')).toHaveText('Run #6: completed');
+            await expect(heading).toHaveText('Run #6: completed');
             // Change dock width inside a wide viewport: the measured container controls the split.
             await page.setViewportSize({ width: 1100, height: 900 });
             await page.locator('#fixture').evaluate(el => { el.style.width = '800px'; });
@@ -422,18 +448,22 @@ for (const dark of [false, true]) {
             await page.locator('#fixture').evaluate(el => { el.style.width = '280px'; });
             await expect(body).toHaveAttribute('data-layout', 'single');
             await expect(list).toBeHidden();
-            await expect(detail.getByRole('heading')).toBeFocused();
+            await expect(heading).toBeFocused();
             await detail.getByRole('button', { name: 'Back to runs' }).click();
             await expect(completed).toBeFocused();
             await expect(list).toBeVisible();
             await completed.press('Enter');
             await page.evaluate(() => (window as Window & { jobsFixture: { pruneRun: (id: string) => void } }).jobsFixture.pruneRun('history-6'));
-            await expect(job.getByText('This run is no longer in retained history. Select another run.')).toBeVisible();
+            await expect(detail.getByText('This run is no longer in retained history. Select another run.')).toBeVisible();
             await expect(list).toBeVisible();
             await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
-            await expect(detail).toBeHidden();
-            expect(await job.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            expect(await detail.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+            await detail.getByRole('button', { name: 'Close run details' }).click();
+            await detail.getByRole('button', { name: 'Close refrain details' }).click();
+            await expect(detail).toHaveCount(0);
+            await expect(title).toBeFocused();
+            await expect(job.getByText('Last run #8: completed')).toBeVisible();
             // The same right pane still opens ordinary To-do details after viewing a run.
             const todoRow = page.getByTestId('sentinel-todo-row-item').locator('[data-todo-select]');
             await todoRow.click();
@@ -441,19 +471,14 @@ for (const dark of [false, true]) {
             await expect(page.getByTestId('sentinel-refrain-details-host')).toBeHidden();
             await page.getByTestId('sentinel-todo-details').getByRole('button', { name: 'Back to list', exact: true }).click();
             await expect(todoRow).toBeFocused();
-            const toggle = job.getByText('History (7)', { exact: true });
-            await toggle.focus();
-            await toggle.press('Space');
-            await expect(list).toBeHidden();
-            await expect(job.getByText('Last run #8: completed')).toBeVisible();
-            await toggle.press('Enter');
+            await title.click();
+            await detail.getByText('History (7)', { exact: true }).click();
             await list.locator('[data-run-select="history-8"]').press('Enter');
-            await expect(detail.getByRole('heading')).toHaveText('Run #8: completed');
+            await expect(heading).toHaveText('Run #8: completed');
             await page.evaluate(() => (window as Window & { jobsFixture: { changeOwner: () => void } }).jobsFixture.changeOwner());
-            const newHistory = job.getByText('History (7)', { exact: true });
-            await expect(newHistory.locator('..')).not.toHaveAttribute('open', '');
-            await newHistory.click();
-            await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
+            // A new owner remounts the tab without carrying over the previous selection.
+            await expect(job.getByRole('button', { name: 'Show details for New stable revision release' })).toHaveAttribute('aria-pressed', 'false');
+            await expect(detail).toHaveCount(0);
             await expect(page.getByTestId('sentinel-refrain-details-host')).toBeHidden();
 
             const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);

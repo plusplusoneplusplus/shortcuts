@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, webContents } = require('electron');
+const { app, BrowserWindow, dialog, webContents, nativeImage } = require('electron');
 const { buildSync } = require('esbuild');
 const { createServer } = require('node:http');
 const { readFileSync, writeFileSync } = require('node:fs');
@@ -13,16 +13,51 @@ const renderer = buildSync({
         resolveDir: cocRoot,
         loader: 'tsx',
         contents: `
-            import React, { useState } from 'react';
+            import React, { useState, useRef } from 'react';
             import { createRoot } from 'react-dom/client';
             import { BrowserWebviewLayer } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/BrowserWebviewLayer';
             import { UnifiedBrowserTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
             import { UnifiedHtmlPageTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedHtmlPageTab';
             import { closeBrowserPanelView } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
             import { setBrowserWebviewBackground } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
+            import { BrowserAnnotationChips } from './src/server/spa/client/react/shared/file-path/BrowserAnnotationChips';
+            import { getBrowserAnnotationChips, usePublishBrowserAnnotationSend } from './src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+            import { useSendMessage } from './src/server/spa/client/react/features/chat/hooks/useSendMessage';
+            import { ChatPreferencesProvider } from './src/server/spa/client/react/contexts/ChatPreferencesContext';
+            import { WorkspaceOwnerContext } from './src/server/spa/client/react/repos/workspaceOwnerContext';
+            const owner = { workspaceId: 'workspace-a', routingRef: 'workspace-a', processId: 'chat-a' };
             const bridge = window.cocDesktop.browser;
             const ignore = () => {};
             bridge.onClosed(({viewId}) => closeBrowserPanelView(viewId));
+            function Composer() {
+                const [text, setText] = useState('');
+                const input = useRef('');
+                const [sending, setSending] = useState(false);
+                const [error, setError] = useState(null);
+                const sender = useSendMessage({
+                    processId: owner.processId, taskId: owner.processId, workspaceId: owner.workspaceId,
+                    browserAnnotationOwner: owner, inputDisabled: false, sending, isActiveGeneration: false,
+                    setSending, setError, setSessionExpired: ignore, setSuggestions: ignore, setTurnsAndRef: ignore,
+                    removeStreamingPlaceholder: ignore, refreshConversation: async () => {}, queueDispatch: ignore,
+                    slashCommands: { parseAndExtract: prompt => ({ prompt, skills: [], metaCommands: [] }), dismissMenu: ignore },
+                    followUpInputRef: input, setFollowUpInput: value => { input.current = value; setText(value); },
+                    selectedMode: 'ask', selectedModeRef: useRef('ask'), images: [], clearImages: ignore,
+                    clearPaste: ignore, lastFailedMessageRef: useRef(''), setTask: ignore,
+                });
+                usePublishBrowserAnnotationSend(owner, chip => sender.sendFollowUp(
+                    '', 'immediate', { includeComposerContext: false, browserAnnotationSnapshot: [chip],
+                        throwOnError: true, waitForCompletion: false }));
+                window.annotationChips = () => getBrowserAnnotationChips(owner);
+                return <div id="composer" style={{position:'fixed',left:0,top:550,width:850}}>
+                    <BrowserAnnotationChips owner={owner} />
+                    <div id="foreign-chat"><BrowserAnnotationChips owner={{...owner, processId:'chat-b'}} />
+                        <BrowserAnnotationChips owner={{...owner, workspaceId:'workspace-b'}} />
+                        <BrowserAnnotationChips owner={{...owner, routingRef:'remote:other:workspace-a'}} /></div>
+                    <input id="composer-input" value={text} onChange={event => {input.current = event.target.value; setText(event.target.value);}} />
+                    <button id="send-comments" onClick={() => sender.sendFollowUp(undefined, 'immediate', {waitForCompletion:false})}>Send</button>
+                    <span id="composer-error">{error}</span>
+                </div>;
+            }
             function Fixture() {
                 const [mounted, setMounted] = useState(true);
                 const [shown, setShown] = useState(true);
@@ -39,12 +74,15 @@ const renderer = buildSync({
                         {mounted && (file ? <UnifiedHtmlPageTab tabId="file-tab" pageId="file" wsId="workspace-a"
                             filePath={file} active visible={shown} nativeCovered={!!overlay} onErrorChange={ignore} />
                             : <UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace-a"
-                            url={location.origin + '/page'} active visible={shown} nativeCovered={!!overlay}
+                            workspaceId="workspace-a" chatId="chat-a" url={location.origin + '/page'} active visible={shown} nativeCovered={!!overlay}
                             onNavigate={ignore} onPageState={ignore} />)}
                     </div>
                     {overlay && <div id="overlay" role={overlay === 'dialog' ? 'dialog' : 'menu'}
                         style={{position:'fixed',left:180,top:160,width:180,height:100,zIndex:50,background:'rgb(200,50,60)'}}
                         onClick={() => {window.overlayClicked = true;}}>{overlay}</div>}
+                    <WorkspaceOwnerContext.Provider value={{workspaceId:'workspace-a',selectionId:'workspace-a'}}>
+                        <ChatPreferencesProvider workspaceId="workspace-a"><Composer /></ChatPreferencesProvider>
+                    </WorkspaceOwnerContext.Provider>
                     <BrowserWebviewLayer />
                 </>;
             }
@@ -57,7 +95,18 @@ const renderer = buildSync({
     define: { 'process.env.NODE_ENV': '"production"' },
 }).outputFiles[0].text;
 
+const annotationRequests = [];
 const server = createServer((req, res) => {
+    if (req.method === 'POST' && req.url.startsWith('/api/processes/')) {
+        let body = '';
+        req.on('data', data => { body += data; });
+        req.on('end', () => {
+            annotationRequests.push({ url: req.url, body: JSON.parse(body) });
+            res.setHeader('content-type', 'application/json');
+            res.end('{}');
+        });
+        return;
+    }
     if (req.url === '/renderer.js') {
         res.setHeader('content-type', 'application/javascript');
         res.end(renderer);
@@ -66,7 +115,7 @@ const server = createServer((req, res) => {
         res.end(readFileSync(path.join(cocRoot, 'src/server/spa/client/dist/bundle.css')));
     } else if (req.url.startsWith('/page')) {
         res.setHeader('content-type', 'text/html');
-        res.end('<!doctype html><title>Live fixture</title><style>html,body{margin:0;background:rgb(20,170,90)}body{height:1800px}</style><input id="draft"><a href="/page?next">Next</a>');
+        res.end('<!doctype html><title>Live fixture</title><style>html,body{margin:0;background:rgb(20,170,90)}body{height:1800px}</style><input id="draft"><a href="/page?next">Next</a><button id="target" style="position:absolute;left:40px;top:60px;width:120px;height:40px;background:rgb(200,20,40);border:0">Pick me</button><script>window.annotationClicks=0;document.getElementById("target").onclick=()=>window.annotationClicks++;</script>');
     } else {
         res.setHeader('content-type', 'text/html');
         res.end('<!doctype html><link rel="stylesheet" href="/style.css"><div id="root"></div><script src="/renderer.js"></script>');
@@ -146,6 +195,96 @@ app.whenReady().then(async () => {
     assert(await js(`document.querySelector('[data-browser-view-id]').style.height`) === pageHeight, 'Dropdown resized the page');
     assert(await js(`document.querySelector('[data-testid="browser-title"]') === null`), 'Extra title row is visible');
     console.log('E2E::' + JSON.stringify({ step: 'toolbar', ok: true }));
+
+    // The toolbar, preload IPC, host manager, isolated guest, native crop and composer
+    // sender are production code. Only the receiving process endpoint is a fixture.
+    await js(`document.querySelector('[aria-label="Browser options"]').click()`);
+    await guest.executeJavaScript('scrollTo(0,0)');
+    await guest.executeJavaScript(`{
+        window.annotationCaptureClicks = 0;
+        window.annotationCaptureKeys = 0;
+        window.addEventListener('click', () => window.annotationCaptureClicks++, true);
+        window.addEventListener('keydown', () => window.annotationCaptureKeys++, true);
+        window.addEventListener('input', () => window.annotationCaptureKeys++, true);
+    }`);
+    if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
+    const frame = await guest.debugger.sendCommand('Page.getFrameTree');
+    const world = await guest.debugger.sendCommand('Page.createIsolatedWorld', {
+        frameId: frame.frameTree.frame.id, worldName: 'coc-browser-annotation',
+    });
+    const annotationEval = async expression => {
+        const reply = await guest.debugger.sendCommand('Runtime.evaluate', {
+            expression, contextId: world.executionContextId, returnByValue: true,
+        });
+        if (reply.exceptionDetails) throw new Error(JSON.stringify(reply.exceptionDetails));
+        return reply.result.value;
+    };
+    // Private test access only; the website never receives the closed root.
+    await annotationEval(`{
+        const attach = Element.prototype.attachShadow;
+        Element.prototype.attachShadow = function(init) {
+            const root = attach.call(this, init);
+            if (init.mode === 'closed') window.fixtureAnnotationRoot = root;
+            return root;
+        };
+    }; void 0;`);
+    await until(() => js(`!!document.querySelector('[aria-label="Annotate"]:not(:disabled)')`),
+        'annotation toolbar ready', () => js('document.body.innerText'));
+    await js(`document.querySelector('[aria-label="Annotate"]').click()`);
+    await until(() => annotationEval('!!window.fixtureAnnotationRoot?.host.isConnected'), 'production overlay');
+    const guestClick = (x, y, modifiers = []) => {
+        for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) guest.sendInputEvent({type,x,y,button:'left',clickCount:1,modifiers});
+    };
+    const rootEval = expression => annotationEval(`(() => { const root = window.fixtureAnnotationRoot; return ${expression}; })()`);
+    async function saveComment(text, modifiers = []) {
+        guestClick(90, 80, modifiers);
+        await until(() => rootEval(`!root.querySelector('.editor').hidden`), 'comment editor');
+        await guest.insertText(text);
+        await until(() => rootEval(`!root.querySelector('.save').disabled`), 'native capture acknowledged');
+        const point = await rootEval(`(() => { const r = root.querySelector('.save').getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);
+        guestClick(point.x, point.y);
+        await until(() => rootEval(`root.querySelector('.editor').hidden`), 'comment saved');
+    }
+    await saveComment('First native comment');
+    await until(() => js('window.annotationChips().length === 1'), 'first composer chip');
+    await saveComment('Queued native comment');
+    await until(() => js('window.annotationChips().length === 2'), 'second composer chip');
+    assert(await js(`document.querySelectorAll('#foreign-chat [data-testid="browser-annotation-chip"]').length === 0`), 'Comments leaked to another chat/workspace/server');
+    await js(`document.querySelector('[aria-label="Remove browser comment 1"]').click()`);
+    await until(() => rootEval(`root.querySelectorAll('.pin').length === 1 && root.querySelector('.pin').textContent === '1'`), 'chip removes pin and renumbers');
+    const retained = await js('window.annotationChips().map(chip => ({number:chip.number,comment:chip.comment,image:chip.image,rect:chip.selection.rect,dpr:chip.selection.page.viewport.devicePixelRatio}))');
+    await js(`document.getElementById('composer-input').focus()`);
+    await win.webContents.insertText('Unsent composer draft');
+    await until(() => js(`document.getElementById('composer-input').value === 'Unsent composer draft'`), 'composer draft');
+    await saveComment('Immediate native comment', [process.platform === 'darwin' ? 'meta' : 'control']);
+    await until(() => annotationRequests.length === 1, 'modifier send reaches process endpoint');
+    await until(() => js('window.annotationChips().length === 1'), 'modifier preserves queued chip');
+    assert(annotationRequests[0].body.content.includes('Immediate native comment') && !annotationRequests[0].body.content.includes('Queued native comment'), 'Modifier send included queued comments');
+    assert(await js(`document.getElementById('composer-input').value === 'Unsent composer draft'`), 'Modifier send cleared composer draft');
+    assert(!annotationRequests[0].body.content.includes('Unsent composer draft') && annotationRequests[0].body.attachments[0].name === 'browser-annotation-group-1-pin-2.png', 'Modifier send used composer draft or wrong pin number');
+    await js(`document.getElementById('send-comments').click()`);
+    await until(() => annotationRequests.length === 2, 'ordinary composer send reaches endpoint');
+    await until(() => js('window.annotationChips().length === 0'), 'accepted send consumes chips');
+    await until(() => rootEval(`root.querySelectorAll('.pin').length === 0`), 'accepted send removes pins');
+    const sent = annotationRequests[1];
+    assert(sent.url.startsWith('/api/processes/chat-a/message?') && new URL(sent.url, origin).searchParams.get('workspace') === 'workspace-a', 'Annotation sent to foreign process/workspace');
+    assert(sent.body.content.includes('Unsent composer draft') && sent.body.content.includes('Queued native comment') && !sent.body.content.includes('First native comment'), 'Ordinary send used stale chip snapshot');
+    assert(sent.body.content.includes('browser-annotation-group-1-pin-1.png') && sent.body.content.includes('Live fixture') && sent.body.content.includes('#target'), 'Missing numbered DOM context');
+    assert(sent.body.attachments.length === 1 && sent.body.attachments[0].name === 'browser-annotation-group-1-pin-1.png', 'Numbered attachment mismatch');
+    assert(sent.body.attachments[0].dataUrl === retained[0].image.dataUrl, 'Composer changed native PNG');
+    const crop = nativeImage.createFromDataURL(sent.body.attachments[0].dataUrl);
+    const png = crop.toPNG();
+    assert(png.readUInt32BE(16) === 120 * retained[0].dpr && png.readUInt32BE(20) === 40 * retained[0].dpr, 'Crop dimensions do not match selection');
+    assert(pixel(crop, 5, 5).join() === '200,20,40', 'Annotation chrome contaminated the native crop');
+    assert(await guest.executeJavaScript('window.annotationClicks === 0 && !window.__cocBrowserAnnotation'), 'Annotation input or private state leaked into website');
+    assert(await guest.executeJavaScript('window.annotationCaptureClicks === 0 && window.annotationCaptureKeys === 0'), 'Pre-existing page window capture handlers reacted to annotation input');
+    assert(await js(`document.getElementById('composer-error').textContent === ''`), 'Composer reported an error');
+    await js(`document.querySelector('[aria-label="Annotate"]').click()`);
+    await until(() => rootEval('!root.host.isConnected'), 'toolbar tears down overlay');
+    guestClick(90, 80);
+    for (const type of ['keyDown', 'keyUp']) guest.sendInputEvent({ type, keyCode: 'A' });
+    await until(() => guest.executeJavaScript('window.annotationCaptureClicks === 1 && window.annotationCaptureKeys === 1'), 'ordinary page input restored');
+    console.log('E2E::' + JSON.stringify({ step: 'annotation', ok: true }));
 
     // Background control: the panel unmounts (another workspace is on screen) while a turn drives the tab.
     await js(`document.getElementById('spa-input').focus(); window.fixture.setMounted(false)`);

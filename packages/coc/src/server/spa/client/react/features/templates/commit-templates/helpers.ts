@@ -4,6 +4,7 @@
  */
 
 import type { TemplateChangedFile } from '@plusplusoneplusplus/coc-client';
+export { errorMessage as getTemplateErrorMessage } from '../../../utils/errorMessage';
 
 export const enc = encodeURIComponent;
 
@@ -28,9 +29,4 @@ export function validateTemplateName(v: string): string | null {
 /** Split a hints textarea into trimmed, non-empty lines. */
 export function parseTemplateHints(text: string): string[] {
     return text.split('\n').map(l => l.trim()).filter(Boolean);
-}
-
-/** Normalize an unknown thrown value into a display string. */
-export function getTemplateErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }

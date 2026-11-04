@@ -54,6 +54,7 @@ import {
 } from './chat-mode-directive';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
+import { isAutoProviderRoutingRequested } from '../tasks/auto-provider-routing';
 import {
     extractPrompt,
     applySkillContent,
@@ -77,6 +78,7 @@ import {
     isRalphMode,
     isRalphFinalCheckRepairTurn,
     normalizeChatMode,
+    resolveChatProvider,
     serializeForEachMetadata,
     serializeMapReduceMetadata,
     serializeCommitChatMetadata,
@@ -304,11 +306,7 @@ async function notifyCronTickComplete(
 type AutoProviderRoutingMetadata = NonNullable<ChatPayload['context']>['autoProviderRouting'];
 
 function isConcreteProvider(provider: unknown): provider is ChatProvider {
-    return provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode';
-}
-
-function isAutoProviderRoutingRequested(payload: ChatPayload): boolean {
-    return payload.context?.autoProviderRouting?.requested === true;
+    return resolveChatProvider(provider) !== undefined;
 }
 
 function updateDreamMetadataFromResult(
@@ -344,9 +342,9 @@ async function resolveExecutionProvider(
     }
     if (!isChatPayload(task.payload)) return fallbackProvider;
 
-    const payload = task.payload as ChatPayload;
+    const payload = task.payload;
     if (isConcreteProvider(payload.provider)) return payload.provider;
-    if (!isAutoProviderRoutingRequested(payload)) return fallbackProvider;
+    if (!isAutoProviderRoutingRequested(payload.context)) return fallbackProvider;
     if (!opts.resolveDefaultProvider) {
         throw new Error('Auto provider routing was requested, but no execution-time provider resolver is configured.');
     }
@@ -772,7 +770,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         applyEffortTierForProvider(task, taskProvider, opts);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
-            if (isChatPayload(task.payload) && isAutoProviderRoutingRequested(task.payload)) {
+            if (isChatPayload(task.payload) && isAutoProviderRoutingRequested(task.payload.context)) {
                 throw new Error(`Model '${providerModel.requestedModel}' is not compatible with Auto-selected provider '${taskProvider}'.`);
             }
             logger.warn(
@@ -875,11 +873,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         timeoutMs: task.config.timeoutMs,
                     }
                     : undefined,
-                autoProviderRouting: isChatPayload(task.payload)
+                autoProviderRouting: isChatPayload(task.payload) || isDreamRunPayload(task.payload)
                     ? task.payload.context?.autoProviderRouting
-                    : isDreamRunPayload(task.payload) && payload?.context && typeof payload.context === 'object'
-                        ? (payload.context as Record<string, unknown>).autoProviderRouting
-                        : undefined,
+                    : undefined,
                 lensChat: isChatPayload(task.payload)
                     ? task.payload.context?.lensChat
                     : undefined,

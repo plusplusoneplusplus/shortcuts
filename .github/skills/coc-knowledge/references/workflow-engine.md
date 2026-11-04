@@ -99,9 +99,25 @@ interface WorkflowSettings {
 execution goes through the workflow engine. `packages/forge/src/workflow/` is only
 `index.ts` (`export * from '@plusplusoneplusplus/coc-workflow/workflow'`) — add no workflow
 implementation code there, and prefer importing `@plusplusoneplusplus/coc-workflow` directly.
-Forge's own runtime cancellation/concurrency utilities under `packages/forge/src/runtime/`
-serve map-reduce and the task queue and are a separate class identity from the workflow package.
 
 Forge's map-reduce package stays a higher-level abstraction for parallel processing:
 `MapReduceExecutor` (split → map → reduce), `MapReduceJob` (config and state), splitters
 (file/chunk/rule-based), and reducers (AI/deterministic/hybrid).
+
+### Shared primitives
+
+`coc-workflow` owns errors, logging, runtime cancellation/concurrency, config defaults,
+prompt/CSV/template utilities, and skill resolution. Their explicit package subpaths
+(`errors`, `errors/error-codes`, `errors/pipeline-core-error`, `logger`,
+`runtime/cancellation`, `runtime/concurrency-limiter`, `config/defaults`,
+`utils/prompt-resolver`, `utils/csv-reader`, `utils/template-engine`,
+`skills/skill-resolver`) have matching declaration mappings. Forge's corresponding files
+are thin re-exports; add shared implementation here without a reverse dependency.
+
+`PipelineCoreError`, error-code objects and logger configuration have one identity across
+both packages. `Logger` is an interface; its sinks and configuration functions are shared.
+Forge's root `CancellationError` is the runtime base; the limiter and workflow cancellation
+errors subclass it. Limiter instances and cancellation tokens retain independent state.
+Resolvers use the caller's workspace/custom paths without a shared workspace cache.
+Forge tests externalize workflow's emitted CommonJS modules so barrel `require` calls
+and direct subpath imports share Node's module cache.

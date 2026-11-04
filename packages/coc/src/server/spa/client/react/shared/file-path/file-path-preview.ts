@@ -6,6 +6,7 @@
  */
 
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { escapeHtmlAttribute as escapeHtml } from '../../../shared/html';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -117,15 +118,6 @@ let workspacesFetchedAt = 0;
 let workspacesLoading: Promise<WorkspaceInfo[]> | null = null;
 let lastResolvedRootPath = '';
 const htmlPageIds = new Map<string, string>();
-
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
 
 function createTooltip(): HTMLDivElement {
     if (tooltipEl) return tooltipEl;

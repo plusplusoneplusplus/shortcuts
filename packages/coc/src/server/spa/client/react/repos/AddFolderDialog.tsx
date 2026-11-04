@@ -9,7 +9,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button } from '../ui';
 import {
-    browseWorkspaceFolders,
     discoverWorkspaces,
     getRepositoryApiErrorMessage,
     registerWorkspace,
@@ -17,20 +16,11 @@ import {
 import { describeServerFailure, useServerSelection } from './useServerSelection';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
-import { CocApiError } from '@plusplusoneplusplus/coc-client';
-
-interface BrowserEntry {
-    name: string;
-    isGitRepo?: boolean;
-}
-
-interface BrowserResponse {
-    path: string;
-    parent?: string | null;
-    entries?: BrowserEntry[];
-    drives?: string[];
-    browseRoots?: Array<{ label: string; path: string }>;
-}
+import { useRepositoryDialogSession } from './useRepositoryDialogSession';
+import { joinBrowserPath, useRepositoryFolderBrowser } from './useRepositoryFolderBrowser';
+import { RepositoryBrowseRoots } from './RepositoryBrowseRoots';
+import { RepositoryServerField } from './RepositoryServerField';
+import { LOCAL_REPO_GROUP_SERVER_ID } from './repoGroupService';
 
 interface DiscoveredRepo {
     path: string;
@@ -52,29 +42,23 @@ interface AddFolderDialogProps {
 
 type Phase = 'pick' | 'checklist' | 'adding' | 'done';
 
-function joinBrowserPath(basePath: string, childName: string): string {
-    if (!basePath) return childName;
-    if (/[/\\]$/.test(basePath)) return `${basePath}${childName}`;
-    const separator = basePath.includes('\\') ? '\\' : '/';
-    return `${basePath}${separator}${childName}`;
-}
-
 export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: AddFolderDialogProps) {
     const [phase, setPhase] = useState<Phase>('pick');
     const { agents } = useContainerAgents();
     const availableAgents = agents;
-    const [selectedAgentId, setSelectedAgentId] = useState('');
+    const [selectedAgentId, setSelectedAgentId] = useState(() => isContainerMode() ? availableAgents[0]?.id ?? '' : '');
     const server = useServerSelection(open, serverId, baseUrl);
     const selectedServer = server.selected;
+    const { capture, invalidate } = useRepositoryDialogSession(open, server, selectedServer.baseUrl ? undefined : selectedAgentId);
 
     // Browser state
-    const [browserPath, setBrowserPath] = useState('');
-    const [browserEntries, setBrowserEntries] = useState<BrowserEntry[]>([]);
-    const [browserParent, setBrowserParent] = useState<string | null>(null);
-    const [browserLoading, setBrowserLoading] = useState(false);
-    const [browserDrives, setBrowserDrives] = useState<string[]>([]);
-    const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
-    const [browserError, setBrowserError] = useState<string | null>(null);
+    const browser = useRepositoryFolderBrowser({
+        open,
+        server,
+        agent: isContainerMode() ? availableAgents.find(a => a.id === selectedAgentId) : undefined,
+        formatError: () => 'Unable to browse this path',
+    });
+    const { browserPath, browserEntries, browserParent, browserLoading, browserError, navigateTo, resetBrowser } = browser;
 
     // Checklist state
     const [repos, setRepos] = useState<DiscoveredRepo[]>([]);
@@ -93,12 +77,7 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
     useEffect(() => {
         if (open) {
             setPhase('pick');
-            setBrowserPath('');
-            setBrowserEntries([]);
-            setBrowserParent(null);
-            setBrowserDrives([]);
-            setBrowseRoots([]);
-            setBrowserError(null);
+            resetBrowser();
             setRepos([]);
             setChecked(new Set());
             setScanError(null);
@@ -108,118 +87,46 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
             setAdded([]);
             setNotAdded([]);
             cancelRef.current = false;
+            invalidate();
             if (isContainerMode() && availableAgents.length > 0) {
                 setSelectedAgentId(availableAgents[0].id);
             }
-            navigateTo('~');
+            navigateTo('~', serverId || LOCAL_REPO_GROUP_SERVER_ID);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
-
-    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
-        // The server is passed explicitly when it just changed, since this
-        // callback still closes over the previous selection at that moment.
-        const target = server.resolveServer(targetServerId ?? server.serverId);
-        // Container agents and remote servers are two different ways to reach
-        // another filesystem and do not compose: a remote pick bypasses the
-        // agent-id dance entirely.
-        const isLocalTarget = !target.baseUrl;
-        setBrowserLoading(true);
-        setBrowserError(null);
-        try {
-            if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
-            setBrowserPath(data.path);
-            setBrowserParent(data.parent || null);
-            setBrowserEntries(data.entries || []);
-            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-        } catch (err) {
-            setBrowserEntries([]);
-            setBrowserParent(null);
-            setBrowseRoots([]);
-            const errStatus = (err as any)?.status;
-            const errMsg = err instanceof Error ? err.message : String(err);
-            const isAuthError = (errStatus === 401 || errStatus === 403)
-                || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
-            console.warn('[AddFolderDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
-            if (isLocalTarget && isAuthError && isContainerMode() && selectedAgentId) {
-                const agent = availableAgents.find(a => a.id === selectedAgentId);
-                if (agent?.address) {
-                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
-                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
-                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
-                    const onMessage = (event: MessageEvent) => {
-                        if (event.data?.type === 'browse-result') {
-                            window.removeEventListener('message', onMessage);
-                            const data = event.data.data as BrowserResponse;
-                            setBrowserPath(data.path);
-                            setBrowserParent(data.parent || null);
-                            setBrowserEntries(data.entries || []);
-                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-                            setBrowserError(null);
-                            setBrowserLoading(false);
-                        } else if (event.data?.type === 'browse-error') {
-                            window.removeEventListener('message', onMessage);
-                            setBrowserError(`Browse failed: ${event.data.error}`);
-                            setBrowserLoading(false);
-                        }
-                    };
-                    window.addEventListener('message', onMessage);
-                    if (popup) {
-                        const cleanup = setInterval(() => {
-                            if (popup.closed) {
-                                clearInterval(cleanup);
-                                window.removeEventListener('message', onMessage);
-                                setBrowserLoading(false);
-                            }
-                        }, 1000);
-                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
-                    }
-                } else {
-                    setBrowserError('Authentication required. Please authenticate with this agent first.');
-                }
-            } else {
-                setBrowserError(describeServerFailure('Unable to browse this path', target));
-            }
-        }
-        setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents, server]);
+    }, [open, serverId, baseUrl]);
 
     // A path only means something on the server it came from, so switching
     // servers drops it, forgets any scan results, and re-roots the browser at
     // the new box's home.
     const changeServer = useCallback((nextServerId: string) => {
         server.selectServer(nextServerId);
-        setBrowserPath('');
-        setBrowserEntries([]);
-        setBrowserParent(null);
-        setBrowserDrives([]);
-        setBrowseRoots([]);
-        setBrowserError(null);
+        resetBrowser();
         setRepos([]);
         setChecked(new Set());
         setScanError(null);
+        setScanning(false);
         navigateTo('~', nextServerId);
-    }, [server, navigateTo]);
+    }, [server, navigateTo, resetBrowser]);
 
     const handleScan = useCallback(async () => {
         if (!browserPath) return;
+        const isCurrent = capture();
         setScanning(true);
         setScanError(null);
         const target = selectedServer;
         try {
             if (!target.baseUrl && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await discoverWorkspaces(browserPath, target.baseUrl) as { repos: DiscoveredRepo[] };
+            if (!isCurrent()) return;
             setRepos(data.repos);
             setChecked(new Set(data.repos.map(r => r.path)));
             setPhase('checklist');
         } catch (error: unknown) {
-            setScanError(describeServerFailure(getRepositoryApiErrorMessage(error, 'Failed to scan folder'), target));
+            if (isCurrent()) setScanError(describeServerFailure(getRepositoryApiErrorMessage(error, 'Failed to scan folder'), target));
         }
-        setScanning(false);
-    }, [browserPath, selectedAgentId, selectedServer]);
+        if (isCurrent()) setScanning(false);
+    }, [browserPath, selectedAgentId, selectedServer, capture]);
 
     const toggleCheck = (repoPath: string) => {
         setChecked(prev => {
@@ -238,6 +145,7 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
     const handleAddSelected = useCallback(async () => {
         const selected = repos.filter(r => checked.has(r.path));
         if (selected.length === 0) return;
+        const isCurrent = capture();
 
         cancelRef.current = false;
         setPhase('adding');
@@ -251,6 +159,7 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
         const addedNames: string[] = [];
         const notAddedNames: string[] = [];
         for (let i = 0; i < selected.length; i++) {
+            if (!isCurrent()) return;
             const repo = selected[i];
             if (cancelRef.current) {
                 notAddedNames.push(...selected.slice(i).map(r => r.name));
@@ -265,8 +174,10 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
                     name: repo.name,
                     rootPath: repo.path,
                 }, target.baseUrl);
+                if (!isCurrent()) return;
                 addedNames.push(repo.name);
             } catch (error) {
+                if (!isCurrent()) return;
                 // Stop on the first failure: a registry that just rejected one
                 // repo will most likely reject the rest, and hammering it hides
                 // the real error. Successes are kept, never rolled back.
@@ -280,12 +191,13 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
         setAdded(addedNames);
         setNotAdded(notAddedNames);
         setPhase('done');
-    }, [repos, checked, selectedAgentId, selectedServer]);
+    }, [repos, checked, selectedAgentId, selectedServer, capture]);
 
     const handleClose = useCallback(() => {
         cancelRef.current = true;
+        invalidate();
         onClose();
-    }, [onClose]);
+    }, [onClose, invalidate]);
 
     const handleDone = useCallback(() => {
         onAdded();
@@ -354,7 +266,13 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
                             <select
                                 className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                                 value={selectedAgentId}
-                                onChange={e => setSelectedAgentId(e.target.value)}
+                                onChange={e => {
+                                    setSelectedAgentId(e.target.value);
+                                    setRepos([]);
+                                    setChecked(new Set());
+                                    setScanError(null);
+                                    setScanning(false);
+                                }}
                             >
                                 {availableAgents.length === 0 && (
                                     <option value="" disabled>No agents available</option>
@@ -380,39 +298,7 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
                         <div className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate" id="folder-breadcrumb">
                             {browserPath || '…'}
                         </div>
-                        {browseRoots.length > 0 && (
-                            <div className="mb-1 flex flex-wrap gap-1">
-                                {browseRoots.map(root => (
-                                    <button
-                                        key={root.path}
-                                        type="button"
-                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(root.path.toLowerCase())
-                                            ? 'border-[#0078d4] text-[#0078d4]'
-                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                        data-testid={`browse-root-${root.label}`}
-                                        onClick={() => navigateTo(root.path)}
-                                    >
-                                        {root.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {browseRoots.length === 0 && browserDrives.length > 1 && (
-                            <div className="mb-1 flex flex-wrap gap-1">
-                                {browserDrives.map(drive => (
-                                    <button
-                                        key={drive}
-                                        type="button"
-                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(drive.toLowerCase())
-                                            ? 'border-[#0078d4] text-[#0078d4]'
-                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
-                                        onClick={() => navigateTo(drive)}
-                                    >
-                                        {drive}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                        <RepositoryBrowseRoots browser={browser} />
                         {browserLoading ? (
                             <div className="text-[#848484]">Loading…</div>
                         ) : (
@@ -572,19 +458,7 @@ export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: A
             {/* Server — which CoC filesystem is scanned and which registry the
                 repos land in. Locked once a scan/add run is under way. */}
             <div className="flex flex-col gap-1 mb-2">
-                <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="add-folder-server-select">Server</label>
-                <select
-                    id="add-folder-server-select"
-                    data-testid="add-folder-server-select"
-                    value={server.serverId}
-                    onChange={e => changeServer(e.target.value)}
-                    disabled={phase !== 'pick'}
-                    className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
-                >
-                    {server.choices.map(option => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                </select>
+                <RepositoryServerField id="add-folder-server-select" server={server} onChange={changeServer} disabled={phase !== 'pick'} />
             </div>
             {body}
         </Dialog>

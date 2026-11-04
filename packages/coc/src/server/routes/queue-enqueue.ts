@@ -32,7 +32,8 @@ import {
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
-import { isInheritedLensChatMode, normalizeChatMode, resolveChatProvider, VALID_CHAT_PROVIDERS, type ChatProvider } from '../tasks/task-types';
+import { isChatPayload, isDreamRunPayload, isInheritedLensChatMode, normalizeChatMode, resolveChatProvider, VALID_CHAT_PROVIDERS, type ChatPayload, type ChatProvider, type DreamRunPayload } from '../tasks/task-types';
+import { isAutoProviderRoutingRequested } from '../tasks/auto-provider-routing';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { MirrorAttachmentError, type MirrorUploadSource } from '../messaging/sentinel-mirror-attachments';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
@@ -622,16 +623,16 @@ export async function prepareTaskForEnqueue(
  * @internal exported for tests
  */
 export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'>): Promise<void> {
-    const payload = input.payload as Record<string, unknown>;
-    if (payload.kind === 'dream-run') {
+    const payload = input.payload;
+    if (isDreamRunPayload(payload)) {
         await resolveDreamRunProviderForTask(input, ctx);
         return;
     }
-    if (payload.kind !== 'chat') return;
+    if (!isChatPayload(payload)) return;
     if (isChatProvider(payload.provider)) return;
     if (typeof payload.processId === 'string' && payload.processId.trim()) return;
 
-    const autoRequested = isAutoProviderRoutingRequested(payload);
+    const autoRequested = isAutoProviderRoutingRequested(payload.context);
     const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
     if (!autoRequested && !autoRoutingActive) return;
     if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
@@ -642,13 +643,14 @@ export async function resolveDefaultProviderForTask(input: CreateTaskInput, ctx:
 }
 
 async function resolveDreamRunProviderForTask(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'>): Promise<void> {
-    const payload = input.payload as Record<string, unknown>;
+    const payload = input.payload;
+    if (!isDreamRunPayload(payload)) return;
     if (isChatProvider(payload.provider)) {
         resolveDreamRunModelForProvider(input, payload.provider);
         return;
     }
 
-    const autoRequested = isAutoProviderRoutingRequested(payload);
+    const autoRequested = isAutoProviderRoutingRequested(payload.context);
     const autoRoutingActive = ctx.isAutoProviderRoutingActive?.() === true;
     if (autoRequested && ctx.isAutoProviderRoutingActive && !autoRoutingActive) {
         throw new Error('Auto provider routing requires features.autoAgentProviderRouting: true.');
@@ -692,22 +694,16 @@ function resolveDreamRunModelForProvider(input: CreateTaskInput, provider: ChatP
     }
 }
 
-function markAutoProviderRoutingRequested(payload: Record<string, unknown>): void {
-    const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
-        ? payload.context as Record<string, unknown>
-        : {};
+function markAutoProviderRoutingRequested(payload: ChatPayload): void {
     payload.context = {
-        ...context,
+        ...payload.context,
         autoProviderRouting: { requested: true },
     };
 }
 
-function markResolvedAutoProviderRouting(payload: Record<string, unknown>, resolution: ResolvedDefaultProviderResolution): void {
-    const context = payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
-        ? payload.context as Record<string, unknown>
-        : {};
+function markResolvedAutoProviderRouting(payload: DreamRunPayload, resolution: ResolvedDefaultProviderResolution): void {
     payload.context = {
-        ...context,
+        ...payload.context,
         autoProviderRouting: {
             requested: true,
             selectedByAuto: true,
@@ -768,18 +764,6 @@ async function resolveDefaultProviderResolution(
     return { ...resolution, provider: resolution.provider };
 }
 
-function isAutoProviderRoutingRequested(payload: Record<string, unknown>): boolean {
-    const context = payload.context;
-    if (!context || typeof context !== 'object' || Array.isArray(context)) return false;
-    const routing = (context as Record<string, unknown>).autoProviderRouting;
-    return Boolean(
-        routing
-        && typeof routing === 'object'
-        && !Array.isArray(routing)
-        && (routing as Record<string, unknown>).requested === true
-    );
-}
-
 function concreteDefaultProviderResolution(provider: ChatProvider): AutoProviderResolutionResult {
     return {
         provider,
@@ -815,7 +799,8 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
     // and execution would then coerce that model away for the provider Auto really
     // chose — dropping the tier the user asked for. Leave model/reasoningEffort
     // unset and let the runner resolve `afterEffortTier` once the provider is known.
-    if (payload && !isChatProvider(payload.provider) && isAutoProviderRoutingRequested(payload)) return;
+    if (payload && (isChatPayload(payload) || isDreamRunPayload(payload))
+        && !isChatProvider(payload.provider) && isAutoProviderRoutingRequested(payload.context)) return;
 
     const provider = isChatProvider(payload?.provider)
         ? payload.provider

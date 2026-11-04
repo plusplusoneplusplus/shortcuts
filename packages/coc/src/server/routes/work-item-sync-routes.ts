@@ -47,6 +47,7 @@ import {
     makeWorkItemSyncStatusResponseCacheKey,
 } from '../work-items/work-item-response-cache';
 import {
+    bodyWorkspaceId,
     queryWorkspaceId,
     resolveWorkItemRouteScope,
     type WorkItemRouteScope,
@@ -117,12 +118,6 @@ async function parseJsonObjectBody(req: http.IncomingMessage): Promise<Record<st
         throw badRequest('Request body must be a JSON object');
     }
     return body;
-}
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
 async function resolveSyncRouteScope(

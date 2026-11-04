@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true, demoRecordingEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true, demoRecordingEnabled: false, annotationEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.canvasExtensions).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
@@ -1118,6 +1118,7 @@ timeout: 300
                 '  humanTakeoverEnabled: true',
                 '  cursorOverlayEnabled: false',
                 '  demoRecordingEnabled: true',
+                '  annotationEnabled: false',
                 'teamsIc3OwnCommands:',
                 '  workspaceId: ws-fixture',
                 'teamsReactionDelegation:',
@@ -1303,6 +1304,8 @@ timeout: 300
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
             expect(result.resolved.browserControl.demoRecordingEnabled).toBe(true);
+            expect(result.resolved.browserControl.annotationEnabled).toBe(false);
+            expect(result.sources['browserControl.annotationEnabled']).toBe('file');
             expect(result.resolved.features.teamsOutboundCompliance).toBe(true);
             expect(result.resolved.teamsOutboundCompliance.prompt).toBe('Block secrets in replies.');
         });
@@ -1532,6 +1535,7 @@ timeout: 300
                   },
                   "approvePermissions": true,
                   "browserControl": {
+                    "annotationEnabled": true,
                     "backgroundEnabled": true,
                     "cursorOverlayEnabled": true,
                     "demoRecordingEnabled": false,
@@ -1825,6 +1829,7 @@ timeout: 300
                   "LLMToolSystemOne.enabled": "default",
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
+                  "browserControl.annotationEnabled": "default",
                   "browserControl.backgroundEnabled": "default",
                   "browserControl.cursorOverlayEnabled": "default",
                   "browserControl.demoRecordingEnabled": "default",

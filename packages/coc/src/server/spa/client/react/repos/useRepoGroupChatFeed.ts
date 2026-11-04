@@ -17,6 +17,7 @@
  * Read-only: the hook never mutates chats or queues.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { errorMessage } from '../utils/errorMessage';
 import type { RepoGroupChatFeedQuery } from '@plusplusoneplusplus/coc-client';
 import { useQueueOptional } from '../contexts/QueueContext';
 import { getRepoGroupChats } from './repoGroupService';
@@ -71,10 +72,6 @@ export interface RepoGroupChatFeedState {
 function isStaleCursorError(err: unknown): boolean {
     const e = err as { status?: number; code?: string } | null;
     return !!e && (e.status === 409 || e.code === 'STALE_CURSOR');
-}
-
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 function filtersKey(filters: RepoGroupChatFeedFilters | undefined): string {

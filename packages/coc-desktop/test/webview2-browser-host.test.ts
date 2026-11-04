@@ -8,6 +8,11 @@ import { BrowserControlPage } from '../src/browser-control-page';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { captureWebView2Annotation } from '../src/webview2-annotation-capture';
+import { BrowserAnnotationTab, BROWSER_ANNOTATION_WORLD } from '../src/browser-annotation-tab';
+import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationEvent } from '../src/browser-annotation-dom';
+
+vi.mock('../src/webview2-annotation-capture', () => ({ captureWebView2Annotation: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
@@ -57,6 +62,166 @@ vi.mock('../src/webview2-process', async importOriginal => ({
 
 const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
+
+describe('WebView2 document-bound annotation capture', () => {
+    beforeEach(() => {
+        vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); mocks.running = true;
+        vi.mocked(captureWebView2Annotation).mockImplementation(async capture => {
+            await capture();
+            return { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 };
+        });
+    });
+    async function opened() {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        await view.setBounds(bounds);
+        const state = { url: 'https://fixture.test/', title: 'Fixture', canGoBack: false, canGoForward: false, loading: false };
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        return { host, view, state };
+    }
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    const viewport = { width: 800, height: 600, devicePixelRatio: 2 };
+
+    // Exercise production tab and host routing with synthetic helper replies.
+    async function annotationContract() {
+        const h = await opened();
+        const consumer = { events: vi.fn(), ended: vi.fn() };
+        const tab = new BrowserAnnotationTab(h.view, consumer, 60_000);
+        const selection = { type: 'selection' as const, kind: 'area' as const, immediate: false,
+            captureId: '1', rect, page: { url: h.state.url, title: 'Fixture', viewport } };
+        const pending: BrowserAnnotationEvent[] = [selection];
+        const commands: BrowserAnnotationCommand[] = [];
+        const preview = vi.fn(async () => 'native preview');
+        mocks.request.mockImplementation(async (op, payload) => {
+            expect(payload.viewId).toBe('7:tab:1');
+            if (op === 'capture-annotation') return preview();
+            if (op !== 'cdp') return;
+            if (payload.method === 'Page.getFrameTree') return {
+                frameTree: { frame: { id: 'main', url: h.state.url, mimeType: 'text/html' } },
+            };
+            if (payload.method === 'Page.createIsolatedWorld') {
+                expect(payload.params).toEqual({ frameId: 'main', worldName: BROWSER_ANNOTATION_WORLD });
+                return { executionContextId: 42 };
+            }
+            if (payload.method !== 'Runtime.evaluate') return {};
+            expect(payload.params).toMatchObject({ contextId: 42, returnByValue: true, awaitPromise: true });
+            const expression = payload.params.expression as string;
+            const action = expression.match(/"action":"([^"]+)"/)![1];
+            const session = expression.match(/"session":"([^"]+)"/)![1];
+            const command = { action, session,
+                ...(action === 'start' ? { captureRequired: true } : {}),
+                ...(action === 'remove' ? { id: '1' } : {}),
+                ...(action === 'capture' || action === 'captured' ? { selection } : {}),
+                ...(action === 'capture' ? { hidden: expression.includes('"hidden":true') } : {}),
+            } as BrowserAnnotationCommand;
+            expect(expression).toBe(buildBrowserAnnotationExpression(command));
+            commands.push(command);
+            const events = action === 'drain' ? pending.splice(0)
+                : action === 'remove' ? [{ type: 'delete', id: '1' }] : [];
+            return { result: { value: { active: action !== 'stop', events,
+                ...(['capture', 'captured'].includes(action) ? { capture: true } : {}) } } };
+        });
+        return { ...h, tab, consumer, selection, commands, preview };
+    }
+
+    it('runs the shared injection, selection/capture, pin removal and teardown through the native adapter', async () => {
+        const h = await annotationContract();
+        try {
+            expect(await h.tab.start()).toBe(true);
+            await h.tab.poll();
+            expect(h.consumer.events).toHaveBeenCalledExactlyOnceWith([{ ...h.selection,
+                image: { dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 } }]);
+            expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, viewport);
+            expect(h.preview).toHaveBeenCalledOnce();
+            await h.tab.remove('1');
+            expect(h.consumer.events).toHaveBeenLastCalledWith([{ type: 'delete', id: '1' }]);
+            await h.tab.stop();
+            await h.view.waitForCdpEvents!();
+            expect(h.commands.map(command => command.action)).toEqual([
+                'start', 'drain', 'capture', 'capture', 'captured', 'remove', 'stop',
+            ]);
+            expect(new Set(h.commands.map(command => command.session)).size).toBe(1);
+            expect(h.consumer.ended).toHaveBeenCalledExactlyOnceWith('stop', undefined);
+            expect(mocks.request.mock.calls.filter(([op, payload]) => op === 'cdp-subscribe' && !payload.enabled))
+                .toHaveLength(BROWSER_FRAME_CDP_EVENTS.length);
+        } finally { await h.tab.stop(); await h.host.dispose(); }
+    });
+
+    it('revokes delivery on native navigation while capture is pending and cleans the original world', async () => {
+        const h = await annotationContract();
+        let release!: (value: string) => void;
+        h.preview.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+        try {
+            await h.tab.start();
+            const poll = h.tab.poll();
+            await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+            // Another native view's events cannot end this annotation session.
+            mocks.onEvent({ event: 'cdp-event', viewId: '8:other:2', method: 'Page.frameNavigated', params: { frame: { id: 'other' } } });
+            expect(h.consumer.ended).not.toHaveBeenCalled();
+            mocks.onEvent({ event: 'cdp-event', viewId: '7:tab:1', method: 'Page.navigatedWithinDocument', params: { frameId: 'main' } });
+            expect(h.consumer.ended).toHaveBeenCalledExactlyOnceWith('navigation', undefined);
+            release('late native preview');
+            await poll;
+            await h.tab.stop();
+            await h.view.waitForCdpEvents!();
+            expect(h.consumer.events).not.toHaveBeenCalled();
+            expect(h.commands.map(command => command.action)).toEqual(['start', 'drain', 'capture', 'capture', 'stop']);
+            const count = mocks.request.mock.calls.length;
+            mocks.onEvent({ event: 'cdp-event', viewId: '7:tab:1', method: 'Runtime.executionContextsCleared', params: {} });
+            await h.tab.poll();
+            expect(mocks.request).toHaveBeenCalledTimes(count);
+        } finally { release?.('cleanup'); await h.tab.stop(); await h.host.dispose(); }
+    });
+
+    it('binds CapturePreview to the exact native root and uses the shared crop', async () => {
+        const h = await opened();
+        mocks.request.mockResolvedValueOnce('native preview');
+        expect(await h.view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.request).toHaveBeenLastCalledWith('capture-annotation', { viewId: '7:tab:1' });
+        expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, viewport);
+        await h.host.dispose();
+    });
+
+    it.each(['loading', 'hidden', 'closed', 'crashed'])('refuses %s views before capture dispatch', async reason => {
+        const h = await opened();
+        if (reason === 'loading') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, loading: true } });
+        if (reason === 'hidden') await h.view.setBounds(null);
+        if (reason === 'closed') await h.view.close();
+        if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, error: 'Crash', errorCode: 'runtime-crashed' } });
+        mocks.request.mockClear();
+        await expect(h.view.captureAnnotation!(rect, viewport)).rejects.toThrow();
+        expect(mocks.request).not.toHaveBeenCalled();
+        await h.host.dispose();
+    });
+
+    it.each(['navigation', 'same-document URL', 'zoom', 'hidden', 'closed', 'crashed'])('rejects late %s captures', async reason => {
+        const h = await opened();
+        let release!: (result: unknown) => void;
+        mocks.request.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const capture = h.view.captureAnnotation!(rect, viewport);
+        const rejected = expect(capture).rejects.toThrow();
+        if (reason === 'navigation') mocks.onEvent({ event: 'document-starting', viewId: '7:tab:1' });
+        if (reason === 'same-document URL') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, url: 'https://fixture.test/#next' } });
+        if (reason === 'zoom') await h.view.setPageZoom!(125);
+        if (reason === 'hidden') await h.view.setBounds(null);
+        if (reason === 'closed') await h.view.close();
+        if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...h.state, error: 'Crash', errorCode: 'runtime-crashed' } });
+        release('native preview');
+        await rejected;
+        await h.host.dispose();
+    });
+
+    it('keeps popup capture unavailable', async () => {
+        const h = await opened();
+        const popup = vi.fn();
+        const root = await h.host.create({ ownerId: 7, viewId: 'other', sessionKey: 'workspace', url: 'https://fixture.test/' },
+            { ...sink, controlPopoutOpened: popup });
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:other:2:popup:1', rootId: '7:other:2', url: 'https://fixture.test/' });
+        expect(popup.mock.calls[0][1].captureAnnotation).toBeUndefined();
+        await root.close();
+        await h.host.dispose();
+    });
+});
 
 describe('WebView2 ClickOnce transport', () => {
     beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });

@@ -62,8 +62,8 @@ describe('buildExtensionExportBody — sandbox & surface', () => {
     });
 
     it('sets the iframe title from the canvas title (attribute-escaped)', () => {
-        const { bodyHtml } = build({ title: 'A & "B"' });
-        expect(bodyHtml).toContain('title="A &amp; &quot;B&quot;"');
+        const { bodyHtml } = build({ title: `A &amp; "'<B>` });
+        expect(bodyHtml).toContain(`title="A &amp;amp; &quot;'&lt;B&gt;"`);
     });
 });
 

@@ -2,6 +2,15 @@ import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserF
 import type { BrowserImportCookie } from './browser-cookie-import';
 import type { HtmlPageBounds } from './html-page-policy';
 import type { BrowserApplicationRequest } from './browser-clickonce';
+import type { BrowserAnnotationRect } from './browser-annotation-dom';
+import type { BrowserAnnotationPageSnapshot } from './browser-annotation-snapshot';
+
+export interface BrowserAnnotationImage {
+    dataUrl: string;
+    /** Physical PNG dimensions, without resampling. */
+    width: number;
+    height: number;
+}
 
 /** Main-process-only events required by the bounded frame registry. */
 export const BROWSER_FRAME_CDP_EVENTS = [
@@ -96,6 +105,8 @@ export interface BrowserHostedView {
     onCdpEvent?(listener: BrowserCdpEventListener): () => void;
     waitForCdpEvents?(): Promise<void>;
     waitForControlReady?(signal: AbortSignal): Promise<void>;
+    /** Main-only selection crop. The annotation transport owns document checks and hiding chrome. */
+    captureAnnotation?(rect: BrowserAnnotationRect, viewport: BrowserAnnotationPageSnapshot['viewport']): Promise<BrowserAnnotationImage>;
     /** Trusted native popup chrome only; never injected into the page. */
     setControlActivity?(turnId: string | null): void | Promise<void>;
     /**

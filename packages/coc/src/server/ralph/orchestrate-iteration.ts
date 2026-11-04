@@ -25,6 +25,8 @@ import { setRalphProcessPhase } from './process-phase';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
 import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
+import { isAutoProviderRoutingRequested, type AutoProviderRoutingContext } from '../tasks/auto-provider-routing';
+import type { ChatContext } from '../tasks/task-types';
 import {
     buildFinalCheckTaskPayload,
     buildFinalCheckStartRecord,
@@ -79,7 +81,7 @@ export interface OrchestrateRalphIterationDeps {
      * model overrides). Merged into the next iteration's context. This module
      * does not inspect the non-ralph fields; it passes them through opaquely.
      */
-    existingPayloadContext?: Record<string, unknown>;
+    existingPayloadContext?: ChatContext | AutoProviderRoutingContext;
     /** The execution config from the completed task, carried into Ralph-owned follow-on tasks. */
     existingTaskConfig?: Record<string, unknown>;
 }
@@ -468,15 +470,6 @@ async function publishIterationCompletion(
     });
 }
 
-function isAutoProviderRoutingRequested(context: Record<string, unknown> | undefined): boolean {
-    const routing = context?.autoProviderRouting;
-    return Boolean(
-        routing
-        && typeof routing === 'object'
-        && !Array.isArray(routing)
-        && (routing as Record<string, unknown>).requested === true
-    );
-}
 
 /**
  * Read the cap currently stored in session.json so a mid-flight edit is honored

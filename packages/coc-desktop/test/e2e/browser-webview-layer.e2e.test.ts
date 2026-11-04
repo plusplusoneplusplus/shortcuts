@@ -13,7 +13,7 @@ const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || !existsSync(path.join(here, '../../../coc/src/server/spa/client/dist/bundle.css'));
 
 describe.skipIf(skip)('real SPA webview layer in Electron', () => {
-    it('keeps page state across panel remounts and draws clickable DOM overlays above live page pixels', async () => {
+    it('keeps page state and overlays, and sends native annotation crops through the composer', async () => {
         const data = mkdtempSync(path.join(tmpdir(), 'coc-webview-layer-'));
         try {
             const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
@@ -40,7 +40,7 @@ describe.skipIf(skip)('real SPA webview layer in Electron', () => {
             });
             expect(result.code, result.output).toBe(0);
             const steps = result.output.split('\n').filter(line => line.startsWith('E2E::')).map(line => JSON.parse(line.slice(5)));
-            expect(steps).toEqual(['persistence', 'overlays', 'toolbar', 'background', 'close', 'html'].map(step => ({ step, ok: true })));
+            expect(steps).toEqual(['persistence', 'overlays', 'toolbar', 'annotation', 'background', 'close', 'html'].map(step => ({ step, ok: true })));
         } finally {
             rmSync(data, { recursive: true, force: true });
         }

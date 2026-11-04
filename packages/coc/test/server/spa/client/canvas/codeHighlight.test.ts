@@ -2,17 +2,18 @@
  * Layer E helper — `highlightMarkdownCodeBlocks` tests.
  *
  * Pure string transform over highlight.js (Node-safe), so no jsdom pragma. The
- * input mirrors what the chat markdown renderer emits: `<pre><code
- * class="language-X">ESCAPED</code></pre>`. Covers: a known language gets baked
+ * inputs cover bare pre elements and the chat renderer's attributed blocks with
+ * copy controls. Covers: a known language gets baked
  * `hljs-` token spans + the `hljs` class; the escaped source is decoded before
  * highlighting and re-escaped in output; an unknown language / `mermaid` /
  * class-less block is left untouched; multiple blocks; and determinism.
  */
 
 import { describe, it, expect } from 'vitest';
+import { chatMarkdownToHtml } from '../../../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
 import { highlightMarkdownCodeBlocks } from '../../../../../src/server/spa/client/react/features/canvas/html-export/codeHighlight';
 
-/** A code block exactly as the chat markdown renderer emits it (source HTML-escaped). */
+/** A bare code block with HTML-escaped source. */
 function block(lang: string, escapedSource: string): string {
     return `<pre><code class="language-${lang}">${escapedSource}</code></pre>`;
 }
@@ -23,6 +24,30 @@ describe('highlightMarkdownCodeBlocks', () => {
         expect(out).toContain('<pre><code class="hljs language-javascript">');
         expect(out).toMatch(/hljs-/); // token spans present
         expect(out).toContain('</code></pre>');
+    });
+
+    it('preserves pre attributes while baking highlighting', () => {
+        const pre = '<pre class="code-block-content" data-example="kept">';
+        const out = highlightMarkdownCodeBlocks(`${pre}<code class="language-ts">const x = 1;</code></pre>`);
+        expect(out).toContain(`${pre}<code class="hljs language-ts">`);
+        expect(out).toMatch(/class="hljs-/);
+    });
+
+    it('highlights real Copy all blocks independently without changing their source or controls', () => {
+        const input = chatMarkdownToHtml([
+            'Prose before', '', '```ts', 'const items: Array<string> = ["&lt;"];', '```',
+            '', 'Between blocks', '', '```python', 'if True:', '    print("hello")', '```',
+        ].join('\n'));
+        const out = highlightMarkdownCodeBlocks(input);
+        expect(out).toContain('class="hljs language-ts"');
+        expect(out).toContain('class="hljs language-python"');
+        expect(out).toMatch(/class="hljs-/);
+        // Everything outside code contents, including data-raw and Copy all,
+        // stays byte-for-byte identical to the shared renderer's output.
+        const withoutCode = (html: string) => html.replace(/<code[^>]*>[\s\S]*?<\/code>/g, '<code></code>');
+        expect(withoutCode(out)).toBe(withoutCode(input));
+        expect(out.match(/class="code-block-copy"/g)).toHaveLength(2);
+        expect(out).toContain('&amp;lt;');
     });
 
     it('decodes the escaped source before highlighting and re-escapes in output', () => {

@@ -99,6 +99,17 @@ function makeHook(overrides: Record<string, unknown> = {}) {
 }
 
 describe('WorkingTreeFileDiff — comment integration', () => {
+    it('resets comment drafts when the exact attachment owner changes without changing the file', async () => {
+        const { rerender } = render(<WorkingTreeFileDiff workspaceId="ws1" filePath="src/foo.ts" stage="staged"
+            attachmentDestinationId="remote:server-a:ws1" />);
+        fireEvent.click(await screen.findByTestId('trigger-add-comment'));
+        expect(screen.getByTestId('inline-comment-popup')).toBeTruthy();
+        rerender(<WorkingTreeFileDiff workspaceId="ws1" filePath="src/foo.ts" stage="staged"
+            attachmentDestinationId="remote:server-b:ws1" />);
+        expect(screen.queryByTestId('inline-comment-popup')).toBeNull();
+        expect(mockAddComment).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockGetWorkingTreeFileDiff.mockResolvedValue({ diff: '+added line\n context' });

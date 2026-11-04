@@ -53,6 +53,7 @@ import { buildOfflineCanvasHostBootstrap } from '../canvas-host-bootstrap';
 import { buildExtensionRootHtml, buildExtensionRuntimeScript } from '../extension-runtime';
 import { CANVAS_LIBRARIES } from '../../../../../../canvas/canvas-libraries';
 import type { CanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
+import { escapeHtml } from '../../../utils/format';
 
 /** Input for building the offline extension export body. */
 export interface ExtensionExportInput {
@@ -93,15 +94,6 @@ export interface ExtensionExportResult {
     stateJson: string;
     /** Non-fatal issues (invalid state, neutralized external references, residual network URLs). */
     warnings: string[];
-}
-
-/** Escape text for an HTML text/attribute context (attributes are double-quoted). */
-function escapeHtml(value: string): string {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 /**

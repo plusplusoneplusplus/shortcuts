@@ -2,7 +2,9 @@ import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { RalphSessionRecord } from '../ralph/types';
-import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
+import { AiSelectionParseError, isReasoningEffort, parseAiSelection, type AiSelection } from '../tasks/ai-selection';
+import { isAutoProviderRoutingRequested, parseAutoProviderRoutingContext } from '../tasks/auto-provider-routing';
+import { resolveChatProvider } from '../tasks/task-types';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 // Shared utilities for Ralph session resume routes and final-check gap loops.
@@ -24,6 +26,8 @@ export interface RecoveredIterationPaths {
     provider: ChatProvider | undefined;
     model: string | undefined;
     reasoningEffort: ReasoningEffort | undefined;
+    autoProviderRouting?: boolean;
+    effortTier?: RalphEffortTier;
 }
 
 export type RalphEffortTier = 'very-low' | 'low' | 'medium' | 'high';
@@ -33,7 +37,7 @@ export interface RalphAiSelection {
     model: string | undefined;
     reasoningEffort: ReasoningEffort | undefined;
     effortTier: RalphEffortTier | undefined;
-    autoProviderRouting: boolean;
+    autoProviderRouting: boolean | undefined;
 }
 
 export type RalphAiSelectionParseResult =
@@ -82,24 +86,19 @@ export function parseAdditionalIterations(
 
 export function parseRalphAiSelection(body: unknown): RalphAiSelectionParseResult {
     const request = isRecord(body) ? body : {};
-    const provider = request.provider === undefined
-        ? undefined
-        : request.provider as ChatProvider;
-    if (provider !== undefined && !VALID_CHAT_PROVIDERS.has(provider)) {
-        return { error: `Invalid provider: '${String(request.provider)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}` };
-    }
-
     const config = isRecord(request.config) ? request.config : {};
-    const model = typeof config.model === 'string' && config.model.trim()
-        ? config.model.trim()
-        : undefined;
-
-    const rawReasoningEffort = config.reasoningEffort ?? request.reasoningEffort;
-    const reasoningEffort = rawReasoningEffort === undefined
-        ? undefined
-        : rawReasoningEffort as ReasoningEffort;
-    if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
-        return { error: `Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}` };
+    let selection: AiSelection;
+    try {
+        selection = parseAiSelection({
+            provider: request.provider,
+            config: {
+                model: typeof config.model === 'string' ? config.model : undefined,
+                reasoningEffort: config.reasoningEffort ?? request.reasoningEffort,
+            },
+        });
+    } catch (error) {
+        if (error instanceof AiSelectionParseError) return { error: error.message };
+        throw error;
     }
 
     const rawEffortTier = config.effortTier ?? request.effortTier;
@@ -114,12 +113,29 @@ export function parseRalphAiSelection(body: unknown): RalphAiSelectionParseResul
 
     return {
         value: {
-            provider,
-            model,
-            reasoningEffort,
+            ...selection,
             effortTier,
-            autoProviderRouting: request.autoProviderRouting === true,
+            autoProviderRouting: request.autoProviderRouting === undefined
+                ? undefined : request.autoProviderRouting === true,
         },
+    };
+}
+
+export function resolveRalphContinuationAiSelection(
+    requested: RalphAiSelection | undefined,
+    recovered: RecoveredIterationPaths,
+): RalphAiSelection {
+    const recoveredAuto = recovered.autoProviderRouting === true;
+    const autoProviderRouting = requested?.provider === undefined
+        && (requested?.autoProviderRouting ?? recoveredAuto);
+    const effortTier = requested?.effortTier ?? (autoProviderRouting ? recovered.effortTier : undefined);
+    const inheritConcrete = effortTier === undefined;
+    return {
+        provider: requested?.provider ?? (autoProviderRouting ? undefined : recovered.provider),
+        model: requested?.model ?? (inheritConcrete ? recovered.model : undefined),
+        reasoningEffort: requested?.reasoningEffort ?? (inheritConcrete ? recovered.reasoningEffort : undefined),
+        effortTier,
+        autoProviderRouting,
     };
 }
 
@@ -155,16 +171,17 @@ export async function recoverIterationPaths(
     const activeWorktreePath = record.worktree && record.worktree.status === 'active'
         ? record.worktree.path
         : undefined;
+    const unavailable: RecoveredIterationPaths = {
+        workingDirectory: activeWorktreePath,
+        folderPath: undefined,
+        provider: undefined,
+        model: undefined,
+        reasoningEffort: undefined,
+    };
 
     const lastIter = [...record.iterations].sort((a, b) => b.iteration - a.iteration)[0];
     if (!lastIter?.processId) {
-        return {
-            workingDirectory: activeWorktreePath,
-            folderPath: undefined,
-            provider: undefined,
-            model: undefined,
-            reasoningEffort: undefined,
-        };
+        return unavailable;
     }
 
     try {
@@ -172,6 +189,16 @@ export async function recoverIterationPaths(
         const procWithPayload = proc as (typeof proc & { payload?: Record<string, unknown> }) | undefined;
         const payload = isRecord(procWithPayload?.payload) ? procWithPayload.payload : undefined;
         const metadata = isRecord(procWithPayload?.metadata) ? procWithPayload.metadata : undefined;
+        const owner = metadata?.workspaceId ?? payload?.workspaceId;
+        if (owner !== undefined && owner !== (workspaceId ?? record.workspaceId)) return unavailable;
+        const payloadContext = parseAutoProviderRoutingContext(payload?.context);
+        const routingContext = payloadContext?.autoProviderRouting !== undefined
+            ? payloadContext : parseAutoProviderRoutingContext(metadata);
+        const autoProviderRouting = isAutoProviderRoutingRequested(routingContext);
+        const effortTier = typeof metadata?.afterEffortTier === 'string'
+            && VALID_RALPH_EFFORT_TIERS.has(metadata.afterEffortTier)
+            ? metadata.afterEffortTier as RalphEffortTier
+            : undefined;
         const payloadWorkingDirectory = asString(payload?.workingDirectory);
         const payloadFolderPath = asString(payload?.folderPath);
         return {
@@ -180,18 +207,14 @@ export async function recoverIterationPaths(
                 ?? payloadFolderPath
                 ?? procWithPayload?.workingDirectory,
             folderPath: payloadFolderPath,
-            provider: asProvider(payload?.provider) ?? asProvider(metadata?.provider),
+            provider: resolveChatProvider(payload?.provider) ?? resolveChatProvider(metadata?.provider),
             model: asString(payload?.model) ?? asString(metadata?.model),
-            reasoningEffort: asReasoningEffort(payload?.reasoningEffort),
+            reasoningEffort: asReasoningEffort(payload?.reasoningEffort) ?? asReasoningEffort(metadata?.reasoningEffort),
+            ...(autoProviderRouting ? { autoProviderRouting: true } : {}),
+            ...(effortTier ? { effortTier } : {}),
         };
     } catch {
-        return {
-            workingDirectory: activeWorktreePath,
-            folderPath: undefined,
-            provider: undefined,
-            model: undefined,
-            reasoningEffort: undefined,
-        };
+        return unavailable;
     }
 }
 
@@ -216,14 +239,6 @@ function asString(value: unknown): string | undefined {
     return typeof value === 'string' ? value : undefined;
 }
 
-function asProvider(value: unknown): ChatProvider | undefined {
-    return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode'
-        ? value
-        : undefined;
-}
-
 function asReasoningEffort(value: unknown): ReasoningEffort | undefined {
-    return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
-        ? value
-        : undefined;
+    return isReasoningEffort(value) ? value : undefined;
 }

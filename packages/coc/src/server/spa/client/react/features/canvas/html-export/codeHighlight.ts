@@ -3,13 +3,14 @@
  * blocks of rendered markdown body HTML.
  *
  * The chat markdown renderer (`chatMarkdownToHtml` → `createChatMarked`) emits
- * fenced code as `<pre><code class="language-X">ESCAPED</code></pre>`, with the
- * source only HTML-escaped — highlight.js normally runs at runtime via a global
+ * fenced code as a `pre` element containing `<code class="language-X">ESCAPED</code>`,
+ * inside a block container with copy controls. The source is HTML-escaped;
+ * highlight.js normally runs at runtime via a global
  * to colour it. An exported, offline file ships no such runtime, so the theme
  * CSS (`.hljs-*` classes) would have nothing to style. This pass re-runs
  * highlight.js at export time and rewrites each recognised block to the
- * highlighted `<pre><code class="hljs language-X">…spans…</code></pre>`, so the
- * embedded theme CSS takes effect with zero runtime shipped.
+ * highlighted `<code class="hljs language-X">…spans…</code>`, preserving the `pre`
+ * attributes and surrounding markup so the embedded theme CSS takes effect offline.
  *
  * Node-safe (highlight.js core is pure) and deterministic (no time/random), so
  * it can run in the orchestrator and be asserted exactly in tests.
@@ -41,7 +42,7 @@ function escapeAttr(value: string): string {
  * source is HTML-escaped, so it can never contain a literal `</code></pre>`,
  * making the lazy body match safe.
  */
-const CODE_BLOCK_RE = /<pre><code class="language-([^"]*)">([\s\S]*?)<\/code><\/pre>/gi;
+const CODE_BLOCK_RE = /(<pre\b[^>]*>)<code class="language-([^"]*)">([\s\S]*?)<\/code><\/pre>/gi;
 
 /**
  * Rewrite every recognised `language-X` code block in `html` to highlight.js
@@ -52,7 +53,7 @@ const CODE_BLOCK_RE = /<pre><code class="language-([^"]*)">([\s\S]*?)<\/code><\/
  */
 export function highlightMarkdownCodeBlocks(html: string): string {
     if (!html) return html ?? '';
-    return html.replace(CODE_BLOCK_RE, (whole, langRaw: string, escapedInner: string) => {
+    return html.replace(CODE_BLOCK_RE, (whole, preOpen: string, langRaw: string, escapedInner: string) => {
         const lang = decodeHtml(langRaw).trim();
         // Unknown languages (and mermaid, which Layer C already replaced) are left
         // as-is so we never mangle a block highlight.js cannot parse.
@@ -62,7 +63,7 @@ export function highlightMarkdownCodeBlocks(html: string): string {
         try {
             const source = decodeHtml(escapedInner);
             const value = hljs.highlight(source, { language: lang, ignoreIllegals: true }).value;
-            return `<pre><code class="hljs language-${escapeAttr(lang)}">${value}</code></pre>`;
+            return `${preOpen}<code class="hljs language-${escapeAttr(lang)}">${value}</code></pre>`;
         } catch {
             return whole;
         }

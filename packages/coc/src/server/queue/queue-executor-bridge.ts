@@ -1,6 +1,6 @@
 import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
-import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
-import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import type { ChatPayload, ChatMode } from '../tasks/task-types';
+import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProvider, resolveChatProviderOrDefault } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -24,6 +24,7 @@ import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { orchestrateSubmitCompletion } from '../ralph/orchestrate-submit';
 import { getRalphTaskKind } from '../ralph/task-kind';
+import { isAutoProviderRoutingRequested, type AutoProviderRoutingContext } from '../tasks/auto-provider-routing';
 import { createFixedQueueRuntimeConfig } from './queue-runtime-config';
 import type { QueueRuntimeConfig } from './queue-runtime-config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
@@ -347,7 +348,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private async enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): Promise<void> {
         if (!this.queueManager) return;
 
-        const payload = completedTask.payload as unknown as ChatPayload;
+        const payload = completedTask.payload;
+        if (!isChatPayload(payload)) throw new Error('Ralph completion requires a chat payload.');
         const ralphCtx = payload.context?.ralph;
         const workspaceId = payload.workspaceId;
         const sessionId = ralphCtx?.sessionId;
@@ -389,10 +391,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 broadcastAwaitingInput: (params) => this.broadcastRalphAwaitingInput(params),
                 processStore: this.store,
                 workingDirectory: payload.workingDirectory,
-                folderPath: (payload as any).folderPath,
-                provider: isAutoProviderRoutingRequested(payload.context) ? undefined : (payload as any).provider,
+                folderPath: payload.folderPath,
+                provider: isAutoProviderRoutingRequested(payload.context) ? undefined : payload.provider,
                 repoId: completedTask.repoId,
-                existingPayloadContext: payload.context as Record<string, unknown>,
+                existingPayloadContext: payload.context,
                 existingTaskConfig: completedTask.config as Record<string, unknown>,
             },
         });
@@ -496,6 +498,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         sessionId: string | undefined,
     ): Promise<void> {
         if (!workspaceId || !sessionId || !this.queueManager || !this.dataDir) return;
+        const payload = completedTask.payload;
+        if (!isChatPayload(payload)) throw new Error('Ralph final check requires a chat payload.');
         const logger = getLogger();
 
         const finalCheckCtx = ralphCtx.finalCheck;
@@ -538,14 +542,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ),
                 maxGapFixLoops,
                 dataDir: this.dataDir,
-                workingDirectory: (completedTask.payload as any).workingDirectory,
-                folderPath: (completedTask.payload as any).folderPath,
-                provider: isAutoProviderRoutingRequested((completedTask.payload as any).context)
+                workingDirectory: payload.workingDirectory,
+                folderPath: payload.folderPath,
+                provider: isAutoProviderRoutingRequested(payload.context)
                     ? undefined
-                    : (completedTask.payload as any).provider,
+                    : payload.provider,
                 existingTaskConfig: completedTask.config as Record<string, unknown>,
                 repoId: completedTask.repoId,
-                extraContext: getRalphCarryForwardContext((completedTask.payload as any).context),
+                extraContext: getRalphCarryForwardContext(payload.context),
                 requestRepairTurn: (_taskId, prompt) => this.enqueueFinalCheckRepairTurn(completedTask, processId, prompt),
             },
         }).catch(err => {
@@ -814,9 +818,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * doing nothing.
      */
     private getAiServiceForProvider(provider: string | undefined): ISDKService {
-        if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.runtime.resolveAiServiceForProvider) {
+        const concreteProvider = resolveChatProvider(provider);
+        if (concreteProvider && this.runtime.resolveAiServiceForProvider) {
             try {
-                return this.runtime.resolveAiServiceForProvider(provider as ChatProvider);
+                return this.runtime.resolveAiServiceForProvider(concreteProvider);
             } catch (err) {
                 getLogger().debug(LogCategory.AI, `[Bridge] Falling back to default aiService for provider '${provider}': ${err instanceof Error ? err.message : String(err)}`);
             }
@@ -1293,18 +1298,14 @@ function getScheduleRunContext(context: ChatPayload['context'] | undefined): Rec
     return Object.keys(scheduleContext).length > 0 ? scheduleContext : undefined;
 }
 
-function getRalphCarryForwardContext(context: ChatPayload['context'] | undefined): Record<string, unknown> | undefined {
-    const carryForward: Record<string, unknown> = {
+function getRalphCarryForwardContext(context: ChatPayload['context'] | undefined): AutoProviderRoutingContext | undefined {
+    const carryForward: AutoProviderRoutingContext = {
         ...(getScheduleRunContext(context) ?? {}),
     };
     if (isAutoProviderRoutingRequested(context)) {
         carryForward.autoProviderRouting = context?.autoProviderRouting;
     }
     return Object.keys(carryForward).length > 0 ? carryForward : undefined;
-}
-
-function isAutoProviderRoutingRequested(context: ChatPayload['context'] | undefined): boolean {
-    return context?.autoProviderRouting?.requested === true;
 }
 
 /**

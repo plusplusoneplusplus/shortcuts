@@ -4,9 +4,9 @@
  * When wsId is empty/undefined, falls back to global /api/preferences.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { getRepoPreferences, patchRepoPreferences } from '../../../api/repoPreferences';
+import { useCallback } from 'react';
+import { createTemplateId, usePreferenceTemplates } from './usePreferenceTemplates';
+import { isRecord } from '../../../utils/typeGuards';
 
 export interface ScriptTemplate {
     id: string;
@@ -24,65 +24,24 @@ export interface UseScriptTemplatesResult {
     updateTemplate: (id: string, updates: Partial<Omit<ScriptTemplate, 'id'>>) => void;
     deleteTemplate: (id: string) => void;
     loaded: boolean;
+    error: string | null;
+}
+
+function isScriptTemplate(value: unknown): value is ScriptTemplate {
+    return isRecord(value)
+        && typeof value.id === 'string' && value.id.length > 0
+        && typeof value.name === 'string'
+        && typeof value.scriptPath === 'string'
+        && (value.args === undefined || typeof value.args === 'string')
+        && (value.workingDirectory === undefined || typeof value.workingDirectory === 'string')
+        && (value.model === undefined || typeof value.model === 'string')
+        && (value.pauseOnFailure === undefined || typeof value.pauseOnFailure === 'boolean');
 }
 
 export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
-    const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
-    const [loaded, setLoaded] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const client = getCocClientForWorkspace(wsId);
-                const prefs = wsId
-                    ? await getRepoPreferences(client, wsId)
-                    : await client.preferences.getGlobal();
-                if (!cancelled && Array.isArray(prefs.scriptTemplates)) {
-                    setTemplates((prefs.scriptTemplates as any[]).filter((t: any) => t && t.id));
-                }
-            } catch {
-                // Preferences are optional
-            } finally {
-                if (!cancelled) setLoaded(true);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [wsId]);
-
-    const persist = useCallback((updated: ScriptTemplate[]) => {
-        const client = getCocClientForWorkspace(wsId);
-        const patchData = { scriptTemplates: updated } as any;
-        (wsId
-            ? patchRepoPreferences(client, wsId, patchData)
-            : client.preferences.patchGlobal(patchData)
-        ).catch(() => {});
-    }, [wsId]);
-
-    const saveTemplate = useCallback((t: Omit<ScriptTemplate, 'id'>) => {
-        const entry: ScriptTemplate = { ...t, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-        setTemplates(prev => {
-            const updated = [entry, ...prev];
-            persist(updated);
-            return updated;
-        });
-    }, [persist]);
-
-    const updateTemplate = useCallback((id: string, updates: Partial<Omit<ScriptTemplate, 'id'>>) => {
-        setTemplates(prev => {
-            const updated = prev.map(t => t.id === id ? { ...t, ...updates } : t);
-            persist(updated);
-            return updated;
-        });
-    }, [persist]);
-
-    const deleteTemplate = useCallback((id: string) => {
-        setTemplates(prev => {
-            const updated = prev.filter(t => t.id !== id);
-            persist(updated);
-            return updated;
-        });
-    }, [persist]);
-
-    return { templates, saveTemplate, updateTemplate, deleteTemplate, loaded };
+    const { saveTemplate: save, ...result } = usePreferenceTemplates(wsId, 'scriptTemplates', isScriptTemplate);
+    const saveTemplate = useCallback((template: Omit<ScriptTemplate, 'id'>) => {
+        save({ ...template, id: createTemplateId() });
+    }, [save]);
+    return { ...result, saveTemplate };
 }

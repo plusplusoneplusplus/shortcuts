@@ -31,6 +31,8 @@
  * fetch path unit-testable with a plain mock.
  */
 
+import { errorMessage } from '../../../utils/errorMessage';
+
 /** Minimal response shape consumed by `resolveAssets` — the DOM `Response` satisfies it. */
 export interface AssetFetchResponse {
     /** Whether the fetch succeeded (HTTP 2xx). */
@@ -173,10 +175,6 @@ function blobToBase64(blob: Blob): Promise<string> {
         reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
         reader.readAsDataURL(blob);
     });
-}
-
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 interface ResolvedOne {

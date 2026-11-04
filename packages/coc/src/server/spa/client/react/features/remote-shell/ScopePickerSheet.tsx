@@ -10,23 +10,18 @@
  * Row actions are the same too, but they open through the shared `ContextMenu`,
  * which already renders as a bottom sheet on mobile.
  */
-import { useCallback, useState } from 'react';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { RepoData } from '../../repos/repoGrouping';
 import { RemoteServerBadge } from './RemoteServerBadge';
 import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection } from './RepoPickerPopover';
 import {
     CloneCountBadge,
-    CloneGlyph,
     KebabGlyph,
-    PinGlyph,
-    PlusIcon,
-    RepoGroupGlyph,
     UnseenBadge,
 } from './scopePickerGlyphs';
-import { useScopePickerModel, type ScopePickerFooterAction } from './useScopePickerModel';
+import { useScopePickerModel } from './useScopePickerModel';
+import { FooterActionIcon, ScopeSearchIcon, useMobileScopePicker } from './mobileScopePicker';
 
 export interface ScopePickerSheetProps {
     open: boolean;
@@ -36,74 +31,22 @@ export interface ScopePickerSheetProps {
     repo?: RepoData;
 }
 
-function FooterActionIcon({ icon }: { icon: ScopePickerFooterAction['icon'] }) {
-    if (icon === 'clone') return <CloneGlyph />;
-    if (icon === 'group') return <RepoGroupGlyph />;
-    return <PlusIcon />;
-}
-
-function SearchIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M16 16l4 4" />
-        </svg>
-    );
-}
-
 export function ScopePickerSheet({ open, onClose, repos, repo }: ScopePickerSheetProps) {
-    const [rowMenu, setRowMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
-    const [groupMenu, setGroupMenu] = useState<{ workspace: any; x: number; y: number } | null>(null);
-
     const model = useScopePickerModel(repos, { onClose, addTargetRepo: repo });
+    const { renderSections, renderPinToggle, openRepoMenu, menus } = useMobileScopePicker(model);
     const {
         query,
         setQuery,
-        pinnedRows,
-        virtualRows,
-        groupRows,
         remoteRows,
         footerActions,
-        pinnedScopesEnabled,
-        isPinned,
-        pinsFull,
-        togglePin,
     } = model;
-
-    const withMenuDismiss = useCallback((items: ContextMenuItem[], dismiss: () => void): ContextMenuItem[] =>
-        items.map(item => ({ ...item, onClick: () => { dismiss(); item.onClick(); } })), []);
-
-    // On a touch surface a hover-revealed control is unreachable, so the pin
-    // toggle is always visible here (the desktop row fades it in on hover).
-    const renderPinToggle = (ref: { kind: 'repo' | 'group'; key: string }, label: string) => {
-        if (!pinnedScopesEnabled) return null;
-        const pinned = isPinned(ref);
-        const blocked = !pinned && pinsFull;
-        return (
-            <button
-                data-testid="scope-pin-toggle"
-                data-pin-kind={ref.kind}
-                data-pin-key={ref.key}
-                aria-pressed={pinned}
-                disabled={blocked}
-                aria-label={`${pinned ? 'Unpin' : 'Pin'} ${label}`}
-                onClick={e => { e.stopPropagation(); togglePin(ref); }}
-                className={
-                    'flex-shrink-0 inline-flex items-center justify-center w-9 h-9 rounded '
-                    + (pinned ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#848484] dark:text-[#777] disabled:opacity-30')
-                }
-            >
-                <PinGlyph filled={pinned} />
-            </button>
-        );
-    };
 
     return (
         <>
             <BottomSheet isOpen={open} onClose={onClose} title="Workspaces" height={80}>
                 <div data-testid="scope-picker-sheet" className="px-2 pb-4">
                     <div className="flex items-center gap-1.5 px-2 py-2 mx-1 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#252526]">
-                        <SearchIcon />
+                        <ScopeSearchIcon />
                         <input
                             data-testid="scope-picker-search"
                             value={query}
@@ -114,89 +57,7 @@ export function ScopePickerSheet({ open, onClose, repos, repo }: ScopePickerShee
                         />
                     </div>
 
-                    {pinnedRows.length > 0 && (
-                        <>
-                            <PickerSection label="Pinned" />
-                            {pinnedRows.map(pin => (
-                                <PickerRow
-                                    key={pin.id}
-                                    testId="scope-picker-pinned-item"
-                                    remoteKey={pin.ref.key}
-                                    colorDot={pin.color}
-                                    name={pin.label}
-                                    onClick={() => model.selectScope(pin.targetId)}
-                                    badges={pin.unseen > 0 || pin.partial ? <UnseenBadge count={pin.unseen} partial={pin.partial} /> : undefined}
-                                    rowMenu={renderPinToggle(pin.ref, pin.label)}
-                                />
-                            ))}
-                        </>
-                    )}
-
-                    {virtualRows.length > 0 && (
-                        <>
-                            <PickerSection label="Scopes" />
-                            {virtualRows.map(row => (
-                                <PickerRow
-                                    key={row.id}
-                                    testId="scope-picker-virtual-item"
-                                    remoteKey={row.id}
-                                    active={row.active}
-                                    name={`${row.icon} ${row.label}`}
-                                    onClick={row.onSelect}
-                                />
-                            ))}
-                        </>
-                    )}
-
-                    <PickerSection label="Repo groups" />
-                    {groupRows.length > 0 ? groupRows.map(row => (
-                        <PickerRow
-                            key={row.id}
-                            testId="repo-group-item"
-                            remoteKey={row.id}
-                            active={row.active}
-                            name={row.name}
-                            sublabel={row.sublabel}
-                            offline={row.offline}
-                            onClick={() => model.selectScope(row.id)}
-                            badges={
-                                <>
-                                    <RepoGroupGlyph />
-                                    {row.isRemote && (
-                                        <RemoteServerBadge
-                                            testId="repo-group-server-badge"
-                                            servers={row.serverLabel ? [row.serverLabel] : []}
-                                        />
-                                    )}
-                                </>
-                            }
-                            rowMenu={
-                                <>
-                                    {renderPinToggle(row.pinRef, row.name)}
-                                    {/* Offline groups are read-only: no ⋮, so Edit and
-                                        Delete stay unavailable until the owning server
-                                        reconnects. Pinning is local and stays. */}
-                                    {!row.offline && (
-                                        <button
-                                            data-testid="repo-group-row-menu"
-                                            data-remote-key={row.id}
-                                            aria-label={`More actions for ${row.name}`}
-                                            onClick={e => {
-                                                e.stopPropagation();
-                                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                                setGroupMenu({ workspace: row.workspace, x: rect.left, y: rect.bottom });
-                                            }}
-                                            className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 rounded text-[#848484] dark:text-[#777]"
-                                        >
-                                            <KebabGlyph />
-                                        </button>
-                                    )}
-                                </>
-                            }
-                        />
-                    )) : (
-                        <PickerEmpty>No repo groups</PickerEmpty>
-                    )}
+                    {renderSections('scope-picker')}
 
                     <PickerSection label={query.trim() ? 'Search results' : 'Repositories'} />
                     {remoteRows.length > 0 ? remoteRows.map(row => (
@@ -227,8 +88,7 @@ export function ScopePickerSheet({ open, onClose, repos, repo }: ScopePickerShee
                                             aria-label={`More actions for ${row.summary.name}`}
                                             onClick={e => {
                                                 e.stopPropagation();
-                                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                                setRowMenu({ repo: row.soleClone!, x: rect.left, y: rect.bottom });
+                                                openRepoMenu(row.soleClone!, e.currentTarget);
                                             }}
                                             className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 rounded text-[#848484] dark:text-[#777]"
                                         >
@@ -262,20 +122,7 @@ export function ScopePickerSheet({ open, onClose, repos, repo }: ScopePickerShee
 
             {model.dialogs}
 
-            {rowMenu && (
-                <ContextMenu
-                    position={{ x: rowMenu.x, y: rowMenu.y }}
-                    items={withMenuDismiss(model.buildRowMenuItems(rowMenu.repo), () => setRowMenu(null))}
-                    onClose={() => setRowMenu(null)}
-                />
-            )}
-            {groupMenu && (
-                <ContextMenu
-                    position={{ x: groupMenu.x, y: groupMenu.y }}
-                    items={withMenuDismiss(model.buildGroupMenuItems(groupMenu.workspace), () => setGroupMenu(null))}
-                    onClose={() => setGroupMenu(null)}
-                />
-            )}
+            {menus}
         </>
     );
 }

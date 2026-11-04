@@ -50,13 +50,10 @@ import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifi
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { useSendReviewComments } from '../hooks/useSendReviewComments';
-import { FileLevelComments, revealFileComment, splitFileComments } from '../diff/FileLevelComments';
+import { FileLevelComments, splitFileComments } from '../diff/FileLevelComments';
 import { workingTreeCommentContext } from './workingTreeCommentContext';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
-import { CommentCard } from '../../../tasks/comments/CommentCard';
-import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
-import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
@@ -66,8 +63,9 @@ import { repoRelative } from './WorkingTree';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
-import type { AnyComment } from '../../../../comments/shared-comment-types';
-import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
+import { DiffCommentThread } from '../diff/DiffCommentThread';
+import { useDiffPanelComments, useRevealDiffComment } from '../diff/useDiffPanelComments';
+import { useInitialDiffHunk } from '../diff/useInitialDiffHunk';
 
 export interface WorkingTreeFileDiffProps {
     workspaceId: string;
@@ -128,12 +126,6 @@ const STAGE_LABEL: Record<string, string> = {
     untracked: 'Untracked file',
 };
 
-type PopupState = {
-    position: { top: number; left: number };
-    selection: DiffCommentSelection;
-    selectedText: string;
-} | null;
-
 /**
  * Both file sides for the Monaco engine. `diskText` is the on-disk file (null
  * when the staged disk check failed), used to tell a disk change apart.
@@ -159,9 +151,6 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const [totalLines, setTotalLines] = useState(0);
     const [fullRequested, setFullRequested] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [popupState, setPopupState] = useState<PopupState>(null);
-    const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
-    const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
@@ -422,24 +411,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     });
 
     // Auto-scroll to target hunk after diff loads (for cross-file navigation)
-    const hasScrolledRef = useRef(false);
-    useEffect(() => {
-        // The Monaco viewer applies initialHunkTarget itself once its diff is computed.
-        if (searchTarget || !initialHunkTarget || !diff || loading || !classicActive || hasScrolledRef.current) return;
-        hasScrolledRef.current = true;
-        const timer = setTimeout(() => {
-            const viewer = viewerRef.current;
-            if (!viewer) return;
-            const count = viewer.getHunkCount();
-            if (count === 0) return;
-            if (initialHunkTarget === 'first') {
-                viewer.scrollToHunk(0);
-            } else {
-                viewer.scrollToHunk(count - 1);
-            }
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [searchTarget, initialHunkTarget, diff, loading, classicActive]);
+    const panelIdentity = JSON.stringify([workspaceId, attachmentDestinationId, stage, filePath]);
+    useInitialDiffHunk(viewerRef, panelIdentity, initialHunkTarget, !searchTarget && !!diff && !loading && classicActive);
 
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, destinationId: attachmentDestinationId, filePath: relativePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
@@ -448,9 +421,13 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
 
     const diffContext = workingTreeCommentContext(workspaceId, filePath, stage);
 
+    const commentActions = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext, attachmentDestinationId === undefined ? undefined : ownerRoute);
+            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = commentActions;
+    const { popupState, setPopupState, activePopoverComment, setActivePopoverComment, popoverPos,
+        handleAddComment, handleCommentClick, handlePopupSubmit } = useDiffPanelComments(panelIdentity, addComment);
+    const handleSidebarCommentClick = useRevealDiffComment(panelIdentity, scrollContainerRef, monacoViewerRef, showEditor);
     const sendComments = useSendReviewComments(workspaceId, comments, diffContext);
     const { lineComments, fileComments } = useMemo(() => splitFileComments(comments), [comments]);
 
@@ -508,28 +485,6 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             });
     }, [refreshKey, stage, fullRequested, fetchDiff, wantsEditor, loadEditorContent, handleRefreshedContent]);
 
-    const handleAddComment = useCallback(
-        (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {
-            setPopupState({ position, selection, selectedText });
-        },
-        [],
-    );
-
-    const handleCommentClick = useCallback((comment: DiffComment, event: React.MouseEvent) => {
-        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
-        setActivePopoverComment(comment);
-    }, []);
-
-    const handlePopupSubmit = useCallback(
-        async (text: string, category: TaskCommentCategory) => {
-            if (!popupState) return;
-            await addComment(popupState.selection, popupState.selectedText, text, category);
-            setPopupState(null);
-        },
-        [popupState, addComment],
-    );
-
     const handleAskAI = useCallback(
         (id: string, commandId: string, customQuestion?: string) => {
             void askAI(id, { commandId, customQuestion });
@@ -553,42 +508,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         [filePath],
     );
 
-    const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
-        if (revealFileComment(scrollContainerRef.current, comment as DiffComment)) return;
-        if (showEditor) {
-            monacoViewerRef.current?.revealComment(comment.id);
-            return;
-        }
-        const dc = comment as DiffComment;
-        const lineIdx = dc.selection?.diffLineStart;
-        if (lineIdx == null) return;
-        const el = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-diff-line-index="${lineIdx}"]`);
-        if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('ring-2', 'ring-yellow-400');
-        setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    }, [showEditor]);
-
     // Editor engine: the same thread card the sidebar shows, inline under the line.
-    const insertDraftIntoCurrentChat = useCurrentChatInsertDraft();
     const renderCommentThread = useCallback((comment: DiffComment) => (
-        <CommentCard
-            comment={comment}
-            onResolve={() => { void resolveComment(comment.id); }}
-            onUnresolve={() => { void unresolveComment(comment.id); }}
-            onEdit={(text) => { void updateComment(comment.id, { comment: text }); }}
-            onDelete={() => { void deleteComment(comment.id); }}
-            onAskAI={(commandId, question) => handleAskAI(comment.id, commandId, question)}
-            onClick={() => undefined}
-            aiLoading={aiLoadingIds.has(comment.id)}
-            aiError={aiErrors.get(comment.id) ?? null}
-            onClearAiError={() => clearAiError(comment.id)}
-            isResolving={resolvingIds.has(comment.id)}
-            isDeleting={deletingIds.has(comment.id)}
-            getResolvePrompt={() => formatDiffCommentPrompt(comment)}
-            onSendResolvePrompt={insertDraftIntoCurrentChat}
-        />
-    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds, insertDraftIntoCurrentChat]);
+        <DiffCommentThread comment={comment} actions={commentActions} />
+    ), [commentActions]);
 
     return (
         <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff"

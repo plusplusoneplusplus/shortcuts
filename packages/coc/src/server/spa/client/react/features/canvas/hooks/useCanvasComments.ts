@@ -9,7 +9,7 @@
  * marked `sent` once the message is accepted.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Canvas, CanvasComment, CocClient } from '@plusplusoneplusplus/coc-client';
 import { buildAskAiPrompt, buildCommentsMessage } from '../canvas-panel-model';
 
@@ -36,8 +36,8 @@ export interface CanvasComments {
     commentDraft: string;
     setCommentDraft: (text: string) => void;
     sendingComments: boolean;
-    askAi: () => void;
-    startComment: () => void;
+    askAi: (text?: string) => void;
+    startComment: (text?: string) => void;
     cancelComment: () => void;
     submitComment: () => Promise<void>;
     deleteComment: (commentId: string) => Promise<void>;
@@ -53,30 +53,37 @@ export function useCanvasComments({
     const [commentDraft, setCommentDraft] = useState('');
     const [sendingComments, setSendingComments] = useState(false);
 
-    // Reset on canvas switch, before any fetch for the new canvas lands.
+    const owner = useMemo(() => ({}), [client, workspaceId, canvasId]);
+    const ownerRef = useRef(owner);
+    ownerRef.current = owner;
+
+    // Reset on canvas/server switch, before any fetch for the new owner lands.
     useEffect(() => {
         setSelection(null);
         setCommentAnchor(null);
         setCommentDraft('');
         setComments([]);
-    }, [workspaceId, canvasId]);
+        setSendingComments(false);
+    }, [owner]);
 
     useEffect(() => {
         if (loadNonce === 0) return;
+        let cancelled = false;
         client.canvases.listComments(workspaceId, canvasId)
-            .then(setComments)
+            .then(loaded => { if (!cancelled && ownerRef.current === owner) setComments(loaded); })
             .catch(() => { /* comments are best-effort */ });
-    }, [workspaceId, canvasId, loadNonce]);
+        return () => { cancelled = true; };
+    }, [client, workspaceId, canvasId, loadNonce, owner]);
 
-    const askAi = useCallback(() => {
-        if (!canvas || !selection || !onAskAi) return;
-        onAskAi(buildAskAiPrompt(canvas, selection));
+    const askAi = useCallback((text = selection) => {
+        if (!canvas || !text || !onAskAi) return;
+        onAskAi(buildAskAiPrompt(canvas, text));
         setSelection(null);
     }, [canvas, selection, onAskAi]);
 
-    const startComment = useCallback(() => {
-        if (!selection) return;
-        setCommentAnchor(selection);
+    const startComment = useCallback((text = selection) => {
+        if (!text) return;
+        setCommentAnchor(text);
         setCommentDraft('');
         setSelection(null);
     }, [selection]);
@@ -93,18 +100,20 @@ export function useCanvasComments({
                 anchorText: commentAnchor,
                 body: commentDraft.trim(),
             });
+            if (ownerRef.current !== owner) return;
             setComments(prev => [...prev, comment]);
             setCommentAnchor(null);
             setCommentDraft('');
         } catch { /* leave the compose box open on failure */ }
-    }, [workspaceId, canvasId, commentAnchor, commentDraft]);
+    }, [client, workspaceId, canvasId, commentAnchor, commentDraft, owner]);
 
     const deleteComment = useCallback(async (commentId: string) => {
         try {
             await client.canvases.deleteComment(workspaceId, canvasId, commentId);
+            if (ownerRef.current !== owner) return;
             setComments(prev => prev.filter(c => c.id !== commentId));
         } catch { /* keep the comment on failure */ }
-    }, [workspaceId, canvasId]);
+    }, [client, workspaceId, canvasId, owner]);
 
     const openComments = comments.filter(c => c.status === 'open');
 
@@ -117,11 +126,12 @@ export function useCanvasComments({
             const updates = await Promise.all(openComments.map(c =>
                 client.canvases.setCommentStatus(workspaceId, canvasId, c.id, 'sent').catch(() => null),
             ));
+            if (ownerRef.current !== owner) return;
             setComments(prev => prev.map(c => updates.find(u => u?.id === c.id) ?? c));
         } catch { /* comments stay open if the send failed */ } finally {
-            setSendingComments(false);
+            if (ownerRef.current === owner) setSendingComments(false);
         }
-    }, [workspaceId, canvasId, onSendToAi, openComments, sendingComments]);
+    }, [client, workspaceId, canvasId, onSendToAi, openComments, sendingComments, owner]);
 
     return {
         comments,

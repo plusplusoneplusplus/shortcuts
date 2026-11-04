@@ -10,6 +10,8 @@
  * React-free; every entry point returns `{ ok } | { ok: false, error }`.
  */
 
+import { escapeHtmlAttribute } from '../../../../shared/html';
+
 export type EncodeResult = { ok: true; value: string } | { ok: false; error: string };
 
 const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -87,21 +89,9 @@ export function decodeUrl(text: string): EncodeResult {
     }
 }
 
-const HTML_ESCAPES: readonly [string, string][] = [
-    ['&', '&amp;'],
-    ['<', '&lt;'],
-    ['>', '&gt;'],
-    ['"', '&quot;'],
-    ["'", '&#39;'],
-];
-
 /** Escape the five characters that matter inside HTML markup and attributes. */
 export function escapeHtml(text: string): EncodeResult {
-    let out = text;
-    for (const [raw, entity] of HTML_ESCAPES) {
-        out = out.split(raw).join(entity);
-    }
-    return { ok: true, value: out };
+    return { ok: true, value: escapeHtmlAttribute(text) };
 }
 
 const NAMED_ENTITIES: Record<string, string> = {

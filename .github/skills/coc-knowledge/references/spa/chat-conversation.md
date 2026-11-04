@@ -613,19 +613,18 @@ the answer attaches to that message's Side notes row. Components live under
 `QuickAskPill`, `QuickAskSidenotePopover`, `QuickAskTurnLayer` — plumbed from `ChatDetail`
 through `ConversationArea` to `ConversationTurnBubble`.
 
-Answers render with `chatMarkdownToHtml` (no `wsId`, embeds off) — they are chat content, not
-notes. The notes live-preview renderer `renderMarkdownToHtml` deliberately keeps `**`/backtick
-markers in `.md-marker` spans and is wrong here. Related: `MarkdownView` re-highlights `pre
-code` on mount but skips anything inside `.code-block-container`, since forge's
-`renderCodeBlock` already highlighted it and wraps lines in `.code-line`/`.line-number` spans
-that `hljs.highlightElement` would flatten.
+Answers render with `chatMarkdownToHtml` (no `wsId`, embeds off). The notes live-preview
+renderer `renderMarkdownToHtml` keeps source markers in `.md-marker` spans and serves
+editable file previews.
 
-Answers render with `chatMarkdownToHtml` (no `wsId`, embeds off) — they are chat content, not
-notes. The notes live-preview renderer `renderMarkdownToHtml` deliberately keeps `**`/backtick
-markers in `.md-marker` spans and is wrong here. Related: `MarkdownView` re-highlights `pre
-code` on mount but skips anything inside `.code-block-container`, since forge's
-`renderCodeBlock` already highlighted it and wraps lines in `.code-line`/`.line-number` spans
-that `hljs.highlightElement` would flatten.
+### Markdown block controls
+
+Chat and Markdown-canvas previews share `chatMarkdownToHtml` and `MarkdownView`.
+Ordinary code blocks use the file renderer's `.code-block-container` header and
+`useCodeBlockActions`; copying reads the complete DOM-decoded `data-raw` value through
+`copyToClipboard`, with per-block feedback and effect-scoped cleanup. Nested viewers
+handle their own controls. `MarkdownView` highlights plain code while preserving
+Forge's pre-highlighted `.code-line` and `.line-number` structure.
 
 AI-response and rendered Markdown-canvas `MarkdownView`s pass `tableWrapToggle`: upgraded
 `InteractiveTable`s get a per-table "Wrap text" toolbar toggle (`aria-pressed`, default off).

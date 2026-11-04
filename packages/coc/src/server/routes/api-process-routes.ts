@@ -49,7 +49,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-us
 import { textareaAnswerError } from '../shared/ask-user-textarea';
 import { parseSensitiveInputReceipt } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { readActiveProviderSession } from '../processes/active-provider-session';
 import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 import { processOperationAdmission } from '../processes/process-operation-admission';
@@ -1188,7 +1188,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // re-resolving against the real notes root catches anything platform
             // path handling would otherwise let through.
             const effectiveDataDir = dataDir ?? path.join(os.homedir(), '.coc');
-            const notesRoot = path.resolve(getRepoDataPath(effectiveDataDir, workspaceId, 'notes'));
+            const notesRoot = path.resolve(getNotesRoot(effectiveDataDir, workspaceId));
             const resolved = path.resolve(notesRoot, notePath);
             if (resolved !== notesRoot && !resolved.startsWith(notesRoot + path.sep)) {
                 return handleAPIError(res, badRequest('notePath escapes the notes root'));

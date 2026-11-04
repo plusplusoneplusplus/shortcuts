@@ -5,6 +5,7 @@ import type {
     ProcessStore,
 } from '@plusplusoneplusplus/forge';
 import type { DreamSourceRange } from './types';
+import { clampIntegerLimit } from '../core/limit-utils';
 
 export interface DreamEligibleTurn {
     turnIndex: number;
@@ -59,12 +60,6 @@ interface LoadedProcessEntry {
 const DEFAULT_LIMIT = 20;
 const MAX_FETCH_LIMIT = 100;
 const FETCH_MULTIPLIER = 3;
-
-function clampPositiveInteger(value: number | undefined, fallback: number, max: number): number {
-    if (value === undefined) return fallback;
-    if (!Number.isFinite(value)) return fallback;
-    return Math.min(Math.max(1, Math.trunc(value)), max);
-}
 
 function isoFromDate(value: Date | undefined): string | undefined {
     return value instanceof Date && Number.isFinite(value.getTime()) ? value.toISOString() : undefined;
@@ -232,7 +227,7 @@ export async function selectEligibleDreamConversations(
         throw new Error('workspaceId is required');
     }
 
-    const limit = clampPositiveInteger(options.limit, DEFAULT_LIMIT, MAX_FETCH_LIMIT);
+    const limit = clampIntegerLimit(options.limit, DEFAULT_LIMIT, 1, MAX_FETCH_LIMIT);
     const fetchLimit = Math.min(MAX_FETCH_LIMIT, Math.max(limit, limit * FETCH_MULTIPLIER));
     const coveredRangesByProcess = normalizeCoveredRanges(options.coveredRanges);
     const loadedEntries = await loadRecentCompletedProcesses(options.store, workspaceId, options, fetchLimit);

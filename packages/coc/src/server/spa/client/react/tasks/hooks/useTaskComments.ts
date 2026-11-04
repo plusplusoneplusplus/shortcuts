@@ -1,7 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getWsPath } from '../../utils/config';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { cloneWsUrl } from '../../api/wsUrl';
+import { useRequestScope } from '../../hooks/useRequestScope';
+import { useCommentCollection } from '../../hooks/useCommentCollection';
+import { useCommentMutations } from '../../hooks/useCommentMutations';
+import { useCommentSubscription } from '../../hooks/useCommentSubscription';
+import { isRecord } from '../../utils/typeGuards';
+import { readTaskComment, toTaskCommentCreateRequest, toTaskCommentUpdateRequest } from '../../utils/commentContracts';
 import type {
     TaskComment,
     TaskCommentStatus,
@@ -77,8 +83,8 @@ export interface UseTaskCommentsReturn {
     addComment: (req: CreateCommentRequest) => Promise<TaskComment>;
     updateComment: (id: string, req: UpdateCommentRequest) => Promise<TaskComment>;
     deleteComment: (id: string) => Promise<void>;
-    resolveComment: (id: string) => Promise<TaskComment>;
-    unresolveComment: (id: string) => Promise<TaskComment>;
+    resolveComment: (id: string) => Promise<TaskComment | undefined>;
+    unresolveComment: (id: string) => Promise<TaskComment | undefined>;
     askAI: (id: string, options?: AskAIOptions) => Promise<void>;
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
@@ -91,131 +97,87 @@ export interface UseTaskCommentsReturn {
     refresh: () => Promise<void>;
 }
 
+function commentLoadError(error: unknown): string {
+    return getSpaCocClientErrorMessage(error, 'Failed to load comments');
+}
+
 export function useTaskComments(wsId: string, taskPath: string): UseTaskCommentsReturn {
-    const [comments, setComments] = useState<TaskComment[]>([]);
+    // Task-result comments intentionally use the page-origin tasks API.
+    const client = getSpaCocClient();
+    const isCurrent = useRequestScope(client, JSON.stringify([wsId, taskPath]));
     const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
-    const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
-    const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-    const mountedRef = useRef(true);
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => { mountedRef.current = false; };
-    }, []);
-
-    const fetchComments = useCallback(async () => {
-        if (!wsId || !taskPath) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const comments = await getSpaCocClient().tasks.listComments(wsId, taskPath);
-            if (mountedRef.current) {
-                setComments(comments || []);
-            }
-        } catch (err) {
-            if (mountedRef.current) {
-                setError(getSpaCocClientErrorMessage(err, 'Failed to load comments'));
-                setComments([]);
-            }
-        } finally {
-            if (mountedRef.current) setLoading(false);
-        }
-    }, [wsId, taskPath]);
+    const loadComments = useCallback(async () => {
+        if (!wsId || !taskPath) return [];
+        return (await client.tasks.listComments(wsId, taskPath) || []).map(readTaskComment);
+    }, [client, wsId, taskPath]);
+    const { comments, setComments, loading, error, refresh: fetchComments } =
+        useCommentCollection(loadComments, isCurrent, commentLoadError);
 
     const fetchCounts = useCallback(async () => {
         if (!wsId) return;
         try {
-            const counts = await getSpaCocClient().tasks.getCommentCounts(wsId);
-            if (mountedRef.current) setCommentCounts(counts || {});
+            const counts = await client.tasks.getCommentCounts(wsId);
+            if (isCurrent()) setCommentCounts(counts || {});
         } catch {
             // Silently ignore count fetch failures
         }
-    }, [wsId]);
+    }, [client, wsId, isCurrent]);
 
     useEffect(() => {
-        fetchComments();
-        fetchCounts();
-    }, [fetchComments, fetchCounts]);
+        setCommentCounts({});
+        setAiLoadingIds(new Set());
+        setAiErrors(new Map());
+        void fetchCounts();
+    }, [fetchCounts]);
 
     const addComment = useCallback(async (req: CreateCommentRequest): Promise<TaskComment> => {
-        const comment = await getSpaCocClient().tasks.createComment(wsId, taskPath, req);
-        if (mountedRef.current) {
+        const comment = readTaskComment(await client.tasks.createComment(wsId, taskPath, toTaskCommentCreateRequest(req)));
+        if (isCurrent()) {
             setComments(prev => [...prev, comment]);
         }
         return comment;
-    }, [wsId, taskPath]);
+    }, [client, wsId, taskPath, isCurrent]);
 
     const updateCommentFn = useCallback(async (id: string, req: UpdateCommentRequest): Promise<TaskComment> => {
-        const comment = await getSpaCocClient().tasks.updateComment(wsId, taskPath, id, req);
-        if (mountedRef.current) {
+        const comment = readTaskComment(await client.tasks.updateComment(wsId, taskPath, id, toTaskCommentUpdateRequest(req)));
+        if (isCurrent()) {
             setComments(prev => prev.map(c => c.id === id ? comment : c));
         }
         return comment;
-    }, [wsId, taskPath]);
+    }, [client, wsId, taskPath, isCurrent]);
 
-    const deleteCommentFn = useCallback(async (id: string): Promise<void> => {
-        if (deletingIds.has(id)) return;
-        setDeletingIds(prev => new Set(prev).add(id));
-        try {
-            await getSpaCocClient().tasks.deleteComment(wsId, taskPath, id);
-            if (mountedRef.current) {
-                setComments(prev => prev.filter(c => c.id !== id));
-            }
-        } finally {
-            if (mountedRef.current) {
-                setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [wsId, taskPath, deletingIds]);
-
-    const resolveComment = useCallback(async (id: string): Promise<TaskComment> => {
-        if (resolvingIds.has(id)) return {} as TaskComment;
-        setResolvingIds(prev => new Set(prev).add(id));
-        try {
-            return await updateCommentFn(id, { status: 'resolved' });
-        } finally {
-            if (mountedRef.current) {
-                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [updateCommentFn, resolvingIds]);
-
-    const unresolveComment = useCallback(async (id: string): Promise<TaskComment> => {
-        if (resolvingIds.has(id)) return {} as TaskComment;
-        setResolvingIds(prev => new Set(prev).add(id));
-        try {
-            return await updateCommentFn(id, { status: 'open' });
-        } finally {
-            if (mountedRef.current) {
-                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-            }
-        }
-    }, [updateCommentFn, resolvingIds]);
+    const removeComment = useCallback(async (id: string): Promise<void> => {
+        await client.tasks.deleteComment(wsId, taskPath, id);
+        if (isCurrent()) setComments(prev => prev.filter(c => c.id !== id));
+    }, [client, wsId, taskPath, isCurrent]);
+    const updateStatus = useCallback((id: string, status: 'open' | 'resolved') =>
+        updateCommentFn(id, { status }), [updateCommentFn]);
+    const { deleteComment: deleteCommentFn, resolveComment, unresolveComment, resolvingIds, deletingIds } =
+        useCommentMutations(updateStatus, removeComment, isCurrent);
 
     const askAI = useCallback(async (id: string, options: AskAIOptions = {}): Promise<void> => {
+        if (!isCurrent()) return;
         const { commandId, customQuestion, documentContext } = options;
         setAiLoadingIds(prev => new Set(prev).add(id));
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
         try {
-            const data = await getSpaCocClient().tasks.askCommentAI(wsId, taskPath, id, { commandId, customQuestion, documentContext });
-            if (mountedRef.current) {
+            const data = await client.tasks.askCommentAI(wsId, taskPath, id, { commandId, customQuestion, documentContext });
+            if (isCurrent()) {
                 setComments(prev => prev.map(c => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
             }
         } catch (err) {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 const msg = getSpaCocClientErrorMessage(err, 'AI request failed');
                 setAiErrors(prev => new Map(prev).set(id, msg));
             }
         } finally {
-            if (mountedRef.current) {
+            if (isCurrent()) {
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, taskPath]);
+    }, [client, wsId, taskPath, isCurrent]);
 
     const clearAiError = useCallback((id: string) => {
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
@@ -225,23 +187,14 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         await Promise.all([fetchComments(), fetchCounts()]);
     }, [fetchComments, fetchCounts]);
 
-    // Subscribe to file-scoped WebSocket events for instant comment-resolved updates
-    useEffect(() => {
-        if (!taskPath) return;
-        const ws = new WebSocket(cloneWsUrl(getWsPath()));
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'subscribe-file', filePath: taskPath }));
-        });
-        ws.addEventListener('message', (event) => {
-            try {
-                const msg = JSON.parse(event.data as string) as { type: string; filePath?: string };
-                if (msg.type === 'comment-resolved' && msg.filePath === taskPath && mountedRef.current) {
-                    void refresh();
-                }
-            } catch { /* ignore */ }
-        });
-        return () => { ws.close(); };
-    }, [taskPath, refresh]);
+    const onCommentMessage = useCallback((message: unknown) => {
+        if (!isRecord(message)) return;
+        if (message.type === 'comment-resolved' && message.filePath === taskPath && isCurrent()) {
+            void refresh();
+        }
+    }, [taskPath, refresh, isCurrent]);
+    useCommentSubscription(cloneWsUrl(getWsPath()), taskPath
+        ? JSON.stringify({ type: 'subscribe-file', filePath: taskPath }) : null, onCommentMessage);
 
     const resolveWithAI = useCallback(
         async (documentContent: string, filePath: string, userContext?: string, skills?: string[]): Promise<ResolveWithAIResult> => {

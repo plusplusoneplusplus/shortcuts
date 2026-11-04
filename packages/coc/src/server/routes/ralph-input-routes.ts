@@ -27,7 +27,7 @@ import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { setRalphProcessPhase } from '../ralph/process-phase';
 import type { RalphHumanAnswer, RalphHumanInput, RalphSessionRecord } from '../ralph/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import { parseRalphAiSelection, recoverIterationPaths } from './ralph-route-utils';
+import { parseRalphAiSelection, recoverIterationPaths, resolveRalphContinuationAiSelection } from './ralph-route-utils';
 
 export const RALPH_INPUT_MAX_ANSWER_CHARS = 10_000;
 export const RALPH_INPUT_MAX_NOTE_CHARS = 10_000;
@@ -123,12 +123,8 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
 
                 await clearAwaitingProcessPhase(store, pending.processId, 'executing');
 
-                const provider = aiSelection.value.provider ?? recovered.provider;
-                const effortTier = aiSelection.value.effortTier;
-                const recoverConcreteAiSettings = effortTier === undefined;
-                const model = aiSelection.value.model ?? (recoverConcreteAiSettings ? recovered.model : undefined);
-                const reasoningEffort = aiSelection.value.reasoningEffort
-                    ?? (recoverConcreteAiSettings ? recovered.reasoningEffort : undefined);
+                const { provider, model, reasoningEffort, effortTier, autoProviderRouting } =
+                    resolveRalphContinuationAiSelection(aiSelection.value, recovered);
 
                 const nextIteration = updated.currentIteration + 1;
                 const taskInput = buildRalphIterationTask({
@@ -145,7 +141,7 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
                     model,
                     reasoningEffort,
                     effortTier,
-                    autoProviderRouting: aiSelection.value.autoProviderRouting,
+                    autoProviderRouting,
                     humanInput,
                 });
 

@@ -4,7 +4,7 @@ import * as path from 'path';
 import type { AutoFolderContext } from '@plusplusoneplusplus/forge';
 import type { ChatMode } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { resolveTaskRoot } from '../tasks/task-root-resolver';
 
 /**
@@ -43,7 +43,7 @@ export async function resolveAutoFolderContext(
 
     let folderRoot: string;
     if (normalizeChatMode(options.mode) === 'ask') {
-        folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId, 'notes'), 'Plans');
+        folderRoot = path.join(getNotesRoot(effectiveDataDir, wsId), 'Plans');
         await fs.promises.mkdir(folderRoot, { recursive: true });
     } else {
         folderRoot = resolveTaskRoot({

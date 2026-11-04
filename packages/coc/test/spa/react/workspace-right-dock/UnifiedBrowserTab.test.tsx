@@ -34,6 +34,42 @@ function tab(overrides: Partial<React.ComponentProps<typeof UnifiedBrowserTab>> 
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it.each(['electron', 'webview2'] as const)('exposes annotation only for loaded %s web pages, excluding previews, PDFs and the SPA', async engine => {
+        open.mockResolvedValue({ ok: true, engine });
+        mocks.bridge!.annotation = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}),
+            setEnabled: vi.fn(async () => {}), onEvent: vi.fn(() => vi.fn()) };
+        const view = tab({ workspaceId: 'ws', chatId: 'chat-1' });
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        expect(screen.getByRole('button', { name: 'Annotate' })).toBeDisabled();
+        const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        const state = { viewId: 'view', engine, sourceKind: 'url' as const, url: 'https://example.test/', title: 'Fixture',
+            committedPage: { url: 'https://example.test/', title: 'Fixture', revision: 1 },
+            loading: false, canGoBack: false, canGoForward: false };
+        act(() => emit(state));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).not.toBeDisabled());
+        for (const patch of [{ sourceKind: 'file' as const }, { url: 'https://example.test/document.PDF?download=1' },
+            { url: location.href }]) {
+            act(() => emit({ ...state, ...patch }));
+            expect(screen.queryByRole('button', { name: 'Annotate' })).toBeNull();
+        }
+        act(() => emit(state));
+        fireEvent.click(screen.getByRole('button', { name: 'Annotate' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).toHaveAttribute('aria-pressed', 'true'));
+        act(() => emit({ ...state, loading: true }));
+        await waitFor(() => expect(mocks.bridge!.annotation!.stop).toHaveBeenCalledTimes(1));
+        // Comments need a chat composer: the tab's linked chat, else the one in view.
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible
+            onNavigate={vi.fn()} onPageState={vi.fn()} chatId={null} />);
+        act(() => emit(state));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).toBeDisabled());
+        expect(screen.getByRole('button', { name: 'Annotate' }).title).toBe('Open a chat to receive annotation comments.');
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" workspaceId="ws" url="https://example.test/" active visible
+            onNavigate={vi.fn()} onPageState={vi.fn()} chatId={null} />);
+        act(() => emit(state));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Annotate' })).not.toBeDisabled());
+        view.unmount();
+    });
+
     it.each(['electron', 'webview2'] as const)('uses only committed %s URL/title pairs, rejecting loading, file and previous-tab state', async engine => {
         tab();
         await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());

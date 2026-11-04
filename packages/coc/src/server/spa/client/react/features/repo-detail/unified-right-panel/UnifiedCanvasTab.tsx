@@ -10,7 +10,7 @@
  *    from its own server's events and never from a similarly named canvas
  *    elsewhere;
  *  - the ORIGINATING chat's composer actions (`unifiedChatCanvasActions`), so
- *    "Ask AI" and "Send comments" reach that conversation even while another
+ *    selection context and comments reach that conversation even while another
  *    chat is selected — and are hidden outright when that chat is not mounted,
  *    rather than silently doing nothing;
  *  - pop-out and Kusto creation, which used to belong to the chat's own canvas
@@ -79,6 +79,7 @@ export function UnifiedCanvasTab({
 
     return (
         <CanvasPanel
+            key={JSON.stringify([workspaceId, routingRef, canvasId, chatId])}
             allowDesktopGuest
             workspaceId={workspaceId}
             routingRef={routingRef}
@@ -92,6 +93,7 @@ export function UnifiedCanvasTab({
             titleAccessory={titleAccessory}
             {...(chatActions ? {
                 onAskAi: chatActions.askAi,
+                onAttachToChat: chatActions.insertDraft,
                 onSendToAi: chatActions.sendToAi,
             } : {})}
         />

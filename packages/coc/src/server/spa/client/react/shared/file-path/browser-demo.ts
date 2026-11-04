@@ -79,7 +79,7 @@ export function getBrowserDemoForOwner(owner: BrowserDemoOwner): BrowserDemoStat
 
 const bareProcessId = (id: string) => id.startsWith('queue_') ? id.slice(6) : id;
 
-function sameChatOwner(a: BrowserDemoOwner, b: BrowserDemoOwner): boolean {
+export function sameChatOwner(a: BrowserDemoOwner, b: BrowserDemoOwner): boolean {
     return a.workspaceId === b.workspaceId && a.routingRef === b.routingRef
         && bareProcessId(a.processId) === bareProcessId(b.processId);
 }

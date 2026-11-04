@@ -1,6 +1,6 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { NotesAutoCommitTimer } from './notes-git-autocommit';
-import { getRepoDataPath } from '../../paths';
+import { getNotesRoot } from '../notes-paths';
 import { readRepoPreferences } from '../../preferences-handler';
 
 /** Default auto-commit interval: 30 minutes. */
@@ -52,7 +52,7 @@ export class NotesGitTimerManager {
             const prefs = readRepoPreferences(dataDir, ws.id);
             if (prefs.notesGit?.autoCommit?.enabled) {
                 const intervalMs = prefs.notesGit.autoCommit.intervalMs ?? DEFAULT_AUTOCOMMIT_INTERVAL_MS;
-                const notesDir = getRepoDataPath(dataDir, ws.id, 'notes');
+                const notesDir = getNotesRoot(dataDir, ws.id);
                 this.startForWorkspace(ws.id, notesDir, intervalMs);
             }
         }

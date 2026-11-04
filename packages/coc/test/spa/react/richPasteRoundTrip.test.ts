@@ -36,7 +36,7 @@ describe('rich paste round trip (paste → markdown string → bubble html)', ()
         expect(html).toContain('<em>fast</em>');
         expect(html).toContain('<li>fixed the <code>parser</code></li>');
         expect(html).toContain('<a href="https://example.com/changelog"');
-        expect(html).toContain('<pre><code>npm install\nnpm test');
+        expect(html).toContain('<pre class="code-block-content"><code>npm install\nnpm test');
     });
 
     it('never lets pasted script content execute: markup survives only as escaped text', () => {

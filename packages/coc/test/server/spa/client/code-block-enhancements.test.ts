@@ -275,3 +275,18 @@ describe('code block CSS — no word-break inheritance', () => {
         expect(block).toContain('white-space: pre');
     });
 });
+
+
+describe('code block Copy all CSS', () => {
+    const css = readFileSync(resolve(__dirname, '../../../../src/server/spa/client/tailwind.css'), 'utf-8');
+
+    it('reserves a visible header action outside the horizontal scroll area with stable feedback size', () => {
+        expect(css).toMatch(/\.markdown-body \.code-block-header\s*\{[^}]*display: flex/s);
+        const copy = css.match(/\.markdown-body \.code-block-copy\s*\{([^}]+)\}/)?.[1] ?? '';
+        expect(copy).toContain('min-width: 7.5em');
+        expect(copy).toContain('min-height: 32px');
+        expect(copy).toContain('flex-shrink: 0');
+        expect(copy).not.toMatch(/opacity:\s*0|display:\s*none|position:\s*absolute/);
+        expect(css).toMatch(/\.code-block-copy:focus-visible\s*\{[^}]*outline:/s);
+    });
+});

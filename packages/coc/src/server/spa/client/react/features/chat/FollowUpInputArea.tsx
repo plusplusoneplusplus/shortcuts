@@ -31,6 +31,7 @@ import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProvider
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { BrowserModePill } from './BrowserModePill';
 import { useBrowserDemoCapturingChat } from '../../shared/file-path/browser-demo';
+import { BrowserAnnotationChips } from '../../shared/file-path/BrowserAnnotationChips';
 import { useBrowserToolEnabled } from './hooks/useBrowserMode';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { ContextAutoCompact } from '../../ui/ContextUsagePopover';
@@ -425,8 +426,9 @@ export function FollowUpInputArea({
     const browserWorkspaceId = browserOwner?.workspaceId ?? activeWorkspaceId;
     const browserRoutingRef = browserOwner?.routingRef ?? activeWorkspaceId;
     // A chat recording a browser demo takes no AI input until the user stops recording.
-    const demoCapturing = useBrowserDemoCapturingChat(browserWorkspaceId && browserRoutingRef && activeProcessId
-        ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef, processId: activeProcessId } : null);
+    const browserChatOwner = browserWorkspaceId && browserRoutingRef && activeProcessId
+        ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef, processId: activeProcessId } : null;
+    const demoCapturing = useBrowserDemoCapturingChat(browserChatOwner);
     const browserEnabled = useBrowserToolEnabled(browserRoutingRef);
     const browserClient = useCocClient(browserRoutingRef);
     const [browserCleared, setBrowserCleared] = useState(false);
@@ -1165,6 +1167,7 @@ export function FollowUpInputArea({
                     setSessionContextDropError(null);
                 }} />
             )}
+            <BrowserAnnotationChips owner={browserChatOwner} />
             {sessionContextDropError && (
                 <div role="alert" className="text-xs text-[#f14c4c]" data-testid="follow-up-session-context-error">{sessionContextDropError}</div>
             )}

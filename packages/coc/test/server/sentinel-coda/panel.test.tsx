@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useCallback, useState, type ReactNode } from 'react';
 import type { SentinelCodaResponse, SentinelCodaRun, SentinelCodaFindingRecord, SentinelCodaRunDetail, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({ getRun: vi.fn(), accept: vi.fn(), dismiss: vi.fn(), undo: vi.fn(), get: vi.fn(), start: vi.fn(), cancel: vi.fn(), updateConfig: vi.fn(), connect: vi.fn(), route: { kind: 'local' } as { kind: string; baseUrl?: string }, refs: [] as unknown[] }));
@@ -8,6 +9,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useC
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 const client = { sentinelTodos: { scrubber: mock }, events: { connect: mock.connect } };
 import { SentinelCoda } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCoda';
+import { RefrainHistoryHostContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelAutomationCard';
 import { AcceptAllCodaProposals, SentinelCodaFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
@@ -28,14 +30,20 @@ function deferred<T>() {
     const promise = new Promise<T>(r => { resolve = r; });
     return { promise, resolve };
 }
+async function openDetails() {
+    const title = await screen.findByRole('button', { name: 'Show details for Coda' });
+    if (title.getAttribute('aria-pressed') !== 'true') fireEvent.click(title);
+    return screen.getByRole('region', { name: /Details for Coda/ });
+}
 async function openActions() {
+    await openDetails();
     const summary = await screen.findByLabelText('More actions for Coda');
     if (!(summary.parentElement as HTMLDetailsElement).open) fireEvent.click(summary);
 }
 beforeEach(() => {
     vi.clearAllMocks();
     mock.get.mockReset().mockResolvedValue(response());
-    mock.getRun.mockReset().mockResolvedValue({ findings: [] });
+    mock.getRun.mockReset().mockResolvedValue({ ...active(), findings: [] });
     for (const action of [mock.accept, mock.dismiss, mock.undo]) action.mockReset().mockResolvedValue({});
     mock.start.mockReset().mockResolvedValue({ runId: 'run-1' });
     mock.cancel.mockReset().mockResolvedValue(active());
@@ -53,6 +61,8 @@ describe('Coda strip', () => {
         mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'failed', trigger: 'manual', createdAt: new Date().toISOString(), error,
             itemCount: 0, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 0, unverified: 0 } }] }));
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        expect(screen.queryByLabelText('More actions for Coda')).toBeNull();
+        await openDetails();
         await screen.findByLabelText('Last run failed. Show full error');
         expect(screen.getByRole('button', { name: 'Schedule ▾' })).not.toBeVisible();
         expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
@@ -102,6 +112,7 @@ describe('Coda strip', () => {
         mock.start.mockReturnValue(request.promise);
         render(<SentinelCoda owner={owner} items={[item('a')]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
+        await openDetails();
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         expect(mock.start).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', {});
@@ -156,6 +167,7 @@ describe('Coda strip', () => {
         mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'timed_out', trigger: 'manual', createdAt: new Date().toISOString(), error: 'Budget exceeded', itemCount: 1,
             deferredCount: 2, awaitingReviewCount: 1, counts: { done: 2, proposals: 1, unverified: 1 } }] }));
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        await openDetails();
         await screen.findByText(/Last run failed: Budget exceeded/);
         expect(screen.getByText('2 deferred to next run')).toBeInTheDocument();
         expect(screen.getByText('1 awaiting Sentinel review')).toBeInTheDocument();
@@ -166,22 +178,24 @@ describe('Coda strip', () => {
     it('shows completed finding counts and links to its child chat', async () => {
         mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'completed', trigger: 'schedule', createdAt: new Date().toISOString(), childProcessId: 'queue_done', itemCount: 4,
             deferredCount: 0, awaitingReviewCount: 0, counts: { done: 2, proposals: 1, unverified: 1 } }] }));
+        mock.getRun.mockResolvedValue({ ...active(), status: 'completed', childProcessId: 'queue_done', findings: [] });
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText(/2 done · 1 proposal · 1 unverified/);
         await openActions();
-        expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_done');
+        expect(await screen.findByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_done');
     });
 
-    it('opens and closes bounded history outside the pinned strip without extra reads until details are selected', async () => {
+    it('opens and closes bounded history within details without reading unselected history runs', async () => {
         setupFindings();
         render(<SentinelCoda owner={owner} items={[item('a')]} onFollowLink={follow} />);
         await openActions();
         const toggle = await screen.findByRole('button', { name: 'History (1)' });
-        await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
+        await waitFor(() => expect(mock.getRun).toHaveBeenCalledTimes(2));
         fireEvent.click(toggle);
         const history = screen.getByRole('region', { name: 'Coda run history' });
         expect(screen.getByTestId('sentinel-coda-strip').contains(history)).toBe(false);
-        expect(mock.getRun).toHaveBeenCalledOnce();
+        expect(screen.getByTestId('sentinel-coda-details')).toContainElement(history);
+        expect(mock.getRun).toHaveBeenCalledTimes(2);
         fireEvent.click(screen.getByRole('button', { name: 'Hide history (1)' }));
         expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
     });
@@ -194,9 +208,24 @@ describe('Coda strip', () => {
         expect(screen.getByText('Every day at 09:00')).toBeInTheDocument();
         expect(screen.queryByTitle(new Date(config.nextRunAt).toLocaleString())).toBeNull();
         mock.get.mockResolvedValue(response({ config: { ...config, paused: false, consecutiveFailures: 0 } }));
-        fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+        await openDetails();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume failure pause' }));
         await waitFor(() => expect(mock.updateConfig).toHaveBeenCalledWith('ws-a', 'queue_parent', { enabled: true, cron: config.cron, expectedRevision: 4 }));
         await waitFor(() => expect(screen.getByTitle(new Date(config.nextRunAt).toLocaleString())).toBeInTheDocument());
+    });
+
+    it.each([true, false])('keeps the built-in schedule toggle owner-bound when enabled=%s', async enabled => {
+        mock.get.mockResolvedValue(response({ config: { ...response().config, enabled } }));
+        const remoteOwner = { ...owner, ownerRoutingRef: 'remote:server:ws-a' };
+        render(<SentinelCoda builtInRow owner={remoteOwner} items={[]} onFollowLink={follow} />);
+        await within(screen.getByTestId('sentinel-coda-strip')).findByText(enabled ? 'Every day at 09:00' : 'Manual only');
+        expect(screen.queryByRole('button', { name: enabled ? 'Pause' : 'Resume' })).toBeNull();
+        const detail = await openDetails();
+        fireEvent.click(within(detail).getByRole('button', { name: enabled ? 'Pause' : 'Resume' }));
+        await waitFor(() => expect(mock.updateConfig).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', {
+            enabled: !enabled, cron: '0 9 * * *', expectedRevision: 4,
+        }));
+        expect(mock.refs).toContain('remote:server:ws-a');
     });
 
     it('validates cron live, offers presets and saves an owner-bound revision snapshot', async () => {
@@ -235,10 +264,11 @@ describe('Coda strip', () => {
     it('keeps failed drafts for an explicit retry and refreshes read failures', async () => {
         mock.get.mockRejectedValueOnce(new Error('offline'));
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        await openDetails();
         await screen.findByText('offline');
         expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh Coda' }));
-        await screen.findByText('Manual only');
+        await within(screen.getByTestId('sentinel-coda-strip')).findByText('Manual only');
         await openActions();
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         mock.updateConfig.mockRejectedValueOnce(new Error('Save failed'));
@@ -258,6 +288,7 @@ describe('Coda strip', () => {
         expect(screen.queryByText(/Scrubbing/)).toBeNull();
         const oldWrite = deferred<{ runId: string }>();
         mock.start.mockReturnValueOnce(oldWrite.promise);
+        await openDetails();
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         mock.route = { kind: 'remote', baseUrl: 'https://new.example' };
         view.rerender(<SentinelCoda owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
@@ -299,6 +330,25 @@ function rows(current = item('a'), onLedgerChange = vi.fn().mockResolvedValue(un
 }
 
 describe('Scrubber row findings', () => {
+    it.each(['accept', 'dismiss', 'undo'] as const)('shows failed row %s feedback without selecting Coda', async action => {
+        const applied = finding('applied', { audit: [{ action: 'applied', actor: 'scrubber', at: '2026-10-11T01:00:00Z',
+            before: { status: 'todo', archived: false, revision: 1 }, after: { status: 'done', archived: false, revision: 2 } }] });
+        setupFindings(action === 'undo' ? applied : finding());
+        mock[action].mockRejectedValueOnce(new Error(`${action} failed`));
+        render(rows(action === 'undo' ? item('a', { revision: 2, status: 'done' }) : item('a')));
+        const label = action[0].toUpperCase() + action.slice(1);
+        fireEvent.click(await screen.findByRole('button', { name: label }));
+        const feedback = await screen.findByRole('alert');
+        expect(feedback).toHaveTextContent(`${action} failed`);
+        expect(feedback).toBeVisible();
+        expect(screen.getByTestId('sentinel-coda-strip')).not.toContainElement(feedback);
+        expect(screen.queryByTestId('sentinel-coda-details')).toBeNull();
+        expect(mock[action]).toHaveBeenCalledOnce();
+        await openDetails();
+        expect(screen.getByTestId('sentinel-coda-details')).toContainElement(screen.getByRole('alert'));
+        expect(screen.getAllByText(`${action} failed`)).toHaveLength(1);
+    });
+
     it('shows proposal evidence and accepts the snapshot revision on its owning server, then refreshes ledger', async () => {
         setupFindings(finding('proposed', { demotedBecause: 'manual' }));
         const refresh = vi.fn().mockResolvedValue(undefined);
@@ -334,6 +384,72 @@ describe('Scrubber row findings', () => {
         const proposal = (id: string, revision = 1) => finding('proposed', { itemId: id, itemRevision: revision,
             finding: { ...finding().finding, itemId: id } });
 
+        it.each([false, true])('shows mixed toolbar batch feedback without Coda selection when another narrow detail is open=%s', async hosted => {
+            const current = batch([proposal('a'), proposal('b'), proposal('c'), proposal('d')]);
+            mock.accept.mockResolvedValueOnce({})
+                .mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }))
+                .mockRejectedValueOnce(new Error('Batch acceptance failed'));
+            const content = <SentinelCoda owner={owner} items={current} onFollowLink={follow}
+                toolbar={<div role="toolbar" aria-label="To-do actions"><AcceptAllCodaProposals /></div>}>
+                {strip => <div hidden={hosted}>{strip}</div>}
+            </SentinelCoda>;
+            render(hosted ? <RefrainHistoryHostContext.Provider value={{
+                target: null, wide: false, activeJobId: 'other-item', detailOpen: true, select: vi.fn(), leave: vi.fn(),
+            }}>{content}</RefrainHistoryHostContext.Provider> : content);
+            fireEvent.click(await screen.findByRole('button', { name: 'Accept all proposals' }));
+            const feedback = await screen.findByText('Accepted 1 proposal. 1 item changed since this proposal. Run Coda again. 1 acceptance failed; 1 not attempted.');
+            expect(feedback).toBeVisible();
+            expect(screen.getByRole('alert')).toHaveTextContent('Batch acceptance failed');
+            expect(screen.getByRole('alert')).toBeVisible();
+            expect(screen.getByTestId('sentinel-coda-strip')).not.toContainElement(feedback);
+            expect(screen.queryByTestId('sentinel-coda-details')).toBeNull();
+            expect(mock.accept).toHaveBeenCalledTimes(3);
+        });
+
+        it('shows a failed toolbar batch without selecting Coda or retrying the remaining proposals', async () => {
+            const current = batch([proposal('a'), proposal('b')]);
+            mock.accept.mockRejectedValueOnce(new Error('Batch acceptance failed'));
+            render(panel(current));
+            fireEvent.click(await screen.findByRole('button', { name: 'Accept all proposals' }));
+            expect(await screen.findByText('Accepted 0 proposals. 1 acceptance failed; 1 not attempted.')).toBeVisible();
+            expect(screen.getByRole('alert')).toHaveTextContent('Batch acceptance failed');
+            expect(screen.queryByTestId('sentinel-coda-details')).toBeNull();
+            expect(mock.accept).toHaveBeenCalledOnce();
+        });
+
+        it('shows configuration read failures outside the inactive card with refresh available only in details', async () => {
+            mock.get.mockRejectedValueOnce(new Error('Coda unavailable'));
+            render(panel([item('a')]));
+            const feedback = await screen.findByRole('alert');
+            expect(feedback).toHaveTextContent('Coda unavailable');
+            expect(feedback).toBeVisible();
+            expect(screen.getByTestId('sentinel-coda-strip')).not.toContainElement(feedback);
+            expect(screen.queryByRole('button', { name: 'Refresh Coda' })).toBeNull();
+            await openDetails();
+            expect(screen.getByTestId('sentinel-coda-details')).toContainElement(screen.getByRole('alert'));
+            expect(screen.getByRole('button', { name: 'Refresh Coda' })).toBeInTheDocument();
+        });
+
+        it('explains disabled external findings actions without adding refresh controls to the card', async () => {
+            setupFindings();
+            render(panel([item('a')]));
+            await screen.findByRole('button', { name: 'Accept' });
+            mock.getRun.mockRejectedValueOnce(new Error('Findings unavailable'));
+            await act(async () => mock.connect.mock.calls[0][0].onMessage({
+                type: 'sentinel-scrubber-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId,
+            }));
+            const feedback = await screen.findByRole('alert');
+            expect(feedback).toHaveTextContent('Could not load findings: Findings unavailable');
+            expect(feedback).toBeVisible();
+            expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Accept all proposals' })).toBeDisabled();
+            expect(screen.getByTestId('sentinel-coda-strip')).not.toContainElement(feedback);
+            expect(screen.queryByRole('button', { name: 'Refresh findings' })).toBeNull();
+            await openDetails();
+            expect(screen.getAllByText(/Could not load findings:/)).toHaveLength(1);
+            expect(screen.getByRole('button', { name: 'Refresh findings' })).toBeInTheDocument();
+        });
+
         it('offers both entry points with one busy guard and accepts only latest owner proposals at snapshot revisions', async () => {
             const records = [proposal('a', 4), proposal('m', 7), finding('dismissed', { itemId: 'd' }),
                 finding('unverified', { itemId: 'u' }), proposal('removed')];
@@ -343,6 +459,7 @@ describe('Scrubber row findings', () => {
             const refresh = vi.fn().mockResolvedValue(undefined);
             mock.route = { kind: 'remote', baseUrl: 'https://remote.example' };
             render(panel(current, refresh, { ...owner, ownerWorkspaceId: 'group', ownerRoutingRef: 'remote:srv:group' }));
+            await openDetails();
             const buttons = await screen.findAllByRole('button', { name: 'Accept all proposals' });
             expect(buttons).toHaveLength(2);
             fireEvent.click(buttons[1]);
@@ -366,6 +483,7 @@ describe('Scrubber row findings', () => {
                 [item('known', { revision: 2 }), item('race', { revision: 3 }), item('ok', { revision: 5 })]);
             mock.accept.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }));
             render(panel(current));
+            await openDetails();
             const buttons = await screen.findAllByRole('button', { name: 'Accept all proposals' });
             fireEvent.click(buttons[0]);
             await screen.findByText('Accepted 1 proposal. 2 items changed since this proposal. Run Coda again.');
@@ -379,6 +497,7 @@ describe('Scrubber row findings', () => {
         it('reports a fully stale batch without submitting any writes', async () => {
             const current = batch([proposal('a')], [item('a', { revision: 2 })]);
             render(panel(current));
+            await openDetails();
             fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
             await screen.findByText('Accepted 0 proposals. 1 item changed since this proposal. Run Coda again.');
             expect(mock.accept).not.toHaveBeenCalled();
@@ -389,6 +508,7 @@ describe('Scrubber row findings', () => {
             mock.accept.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('Server offline'));
             const refresh = vi.fn().mockResolvedValue(undefined);
             render(panel(current, refresh));
+            await openDetails();
             fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
             await screen.findByText('Accepted 1 proposal. 1 acceptance failed; 1 not attempted.');
             expect(screen.getByRole('alert')).toHaveTextContent('Server offline');
@@ -400,6 +520,7 @@ describe('Scrubber row findings', () => {
             const current = batch([proposal('a')]);
             const refresh = vi.fn().mockRejectedValue(new Error('Ledger refresh failed'));
             render(panel(current, refresh));
+            await openDetails();
             fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
             await screen.findByText('Ledger refresh failed');
             expect(screen.getByText('Accepted 1 proposal.')).toBeInTheDocument();
@@ -412,6 +533,7 @@ describe('Scrubber row findings', () => {
             mock.accept.mockReturnValueOnce(pending.promise);
             const refresh = vi.fn().mockResolvedValue(undefined);
             const view = render(panel(current, refresh));
+            await openDetails();
             fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
             if (change === 'owner') view.rerender(panel(current, refresh, { ...owner, processId: 'other' }));
             if (change === 'endpoint') {
@@ -468,6 +590,7 @@ describe('Scrubber row findings', () => {
         expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled();
         view.rerender(rows());
+        await openDetails();
         mock.accept.mockRejectedValue(Object.assign(new Error('stale'), { status: 409 }));
         fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
         await screen.findByRole('alert');
@@ -497,6 +620,7 @@ describe('Scrubber row findings', () => {
         mock.get.mockResolvedValue(response({ activeRun: active(), runs: [results([finding()]).summary] }));
         mock.getRun.mockRejectedValueOnce(new Error('offline'));
         await act(async () => mock.connect.mock.calls[0][0].onMessage({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a', processId: owner.processId }));
+        await openDetails();
         await screen.findByText(/Could not load findings: offline/);
         expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Accept all proposals' })).toBeDisabled();
@@ -554,7 +678,6 @@ describe('Coda strip details', () => {
         const title = await screen.findByRole('button', { name: 'Show details for Coda' });
         const strip = screen.getByTestId('sentinel-coda-strip');
         await screen.findByText(/Schedule paused after 3 failures/);
-        await openActions();
         expect(strip).toHaveAttribute('data-selected', 'false');
         fireEvent.click(screen.getByText(/Schedule paused after 3 failures/));
         const detail = screen.getByRole('region', { name: 'Details for Coda' });
@@ -588,6 +711,119 @@ describe('Coda strip details', () => {
         await waitFor(() => expect(detail).toHaveTextContent('Latest run: completed'));
         await waitFor(() => expect(mock.getRun).toHaveBeenCalledWith('ws-a', 'queue_parent', 'run-9', expect.objectContaining({ signal: expect.any(AbortSignal) })));
         expect(await within(detail).findByText('No findings recorded.')).toBeInTheDocument();
+        noMutations();
+    });
+
+    it.each(['pending', 'failed'] as const)('keeps the summary chat link available while the latest detail read is %s', async state => {
+        mock.get.mockResolvedValue(response({ runs: [summary] }));
+        const runDetail = { ...summary, snapshot: [], deferredItemIds: [], awaitingReviewItemIds: [], findings: [] } satisfies SentinelCodaRunDetail;
+        const pending = deferred<SentinelCodaRunDetail>();
+        mock.getRun.mockImplementation((_workspace, _process, _run, options) => !options ? Promise.resolve(runDetail)
+            : state === 'failed' ? Promise.reject(new Error('Run detail unavailable')) : pending.promise);
+        render(<SentinelCoda owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+        const detail = await openDetails();
+        const link = await within(detail).findByRole('link', { name: 'Open chat' });
+        expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_child9');
+        fireEvent.click(link);
+        expect(follow).toHaveBeenCalledWith(expect.anything(), 'scrubber:queue_child9');
+        if (state === 'failed') await within(detail).findByText('Could not load run details: Run detail unavailable');
+        else await act(async () => pending.resolve(runDetail));
+        expect(within(detail).getAllByRole('link', { name: 'Open chat' })).toHaveLength(1);
+        noMutations();
+    });
+
+    it('keeps the built-in card selection-only and puts its controls, editors and history in the detail column', async () => {
+        setupFindings();
+        render(<SentinelCoda builtInRow owner={owner} items={[item('a')]} onFollowLink={follow} />);
+        await screen.findByText('Manual only');
+        const card = screen.getByTestId('sentinel-coda-strip');
+        expect(within(card).getAllByRole('button')).toHaveLength(1);
+        expect(card.querySelector('a, summary, input, select, form')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'About Coda' })).toBeNull();
+        const detail = await openDetails();
+        const actions = within(detail).getByRole('group', { name: 'Actions for Coda' });
+        for (const name of ['Run now', 'Resume', 'Accept all proposals', 'About Coda']) {
+            expect(await within(actions).findByRole('button', { name })).toBeInTheDocument();
+        }
+        await openActions();
+        fireEvent.click(within(actions).getByRole('button', { name: 'Schedule ▾' }));
+        fireEvent.click(within(actions).getByRole('button', { name: 'Select items' }));
+        fireEvent.click(within(actions).getByRole('button', { name: 'History (1)' }));
+        expect(detail).toContainElement(screen.getByRole('form', { name: 'Coda schedule' }));
+        expect(detail).toContainElement(screen.getByRole('group', { name: 'Select open items' }));
+        expect(detail).toContainElement(screen.getByRole('region', { name: 'Coda run history' }));
+        expect(within(card).getAllByRole('button')).toHaveLength(1);
+        noMutations();
+    });
+
+    it.each(['owner', 'endpoint'] as const)('discards relocated drafts, selection, history and late actions on %s changes', async change => {
+        const props = { owner, items: [item('a')], onFollowLink: follow };
+        const view = render(<SentinelCoda {...props} />);
+        await screen.findByText('Manual only');
+        await openActions();
+        fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
+        fireEvent.change(screen.getByLabelText('Custom cron (5 fields; at least 1h apart)'), { target: { value: '0 */6 * * *' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+        fireEvent.click(screen.getByLabelText('Item a'));
+        fireEvent.click(screen.getByRole('button', { name: 'History (0)' }));
+        const pending = deferred<{ runId: string }>();
+        mock.start.mockReturnValueOnce(pending.promise);
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+        const nextOwner = change === 'owner' ? { ...owner, processId: 'next-parent' } : owner;
+        if (change === 'endpoint') mock.route = { kind: 'remote', baseUrl: 'https://other.example' };
+        view.rerender(<SentinelCoda {...props} owner={nextOwner} />);
+        await screen.findByText('Manual only');
+        expect(screen.queryByTestId('sentinel-coda-details')).toBeNull();
+        const reads = mock.get.mock.calls.length;
+        await act(async () => pending.resolve({ runId: 'old-run' }));
+        expect(mock.get).toHaveBeenCalledTimes(reads);
+        await openActions();
+        expect(screen.queryByRole('form', { name: 'Coda schedule' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
+        expect(screen.getByLabelText('Item a')).not.toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+        await waitFor(() => expect(mock.start).toHaveBeenLastCalledWith('ws-a', nextOwner.processId, {}));
+    });
+
+    it.each([true, false])('hosts controls and history in the existing %s-width detail pane and preserves Back/Escape', async wide => {
+        function Host({ children }: { children: ReactNode }) {
+            const [target, setTarget] = useState<HTMLDivElement | null>(null);
+            const [activeJobId, setActiveJobId] = useState<string | null>(null);
+            const [detailOpen, setDetailOpen] = useState(false);
+            const select = useCallback((key: string) => { setActiveJobId(key); setDetailOpen(true); }, []);
+            const leave = useCallback((_key: string, clear: boolean) => {
+                setDetailOpen(false);
+                if (clear) setActiveJobId(null);
+            }, []);
+            return <RefrainHistoryHostContext.Provider value={{ target, wide, activeJobId, detailOpen, select, leave }}>
+                <div data-testid="detail-host" ref={setTarget} />{children}
+            </RefrainHistoryHostContext.Provider>;
+        }
+        render(<Host><SentinelCoda owner={owner} items={[]} onFollowLink={follow} /></Host>);
+        await screen.findByText('Manual only');
+        const title = screen.getByRole('button', { name: 'Show details for Coda' });
+        title.focus();
+        fireEvent.click(title);
+        expect(title).toHaveAttribute('aria-pressed', 'true');
+        const detail = screen.getByTestId('sentinel-coda-details');
+        expect(screen.getByTestId('detail-host')).toContainElement(detail);
+        expect(within(detail).getByRole('group', { name: 'Actions for Coda' })).toBeInTheDocument();
+        expect(title).toHaveAttribute('aria-controls', detail.id);
+        await openActions();
+        fireEvent.click(screen.getByRole('button', { name: 'History (0)' }));
+        expect(detail).toContainElement(screen.getByRole('region', { name: 'Coda run history' }));
+        if (!wide) {
+            fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+            expect(detail).not.toBeVisible();
+            expect(title).toHaveAttribute('aria-pressed', 'true');
+            fireEvent.click(title);
+            expect(detail).toBeVisible();
+        }
+        fireEvent.keyDown(within(detail).getByRole('button', { name: 'Run now' }), { key: 'Escape' });
+        expect(screen.queryByTestId('sentinel-coda-details')).toBeNull();
+        expect(title).toHaveAttribute('aria-pressed', 'false');
+        await waitFor(() => expect(title).toHaveFocus());
         noMutations();
     });
 });

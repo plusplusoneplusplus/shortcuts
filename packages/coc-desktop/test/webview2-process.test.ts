@@ -180,6 +180,49 @@ describe('WebView2 CDP transport', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it.each([false, true])('admits large PNG replies only for their pending capture request (fragmented: %s)', async fragmented => {
+        const { native, transport, failure } = await started();
+        const capture = transport.request('capture-annotation', { viewId: 'owner:a' });
+        await Promise.resolve();
+        const image = 'data:image/png;base64,' + 'A'.repeat(2_000_000);
+        const line = JSON.stringify({ id: 2, ok: true, result: image }) + '\n';
+        if (fragmented) {
+            native.stdout.emit('data', line.slice(0, 1_500_000));
+            native.stdout.emit('data', line.slice(1_500_000));
+        } else native.stdout.emit('data', line);
+        await expect(capture).resolves.toBe(image);
+        const cdp = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate' });
+        const rejected = expect(cdp).rejects.toThrow('transport limit');
+        await Promise.resolve();
+        native.stdout.emit('data', JSON.stringify({ id: 3, ok: true, result: image }) + '\n');
+        await rejected;
+        expect(failure).not.toHaveBeenCalled();
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each(['close', 'timeout', 'oversize'])('retires only the capture request on %s', async reason => {
+        const { native, transport, failure } = await started();
+        const capture = transport.request('capture-annotation', { viewId: 'owner:a' });
+        const rejected = expect(capture).rejects.toThrow();
+        await Promise.resolve();
+        if (reason === 'close') transport.rejectView('owner:a');
+        if (reason === 'timeout') await vi.advanceTimersByTimeAsync(60_000);
+        if (reason === 'oversize') {
+            native.stdout.emit('data', '{"id":2,"ok":true,"result":"' + 'A'.repeat(28_000_000));
+            native.stdout.emit('data', '"}\n');
+        }
+        await rejected;
+        native.stdout.emit('data', '{"id":2,"ok":true,"result":"late"}\n');
+        const other = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate' });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":3,"ok":true,"result":42}\n');
+        await expect(other).resolves.toBe(42);
+        expect(failure).not.toHaveBeenCalled();
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it.each([false, true])('rejects only the owned detached session and preserves root/other-view work (dispatched: %s)', async dispatched => {
         const { native, transport } = await started();
         const detached = transport.request('cdp', { viewId: 'owner:a', sessionId: 'child', method: 'Runtime.evaluate' });

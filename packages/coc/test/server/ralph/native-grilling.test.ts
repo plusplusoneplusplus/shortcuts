@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TaskQueueManager, type AIProcess, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { getRepoDataPath, TaskQueueManager, type AIProcess, type CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { createMockProcessStore, createProcessFixture } from '../../helpers/mock-process-store';
 import { buildRalphGrillingSubmission } from '../../../src/server/ralph/grilling-submission';
 import { RalphGrillingStore, prepareRalphGrilling, reconcileRalphGoal, projectRalphGrillingMetadata } from '../../../src/server/ralph/grilling-state';
@@ -44,6 +44,15 @@ describe('native Ralph grilling admission and recovery', () => {
         await store.addProcess(proc);
         return proc;
     }
+
+    it('keeps synthesized goals in the owning workspace managed Plans directory', () => {
+        const grilling = new RalphGrillingStore(dataDir);
+        const goal = grilling.goalPath(workspaceId, sessionId);
+        expect(goal).toBe(path.resolve(getRepoDataPath(dataDir, workspaceId,
+            path.join('notes', 'Plans', `${sessionId}.goal.md`))));
+        expect(grilling.goalPath('ws-parent', sessionId)).not.toBe(goal);
+        expect(() => grilling.goalPath(workspaceId, '../escape')).toThrow('Invalid Ralph session identity');
+    });
 
     it('shares composer skills and native Ask identity, never queues execution', async () => {
         await admit();

@@ -15,17 +15,6 @@ export function splitFileComments(comments: DiffComment[]): { lineComments: Line
     return { lineComments: comments.filter(isLineDiffComment), fileComments: comments.filter(isFileDiffComment) };
 }
 
-/** Scrolls a file comment's card into view and flashes it; false when it is not a shown file comment. */
-export function revealFileComment(container: HTMLElement | null, comment: DiffComment): boolean {
-    if (!isFileDiffComment(comment)) return false;
-    const card = container?.querySelector<HTMLElement>(`[data-file-comment-id="${comment.id.replace(/["\\]/g, '\\$&')}"]`);
-    if (!card) return false;
-    card.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-    card.classList.add('ring-2', 'ring-yellow-400');
-    setTimeout(() => card.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    return true;
-}
-
 export function FileLevelComments({ comments, renderCommentThread }: {
     comments: readonly DiffComment[];
     renderCommentThread: (comment: DiffComment) => ReactNode;

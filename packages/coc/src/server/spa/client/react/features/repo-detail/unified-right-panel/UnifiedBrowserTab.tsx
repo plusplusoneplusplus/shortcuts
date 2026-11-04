@@ -6,6 +6,8 @@ import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
 import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
+import { newChatBrowserAnnotationOwner } from '../../../shared/file-path/browser-annotation-chips';
+import { BrowserAnnotationButton } from '../../../shared/file-path/BrowserAnnotationButton';
 import { BrowserDemoStrip } from '../../../shared/file-path/BrowserDemoStrip';
 import { BrowserDemoReview } from '../../../shared/file-path/BrowserDemoReview';
 import { useCocClient } from '../../../repos/cloneRouting';
@@ -252,6 +254,14 @@ export function UnifiedBrowserTab({
                 onDownloads={() => setDownloadsScope(historyKey)}
                 onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
+            {bridge?.annotation && <BrowserAnnotationButton
+                key={pageOwner} bridge={bridge.annotation} sessionKey={sessionKey} viewId={viewId}
+                workspaceId={workspaceId} tabId={tabId} active={active && visible}
+                ready={opened && Boolean(page) && !page?.loading && !failed}
+                excluded={page?.sourceKind === 'file' || isAnnotationExcludedUrl(currentUrl)}
+                documentKey={siteScope}
+                chatOwner={workspaceId ? chatId ? { workspaceId, routingRef: sessionKey, processId: chatId }
+                    : newChatBrowserAnnotationOwner(workspaceId, sessionKey) : null} />}
             <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
             {bridge && <BrowserDemoStrip workspaceId={workspaceId} processId={chatId ?? null} routingRef={sessionKey} viewId={viewId}
                 ready={opened && Boolean(url) && page?.sourceKind !== 'file'} active={active && visible}
@@ -327,4 +337,13 @@ export function UnifiedBrowserTab({
             )}
         </NativeViewTab>
     );
+}
+
+function isAnnotationExcludedUrl(url?: string): boolean {
+    if (!url) return false;
+    try {
+        const page = new URL(url);
+        return !['http:', 'https:'].includes(page.protocol) || /\.pdf$/i.test(page.pathname)
+            || page.origin === location.origin && page.pathname === location.pathname;
+    } catch { return true; }
 }

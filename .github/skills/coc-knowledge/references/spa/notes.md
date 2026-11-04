@@ -34,8 +34,9 @@ persistent notes-specific state.
 
 ## Collection roots
 
-`useNotesRoots` loads workspace-routed managed, user-configured, and task-derived roots
-for the collection selector. Task-derived rows use the server-provided `isProtected`
+`notes/notes-paths.ts` owns `getNotesRoot(dataDir, workspaceId)` for managed storage.
+`notes-root-resolver.ts` selects managed, user-configured and task-derived roots;
+`useNotesRoots` loads them through the owning workspace's server. Task-derived rows use `isProtected`
 marker to show a lock and stay outside modifier, range, and bulk-removal selection;
 opening one is a normal read/write collection switch.
 

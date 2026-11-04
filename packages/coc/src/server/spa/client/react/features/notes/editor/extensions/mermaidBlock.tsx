@@ -12,6 +12,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { ensureMermaid } from '../../../../hooks/ui/useMermaid';
 import { createIndentAttribute, renderIndentAttr } from './indentShared';
+import { escapeHtmlText as escapeHtmlForMermaid } from '../../../../../shared/html';
 
 declare const mermaid: {
     run(opts: { nodes: NodeListOf<Element> | Element[] }): Promise<void>;
@@ -26,10 +27,6 @@ const ZOOM_STEP = 0.25;
 // diagram to fill the available width for readability, but cap the upscale so a
 // trivial 2-node diagram doesn't balloon to full width.
 const MAX_AUTO_FIT_SCALE = 3;
-
-function escapeHtmlForMermaid(str: string): string {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 /**
  * Compute a user-friendly render width for a freshly rendered diagram.

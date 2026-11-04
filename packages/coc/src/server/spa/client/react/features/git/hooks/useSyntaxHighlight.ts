@@ -22,6 +22,9 @@ import langRust from 'highlight.js/lib/languages/rust';
 import langTypescript from 'highlight.js/lib/languages/typescript';
 import langXml from 'highlight.js/lib/languages/xml';
 import langYaml from 'highlight.js/lib/languages/yaml';
+import { escapeHtml } from '../../../utils/format';
+
+export { escapeHtml } from '../../../utils/format';
 
 hljs.registerLanguage('typescript', langTypescript);
 hljs.registerLanguage('javascript', langJavascript);
@@ -74,15 +77,6 @@ const EXT_TO_LANG: Record<string, string> = {
     md: 'markdown',
     markdown: 'markdown',
 };
-
-/** Escape HTML special characters for safe plain-text rendering. */
-export function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 /** Derive highlight.js language name from a file name or path. Returns null for unknown extensions. */
 export function getLanguageFromFileName(fileName: string | null | undefined): string | null {

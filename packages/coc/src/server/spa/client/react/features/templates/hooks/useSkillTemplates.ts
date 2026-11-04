@@ -4,9 +4,9 @@
  * When wsId is empty/undefined, falls back to global /api/preferences.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { getRepoPreferences, patchRepoPreferences } from '../../../api/repoPreferences';
+import { useCallback } from 'react';
+import { createTemplateId, usePreferenceTemplates } from './usePreferenceTemplates';
+import { isRecord } from '../../../utils/typeGuards';
 
 export interface SkillTemplate {
     id: string;
@@ -28,57 +28,31 @@ export interface UseSkillTemplatesResult {
     saveTemplate: (t: Omit<SkillTemplate, 'id'>) => void;
     deleteTemplate: (id: string) => void;
     loaded: boolean;
+    error: string | null;
+}
+
+function isSkillTemplate(value: unknown): value is SkillTemplate {
+    return isRecord(value)
+        && typeof value.id === 'string' && value.id.length > 0
+        && (value.name === undefined || typeof value.name === 'string')
+        && typeof value.model === 'string'
+        && (value.mode === 'ask' || value.mode === 'task')
+        && Array.isArray(value.skills) && value.skills.every((skill: unknown) => typeof skill === 'string')
+        && (value.postActions === undefined || (
+            Array.isArray(value.postActions) && value.postActions.every((action: unknown) =>
+                isRecord(action) && (
+                    (action.type === 'script' && typeof action.script === 'string')
+                    || (action.type === 'skill' && typeof action.skillName === 'string'
+                        && (action.prompt === undefined || typeof action.prompt === 'string'))
+                ))
+        ));
 }
 
 export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
-    const [templates, setTemplates] = useState<SkillTemplate[]>([]);
-    const [loaded, setLoaded] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const client = getCocClientForWorkspace(wsId);
-                const prefs = wsId
-                    ? await getRepoPreferences(client, wsId)
-                    : await client.preferences.getGlobal();
-                if (!cancelled && Array.isArray(prefs.skillTemplates)) {
-                    setTemplates((prefs.skillTemplates as any[]).filter((t: any) => t && t.id));
-                }
-            } catch {
-                // Preferences are optional
-            } finally {
-                if (!cancelled) setLoaded(true);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [wsId]);
-
-    const persist = useCallback((updated: SkillTemplate[]) => {
-        const client = getCocClientForWorkspace(wsId);
-        const patchData = { skillTemplates: updated } as any;
-        (wsId
-            ? patchRepoPreferences(client, wsId, patchData)
-            : client.preferences.patchGlobal(patchData)
-        ).catch(() => {});
-    }, [wsId]);
-
-    const saveTemplate = useCallback((t: Omit<SkillTemplate, 'id'>) => {
-        const entry: SkillTemplate = { ...t, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-        setTemplates(prev => {
-            const updated = [entry, ...prev];
-            persist(updated);
-            return updated;
-        });
-    }, [persist]);
-
-    const deleteTemplate = useCallback((id: string) => {
-        setTemplates(prev => {
-            const updated = prev.filter(t => t.id !== id);
-            persist(updated);
-            return updated;
-        });
-    }, [persist]);
-
-    return { templates, saveTemplate, deleteTemplate, loaded };
+    const { templates, loaded, error, deleteTemplate, saveTemplate: save } =
+        usePreferenceTemplates(wsId, 'skillTemplates', isSkillTemplate);
+    const saveTemplate = useCallback((template: Omit<SkillTemplate, 'id'>) => {
+        save({ ...template, id: createTemplateId() });
+    }, [save]);
+    return { templates, loaded, error, deleteTemplate, saveTemplate };
 }

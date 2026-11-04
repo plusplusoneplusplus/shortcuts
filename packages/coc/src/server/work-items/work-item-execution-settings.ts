@@ -12,13 +12,11 @@
  */
 
 import { badRequest } from '../errors';
-import {
-    VALID_CHAT_PROVIDERS,
-    VALID_REASONING_EFFORTS,
-    type ChatProvider,
-    type ReasoningEffort,
-} from '../tasks/task-types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
+import { parseChatProviderField, parseReasoningEffortField } from '../shared/ai-selection';
 import type { WorkItemExecutionAiSettings } from './types';
+
+export { parseChatProviderField, parseReasoningEffortField } from '../shared/ai-selection';
 
 /** Effort tiers accepted on Work Item execution surfaces. */
 export const VALID_EFFORT_TIERS: ReadonlySet<string> = new Set(['very-low', 'low', 'medium', 'high']);
@@ -43,24 +41,6 @@ export interface WorkItemAiSettings {
 function bodyField(body: unknown, key: string): unknown {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
     return (body as Record<string, unknown>)[key];
-}
-
-/** Parse `provider`; unknown providers are rejected. */
-export function parseChatProviderField(value: unknown): ChatProvider | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value === 'string' && VALID_CHAT_PROVIDERS.has(value as ChatProvider)) {
-        return value as ChatProvider;
-    }
-    throw badRequest(`Invalid provider: '${value}'`);
-}
-
-/** Parse `reasoningEffort`; unknown efforts are rejected. */
-export function parseReasoningEffortField(value: unknown): ReasoningEffort | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value === 'string' && VALID_REASONING_EFFORTS.has(value as ReasoningEffort)) {
-        return value as ReasoningEffort;
-    }
-    throw badRequest(`Invalid reasoningEffort: '${value}'`);
 }
 
 /** Parse `effortTier`; unknown tiers are rejected. */

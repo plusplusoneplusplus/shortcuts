@@ -19,7 +19,8 @@ import type {
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, type ChatProvider } from '../tasks/task-types';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, resolveChatProvider, type ChatProvider } from '../tasks/task-types';
+import { isAutoProviderRoutingRequested, parseAutoProviderRoutingContext } from '../tasks/auto-provider-routing';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import * as path from 'path';
@@ -372,6 +373,8 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         : 'normal';
 
     const payload = taskSpec.payload || {};
+    const routingContext = parseAutoProviderRoutingContext(payload.context);
+    if (payload.context !== undefined) payload.context = routingContext;
     if (taskSpec.type === 'chat' || taskSpec.type === 'custom') {
         if (!payload.kind) payload.kind = 'chat';
         // Default mode to 'autopilot' only for *new* chats (no processId).
@@ -390,7 +393,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         }
         if (normalizedMode) payload.mode = normalizedMode;
         // Validate provider field if present.
-        if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
+        if (payload.provider !== undefined && !resolveChatProvider(payload.provider)) {
             return {
                 valid: false,
                 error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
@@ -420,7 +423,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         if (payload.trigger !== 'manual' && payload.trigger !== 'idle') {
             return { valid: false, error: 'Dream run payload.trigger must be manual or idle' };
         }
-        if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
+        if (payload.provider !== undefined && !resolveChatProvider(payload.provider)) {
             return {
                 valid: false,
                 error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
@@ -488,19 +491,18 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         };
     }
 
-    const taskProvider = (taskSpec.type === 'chat' || taskSpec.type === TaskDefs.dreamRun.kind)
-        && typeof payload.provider === 'string'
-        && VALID_CHAT_PROVIDERS.has(payload.provider)
-        ? payload.provider
-        : 'copilot';
+    const explicitProvider = (taskSpec.type === 'chat' || taskSpec.type === TaskDefs.dreamRun.kind)
+        ? resolveChatProvider(payload.provider)
+        : undefined;
+    const taskProvider = explicitProvider ?? 'copilot';
     const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
     // Auto selects a concrete provider at execution; preserve explicit models
     // until compatibility can be checked against that provider.
     const deferAutoModel = payload.kind === 'chat'
         && !payload.processId
         && typeof rawModel === 'string'
-        && !VALID_CHAT_PROVIDERS.has(payload.provider)
-        && payload.context?.autoProviderRouting?.requested === true;
+        && !explicitProvider
+        && isAutoProviderRoutingRequested(routingContext);
     const resolvedModel = deferAutoModel
         ? { model: rawModel.trim() || undefined, coerced: false, requestedModel: rawModel.trim() }
         : resolveModelForProvider(taskProvider, rawModel);

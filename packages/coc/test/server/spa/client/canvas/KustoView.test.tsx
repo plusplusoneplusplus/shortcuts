@@ -71,6 +71,16 @@ describe('parseKustoContent', () => {
 });
 
 describe('KustoView word wrap', () => {
+    it('renders markup and both quote delimiters in cells as literal text', () => {
+        const text = `<img src=x onerror="'">&amp;`;
+        const { container } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas({
+            columns: [{ name: 'Value', type: 'string' }],
+            rows: [[text]],
+        })} readOnly />);
+        expect(screen.getByText(text).closest('td')).toHaveTextContent(text);
+        expect(container.querySelector('tbody img')).toBeNull();
+    });
+
     it.each([false, true])('uses the shared accessible toggle (compact=%s)', async compact => {
         const user = userEvent.setup();
         const longText = 'long_unbroken_value_'.repeat(60);

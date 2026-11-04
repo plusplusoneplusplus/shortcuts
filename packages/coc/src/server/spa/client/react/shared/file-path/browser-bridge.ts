@@ -1,4 +1,5 @@
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
+import type { DesktopBrowserAnnotation } from './browser-annotation';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { findLinkHandler } from '../../utils/link-handler';
 
@@ -222,6 +223,8 @@ export interface DesktopBrowserBridge {
     downloads?: DesktopBrowserDownloads;
     /** Task-demonstration recording; absent on older desktop hosts. */
     demo?: DesktopBrowserDemo;
+    /** Document annotation; absent on older desktop hosts. */
+    annotation?: DesktopBrowserAnnotation;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult>;

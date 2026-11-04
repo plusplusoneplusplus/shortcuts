@@ -26,6 +26,7 @@
  */
 import { computeLineDiff } from '../../../../../diff/diff-utils';
 import { getApplyPatchText, parseUnifiedDiffHeader } from '../../../../utils/applyPatchParser';
+import { isRecord } from '../../../../utils/typeGuards';
 import { normalizeToolName } from './toolNormalization';
 
 /** Minimal shape this reconstruction needs from a captured tool call. */
@@ -45,10 +46,6 @@ export interface WhisperFileHunk {
     body: string[];
     /** True when this operation created the file from nothing. */
     isCreate: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Pull the file path out of an `edit`/`create` tool call's args. */

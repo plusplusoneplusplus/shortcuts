@@ -64,6 +64,7 @@ vi.mock('../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
     CloneRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="clone-repo-dialog" /> : null),
 }));
 
+import { WorkspaceIdentityChip } from '../../../src/server/spa/client/react/features/remote-shell/WorkspaceIdentityChip';
 import { ScopeSlideSwitcher } from '../../../src/server/spa/client/react/features/remote-shell/ScopeSlideSwitcher';
 import { __resetPinnedScopesStore } from '../../../src/server/spa/client/react/features/remote-shell/usePinnedScopes';
 import { MY_WORK_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyWorkView';
@@ -565,6 +566,12 @@ describe('pinned segments — pinning from the picker', () => {
         fireEvent.click(screen.getByTestId('remote-chip'));
         const toggle = screen.getAllByTestId('scope-pin-toggle')
             .find(el => el.getAttribute('data-pin-key') === 'github.com/acme/shortcuts')!;
+        // Pinning must be discoverable without hover, including touch laptops.
+        expect(toggle).toHaveAccessibleName('Pin shortcuts');
+        expect(toggle.classList.contains('opacity-0')).toBe(false);
+        expect(toggle.parentElement!.closest('button')).toBeNull();
+        expect(screen.queryAllByTestId('remote-dropdown-row-menu')
+            .some(el => el.getAttribute('data-remote-key') === 'github.com/acme/shortcuts')).toBe(false);
         fireEvent.click(toggle);
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
         expect(mockSelectClone).not.toHaveBeenCalled();
@@ -585,6 +592,76 @@ describe('pinned segments — pinning from the picker', () => {
         fireEvent.click(restored);
         expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([FORGE_PIN]);
         expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: [FORGE_PIN] });
+    });
+
+    it.each(['active', 'switch-back', 'suppressed'])('exposes pin and unpin on mixed-clone rows in the %s chip layout', async layout => {
+        getGlobal.mockResolvedValue({ pinnedScopes: [AI_GROUP_PIN] });
+        const local = repo('same', 'shortcuts', SHORTCUTS);
+        const remote = {
+            ...local,
+            workspace: { ...local.workspace, baseUrl: 'https://tunnel.example', remote: { serverId: 'tunnel', connection: 'online' } },
+        };
+        render(<WorkspaceIdentityChip
+            repo={remote}
+            repos={[local, remote]}
+            onSwitchBack={layout === 'switch-back' ? vi.fn() : undefined}
+            identitySuppressed={layout === 'suppressed'}
+        />);
+        fireEvent.click(screen.getByTestId(layout === 'switch-back' ? 'remote-chip-chevron' : 'remote-chip'));
+        const toggle = screen.getByRole('button', { name: 'Pin shortcuts' });
+        expect(toggle).toHaveAttribute('data-pin-kind', 'repo');
+        expect(toggle).toHaveAttribute('data-pin-key', 'github.com/acme/shortcuts');
+        expect(toggle.classList.contains('opacity-0')).toBe(false);
+        fireEvent.click(toggle);
+        await waitFor(() => expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: [AI_GROUP_PIN, SHORTCUTS_PIN] }));
+        const unpin = screen.getByRole('button', { name: 'Unpin shortcuts' });
+        expect(unpin).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(unpin);
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: [AI_GROUP_PIN] });
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+    });
+
+    it('retains one repository pin and the exact remembered server through loading, offline and reconnect', async () => {
+        const local = repo('same', 'shortcuts', SHORTCUTS);
+        const remotes = ['tunnel-a', 'tunnel-b'].map(serverId => ({
+            ...repo('same', 'shortcuts', SHORTCUTS),
+            workspace: {
+                ...local.workspace,
+                baseUrl: `https://${serverId}.example`,
+                remote: { serverId, connection: 'online', serverLabel: serverId },
+            },
+        }));
+        mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'remote:tunnel-b:same' };
+        getGlobal.mockResolvedValue({ pinnedScopes: [SHORTCUTS_PIN, AI_GROUP_PIN] });
+        const mounted = render(<ScopeSlideSwitcher repos={[]} />);
+        await waitFor(() => expect(pinSegment(AI_GROUP_PIN)).toBeTruthy());
+        expect(pinSegment(SHORTCUTS_PIN)).toBeUndefined();
+        expect(patchGlobal).not.toHaveBeenCalled();
+
+        const checkTarget = () => {
+            expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([SHORTCUTS_PIN, AI_GROUP_PIN]);
+            fireEvent.click(pinSegment(SHORTCUTS_PIN)!);
+            expect(mockSelectClone).toHaveBeenLastCalledWith('remote:tunnel-b:same');
+        };
+        const clones = [local, ...remotes];
+        mounted.rerender(<ScopeSlideSwitcher repos={clones} />);
+        checkTarget();
+        const offline = [local, ...remotes.map(clone => ({
+            ...clone,
+            workspace: { ...clone.workspace, remote: { ...clone.workspace.remote, connection: 'offline', offline: true } },
+        }))];
+        mounted.rerender(<ScopeSlideSwitcher repos={offline} />);
+        checkTarget();
+        // A temporarily absent remote-only cluster hides its segment without
+        // rewriting saved pins. Reconnection restores it once, in saved order.
+        mounted.rerender(<ScopeSlideSwitcher repos={[]} />);
+        expect(pinSegment(SHORTCUTS_PIN)).toBeUndefined();
+        mounted.rerender(<ScopeSlideSwitcher repos={remotes} />);
+        checkTarget();
+        mounted.rerender(<ScopeSlideSwitcher repos={clones} />);
+        checkTarget();
+        expect(patchGlobal).not.toHaveBeenCalled();
     });
 
     it('pinning a remote row adds its segment immediately', async () => {
@@ -652,6 +729,8 @@ describe('pinned segments — pinning from the picker', () => {
             .find(el => el.getAttribute('data-pin-key') === 'github.com/acme/shortcuts') as HTMLButtonElement;
         expect(toggle.disabled).toBe(true);
         expect(toggle.title).toBe('Pin limit reached');
+        expect(toggle.classList.contains('disabled:opacity-0')).toBe(false);
+        expect(toggle.classList.contains('disabled:opacity-30')).toBe(true);
         // All eight stored pins are stale here, so nothing renders — the cap is
         // on the stored list, not on what happens to resolve.
         expect(pinSegments()).toHaveLength(0);

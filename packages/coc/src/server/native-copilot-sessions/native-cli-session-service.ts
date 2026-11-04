@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { clampIntegerLimit } from '../core/limit-utils';
 import { parseClaudeTranscript, parseCodexRollout } from './cli-session-parsers';
 import {
     DEFAULT_NATIVE_SESSION_LIST_LIMIT,
@@ -110,13 +111,6 @@ function pathMatchesWorkspace(cwd: string | null, rootPath: string | undefined):
     const root = normalizePathForMatch(rootPath);
     const candidate = normalizePathForMatch(cwd);
     return candidate === root || candidate.startsWith(`${root}/`);
-}
-
-function clampLimit(limit: number | undefined): number {
-    if (limit === undefined || !Number.isFinite(limit)) {
-        return DEFAULT_NATIVE_SESSION_LIST_LIMIT;
-    }
-    return Math.min(Math.max(Math.floor(limit), 1), MAX_NATIVE_SESSION_LIST_LIMIT);
 }
 
 function clampOffset(offset: number | undefined): number {
@@ -244,7 +238,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         scope: NativeSessionWorkspaceScope,
         options: NativeCliSessionListOptions = {},
     ): NativeCliSessionListResult & { limit: number; offset: number } {
-        const limit = clampLimit(options.limit);
+        const limit = clampIntegerLimit(options.limit, DEFAULT_NATIVE_SESSION_LIST_LIMIT, 1, MAX_NATIVE_SESSION_LIST_LIMIT);
         const offset = clampOffset(options.offset);
         this.index.beginPass();
         const storeState = this.getStoreState();

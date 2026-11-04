@@ -255,6 +255,21 @@ describe('sidenoteFootnote', () => {
             const out = injectQaAnswers(html, defs);
             expect(out).toContain('data-qa-answer="a &quot;b&quot; &amp; &lt;c&gt;"');
         });
+
+        it('keeps literal apostrophes and double-escapes entities in double-quoted attributes', () => {
+            const html = '<span class="qa-sidenote-ref" data-qa-id="x">\u2728</span>';
+            const text = `"' &amp; <term>`;
+            const defs = new Map<string, QaFootnoteDef>([['x', {
+                turns: [{ question: text, answer: text }],
+                selectedText: text,
+                contextBefore: text,
+                contextAfter: text,
+            }]]);
+            const output = injectQaAnswers(html, defs);
+            for (const attribute of ['question', 'answer', 'selected-text', 'context-before', 'context-after']) {
+                expect(output).toContain(`data-qa-${attribute}="&quot;' &amp;amp; &lt;term&gt;"`);
+            }
+        });
     });
 
     // ── definition block re-composition ──────────────────────────────────

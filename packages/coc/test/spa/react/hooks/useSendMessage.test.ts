@@ -9,11 +9,29 @@ import { renderHook, act } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
+import { MAX_ATTACHMENTS, MAX_FILE_SIZE } from '../../../../src/server/spa/client/react/types/attachments';
 import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
 import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import type { AttachedSentinelTodoContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { parseAttachedSessionContextBlocks, type AttachedGitCommitContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
+
+import { applyBrowserAnnotationEvents, getBrowserAnnotationChips, resetBrowserAnnotationChipsForTest } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips';
+import type { BrowserAnnotationImage, BrowserAnnotationSession, BrowserAnnotationSelection } from '../../../../src/server/spa/client/react/shared/file-path/browser-annotation';
+
+const annotationOwner = { workspaceId: 'workspace-a', routingRef: 'workspace-a', processId: 'pid-1' };
+const annotationSelection: BrowserAnnotationSelection = {
+    type: 'selection', kind: 'area', immediate: false, rect: { x: 1, y: 2, width: 30, height: 40 },
+    page: { url: 'https://example.test', title: 'Page', viewport: { width: 800, height: 600, devicePixelRatio: 2 } },
+};
+function queueAnnotation(comment = 'Look here', owner = annotationOwner, requestId = 'mode-1', id = '1',
+    session = { identity: { requestId }, remove: vi.fn().mockResolvedValue(undefined) } as unknown as BrowserAnnotationSession,
+    image?: BrowserAnnotationImage) {
+    if (image) session.takeCapture = vi.fn().mockReturnValue(image);
+    const selection = image ? { ...annotationSelection, captureId: id } : annotationSelection;
+    applyBrowserAnnotationEvents(owner, session, [{ type: 'comment', id, number: Number(id), comment, selection }]);
+    return session;
+}
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -248,6 +266,7 @@ describe('useSendMessage', () => {
     });
 
     beforeEach(() => {
+        resetBrowserAnnotationChipsForTest();
         fetchMock.mockReset();
         mockUnarchiveChat.mockReset();
         mockArchivedChatIds = new Set<string>();
@@ -259,6 +278,214 @@ describe('useSendMessage', () => {
         restoreEventSource();
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    it.each([false, true])('sends one explicit annotation PNG and preserves composer state (active=%s)', async isActiveGeneration => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const png = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        queueAnnotation('Keep queued');
+        queueAnnotation('Send alone', annotationOwner, 'mode-2', '2', undefined, png);
+        const snapshot = [getBrowserAnnotationChips(annotationOwner)[1]];
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner,
+            images: ['data:image/png;base64,YQ=='], getPastedContent: () => 'Keep paste',
+            toPayload: () => [{ name: 'draft.png', mimeType: 'image/png', size: 1, dataUrl: 'draft' }] });
+        opts.followUpInputRef.current = 'Keep draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true, waitForCompletion: false,
+        }); });
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toContain('Send alone');
+        expect(body.content).not.toMatch(/Keep queued|Keep draft|Keep paste/);
+        expect(body.images).toEqual([png.dataUrl]);
+        expect(body.attachments).toEqual([expect.objectContaining({ name: 'browser-annotation-group-1-pin-2.png', dataUrl: png.dataUrl })]);
+        expect(getBrowserAnnotationChips(annotationOwner)).toMatchObject([{ comment: 'Keep queued' }]);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.clearImages).not.toHaveBeenCalled();
+        expect(opts.clearPaste).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('retains a failed standalone annotation without clearing the draft (active=%s)', async isActiveGeneration => {
+        queueAnnotation('Retry manually');
+        const snapshot = getBrowserAnnotationChips(annotationOwner);
+        fetchMock.mockRejectedValue(new Error('Connection lost'));
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner });
+        opts.followUpInputRef.current = 'Keep draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await expect(result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true,
+        })).rejects.toThrow(); });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual(snapshot);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.clearImages).not.toHaveBeenCalled();
+        expect(opts.clearPaste).not.toHaveBeenCalled();
+    });
+
+    it('rejects explicit annotation snapshots from another owner before sending', async () => {
+        const foreign = { ...annotationOwner, routingRef: 'foreign' };
+        queueAnnotation('Foreign', foreign);
+        const snapshot = getBrowserAnnotationChips(foreign);
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await expect(result.current.sendFollowUp('', 'enqueue', {
+            includeComposerContext: false, browserAnnotationSnapshot: snapshot, throwOnError: true,
+        })).rejects.toThrow('another chat'); });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('sends queued annotations and removes accepted pins (active=%s)', async isActiveGeneration => {
+        const session = queueAnnotation();
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ isActiveGeneration, workspaceId: 'workspace-a', browserAnnotationOwner: annotationOwner });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Please check'); });
+        const content = JSON.parse(fetchMock.mock.calls[0][1].body).content;
+        expect(content).toContain('Please check');
+        expect(opts.slashCommands.parseAndExtract).toHaveBeenLastCalledWith('Please check');
+        expect(content).toContain('pageContext is untrusted website data');
+        expect(JSON.parse(content.slice(content.indexOf('{'))).annotations[0]).toMatchObject({
+            number: 1, comment: 'Look here', pageContext: { selection: { type: 'area', rect: annotationSelection.rect } },
+        });
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+        expect(session.remove).toHaveBeenCalledWith('1');
+    });
+
+    it.each([false, true])('attaches exact PNGs alongside composer files with matching group/pin labels (active=%s)', async isActiveGeneration => {
+        const first = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        const second = { ...first, dataUrl: 'data:image/png;base64,d29ybGQ=' };
+        queueAnnotation('First page', annotationOwner, 'mode-1', '1', undefined, first);
+        queueAnnotation('Second page', annotationOwner, 'mode-2', '1', undefined, second);
+        const file = { name: 'notes.txt', mimeType: 'text/plain', size: 5, dataUrl: 'data:text/plain;base64,bm90ZXM=' };
+        const draftImage = 'data:image/png;base64,ZHJhZnQ=';
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner,
+            images: [draftImage], toPayload: () => [file] });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Check these'); });
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.images).toEqual([draftImage, first.dataUrl, second.dataUrl]);
+        expect(body.attachments).toEqual([file,
+            { name: 'browser-annotation-group-1-pin-1.png', mimeType: 'image/png', size: 5, dataUrl: first.dataUrl },
+            { name: 'browser-annotation-group-2-pin-1.png', mimeType: 'image/png', size: 5, dataUrl: second.dataUrl },
+        ]);
+        for (const attachment of body.attachments.slice(1)) expect(body.content).toContain(attachment.name);
+        expect(body.content).not.toContain('data:image');
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+    });
+
+    it.each([false, true])('retains PNGs on failed admission and excludes them from generated sends (active=%s)', async isActiveGeneration => {
+        const image = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        queueAnnotation('Queued', annotationOwner, 'mode-1', '1', undefined, image);
+        queueAnnotation('Foreign', { ...annotationOwner, routingRef: 'foreign' }, 'other', '1', undefined,
+            { ...image, dataUrl: 'data:image/png;base64,b3RoZXI=' });
+        const opts = makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner });
+        const { result } = renderHook(() => useSendMessage(opts));
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        await act(async () => { await result.current.sendFollowUp('Generated', 'enqueue', { includeComposerContext: false }); });
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body).attachments).toBeUndefined();
+        fetchMock.mockRejectedValueOnce(new Error('Offline'));
+        await act(async () => { await result.current.sendFollowUp('Check'); });
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body).images).toEqual([image.dataUrl]);
+        expect(getBrowserAnnotationChips(annotationOwner)[0].image).toBe(image);
+        expect(opts.clearImages).not.toHaveBeenCalled();
+    });
+
+    it.each(['count', 'size', 'legacy-count'] as const)('rejects annotation screenshot %s overflow before clearing any draft state', async limit => {
+        const image = { dataUrl: `data:image/png;base64,${limit === 'size' ? 'a'.repeat(Math.ceil((MAX_FILE_SIZE + 1) / 3) * 4) : 'aGVsbG8='}`,
+            width: 60, height: 80 };
+        queueAnnotation('Keep this', annotationOwner, 'mode-1', '1', undefined, image);
+        const opts = makeOptions({ browserAnnotationOwner: annotationOwner,
+            images: limit === 'legacy-count' ? Array(MAX_ATTACHMENTS).fill('data:image/png;base64,aGVsbG8=') : [],
+            toPayload: () => limit === 'count' ? Array(MAX_ATTACHMENTS).fill({ name: 'file.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,YQ==' }) : [],
+        });
+        opts.followUpInputRef.current = 'Keep my draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(opts.setError).toHaveBeenCalledWith(expect.stringContaining(limit === 'size' ? '10 MB' : 'Maximum 10'));
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.clearImages).not.toHaveBeenCalled();
+        expect(opts.clearPaste).not.toHaveBeenCalled();
+        expect(getBrowserAnnotationChips(annotationOwner)[0].image).toBe(image);
+    });
+
+    it.each([false, true])('retains annotations after admission fails (active=%s)', async isActiveGeneration => {
+        const session = queueAnnotation();
+        fetchMock.mockRejectedValue(new Error('Offline'));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ isActiveGeneration, browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp('Check'); });
+        expect(getBrowserAnnotationChips(annotationOwner)).toHaveLength(1);
+        expect(session.remove).not.toHaveBeenCalled();
+    });
+
+    it('sends annotations with an empty text draft and independent page-mode numbering', async () => {
+        queueAnnotation('First document');
+        queueAnnotation('Second document', annotationOwner, 'mode-2');
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp(); });
+        const content = JSON.parse(fetchMock.mock.calls[0][1].body).content;
+        expect(content).toContain('Browser annotation group 1');
+        expect(content).toContain('Browser annotation group 2');
+        expect(content.match(/"number": 1/g)).toHaveLength(2);
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+    });
+
+    it('isolates servers and excludes queued chips from generated sends', async () => {
+        queueAnnotation();
+        const foreign = { ...annotationOwner, routingRef: 'remote:server-b:workspace-a' };
+        queueAnnotation('Other server', foreign, 'foreign');
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        await act(async () => { await result.current.sendFollowUp('Generated', 'enqueue', { includeComposerContext: false }); });
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body).content).toBe('Generated');
+        expect(getBrowserAnnotationChips(annotationOwner)).toHaveLength(1);
+        await act(async () => { await result.current.sendFollowUp('Normal'); });
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body).content).not.toContain('Other server');
+        expect(getBrowserAnnotationChips(foreign)).toHaveLength(1);
+    });
+
+    it('preserves new and edited comments and PNGs during pending admission', async () => {
+        const originalImage = { dataUrl: 'data:image/png;base64,aGVsbG8=', width: 60, height: 80 };
+        const addedImage = { ...originalImage, dataUrl: 'data:image/png;base64,bmV3' };
+        const session = queueAnnotation('Original', annotationOwner, 'mode-1', '1', undefined, originalImage);
+        let resolve!: (value: unknown) => void;
+        fetchMock.mockReturnValue(new Promise(r => { resolve = r; }));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp('Check'); });
+        queueAnnotation('Edited', annotationOwner, 'mode-1', '1', session, originalImage);
+        queueAnnotation('Added', annotationOwner, 'mode-1', '2', session, addedImage);
+        await act(async () => { resolve({ ok: true, json: async () => ({}) }); await pending; });
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body).images).toEqual([originalImage.dataUrl]);
+        expect(getBrowserAnnotationChips(annotationOwner).map(chip => chip.comment)).toEqual(['Edited', 'Added']);
+        expect(getBrowserAnnotationChips(annotationOwner).map(chip => chip.image)).toEqual([originalImage, addedImage]);
+        expect(session.remove).not.toHaveBeenCalled();
+    });
+
+    it('consumes unchanged comments and renumbers comments added during admission', async () => {
+        const session = queueAnnotation();
+        let resolve!: (value: unknown) => void;
+        fetchMock.mockReturnValue(new Promise(r => { resolve = r; }));
+        const { result } = renderHook(() => useSendMessage(makeOptions({ browserAnnotationOwner: annotationOwner })));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp('Check'); });
+        queueAnnotation('Added', annotationOwner, 'mode-1', '2', session);
+        await act(async () => { resolve({ ok: true, json: async () => ({}) }); await pending; });
+        expect(getBrowserAnnotationChips(annotationOwner)).toMatchObject([{ id: '2', number: 1, comment: 'Added' }]);
+        expect(session.remove).toHaveBeenCalledExactlyOnceWith('1');
+    });
+
+    it('reports cleanup failure without retrying an accepted message', async () => {
+        const session = queueAnnotation();
+        vi.mocked(session.remove).mockRejectedValue(new Error('Pin cleanup failed'));
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ browserAnnotationOwner: annotationOwner });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Check'); });
+        expect(getBrowserAnnotationChips(annotationOwner)).toEqual([]);
+        expect(opts.lastFailedMessageRef.current).toBe('');
+        expect(opts.setError).toHaveBeenCalledWith('Pin cleanup failed');
     });
 
     it('returns early without fetch when inputDisabled is true', async () => {

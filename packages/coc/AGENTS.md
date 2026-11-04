@@ -49,6 +49,54 @@ references before editing. Paths are package-relative.
   desktop `richPasteSupported`; reject unsupported clients without fallback.
   Native clipboard contents stay desktop-local; results acknowledge delivery,
   not editor persistence, and never echo the payload.
+- Browser annotation uses optional `DesktopBrowserBridge.annotation`. Each
+  `BrowserAnnotationSession` owns one mode entry for an exact view/concrete session,
+  subscribes before Start, and revokes delivery before awaiting Stop. Create a fresh
+  instance after exit or retry; preserve observable startup/cleanup errors.
+  `BrowserAnnotationButton` publishes owner/session policy independently of AI
+  enablement, reads clone flags on the owning server, and stops on tab/document
+  departure or live disable. Main owns the takeover-before-injection sequence.
+  Guest selections open the shared closed-shadow editor. Save creates or updates
+  a numbered pin with a generation-local stable ID; delete renumbers survivors.
+  Comment events retain original snapshots; only creation carries modifier-send
+  intent. Match pin IDs with their full mode identity. Each mode fixes its target
+  chat (`BrowserDemoOwner`: workspace, concrete routing ref, queue-alias process)
+  at start; a workspace with no chat uses `newChatBrowserAnnotationOwner` for
+  Activity's first-message draft. Missing workspace disables Annotate; target
+  changes end the mode.
+  Selection notifications carry native PNGs separately from DOM snapshots. The
+  mode retains only its latest unsaved capture; Stop or native termination releases
+  it. `browser-annotation-chips.ts` transfers the matching capture ID's PNG to
+  saved chips and reuses it on edits. Missing production captures fail visibly
+  and stop the mode. Pending images share native size/dimension bounds; queued
+  PNG URLs cap at 64 MiB across composers. Comment/delete events upsert/remove
+  chips keyed by mode request ID plus pin ID, renumbering that mode's survivors.
+  `FollowUpInputArea` and Activity's `NewChatArea` render only their exact owner's
+  chips; other initial-composer adapters opt in explicitly. Removing one
+  calls the original session's `remove(id)`, which is a no-op after navigation/Stop,
+  so chips outlive pins and never touch a replacement. `useSendMessage` receives
+  the same exact annotation owner, snapshots chips for ordinary sends and appends
+  the shared coc-client serializer's untrusted page context. PNGs use the same
+  screenshot validator as `useFileAttachments`, including first-message enqueue,
+  with group/pin filenames referenced
+  in the text. Validate combined attachment counts and image sizes before clearing
+  draft state; over-limit sends retain chips and composer contents. Keep page metadata
+  out of command/target parsing. Accepted messages consume only unchanged snapshot
+  entries and remove their original pins; failed sends preserve chips. Generated
+  sends with `includeComposerContext:false` leave the queue untouched unless they
+  supply an explicit owner-matched `browserAnnotationSnapshot`. Modifier element
+  creation sends that one snapshot through the uniquely mounted exact-owner sender,
+  preserving chat mode, draft, paste, context, attachments and other queued chips.
+  Activity's initial composer submits a standalone annotation chat without navigating
+  or consuming its draft; workflow launch modes refuse immediate sends.
+  Unmounted linked chats use `browser-annotation-standalone-send.ts`: resolve the
+  exact local/clone owner, verify process/workspace and current route before posting
+  one snapshot, and let the server retain the destination mode/provider. Draft
+  targets require a mounted initial composer. Ambiguous senders, overlapping sends
+  and admission failures leave the comment queued with an observable error; never
+  replay an uncertain send. Edits
+  and area selections do not trigger modifier sends. Keep each mode's pin numbering
+  in a separate payload group.
 - Reviewed browser demo messages carry `browserDemo: { inputAllowed: false }`
   through exact-owner admission, buffered drain and follow-up execution. Never steer
   them into an active turn. The accepted turn's browser tool binds this restriction

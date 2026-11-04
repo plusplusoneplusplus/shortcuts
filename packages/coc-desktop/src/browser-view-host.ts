@@ -3,13 +3,14 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
+import { BrowserAnnotationBridge, BROWSER_ANNOTATION_COMMAND_CHANNEL, BROWSER_ANNOTATION_EVENT_CHANNEL } from './browser-annotation-bridge';
 import { BROWSER_DEMO_COMMAND_CHANNEL, runBrowserDemoCommand } from './browser-demo-recorder';
 import { ControlDeadline } from './browser-control-queue';
 import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
-import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
+import { installBrowserWebviewGuard, isBrowserAppUrl, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest, validateBrowserControlPlacement } from './browser-control-command';
@@ -30,6 +31,7 @@ import {
 } from './browser-view-policy';
 
 let manager: BrowserHostManager | undefined;
+let annotations: BrowserAnnotationBridge | undefined;
 let downloads: BrowserDownloadStore | undefined;
 let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
@@ -111,14 +113,15 @@ function wireOwner(window: BrowserWindow): void {
     });
     // Reload closes guests without emitting onClosed into the next SPA document.
     window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) { closeApproved = false; cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
+        if (isMainFrame && !isInPlace) { annotations?.clearOwner(id); closeApproved = false; cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
     });
     window.webContents.on('render-process-gone', () => {
+        annotations?.clearOwner(id);
         cancelControl(id);
         manager?.bindControlScope(id, null, null);
         void manager?.reloadOwner(id).catch(failed);
     });
-    window.once('closed', () => { cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.closeOwner(id).catch(failed); owners.delete(id); });
+    window.once('closed', () => { annotations?.clearOwner(id); cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
@@ -132,6 +135,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     }, 60 * 60 * 1000);
     historyMaintenance.unref();
     manager = new BrowserHostManager({
+        isAppUrl: isBrowserAppUrl,
         clickOnce: {
             enabled: () => readBrowserClickOnce(dataDir),
             ownerCurrent: ownerId => {
@@ -178,6 +182,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             }
         },
     });
+    annotations = new BrowserAnnotationBridge(manager);
     // Every history operation requires the exact registered SPA main document.
     const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
@@ -260,6 +265,15 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         if (action === 'policy') return manager!.setHumanTakeoverEnabled(event.sender.id, identity.routingRef, note === true);
         return manager!.humanTakeover(event.sender.id, identity, action, note);
+    });
+    ipcMain.handle(BROWSER_ANNOTATION_COMMAND_CHANNEL, (event, request: unknown) => {
+        if (!historyWindow(event)) throw new Error('Browser annotation requires a registered SPA main frame');
+        const frame = event.senderFrame;
+        return annotations!.command(event.sender.id, request, notification => {
+            if (event.sender.mainFrame === frame && historyWindow(event)) {
+                event.sender.send(BROWSER_ANNOTATION_EVENT_CHANNEL, notification);
+            }
+        });
     });
     ipcMain.handle(BROWSER_DEMO_COMMAND_CHANNEL, (event, command: unknown) => {
         if (!historyWindow(event)) return { ok: false, reason: 'not-found', message: 'Browser demos require a registered SPA main frame.' };
@@ -423,6 +437,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
 }
 
 export async function disposeBrowserViews(): Promise<void> {
+    annotations?.dispose();
     for (const ownerId of controlRequests.keys()) cancelControl(ownerId);
     clearInterval(historyMaintenance);
     historyMaintenance = undefined;

@@ -49,7 +49,7 @@ export interface CanvasBodyRendererProps {
     onDraftChange: (next: string) => void;
     /** Interactive views (Kusto, extension) save through their own path. */
     onCanvasSaved: (saved: Canvas) => void;
-    onSelectionChange: (text: string | null) => void;
+    onSelectionChange?: (text: string | null) => void;
     onImageMenu: (menu: { x: number; y: number; src: string }) => void;
     notify: (message: string, kind: 'error' | 'info') => void;
 }
@@ -78,7 +78,7 @@ export function CanvasBodyRenderer({
 
     const handlePreviewMouseUp = useCallback(() => {
         const text = window.getSelection()?.toString().trim() ?? '';
-        onSelectionChange(text.length > 0 ? text : null);
+        onSelectionChange?.(text.length > 0 ? text : null);
     }, [onSelectionChange]);
 
     // Right-clicking an inline markdown image opens a custom "Copy image" menu.
@@ -130,7 +130,7 @@ export function CanvasBodyRenderer({
     const handleEditorSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
         const text = target.value.substring(target.selectionStart ?? 0, target.selectionEnd ?? 0).trim();
-        onSelectionChange(text.length > 0 ? text : null);
+        onSelectionChange?.(text.length > 0 ? text : null);
     }, [onSelectionChange]);
 
     if (loading) {

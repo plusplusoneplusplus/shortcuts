@@ -11,7 +11,7 @@
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager-types';
 import { parseCron } from './cron-utils';
 import type { ChatMode, ChatProvider, TargetType } from '../tasks/task-types';
-import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { normalizeChatMode, resolveChatProvider } from '../tasks/task-types';
 
 const VALID_STATUSES: Set<string> = new Set(['active', 'paused', 'stopped']);
 const VALID_ON_FAILURE: Set<string> = new Set(['notify', 'stop']);
@@ -46,10 +46,7 @@ export function normalizeScheduleMode(mode: unknown): ChatMode | undefined {
 
 /** Coerce a raw provider value to a supported ChatProvider, else undefined. */
 export function normalizeScheduleProvider(provider: unknown): ChatProvider | undefined {
-    if (typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)) {
-        return provider as ChatProvider;
-    }
-    return undefined;
+    return resolveChatProvider(provider);
 }
 
 /** Trim a raw value to a non-empty string, else undefined. */

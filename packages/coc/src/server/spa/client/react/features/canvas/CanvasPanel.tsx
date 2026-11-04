@@ -39,6 +39,7 @@ import { canvasKind, saveStatusLabel, type ViewMode } from './canvas-panel-model
 import { useCanvasRecord } from './hooks/useCanvasRecord';
 import { useCanvasVersions } from './hooks/useCanvasVersions';
 import { useCanvasComments } from './hooks/useCanvasComments';
+import { useCanvasSelection } from './hooks/useCanvasSelection';
 import { useCanvasExport } from './hooks/useCanvasExport';
 import { useCreateKustoCanvas } from './hooks/useCreateKustoCanvas';
 import { CanvasPanelHeader } from './components/CanvasPanelHeader';
@@ -60,6 +61,8 @@ export interface CanvasPanelProps {
     onClose?: () => void;
     /** Prefills the chat composer with a selection-targeted edit prompt. */
     onAskAi?: (prompt: string) => void;
+    /** Appends selection context to the owning chat's draft without sending. */
+    onAttachToChat?: (context: string) => void;
     /** Sends a message to the AI through the normal follow-up path (turn-boundary delivery when busy). */
     onSendToAi?: (message: string) => Promise<void>;
     /** Notifies the host when the panel enters/exits fullscreen (for layout adjustments). */
@@ -91,7 +94,7 @@ export interface CanvasPanelProps {
 }
 
 export function CanvasPanel({
-    workspaceId, routingRef, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
+    workspaceId, routingRef, canvasId, liveEvent, onClose, onAskAi, onAttachToChat, onSendToAi, onFullscreenChange,
     onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce,
     onDirtyChange, onRegisterSave, allowDesktopGuest = false,
 }: CanvasPanelProps) {
@@ -117,7 +120,8 @@ export function CanvasPanel({
         adoptSaved, setSaveState: record.setSaveState,
     });
     const comments = useCanvasComments({
-        client, workspaceId, canvasId, canvas, canvasRef, loadNonce: isCopilotExtension ? 0 : loadNonce, onAskAi, onSendToAi,
+        client, workspaceId, canvasId, canvas, canvasRef, loadNonce: isCopilotExtension ? 0 : loadNonce,
+        onAskAi: canvas?.type === 'markdown' ? onAttachToChat ?? onAskAi : onAskAi, onSendToAi,
     });
     const exporter = useCanvasExport({ client, workspaceId, canvasRef, notify });
     const kusto = useCreateKustoCanvas({
@@ -166,6 +170,17 @@ export function CanvasPanel({
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
     const kind = canvasKind(canvas, displayedContent);
     const panelTitle = canvas?.title || availableCanvases.find(item => item.id === canvasId)?.title || 'Canvas';
+
+    const selectionContainerRef = useRef<HTMLDivElement>(null);
+    const selectionContentRef = useRef<HTMLDivElement>(null);
+    const selectionActionsRef = useRef<HTMLDivElement>(null);
+    const markdownSelection = useCanvasSelection({
+        containerRef: selectionContainerRef, contentRef: selectionContentRef, actionsRef: selectionActionsRef,
+        documentKey: JSON.stringify([workspaceId, routingRef, canvasId, canvas?.processId, canvas?.revision, record.loading, mode, record.draft, displayedContent]),
+        enabled: canvas?.type === 'markdown' && !viewingVersion && !record.loading && !record.loadError,
+        editing: mode === 'edit', onSelectionChange: comments.setSelection,
+        onComment: comments.startComment, onAttach: comments.askAi,
+    });
 
     const handleCanvasSaved = useCallback((saved: Canvas) => adoptSaved(saved), [adoptSaved]);
 
@@ -230,12 +245,16 @@ export function CanvasPanel({
 
             {/* Body — relative wrapper so the selection/comment overlays float
                 above the content instead of pushing it and shifting the text. */}
-            <div className="relative flex-1 min-h-0">
+            <div ref={selectionContainerRef} className="relative flex-1 min-h-0">
                 <CanvasSelectionToolbar
                     selection={comments.selection}
                     visible={!viewingVersion && !isCopilotExtension}
-                    onAskAi={onAskAi && comments.askAi}
-                    onStartComment={comments.startComment}
+                    actionsRef={selectionActionsRef}
+                    floating={canvas?.type === 'markdown'}
+                    position={markdownSelection.position}
+                    onDismiss={markdownSelection.dismiss}
+                    onAskAi={(onAskAi || onAttachToChat) && (canvas?.type === 'markdown' ? markdownSelection.attach : () => comments.askAi())}
+                    onStartComment={canvas?.type === 'markdown' ? markdownSelection.comment : () => comments.startComment()}
                     commentAnchor={comments.commentAnchor}
                     commentDraft={comments.commentDraft}
                     onCommentDraftChange={comments.setCommentDraft}
@@ -243,7 +262,7 @@ export function CanvasPanel({
                     onCancelComment={comments.cancelComment}
                 />
 
-                <div className="h-full overflow-y-auto">
+                <div ref={selectionContentRef} className="h-full overflow-y-auto">
                     <CanvasBodyRenderer
                         allowDesktopGuest={allowDesktopGuest}
                         routingRef={routingRef}
@@ -260,7 +279,7 @@ export function CanvasPanel({
                         draft={record.draft}
                         onDraftChange={record.editDraft}
                         onCanvasSaved={handleCanvasSaved}
-                        onSelectionChange={comments.setSelection}
+                        onSelectionChange={canvas?.type === 'markdown' ? undefined : comments.setSelection}
                         onImageMenu={setImageMenu}
                         notify={notify}
                     />

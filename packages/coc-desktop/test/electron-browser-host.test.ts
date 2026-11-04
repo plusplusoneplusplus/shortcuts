@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     owner: { id: 7, focus: vi.fn(), executeJavaScript: vi.fn().mockResolvedValue(true) },
     windowShow: vi.fn(),
     windowFocus: vi.fn(),
+    captureAnnotation: vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,cG5n', width: 30, height: 40 }),
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
         setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
@@ -47,10 +48,12 @@ const mocks = vi.hoisted(() => ({
         sendInputEvent: vi.fn(), insertText: vi.fn().mockResolvedValue(undefined), selectAll: vi.fn(),
         reload: vi.fn(), reloadIgnoringCache: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
+        isLoadingMainFrame: vi.fn(() => false),
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
 }));
 vi.mock('node:fs', () => ({ mkdirSync: vi.fn() }));
+vi.mock('../src/electron-annotation-capture', () => ({ captureElectronAnnotation: mocks.captureAnnotation }));
 vi.mock('../src/browser-profile-lock', () => ({ lockElectronProfile: () => ({ close: vi.fn() }) }));
 vi.mock('../src/browser-webview-guard', () => ({
     isBrowserEmbedder: () => true,
@@ -83,6 +86,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.handlers.clear();
     mocks.deferAttach = false;
+    mocks.contents.isLoadingMainFrame.mockReturnValue(false);
     mocks.contents.on.mockImplementation((name: string, handler: (...args: any[]) => void) => {
         const handlers = mocks.handlers.get(name) ?? [];
         handlers.push(handler);
@@ -95,6 +99,24 @@ beforeEach(() => {
 function emit(name: string, ...args: any[]) {
     for (const handler of mocks.handlers.get(name) ?? []) { handler({}, ...args); }
 }
+
+describe('Electron annotation capture routing', () => {
+    it('captures only the adopted guest and refuses unready or closed views', async () => {
+        const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+        mocks.deferAttach = true;
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'capture', sessionKey: 'w', url: 'https://fixture.test/' }, sink);
+        const rect = { x: 10, y: 20, width: 30, height: 40 };
+        const viewport = { width: 800, height: 600, devicePixelRatio: 2 };
+        await expect(view.captureAnnotation!(rect, viewport)).rejects.toThrow('closed');
+        expect(mocks.captureAnnotation).not.toHaveBeenCalled();
+        mocks.attach!();
+        expect(await view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.captureAnnotation).toHaveBeenCalledExactlyOnceWith(mocks.contents, rect, viewport);
+        await view.close();
+        await expect(view.captureAnnotation!(rect, viewport)).rejects.toThrow('closed');
+        expect(mocks.captureAnnotation).toHaveBeenCalledTimes(1);
+    });
+});
 
 describe('Electron site information facts', () => {
     const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
@@ -353,6 +375,27 @@ describe('Electron ClickOnce routing', () => {
 });
 
 describe('Electron browser CDP capability', () => {
+    it('reports main-document loading without treating annotation or page subframe loads as navigation', async () => {
+        const { sink, hosted } = await view();
+        const loading = vi.spyOn(mocks.contents, 'isLoading').mockReturnValue(true);
+        try {
+            emit('did-start-loading');
+            expect(hosted.snapshot().loading).toBe(false);
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ loading: false }));
+            expect(sink.navigationStarted).not.toHaveBeenCalled();
+            mocks.contents.isLoadingMainFrame.mockReturnValue(true);
+            emit('did-start-loading');
+            expect(hosted.snapshot().loading).toBe(true);
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ loading: true }));
+            mocks.contents.isLoadingMainFrame.mockReturnValue(false);
+            emit('did-stop-loading');
+            expect(hosted.snapshot().loading).toBe(false);
+        } finally {
+            loading.mockRestore();
+            await hosted.close();
+        }
+    });
+
     it('invalidates the copy identity only for a new main document, not subframes or same-document navigation', async () => {
         const { sink, hosted } = await view();
         emit('did-start-navigation', 'https://frame.test/', false, false);

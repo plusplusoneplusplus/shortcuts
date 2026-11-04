@@ -47,6 +47,7 @@ import { browserPopupChrome } from './browser-popup-chrome';
 import { translateBackgroundInput } from './electron-background-input';
 import { isClickOnceRequest, validActivationUrl, type BrowserApplicationRequest } from './browser-clickonce';
 import { loadBrowserFavicon } from './browser-favicon';
+import { captureElectronAnnotation } from './electron-annotation-capture';
 
 interface BrowserEntry {
     win: BrowserWindow;
@@ -128,7 +129,7 @@ function snapshot(entry: BrowserEntry): BrowserViewState {
         title: entry.error ? '' : wc.getTitle(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
-        loading: wc.isLoading(),
+        loading: wc.isLoadingMainFrame(),
         ...(entry.favicon && !entry.error ? { favicon: entry.favicon } : {}),
         ...(entry.error ? { error: entry.error } : {}),
         ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
@@ -650,6 +651,12 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             waitForControlReady: async signal => {
                 await waitForControlContents(() => entry.contents, () => entry.closed, signal);
                 if (entry.error) throw new Error(entry.error);
+            },
+            captureAnnotation: (rect, viewport) => {
+                if (entry.closed || !entry.contents || entry.contents.isDestroyed()) {
+                    return Promise.reject(new BrowserHostError('not-found', 'Browser tab is closed.'));
+                }
+                return captureElectronAnnotation(entry.contents, rect, viewport);
             },
             setPageZoom: percent => {
                 entry.pageZoom = percent;

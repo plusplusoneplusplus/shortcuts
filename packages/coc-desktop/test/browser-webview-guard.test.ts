@@ -46,6 +46,25 @@ beforeEach(() => { vi.resetModules(); vi.useFakeTimers(); mocks.app = new EventE
 afterEach(() => { vi.useRealTimers(); });
 
 describe('browser webview authorization boundary', () => {
+    it('identifies registered app surfaces across query/hash changes without trusting other same-origin paths', async () => {
+        const h = await harness();
+        for (const url of ['https://spa.test/', 'https://spa.test/?workspace=other#chat', 'https://spa.test/#repos/workspace']) {
+            expect(h.guard.isBrowserAppUrl(url)).toBe(true);
+        }
+        for (const url of ['https://spa.test/other', 'https://other.test/', 'http://spa.test/', 'https://spa.test:444/']) {
+            expect(h.guard.isBrowserAppUrl(url)).toBe(false);
+        }
+        const other = contents(3);
+        const otherWindow = Object.assign(new EventEmitter(), { webContents: other, isDestroyed: () => false });
+        h.guard.registerBrowserEmbedder(otherWindow as any, 'https://other.test/dashboard?owner=1');
+        expect(h.guard.isBrowserAppUrl('https://other.test/dashboard?owner=2#chat')).toBe(true);
+        h.window.emit('closed');
+        expect(h.guard.isBrowserAppUrl('https://spa.test/')).toBe(false);
+        expect(h.guard.isBrowserAppUrl('https://other.test/dashboard')).toBe(true);
+        otherWindow.emit('closed');
+        expect(h.guard.isBrowserAppUrl('https://other.test/dashboard')).toBe(false);
+    });
+
     it('authorizes only a validated exact file, without granting URL tokens file access', async () => {
         const h = await harness();
         const directory = mkdtempSync(path.join(process.cwd(), '.file-guard-'));

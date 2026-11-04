@@ -15,6 +15,7 @@ import {
 } from '@plusplusoneplusplus/coc-memory';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { clampIntegerLimit } from '../core/limit-utils';
 
 // ============================================================================
 // Deps
@@ -246,7 +247,7 @@ export function createMemoryRecallTool(deps: MemoryV2ToolDeps) {
                 return { ok: false, code: 'missing_query', error: 'query must be a non-empty string.' };
             }
 
-            const limit = clampLimit(args.limit, DEFAULT_RECALL_LIMIT);
+            const limit = clampIntegerLimit(args.limit, DEFAULT_RECALL_LIMIT, 1, MAX_RECALL_LIMIT);
 
             try {
                 const allResults: MemoryRecallEntry[] = [];
@@ -312,13 +313,4 @@ export function createMemoryRecallTool(deps: MemoryV2ToolDeps) {
     });
 
     return { tool };
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function clampLimit(value: unknown, fallback: number): number {
-    const n = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : fallback;
-    return Math.min(MAX_RECALL_LIMIT, Math.max(1, n));
 }

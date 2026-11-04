@@ -28,7 +28,7 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools, readRepoPreferences } from '../preferences-handler';
-import { getRepoDataPath } from '../paths';
+import { getNotesRoot } from '../notes/notes-paths';
 import { shapeNotesTree } from '../notes/notes-tree';
 import type { TreeNode } from '../notes/notes-tree';
 import { loadNativeNotesFs } from '@plusplusoneplusplus/coc-native';
@@ -152,7 +152,7 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
 
         // Read the notes tree
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-        const notesRoot = getRepoDataPath(effectiveDataDir, wsId ?? '', 'notes');
+        const notesRoot = getNotesRoot(effectiveDataDir, wsId ?? '');
         await fs.promises.mkdir(notesRoot, { recursive: true });
 
         const scan = await loadNativeNotesFs().notesTree(notesRoot, { isDefaultRoot: true });

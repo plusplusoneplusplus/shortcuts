@@ -18,6 +18,7 @@ import type { WorkItemStore, WorkItemChange } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 import {
+    bodyWorkspaceId,
     queryWorkspaceId,
     resolveWorkItemRouteScope,
     type WorkItemRouteScope,
@@ -32,12 +33,6 @@ export interface WorkItemChangesRouteContext {
 
 const changesBase = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/changes$/;
 const changesById = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/changes\/([^/]+)$/;
-
-function bodyWorkspaceId(body: unknown): string | undefined {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
-    const raw = (body as Record<string, unknown>).workspaceId;
-    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
-}
 
 async function resolveChangesRouteScope(
     ctx: WorkItemChangesRouteContext,

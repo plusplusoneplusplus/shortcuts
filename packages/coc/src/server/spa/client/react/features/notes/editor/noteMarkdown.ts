@@ -10,6 +10,7 @@ import TurndownService from 'turndown';
 import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
+import { escapeHtmlText } from '../../../../shared/html';
 import {
     DEFAULT_HIGHLIGHT_COLOR,
     normalizeCssColor,
@@ -59,13 +60,6 @@ function plainLinkLabel(renderedText: string, fallback: string): string {
 
 function escapeMarkdownLinkLabel(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-}
-
-function escapeHtmlText(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
 }
 
 function renderDefaultLink(href: string, title: string | null | undefined, text: string): string {

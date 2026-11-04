@@ -25,6 +25,8 @@
  * — the export always completes.
  */
 
+import { errorMessage } from '../../../utils/errorMessage';
+
 /** A serialized SVG element, or anything with `outerHTML` (a real SVGSVGElement satisfies this). */
 type SvgElementLike = { outerHTML?: string | null } | string | null | undefined;
 
@@ -99,10 +101,6 @@ function parseScene(sceneJson: string | null | undefined): ParsedScene {
                 ? (scene.files as Record<string, any>)
                 : undefined,
     };
-}
-
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 /** Serialize the injected exporter's return value to an SVG string. */

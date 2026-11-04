@@ -211,6 +211,31 @@ describe('Dream routes', () => {
         });
     });
 
+    it.each([
+        {},
+        { provider: null, config: null },
+        { provider: '', config: { model: '  ', reasoningEffort: '' } },
+        { config: { model: null, reasoningEffort: null } },
+    ])('omits empty optional AI selections: %j', async body => {
+        enqueueRun.mockResolvedValueOnce({ id: 'dream-task-empty' });
+        const res = await dispatch(routes, 'POST', `/api/workspaces/${WORKSPACE_ID}/dreams/run`, body);
+        expect(res.statusCode).toBe(202);
+        expect(enqueueRun).toHaveBeenCalledWith(WORKSPACE_ID, {});
+    });
+
+    it.each([
+        { body: { provider: 'auto' }, message: "Invalid provider: 'auto'. Valid providers: copilot, codex, claude, opencode" },
+        { body: { config: [] }, message: 'config must be an object' },
+        { body: { provider: 'invalid', config: [] }, message: 'config must be an object' },
+        { body: { config: { model: 7 } }, message: 'config.model must be a string' },
+        { body: { config: { reasoningEffort: 'max' } }, message: "Invalid reasoningEffort: 'max'. Valid reasoningEffort values: low, medium, high, xhigh" },
+    ])('rejects invalid AI selection $body without enqueueing', async ({ body, message }) => {
+        const res = await dispatch(routes, 'POST', `/api/workspaces/${WORKSPACE_ID}/dreams/run`, body);
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe(message);
+        expect(enqueueRun).not.toHaveBeenCalled();
+    });
+
     it('approves, dismisses, converts, and supersedes cards through explicit lifecycle routes', async () => {
         const approveTarget = await createVisibleCard(store);
         const approveRes = await dispatch(routes, 'POST', `/api/workspaces/${WORKSPACE_ID}/dreams/cards/${approveTarget.id}/approve`);

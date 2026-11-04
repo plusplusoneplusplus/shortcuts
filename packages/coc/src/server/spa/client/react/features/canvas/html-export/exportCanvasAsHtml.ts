@@ -23,6 +23,7 @@
  */
 
 import { buildCanvasHtmlDocument } from './buildCanvasHtmlDocument';
+import { errorMessage } from '../../../utils/errorMessage';
 import { collectImageRefs, resolveAssets, resolveLibraryBundles } from './assets';
 import type { AssetFetchFn, AssetFetchResponse } from './assets';
 import type { CanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
@@ -114,10 +115,6 @@ export interface ExportCanvasAsHtmlResult {
     warnings: string[];
     /** Failure reason when `!ok` (unsupported type, or a caught error). */
     error?: string;
-}
-
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 /**

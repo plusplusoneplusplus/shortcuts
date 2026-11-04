@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import type { AttachmentPayload } from '../../../types/attachments';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useRequestScope } from '../../../hooks/useRequestScope';
+import { enqueueReviewChat, type ReviewChatComposerSendOptions } from '../../../shared/reviewChatRequest';
+export type { ReviewChatComposerSendOptions } from '../../../shared/reviewChatRequest';
 import { getReviewChatTargetStorageId } from '../commits/commitChatPlacement';
 
 export interface UsePrChatBindingOptions {
@@ -12,19 +14,6 @@ export interface UsePrChatBindingOptions {
     repoId?: string;
     /** PR title — surfaced to the AI framing sentence. */
     prTitle?: string;
-}
-
-export interface ReviewChatComposerSendOptions {
-    mode?: string;
-    context?: Record<string, unknown>;
-    attachments?: AttachmentPayload[];
-    provider?: string;
-    model?: string;
-    reasoningEffort?: string;
-    /** Response style for this chat; validated server-side at the queue boundary. */
-    chatStyle?: string;
-    config?: { effortTier?: string };
-    workingDirectory?: string;
 }
 
 export interface UsePrChatBindingReturn {
@@ -63,7 +52,9 @@ function storeBinding(opts: Pick<UsePrChatBindingOptions, 'workspaceId' | 'repoI
  * what to read; no diff content is injected.
  */
 export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindingReturn {
-    const { workspaceId, prId, filePath, repoId, prTitle } = opts;
+    const { workspaceId, prId, repoId, prTitle } = opts;
+    const client = useCocClient(workspaceId);
+    const isCurrent = useRequestScope(client, JSON.stringify([workspaceId, repoId, prId]));
     const [taskId, setTaskId] = useState<string | null>(() => getStoredBinding({ workspaceId, repoId, prId }));
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -72,46 +63,28 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
     useEffect(() => {
         const stored = getStoredBinding({ workspaceId, repoId, prId });
         setTaskId(stored);
-    }, [workspaceId, repoId, prId]);
+        setLoading(false);
+        setError(null);
+    }, [workspaceId, repoId, prId, client]);
 
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
+        if (!isCurrent()) return null;
         setLoading(true);
         setError(null);
         try {
-            const res = await getCocClientForWorkspace(workspaceId).queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                payload: {
-                    kind: 'chat',
-                    mode: options.mode ?? 'ask',
-                    prompt,
-                    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
-                    workspaceId,
-                    ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments } : {}),
-                    ...(options.provider ? { provider: options.provider } : {}),
-                    ...(options.model ? { model: options.model } : {}),
-                    ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-                    ...(options.chatStyle ? { chatStyle: options.chatStyle } : {}),
-                    context: {
-                        ...(options.context ?? {}),
-                        pullRequestChat: { prId, repoId, prTitle },
-                    },
-                },
-                ...(options.config ? { config: options.config } : {}),
-            });
-            const newTaskId = res.task?.id ?? (res as { id?: string }).id;
+            const newTaskId = await enqueueReviewChat(client, workspaceId, prompt, { prId, repoId, prTitle }, options);
             if (!newTaskId) throw new Error('Failed to create PR chat task');
 
             storeBinding({ workspaceId, repoId, prId }, newTaskId);
-            setTaskId(newTaskId);
+            if (isCurrent()) setTaskId(newTaskId);
             return newTaskId;
-        } catch (err: any) {
-            setError(err?.message ?? 'Failed to create PR chat');
+        } catch (err) {
+            if (isCurrent()) setError(err instanceof Error ? err.message : 'Failed to create PR chat');
             return null;
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
-    }, [workspaceId, prId, repoId, prTitle]);
+    }, [workspaceId, prId, repoId, prTitle, client, isCurrent]);
 
     return { taskId, loading, error, createChat };
 }

@@ -18,6 +18,7 @@ interface Pending {
     sessionId?: string;
     reject(error: Error): void;
     timer: ReturnType<typeof setTimeout>;
+    resultLimit: number;
 }
 
 export class WebView2Process {
@@ -88,7 +89,7 @@ export class WebView2Process {
         while ((end = this.buffer.indexOf('\n')) >= 0) {
             const line = this.buffer.slice(0, end);
             this.buffer = this.buffer.slice(end + 1);
-            if (Buffer.byteLength(line, 'utf8') > 1_048_576) {
+            if (Buffer.byteLength(line, 'utf8') > this.resultLimit(line)) {
                 if (!this.rejectOversizedResult(line)) return;
                 continue;
             }
@@ -125,11 +126,16 @@ export class WebView2Process {
             }
             else { this.fail(new BrowserHostError('runtime-crashed', 'WebView2 sent an unexpected message.')); return; }
         }
-        if (Buffer.byteLength(this.buffer, 'utf8') > 1_048_576) {
+        if (Buffer.byteLength(this.buffer, 'utf8') > this.resultLimit(this.buffer)) {
             if (!this.rejectOversizedResult(this.buffer)) return;
             this.buffer = '';
             this.discardingResult = true;
         }
+    }
+
+    private resultLimit(line: string): number {
+        const match = /^\{"id":(\d+),"ok":(?:true|false),/.exec(line.slice(0, 128));
+        return match ? this.pending.get(Number(match[1]))?.resultLimit ?? 1_048_576 : 1_048_576;
     }
 
     private rejectOversizedResult(line: string): boolean {
@@ -197,13 +203,13 @@ export class WebView2Process {
         }
     }
 
-    request(op: 'cdp', payload: Record<string, unknown>): Promise<unknown>;
+    request(op: 'cdp' | 'capture-annotation', payload: Record<string, unknown>): Promise<unknown>;
     request(op: string, payload?: Record<string, unknown>): Promise<void>;
     async request(op: string, payload: Record<string, unknown> = {}): Promise<unknown> {
         if (!this.child && op !== 'open' && op !== 'clear' && op !== 'import-profile-cookies') {
             throw new BrowserHostError('runtime-crashed', 'WebView2 host is not running. Retry explicitly.');
         }
-        const viewRequest = op === 'cdp' || op === 'cdp-subscribe';
+        const viewRequest = op === 'cdp' || op === 'cdp-subscribe' || op === 'capture-annotation';
         const admission: Admission | undefined = viewRequest && typeof payload.viewId === 'string'
             ? { viewId: payload.viewId, ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}) } : undefined;
         if (admission) { this.admissions.add(admission); }
@@ -226,7 +232,8 @@ export class WebView2Process {
                 reject(error);
             }, 60_000);
             this.pending.set(id, {
-                resolve, reject, timer, ...(viewRequest && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}),
+                resolve, reject, timer, resultLimit: op === 'capture-annotation' ? 28_000_000 : 1_048_576,
+                ...(viewRequest && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}),
                 ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}),
             });
             child.stdin.write(line, error => { if (error) { this.fail(new BrowserHostError('runtime-crashed', error.message)); } });

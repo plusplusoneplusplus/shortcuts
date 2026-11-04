@@ -257,4 +257,27 @@ describe('Work-Item-Chat Binding API endpoints', () => {
         });
         expect(mismatchedWorkspace.status).toBe(400);
     });
+
+    it('trims body workspace ids while rejecting foreign or unknown owners before binding writes', async () => {
+        for (const workspaceId of [` ${OTHER_WORKSPACE_ID} `, ' missing-workspace ']) {
+            const rejected = await request(originApi('work-item-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ workspaceId, workItemId: 'scoped-item', taskId: 'scoped-task' }),
+            });
+            expect(rejected.status).toBe(400);
+        }
+        const empty = await request(originApi('work-item-chat-bindings'));
+        expect(empty.json().bindings).toEqual({});
+
+        const accepted = await request(originApi('work-item-chat-bindings'), {
+            method: 'POST',
+            body: JSON.stringify({
+                workspaceId: ` \t${WORKSPACE_CLONE_ID}\n`,
+                workItemId: 'scoped-item', taskId: 'scoped-task',
+            }),
+        });
+        expect(accepted.status).toBe(201);
+        const read = await request(originApi('work-item-chat-bindings/scoped-item'));
+        expect(read.json()).toEqual({ workItemId: 'scoped-item', taskId: 'scoped-task' });
+    });
 });

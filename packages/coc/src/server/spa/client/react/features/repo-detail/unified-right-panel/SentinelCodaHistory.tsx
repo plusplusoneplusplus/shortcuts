@@ -52,7 +52,7 @@ export function SentinelCodaHistory({ runs, ...props }: Props) {
 }
 
 /** Owner-routed read of one retained run; summary changes refresh it and late results are dropped. */
-export function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Props, 'runs'> & { summary: SentinelCodaRunSummary; id: string }) {
+export function RunDetail({ client, owner, items, summary, id, onFollowLink, showChatLink = true }: Omit<Props, 'runs'> & { summary: SentinelCodaRunSummary; id: string; showChatLink?: boolean }) {
     const [detail, setDetail] = useState<SentinelCodaRunDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);
@@ -75,7 +75,7 @@ export function RunDetail({ client, owner, items, summary, id, onFollowLink }: O
                 : <>
                     <p>{detail.trigger} · {detail.status.replaceAll('_', ' ')}
                         {detail.skipReason && <> · skipped: {detail.skipReason}</>}</p>
-                    <CodaRunChatLink owner={owner} childProcessId={detail.childProcessId} onFollowLink={onFollowLink} />
+                    {showChatLink && <CodaRunChatLink owner={owner} childProcessId={detail.childProcessId} onFollowLink={onFollowLink} />}
                     {detail.startedAt && <p>Started <time dateTime={detail.startedAt}>{new Date(detail.startedAt).toLocaleString()}</time></p>}
                     {detail.finishedAt && <p>Finished <time dateTime={detail.finishedAt}>{new Date(detail.finishedAt).toLocaleString()}</time></p>}
                     {detail.error && <p className="text-[#c72e2e] dark:text-[#f48771]">{detail.error}</p>}

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL, type BrowserDownloadStore } from '../src/browser-downloads';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
+import { BROWSER_ANNOTATION_COMMAND_CHANNEL, BROWSER_ANNOTATION_EVENT_CHANNEL } from '../src/browser-annotation-bridge';
 import { BROWSER_DEMO_COMMAND_CHANNEL } from '../src/browser-demo-recorder';
 import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
@@ -53,7 +54,7 @@ let host: typeof import('../src/browser-view-host');
 let dir: string;
 function owner(id: number, url = 'http://localhost:4000/') {
     const contents = Object.assign(new EventEmitter(), {
-        id, mainFrame: {}, getURL: () => url, isDestroyed: () => false, send: vi.fn(),
+        id, mainFrame: {}, getURL: () => url, getZoomFactor: () => 1, isDestroyed: () => false, send: vi.fn(),
         copy: vi.fn(), cut: vi.fn(), paste: vi.fn(), selectAll: vi.fn(),
     });
     const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => false, show: vi.fn(), focus: vi.fn() });
@@ -497,5 +498,155 @@ describe('desktop download IPC', () => {
         const pending = invoke(DOWNLOADS_QUERY_CHANNEL, spa.event);
         url = 'https://foreign.test/';
         expect(await pending).toEqual({ ok: false, reason: 'no-window' });
+    });
+});
+
+
+describe('desktop annotation IPC', () => {
+    const identity = { viewId: 'annotated', sessionKey: 'clone:w', requestId: 'mode-1' };
+    const request = (action: string, fields = {}) => ({ ...identity, action, ...fields });
+    async function page(spa: ReturnType<typeof owner>, engine: 'electron' | 'webview2' = 'electron',
+        facts: { url?: string; mimeType?: string } = {}) {
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, identity.viewId, 'https://fixture.test/', identity.sessionKey, engine);
+        const view = mocks.views.at(-1);
+        let cdpEvent: (...args: any[]) => void;
+        const selections: any[] = [];
+        view.onCdpEvent = vi.fn((listener: any) => { cdpEvent = listener; return vi.fn(); });
+        view.cdp.mockImplementation(async (method: string) => {
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html', ...facts } } };
+            if (method === 'Page.createIsolatedWorld') return { executionContextId: 7 };
+            if (method === 'Runtime.evaluate') return { result: { value: { active: true, events: selections.splice(0) } } };
+            return {};
+        });
+        mocks.events.get(policy.BROWSER_VIEW_SET_BOUNDS_CHANNEL)!(spa.event, identity.viewId, { x: 0, y: 0, width: 800, height: 600 });
+        return { view, selections, navigate: () => cdpEvent('Page.frameNavigated', { frame: { id: 'main' } }) };
+    }
+    const notifications = (spa: ReturnType<typeof owner>) => spa.contents.send.mock.calls
+        .filter(call => call[0] === BROWSER_ANNOTATION_EVENT_CHANNEL).map(call => call[1]);
+
+    it.each(['electron', 'webview2'] as const)('refuses the app snapshot before CDP on %s', async engine => {
+        const spa = owner(1);
+        const guest = await page(spa, engine);
+        const snapshot = guest.view.snapshot();
+        guest.view.snapshot = () => ({ ...snapshot, url: 'http://localhost:4000/?workspace=other#chat' });
+        await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).rejects.toThrow('CoC app');
+        expect(guest.view.cdp).not.toHaveBeenCalled();
+    });
+
+    it.each(['electron', 'webview2'] as const)('uses committed document facts to refuse PDFs and app URLs on %s', async engine => {
+        const spa = owner(1);
+        for (const facts of [
+            { url: 'https://fixture.test/download?id=1', mimeType: 'application/pdf' },
+            { url: 'http://localhost:4000/?workspace=other#chat', mimeType: 'text/html' },
+        ]) {
+            const guest = await page(spa, engine, facts);
+            guest.view.cdp.mockClear();
+            // The stale toolbar/view snapshot still says fixture.test; admission uses native facts.
+            await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).rejects.toThrow('PDFs, previews or the CoC app');
+            expect(guest.view.cdp.mock.calls.map(([method]: [string]) => method)).toEqual(['Page.enable', 'Page.getFrameTree']);
+            expect(notifications(spa).at(-1)).toMatchObject({ ...identity, type: 'ended', reason: 'failed' });
+        }
+        // Failed admission releases the reservation so the same view identity can retry normally.
+        const guest = await page(spa, engine);
+        expect(await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).toBe(true);
+        expect(guest.view.cdp).toHaveBeenCalledWith('Page.createIsolatedWorld', expect.anything());
+    });
+
+    it.each(['electron', 'webview2'] as const)('round trips generation-bound mode and termination for %s', async engine => {
+        const spa = owner(1), other = owner(2);
+        const guest = await page(spa, engine);
+        const selection = { type: 'selection', kind: 'area', immediate: false,
+            rect: { x: 10.5, y: 20, width: 60, height: 40 },
+            page: { url: 'https://fixture.test/', title: 'Fixture', viewport: { width: 800, height: 600, devicePixelRatio: 2 } } };
+        guest.selections.push(selection);
+        expect(await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'))).toBe(true);
+        expect(guest.view.cdp).toHaveBeenCalledWith('Page.createIsolatedWorld', expect.anything());
+        guest.navigate();
+        expect(notifications(spa)).toEqual([
+            { ...identity, type: 'events', events: [selection] },
+            { ...identity, type: 'ended', reason: 'navigation' },
+        ]);
+        expect(notifications(other)).toEqual([]);
+    });
+
+    it.each(['electron', 'webview2'] as const)('round trips generation-bound removal and deletion events for %s', async engine => {
+        const spa = owner(1), other = owner(2);
+        const guest = await page(spa, engine);
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'));
+        guest.view.cdp.mockClear();
+        for (const [event, fields] of [[other.event, {}], [spa.event, { requestId: 'stale' }],
+            [spa.event, { sessionKey: 'other:w' }]] as const) {
+            await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, event, request('remove', { id: '1', ...fields }));
+        }
+        expect(guest.view.cdp).not.toHaveBeenCalled();
+        guest.selections.push({ type: 'delete', id: '1' });
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('remove', { id: '1' }));
+        expect(guest.view.cdp).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({
+            contextId: 7, expression: expect.stringContaining('"action":"remove"'),
+        }));
+        expect(notifications(spa)).toEqual([{ ...identity, type: 'events', events: [{ type: 'delete', id: '1' }] }]);
+        expect(notifications(other)).toEqual([]);
+    });
+
+    it('refuses all annotation actions from guests, subframes, unregistered and wrong-source windows', () => {
+        const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
+        const guest = { id: 3, mainFrame: {} };
+        const unregistered = { id: 4, mainFrame: {}, getURL: () => 'http://localhost:4000/' };
+        mocks.windows.set(unregistered, { webContents: unregistered, isDestroyed: () => false });
+        for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} },
+            { sender: guest, senderFrame: guest.mainFrame }, { sender: unregistered, senderFrame: unregistered.mainFrame }]) {
+            for (const command of [request('start'), request('stop'), request('remove', { id: '1' }), { action: 'policy', sessionKey: identity.sessionKey, enabled: false }]) {
+                expect(() => invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, event, command)).toThrow('registered SPA main frame');
+            }
+        }
+    });
+
+    it('keeps policy scoped to the calling window and concrete workspace, with immediate teardown', async () => {
+        const spa = owner(1), other = owner(2);
+        await page(spa);
+        await page(other);
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, { action: 'policy', sessionKey: 'different-clone:w', enabled: false });
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'));
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, other.event, request('start'));
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, { action: 'policy', sessionKey: identity.sessionKey, enabled: false });
+        expect(notifications(spa)).toEqual([{ ...identity, type: 'ended', reason: 'stop' }]);
+        expect(notifications(other)).toEqual([]);
+        await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start', { requestId: 'retry' }))).rejects.toThrow('disabled');
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, { action: 'policy', sessionKey: identity.sessionKey, enabled: true });
+        expect(await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start', { requestId: 'retry' }))).toBe(true);
+    });
+
+    it('rejects cross-owner and wrong-session starts through manager admission', async () => {
+        const spa = owner(1), other = owner(2);
+        const { view } = await page(spa);
+        await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, other.event, request('start'))).rejects.toThrow('not found');
+        await expect(invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start', { sessionKey: 'other-clone:w' }))).rejects.toThrow('another workspace');
+        expect(view.cdp).not.toHaveBeenCalled();
+    });
+
+    it.each(['reload', 'crash', 'close'] as const)('revokes pending-start leases before %s cleanup', async lifecycle => {
+        const spa = owner(1);
+        const { view } = await page(spa);
+        let ready!: () => void;
+        view.waitForControlReady = () => new Promise<void>(resolve => { ready = resolve; });
+        const starting = invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'));
+        await vi.waitFor(() => expect(ready).toBeTypeOf('function'));
+        if (lifecycle === 'reload') spa.contents.emit('did-start-navigation', {}, 'http://localhost:4000/', false, true);
+        if (lifecycle === 'crash') spa.contents.emit('render-process-gone');
+        if (lifecycle === 'close') spa.window.emit('closed');
+        ready();
+        expect(await starting).toBe(false);
+        expect(notifications(spa)).toEqual([]);
+        expect(view.cdp).not.toHaveBeenCalled();
+    });
+
+    it.each(['source', 'frame'] as const)('does not deliver notifications to a changed SPA %s', async change => {
+        const spa = owner(1);
+        const guest = await page(spa);
+        await invoke(BROWSER_ANNOTATION_COMMAND_CHANNEL, spa.event, request('start'));
+        if (change === 'source') spa.contents.getURL = () => 'http://localhost:4000/foreign';
+        else spa.contents.mainFrame = {};
+        guest.navigate();
+        expect(notifications(spa)).toEqual([]);
     });
 });

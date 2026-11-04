@@ -20,6 +20,7 @@ import {
     findInFlightRalphTask,
     parseRalphAiSelection,
     recoverIterationPaths,
+    resolveRalphContinuationAiSelection,
 } from './ralph-route-utils';
 
 export interface RalphResumeRouteContext {
@@ -82,12 +83,8 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
 
             const recovered = await recoverIterationPaths(record, store, workspaceId);
             const { workingDirectory, folderPath } = recovered;
-            const provider = aiSelection.value.provider ?? recovered.provider;
-            const effortTier = aiSelection.value.effortTier;
-            const recoverConcreteAiSettings = effortTier === undefined;
-            const model = aiSelection.value.model ?? (recoverConcreteAiSettings ? recovered.model : undefined);
-            const reasoningEffort = aiSelection.value.reasoningEffort
-                ?? (recoverConcreteAiSettings ? recovered.reasoningEffort : undefined);
+            const { provider, model, reasoningEffort, effortTier, autoProviderRouting } =
+                resolveRalphContinuationAiSelection(aiSelection.value, recovered);
 
             const nowIso = new Date().toISOString();
             try {
@@ -117,7 +114,7 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 model,
                 reasoningEffort,
                 effortTier,
-                autoProviderRouting: aiSelection.value.autoProviderRouting,
+                autoProviderRouting,
                 humanInput: record.humanInputs?.find(input => input.iteration === record.currentIteration),
             });
 

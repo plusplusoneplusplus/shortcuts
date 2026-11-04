@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
 const {
@@ -41,7 +41,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-a
 // so it follows the workspace's clone. The adapter below keeps the existing
 // `fetchApiMock(path, opts)` assertions readable; `requestForWorkspaceMock`
 // additionally records the workspace id each call was routed with.
-vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<object>(),
     requestForWorkspace: requestForWorkspaceMock,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
@@ -60,6 +61,7 @@ import { NoteQuickAskLayer }
     from '../../../../src/server/spa/client/react/features/notes/editor/extensions/NoteQuickAskLayer';
 import type { QuickAskSelection }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/types';
+import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 /** A bounded selection: selected phrase + a ±window of note content, NOT the
  *  whole note (AC-02 grounding constraint). */
@@ -124,6 +126,7 @@ afterEach(() => {
     // Explicitly unmount so each component's document-level selection listeners
     // (and portaled pill/popover nodes) are torn down before the next test.
     cleanup();
+    registerCloneBaseUrls([]);
     vi.restoreAllMocks();
 });
 
@@ -134,6 +137,61 @@ async function raisePill() {
 }
 
 describe('NoteQuickAskLayer — AC-01 pill + input', () => {
+    it('revokes an answer when the same workspace moves to a different clone endpoint', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl: 'https://clone-a.example', serverId: 'server' }]);
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        render(<Harness />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const signal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        act(() => registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl: 'https://clone-b.example', serverId: 'server' }]));
+        expect(signal.aborted).toBe(true);
+        await act(async () => { answer({ answer: 'Superseded clone answer' }); });
+        expect(insertSidenoteRefMock).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
+    });
+
+    it('cancels the old workspace answer without writing it into the new editor', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        const { rerender } = render(<Harness workspaceId="workspace-a" />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const signal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        rerender(<Harness workspaceId="workspace-b" />);
+        expect(signal.aborted).toBe(true);
+        expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
+        await act(async () => { answer({ answer: 'Old workspace answer' }); });
+        expect(insertSidenoteRefMock).not.toHaveBeenCalled();
+        expect(updateSidenoteRefTurnsMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps the live editor write-time contract within the same workspace', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        const { rerender } = render(<Harness />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const nextEditor = { isDestroyed: false } as unknown as import('@tiptap/core').Editor;
+        rerender(<Harness editor={nextEditor} />);
+        await act(async () => { answer({ answer: 'Answer for live editor' }); });
+        expect(insertSidenoteRefMock).toHaveBeenCalledWith(nextEditor, expect.anything(), expect.anything());
+    });
+
+    it('cancels in-flight answers on unmount rather than inserting a detached marker', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        const { unmount } = render(<Harness />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const signal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        unmount();
+        expect(signal.aborted).toBe(true);
+        await act(async () => { answer({ answer: 'Detached answer' }); });
+        expect(insertSidenoteRefMock).not.toHaveBeenCalled();
+    });
+
     it('raises the ✨ Ask AI pill on a WYSIWYG text selection', async () => {
         render(<Harness />);
         await raisePill();

@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
 const { getSelectionMock, fetchApiMock, requestForWorkspaceMock, enabledMock, geomMock } = vi.hoisted(() => ({
@@ -30,7 +30,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-a
 // so it follows the workspace's clone. The adapter below keeps the existing
 // `fetchApiMock(path, opts)` assertions readable; `requestForWorkspaceMock`
 // additionally records the workspace id each call was routed with.
-vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<object>(),
     requestForWorkspace: requestForWorkspaceMock,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
@@ -44,6 +45,7 @@ import { PdfQuickAskLayer }
     from '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfQuickAskLayer';
 import type { QuickAskSelection }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/types';
+import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const SELECTION: QuickAskSelection = {
     turnIndex: 0,
@@ -103,6 +105,7 @@ afterEach(() => {
     // (and portaled pill/popover nodes) are torn down before the next test —
     // otherwise a leftover live listener re-raises a pill on the next mouseUp.
     cleanup();
+    registerCloneBaseUrls([]);
     vi.restoreAllMocks();
 });
 
@@ -113,6 +116,68 @@ async function raisePill() {
 }
 
 describe('PdfQuickAskLayer — AC-01 pill + Cmd/Ctrl+J', () => {
+    it('revokes pending persistence when the same workspace clone endpoint changes', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl: 'https://clone-a.example', serverId: 'server' }]);
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        render(<Harness pdfUrl="paper.pdf" notePath="paper.md" />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const signal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        act(() => registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl: 'https://clone-b.example', serverId: 'server' }]));
+        expect(signal.aborted).toBe(true);
+        await act(async () => { answer({ answer: 'Superseded clone answer' }); });
+        expect(fetchApiMock).toHaveBeenCalledOnce();
+        expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
+    });
+
+    it('drops old-owner answers and persistence when the workspace changes', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        const { rerender } = render(<Harness workspaceId="workspace-a" pdfUrl="paper.pdf" notePath="paper.md" />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const signal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        rerender(<Harness workspaceId="workspace-b" pdfUrl="paper.pdf" notePath="paper.md" />);
+        expect(signal.aborted).toBe(true);
+        expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
+        await act(async () => { answer({ answer: 'Old owner answer' }); });
+        expect(fetchApiMock).toHaveBeenCalledOnce();
+    });
+
+    it('preserves write-time note path/root getters when the current paper remains mounted', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        fetchApiMock.mockResolvedValueOnce({ annotation: { id: 'annotation' } });
+        const { rerender } = render(<Harness pdfUrl="paper.pdf" notePath="first.md" noteRoot="first-root" />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        rerender(<Harness pdfUrl="paper.pdf" notePath="current.md" noteRoot="current-root" />);
+        await act(async () => { answer({ answer: 'Paper answer' }); });
+        expect(JSON.parse(fetchApiMock.mock.calls[1][1].body)).toMatchObject({ path: 'current.md', root: 'current-root' });
+    });
+
+    it('cancels pending answers when the PDF changes or the layer unmounts', async () => {
+        let answer!: (value: { answer: string }) => void;
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        const { rerender, unmount } = render(<Harness pdfUrl="first.pdf" notePath="paper.md" />);
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const firstSignal = fetchApiMock.mock.calls[0][1].signal as AbortSignal;
+        rerender(<Harness pdfUrl="second.pdf" notePath="paper.md" />);
+        expect(firstSignal.aborted).toBe(true);
+        await act(async () => { answer({ answer: 'First PDF answer' }); });
+        expect(fetchApiMock).toHaveBeenCalledOnce();
+        fetchApiMock.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        const secondSignal = fetchApiMock.mock.calls[1][1].signal as AbortSignal;
+        unmount();
+        expect(secondSignal.aborted).toBe(true);
+        await act(async () => { answer({ answer: 'Detached PDF answer' }); });
+        expect(fetchApiMock).toHaveBeenCalledTimes(2);
+    });
+
     it('raises the ✨ Ask AI pill on a text-layer selection', async () => {
         render(<Harness />);
         await raisePill();

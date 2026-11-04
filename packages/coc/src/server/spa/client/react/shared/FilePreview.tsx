@@ -9,6 +9,7 @@
 
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
+import { escapeHtml } from '../utils/format';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
 import { Spinner } from '../ui/Spinner';
@@ -63,14 +64,6 @@ function isMarkdownFile(fileName: string, language: string): boolean {
     if (MARKDOWN_EXTENSIONS.has(language)) return true;
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     return MARKDOWN_EXTENSIONS.has(ext);
-}
-
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 function isMobile(): boolean {

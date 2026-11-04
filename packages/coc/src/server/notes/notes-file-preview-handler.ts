@@ -15,11 +15,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
-
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
-}
+import { getNotesRoot } from './notes-paths';
 
 const MAX_PREVIEW_BYTES = 4096;
 

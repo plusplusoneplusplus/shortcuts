@@ -2,16 +2,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
 import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({
     list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(), testGate: vi.fn(), resumeGate: vi.fn(),
     connect: vi.fn(), request: vi.fn(), scrubGet: vi.fn(), scrubStart: vi.fn(), scrubUpdate: vi.fn(),
-    width: 800, refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
+    width: 800, widthRefs: [] as { current: HTMLElement | null }[], refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
     tierReads: [] as unknown[][], tiersLoading: false,
     tiers: {} as Record<string, Record<string, { model: string; reasoningEffort: string; source: 'config' | 'default' }>>,
 }));
-vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({ useContainerWidth: () => ({ width: mock.width }) }));
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
+    useContainerWidth: (ref: { current: HTMLElement | null }) => { mock.widthRefs.push(ref); return { width: mock.width }; },
+}));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; },
     useCloneBaseUrl: () => mock.route.baseUrl,
@@ -53,7 +57,14 @@ function deferred<T>() {
 function view(ownerOverride = owner) {
     return render(<SentinelRefrains owner={ownerOverride} items={[]} onFollowLink={follow} />);
 }
+async function selectDetails(name = 'Daily review') {
+    fireEvent.click(await screen.findByRole('button', { name: `Show details for ${name}` }));
+    return screen.getByRole('region', { name: `Refrain details for ${name}` });
+}
 async function openActions() {
+    if (!screen.queryAllByLabelText(/^More actions for/).length) {
+        fireEvent.click((await screen.findAllByRole('button', { name: /^Show details for/ }))[0]);
+    }
     for (const summary of await screen.findAllByLabelText(/^More actions for/)) {
         if (!(summary.parentElement as HTMLDetailsElement).open) fireEvent.click(summary);
     }
@@ -69,6 +80,7 @@ beforeEach(() => {
     mock.scrubUpdate.mockReset().mockResolvedValue({});
     mock.route = { kind: 'local' };
     mock.width = 800;
+    mock.widthRefs.length = 0;
     mock.refs.length = 0;
     mock.tierReads.length = 0;
     mock.tiersLoading = false;
@@ -96,6 +108,11 @@ describe('Sentinel Refrains', () => {
         mock.list.mockResolvedValue({ jobs: [job({ enabled: false, runs: [run({ status: 'failed', error })] })] });
         view();
         await screen.findByText('Paused');
+        const card = screen.getByRole('article', { name: 'Daily review' });
+        expect(within(card).getByText('Last run #1: failed')).toBeVisible();
+        expect(within(card).queryByText(error)).toBeNull();
+        expect(card.querySelector('summary')).toBeNull();
+        await selectDetails();
         expect(screen.getByRole('button', { name: 'Run now' })).toBeVisible();
         expect(screen.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
         expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
@@ -106,9 +123,7 @@ describe('Sentinel Refrains', () => {
         fireEvent.keyDown(screen.getByRole('button', { name: 'Edit' }), { key: 'Escape' });
         expect(summary).toHaveFocus();
         expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
-        const full = screen.getByLabelText('Full error');
-        expect(full).not.toBeVisible();
-        fireEvent.click(screen.getByLabelText('Last run #1: failed. Show full error'));
+        const full = screen.getByRole('region', { name: 'Error for run #1' });
         expect(full).toBeVisible();
         expect(full.textContent).toBe(error);
         expect(full).toHaveAttribute('tabindex', '0');
@@ -122,7 +137,7 @@ describe('Sentinel Refrains', () => {
         applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: refrains, sentinelTodoScrubberEnabled: coda });
         view();
         if (refrains) await screen.findByText(/No refrains yet/);
-        if (coda) await screen.findByRole('button', { name: 'Run now' });
+        if (coda) fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
         expect(!!screen.queryByRole('button', { name: 'About Refrains' })).toBe(refrains);
         expect(!!screen.queryByRole('button', { name: 'About Coda' })).toBe(coda);
         if (refrains) {
@@ -171,6 +186,7 @@ describe('Sentinel Refrains', () => {
     it('keeps the existing Scrubber strip and makes no jobs reads with the flag off', async () => {
         applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true });
         view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
         await screen.findByRole('button', { name: 'Run now' });
         expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
         expect(mock.list).not.toHaveBeenCalled();
@@ -185,6 +201,7 @@ describe('Sentinel Refrains', () => {
         const gated = job({ cron: '0 * * * *', gateScript: 'return [];' });
         mock.list.mockResolvedValue({ jobs: [gated] });
         view();
+        await selectDetails();
         const button = await screen.findByRole('button', { name: 'Run now' });
         mock.start.mockResolvedValueOnce(run({ status: 'skipped', skipReason: 'gate-empty' }));
         mock.list.mockResolvedValue({ jobs: [{ ...gated, runs: [run({ status: 'skipped', skipReason: 'gate-empty' })] }] });
@@ -226,9 +243,15 @@ describe('Sentinel Refrains', () => {
         expect(within(builtIn).queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(within(builtIn).queryByRole('button', { name: 'Edit' })).toBeNull();
         expect(section.querySelector('section')).toBe(screen.getByTestId('sentinel-coda-strip'));
-        fireEvent.click(within(builtIn).getByRole('button', { name: 'Run now' }));
+        const card = screen.getByTestId('sentinel-coda-strip');
+        expect(within(card).getAllByRole('button')).toHaveLength(1);
+        fireEvent.click(within(card).getByRole('button', { name: 'Show details for Coda' }));
+        const detail = screen.getByTestId('sentinel-coda-details');
+        expect(card.contains(detail)).toBe(false);
+        fireEvent.click(within(detail).getByRole('button', { name: 'Run now' }));
         await waitFor(() => expect(mock.scrubStart).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {}));
-        fireEvent.click(within(builtIn).getByRole('button', { name: 'Pause' }));
+        await waitFor(() => expect(within(detail).getByRole('button', { name: 'Pause' })).not.toBeDisabled());
+        fireEvent.click(within(detail).getByRole('button', { name: 'Pause' }));
         await waitFor(() => expect(mock.scrubUpdate).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {
             enabled: false, cron: '0 9 * * *', expectedRevision: 2,
         }));
@@ -386,6 +409,7 @@ describe('Sentinel Refrains', () => {
         mock.start.mockReturnValue(pending.promise);
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
+        await selectDetails();
         const button = await screen.findByRole('button', { name: 'Run now' });
         fireEvent.click(button); fireEvent.click(button);
         expect(mock.start).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1');
@@ -402,6 +426,7 @@ describe('Sentinel Refrains', () => {
     it('pauses/resumes a job without starting it and deletes only after confirmation', async () => {
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
+        await selectDetails();
         fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
         await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', { enabled: false, expectedRevision: 2 }));
         await openActions();
@@ -415,6 +440,7 @@ describe('Sentinel Refrains', () => {
     it('holds admission until the post-mutation reload settles', async () => {
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
+        await selectDetails();
         const button = await screen.findByRole('button', { name: 'Run now' });
         const refresh = deferred<{ jobs: SentinelRefrain[] }>();
         mock.list.mockReturnValue(refresh.promise);
@@ -445,9 +471,10 @@ describe('Sentinel Refrains', () => {
             run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
         ] })] });
         render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+        await selectDetails();
         fireEvent.click(await screen.findByText('History (2)'));
         expect(screen.getByLabelText('Select run #2: skipped: overlap (schedule)')).toBeVisible();
-        expect(screen.queryByText('Finished')).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Run details for Daily review' })).toBeNull();
         fireEvent.click(screen.getByLabelText('Select run #1: completed (manual)'));
         const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
         expect(within(detail).getByText('Finished')).toBeVisible();
@@ -469,14 +496,15 @@ describe('Sentinel Refrains', () => {
             run({ id: 'r2', runNumber: 2, status: 'skipped', skipReason: 'gate-unavailable', createdAt }),
         ] })] });
         render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:group-a' }} items={[]} onFollowLink={follow} />);
+        await selectDetails();
         const history = await screen.findByText('History (3)');
         fireEvent.click(history);
-        await waitFor(() => expect(screen.queryByLabelText('Last run #3: failed. Show full error')).toBeNull());
+        await waitFor(() => expect(screen.queryByText('Last run #3: failed')).toBeNull());
         const list = screen.getByRole('list', { name: 'Run history for Daily review' });
         expect(within(list).getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Run #3', 'Run #2', 'Run #1']);
         expect(within(list).getByLabelText(`Finished: ${new Date(finishedAt).toLocaleString()}`)).toBeVisible();
         expect(within(list).getByLabelText('Duration: 112.1s')).toBeVisible();
-        expect(screen.queryByText(createdAt)).toBeNull();
+        expect(within(list).queryByText(createdAt)).toBeNull();
         const failed = within(list).getByLabelText('Select run #3: failed (manual)');
         fireEvent.click(failed);
         const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
@@ -490,14 +518,15 @@ describe('Sentinel Refrains', () => {
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=3&entry=run');
         fireEvent.keyDown(error, { key: 'Escape' });
         await waitFor(() => expect(failed).toHaveFocus());
-        expect(screen.queryByRole('region', { name: 'Error for run #3' })).toBeNull();
+        expect(screen.getByRole('region', { name: 'Refrain details for Daily review' })).toBeVisible();
+        expect(failed).toHaveAttribute('aria-pressed', 'false');
         const skipped = within(list).getByLabelText('Select run #2: skipped: gate unavailable (tool scripting off) (manual)');
         fireEvent.click(skipped);
         expect(within(detail).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
         expect(history.parentElement).toHaveAttribute('open');
-        expect(screen.getByText(/copilot \/ medium effort tier/)).toHaveTextContent('Next');
+        expect(within(screen.getByRole('article', { name: 'Daily review' })).getByText(/copilot \/ medium effort tier/)).toHaveTextContent('Next');
         fireEvent.click(history);
-        await screen.findByLabelText('Last run #3: failed. Show full error');
+        await screen.findByText('Last run #3: failed');
         for (const mutation of [mock.start, mock.cancel, mock.update, mock.delete, mock.testGate, mock.resumeGate]) expect(mutation).not.toHaveBeenCalled();
     });
     it.each(['queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'skipped'] as const)(
@@ -505,6 +534,7 @@ describe('Sentinel Refrains', () => {
             const createdAt = '2026-10-28T08:00:00Z';
             mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status, createdAt })] })] });
             view();
+            await selectDetails();
             fireEvent.click(await screen.findByText('History (1)'));
             const list = screen.getByRole('list', { name: 'Run history for Daily review' });
             expect(within(list).getByText(status, { exact: true })).toBeVisible();
@@ -520,6 +550,7 @@ describe('Sentinel Refrains', () => {
     it('keeps active status visible alongside history and an empty history accessible without More', async () => {
         mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ status: 'queued' }) })] });
         view();
+        await selectDetails();
         const history = await screen.findByText('History (0)');
         expect(history).toBeVisible();
         expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
@@ -532,6 +563,7 @@ describe('Sentinel Refrains', () => {
     it('uses To-do arrow/Home/End focus navigation without selecting until activation', async () => {
         mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ id: 'r2', runNumber: 2 }), run()] })] });
         view();
+        await selectDetails();
         fireEvent.click(await screen.findByText('History (2)'));
         const buttons = within(screen.getByRole('list', { name: 'Run history for Daily review' })).getAllByRole('button');
         buttons[0].focus();
@@ -551,6 +583,7 @@ describe('Sentinel Refrains', () => {
         mock.width = 280;
         mock.list.mockResolvedValue({ jobs: [job({ runs: [run()] })] });
         const page = view();
+        await selectDetails();
         fireEvent.click(await screen.findByText('History (1)'));
         const list = screen.getByRole('list', { name: 'Run history for Daily review' });
         const button = within(list).getByRole('button');
@@ -562,8 +595,9 @@ describe('Sentinel Refrains', () => {
         fireEvent.click(within(detail).getByRole('button', { name: 'Back to runs' }));
         await waitFor(() => expect(button).toHaveFocus());
         expect(list).toBeVisible();
-        expect(button).toHaveAttribute('aria-pressed', 'true');
-        expect(detail).not.toBeVisible();
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+        expect(detail).toHaveAttribute('aria-label', 'Refrain details for Daily review');
+        expect(detail).toBeVisible();
         fireEvent.click(button);
         mock.width = 800;
         page.rerender(<SentinelRefrains owner={owner} items={[]} onFollowLink={follow} />);
@@ -583,6 +617,7 @@ describe('Sentinel Refrains', () => {
         const first = run({ id: 'r1', status: 'failed', error: 'First error' });
         mock.list.mockResolvedValue({ jobs: [job({ runs: [first] })] });
         view();
+        await selectDetails();
         fireEvent.click(await screen.findByText('History (1)'));
         fireEvent.click(screen.getByLabelText('Select run #1: failed (manual)'));
         const options = mock.connect.mock.calls[0][0];
@@ -597,23 +632,30 @@ describe('Sentinel Refrains', () => {
         await screen.findByText('This run is no longer in retained history. Select another run.');
         expect(screen.getByLabelText('Select run #2: completed (manual)')).toHaveAttribute('aria-pressed', 'false');
         expect(screen.queryByRole('region', { name: 'Error for run #1' })).toBeNull();
+        expect(screen.getByRole('region', { name: 'Run details for Daily review' })).toBeVisible();
+        expect(screen.queryByRole('heading', { name: 'Latest run #2: completed' })).toBeNull();
     });
     it.each(['workspace', 'process', 'server'] as const)('resets run selection when the %s owner changes', async change => {
         mock.route = { kind: 'remote', baseUrl: 'https://owner.test' };
         mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'failed', error: 'Owner error' })] })] });
         const own = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
         const page = view(own);
+        await selectDetails();
         fireEvent.click(await screen.findByText('History (1)'));
         fireEvent.click(screen.getByLabelText('Select run #1: failed (manual)'));
         const next = change === 'workspace' ? { ...own, ownerWorkspaceId: 'ws-b', ownerRoutingRef: 'remote:server-a:ws-b' }
             : change === 'process' ? { ...own, processId: 'queue_other' } : { ...own, ownerRoutingRef: 'remote:server-b:ws-a' };
         page.rerender(<SentinelRefrains owner={next} items={[]} onFollowLink={follow} />);
-        const history = await screen.findByText('History (1)');
+        await screen.findByRole('button', { name: 'Show details for Daily review' });
+        expect(screen.queryByRole('group', { name: 'Actions for Daily review' })).toBeNull();
+        expect(screen.queryByText('History (1)')).toBeNull();
+        await selectDetails();
+        const history = screen.getByText('History (1)');
         expect(history.parentElement).not.toHaveAttribute('open');
         fireEvent.click(history);
         expect(screen.getByLabelText('Select run #1: failed (manual)')).toHaveAttribute('aria-pressed', 'false');
-        expect(screen.getByText('Select a run to view its details.')).toBeVisible();
-        expect(screen.queryByRole('region', { name: 'Error for run #1' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Run details for Daily review' })).toBeNull();
+        expect(screen.getByRole('region', { name: 'Refrain details for Daily review' })).toBeVisible();
     });
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
@@ -628,6 +670,7 @@ describe('Sentinel Refrains', () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true } });
         view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
         await screen.findByRole('button', { name: 'Run now' });
         expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
         expect(mock.list).not.toHaveBeenCalled();
@@ -637,6 +680,7 @@ describe('Sentinel Refrains', () => {
         const page = view();
         const start = deferred<SentinelRefrainRun>();
         mock.start.mockReturnValue(start.promise);
+        await selectDetails();
         fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
         mock.list.mockResolvedValue({ jobs: [] });
         page.rerender(<SentinelRefrains owner={{ ...owner, processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
@@ -718,11 +762,11 @@ describe('Sentinel Refrains', () => {
         it('shows an active gate with its last result and no gate controls for ungated jobs', async () => {
             mock.list.mockResolvedValue({ jobs: [gated({ gateLastResult: '{"items":[1]}' }), job({ id: 'j2', name: 'Plain' })] });
             view();
-            const card = await screen.findByRole('article', { name: 'Daily review' });
-            expect(within(card).getByText('Gate active')).toBeInTheDocument();
-            expect(within(card).getByText('{"items":[1]}')).toBeInTheDocument();
-            expect(within(card).queryByRole('button', { name: 'Resume gate' })).toBeNull();
-            const plain = screen.getByRole('article', { name: 'Plain' });
+            const detail = await selectDetails();
+            expect(within(detail).getByText('Gate active')).toBeInTheDocument();
+            expect(within(detail).getByText('{"items":[1]}')).toBeInTheDocument();
+            expect(within(detail).queryByRole('button', { name: 'Resume gate' })).toBeNull();
+            const plain = await selectDetails('Plain');
             expect(within(plain).queryByTestId('sentinel-refrain-gate')).toBeNull();
             expect(within(plain).queryByRole('button', { name: 'Test gate' })).toBeNull();
         });
@@ -730,6 +774,7 @@ describe('Sentinel Refrains', () => {
             const long = JSON.stringify({ items: Array.from({ length: 80 }, (_, i) => i) });
             mock.list.mockResolvedValue({ jobs: [gated({ gateLastResult: long })] });
             view();
+            await selectDetails();
             const line = await screen.findByText(/Last gate result/);
             expect(line).toHaveAttribute('title', long);
             expect(line.textContent).toContain('…');
@@ -740,6 +785,7 @@ describe('Sentinel Refrains', () => {
             const pending = deferred<SentinelRefrainGateTest>();
             mock.testGate.mockReturnValue(pending.promise);
             view();
+            await selectDetails();
             fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
             expect(mock.testGate).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1', { signal: expect.any(AbortSignal) });
             expect(screen.getByRole('button', { name: 'Testing gate...' })).toBeDisabled();
@@ -759,6 +805,7 @@ describe('Sentinel Refrains', () => {
             mock.list.mockResolvedValue({ jobs: [gated()] });
             mock.testGate.mockResolvedValue({ ok: false, error: 'Gate script exceeded its 60-second deadline' });
             view();
+            await selectDetails();
             fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
             expect(await screen.findByRole('alert')).toHaveTextContent('Gate test failed: Gate script exceeded its 60-second deadline');
             mock.testGate.mockRejectedValue(Object.assign(new Error('Gate scripts need tool scripting (features.toolScripting)'), { status: 409 }));
@@ -771,14 +818,14 @@ describe('Sentinel Refrains', () => {
                 gateLastError: { message: 'boom', at: '2026-10-18T12:00:00Z' } })] });
             mock.testGate.mockResolvedValue({ ok: true, result: 'null', empty: true });
             view();
-            const card = await screen.findByRole('article', { name: 'Daily review' });
-            expect(within(card).getByText(/Gate paused after 5 failures in a row/)).toBeInTheDocument();
-            expect(within(card).getByText(/Last gate error/)).toHaveTextContent('boom');
-            fireEvent.click(within(card).getByRole('button', { name: 'Test gate' }));
+            const detail = await selectDetails();
+            expect(within(detail).getByText(/Gate paused after 5 failures in a row/)).toBeInTheDocument();
+            expect(within(detail).getByText(/Last gate error/)).toHaveTextContent('boom');
+            fireEvent.click(within(detail).getByRole('button', { name: 'Test gate' }));
             await screen.findByText(/a tick would skip/);
             expect(mock.resumeGate).not.toHaveBeenCalled();
             mock.list.mockResolvedValue({ jobs: [gated({ gateLastError: { message: 'boom', at: '2026-10-18T12:00:00Z' } })] });
-            fireEvent.click(within(card).getByRole('button', { name: 'Resume gate' }));
+            fireEvent.click(within(detail).getByRole('button', { name: 'Resume gate' }));
             await waitFor(() => expect(mock.resumeGate).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1'));
             await screen.findByText('Gate active');
             expect(screen.queryByRole('button', { name: 'Resume gate' })).toBeNull();
@@ -787,6 +834,7 @@ describe('Sentinel Refrains', () => {
         it('shows the failure streak on an active gate', async () => {
             mock.list.mockResolvedValue({ jobs: [gated({ gateConsecutiveFailures: 2, gateLastError: { message: 'bad JSON', at: '2026-10-18T12:00:00Z' } })] });
             view();
+            await selectDetails();
             expect(await screen.findByText('Gate active · 2 failed in a row')).toBeInTheDocument();
             expect(screen.getByText(/Last gate error/)).toHaveTextContent('bad JSON');
         });
@@ -795,6 +843,7 @@ describe('Sentinel Refrains', () => {
             const first = deferred<SentinelRefrainGateTest>();
             mock.testGate.mockReturnValue(first.promise);
             const page = view();
+            await selectDetails();
             fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
             const signal = mock.testGate.mock.calls[0][3].signal as AbortSignal;
             const options = mock.connect.mock.calls[0][0];
@@ -914,12 +963,14 @@ describe('Sentinel Refrains', () => {
             mock.list.mockResolvedValue({ jobs: [job({ id: 'j1', name: 'Tiered', model: undefined, effortTier: 'low' }),
                 job({ id: 'j2', name: 'Legacy', model: 'cp-high', effort: 'high' })] });
             view();
+            const tiered = await selectDetails('Tiered');
             await openActions();
-            fireEvent.click(within(await screen.findByRole('article', { name: 'Tiered' })).getByRole('button', { name: 'Edit' }));
+            fireEvent.click(within(tiered).getByRole('button', { name: 'Edit' }));
             expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Low');
             fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+            const legacy = await selectDetails('Legacy');
             await openActions();
-            fireEvent.click(within(screen.getByRole('article', { name: 'Legacy' })).getByRole('button', { name: 'Edit' }));
+            fireEvent.click(within(legacy).getByRole('button', { name: 'Edit' }));
             expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: High');
             fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
             await waitFor(() => expect(mock.update).toHaveBeenCalledTimes(1));
@@ -1036,6 +1087,73 @@ describe('Refrains section collapse under the dashboard stylesheet', () => {
     });
 });
 
+describe('Refrain detail layout under the automation stylesheet', () => {
+    let style: HTMLStyleElement;
+    beforeEach(() => {
+        style = document.createElement('style');
+        style.textContent = '[hidden]:where(:not([hidden="until-found"])) { display: none; }\n'
+            + readFileSync(new NodeURL('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelAutomationCard.css', import.meta.url), 'utf8');
+        document.head.append(style);
+        mock.width = 280;
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'completed' })] })] });
+    });
+    afterEach(() => style.remove());
+
+    it('wraps narrow detail actions without overriding hidden run lists or retained overview details', async () => {
+        view();
+        const detail = await selectDetails();
+        const toolbar = within(detail).getByRole('group', { name: 'Actions for Daily review' });
+        expect(getComputedStyle(toolbar).display).toBe('flex');
+        expect(getComputedStyle(toolbar).flexWrap).toBe('wrap');
+        expect(getComputedStyle(toolbar).minWidth).toBe('0');
+        expect(getComputedStyle(detail).minWidth).toBe('0');
+        for (const child of toolbar.children) expect(getComputedStyle(child).maxWidth).toBe('100%');
+        fireEvent.click(within(detail).getByText('History (1)'));
+        const list = within(detail).getByRole('list', { name: 'Run history for Daily review' });
+        const row = within(list).getByRole('button');
+        row.focus();
+        fireEvent.click(row);
+        expect(list).toHaveAttribute('hidden');
+        expect(getComputedStyle(list).display).toBe('none');
+        expect(getComputedStyle(detail).display).not.toBe('none');
+        expect(within(detail).getByRole('button', { name: 'Run now' })).toBeVisible();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Back to runs' }));
+        await waitFor(() => expect(row).toHaveFocus());
+        expect(getComputedStyle(list).display).not.toBe('none');
+        fireEvent.click(within(detail).getByRole('button', { name: 'Back to list' }));
+        expect(detail).toHaveAttribute('hidden');
+        expect(getComputedStyle(detail).display).toBe('none');
+    });
+
+    it('gives portaled detail buttons and disclosure summaries narrow touch targets and keyboard focus outlines', async () => {
+        const calls: string[][] = [];
+        render(<DetailHost wide={false} calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const detail = await selectDetails();
+        const controls = [
+            within(detail).getByRole('button', { name: 'Run now' }),
+            within(detail).getByLabelText('More actions for Daily review'),
+            within(detail).getByText('History (1)'),
+        ];
+        const rules = Array.from(style.sheet!.cssRules);
+        const baseRules = rules.filter(rule => rule.type === CSSRule.STYLE_RULE) as CSSStyleRule[];
+        const touchRules = rules.filter(rule => rule.type === CSSRule.MEDIA_RULE)
+            .flatMap(rule => {
+                const media = rule as CSSMediaRule;
+                return /max-width:\s*767px/.test(media.media.mediaText) && /pointer:\s*coarse/.test(media.media.mediaText)
+                    ? Array.from(media.cssRules) as CSSStyleRule[] : [];
+            });
+        for (const control of controls) {
+            expect(baseRules.some(rule => rule.style.getPropertyValue('min-height') === '32px' && control.matches(rule.selectorText))).toBe(true);
+            expect(touchRules.some(rule => rule.style.getPropertyValue('min-height') === '44px' && control.matches(rule.selectorText))).toBe(true);
+            expect(baseRules.some(rule => rule.selectorText.includes(':focus-visible')
+                && control.matches(rule.selectorText.replaceAll(':focus-visible', ''))
+                && rule.style.getPropertyValue('outline') === '2px solid #0078d4'
+                && rule.style.getPropertyValue('outline-offset') === '1px')).toBe(true);
+        }
+        expect(screen.getByTestId('host-list').contains(detail)).toBe(false);
+    });
+});
+
 /** Mirrors UnifiedTodoTab's shared detail column: one active key, a portal target and narrow detail state. */
 function DetailHost({ wide = true, calls, children }: { wide?: boolean; calls: string[][]; children: ReactNode }) {
     const [target, setTarget] = useState<HTMLDivElement | null>(null);
@@ -1063,6 +1181,111 @@ describe('Refrain card details', () => {
         for (const mutation of [mock.create, mock.start, mock.update, mock.delete, mock.cancel, mock.testGate, mock.resumeGate,
             mock.scrubStart, mock.scrubUpdate]) expect(mutation).not.toHaveBeenCalled();
     };
+    it('keeps hosted cards selection-only and retains controls, gate and history in the same detail root for exact runs', async () => {
+        const calls: string[][] = [];
+        mock.list.mockResolvedValue({ jobs: [job({ cron: '0 * * * *', gateScript: 'return state;',
+            gateLastResult: '{"items":[1]}', runs: [run({ status: 'completed' })] })] });
+        render(<DetailHost calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const card = await screen.findByRole('article', { name: 'Daily review' });
+        const list = screen.getByTestId('host-list');
+        expect(within(card).getAllByRole('button')).toHaveLength(1);
+        expect(within(list).queryByRole('button', { name: /^(Run now|Pause|Edit|Delete|Test gate|Resume gate)$/ })).toBeNull();
+        expect(within(list).queryByLabelText(/^More actions for/)).toBeNull();
+        expect(within(list).queryByText(/^History \(/)).toBeNull();
+        expect(within(list).queryByTestId('sentinel-refrain-gate')).toBeNull();
+        expect(screen.getByTestId('host-target')).toBeEmptyDOMElement();
+        const detail = await selectDetails();
+        expect(within(detail).getByRole('group', { name: 'Actions for Daily review' })).toBeVisible();
+        expect(within(detail).getByRole('button', { name: 'Test gate' })).toBeVisible();
+        const history = within(detail).getByText('History (1)');
+        expect(history.parentElement).not.toHaveAttribute('open');
+        expect(within(detail).getAllByRole('link', { name: 'Open chat' })).toHaveLength(1);
+        fireEvent.click(history);
+        const row = within(detail).getByLabelText('Select run #1: completed (manual)');
+        row.focus();
+        fireEvent.click(row);
+        expect(screen.getByRole('region', { name: 'Run details for Daily review' })).toBe(detail);
+        expect(within(detail).getByRole('button', { name: 'Run now' })).toBeVisible();
+        expect(within(detail).getByTestId('sentinel-refrain-gate')).toBeVisible();
+        expect(within(detail).getByRole('list', { name: 'Run history for Daily review' })).toBeVisible();
+        expect(within(detail).getByRole('heading', { name: 'Run #1: completed' })).toBeVisible();
+        expect(within(card).getByRole('button')).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.keyDown(within(detail).getByRole('heading'), { key: 'Escape' });
+        await waitFor(() => expect(row).toHaveFocus());
+        expect(screen.getByRole('region', { name: 'Refrain details for Daily review' })).toBe(detail);
+        fireEvent.keyDown(within(detail).getByRole('heading', { name: 'Daily review' }), { key: 'Escape' });
+        await waitFor(() => expect(within(card).getByRole('button')).toHaveFocus());
+        expect(screen.getByTestId('host-target')).toBeEmptyDOMElement();
+        noMutations();
+    });
+    it.each(['Run now', 'Pause', 'Cancel', 'Test gate', 'Resume gate', 'Edit', 'Delete'] as const)(
+        'routes hosted %s actions to each newly selected refrain rather than the previous toolbar', async action => {
+            const calls: string[][] = [];
+            mock.testGate.mockResolvedValue({ ok: true, result: '[]', empty: true });
+            mock.list.mockResolvedValue({ jobs: [
+                job({ cron: '0 * * * *', gateScript: 'return [];', gatePaused: true, activeRun: action === 'Cancel' ? run() : undefined }),
+                job({ id: 'j2', name: 'Weekly sweep', cron: '0 * * * *', gateScript: 'return [];', gatePaused: true,
+                    activeRun: action === 'Cancel' ? run({ id: 'r2', runNumber: 2 }) : undefined }),
+            ] });
+            render(<DetailHost calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+            for (const [id, name] of [['j1', 'Daily review'], ['j2', 'Weekly sweep']]) {
+                const detail = await selectDetails(name);
+                expect(within(screen.getByTestId('host-target')).getAllByRole('group', { name: /^Actions for/ })).toHaveLength(1);
+                if (action === 'Edit' || action === 'Delete') await openActions();
+                fireEvent.click(within(detail).getByRole('button', { name: action, exact: true }));
+                const mutation = action === 'Run now' ? mock.start : action === 'Cancel' ? mock.cancel
+                    : action === 'Test gate' ? mock.testGate : action === 'Resume gate' ? mock.resumeGate
+                        : action === 'Delete' ? mock.delete : mock.update;
+                if (action === 'Edit') {
+                    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(name);
+                    fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
+                } else if (action === 'Delete') {
+                    expect(screen.getByRole('dialog')).toHaveTextContent(`Delete ${name}?`);
+                    fireEvent.click(screen.getByRole('button', { name: 'Delete refrain' }));
+                }
+                const extra = action === 'Cancel' ? [id === 'j1' ? 'r1' : 'r2']
+                    : action === 'Test gate' ? [{ signal: expect.any(AbortSignal) }]
+                        : action === 'Pause' || action === 'Edit' || action === 'Delete' ? [expect.objectContaining({ expectedRevision: 2 })] : [];
+                await waitFor(() => expect(mutation).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', id, ...extra));
+                await waitFor(() => expect(within(detail).getByRole('button', { name: 'Pause' })).not.toBeDisabled());
+                if (action === 'Edit' || action === 'Delete') await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            }
+        },
+    );
+    it.each(['workspace', 'process', 'server'] as const)(
+        'clears hosted controls, dialogs and pending gate results when the exact %s owner changes', async change => {
+            const calls: string[][] = [];
+            mock.route = { kind: 'remote', baseUrl: 'https://owner.test' };
+            const own = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
+            mock.list.mockResolvedValue({ jobs: [job({ gateScript: 'return state;' })] });
+            const gate = deferred<SentinelRefrainGateTest>();
+            mock.testGate.mockReturnValue(gate.promise);
+            const page = render(<DetailHost calls={calls}><SentinelRefrains owner={own} items={[]} onFollowLink={follow} /></DetailHost>);
+            await selectDetails();
+            fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
+            const signal = mock.testGate.mock.calls[0][3].signal as AbortSignal;
+            await openActions();
+            fireEvent.click(screen.getByRole('button', { name: 'Edit', exact: true }));
+            fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Unsaved owner draft' } });
+            const next = change === 'workspace' ? { ...own, ownerWorkspaceId: 'ws-b', ownerRoutingRef: 'remote:server-a:ws-b' }
+                : change === 'process' ? { ...own, processId: 'queue_other' } : { ...own, ownerRoutingRef: 'remote:server-b:ws-a' };
+            page.rerender(<DetailHost calls={calls}><SentinelRefrains owner={next} items={[]} onFollowLink={follow} /></DetailHost>);
+            await screen.findByRole('button', { name: 'Show details for Daily review' });
+            expect(signal.aborted).toBe(true);
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(screen.getByTestId('host-target')).toBeEmptyDOMElement();
+            expect(screen.queryByRole('group', { name: /^Actions for/ })).toBeNull();
+            await act(async () => gate.resolve({ ok: true, result: '{"stale-owner":true}', empty: false }));
+            const detail = await selectDetails();
+            expect(within(detail).queryByText('{"stale-owner":true}')).toBeNull();
+            expect(within(detail).getByRole('button', { name: 'Test gate' })).not.toBeDisabled();
+            await openActions();
+            fireEvent.click(within(detail).getByRole('button', { name: 'Edit', exact: true }));
+            expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Daily review');
+            expect(mock.testGate).toHaveBeenCalledTimes(1);
+            for (const mutation of [mock.create, mock.start, mock.update, mock.delete, mock.cancel, mock.resumeGate]) expect(mutation).not.toHaveBeenCalled();
+        },
+    );
     it('shows definition, schedule and status for a never-run refrain from the title', async () => {
         mock.list.mockResolvedValue({ jobs: [job({ cron: '0 14 * * *', nextRunAt: '2026-11-02T14:00:00Z', mode: 'autopilot', effortTier: 'medium' })] });
         view();
@@ -1070,6 +1293,7 @@ describe('Refrain card details', () => {
         const card = screen.getByRole('article', { name: 'Daily review' });
         expect(title).toHaveAttribute('aria-pressed', 'false');
         expect(card).toHaveAttribute('data-selected', 'false');
+        expect(mock.widthRefs.some(ref => ref.current === card)).toBe(true);
         expect(title.querySelector('button, a, input, select, textarea, summary')).toBeNull();
         fireEvent.click(title);
         const detail = screen.getByRole('region', { name: 'Refrain details for Daily review' });
@@ -1084,7 +1308,7 @@ describe('Refrain card details', () => {
         expect(within(detail).getByRole('region', { name: 'Instructions for Daily review' })).toHaveTextContent('Review the snapshot.');
         expect(within(detail).getByRole('heading', { name: 'No runs yet' })).toBeVisible();
         expect(within(detail).getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_job');
-        expect(screen.getByText('History (0)').parentElement).toHaveAttribute('open');
+        expect(screen.getByText('History (0)').parentElement).not.toHaveAttribute('open');
         noMutations();
     });
     it.each([
@@ -1123,6 +1347,7 @@ describe('Refrain card details', () => {
         mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'completed' })] })] });
         view();
         const card = await screen.findByRole('article', { name: 'Daily review' });
+        await selectDetails();
         fireEvent.click(screen.getByLabelText('More actions for Daily review'));
         fireEvent.click(screen.getByText('History (1)'));
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
@@ -1134,10 +1359,10 @@ describe('Refrain card details', () => {
         fireEvent.click(screen.getByRole('heading', { name: 'Run #1: completed' }));
         expect(screen.getByLabelText('Select run #1: completed (manual)')).toHaveAttribute('aria-pressed', 'true');
         const selection = vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'copilot' } as Selection);
-        fireEvent.click(screen.getByText(/copilot \/ test-model/));
+        fireEvent.click(within(card).getByText(/copilot \/ test-model/));
         expect(card).toHaveAttribute('data-selected', 'false');
         selection.mockRestore();
-        fireEvent.click(screen.getByText(/copilot \/ test-model/));
+        fireEvent.click(within(card).getByText(/copilot \/ test-model/));
         expect(card).toHaveAttribute('data-selected', 'true');
         expect(screen.getByLabelText('Select run #1: completed (manual)')).toHaveAttribute('aria-pressed', 'false');
         expect(mock.start).not.toHaveBeenCalled();
@@ -1150,6 +1375,7 @@ describe('Refrain card details', () => {
         title.focus();
         await user.keyboard('{Enter}');
         expect(title).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByText('History (2)'));
         fireEvent.click(screen.getByLabelText('Select run #1: completed (manual)'));
         expect(title).toHaveAttribute('aria-pressed', 'false');
         expect(screen.getByRole('heading', { name: 'Run #1: completed' })).toBeVisible();
@@ -1173,8 +1399,7 @@ describe('Refrain card details', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Show details for Daily review' }));
         const target = screen.getByTestId('host-target');
         const detail = within(target).getByRole('region', { name: 'Refrain details for Daily review' });
-        // Hosted details never need the history disclosure.
-        expect(within(screen.getByRole('article', { name: 'Daily review' })).getByText('History (0)').parentElement).not.toHaveAttribute('open');
+        expect(within(detail).getByText('History (0)').parentElement).not.toHaveAttribute('open');
         fireEvent.click(within(detail).getByText('Schedule'));
         fireEvent.click(within(detail).getByRole('heading', { name: 'Daily review' }));
         expect(calls).toEqual([['select', 'j1']]);

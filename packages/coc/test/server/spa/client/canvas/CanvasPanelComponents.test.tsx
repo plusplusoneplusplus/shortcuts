@@ -113,6 +113,26 @@ describe('CanvasSelectionToolbar', () => {
         expect(screen.getByTestId('canvas-panel-comment-compose').className).toContain('absolute');
     });
 
+    it('uses only the shared floating pill for Markdown selection actions', () => {
+        const attach = vi.fn();
+        const comment = vi.fn();
+        const props = { ...NO_SELECTION, floating: true, selection: 'selected text', position: { left: 10, top: 50, maxWidth: 140 }, onAskAi: attach, onStartComment: comment };
+        const { rerender } = render(<CanvasSelectionToolbar {...props} />);
+        const pill = screen.getByRole('group', { name: 'Selection actions' });
+        expect(pill.className).toContain('rounded-full');
+        expect(screen.queryByTestId('canvas-panel-selection-bar')).toBeNull();
+        expect(screen.queryByTestId('canvas-panel-ask-ai')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Attach to chat' }));
+        expect(attach).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+        expect(comment).toHaveBeenCalledOnce();
+        rerender(<CanvasSelectionToolbar {...props} visible={false} />);
+        expect(screen.queryByRole('group')).toBeNull();
+        rerender(<CanvasSelectionToolbar {...props} onAskAi={undefined} />);
+        expect(screen.queryByRole('button', { name: 'Attach to chat' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Add comment' })).toBeTruthy();
+    });
+
     it('submits the comment on Enter and disables Add for a blank draft', () => {
         const onSubmitComment = vi.fn();
         const { rerender } = render(<CanvasSelectionToolbar

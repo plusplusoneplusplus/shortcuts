@@ -18,6 +18,7 @@
  */
 
 import hljs from 'highlight.js';
+import { escapeHtml } from '../../../utils/format';
 import {
     BASE_CSS,
     HLJS_THEME_CSS,
@@ -29,15 +30,6 @@ import type {
     BuildCanvasHtmlDocumentResult,
     CanvasHtmlExportType,
 } from './types';
-
-/** Escape text for HTML text/attribute contexts (attrs are always double-quoted). */
-function escapeHtml(value: string | null | undefined): string {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 /**
  * Neutralize the only sequences that can terminate a raw-text `<script>`

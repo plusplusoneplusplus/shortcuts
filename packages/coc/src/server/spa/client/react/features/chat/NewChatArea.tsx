@@ -7,6 +7,11 @@
  * inline tool buttons, and the "Send" button.
  */
 
+import type { BrowserDemoOwner } from '../../shared/file-path/browser-bridge';
+import { BrowserAnnotationChips } from '../../shared/file-path/BrowserAnnotationChips';
+import { acknowledgeBrowserAnnotationChips, buildBrowserAnnotationAttachments, formatBrowserAnnotationChips,
+    getBrowserAnnotationChips, newChatBrowserAnnotationOwner, useBrowserAnnotationChips, usePublishBrowserAnnotationSend } from '../../shared/file-path/browser-annotation-chips';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SentinelTargetInput } from './SentinelTargetInput';
 import { validateSentinelTargetSend } from './sentinelTargetDiscovery';
@@ -218,6 +223,8 @@ export interface InitialChatComposerProps {
      * Omit to render nothing there.
      */
     accessoryAboveInput?: React.ReactNode;
+    /** Activity's exact workspace/server draft; other initial-composer adapters opt out. */
+    browserAnnotationOwner?: BrowserDemoOwner | null;
     /**
      * Optional pre-submit interceptor for the raw typed input. Called with the
      * trimmed text before any flush or submission; return true to signal the input
@@ -324,6 +331,8 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
         <InitialChatComposer
             workspaceId={workspaceId}
             sourceSelectionId={sourceSelectionId}
+            browserAnnotationOwner={workspaceId && routeId
+                ? newChatBrowserAnnotationOwner(scopedComposerOwner?.workspaceId ?? workspaceId, scopedComposerOwner?.selectionId ?? routeId) : null}
             newChatSeedDestinationId={sourceSelectionId ?? workspaceId}
             workspaceRoot={getSelectedWorkspaceRoot()}
             onBack={onBack}
@@ -356,8 +365,10 @@ export function InitialChatComposer({
     pendingPrefix,
     onClearPendingPrefix,
     accessoryAboveInput,
+    browserAnnotationOwner,
     interceptSubmit,
 }: InitialChatComposerProps) {
+    const annotationChips = useBrowserAnnotationChips(browserAnnotationOwner);
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
     // False until the editor has reported a caret, so a drop onto a composer
@@ -535,6 +546,9 @@ export function InitialChatComposer({
             }
         };
         const handleMouseDown = (event: MouseEvent) => {
+            // The provider menu is portaled to document.body; a press there is
+            // still inside the editor, and closing would drop the pick.
+            if ((event.target as Element | null)?.closest?.('[data-testid="agent-selector-menu"]')) return;
             if (settingsEditorRef.current && !settingsEditorRef.current.contains(event.target as Node)) {
                 closeEditor();
             }
@@ -919,10 +933,53 @@ export function InitialChatComposer({
         return () => submissionScope.active && location.hash === hash && navigationVersion.current === version;
     }
 
+    usePublishBrowserAnnotationSend(browserAnnotationOwner ?? null, async chip => {
+        if (!workspaceId || sending || sendInFlight.current || ralphDirectGoalDraft !== null
+            || selectedMode === 'ralph' || selectedMode === 'for-each' || selectedMode === 'map-reduce'
+            || (!sourceBaseUrl && !scopedComposerOwner && resolveCloneRoute(routeId).kind === 'unresolved-remote')) {
+            throw new Error('Sending is unavailable in this composer. The annotation remains queued.');
+        }
+        // This standalone launch leaves the draft and its destination in view.
+        // It must not invoke the post-submit callback that navigates away.
+        const isCurrent = captureSubmissionOwner();
+        sendInFlight.current = true;
+        setSending(true);
+        setError(null);
+        try {
+            const resolvedAi = resolveComposerAiSelection();
+            const context = mergeAutoProviderRoutingContext(resolvedAi);
+            await onSubmit({
+                mode: selectedMode,
+                prompt: formatBrowserAnnotationChips([chip]),
+                workingDirectory: getSelectedWorkspaceRoot(),
+                workspaceId,
+                attachments: buildBrowserAnnotationAttachments([chip], 0),
+                ...(context ? { context } : {}),
+                ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
+                ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
+                ...(resolvedAi.effortTier ? { config: { effortTier: resolvedAi.effortTier } } : {}),
+                ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(selectedMode) ? { chatStyle: selectedChatStyle } : {}),
+            });
+            // Acceptance consumes only this exact snapshot, even after unmount.
+            try { await acknowledgeBrowserAnnotationChips([chip]); }
+            catch (err) {
+                if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Message sent, but could not remove annotation pins.'));
+            }
+        } catch (err) {
+            if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
+            throw err;
+        } finally {
+            sendInFlight.current = false;
+            setSending(false);
+        }
+    });
+
     async function handleSend() {
+        const annotationSnapshot = getBrowserAnnotationChips(browserAnnotationOwner);
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
-        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending || sendInFlight.current) return;
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && annotationSnapshot.length === 0 && !hasPendingPrefixContent) || sending || sendInFlight.current) return;
         // Generic pre-submit command interception (e.g. the Notes /new and /clear
         // reset commands). When the adapter consumes the raw input as a local
         // command, clear only the typed text and its draft and skip submission —
@@ -973,7 +1030,8 @@ export function InitialChatComposer({
                 if (richTextRef.current?.getValue() !== originalDraft) throw new Error('The draft changed while checking targets. Review it and send again.');
             }
             const workspaceRoot = getSelectedWorkspaceRoot();
-            const attachmentPayload = toPayload();
+            const draftAttachments = toPayload();
+            const attachmentPayload = [...draftAttachments, ...buildBrowserAnnotationAttachments(annotationSnapshot, draftAttachments.length)];
             const parsed = slashCommands.parseAndExtract(trimmed);
             const { skills: extractedSkills, prompt: cleanedPrompt } = parsed;
             const promptAfterSkillExtraction = parsed.metaCommands?.includes('browser')
@@ -1026,7 +1084,8 @@ export function InitialChatComposer({
             // Pending prefix (e.g. Notes selected-text references) leads the
             // request body, ahead of any attached-context blocks and the typed
             // input, so its removable chips map to a deterministic prompt order.
-            const effectivePrompt = (pendingPrefix ?? '') + formatAttachedContext(contextItems) + basePrompt;
+            const effectivePrompt = [(pendingPrefix ?? '') + formatAttachedContext(contextItems) + basePrompt,
+                formatBrowserAnnotationChips(annotationSnapshot)].filter(Boolean).join('\n\n');
 
             const resolvedAi = resolveComposerAiSelection();
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
@@ -1044,6 +1103,10 @@ export function InitialChatComposer({
                 ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                 ...(config ? { config } : {}),
                 ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(mode) ? { chatStyle: selectedChatStyle } : {}),
+            });
+            // Acceptance consumes this exact snapshot even if navigation unmounted the composer.
+            void acknowledgeBrowserAnnotationChips(annotationSnapshot).catch(err => {
+                if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Message sent, but could not remove annotation pins.'));
             });
             if (!isCurrent()) return;
             await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
@@ -1596,6 +1659,7 @@ export function InitialChatComposer({
         !input.trim()
         && attachments.length === 0
         && attachedContext.items.length === 0
+        && annotationChips.length === 0
         && !hasPendingPrefixContent;
 
     return (
@@ -1695,6 +1759,7 @@ export function InitialChatComposer({
                         e.target.value = '';
                     }}
                 />
+                <BrowserAnnotationChips owner={browserAnnotationOwner ?? null} />
                 {accessoryAboveInput}
                 <div
                     data-testid="chat-input-stack"

@@ -10,6 +10,8 @@
  */
 
 import { shortenFilePath } from '../../../../shared';
+import { isDisplayImageDataUrl as isImageDataUrl } from '../../../../../../../core/image-data-url';
+export { isDisplayImageDataUrl as isImageDataUrl } from '../../../../../../../core/image-data-url';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import type { ToolCallVariant } from './ToolCallVariant';
 import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric, getSemanticShellMetric } from './toolKindUtils';
@@ -94,10 +96,6 @@ export function getAskUserQuestionSummary(args: Record<string, any>): string {
 
 export function shortenPath(p: string): string {
     return shortenFilePath(p);
-}
-
-export function isImageDataUrl(s: string): boolean {
-    return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
 }
 
 export function getToolSummary(toolName: string, args: any, rawArgs?: any): string {

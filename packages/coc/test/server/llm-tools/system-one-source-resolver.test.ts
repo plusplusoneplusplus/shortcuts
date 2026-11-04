@@ -94,10 +94,12 @@ describe('resolveSources', () => {
             expect(!result.ok && result.error.message).toContain('bad regex');
         });
 
-        it('rejects image data URL results as SOURCE_UNSUPPORTED', async () => {
-            const result = await resolve([{ tool: 'view' }], [entry('v1', 'view', { result: 'data:image/png;base64,AAAA' })]);
-            expect(!result.ok && result.error.error).toBe('SOURCE_UNSUPPORTED');
-        });
+        it.each(['data:image/png;base64,AAAA', 'data:application/pdf;base64,AAAA', 'data:text/plain;base64,'])(
+            'rejects base64 data URL result %j as SOURCE_UNSUPPORTED', async dataUrl => {
+                const result = await resolve([{ tool: 'view' }], [entry('v1', 'view', { result: dataUrl })]);
+                expect(!result.ok && result.error.error).toBe('SOURCE_UNSUPPORTED');
+            },
+        );
 
         it('matches MCP-prefixed tool names', async () => {
             const result = await resolve([{ tool: 'kusto_query' }], [entry('k1', 'mcp__coc_llm_tools__kusto_query')]);

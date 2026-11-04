@@ -36,24 +36,23 @@
  * source textarea (AC-01: no pill in source view).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { requestForWorkspace } from '../../../../repos/cloneRegistry';
+import { useCloneBaseUrl } from '../../../../repos/cloneRouting';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
-import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selection';
 import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection, QuickAskTurn } from '../../../chat/quick-ask/types';
 import { decodeQaTurns, QA_SIDENOTE_REF_CLASS, type QaTurn } from './sidenoteFootnote';
 import { deleteSidenoteRef, insertSidenoteRef, updateSidenoteRefTurns } from './sidenoteRefPlacement';
-
-/** Soft cap on turns per thread (AC-02): past this we stop accepting follow-ups
- * and show a small notice. Mirrors the server-side `MAX_HISTORY_TURNS`. */
-const MAX_TURNS = 10;
-
-/** One ordered prior Q/A turn sent as grounding history on a follow-up. */
-type HistoryTurn = { question?: string; answer: string };
+import {
+    MAX_QUICK_ASK_TURNS as MAX_TURNS, patchQuickAskTurn as patchTurn,
+    quickAskHistory as historyBefore, quickAskLabel as labelFor,
+    useDocumentQuickAskSelection, useDocumentQuickAskThread,
+    type QuickAskHistoryTurn as HistoryTurn,
+} from './useDocumentQuickAsk';
 
 export interface NoteQuickAskLayerProps {
     /** The WYSIWYG editor container whose selections should raise the Ask pill. */
@@ -81,11 +80,6 @@ function newRefId(): string {
     return `${rnd}${t}`;
 }
 
-function labelFor(selectedText: string): string {
-    const collapsed = selectedText.replace(/\s+/g, ' ').trim();
-    return collapsed.length <= 22 ? collapsed : collapsed.slice(0, 22).trimEnd() + '…';
-}
-
 /**
  * Legacy display-only quoted term for a chip without persisted anchor data.
  * Recover a short trailing slice of text immediately preceding the chip.
@@ -101,54 +95,19 @@ function phraseBeforeChip(chip: Element, max = 200): string {
     return acc.length > max ? '…' + acc.slice(-max) : acc;
 }
 
-interface OpenNote {
-    note: ClientSideNote;
-    position: { top: number; left: number };
-    /** Selection that produced this note, kept for retry + follow-up grounding. */
-    selection: QuickAskSelection;
-    /** The full multi-turn thread (AC-02). Turn 0 is the original ask. */
-    turns: QuickAskTurn[];
-}
-
-/** Immutably patch turn `turnIndex` of the open thread and sync the note-level
- * status/answer to the latest turn. No-op when the open note id doesn't match
- * (a stale response after the popover was closed/switched). */
-function patchTurn(
-    prev: OpenNote | null,
-    noteId: string,
-    turnIndex: number,
-    patch: Partial<QuickAskTurn>,
-): OpenNote | null {
-    if (!prev || prev.note.id !== noteId || !prev.turns[turnIndex]) {return prev;}
-    const turns = prev.turns.map((t, i) => (i === turnIndex ? { ...t, ...patch } : t));
-    const latest = turns[turns.length - 1];
-    return {
-        ...prev,
-        turns,
-        note: { ...prev.note, status: latest.status, answer: latest.answer, error: latest.error },
-    };
-}
-
 export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQuickAskLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
 
-    const [selection, setSelection] = useState<QuickAskSelection | null>(null);
-    const [input, setInput] = useState<QuickAskSelection | null>(null);
-    const [open, setOpen] = useState<OpenNote | null>(null);
-
-    const selectionRef = useRef<QuickAskSelection | null>(null);
-    selectionRef.current = selection;
-    const inputRef = useRef<QuickAskSelection | null>(null);
-    inputRef.current = input;
-    // Latest open popover, read by the chip-click listener to toggle it closed.
-    const openRef = useRef<OpenNote | null>(null);
-    openRef.current = open;
+    const baseUrl = useCloneBaseUrl(workspaceId);
+    const owner = useMemo(() => ({ workspaceId, baseUrl, enabled }), [workspaceId, baseUrl, enabled]);
+    const { selection, input, inputRef, setInput, clearSelection, cancelInput, handleAsk } =
+        useDocumentQuickAskSelection(containerRef, enabled, owner);
+    const { open, setOpen, openRef, start, advance, beginRequest, closePopover, handleCopy } =
+        useDocumentQuickAskThread(owner);
     // The editor is read at write time (answer landing), never captured in a
     // callback closure — one instance survives note switches / re-renders.
     const editorRef = useRef<Editor | null | undefined>(editor);
     editorRef.current = editor;
-
-    const clearSelection = useCallback(() => setSelection(null), []);
 
     // Run one stateless grounded turn, updating that turn in place by id+index.
     // `history` carries the prior Q/A turns so a follow-up is answered coherently
@@ -171,9 +130,11 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         threadTurns: QuickAskTurn[],
     ) => {
         if (!workspaceId) {return;}
+        const request = beginRequest(noteId, turnIndex);
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
         requestForWorkspace<{ answer?: string; model?: string }>(workspaceId, path, {
             method: 'POST',
+            signal: request.signal,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 selectedText: sel.selectedText,
@@ -184,6 +145,7 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
             }),
         })
             .then(data => {
+                if (!request.isCurrent()) return;
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 // Persist the whole thread onto the marker (AC-03). Fold this
@@ -217,77 +179,11 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 });
             })
             .catch(() => {
+                if (!request.isCurrent()) return;
                 setOpen(prev => patchTurn(prev, noteId, turnIndex, { status: 'error', error: 'Lookup failed' }));
-            });
-    }, [workspaceId]);
-
-    // Prior ready turns, in order, as follow-up grounding history.
-    const historyBefore = (turns: QuickAskTurn[], upto: number): HistoryTurn[] =>
-        turns.slice(0, upto)
-            .filter(t => t.status === 'ready')
-            .map(t => ({ question: t.question, answer: t.answer }));
-
-    // Capture the current selection (if any) into the pill state.
-    const captureSelection = useCallback(() => {
-        const container = containerRef.current;
-        if (!container) {
-            setSelection(null);
-            return;
-        }
-        setSelection(getQuickAskSelection(container, NOTE_TURN_INDEX));
-    }, [containerRef]);
-
-    // Raise/clear the pill from pointer selections inside the editor.
-    useEffect(() => {
-        if (!enabled) {return;}
-        const onMouseUp = () => {
-            // Let the browser finalize the selection first.
-            window.setTimeout(captureSelection, 0);
-        };
-        const onMouseDown = (e: MouseEvent) => {
-            const target = e.target as HTMLElement | null;
-            if (target && target.closest('[data-testid="quick-ask-pill"]')) {return;}
-            setSelection(null);
-        };
-        document.addEventListener('mouseup', onMouseUp);
-        document.addEventListener('mousedown', onMouseDown);
-        return () => {
-            document.removeEventListener('mouseup', onMouseUp);
-            document.removeEventListener('mousedown', onMouseDown);
-        };
-    }, [enabled, captureSelection]);
-
-    // Keyboard alternative: Cmd/Ctrl+J on an active selection in the editor.
-    useEffect(() => {
-        if (!enabled) {return;}
-        const onKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
-                const container = containerRef.current;
-                if (!container) {return;}
-                const next = getQuickAskSelection(container, NOTE_TURN_INDEX);
-                if (next) {
-                    e.preventDefault();
-                    setInput(next);
-                    window.getSelection()?.removeAllRanges();
-                    setSelection(null);
-                }
-            }
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [enabled, containerRef]);
-
-    // Dismiss the open input when the user points down outside it.
-    useEffect(() => {
-        if (!input) {return;}
-        const onDown = (e: MouseEvent) => {
-            const target = e.target as HTMLElement | null;
-            if (target?.closest('[data-testid="quick-ask-input"]')) {return;}
-            setInput(null);
-        };
-        document.addEventListener('mousedown', onDown);
-        return () => document.removeEventListener('mousedown', onDown);
-    }, [input]);
+            })
+            .finally(request.finish);
+    }, [workspaceId, beginRequest, setOpen]);
 
     // AC-04: clicking a persisted `.qa-sidenote-ref` chip reopens the popover with
     // the frozen question/answer read straight off the marker's data-attrs.
@@ -372,15 +268,6 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         return () => document.removeEventListener('mousedown', onDown);
     }, [open]);
 
-    // Pill click → expand into the inline question input at the same anchor.
-    const handleAsk = useCallback(() => {
-        const sel = selectionRef.current;
-        if (!sel) {return;}
-        setInput(sel);
-        window.getSelection()?.removeAllRanges();
-        setSelection(null);
-    }, []);
-
     // Submit the input: fire the lookup and open the popover with an optimistic
     // "asking" note anchored just below the selection.
     const submitInput = useCallback((question: string) => {
@@ -389,71 +276,25 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         if (!sel) {return;}
         const trimmed = question.trim() || undefined;
         const id = newRefId();
-        const note: ClientSideNote = {
-            id,
-            processId: '',
-            turnIndex: sel.turnIndex,
-            anchor: {
-                selectedText: sel.selectedText,
-                contextBefore: sel.contextBefore,
-                contextAfter: sel.contextAfter,
-                fingerprint: '',
-            },
-            question: trimmed,
-            answer: '',
-            label: labelFor(sel.selectedText),
-            createdAt: new Date().toISOString(),
-            status: 'asking',
-        };
-        const askingTurn: QuickAskTurn = { question: trimmed, answer: '', status: 'asking' };
-        setOpen({
-            note,
-            position: { top: sel.rect.bottom + 6, left: sel.rect.left },
-            selection: sel,
-            turns: [askingTurn],
-        });
-        postTurn(sel, trimmed, [], id, 0, [askingTurn]);
-    }, [postTurn]);
-
-    const cancelInput = useCallback(() => setInput(null), []);
-
-    const closePopover = useCallback(() => setOpen(null), []);
-
-    // Copy the whole thread transcript (AC-03) — the popover builds it from the
-    // live turns; fall back to the single answer for a one-shot note.
-    const handleCopy = useCallback((note: ClientSideNote, text?: string) => {
-        try {
-            void navigator.clipboard?.writeText(text ?? note.answer);
-        } catch {
-            /* best-effort */
-        }
-    }, []);
+        const thread = start(sel, trimmed, id, {});
+        postTurn(sel, trimmed, [], id, 0, thread.turns);
+    }, [postTurn, start, inputRef, setInput]);
 
     // Per-turn retry (AC-02): re-run turn `turnIndex` with the same question and
     // the prior ready turns as history, preserving the rest of the thread.
     const handleRetry = useCallback((turnIndex: number) => {
-        setOpen(prev => {
-            if (!prev) {return prev;}
-            const turn = prev.turns[turnIndex];
-            if (!turn) {return prev;}
-            const turns = prev.turns.map((t, i) =>
-                (i === turnIndex ? { ...t, status: 'asking' as const, error: undefined } : t));
-            postTurn(prev.selection, turn.question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex, turns);
-            return { ...prev, turns, note: { ...prev.note, status: 'asking', error: undefined } };
+        advance(turnIndex, (thread, index) => {
+            postTurn(thread.selection, thread.turns[index].question, historyBefore(thread.turns, index), thread.note.id, index, thread.turns);
         });
-    }, [postTurn]);
+    }, [postTurn, advance]);
 
     // Send a follow-up (AC-02): append a new asking turn and post it with the
     // accumulated ready turns as grounding history. Blocked at the soft cap.
     const handleSend = useCallback((question: string) => {
-        setOpen(prev => {
-            if (!prev || prev.turns.length >= MAX_TURNS) {return prev;}
-            const turnIndex = prev.turns.length;
-            const turns: QuickAskTurn[] = [...prev.turns, { question, answer: '', status: 'asking' }];
-            postTurn(prev.selection, question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex, turns);
-            return { ...prev, turns, note: { ...prev.note, status: 'asking' } };
+        advance(question, (thread, index) => {
+            postTurn(thread.selection, question, historyBefore(thread.turns, index), thread.note.id, index, thread.turns);
         });
-    }, [postTurn]);
+    }, [postTurn, advance]);
 
     // AC-04 delete control: remove the marker node from the live document so the
     // inline `[^qa-<id>]` marker and its bottom definition both vanish on save,

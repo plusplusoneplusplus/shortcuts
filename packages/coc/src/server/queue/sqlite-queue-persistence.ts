@@ -14,6 +14,7 @@
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SqliteQueueStore, toQueueProcessId, type TaskQueueManager, type QueueChangeEvent, type QueuedTask, type QueueItem, type PauseMarker } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
+import { parseAutoProviderRoutingContext } from '../tasks/auto-provider-routing';
 
 /**
  * What to do with tasks that were running when the server last stopped.
@@ -162,6 +163,9 @@ export class SqliteQueuePersistence {
         let totalRestored = 0;
         const repoItemGroups = new Map<string, QueueItem[]>();
         for (const item of queuedItems) {
+            if (!isPauseMarker(item) && item.payload.context !== undefined) {
+                item.payload.context = parseAutoProviderRoutingContext(item.payload.context);
+            }
             const repoId = item.repoId ?? '';
             if (!repoItemGroups.has(repoId)) {
                 repoItemGroups.set(repoId, []);
@@ -196,6 +200,9 @@ export class SqliteQueuePersistence {
 
         const repoRunningTaskGroups = new Map<string, QueuedTask[]>();
         for (const task of runningTasks) {
+            if (task.payload.context !== undefined) {
+                task.payload.context = parseAutoProviderRoutingContext(task.payload.context);
+            }
             const repoId = task.repoId ?? '';
             if (!repoRunningTaskGroups.has(repoId)) {
                 repoRunningTaskGroups.set(repoId, []);

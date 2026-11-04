@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/ui/useCodeBlockActions';
 
 describe('useCodeBlockActions', () => {
@@ -109,7 +109,7 @@ describe('useCodeBlockActions', () => {
 
         const block = document.createElement('div');
         block.className = 'code-block-container';
-        block.setAttribute('data-raw', 'const x = 1;&#10;const y = 2;');
+        block.setAttribute('data-raw', 'const x = 1;\nconst y = 2;');
 
         const btn = document.createElement('button');
         btn.className = 'code-block-copy';
@@ -124,7 +124,7 @@ describe('useCodeBlockActions', () => {
         expect(writeTextSpy).toHaveBeenCalledWith('const x = 1;\nconst y = 2;');
     });
 
-    it('decodes HTML entities in data-raw before copying', async () => {
+    it('preserves literal HTML entities in the DOM data-raw value', async () => {
         const writeTextSpy = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', {
             value: { writeText: writeTextSpy },
@@ -145,7 +145,7 @@ describe('useCodeBlockActions', () => {
 
         btn.click();
 
-        expect(writeTextSpy).toHaveBeenCalledWith('<div>&"test"</div>');
+        expect(writeTextSpy).toHaveBeenCalledWith('&lt;div&gt;&amp;&quot;test&quot;&lt;/div&gt;');
     });
 
     // ── Table copy ───────────────────────────────────────────────────
@@ -190,6 +190,26 @@ describe('useCodeBlockActions', () => {
         expect(() => {
             renderHook(() => useCodeBlockActions(ref));
         }).not.toThrow();
+    });
+
+    it('keeps the checked container for events and cleanup after its ref is cleared', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText }, writable: true, configurable: true,
+        });
+        container.innerHTML = '<div class="code-block-container" data-raw="complete source"><button class="code-block-copy">Copy all</button></div>';
+        const button = container.querySelector('button')!;
+        const ref: { current: HTMLElement | null } = createRef(container);
+        const { unmount } = renderHook(() => useCodeBlockActions(ref));
+
+        ref.current = null;
+        button.click();
+        await waitFor(() => expect(button.textContent).toBe('Copied!'));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('complete source');
+
+        unmount();
+        button.click();
+        expect(writeText).toHaveBeenCalledTimes(1);
     });
 
     // ── Cleanup ──────────────────────────────────────────────────────

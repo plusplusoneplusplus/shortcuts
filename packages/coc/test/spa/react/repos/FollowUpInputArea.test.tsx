@@ -1251,3 +1251,29 @@ describe('FollowUpInputArea browser demo recording', () => {
         expect(onSend).not.toHaveBeenCalled();
     });
 });
+
+describe('FollowUpInputArea browser annotation chips', () => {
+    afterEach(async () => {
+        const { resetBrowserAnnotationChipsForTest } = await import('../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips');
+        resetBrowserAnnotationChipsForTest();
+    });
+
+    it('shows chips saved for this exact chat owner and removes them', async () => {
+        const { applyBrowserAnnotationEvents } = await import('../../../../src/server/spa/client/react/shared/file-path/browser-annotation-chips');
+        const session = { identity: { viewId: 'v', sessionKey: 'ws-1', requestId: 'r' }, remove: vi.fn().mockResolvedValue(undefined) } as any;
+        const selection = { type: 'selection' as const, kind: 'element' as const, tag: 'button', immediate: false, rect: { x: 0, y: 0, width: 5, height: 5 },
+            page: { url: 'https://example.test/', title: 'Example', viewport: { width: 800, height: 600, devicePixelRatio: 2 } } };
+        render(<FollowUpInputArea {...makeProps({ currentProcessId: 'queue_chat-1' })} />);
+        act(() => {
+            applyBrowserAnnotationEvents({ workspaceId: 'ws-1', routingRef: 'ws-1', processId: 'chat-1' }, session,
+                [{ type: 'comment', id: '1', number: 1, comment: 'Make this blue', selection }]);
+            applyBrowserAnnotationEvents({ workspaceId: 'ws-1', routingRef: 'remote:server-b:ws-1', processId: 'chat-1' }, session,
+                [{ type: 'comment', id: '2', number: 1, comment: 'Other server', selection }]);
+        });
+        expect(screen.getAllByTestId('browser-annotation-chip')).toHaveLength(1);
+        expect(screen.getByTestId('browser-annotation-chip')).toHaveTextContent('Make this blue<button> · Example');
+        fireEvent.click(screen.getByRole('button', { name: 'Remove browser comment 1' }));
+        expect(session.remove).toHaveBeenCalledWith('1');
+        expect(screen.queryByTestId('browser-annotation-chip')).toBeNull();
+    });
+});
