@@ -3,6 +3,7 @@ import type { BrowserImportCookie } from './browser-cookie-import';
 import { BrowserWindow, screen, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, validBrowserCdpSession, type BrowserCdpEventListener, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import { browserMessage, WebView2Process } from './webview2-process';
@@ -40,6 +41,8 @@ interface NativeEntry {
     /** This view's own control turn gate; a popup is also gated while its root is. */
     navigationGate: boolean;
     gateSequence: number;
+    pendingGate?: number;
+    navigationError?: Error;
     /** The owning window enabled Ctrl+1–9 tab switching; survives a crashed view's reopen. */
     tabShortcuts?: boolean;
 }
@@ -158,6 +161,16 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         };
         return {
             cdp,
+            waitForControlReady: async signal => {
+                for (;;) {
+                    signal.throwIfAborted();
+                    if (this.views.get(id) !== entry) throw new BrowserHostError('not-found', 'Browser tab is closed.');
+                    if (entry.navigationError) throw entry.navigationError;
+                    if (entry.state.error) throw new BrowserHostError(entry.state.errorCode ?? 'navigation-failed', entry.state.error);
+                    if (entry.pendingGate === undefined && !entry.state.loading) return;
+                    await delay(25, undefined, { signal });
+                }
+            },
             ...(!entry.root ? { captureAnnotation: async (rect, viewport) => {
                 const generation = entry.documentGeneration;
                 const zoom = entry.pageZoom;
@@ -222,12 +235,16 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             navigate: async url => {
                 this.downloads?.revokeView(id);
                 entry.documentGeneration++;
+                entry.pendingGate = undefined;
+                entry.navigationError = undefined;
                 entry.request.url = url;
                 await this.process.request('navigate', { viewId: id, url });
             },
             nav: async action => {
                 if (action !== 'stop') this.downloads?.revokeView(id);
-                if (action !== 'stop') entry.documentGeneration++;
+                entry.documentGeneration++;
+                entry.pendingGate = undefined;
+                entry.navigationError = undefined;
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed') {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
@@ -282,15 +299,26 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private navigationGate(entry: NativeEntry, url: string): void {
         const sequence = ++entry.gateSequence;
         const generation = entry.documentGeneration;
+        entry.pendingGate = sequence;
+        entry.navigationError = undefined;
         const decision = entry.root
             ? entry.root.sink.navigationGate?.(url, entry.request.viewId)
             : entry.sink.navigationGate?.(url);
         void Promise.resolve(decision ?? true).then(allow => {
-            if (!allow || this.views.get(entry.nativeId) !== entry || entry.gateSequence !== sequence || entry.documentGeneration !== generation
+            if (this.views.get(entry.nativeId) !== entry || entry.gateSequence !== sequence || entry.documentGeneration !== generation
                 || entry.state.errorCode === 'runtime-crashed' || !this.process.running) { return; }
+            if (!allow) {
+                entry.navigationError = new BrowserHostError('navigation-failed', 'Browser navigation was denied.');
+                return;
+            }
             entry.documentGeneration++;
             return this.process.request('navigate', { viewId: entry.nativeId, url, approved: true });
-        }).catch(error => console.error('[coc-desktop] WebView2 approved navigation failed:', error));
+        }).catch(error => {
+            if (entry.pendingGate === sequence) entry.navigationError = error instanceof Error ? error : new Error(String(error));
+            console.error('[coc-desktop] WebView2 approved navigation failed:', error);
+        }).finally(() => {
+            if (entry.pendingGate === sequence) entry.pendingGate = undefined;
+        });
     }
 
     private clearCdp(entry: NativeEntry): void {

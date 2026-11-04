@@ -1214,6 +1214,37 @@ describe('WebView2 agent navigation approval gate', () => {
     }
     const navigates = () => mocks.request.mock.calls.filter(call => call[0] === 'navigate');
 
+    it('keeps control pending across a cancelled load until approval and the redirected document settle', async () => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const state = (loading: boolean, url: string) => mocks.onEvent({
+            event: 'state', viewId: '7:tab:1',
+            state: { url, title: '', loading, canGoBack: false, canGoForward: false },
+        });
+        const controller = new AbortController();
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            state(false, 'about:blank');
+            let ready = false;
+            const waiting = Promise.resolve(h.root.waitForControlReady?.(controller.signal)).then(() => { ready = true; });
+            await new Promise(resolve => setTimeout(resolve, 40));
+            expect(ready).toBe(false);
+            mocks.request.mockImplementation(async op => {
+                if (op === 'navigate') state(true, 'https://other.test/login');
+            });
+            decide(true);
+            await vi.waitFor(() => expect(navigates()).toHaveLength(1));
+            await new Promise(resolve => setTimeout(resolve, 40));
+            expect(ready).toBe(false);
+            state(false, 'https://other.test/destination');
+            await waiting;
+            expect(ready).toBe(true);
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+        }
+    });
+
     it('opens gated, toggles root and popup gates natively, and keeps popups gated while their root is', async () => {
         const h = await opened();
         expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ viewId: '7:tab:1', navigationGate: true }));
@@ -1236,6 +1267,34 @@ describe('WebView2 agent navigation approval gate', () => {
         await h.host.dispose();
     });
 
+    it.each(['denied', 'failed', 'cancelled', 'closed'] as const)('reports %s approval waits without reading the cancelled document', async outcome => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const controller = new AbortController();
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+                url: 'about:blank', title: '', loading: false, canGoBack: false, canGoForward: false,
+            } });
+            const waiting = h.root.waitForControlReady!(controller.signal);
+            const rejected = expect(waiting).rejects.toThrow({
+                denied: 'denied', failed: 'native navigation failed', cancelled: 'aborted', closed: 'closed',
+            }[outcome]);
+            if (outcome === 'closed') await h.root.close();
+            else if (outcome === 'cancelled') controller.abort(new Error('cancelled'));
+            else {
+                if (outcome === 'failed') mocks.request.mockRejectedValueOnce(new Error('native navigation failed'));
+                decide(outcome !== 'denied');
+            }
+            await rejected;
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+            log.mockRestore();
+        }
+    });
+
     it('re-issues a natively cancelled navigation only after the sink allows it', async () => {
         let decide!: (allow: boolean) => void;
         const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
@@ -1251,6 +1310,28 @@ describe('WebView2 agent navigation approval gate', () => {
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(navigates()).toHaveLength(1);
         await h.host.dispose();
+    });
+
+    it.each(['navigate', 'stop'] as const)('retires a pending readiness wait on manual %s without replaying its approval', async action => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const controller = new AbortController();
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+                url: 'https://start.test/', title: '', loading: false, canGoBack: false, canGoForward: false,
+            } });
+            if (action === 'navigate') await h.root.navigate('https://typed.test/');
+            else await h.root.nav('stop');
+            decide(true);
+            await h.root.waitForControlReady!(controller.signal);
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(navigates()).toEqual(action === 'navigate'
+                ? [['navigate', { viewId: '7:tab:1', url: 'https://typed.test/' }]] : []);
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+        }
     });
 
     it('asks through the root sink with the public popout id for popup navigations', async () => {

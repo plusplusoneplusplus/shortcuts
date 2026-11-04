@@ -500,6 +500,10 @@ mainFrame `webRequest.onBeforeRequest` callback (before any request, per redirec
 hop, POST bodies kept); WebView2 cancels cross-host http(s) new documents in
 native `NavigationStarting` and re-issues `navigate {approved:true}` on Allow
 (back/forward/reload and same-host loads pass; a re-issued POST becomes GET).
+WebView2 control readiness retains the pending decision through approved dispatch
+and document loading, even when cancellation reports the previous document idle.
+Denial and dispatch failures fail observation explicitly; manual navigation
+retires stale approval waits.
 Main sends `coc-desktop:browser-control-navigation-check` to the routing window and
 accepts `...-navigation-decision` only from it; a held check pauses the view queue
 and that conversation's 60s deadlines (`ControlDeadline`). Turn finish, tab/popout

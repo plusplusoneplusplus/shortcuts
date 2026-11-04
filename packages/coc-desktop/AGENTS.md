@@ -11,6 +11,10 @@ Paths below are package-relative.
 view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
+WebView2 control readiness waits for pending site decisions, approved navigation
+dispatch and document loading before CDP inspection. A cancelled pre-approval
+load cannot make the blank document ready. Denial and dispatch failures reach
+the caller; cancellation, replacement and closure retire the exact view's wait.
 
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
