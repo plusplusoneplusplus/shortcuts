@@ -68,12 +68,13 @@ per-repo `maxRalphIterations` fallback stays consistent.
 `/resume` and `/continue` accept the same per-task AI controls as `/ralph-start` and
 `/ralph-launch` — optional `provider`, `config.model`, `config.reasoningEffort`,
 `config.effortTier`, `autoProviderRouting` — validated by the shared `parseRalphAiSelection`.
-Explicit values apply only to the newly enqueued iteration; omitted values fall back to the
-recovered prior provider/model/reasoning-effort, except that an explicit `effortTier`
-suppresses recovered model/reasoning-effort so tier expansion picks concrete values. In the
-SPA both confirmation panels render shared `ModalJobAiControls` initialized from
-`resumeDefaults`; unchanged recovered defaults are omitted from the request so the route
-preserves prior settings.
+Explicit values apply only to the newly enqueued iteration. `resolveRalphContinuationAiSelection`
+shares recovery policy across resume, continue, human input and new-loop: omitted controls inherit
+prior AI selection, including Auto provenance; explicit providers or `autoProviderRouting: false`
+override recovered Auto. Auto tiers
+expand after provider selection rather than inheriting the last provider's concrete model/effort.
+An explicit `effortTier` also suppresses recovered model/effort. SPA confirmation panels use
+`ModalJobAiControls` with `resumeDefaults` and omit unchanged controls.
 
 ### Resume Stuck Executing Sessions
 
@@ -252,9 +253,13 @@ rather than `RALPH_NEXT`/`RALPH_COMPLETE`.
 
 Ralph-owned follow-on tasks inherit the completed task's execution config across normal
 iterations, final checks, and gap-fix loops. Explicit-provider tasks keep the selected model,
-reasoning effort, and `afterEffortTier`. Auto-routed tasks keep `afterEffortTier` but clear the
-completed task's concrete model and reasoning effort, allowing the lifecycle runner to expand
-the tier after choosing the provider for each follow-on task.
+reasoning effort, and `afterEffortTier`. Auto-routed tasks with `afterEffortTier` keep the tier
+but clear the completed task's concrete model and reasoning effort, allowing the lifecycle runner
+to expand it after choosing the provider. Without a tier, explicit model/effort settings survive.
+
+`tasks/auto-provider-routing.ts` owns the typed Auto-request policy. Queue request validation
+parses external routing context; SQLite restore and Ralph recovery parse persisted context.
+Internal queue, lifecycle and Ralph consumers use the typed marker without reparsing.
 
 When a final check completes but its `RALPH_FINAL_CHECK_RESULT` block is unparseable or
 internally contradictory, the session is not ended on the first failure. The decision layer

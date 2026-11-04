@@ -269,6 +269,40 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         expect(enqueueArg.payload.context.autoProviderRouting).toEqual({ requested: true });
     });
 
+    it.each([
+        { request: {}, expectedProvider: undefined, auto: true },
+        { request: { provider: 'codex' }, expectedProvider: 'codex', auto: false },
+        { request: { autoProviderRouting: false }, expectedProvider: 'claude', auto: false },
+    ])('preserves recovered Auto unless a concrete provider is selected: %j', async ({ request, expectedProvider, auto }) => {
+        await seedSession(dataDir, 'ws-auto-resume', 'sess-auto-resume');
+        await store.addProcess({
+            id: 'queue_p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'last iteration',
+            metadata: {
+                workspaceId: 'ws-auto-resume',
+                provider: 'claude',
+                model: 'opus',
+                reasoningEffort: 'high',
+                afterEffortTier: 'medium',
+                autoProviderRouting: { requested: true, selectedByAuto: true, provider: 'claude' },
+            },
+        });
+
+        const res = await post(baseUrl, '/api/workspaces/ws-auto-resume/ralph-sessions/sess-auto-resume/resume', request);
+        expect(res.status).toBe(200);
+        const task = bridgeStub.enqueue.mock.calls[0][0];
+        expect(task.payload.workspaceId).toBe('ws-auto-resume');
+        expect(task.repoId).toBe('ws-auto-resume');
+        expect(task.payload.provider).toBe(expectedProvider);
+        expect(task.payload.context.autoProviderRouting?.requested === true).toBe(auto);
+        if (auto) {
+            expect(task.config).toEqual({ effortTier: 'medium' });
+        }
+    });
+
     it('lets an explicit effort tier override recovered model and reasoning effort', async () => {
         await seedSession(dataDir, 'ws-tier-only', 'sess-tier-only');
         await store.addProcess({

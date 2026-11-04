@@ -417,6 +417,31 @@ describe('SqliteQueuePersistence', () => {
     // ========================================================================
 
     describe('restore', () => {
+        it.each(['queued', 'running'] as const)('preserves Auto provenance on %s tasks in their exact workspace', status => {
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            for (const workspace of ['alpha', 'beta']) {
+                const rootPath = path.resolve('test-repos', workspace);
+                db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)')
+                    .run(workspace, rootPath);
+                store.upsertQueueTask(makeTask(`auto-${workspace}`, {
+                    type: 'chat', repoId: workspace, status,
+                    payload: {
+                        kind: 'chat', mode: 'ralph', prompt: 'Continue.', workspaceId: workspace,
+                        context: { autoProviderRouting: { requested: true }, ralph: { sessionId: `session-${workspace}` } },
+                    },
+                }));
+            }
+            persistence.restore();
+            for (const workspace of ['alpha', 'beta']) {
+                const tasks = registry.getQueueForRepo(path.resolve('test-repos', workspace)).getQueued();
+                expect(tasks).toHaveLength(1);
+                expect(tasks[0].repoId).toBe(workspace);
+                expect(tasks[0].payload.context).toEqual({
+                    autoProviderRouting: { requested: true }, ralph: { sessionId: `session-${workspace}` },
+                });
+            }
+        });
+
         it('restores queued tasks from SQLite', () => {
             const rootPath = '/repo/restore-queued';
             const rId = repoId(rootPath);

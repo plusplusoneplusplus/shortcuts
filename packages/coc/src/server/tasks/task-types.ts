@@ -721,6 +721,7 @@ export type DreamRunTrigger = 'manual' | 'idle';
 
 export interface DreamRunPayload {
     readonly kind: 'dream-run';
+    context?: Pick<ChatContext, 'autoProviderRouting'>;
     workspaceId: string;
     trigger: DreamRunTrigger;
     confidenceThreshold?: number;

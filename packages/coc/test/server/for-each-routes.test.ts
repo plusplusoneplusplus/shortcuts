@@ -126,6 +126,21 @@ describe('For Each routes', () => {
         expect(generateItemPlan).not.toHaveBeenCalled();
     });
 
+    it.each([
+        { selection: { provider: null }, message: "Invalid provider: 'null'. Valid providers: copilot, codex, claude, opencode" },
+        { selection: { config: null }, message: 'config must be an object' },
+        { selection: { config: { model: 7 } }, message: 'config.model must be a string' },
+        { selection: { config: { reasoningEffort: '' } }, message: "Invalid reasoningEffort: ''. Valid reasoningEffort values: low, medium, high, xhigh" },
+    ])('rejects invalid AI selection $selection before generation', async ({ selection, message }) => {
+        forEachEnabled = true;
+        const res = await request('POST', `/api/workspaces/${WORKSPACE_ID}/for-each-runs/generate`, {
+            prompt: 'Split this request', childMode: 'ask', ...selection,
+        });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe(message);
+        expect(generateItemPlan).not.toHaveBeenCalled();
+    });
+
     it('generates and persists a draft run when enabled', async () => {
         forEachEnabled = true;
 

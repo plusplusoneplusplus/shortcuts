@@ -26,10 +26,8 @@ import {
     writePending,
     clearPending,
 } from './classification-store';
-import { TaskDefs } from '../tasks/task-types';
-import type { ChatProvider } from '../tasks/task-types';
-import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
-import type { ReasoningEffort } from '../tasks/task-types';
+import { TaskDefs, resolveChatProvider, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import { isReasoningEffort } from '../tasks/ai-selection';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
 import {
@@ -531,12 +529,12 @@ export async function enqueueGenericClassification(
             ...extractPayloadFields(type, identifier),
             workingDirectory: rootPath,
             skills: ['classify-diff'],
-            ...(options.provider && VALID_CHAT_PROVIDERS.has(options.provider) ? { provider: options.provider } : {}),
+            ...(resolveChatProvider(options.provider) ? { provider: options.provider } : {}),
             ...(options.autoProviderRouting === true ? { context: { autoProviderRouting: { requested: true } } } : {}),
         },
         config: {
             ...(options.model ? { model: options.model } : {}),
-            ...(options.reasoningEffort && VALID_REASONING_EFFORTS.has(options.reasoningEffort) ? { reasoningEffort: options.reasoningEffort } : {}),
+            ...(isReasoningEffort(options.reasoningEffort) ? { reasoningEffort: options.reasoningEffort } : {}),
             ...(options.effortTier ? { effortTier: options.effortTier } : {}),
         },
         displayName: buildDisplayName(type, identifier),

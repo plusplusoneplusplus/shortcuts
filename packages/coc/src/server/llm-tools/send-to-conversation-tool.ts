@@ -43,7 +43,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { validateAndParseTask } from '../routes/queue-shared';
-import { normalizeChatMode, VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import { normalizeChatMode, resolveChatProvider, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { MessagingJobOrigin } from '../messaging/job-notices';
 import { APIError } from '../errors';
@@ -462,7 +462,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 
             // --- provider (create only; accepted+ignored in post mode) ----------
             const provider = args.provider;
-            if (provider !== undefined && (typeof provider !== 'string' || (provider !== 'auto' && !VALID_CHAT_PROVIDERS.has(provider as ChatProvider)))) {
+            if (provider !== undefined && provider !== 'auto' && !resolveChatProvider(provider)) {
                 return {
                     error:
                         `Invalid provider: '${String(args.provider)}'. ` +
@@ -804,10 +804,7 @@ async function createNewConversation(params: {
     // follow-up executor reads — see follow-up-executor.ts). An explicit provider
     // selects that provider's defaults instead of inheriting parent model/effort.
     const parent = parentProcessId ? await store.getProcess(parentProcessId) : undefined;
-    const parentProvider =
-        typeof parent?.metadata?.provider === 'string' && VALID_CHAT_PROVIDERS.has(parent.metadata.provider as ChatProvider)
-            ? (parent.metadata.provider as ChatProvider)
-            : undefined;
+    const parentProvider = resolveChatProvider(parent?.metadata?.provider);
     const parentEffort =
         typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
 
@@ -1106,11 +1103,11 @@ async function createRemoteConversation(params: {
             const available = await directory.isRemoteAutoProviderRoutingAvailable?.(target.serverId);
             if (!available) {
                 const parent = params.parentProcessId ? await params.store.getProcess(params.parentProcessId) : undefined;
-                const parentProvider = parent?.metadata?.provider;
-                if (typeof parentProvider !== 'string' || !VALID_CHAT_PROVIDERS.has(parentProvider as ChatProvider)) {
+                const parentProvider = resolveChatProvider(parent?.metadata?.provider);
+                if (!parentProvider) {
                     return { error: 'Cannot determine a provider for the new conversation: Auto is unavailable and no concrete parent provider is available.' };
                 }
-                provider = parentProvider as ChatProvider;
+                provider = parentProvider;
                 // Validate against the destination, never against local services
                 // or effort tiers. Remote defaults own model/effort inheritance.
                 if (!directory.validateRemoteProvider) {
@@ -1323,10 +1320,7 @@ async function resolveProcessForTool(store: ProcessStore, processId: string): Pr
 }
 
 function normalizeProcessProvider(proc: AIProcess): ChatProvider {
-    const provider = proc.metadata?.provider;
-    return typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)
-        ? (provider as ChatProvider)
-        : 'copilot';
+    return resolveChatProviderOrDefault(proc.metadata?.provider);
 }
 
 /** Same provider invocation retries share queue admission; separate calls remain separate jobs. */

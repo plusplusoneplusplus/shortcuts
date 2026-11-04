@@ -21,6 +21,7 @@ import {
     findInFlightRalphTask,
     parseAdditionalIterations,
     recoverIterationPaths,
+    resolveRalphContinuationAiSelection,
     resolveRalphAdditionalIterations,
     RALPH_RESUME_ADDITIONAL_LIMIT,
     RALPH_RESUME_HARD_CAP,
@@ -127,7 +128,10 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
             const loopIndex = updated.loops?.[updated.loops.length - 1]?.loopIndex ?? 2;
             const nextIteration = updated.currentIteration + 1;
 
-            const { workingDirectory, folderPath, provider, model, reasoningEffort } = await recoverIterationPaths(record, store, workspaceId);
+            const recovered = await recoverIterationPaths(record, store, workspaceId);
+            const { workingDirectory, folderPath } = recovered;
+            const { provider, model, reasoningEffort, effortTier, autoProviderRouting } =
+                resolveRalphContinuationAiSelection(undefined, recovered);
 
             const taskInput = buildRalphIterationTask({
                 workspaceId,
@@ -142,6 +146,8 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
                 provider,
                 model,
                 reasoningEffort,
+                effortTier,
+                autoProviderRouting,
             });
 
             let taskId: string;

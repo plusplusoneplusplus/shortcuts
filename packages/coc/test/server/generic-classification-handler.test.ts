@@ -197,6 +197,30 @@ describe('GET /api/repos/:repoId/classify-diff/batch-status', () => {
         expect(res.body.statuses).toEqual({});
     });
 
+    it.each([
+        {},
+        { provider: 'invalid', reasoningEffort: 'max' },
+        { provider: null, reasoningEffort: null },
+        { provider: '', reasoningEffort: '' },
+    ])('silently omits absent/invalid classification AI selection %j', async selection => {
+        const res = await post(server, '/api/repos/ws-test/classify-diff', {
+            type: 'commit', identifier: 'abc1234', model: '  untrimmed-model  ', ...selection,
+        });
+        expect(res.status).toBe(202);
+        expect(enqueuedTasks).toHaveLength(1);
+        expect(enqueuedTasks[0].payload).not.toHaveProperty('provider');
+        expect(enqueuedTasks[0].config).toStrictEqual({ model: '  untrimmed-model  ' });
+    });
+
+    it('preserves valid classification provider and effort', async () => {
+        const res = await post(server, '/api/repos/ws-test/classify-diff', {
+            type: 'commit', identifier: 'abc1234', provider: 'opencode', reasoningEffort: 'xhigh',
+        });
+        expect(res.status).toBe(202);
+        expect(enqueuedTasks[0].payload.provider).toBe('opencode');
+        expect(enqueuedTasks[0].config).toStrictEqual({ reasoningEffort: 'xhigh' });
+    });
+
     it('returns 400 when type param is missing', async () => {
         const res = await get(server, `/api/repos/${encodeURIComponent(repoId)}/classify-diff/batch-status?identifiers=abc`);
         expect(res.status).toBe(400);

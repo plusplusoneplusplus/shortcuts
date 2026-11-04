@@ -2,7 +2,7 @@ import * as http from 'http';
 import type { Route } from '../types';
 import { parseBody, sendJSON } from '../core/api-handler';
 import { APIError, badRequest, conflict, handleAPIError, notFound } from '../errors';
-import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import { parseAiSelection } from '../shared/ai-selection';
 import type { FileDreamStore } from './dream-store';
 import type { DreamRunRequestOptions } from './dream-runner';
 import {
@@ -105,31 +105,16 @@ function optionalConfidence(value: unknown, fieldName: string): number | undefin
     return value;
 }
 
-function optionalProvider(value: unknown): ChatProvider | undefined {
-    if (value === undefined || value === null || value === '') {
-        return undefined;
-    }
-    if (!VALID_CHAT_PROVIDERS.has(value as ChatProvider)) {
-        throw badRequest(`Invalid provider: '${String(value)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`);
-    }
-    return value as ChatProvider;
-}
-
-function optionalReasoningEffort(value: unknown): ReasoningEffort | undefined {
-    if (value === undefined || value === null || value === '') {
-        return undefined;
-    }
-    if (!VALID_REASONING_EFFORTS.has(value as ReasoningEffort)) {
-        throw badRequest(`Invalid reasoningEffort: '${String(value)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}`);
-    }
-    return value as ReasoningEffort;
-}
-
 function parseRunOptions(body: DreamRunRequestBody): DreamRunRequestOptions {
     const config = optionalObject(body.config, 'config');
-    const provider = optionalProvider(body.provider);
-    const model = optionalString(config.model, 'config.model');
-    const reasoningEffort = optionalReasoningEffort(config.reasoningEffort);
+    const { provider, model, reasoningEffort } = parseAiSelection({
+        provider: body.provider === null || body.provider === '' ? undefined : body.provider,
+        config: {
+            ...config,
+            reasoningEffort: config.reasoningEffort === null || config.reasoningEffort === ''
+                ? undefined : config.reasoningEffort,
+        },
+    });
     const confidenceThreshold = optionalConfidence(body.confidenceThreshold, 'confidenceThreshold');
     const maxCandidates = optionalPositiveInteger(body.maxCandidates, 'maxCandidates');
     const conversationLimit = optionalPositiveInteger(body.conversationLimit, 'conversationLimit');

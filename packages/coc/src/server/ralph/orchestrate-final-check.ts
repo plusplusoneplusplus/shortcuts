@@ -22,6 +22,8 @@ import {
 import { RalphSessionStore } from './ralph-session-store';
 import type { RalphSessionCompleteReason, RalphSessionRecord } from './types';
 import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
+import { isAutoProviderRoutingRequested, type AutoProviderRoutingContext } from '../tasks/auto-provider-routing';
+import type { ChatContext } from '../tasks/task-types';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { resolveRalphAdditionalIterations } from '../routes/ralph-route-utils';
 
@@ -60,7 +62,7 @@ export interface OrchestrateFinalCheckDeps {
     /** repoId for gap-fix iteration tasks. */
     repoId?: string;
     /** Non-Ralph context to preserve when enqueueing gap-fix iterations. */
-    extraContext?: Record<string, unknown>;
+    extraContext?: ChatContext | AutoProviderRoutingContext;
     /**
      * Send one follow-up turn into the *same* conversation as the completed
      * final-check task, asking only for the missing result block.
@@ -348,15 +350,6 @@ async function safeUpsertRecord(
     }
 }
 
-function isAutoProviderRoutingRequested(context: Record<string, unknown> | undefined): boolean {
-    const routing = context?.autoProviderRouting;
-    return Boolean(
-        routing
-        && typeof routing === 'object'
-        && !Array.isArray(routing)
-        && (routing as Record<string, unknown>).requested === true
-    );
-}
 
 /** The durable outcome survives failed check metadata writes and a crash before publication. */
 async function publishSessionCompletion(

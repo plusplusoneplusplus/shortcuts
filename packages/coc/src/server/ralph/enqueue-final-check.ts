@@ -84,7 +84,7 @@ export interface BuildFinalCheckTaskInput {
     repoId?: string;
     provider?: import('../tasks/task-types').ChatProvider;
     config?: RalphTaskExecutionConfig;
-    extraContext?: Record<string, unknown>;
+    extraContext?: import('../tasks/task-types').ChatContext | Record<string, unknown>;
 }
 
 /**

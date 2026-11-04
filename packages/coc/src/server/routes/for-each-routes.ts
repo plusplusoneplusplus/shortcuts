@@ -3,7 +3,7 @@ import type { Route } from '../types';
 import { parseBody, sendJSON } from '../core/api-handler';
 import { APIError, badRequest, conflict, handleAPIError, notFound } from '../errors';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
-import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
+import { parseAiSelection } from '../shared/ai-selection';
 import type { FileForEachRunStore } from '../for-each/for-each-run-store';
 import type { ForEachRunExecutor } from '../for-each/for-each-run-executor';
 import type { ForEachChildMode, ForEachItem } from '../for-each/types';
@@ -69,35 +69,6 @@ function optionalString(value: unknown, fieldName: string): string | undefined {
     }
     const trimmed = value.trim();
     return trimmed ? trimmed : undefined;
-}
-
-function parseAiSelection(body: { provider?: unknown; config?: unknown }): {
-    provider?: ChatProvider;
-    model?: string;
-    reasoningEffort?: ReasoningEffort;
-} {
-    const provider = body.provider === undefined ? undefined : body.provider as ChatProvider;
-    if (provider !== undefined && !VALID_CHAT_PROVIDERS.has(provider)) {
-        throw badRequest(`Invalid provider: '${String(body.provider)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`);
-    }
-
-    const config = body.config && typeof body.config === 'object' && !Array.isArray(body.config)
-        ? body.config as Record<string, unknown>
-        : {};
-    if (body.config !== undefined && (typeof body.config !== 'object' || Array.isArray(body.config) || body.config === null)) {
-        throw badRequest('config must be an object');
-    }
-
-    const model = optionalString(config.model, 'config.model');
-    const rawReasoningEffort = config.reasoningEffort;
-    const reasoningEffort = rawReasoningEffort === undefined
-        ? undefined
-        : rawReasoningEffort as ReasoningEffort;
-    if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
-        throw badRequest(`Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}`);
-    }
-
-    return { provider, model, reasoningEffort };
 }
 
 async function resolveAiSelection(

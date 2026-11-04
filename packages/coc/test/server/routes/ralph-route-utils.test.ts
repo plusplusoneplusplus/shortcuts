@@ -89,6 +89,101 @@ describe('ralph-route-utils', () => {
     });
 
     describe('recoverIterationPaths', () => {
+        it('recovers authoritative payload Auto intent and validated metadata effort fallback', async () => {
+            for (const requested of [true, false]) {
+                const store = {
+                    getProcess: vi.fn(async () => ({
+                        payload: {
+                            workspaceId: 'ws-1',
+                            context: { autoProviderRouting: { requested } },
+                        },
+                        metadata: {
+                            workspaceId: 'ws-1', model: 'explicit-model', reasoningEffort: 'xhigh',
+                            ...(requested ? {} : { autoProviderRouting: { requested: true } }),
+                        },
+                    })),
+                } as unknown as ProcessStore;
+                const paths = await recoverIterationPaths(makeRecord([{ iteration: 1, processId: 'process-1' }]), store, 'ws-1');
+                expect(paths.autoProviderRouting === true).toBe(requested);
+                expect(paths).toMatchObject({ model: 'explicit-model', reasoningEffort: 'xhigh' });
+            }
+        });
+
+        it('recovers persisted Auto intent and the tier from the latest owned iteration', async () => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    metadata: {
+                        workspaceId: 'ws-1',
+                        provider: 'claude',
+                        model: 'expanded-model',
+                        autoProviderRouting: { requested: true, selectedByAuto: true, provider: 'claude' },
+                        afterEffortTier: 'high',
+                    },
+                })),
+            } as unknown as ProcessStore;
+            const paths = await recoverIterationPaths(makeRecord([
+                { iteration: 2, processId: 'latest-process' },
+                { iteration: 1, processId: 'older-process' },
+            ]), store, 'ws-1');
+            expect(store.getProcess).toHaveBeenCalledWith('latest-process', 'ws-1');
+            expect(paths).toMatchObject({
+                provider: 'claude',
+                model: 'expanded-model',
+                autoProviderRouting: true,
+                effortTier: 'high',
+            });
+        });
+
+        it.each([
+            undefined, null, true, 'true', [], {},
+            { selectedByAuto: true }, { requested: 'true' }, { requested: false },
+        ])('does not infer Auto intent from malformed or absent markers %j', async autoProviderRouting => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    metadata: { workspaceId: 'ws-1', autoProviderRouting, afterEffortTier: 'invalid' },
+                })),
+            } as unknown as ProcessStore;
+            const paths = await recoverIterationPaths(makeRecord([{ iteration: 1, processId: 'process-1' }]), store, 'ws-1');
+            expect(paths).not.toHaveProperty('autoProviderRouting');
+            expect(paths).not.toHaveProperty('effortTier');
+        });
+
+        it.each(['very-low', 'low', 'medium', 'high'])('recovers persisted tier %s', async afterEffortTier => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    metadata: { workspaceId: 'ws-1', afterEffortTier },
+                })),
+            } as unknown as ProcessStore;
+            expect(await recoverIterationPaths(makeRecord([{ iteration: 1, processId: 'process-1' }]), store, 'ws-1'))
+                .toMatchObject({ effortTier: afterEffortTier });
+        });
+
+        it.each([
+            { metadata: { workspaceId: 'other-workspace' }, payload: { workspaceId: 'ws-1' } },
+            { payload: { workspaceId: 'other-workspace' } },
+        ])('ignores a process belonging to another workspace: %j', async process => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    ...process,
+                    workingDirectory: 'foreign-directory',
+                    metadata: {
+                        ...process.metadata,
+                        provider: 'claude',
+                        model: 'foreign-model',
+                        autoProviderRouting: { requested: true },
+                        afterEffortTier: 'high',
+                    },
+                })),
+            } as unknown as ProcessStore;
+            const record = withWorktree(makeRecord([{ iteration: 1, processId: 'foreign-process' }]), {
+                status: 'active', path: 'owned-worktree',
+            });
+            expect(await recoverIterationPaths(record, store, 'ws-1')).toStrictEqual({
+                workingDirectory: 'owned-worktree', folderPath: undefined,
+                provider: undefined, model: undefined, reasoningEffort: undefined,
+            });
+        });
+
         it('recovers paths from the latest iteration process payload', async () => {
             const store = {
                 getProcess: vi.fn(async () => ({
