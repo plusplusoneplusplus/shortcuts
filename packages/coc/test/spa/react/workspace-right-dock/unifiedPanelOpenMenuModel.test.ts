@@ -35,6 +35,16 @@ describe('openMenuActions', () => {
         expect(actions.every(action => action.disabled !== true)).toBe(true);
     });
 
+    it('lists Git after Explorer only when the panel can host the target repo Git tab', () => {
+        expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: null, gitAvailable: true })))
+            .toEqual(['terminal', 'explorer', 'git', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
+        expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: null }))).not.toContain('git');
+        const blocked = openMenuActions({
+            targetWorkspaceId: REPO, chatId: null, gitAvailable: true, targetUnavailable: true, targetUnavailableReason: 'api is offline.',
+        }).find(action => action.id === 'git');
+        expect(blocked).toMatchObject({ disabled: true, disabledReason: 'api is offline.' });
+    });
+
     it('omits Explorer for a repo group root, which has no single file tree', () => {
         const actions = openMenuActions({ targetWorkspaceId: GROUP, chatId: 'chat-1' });
         expect(ids(actions)).toEqual(['terminal', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);

@@ -59,7 +59,9 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { AppAction } from '../../../contexts/AppContext';
 import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
-import { gitTabOpenSource, gitTabOwnerClient, type UnifiedPanelGitOpenSource } from './panelGitCommit';
+import {
+    chatCommitPanelTarget, gitTabOpenSource, gitTabOwnerClient, openPanelGitBranchChanges, type UnifiedPanelGitOpenSource,
+} from './panelGitCommit';
 import { cn } from '../../../ui/cn';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import {
@@ -451,6 +453,12 @@ export function UnifiedRightPanel({
     const targetRoutingRef = useMemo(
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
+    );
+    // The "+" menu's Git entry opens the target repo's branch changes; a
+    // group's own root names no repository, so it has no target.
+    const gitMenuTarget = useMemo(
+        () => appDispatch ? chatCommitPanelTarget({ workspaceId, chatId, routingRef }, target) : null,
+        [appDispatch, workspaceId, chatId, routingRef, target],
     );
     const rootPathForTab = useCallback(
         (tab: (typeof tabs)[number]) => (
@@ -2277,6 +2285,7 @@ export function UnifiedRightPanel({
                     <div ref={menuRef} className="contents">
                         <UnifiedPanelOpenMenu
                             settingsAvailable={settingsOwner === (routingRef ?? workspaceId)}
+                            gitAvailable={gitMenuTarget !== null}
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}
@@ -2289,6 +2298,10 @@ export function UnifiedRightPanel({
                                 // Explorer is a panel mode, not a resource tab.
                                 if (kind === 'explorer') {
                                     showExplorer();
+                                    return;
+                                }
+                                if (kind === 'git') {
+                                    if (appDispatch && gitMenuTarget) openPanelGitBranchChanges(appDispatch, gitMenuTarget);
                                     return;
                                 }
                                 openWorkspaceResource(kind);

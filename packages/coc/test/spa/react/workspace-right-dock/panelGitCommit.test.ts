@@ -7,6 +7,7 @@ import {
     gitTabOpenSource,
     gitTabOwnerClient,
     openPanelGitCommit,
+    openPanelGitBranchChanges,
     openPanelGitWorkingChanges,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
 import { getCocClientFor, getSpaCocClient } from '../../../../src/server/spa/client/react/api/cocClient';
@@ -120,6 +121,32 @@ describe('openPanelGitWorkingChanges', () => {
             commitHash: 'working-changes', filePath: null, openRequest: {},
         });
         // Each open is its own request, so an unchanged route still reapplies.
+        expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
+    });
+});
+
+describe('openPanelGitBranchChanges', () => {
+    let originalHash: string;
+    beforeEach(() => {
+        originalHash = location.hash;
+        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
+    });
+    afterEach(() => {
+        window.history.replaceState(null, '', originalHash || '#');
+    });
+
+    it('publishes the branch range in place with a fresh open request each time', () => {
+        const dispatch = vi.fn();
+        const target = { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'ws-a' };
+        openPanelGitBranchChanges(dispatch, target);
+        openPanelGitBranchChanges(dispatch, target);
+        expect(location.hash).toBe('#repos/ws-a/git/branch-range');
+        const actions = dispatch.mock.calls.map(([action]) => action);
+        expect(actions[0]).toEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'ws-a', suffix: '/git/branch-range' });
+        expect(actions[1]).toEqual({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-a', workspaceId: 'ws-a',
+            commitHash: 'branch-range', filePath: null, openRequest: {},
+        });
         expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
     });
 });

@@ -31,7 +31,7 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
+export type OpenMenuActionId = 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -65,6 +65,12 @@ export interface OpenMenuActionsInput {
      * rather than disabled for every other chat.
      */
     todoAvailable?: boolean;
+    /**
+     * The target is one concrete repo whose Git tab this panel can host. Gates
+     * the Git entry, which is omitted rather than disabled: a group's own root
+     * has no repository to show.
+     */
+    gitAvailable?: boolean;
     /** The panel's workspace owns a Settings page (every repo and group dock host does). */
     settingsAvailable?: boolean;
     /**
@@ -104,6 +110,7 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     if (!isRepoGroupWorkspaceId(input.targetWorkspaceId)) {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
+    if (input.gitAvailable === true) actions.push({ id: 'git', label: 'Git', ...repoGate });
     actions.push({ id: 'work-items', label: 'Work Items', ...repoGate });
     actions.push({ id: 'pull-requests', label: 'Pull Requests', ...repoGate });
     actions.push({ id: 'notes', label: 'Notes' });

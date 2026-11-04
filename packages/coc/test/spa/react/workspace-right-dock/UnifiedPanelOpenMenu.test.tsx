@@ -60,6 +60,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
             targets={props.targets}
             todoInput={props.todoInput}
             settingsAvailable={props.settingsAvailable}
+            gitAvailable={props.gitAvailable}
             {...handlers}
         />,
     );
@@ -131,6 +132,18 @@ describe('actions', () => {
         expect(onOpenWorkspaceResource).toHaveBeenCalledWith('settings');
         expect(location.hash).toBe(hash);
     });
+    it('offers Git only when admitted and opens it through the panel callback', () => {
+        const { unmount } = renderMenu();
+        expect(screen.queryByTestId('unified-panel-open-git')).toBeNull();
+        unmount();
+        const { onOpenWorkspaceResource, onClose } = renderMenu({ gitAvailable: true });
+        const row = screen.getByTestId('unified-panel-open-git');
+        expect(row.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+        fireEvent.click(row);
+        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('git');
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
     it('opens a workspace resource through the panel callback', async () => {
         const { onOpenWorkspaceResource } = renderMenu();
         fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
