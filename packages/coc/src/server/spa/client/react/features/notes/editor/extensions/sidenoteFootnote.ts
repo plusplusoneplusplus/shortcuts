@@ -37,6 +37,7 @@
  */
 
 import type { MarkedExtension, Tokens } from 'marked';
+import { escapeHtml as escapeHtmlAttr } from '../../../../utils/format';
 
 /** HTML class carried by the inline reference marker span (marked + Tiptap). */
 export const QA_SIDENOTE_REF_CLASS = 'qa-sidenote-ref';
@@ -210,14 +211,6 @@ export function decodeQaPayload(raw: string): QaFootnoteDef | null {
 }
 
 // ── html attribute helpers ───────────────────────────────────────────────────
-
-function escapeHtmlAttr(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 // ── marked inline tokenizer ──────────────────────────────────────────────────
 
