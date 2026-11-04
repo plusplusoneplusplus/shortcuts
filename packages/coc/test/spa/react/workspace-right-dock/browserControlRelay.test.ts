@@ -677,6 +677,35 @@ describe('SPA browser socket relay', () => {
             h.relay.dispose();
         });
 
+        it('retains a local turn before the remote clone socket rebinds on a switch to that clone', async () => {
+            const baseUrl = 'http://127.0.0.1:4500', cloneRef = 'remote:server:other';
+            registerCloneBaseUrls([{ workspaceId: 'other', serverId: 'server', baseUrl }]);
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const local = harness(undefined, true);
+            const retainScope = withRetain(local);
+            const remoteSend = vi.fn(() => true);
+            const remote = createBrowserSocketRelay({ send: remoteSend }, baseUrl);
+            await local.relay.update('w'); local.relay.onOpen();
+            await remote.update('w'); remote.onOpen();
+            const finish = hold(local);
+            local.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+            local.control.bindScope.mockClear();
+
+            // React runs the remote bridge's effect (a child) before the local socket's: the clone binds first.
+            const remoteBind = remote.update(cloneRef);
+            const localSwitch = local.relay.update(cloneRef);
+            await Promise.all([remoteBind, localSwitch]);
+            expect(local.control.bindScope).toHaveBeenCalledExactlyOnceWith('other', cloneRef);
+            expect(retainScope).toHaveBeenCalledExactlyOnceWith('w', 'w');
+            expect(retainScope.mock.invocationCallOrder[0]).toBeLessThan(local.control.bindScope.mock.invocationCallOrder[0]);
+            expect(local.control.cancel).not.toHaveBeenCalled();
+            expect(local.send).toHaveBeenLastCalledWith({ type: 'browser-capability-clear', background: ['w'] });
+
+            finish({ tabs: [] }); await tick();
+            expect(local.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
+            local.relay.dispose(); remote.dispose();
+        });
+
         describe('Switch back notice', () => {
             const foregroundRequired = new Error("Error invoking remote method 'coc-desktop:browser-control': Error: foreground-required: rich paste needs the workspace on screen");
             const paste = { ...request, id: 'r-paste', turnId: 't1', framesEnabled: true, richPasteEnabled: true, command: { action: 'paste_html', ref: 'e1', html: '<b>x</b>' } };

@@ -23,6 +23,12 @@ import { clearBrowserNavigationPrompt, setBrowserNavigationPrompt } from './brow
  * Navigations the desktop holds during a turn are asked of the owning server; its prompts
  * show in the conversation's chat and are blocked when the socket goes away.
  */
+/**
+ * Every live relay's retention hook. A desktop window has one relay per server socket, and the
+ * desktop finishes unretained turns on any rebind, so all relays retain before any relay binds.
+ */
+const retainers = new Set<(foreground: string | null) => void>();
+
 export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnection, 'send'>, baseUrl?: string) {
     const control = desktopBrowserBridge()?.control;
     let routingRef: string | null = null;
@@ -367,8 +373,8 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 return;
             }
             const version = ++revision;
-            // Retain the turns being switched away from before the desktop rebinds its foreground scope.
-            retainControlled(matches ? ref : null);
+            // Retain the turns being switched away from, on every server's relay, before the desktop rebinds its foreground scope.
+            for (const retain of retainers) retain(ref);
             cancelPending(false);
             workspaceId = null;
             routingRef = null;
@@ -515,8 +521,10 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
             window.removeEventListener('focus', focus);
             unsubscribeScope();
+            retainers.delete(retainControlled);
         },
     };
     const unsubscribeScope = subscribeBrowserControlScope(() => { void relay.update(selectedRef); });
+    retainers.add(retainControlled);
     return relay;
 }
