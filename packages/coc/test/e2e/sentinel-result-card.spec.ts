@@ -7,12 +7,14 @@ let script: string;
 let css: string;
 const payload = {
     parent: { workspaceId: 'ws-parent', processId: 'queue_parent' },
-    child: { workspaceId: 'ws-child', processId: 'queue_child' },
-    jobId: 'queue_child', title: 'Finish delegated search implementation with accessible result cards',
+    child: { workspaceId: 'ws-child', processId: 'queue_child', serverId: 'destination-alias' },
+    jobId: 'remote:request-1', title: 'Finish delegated search implementation with accessible result cards',
+    reviewProcessId: 'queue_child',
+    remote: { originServerIdentity: 'origin-identity', serverIdentity: 'destination-identity', requestId: 'request-1', kind: 'launch' },
     repository: { workspaceId: 'ws-child', name: 'Repository-with-a-long-name-for-responsive-layout' },
     terminalEventId: 'child-terminal', outcome: 'completed',
     summary: '**Outcome**\n\n' + 'Readable result summary with commit abc1234.\n'.repeat(100),
-    links: ['javascript:alert(1)'],
+    links: ['#chat-references/destination-identity/ws-child/queue_child', 'javascript:alert(1)'],
 };
 const rawJson = `  ${JSON.stringify(payload, null, 2)}\n`;
 
@@ -56,7 +58,7 @@ test.beforeAll(async () => {
 
 for (const dark of [false, true]) {
     for (const width of [320, 1024]) {
-        test(`collapsed result, keyboard and overflow at ${width}px in ${dark ? 'dark' : 'light'}`, async ({ page }) => {
+        test(`collapsed result, keyboard and overflow at ${width}px in ${dark ? 'dark' : 'light'}`, async ({ page }, testInfo) => {
             const errors: string[] = [];
             page.on('pageerror', error => errors.push(error.message));
             await page.setViewportSize({ width, height: 900 });
@@ -73,10 +75,17 @@ for (const dark of [false, true]) {
             await expect(card).toBeVisible();
             await expect(summary).toBeHidden();
             await expect(raw).toBeHidden();
+            await expect(page.getByTestId('sentinel-result-preview')).toBeVisible();
+            await expect(card.getByText('Destination server identity')).toBeHidden();
             const height = (await card.boundingBox())!.height;
             expect(height).toBeLessThan(300);
-            await expect(card.getByRole('link', { name: 'Open job' })).toHaveAttribute('href', '#repos/ws-child/chats/queue_child');
+            await expect(card.getByRole('link', { name: 'Open job' })).toHaveAttribute('href', payload.links[0]);
             expect(await card.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+            if (width === 320) {
+                const screenshot = testInfo.outputPath('sentinel-result-mobile.png');
+                await page.screenshot({ path: screenshot });
+                await testInfo.attach('Compact remote result', { path: screenshot, contentType: 'image/png' });
+            }
 
             const detailsToggle = card.locator('summary', { hasText: /^Details$/ });
             await detailsToggle.focus();
@@ -85,8 +94,6 @@ for (const dark of [false, true]) {
             await expect(summary.locator('strong')).toHaveText('Outcome');
             expect((await card.boundingBox())!.height).toBeGreaterThan(height + 300);
             expect(await card.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-            await page.keyboard.press('Space');
-            await expect(summary).toBeHidden();
             await page.keyboard.press('Tab');
             const rawToggle = card.locator('summary', { hasText: /^Raw JSON$/ });
             await expect(rawToggle).toBeFocused();
@@ -103,6 +110,15 @@ for (const dark of [false, true]) {
             await page.keyboard.press('Enter');
             await expect(card.getByRole('status')).toHaveText('JSON copied');
             expect(await page.evaluate(() => Reflect.get(window, 'copiedJson'))).toBe(rawJson);
+            await page.keyboard.press('Shift+Tab');
+            await page.keyboard.press('Shift+Tab');
+            await expect(rawToggle).toBeFocused();
+            await page.keyboard.press('Space');
+            await expect(raw).toBeHidden();
+            await page.keyboard.press('Shift+Tab');
+            await expect(detailsToggle).toBeFocused();
+            await page.keyboard.press('Space');
+            await expect(summary).toBeHidden();
             expect(await card.locator('a').count()).toBe(1);
             expect(errors).toEqual([]);
         });

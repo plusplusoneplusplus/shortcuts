@@ -91,15 +91,19 @@ and historical session-id fallbacks.
 
 The live, default-on `features.sentinelResultCards` page-wide presentation flag selects
 `SentinelResultCard` unless explicitly false, including when configuration/runtime flags
-are absent. Cards require receipt-correlated user turns with the exact review prefix,
-validated result schema and matching parent workspace/process. Unknown envelopes keep
-ordinary rendering. Native disclosures separate readable inert chat Markdown from exact
-JSON view/copy; links, images and embeds in summaries remain inactive. Open-job routes
-inherit the source owner, with explicit endpoints taking precedence. In a hosted Sentinel,
-a plain click on an in-app Open job link (`data-sentinel-result-job`, ordinary or Ralph child)
-opens it without a process read and starts the shared To-do excursion, so the job shows
-`SentinelTodoOriginBar`'s Back to Sentinel. Stored/model content,
-whole-turn raw/copy, review admission, To-do assessment and authorization remain unchanged.
+are absent. `sentinelResult.ts` recognizes receipt-correlated user turns with the exact
+review prefix and validates local, follow-up and remote envelopes against the parent
+workspace/process. Invalid deliveries show fixed warnings; ordinary prompts retain chat
+rendering. The compact view separates reported job outcome from To-do assessment.
+Native disclosures contain inert full-summary Markdown, provenance and exact JSON
+view/copy. Result text cannot activate links, images, embeds or attached-context cards.
+
+The producer's first durable job reference must match the child and remote identity;
+`useSentinelResponseLinks` uses the shared owner-verifying resolver before navigation or
+starting a To-do excursion. Ordinary child routes inherit the source owner, with explicit
+endpoints taking precedence. `SentinelTodoOriginBar` returns to the exact Sentinel.
+Stored/model content, whole-turn raw/copy, review admission, To-do assessment and
+authorization remain unchanged.
 
 ### Conversation compaction
 
