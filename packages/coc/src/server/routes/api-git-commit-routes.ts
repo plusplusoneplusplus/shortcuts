@@ -12,6 +12,7 @@ import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import type { APIError } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { loadCommitFileDiffContent } from '../git/ref-file-content';
+import { loadFileHistory, loadRenamedCommitFilePatch } from '../git/file-history';
 import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
@@ -93,6 +94,24 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // GET /api/workspaces/:id/git/file-history?path= — Commits on HEAD that touched one file (follows renames)
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/file-history$/,
+        parseQuery: (q) => ({
+            path: asString(q.path, ''),
+            limit: Math.min(Math.max(asInt(q.limit, 50), 1), 200),
+            // Each page re-reads history from HEAD, so the depth is bounded.
+            skip: Math.min(Math.max(asInt(q.skip, 0), 0), 10_000),
+        }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            if (!query.path) return void handleAPIError(res, badRequest('Missing path'));
+            return loadFileHistory(ws.rootPath, query.path, query);
+        },
+    }));
+
     // GET /api/workspaces/:id/git/commits/:hash — Single commit details
     routes.push(createRoute({
         method: 'GET',
@@ -168,16 +187,19 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
-        parseQuery: (q) => ({ full: asBool(q.full) }),
+        parseQuery: (q) => ({ full: asBool(q.full), oldPath: asString(q.oldPath, '') }),
         handler: async ({ res, match, query, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const hash = match[2];
             const filePath = decodeURIComponent(match[3]);
 
-            const full = query.full;
+            const { full, oldPath } = query;
 
             try {
+                if (oldPath && oldPath !== filePath) {
+                    return await loadRenamedCommitFilePatch(ws.rootPath, hash, oldPath, filePath);
+                }
                 const { content } = await loadCommitShowPatch(ws.rootPath, hash, filePath, {
                     contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
                 });

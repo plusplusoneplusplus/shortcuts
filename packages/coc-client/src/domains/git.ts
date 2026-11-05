@@ -22,6 +22,7 @@ import type {
   GitDiscardAllResponse,
   GitFileContentResponse,
   GitFileDiffContentResponse,
+  GitFileHistoryResponse,
   GitPatchApplyRequest,
   GitPatchApplyResponse,
   GitPatchExportResponse,
@@ -234,6 +235,13 @@ export class GitClient {
   listCommits(workspaceId: string, query?: GitCommitListQuery): Promise<GitCommitListResponse> {
     return this.transport.request<GitCommitListResponse>(workspaceGitPath(workspaceId, '/commits'), {
       query: serializeCommitListQuery(query),
+    });
+  }
+
+  /** Commits on HEAD that touched one file, newest first, following renames. */
+  listFileHistory(workspaceId: string, filePath: string, query?: { limit?: number; skip?: number }): Promise<GitFileHistoryResponse> {
+    return this.transport.request<GitFileHistoryResponse>(workspaceGitPath(workspaceId, '/file-history'), {
+      query: { path: filePath, limit: query?.limit, skip: query?.skip },
     });
   }
 

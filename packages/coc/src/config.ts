@@ -412,6 +412,8 @@ export interface CLIConfig {
         panelTabGroups?: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Enabled by default. */
         binaryFileReveal?: boolean;
+        /** Read-only Git history view for right-panel file tabs. Disabled by default. */
+        fileHistory?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -867,6 +869,8 @@ export interface ResolvedCLIConfig {
         panelTabGroups: boolean;
         /** "Open in Explorer" under a right-panel file tab's binary placeholder. Enabled by default. */
         binaryFileReveal: boolean;
+        /** Read-only Git history view for right-panel file tabs. Disabled by default. */
+        fileHistory: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -1207,6 +1211,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelTabReordering: true,
         panelTabGroups: true,
         binaryFileReveal: true,
+        fileHistory: false,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
         htmlPageTab: true,

@@ -927,6 +927,7 @@ features default off.
 | `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | on |
+| `features.fileHistory` | `isFileHistoryEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -1274,6 +1275,12 @@ and image read caps, diff language limits, and chat-source API limits are separa
 `useFileContent.reload`: an in-place re-read through the same owner-routed read
 that confirms before discarding unsaved edits, keeps the buffer on failure or on
 edits/saves during the read, and drops answers after a file/owner change.
+
+With `features.fileHistory` enabled, the file toolbar's History toggle replaces
+a repo-relative file tab's view with its read-only commit list on HEAD
+(`UnifiedFileHistory`, paged, follows renames) and a picked commit's file diff.
+The `PreviewPane` stays mounted but hidden, so unsaved edits survive. Reads use
+the tab's owner and concrete clone route; see `unified-right-panel/AGENTS.md`.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

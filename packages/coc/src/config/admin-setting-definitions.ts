@@ -1466,6 +1466,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.fileHistory', default: false, runtime: 'live', runtimeFlag: 'fileHistoryEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 48, label: 'File history', badge: 'experimental',
+            hint: 'Adds a History button to right-panel file tabs. It lists the commits on the current branch that changed the file, following renames, and shows each commit\'s diff for that file. Read-only. Disabled by default.',
+            testId: 'toggle-file-history-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',

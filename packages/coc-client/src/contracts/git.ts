@@ -14,6 +14,25 @@ export interface GitCommitListResponse {
   unpushedCount: number;
 }
 
+export interface GitFileHistoryCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  /** The file's path in this commit. */
+  path: string;
+  /** The path before this commit when it renamed or copied the file. */
+  oldPath?: string;
+  status: string;
+}
+
+export interface GitFileHistoryResponse {
+  commits: GitFileHistoryCommit[];
+  hasMore: boolean;
+}
+
 export interface GitFileChange {
   status: string;
   path: string;

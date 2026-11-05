@@ -23,6 +23,7 @@ import {
     isBinaryFileRevealEnabled,
     isBrowserTabShortcutsEnabled,
     isChatScopedBrowserTabsEnabled,
+    isFileHistoryEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
@@ -348,6 +349,16 @@ describe('conversation browser tabs runtime flag', () => {
         expect(isChatScopedBrowserTabsEnabled()).toBe(true);
         applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: false });
         expect(isChatScopedBrowserTabsEnabled()).toBe(false);
+    });
+});
+
+describe('file history runtime flag', () => {
+    it('defaults off, turns on only for an explicit true and follows live updates', () => {
+        expect(isFileHistoryEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ fileHistoryEnabled: true });
+        expect(isFileHistoryEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ fileHistoryEnabled: false });
+        expect(isFileHistoryEnabled()).toBe(false);
     });
 });
 
