@@ -299,9 +299,15 @@ mod navigation_gate_tests {
         let mut approvals = NavigationApprovals::default();
         approvals.allow("https://portal.test/start?query=value").unwrap();
         assert!(approvals.contains("https://PORTAL.test:443/return"));
-        for target in ["http://portal.test/return", "https://portal.test:8443/return",
-            "https://child.portal.test/return", "https://portal.test.other.test/return",
-            "https://other.test/", "about:blank", "file:///synthetic"] {
+        for target in [
+            "http://portal.test/return",
+            "https://portal.test:8443/return",
+            "https://child.portal.test/return",
+            "https://portal.test.other.test/return",
+            "https://other.test/",
+            "about:blank",
+            "file:///synthetic",
+        ] {
             assert!(!approvals.contains(target));
         }
         assert!(!NavigationApprovals::default().contains("https://portal.test/return"));
