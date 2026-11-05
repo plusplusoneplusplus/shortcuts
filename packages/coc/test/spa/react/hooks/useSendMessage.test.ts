@@ -612,6 +612,19 @@ describe('useSendMessage', () => {
         expect(opts.setSending).toHaveBeenLastCalledWith(false);
     });
 
+    it('clears a failed submission after a successful retry while the chat is active', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: false, status: 500, json: async () => ({ error: 'Submission failed' }),
+        }).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ isActiveGeneration: true });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Retry this message'); });
+        expect(opts.lastFailedMessageRef.current).toBe('Retry this message');
+        await act(async () => { await result.current.sendFollowUp(opts.lastFailedMessageRef.current); });
+        expect(opts.lastFailedMessageRef.current).toBe('');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it.each([undefined, 'group-view', 'remote:server-test:workspace-own'])(
         'uses loaded owner metadata independently of selection routing (%s)', async workspaceId => {
             const baseUrl = 'https://mirror-clone.example';

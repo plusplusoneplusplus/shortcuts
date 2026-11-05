@@ -301,7 +301,16 @@ preflight, and posts one text/PNG snapshot. The server resolves the destination
 mode, provider and session. Per-owner admission excludes overlapping modifier sends;
 accepted snapshots consume only unchanged chips, including after navigation.
 
-### Sentinel to-do context
+### Sentinel drafts and to-do context
+
+Refrain grips use the versioned `sentinelRefrainDrop.ts` MIME carrying only the
+refrain ID and exact workspace, parent Sentinel and concrete server route.
+`FollowUpInputArea` reads `sentinelTodos.jobs.list` on that owner and appends the
+current saved instructions as editable draft text. Pending reads block sends and
+duplicate drops; owner changes, unmount and changed endpoints discard late results.
+Failed reads retain the draft, including typing during loading. Copy feedback uses
+the composer's existing drop overlay, independently of context-attachment flags.
+Dropping grants no authority to run, edit or schedule the refrain.
 
 Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
 `AttachedContextPreviews`; their Attach action uses `activeChatAttach` without

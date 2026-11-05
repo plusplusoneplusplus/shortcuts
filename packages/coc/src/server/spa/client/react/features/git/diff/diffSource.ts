@@ -168,6 +168,8 @@ export function createCommitDiffSource(
         commit?: { subject?: string };
         files?: string[];
         routingTarget?: string | null;
+        /** Older path per file this commit renamed, so its patch pairs both sides. */
+        renames?: Readonly<Record<string, string>>;
     },
 ): DiffSource {
     const shortHash = hash.slice(0, 7);
@@ -181,7 +183,9 @@ export function createCommitDiffSource(
 
         fileDiffUrl(filePath: string, full?: boolean): string {
             const base = getCocClientForWorkspace(workspaceId).git.commitFileDiffPath(workspaceId, hash, filePath);
-            return full ? `${base}?full=true` : base;
+            const oldPath = options?.renames?.[filePath];
+            const query = [full && 'full=true', oldPath && `oldPath=${encodeURIComponent(oldPath)}`].filter(Boolean).join('&');
+            return query ? `${base}?${query}` : base;
         },
 
         fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {

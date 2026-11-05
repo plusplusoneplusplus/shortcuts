@@ -78,8 +78,13 @@ function click(x, y, modifiers = []) {
         const style = getComputedStyle(host);
         return { closed: host.shadowRoot === null, position: style.position, display: style.display,
             background: style.backgroundColor, outlineBackground: outline.backgroundColor,
-            outlineBorder: outline.borderTopWidth, label: root.querySelector('.label').textContent };
+            outlineBorder: outline.borderTopWidth, label: root.querySelector('.label').textContent,
+            sheet: getComputedStyle(root.querySelector('style')).display };
     })()`);
+    // The overlay's own CSS source must not paint over the white page above the label.
+    const strip = (await win.webContents.capturePage({ x: 0, y: 0, width: 400, height: 24 })).toBitmap();
+    styles.inkedPixels = 0;
+    for (let i = 0; i < strip.length; i += 4) if (Math.min(strip[i], strip[i + 1], strip[i + 2]) < 200) styles.inkedPixels++;
     const isolation = await win.webContents.executeJavaScript('({ clicks: window.clicks, private: !window.__cocBrowserAnnotation && !window.fixtureRoot })');
     // Trusted keyboard defaults must still edit the private textarea despite window capture.
     for (const type of ['keyDown', 'char', 'keyUp']) {

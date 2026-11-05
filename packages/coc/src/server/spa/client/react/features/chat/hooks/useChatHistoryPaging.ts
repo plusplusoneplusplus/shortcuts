@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PAGE_TURNS } from '@plusplusoneplusplus/forge/history-paging';
-import type { CocClient, ConversationTurn } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, ConversationTurn, ProcessDetailResponse } from '@plusplusoneplusplus/coc-client';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 
 export interface ChatHistoryPage {
@@ -8,6 +8,13 @@ export interface ChatHistoryPage {
     hasMore: boolean;
     totalTurns: number;
     historyRevision: number;
+}
+
+export class ObsoleteChatReadError extends Error {
+    constructor() {
+        super('Chat read superseded');
+        this.name = 'ObsoleteChatReadError';
+    }
 }
 
 type TurnSetter = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
@@ -71,6 +78,7 @@ export function useChatHistoryPaging({
     const requests = useRef(new Set<AbortController>());
     const pinsRequest = useRef<AbortController | null>(null);
     const generation = useRef(0);
+    const active = useRef(true);
     const inflight = useRef<Promise<boolean> | null>(null);
     const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
     const failures = useRef(0);
@@ -79,11 +87,13 @@ export function useChatHistoryPaging({
     const anchor = useRef<{ index: string; offset: number; bottom: boolean } | null>(null);
     const callbacks = useRef({ setTurns, onReset });
     callbacks.current = { setTurns, onReset };
-    const identity = `${scopeKey}|${enabled}`;
+    const identity = `${scopeKey}|${workspaceId ?? ''}|${enabled}`;
     const identityRef = useRef(identity);
+    const clientRef = useRef(client);
     // Revoke reads synchronously, before passive cleanup on an owner switch.
-    if (identityRef.current !== identity) {
+    if (identityRef.current !== identity || clientRef.current !== client) {
         identityRef.current = identity;
+        clientRef.current = client;
         generation.current++;
         for (const request of requests.current) request.abort();
         historyRef.current = null;
@@ -93,6 +103,7 @@ export function useChatHistoryPaging({
         anchor.current = null;
     }
     useEffect(() => {
+        active.current = true;
         setHistory(null);
         setLoading(false);
         setError(false);
@@ -102,6 +113,7 @@ export function useChatHistoryPaging({
         setPinsError(false);
         intersecting.current = false;
         return () => {
+            active.current = false;
             generation.current++;
             for (const request of requests.current) request.abort();
             requests.current.clear();
@@ -141,24 +153,29 @@ export function useChatHistoryPaging({
         return mergeHistoryTurns(retained, newTurns);
     }, [enabled, publish, turnsRef]);
 
-    const readProcess = useCallback(async (id: string) => {
+    const readProcess = useCallback(async (id: string, accept: () => boolean = () => true) => {
+        if (!active.current || identityRef.current !== identity || clientRef.current !== client || !accept()) throw new ObsoleteChatReadError();
         const controller = new AbortController();
         const epoch = generation.current;
         requests.current.add(controller);
+        let data: ProcessDetailResponse;
         try {
             const options = { ...(workspaceId ? { workspace: workspaceId } : {}), ...(enabled ? { turnsLimit: PAGE_TURNS } : {}) };
-            const data = enabled
+            data = enabled
                 ? await client.processes.get(id, options, { signal: controller.signal })
                 : workspaceId ? await client.processes.get(id, options) : await client.processes.get(id);
-            if (controller.signal.aborted || epoch !== generation.current) throw new DOMException('Chat changed', 'AbortError');
-            if (enabled && data.history && data.process) {
-                return { ...data, process: { ...data.process, conversationTurns: acceptSnapshot(clientTurns(data.process.conversationTurns ?? []), data.history) } };
-            }
-            return data;
+        } catch (error) {
+            if (controller.signal.aborted || epoch !== generation.current || !accept()) throw new ObsoleteChatReadError();
+            throw error;
         } finally {
             requests.current.delete(controller);
         }
-    }, [client, workspaceId, enabled, acceptSnapshot]);
+        if (controller.signal.aborted || epoch !== generation.current || !accept()) throw new ObsoleteChatReadError();
+        if (enabled && data.history && data.process) {
+            return { ...data, process: { ...data.process, conversationTurns: acceptSnapshot(clientTurns(data.process.conversationTurns ?? []), data.history) } };
+        }
+        return data;
+    }, [client, workspaceId, enabled, acceptSnapshot, identity]);
 
     const captureAnchor = useCallback(() => {
         const sc = scrollRef.current;

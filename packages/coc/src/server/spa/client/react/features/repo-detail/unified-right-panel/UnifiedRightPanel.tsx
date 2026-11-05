@@ -63,7 +63,7 @@ import {
     chatCommitPanelTarget, gitTabOpenSource, gitTabOwnerClient, openPanelGitBranchChanges, type UnifiedPanelGitOpenSource,
 } from './panelGitCommit';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isFileHistoryEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -119,6 +119,7 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { moveTabGroup, toggleGroupFolded, useUnifiedTabGroupOrder, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
+import { UnifiedFileHistory } from './UnifiedFileHistory';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
@@ -285,6 +286,7 @@ export function UnifiedRightPanel({
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const groupOrder = useUnifiedTabGroupOrder(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
+    const [fileHistoryEnabled, setFileHistoryEnabled] = useState(() => isFileHistoryEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
     useEffect(() => {
         const update = () => {
@@ -293,6 +295,7 @@ export function UnifiedRightPanel({
             setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
             setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
+            setFileHistoryEnabled(isFileHistoryEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -583,6 +586,14 @@ export function UnifiedRightPanel({
     // toolbar. A null here removes the row and moves the navigator toggle into
     // the tab strip.
     const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active), [active]);
+
+    // The active repo file's Git history (`features.fileHistory`) replaces its
+    // view; the file view stays mounted underneath so unsaved edits survive.
+    // Another tab, chat or a split closes it.
+    const [historyTabId, setHistoryTabId] = useState<string | null>(null);
+    useEffect(() => { setHistoryTabId(null); }, [activeId]);
+    const historyAvailable = fileHistoryEnabled && !splitShown && toolbar?.interactive === true;
+    const historyTab = historyAvailable && active && active.id === historyTabId ? active : null;
 
     const explorerToggle = useCallback(
         (placement: 'toolbar' | 'strip') => (
@@ -2322,6 +2333,10 @@ export function UnifiedRightPanel({
                             routingRef={active?.ownerRoutingRef}
                             onOpenFile={openBreadcrumbFile}
                             reload={active ? reloadControls[active.id] : undefined}
+                            history={historyAvailable && active ? {
+                                open: historyTab !== null,
+                                onToggle: () => setHistoryTabId(historyTab ? null : active.id),
+                            } : undefined}
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
@@ -2401,7 +2416,7 @@ export function UnifiedRightPanel({
                     ) : null}
                     {mountedTabs.map(tab => {
                             const pane = splitPaneOf(tab.id);
-                            const visible = splitShown ? pane !== null : tab.id === activeId;
+                            const visible = (splitShown ? pane !== null : tab.id === activeId) && tab.id !== historyTab?.id;
                             return (
                             <div
                                 key={tab.id}
@@ -2486,6 +2501,15 @@ export function UnifiedRightPanel({
                             </div>
                             );
                         })}
+                    {historyTab && (
+                        <UnifiedFileHistory
+                            key={historyTab.id}
+                            workspaceId={historyTab.ownerWorkspaceId}
+                            routingRef={historyTab.ownerRoutingRef}
+                            filePath={historyTab.resourceId}
+                            onClose={() => setHistoryTabId(null)}
+                        />
+                    )}
 
                     {splitShown && split !== null && (
                         <div

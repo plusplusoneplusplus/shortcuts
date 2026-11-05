@@ -612,11 +612,13 @@ shield/events, wait two animation frames with a one-second timeout, and validate
 selection/scroll/viewport/DPR before and after capture. Restoration targets the
 original generation; failures and revocation reject the image. Electron URL guests
 implement optional `BrowserHostedView.captureAnnotation` through
-`electron-annotation-capture.ts`: enclosing DIP `capturePage(rect)` followed by a
-physical-pixel PNG crop, without resampling. Allocation caps at 16 Mi pixels and
+`electron-annotation-capture.ts`: `capturePage(rect)` around the selection, starting
+on a whole device pixel, then a shared `browser-annotation-crop.ts` physical-pixel crop
+without resampling. The crop absorbs float32 DPR noise and trims far-edge selections
+to the fractional surface behind the rounded viewport. Allocation caps at 16 Mi pixels and
 PNG output at 20 MiB. WebView2 root tabs use `webview2-annotation-capture.ts` with
 native memory-only `CapturePreview`; validate physical viewport dimensions before
-decoding and crop without resampling. Full previews share the same bounds. Only
+decoding and use the same crop. Full previews share the same bounds. Only
 pending capture replies permit 28 MB native transport frames; ordinary CDP/events
 retain their 1 MiB limit. Lifecycle/zoom changes reject late images.
 
@@ -947,6 +949,7 @@ features default off.
 | `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | on |
+| `features.fileHistory` | `isFileHistoryEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -1294,6 +1297,12 @@ and image read caps, diff language limits, and chat-source API limits are separa
 `useFileContent.reload`: an in-place re-read through the same owner-routed read
 that confirms before discarding unsaved edits, keeps the buffer on failure or on
 edits/saves during the read, and drops answers after a file/owner change.
+
+With `features.fileHistory` enabled, the file toolbar's History toggle replaces
+a repo-relative file tab's view with its read-only commit list on HEAD
+(`UnifiedFileHistory`, paged, follows renames) and a picked commit's file diff.
+The `PreviewPane` stays mounted but hidden, so unsaved edits survive. Reads use
+the tab's owner and concrete clone route; see `unified-right-panel/AGENTS.md`.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

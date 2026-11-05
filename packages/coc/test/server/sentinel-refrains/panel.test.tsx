@@ -38,6 +38,7 @@ const client = {
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { RefrainHistoryHostContext, SentinelRefrains } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
+import { SENTINEL_REFRAIN_DRAG_MIME } from '../../../src/server/spa/client/react/features/chat/sentinelRefrainDrop';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_sentinel' };
 const follow = vi.fn();
@@ -103,6 +104,28 @@ async function fillNew() {
 }
 
 describe('Sentinel Refrains', () => {
+    it('drags only the refrain identity and exact owner without selecting or mutating it', async () => {
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        const remoteOwner = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
+        view(remoteOwner);
+        const grip = await screen.findByRole('img', { name: 'Drag instructions for Daily review into its Sentinel chat' });
+        const dataTransfer = { effectAllowed: 'none', setData: vi.fn() };
+        fireEvent.dragStart(grip, { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        expect(dataTransfer.setData).toHaveBeenCalledTimes(1);
+        expect(dataTransfer.setData).toHaveBeenCalledWith(SENTINEL_REFRAIN_DRAG_MIME, JSON.stringify({
+            kind: 'coc.sentinel-refrain', version: 1, sourceWorkspaceId: 'ws-a',
+            sourceRoutingRef: 'remote:server-a:ws-a', sourceProcessId: 'queue_sentinel', refrainId: 'j1',
+        }));
+        expect(grip.className).toContain('opacity-50');
+        fireEvent.dragEnd(grip);
+        expect(grip.className).not.toContain('opacity-50');
+        expect(screen.queryByRole('region', { name: 'Refrain details for Daily review' })).toBeNull();
+        for (const action of [mock.create, mock.update, mock.delete, mock.start, mock.cancel, mock.testGate, mock.resumeGate]) {
+            expect(action).not.toHaveBeenCalled();
+        }
+    });
+
     it('keeps secondary actions and history collapsed and exposes the complete error', async () => {
         const error = 'Unsupported reasoning effort. ' + 'long-diagnostic/'.repeat(40) + '\nEnd of diagnostic';
         mock.list.mockResolvedValue({ jobs: [job({ enabled: false, runs: [run({ status: 'failed', error })] })] });

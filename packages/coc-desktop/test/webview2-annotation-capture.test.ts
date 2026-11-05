@@ -57,10 +57,32 @@ describe('WebView2 annotation preview crop', () => {
         expect(mocks.crop).toHaveBeenCalledWith({ x: 20, y: 41, width: 62, height: 81 });
     });
 
-    it('refuses a selection beyond the actual physical preview edge', async () => {
+    it('trims an edge selection to the displayed preview behind a rounded viewport', async () => {
         mocks.size = { width: 799, height: 600 };
         await expect(captureWebView2Annotation(async () => preview(799, 600),
-            { x: 790, y: 0, width: 10, height: 10 }, viewport)).rejects.toThrow('viewport');
+            { x: 790, y: 0, width: 10, height: 10 }, viewport)).resolves.toMatchObject({ width: 9, height: 10 });
+        expect(mocks.crop).toHaveBeenCalledWith({ x: 790, y: 0, width: 9, height: 10 });
+    });
+
+    it('accepts zoomed-out viewport rounding up to one CSS pixel plus half a DIP', async () => {
+        // A 300.5 DIP guest at 1.5x and 75% zoom reports 402 x 268 CSS pixels but shows 451 x 301.
+        mocks.size = { width: 451, height: 301 };
+        await expect(captureWebView2Annotation(async () => preview(451, 301), { x: 371.25, y: 252.5, width: 30.75, height: 15.5 },
+            { width: 402, height: 268, devicePixelRatio: 1.125 })).resolves.toMatchObject({ width: 34, height: 17 });
+        expect(mocks.crop).toHaveBeenCalledWith({ x: 417, y: 284, width: 34, height: 17 });
+    });
+
+    it('ignores float32 devicePixelRatio noise when choosing enclosing pixels', async () => {
+        mocks.size = { width: 880, height: 660 };
+        await expect(captureWebView2Annotation(async () => preview(880, 660), { x: 10, y: 10, width: 50, height: 30 },
+            { ...viewport, devicePixelRatio: 1.100000023841858 })).resolves.toMatchObject({ width: 55, height: 33 });
+        expect(mocks.crop).toHaveBeenCalledWith({ x: 11, y: 11, width: 55, height: 33 });
+    });
+
+    it('refuses a preview smaller than the rounded selection viewport', async () => {
+        mocks.size = { width: 795, height: 600 };
+        await expect(captureWebView2Annotation(async () => preview(795, 600),
+            { x: 780, y: 0, width: 20, height: 10 }, viewport)).rejects.toThrow('viewport');
         expect(mocks.decode).not.toHaveBeenCalled();
     });
 

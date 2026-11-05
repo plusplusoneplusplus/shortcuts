@@ -141,6 +141,7 @@ interface DashboardConfig {
     panelTabGroupsEnabled?: boolean;
     /** Whether right-panel binary placeholders offer "Open in Explorer". Default false. */
     binaryFileRevealEnabled?: boolean;
+    fileHistoryEnabled?: boolean;
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
     browserTabShortcutsEnabled?: boolean;
     /** Whether right-panel web pages belong to the conversation that opened them. Default false. */
@@ -371,6 +372,11 @@ export function isPanelTabGroupsEnabled(): boolean {
 /** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); on unless the server says off. */
 export function isBinaryFileRevealEnabled(): boolean {
     return getConfig().binaryFileRevealEnabled !== false;
+}
+
+/** Read-only Git history for right-panel file tabs (`features.fileHistory`); off unless the server says on. */
+export function isFileHistoryEnabled(): boolean {
+    return getConfig().fileHistoryEnabled === true;
 }
 
 /** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); on unless the server says off. */

@@ -944,6 +944,25 @@ describe('Features card UI metadata', () => {
         })).binaryFileRevealEnabled).toBe(false);
     });
 
+    it('exposes file history as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.fileHistory')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.ui?.hint).toContain('Disabled by default');
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('fileHistoryEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', badge: 'experimental',
+            testId: 'toggle-file-history-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.fileHistory).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).fileHistoryEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).fileHistoryEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { fileHistory: true },
+        })).fileHistoryEnabled).toBe(true);
+    });
+
     it.each(['features.chatHistoryPaging', 'features.canvasToolScripts'])('defaults experimental %s on and keeps explicit false', key => {
         const def = getAdminSettingDefinition(key)!;
         const name = key.slice('features.'.length);
@@ -1103,6 +1122,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.panelTabReordering': 'appearance',
         'features.panelTabGroups': 'appearance',
         'features.binaryFileReveal': 'appearance',
+        'features.fileHistory': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',
         'features.chatScopedBrowserTabs': 'browser',

@@ -374,6 +374,8 @@ export interface RuntimeDashboardConfig {
     panelTabGroupsEnabled: boolean;
     /** "Open in Explorer" under a right-panel file tab's binary placeholder (`features.binaryFileReveal`); defaults on. */
     binaryFileRevealEnabled: boolean;
+    /** Read-only Git history view for right-panel file tabs (`features.fileHistory`); defaults off. */
+    fileHistoryEnabled: boolean;
     /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults on. */
     browserTabShortcutsEnabled: boolean;
     /** Right-panel web pages scoped to the conversation that opened them (`features.chatScopedBrowserTabs`); defaults off. */

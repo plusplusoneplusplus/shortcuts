@@ -11,6 +11,14 @@ describe('GitClient', () => {
     ]);
   });
 
+  it('requests one file history page with the path as a query value', async () => {
+    const adapter = createMockAdapter({});
+    await new GitClient(adapter).listFileHistory('repo/a', 'src/app file.ts', { limit: 50, skip: 100 });
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/repo%2Fa/git/file-history', options: { query: { path: 'src/app file.ts', limit: 50, skip: 100 } } },
+    ]);
+  });
+
   it('calls commit and branch-range routes with encoded workspace and ref segments', async () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);
