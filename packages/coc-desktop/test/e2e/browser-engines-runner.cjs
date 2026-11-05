@@ -8,6 +8,7 @@ const path = require('node:path');
 const dist = path.join(__dirname, '..', '..', 'dist');
 const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(dist, 'browser-view-host.js'));
 const { fixtureScript } = require('./webview-fixture.cjs');
+const { installDownloadChooser, completedDownload } = require('./browser-engine-download.cjs');
 const { loadWebView2Binary } = require('@plusplusoneplusplus/coc-native');
 const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
@@ -33,6 +34,7 @@ app.setPath('userData', userData);
 const fixtureDownloads = path.join(userData, 'fixture-downloads');
 fs.mkdirSync(fixtureDownloads, { recursive: true });
 app.setPath('downloads', fixtureDownloads);
+installDownloadChooser(dialog, fixtureDownloads);
 // Fixture-only selection; never launch a downloaded file.
 app.on('session-created', ses => ses.on('will-download', (_event, item) => item.setSavePath(path.join(fixtureDownloads, 'fixture.zip'))));
 const externalCalls = [];
@@ -436,11 +438,12 @@ app.whenReady().then(async () => {
         await settled(main, 'related', s => s.title === 'Second');
         emit('related', { newTab, result: related });
         command('main', 'download');
-        const download = engine === 'electron' ? await waitFor(async () => {
+        const download = await waitFor(async () => {
             const result = await spa('window.__browser.downloads.query()');
-            return result.ok && result.entries.find(entry => entry.state === 'completed' && entry.fileAvailable);
-        }, 'managed download') : await waitFor(() => spa('window.downloads[0]'), 'manual download fallback');
-        emit('download', { download, externalCalls });
+            return completedDownload(result, engine);
+        }, 'managed download');
+        emit('download', { download, externalCalls, notices: await spa('window.downloads'),
+            content: fs.readFileSync(path.join(fixtureDownloads, 'fixture.zip'), 'utf8') });
         confirmation = 0;
         const cancelled = await call(main, 'clearData', engine);
         emit('cancel', { result: cancelled, tab: await call(main, 'navigate', 'main', base + '/?tab=main') });
