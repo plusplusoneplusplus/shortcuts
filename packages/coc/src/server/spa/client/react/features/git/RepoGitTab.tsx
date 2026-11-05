@@ -695,8 +695,9 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             workspaceId={workspaceId}
             view={view}
             commits={data.commits}
-            commitsLoading={data.loading}
-            commitsError={data.error}
+            commitsLoading={data.loading || data.refreshing}
+            commitsError={data.refreshError || data.error}
+            onRefreshCommits={data.refreshAll}
             onSelectCommit={selection.selectCommit}
             unpushedCount={data.unpushedCount}
             branchRangeData={data.branchRangeData}

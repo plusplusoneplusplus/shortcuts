@@ -16,8 +16,9 @@ names the current provider/effort in its label and tooltip and reuses
 `ClassifyDiffAiControls` with the workspace-scoped AI selection; disable selectors
 during classification. With a host `commitPicker`, the toolbar short hash is a
 `CommitHashPicker` trigger (recent commits + SHA entry) beside an icon-only copy
-button; SHA lookup goes through the owner's `getGitReviewClient` route and respects
-`gitCommitLookup`. Priority navigation, comments, AI chat and pop-out are
+button. Its host refresh action exposes loading and failures alongside retained
+commits; refreshing keeps the dialog open. SHA lookup goes through the owner's
+`getGitReviewClient` route and respects `gitCommitLookup`. Priority navigation, comments, AI chat and pop-out are
 toolbar actions that move into the More menu in narrower panes.
 
 `useCommitReviewFiles` reads file metadata through the concrete owner client and

@@ -62,7 +62,7 @@ describe('RepoGitTab', () => {
         });
 
         it('uses Promise.all for parallel initial fetch', () => {
-            expect(source).toContain('Promise.all([fetchCommits(), fetchBranchRange()])');
+            expect(source).toContain('Promise.all([commitsPromise, fetchBranchRange()])');
         });
     });
 
@@ -531,12 +531,12 @@ describe('RepoGitTab', () => {
 
         it('updates lastRefreshedAt after initial load', () => {
             // The initial Promise.all .then should call setLastRefreshedAt(Date.now())
-            expect(source).toMatch(/Promise\.all\(\[fetchCommits\(\), fetchBranchRange\(\)\]\)[\s\S]*?markRefreshed\(\)/);
+            expect(source).toMatch(/Promise\.all\(\[commitsPromise, fetchBranchRange\(\)\]\)[\s\S]*?markRefreshed\(\)/);
         });
 
         it('updates lastRefreshedAt after refreshAll', () => {
             // refreshAll's Promise.all .then should call setLastRefreshedAt(Date.now())
-            expect(source).toMatch(/fetchCommits\(true, 0, searchQueryRef\.current\), fetchBranchRange\(true\)[\s\S]*?markRefreshed\(\)/);
+            expect(source).toMatch(/Promise\.all\(\[commitsPromise, fetchBranchRange\(true\)\]\)[\s\S]*?markRefreshed\(\)/);
         });
 
         it('updates lastRefreshedAt after WebSocket git-changed refresh', () => {
@@ -1847,7 +1847,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleLoadMore updates skip state on success', () => {
-            expect(source).toContain('.then(() => setSkip(nextSkip))');
+            expect(source).toContain('.then(() => { if (request === commitRequestRef.current) setSkip(nextSkip); })');
         });
 
         it('handleLoadMore sets isLoadingMore true before fetch and false after', () => {
@@ -2270,10 +2270,11 @@ describe('RepoGitTab', () => {
     describe('commit header hash switcher', () => {
         it('switches commits through commit selection, never a working-tree route', () => {
             expect(source).toContain('onSelectCommit={selection.selectCommit}');
-            expect(source).toContain('commitsLoading={data.loading}');
-            expect(source).toContain('commitsError={data.error}');
+            expect(source).toContain('commitsLoading={data.loading || data.refreshing}');
+            expect(source).toContain('commitsError={data.refreshError || data.error}');
+            expect(source).toContain('onRefreshCommits={data.refreshAll}');
             const pane = readRepoGitTabModuleSource('RepoGitDetailPane.tsx');
-            expect(pane).toContain('commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onSelect: onSelectCommit }}');
+            expect(pane).toContain('commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit }}');
             expect(pane).not.toMatch(/onSelectCommit=\{[^}]*WorkingTree/);
         });
     });

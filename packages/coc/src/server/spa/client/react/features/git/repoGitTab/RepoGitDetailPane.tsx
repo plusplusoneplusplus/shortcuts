@@ -31,6 +31,7 @@ export interface RepoGitDetailPaneProps {
     commits: GitCommitItem[];
     /** Load state of `commits`, shown by the commit header's hash switcher. */
     commitsLoading?: boolean;
+    onRefreshCommits?: () => void;
     commitsError?: string | null;
     /** Opens another commit in the detail; never a working-tree route. */
     onSelectCommit?: (commit: GitCommitItem) => void;
@@ -62,7 +63,7 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onSelectCommit, unpushedCount, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
@@ -79,7 +80,7 @@ export function RepoGitDetailPane({
             hunkTarget={hunkTarget}
             onNavigateToCommitFile={onNavigateToCommitFile}
             onCommitClassified={onCommitClassified}
-            commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onSelect: onSelectCommit }}
+            commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit }}
         />;
     }
 

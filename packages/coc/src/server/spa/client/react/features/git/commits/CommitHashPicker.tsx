@@ -14,6 +14,8 @@ export interface CommitPickerOptions {
     /** Recently loaded commits of the owning workspace. */
     commits: GitCommitItem[];
     loading?: boolean;
+    /** Re-read the owning repository through the host's refresh flow. */
+    onRefresh?: () => void;
     error?: string | null;
     /** Server lookup for a SHA outside `commits`; absent when direct lookup is off. */
     lookup?: (sha: string) => Promise<GitCommitItem>;
@@ -114,12 +116,12 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
     const short = hash.slice(0, 8);
     const busy = lookup.status === 'busy';
     let listState: ReactNode = null;
-    if (recent.length === 0) {
-        listState = picker.loading
-            ? <p role="status" className="git-review-muted px-1 py-1">Loading recent commits…</p>
-            : picker.error
-                ? <p role="alert" className="px-1 py-1 text-red-600 dark:text-red-400">Could not load recent commits: {picker.error}</p>
-                : <p className="git-review-muted px-1 py-1">No recent commits</p>;
+    if (picker.loading) {
+        listState = <p role="status" className="git-review-muted px-1 py-1">Loading recent commits…</p>;
+    } else if (picker.error) {
+        listState = <p role="alert" className="px-1 py-1 text-red-600 dark:text-red-400">Could not load recent commits: {picker.error}</p>;
+    } else if (recent.length === 0) {
+        listState = <p className="git-review-muted px-1 py-1">No recent commits</p>;
     }
 
     return <>
@@ -144,6 +146,11 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
                 {busy && <p id={`${id}-lookup`} role="status" className="git-review-muted px-1 py-1">Looking up commit…</p>}
                 {lookup.status === 'error' && <p id={`${id}-lookup`} role="alert" className="px-1 py-1 text-red-600 dark:text-red-400"
                     data-testid="commit-hash-picker-error">{lookup.message}</p>}
+                {picker.onRefresh && <button type="button" className="git-review-menu-item"
+                    onClick={picker.onRefresh} disabled={picker.loading || busy}
+                    aria-label="Refresh recent commits" title="Refresh recent commits">
+                    Refresh recent commits
+                </button>}
                 {listState}
                 {recent.length > 0 && <ul aria-label="Recent commits" className="git-review-commit-picker-list">
                     {recent.map(commit => {

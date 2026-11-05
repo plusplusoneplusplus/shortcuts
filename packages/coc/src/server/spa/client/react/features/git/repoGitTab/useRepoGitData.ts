@@ -132,6 +132,17 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     const [ahead, setAhead] = useState(0);
     const [behind, setBehind] = useState(0);
 
+    const commitRequestRef = useRef(0);
+    const branchRequestRef = useRef(0);
+    const repoStateRequestRef = useRef(0);
+    const ownerGenerationRef = useRef(0);
+    useEffect(() => () => {
+        ownerGenerationRef.current += 1;
+        commitRequestRef.current += 1;
+        branchRequestRef.current += 1;
+        repoStateRequestRef.current += 1;
+    }, [workspaceId, cloneClient]);
+
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const markRefreshed = useCallback(() => setLastRefreshedAt(Date.now()), []);
@@ -139,12 +150,14 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     const retry = useCallback(() => setRetryKey(k => k + 1), []);
 
     const fetchRepoState = useCallback(() => {
+        const request = ++repoStateRequestRef.current;
         cloneClient.git.getRepoState(workspaceId)
-            .then(data => setRepoState(data))
-            .catch(() => setRepoState(null));
-    }, [workspaceId]);
+            .then(data => { if (request === repoStateRequestRef.current) setRepoState(data); })
+            .catch(() => { if (request === repoStateRequestRef.current) setRepoState(null); });
+    }, [workspaceId, cloneClient]);
 
     const fetchCommits = useCallback((refresh = false, skipOffset = 0, search = '') => {
+        const request = ++commitRequestRef.current;
         // For the initial page with no search, check/update the client-side cache.
         if (skipOffset === 0 && !search) {
             if (refresh) {
@@ -167,6 +180,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
         })
             .then(data => {
                 const loaded = data.commits || [];
+                if (request !== commitRequestRef.current) return loaded;
                 if (skipOffset > 0) {
                     setCommits(prev => [...prev, ...loaded]);
                 } else {
@@ -183,7 +197,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
                 setHasMore(loaded.length === COMMIT_PAGE_SIZE);
                 return loaded;
             });
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     // Read through a ref so switching the base mode doesn't change this callback's
     // identity (which would re-run the whole initial-load effect and reset the
@@ -192,6 +206,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     baseModeRef.current = baseMode;
 
     const fetchBranchRange = useCallback((refresh = false, modeOverride?: GitRangeBaseMode) => {
+        const request = ++branchRequestRef.current;
         const mode = modeOverride ?? baseModeRef.current;
         if (refresh) {
             clearBranchRangeCache(workspaceId);
@@ -210,6 +225,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
         }
         return cloneClient.git.getBranchRange(workspaceId, { refresh, base: mode })
             .then(data => {
+                if (request !== branchRequestRef.current) return null;
                 if (data.onDefaultBranch) {
                     setOnDefaultBranch(true);
                     setBranchRangeData(null);
@@ -263,11 +279,12 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
                 }
             })
             .catch(() => {
+                if (request !== branchRequestRef.current) return null;
                 setOnDefaultBranch(true);
                 setBranchRangeData(null);
                 return null as BranchRangeInfo | null;
             });
-    }, [workspaceId]);
+    }, [workspaceId, cloneClient]);
 
     /** Switch the comparison base (vs default branch ⇄ unpushed) and refetch. */
     const setBaseModeAndRefetch = useCallback((mode: GitRangeBaseMode) => {
@@ -277,9 +294,15 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
         void fetchBranchRange(false, mode);
     }, [setBaseMode, fetchBranchRange]);
 
+    const previousSearchRef = useRef('');
     // Debounced commit search. Each keystroke resets pagination and refetches the
     // first page; the query is also re-applied when the workspace changes.
     useEffect(() => {
+        // Initial history is loaded below; a duplicate empty search could supersede
+        // a slow initial read before it hydrates the selected commit.
+        const previousSearch = previousSearchRef.current;
+        previousSearchRef.current = searchQuery;
+        if (!searchQuery && !previousSearch) return;
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         searchDebounceRef.current = setTimeout(() => {
             searchDebounceRef.current = null;
@@ -301,8 +324,14 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
 
     const refreshAll = useCallback((options?: RefreshSelectionOptions) => {
         if (refreshingRef.current) return;
+        refreshingRef.current = true;
+        const ownerGeneration = ownerGenerationRef.current;
         setRefreshing(true);
         setRefreshError(null);
+        if (searchDebounceRef.current) {
+            clearTimeout(searchDebounceRef.current);
+            searchDebounceRef.current = null;
+        }
         setSkip(0);
         bumpWorkingChanges();
         fetchRepoState();
@@ -311,14 +340,25 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
         if (prevSelectedHash) {
             clearCacheForHash(prevSelectedHash);
         }
-        Promise.all([fetchCommits(true, 0, searchQueryRef.current), fetchBranchRange(true)])
+        const commitsPromise = fetchCommits(true, 0, searchQueryRef.current);
+        const request = commitRequestRef.current;
+        const isCurrent = () => ownerGeneration === ownerGenerationRef.current && request === commitRequestRef.current;
+        Promise.all([commitsPromise, fetchBranchRange(true)])
             .then(([loaded]) => {
+                if (!isCurrent()) return;
+                setError(null);
                 markRefreshed();
+                // A user navigation during refresh takes precedence.
+                if (selection.getView() !== viewBeforeRefresh) return;
                 const { changed, next } = reconcileSelectionAfterRefresh(viewBeforeRefresh, loaded, options);
                 if (changed) selection.setView(next);
             })
-            .catch(err => setRefreshError(err.message || 'Refresh failed'))
-            .finally(() => setRefreshing(false));
+            .catch(err => { if (isCurrent()) setRefreshError(err.message || 'Refresh failed'); })
+            .finally(() => {
+                if (ownerGeneration !== ownerGenerationRef.current) return;
+                refreshingRef.current = false;
+                setRefreshing(false);
+            });
     }, [selection, fetchCommits, fetchBranchRange, fetchRepoState, bumpWorkingChanges, markRefreshed]);
 
     // Load more commits (append next page)
@@ -326,10 +366,13 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
         if (isLoadingMore || !hasMore) return;
         setIsLoadingMore(true);
         const nextSkip = skip + COMMIT_PAGE_SIZE;
-        fetchCommits(false, nextSkip, searchQuery)
-            .then(() => setSkip(nextSkip))
+        const promise = fetchCommits(false, nextSkip, searchQuery);
+        const request = commitRequestRef.current;
+        const ownerGeneration = ownerGenerationRef.current;
+        promise
+            .then(() => { if (request === commitRequestRef.current) setSkip(nextSkip); })
             .catch(() => {})
-            .finally(() => setIsLoadingMore(false));
+            .finally(() => { if (ownerGeneration === ownerGenerationRef.current) setIsLoadingMore(false); });
     }, [isLoadingMore, hasMore, skip, fetchCommits, searchQuery]);
 
     const reloadAfterBranchSwitch = useCallback(() => {
@@ -352,17 +395,26 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     onInitialLoadRef.current = onInitialLoad;
 
     useEffect(() => {
+        let cancelled = false;
+        setRefreshing(false);
+        refreshingRef.current = false;
+        setRefreshError(null);
         setLoading(true);
+        setIsLoadingMore(false);
         setError(null);
         setSkip(0);
         fetchRepoState();
-        Promise.all([fetchCommits(), fetchBranchRange()])
+        const commitsPromise = fetchCommits();
+        const request = commitRequestRef.current;
+        Promise.all([commitsPromise, fetchBranchRange()])
             .then(([loaded]) => {
+                if (cancelled || request !== commitRequestRef.current) return;
                 markRefreshed();
                 onInitialLoadRef.current?.(loaded);
             })
-            .catch(err => setError(err.message || 'Failed to load commits'))
-            .finally(() => setLoading(false));
+            .catch(err => { if (!cancelled && request === commitRequestRef.current) setError(err.message || 'Failed to load commits'); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workspaceId, fetchCommits, fetchBranchRange, fetchRepoState, retryKey]);
 

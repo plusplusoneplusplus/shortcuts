@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { CommitHashPicker, type CommitPickerOptions } from '../../../../src/server/spa/client/react/features/git/commits/CommitHashPicker';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/commitListTypes';
@@ -103,6 +104,34 @@ describe('CommitHashPicker', () => {
         view.rerender(<CommitHashPicker hash={CURRENT.hash} picker={{ commits: [], onSelect: vi.fn() }} />);
         expect(screen.getByText('No recent commits')).toBeTruthy();
         expect(screen.queryByRole('list')).toBeNull();
+    });
+
+    it('refreshes by keyboard without closing and exposes retained-list loading and retry errors', async () => {
+        const user = userEvent.setup();
+        const onRefresh = vi.fn();
+        const { picker, view, onSelect } = renderPicker({ onRefresh });
+        await open();
+        const refresh = screen.getByRole('button', { name: 'Refresh recent commits' }) as HTMLButtonElement;
+        refresh.focus();
+        await user.keyboard('{Enter}');
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('dialog', { name: 'Switch commit' })).toBeTruthy();
+        view.rerender(<CommitHashPicker hash={CURRENT.hash} picker={{ ...picker, loading: true }} />);
+        expect(refresh.disabled).toBe(true);
+        expect(screen.getByRole('status').textContent).toContain('Loading recent commits');
+        expect(screen.getByTestId(`commit-hash-picker-option-${CURRENT.hash}`).getAttribute('aria-current')).toBe('true');
+        fireEvent.click(refresh);
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+        view.rerender(<CommitHashPicker hash={CURRENT.hash} picker={{ ...picker, error: 'offline' }} />);
+        expect(screen.getByRole('alert').textContent).toContain('offline');
+        expect(refresh.disabled).toBe(false);
+        await user.click(refresh);
+        expect(onRefresh).toHaveBeenCalledTimes(2);
+        view.rerender(<CommitHashPicker hash={CURRENT.hash} picker={{ ...picker, commits: [SIBLING, CURRENT] }} />);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.getByTestId(`commit-hash-picker-option-${SIBLING.hash}`)).toBeTruthy();
+        expect(screen.getByTestId(`commit-hash-picker-option-${CURRENT.hash}`).getAttribute('aria-current')).toBe('true');
+        expect(onSelect).not.toHaveBeenCalled();
     });
 
     it('rejects input that is not a 7–40 character hex SHA without a lookup', async () => {

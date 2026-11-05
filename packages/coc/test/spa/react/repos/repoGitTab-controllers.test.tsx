@@ -88,7 +88,7 @@ import { useGitAutoPullController } from '../../../../src/server/spa/client/reac
 import { useGitAutoRefresh, GIT_AUTO_REFRESH_INTERVAL_MS } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoRefresh';
 import { useGitSkillActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitSkillActions';
 import { useGitOperationPoller } from '../../../../src/server/spa/client/react/features/git/hooks/useGitOperationPoller';
-import { clearCommitsCache } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
+import { clearCommitsCache, getCommitsCache } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
 import { clearBranchRangeCache } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 import type { RightPanelView } from '../../../../src/server/spa/client/react/features/git/repoGitTab/types';
@@ -126,6 +126,118 @@ beforeEach(() => {
 });
 
 describe('useRepoGitData', () => {
+    it('hydrates a slow initial read once without a competing empty search', async () => {
+        vi.useFakeTimers();
+        try {
+            let resolve!: (value: any) => void;
+            const a = commit('aaaaaaaaaaaa');
+            const git = clientFor(WS).git;
+            git.listCommits.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+            const onInitialLoad = vi.fn();
+            const { bridge } = makeBridge();
+            const { result } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge, onInitialLoad }));
+            await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+            expect(git.listCommits).toHaveBeenCalledTimes(1);
+            await act(async () => { resolve({ commits: [a] }); });
+            expect(onInitialLoad).toHaveBeenCalledWith([a]);
+            expect(result.current.loading).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not cache or select a refresh result after unmount', async () => {
+        const a = commit('aaaaaaaaaaaa');
+        const git = clientFor(WS).git;
+        git.listCommits.mockResolvedValue({ commits: [a] });
+        const { box, bridge } = makeBridge();
+        const { result, unmount } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let resolve!: (value: any) => void;
+        git.listCommits.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+        act(() => result.current.refreshAll());
+        unmount();
+        await act(async () => { resolve({ commits: [a] }); });
+        expect(getCommitsCache(WS)).toBeUndefined();
+        expect(box.view).toBeNull();
+    });
+
+    it('forces fresh commits, deduplicates refresh, retains selection and retries failures', async () => {
+        const a = commit('aaaaaaaaaaaa');
+        const b = commit('bbbbbbbbbbbb');
+        const git = clientFor(WS).git;
+        git.listCommits.mockResolvedValue({ commits: [a] });
+        const { box, bridge } = makeBridge();
+        const { result } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        box.view = { type: 'commit', commit: a };
+        let resolve!: (value: any) => void;
+        git.listCommits.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+        const calls = git.listCommits.mock.calls.length;
+        act(() => { result.current.refreshAll(); result.current.refreshAll(); });
+        expect(git.listCommits).toHaveBeenCalledTimes(calls + 1);
+        expect(git.listCommits).toHaveBeenLastCalledWith(WS, expect.objectContaining({ refresh: true, skip: undefined }));
+        expect(result.current.refreshing).toBe(true);
+        expect(result.current.commits).toEqual([a]);
+        await act(async () => { resolve({ commits: [b, a] }); });
+        expect(result.current.commits).toEqual([b, a]);
+        expect(box.view).toEqual({ type: 'commit', commit: a });
+        git.listCommits.mockRejectedValueOnce(new Error('offline'));
+        await act(async () => result.current.refreshAll());
+        expect(result.current.refreshError).toBe('offline');
+        expect(result.current.refreshing).toBe(false);
+        expect(result.current.commits).toEqual([b, a]);
+        expect(box.view).toEqual({ type: 'commit', commit: a });
+        git.listCommits.mockResolvedValue({ commits: [] });
+        await act(async () => result.current.refreshAll());
+        expect(result.current.refreshError).toBeNull();
+        expect(box.view).toBeNull();
+    });
+
+    it('ignores an older commit read and preserves navigation during refresh', async () => {
+        const a = commit('aaaaaaaaaaaa');
+        const b = commit('bbbbbbbbbbbb');
+        const git = clientFor(WS).git;
+        git.listCommits.mockResolvedValue({ commits: [a] });
+        const { box, bridge } = makeBridge();
+        const { result } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let older!: (value: any) => void;
+        git.listCommits.mockImplementationOnce(() => new Promise(r => { older = r; }));
+        act(() => { void result.current.fetchCommits(true); });
+        let refresh!: (value: any) => void;
+        git.listCommits.mockImplementationOnce(() => new Promise(r => { refresh = r; }));
+        box.view = { type: 'commit', commit: a };
+        act(() => result.current.refreshAll());
+        box.view = { type: 'working-tree-all' };
+        await act(async () => { refresh({ commits: [b] }); older({ commits: [a] }); });
+        expect(result.current.commits).toEqual([b]);
+        expect(box.view).toEqual({ type: 'working-tree-all' });
+    });
+
+    it.each(['resolve', 'reject'])('discards a former workspace refresh that settles with %s', async outcome => {
+        const a = commit('aaaaaaaaaaaa');
+        const b = commit('bbbbbbbbbbbb');
+        clientFor(WS).git.listCommits.mockResolvedValue({ commits: [a] });
+        clientFor(OTHER_WS).git.listCommits.mockResolvedValue({ commits: [b] });
+        const { box, bridge } = makeBridge();
+        const { result, rerender } = renderHook(({ ws }) => useRepoGitData({ workspaceId: ws, selection: bridge }), { initialProps: { ws: WS } });
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let resolve!: (value: any) => void;
+        let reject!: (value: any) => void;
+        clientFor(WS).git.listCommits.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+        act(() => result.current.refreshAll());
+        rerender({ ws: OTHER_WS });
+        await waitFor(() => expect(result.current.commits).toEqual([b]));
+        box.view = { type: 'commit', commit: b };
+        await act(async () => { if (outcome === 'resolve') resolve({ commits: [a] }); else reject(new Error('old error')); });
+        expect(result.current.commits).toEqual([b]);
+        expect(result.current.refreshError).toBeNull();
+        expect(result.current.refreshing).toBe(false);
+        expect(box.view).toEqual({ type: 'commit', commit: b });
+        expect(clientFor(OTHER_WS).git.listCommits).toHaveBeenCalledWith(OTHER_WS, expect.anything());
+    });
+
     it('routes every initial read to the selected clone (AC-07)', async () => {
         const { bridge } = makeBridge();
         const { result } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge }));
