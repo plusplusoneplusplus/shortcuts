@@ -5,15 +5,32 @@ export { browserApprovalSite } from '../shared/browser-approval-site';
 
 const ALWAYS_ALLOWED_FILE = 'browser-approved-sites.json';
 
+/**
+ * Root domains of major sign-in providers and sites, always allowed until the
+ * user edits the list. Shared-hosting roots (googleusercontent.com, sharepoint.com,
+ * okta.com tenants, ...) are left out because anyone can publish under them.
+ */
+export const DEFAULT_BROWSER_APPROVED_SITES: readonly string[] = [
+    'amazon.com', 'apple.com', 'atlassian.com', 'azure.com', 'bing.com', 'dropbox.com',
+    'github.com', 'gmail.com', 'google.com', 'icloud.com', 'linkedin.com', 'live.com',
+    'microsoft.com', 'microsoft365.com', 'microsoftonline.com', 'office.com', 'outlook.com',
+    'salesforce.com', 'slack.com', 'youtube.com', 'zoom.us',
+];
+
 /** Global "Always allow" list file, shared by every workspace. */
 export function getBrowserApprovedSitesPath(dataDir: string): string {
     return path.join(dataDir, ALWAYS_ALLOWED_FILE);
 }
 
-/** Sites the user chose to always allow. A missing or corrupt file reads as empty. */
+/**
+ * Sites the user chose to always allow. A missing file reads as the default
+ * list; a corrupt file reads as empty.
+ */
 export function readBrowserApprovedSites(dataDir: string): string[] {
+    const file = getBrowserApprovedSitesPath(dataDir);
+    if (!fs.existsSync(file)) return [...DEFAULT_BROWSER_APPROVED_SITES].sort();
     try {
-        const parsed = JSON.parse(fs.readFileSync(getBrowserApprovedSitesPath(dataDir), 'utf8'));
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
         const sites: unknown = parsed?.sites;
         return Array.isArray(sites) ? [...new Set(sites.filter((site): site is string => typeof site === 'string' && !!site))].sort() : [];
     } catch {

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { validateBrowserApprovalUrl } from '../../../src/server/shared/browser-approval-site';
 import {
-    BrowserNavigationApprovals, addBrowserApprovedSite, browserApprovalSite, getBrowserApprovedSitesPath,
+    BrowserNavigationApprovals, DEFAULT_BROWSER_APPROVED_SITES, addBrowserApprovedSite, browserApprovalSite, getBrowserApprovedSitesPath,
     readBrowserApprovedSites, removeBrowserApprovedSite,
 } from '../../../src/server/llm-tools/browser-navigation-approval';
 import { registerBrowserRoutes } from '../../../src/server/admin/admin-browser-routes';
@@ -52,11 +52,60 @@ describe('browserApprovalSite', () => {
     });
 });
 
+function startWithEmptyList(dataDir: string): void {
+    fs.writeFileSync(getBrowserApprovedSitesPath(dataDir), JSON.stringify({ sites: [] }));
+}
+
+describe('default browser approved sites', () => {
+    let dataDir: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-approval-defaults-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('allows the default sites when no list was saved, without writing a file', () => {
+        expect(readBrowserApprovedSites(dataDir)).toEqual([...DEFAULT_BROWSER_APPROVED_SITES].sort());
+        const approvals = new BrowserNavigationApprovals(dataDir);
+        for (const url of ['https://login.microsoftonline.com/common/oauth2', 'https://accounts.google.com/signin', 'https://github.com/login', 'https://appleid.apple.com/']) {
+            expect(approvals.isAllowed('ws1', 'p1', browserApprovalSite(url)!)).toBe(true);
+        }
+        expect(approvals.isAllowed('ws1', 'p1', 'example.com')).toBe(false);
+        expect(fs.readdirSync(dataDir)).toEqual([]);
+    });
+
+    it('keeps a removed default removed and keeps defaults when adding a site', () => {
+        addBrowserApprovedSite(dataDir, 'example.com');
+        expect(readBrowserApprovedSites(dataDir)).toEqual([...DEFAULT_BROWSER_APPROVED_SITES, 'example.com'].sort());
+        expect(removeBrowserApprovedSite(dataDir, 'google.com')).toBe(true);
+        expect(readBrowserApprovedSites(dataDir)).not.toContain('google.com');
+        expect(new BrowserNavigationApprovals(dataDir).isAllowed('ws1', 'p1', 'google.com')).toBe(false);
+    });
+
+    it('still reads a corrupt list as empty', () => {
+        fs.writeFileSync(getBrowserApprovedSitesPath(dataDir), '{not json');
+        expect(readBrowserApprovedSites(dataDir)).toEqual([]);
+    });
+
+    it('lists only canonical root domains, never shared-hosting suffixes', () => {
+        for (const site of DEFAULT_BROWSER_APPROVED_SITES) {
+            expect(validateBrowserApprovalUrl(`https://${site}/`)).toEqual({ site });
+        }
+        for (const shared of ['googleusercontent.com', 'sharepoint.com', 'okta.com', 'auth0.com', 'atlassian.net', 'github.io', 'amazonaws.com', 'windows.net']) {
+            expect(DEFAULT_BROWSER_APPROVED_SITES).not.toContain(shared);
+        }
+    });
+});
+
 describe('BrowserNavigationApprovals', () => {
     let dataDir: string;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-approvals-'));
+        startWithEmptyList(dataDir);
     });
 
     afterEach(() => {
@@ -111,6 +160,7 @@ describe('admin browser approved-site routes', () => {
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-approval-routes-'));
         routes = [];
+        startWithEmptyList(dataDir);
         registerBrowserRoutes(routes, { store: {} as never, dataDir });
     });
 
@@ -169,7 +219,8 @@ describe('admin browser approved-site routes', () => {
         'https://example.com/\npath', 'https://localhost', 'http://127.0.0.1',
     ])('rejects unsafe manual URL %j without writing', async url => {
         expect((await call('POST', '/api/admin/browser-approved-sites', { url })).status).toBe(400);
-        expect(fs.readdirSync(dataDir)).toEqual([]);
+        expect(fs.readdirSync(dataDir)).toEqual(['browser-approved-sites.json']);
+        expect(readBrowserApprovedSites(dataDir)).toEqual([]);
     });
 
     it.each([null, {}, { url: 12 }])('rejects invalid request %j', async body => {

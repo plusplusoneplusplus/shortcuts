@@ -765,7 +765,10 @@ reaches a new root domain. `browserApprovalSite(url)` in
 `BrowserNavigationApprovals(dataDir)` keeps "Allow once" sites per
 [workspaceId, processId] in memory (dropped on process delete) and "Always allow"
 sites in global `<dataDir>/browser-approved-sites.json`, listed and removable in
-Admin → Browser. While a prompt waits, the conversation's pending actions pause
+Admin → Browser. A missing file reads as `DEFAULT_BROWSER_APPROVED_SITES` (major
+sign-in roots such as `microsoftonline.com`, `google.com`, `github.com`; no
+shared-hosting roots), so the first edit saves the defaults with it and removed
+defaults stay removed. While a prompt waits, the conversation's pending actions pause
 their 60s timers; Deny fails them with `user denied access to <site>`.
 
 ### kusto_query
