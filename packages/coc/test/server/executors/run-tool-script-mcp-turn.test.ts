@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import { buildChatTurnContext, type ChatTurnContext, type ChatTurnContextInput } from '../../../src/server/executors/chat-turn-context-builder';
-import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
+import { buildChatToolBundle, isToolScriptingMcpEnabled } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import type { LlmToolApprovalRecord } from '../../../src/server/executors/llm-tool-approval-gate';
 import { CONFIG_FILE_NAME } from '../../../src/config';
@@ -77,12 +77,22 @@ describe('run_tool_script MCP access in a chat turn', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-tool-script-mcp-'));
         contexts = [];
         workspaces.length = 0;
-        setFeatures({ toolScripting: true, toolScriptingMcp: true });
+        setFeatures({ toolScripting: true });
     });
 
     afterEach(() => {
         for (const ctx of contexts) ctx.dispose();
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('enables MCP scripting without a data directory or config file', async () => {
+        expect(isToolScriptingMcpEnabled(undefined)).toBe(true);
+        fs.unlinkSync(path.join(tmpDir, CONFIG_FILE_NAME));
+        expect(isToolScriptingMcpEnabled(tmpDir)).toBe(true);
+        addWorkspace('ws-a', ['alpha']);
+        const ctx = await turn('ws-a');
+        expect((await runScript(ctx.tools, `return await tools.mcp_call({ server: 'alpha', tool: 'echo', args: { text: 'default' } });`)).result)
+            .toBe('echo:default');
     });
 
     it('lists the workspace server names and calls them through the generic tools', async () => {
@@ -220,6 +230,8 @@ describe('run_tool_script MCP access in a chat turn', () => {
 
     it.each([
         ['toolScriptingMcp is off', { toolScripting: true, toolScriptingMcp: false }],
+        ['toolScriptingMcp is off with its parent unset', { toolScriptingMcp: false }],
+        ['toolScripting is off with MCP unset', { toolScripting: false }],
         ['toolScripting is off', { toolScripting: false, toolScriptingMcp: true }],
     ])('offers nothing MCP-related when %s', async (_label, features) => {
         addWorkspace('ws-a', ['alpha']);
@@ -228,6 +240,14 @@ describe('run_tool_script MCP access in a chat turn', () => {
         const description = scriptTool(ctx.tools)?.description ?? '';
         expect(description).not.toContain('MCP servers');
         expect(description).not.toContain('mcp_call');
+        expect(isToolScriptingMcpEnabled(tmpDir)).toBe(false);
+        expect(ctx.scriptMcpTools).toBeUndefined();
+        if (features.toolScripting === false) {
+            expect(scriptTool(ctx.tools)).toBeUndefined();
+        } else {
+            expect((await runScript(ctx.tools, `return await tools.mcp_list_tools({ server: 'alpha' });`)).error.name)
+                .toBe('ToolCallError');
+        }
     });
 
     it('offers nothing MCP-related when every server is disabled (mcpServers {})', async () => {

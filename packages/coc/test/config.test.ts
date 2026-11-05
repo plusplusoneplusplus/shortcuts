@@ -920,6 +920,23 @@ timeout: 300
             expect(notDefault).toEqual([]);
         });
 
+        it.each([
+            ['unset', 'features: {}\n', true, true, 'default'],
+            ['enabled', 'features:\n  toolScriptingMcp: true\n', true, true, 'file'],
+            ['opted out', 'features:\n  toolScriptingMcp: false\n', true, false, 'file'],
+            ['parent disabled', 'features:\n  toolScripting: false\n', false, true, 'default'],
+        ])('resolves MCP scripting defaults and sources with %s', (_label, yaml, scripting, mcp, source) => {
+            const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+            fs.writeFileSync(configPath, yaml);
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.features.toolScripting).toBe(scripting);
+            expect(result.resolved.features.toolScriptingMcp).toBe(mcp);
+            expect(result.sources['features.toolScriptingMcp']).toBe(source);
+            expect(resolveConfig(configPath).features).toMatchObject({
+                toolScripting: scripting, toolScriptingMcp: mcp,
+            });
+        });
+
         it('should mark overridden top-level fields as file', () => {
             const configPath = path.join(tmpDir, 'config.yaml');
             fs.writeFileSync(configPath, 'model: gpt-4\nparallel: 10\noutput: json\n');
@@ -1667,7 +1684,7 @@ timeout: 300
                     "teamsOutboundCompliance": false,
                     "teamsReactionDelegation": false,
                     "toolScripting": true,
-                    "toolScriptingMcp": false,
+                    "toolScriptingMcp": true,
                   },
                   "forEach": {
                     "enabled": false,

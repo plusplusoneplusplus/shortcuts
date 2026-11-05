@@ -4,6 +4,14 @@ Workspace MCP servers are a merge of global servers from `~/.copilot/mcp-config.
 
 One resolver, `resolveWorkspaceMcp` (`packages/coc/src/server/workspaces/workspace-mcp-resolver.ts`), feeds the settings list/detail/mutation routes, live tool discovery, OAuth start and every chat turn (`resolveChatMcpServersForWorkspace`, first turns, follow-ups and tool scripting), so the page shows what chats run.
 
+Chat and owner-bound scripts (canvas `host.runScript`, Sentinel refrain gates) use
+this workspace resolution when `features.toolScripting` and
+`features.toolScriptingMcp` are enabled; both default on and explicit `false` on
+either disables script MCP access. Server/tool allowlists, existing approval policy
+and per-run cleanup apply, including unattended approval denial. Script clients
+cannot initiate OAuth, refresh tokens or use provider-native credentials; see
+[LLM tools](llm-tools.md#run_tool_script) for the scope and authentication contract.
+
 ## Repo groups
 
 A group resolves global < live members' `.vscode/mcp.json` (membership order) < the group root's own `.vscode/mcp.json`:

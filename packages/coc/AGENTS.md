@@ -500,9 +500,14 @@ references before editing. Paths are package-relative.
   active provider (fallback: executor provider) controls Codex nested-script omission.
   Reuse shared helper dependencies for the full owner-bound CoC tool list, not the
   chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
-  `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
+  `create_pull_request`. Supply no provider approval callback. Provider-native
   shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
-  never model-call emulation. `SentinelRefrainService` owns live-flag/job-revision checks
+  never model-call emulation. Chat and owner scripts share workspace-resolved MCP
+  access through `mcp_list_tools` / `mcp_call`: `features.toolScripting` and
+  `features.toolScriptingMcp` default on; explicit `false` on either disables it.
+  Preserve workspace server/tool allowlists, approval denial for unattended
+  approval-required calls, credential boundaries and per-turn/run cleanup.
+  `SentinelRefrainService` owns live-flag/job-revision checks
   and aborts the signal on edit, revocation and shutdown; `routes/index.ts` injects
   `bridge.runRefrainGate` and the live `features.toolScripting` flag.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
