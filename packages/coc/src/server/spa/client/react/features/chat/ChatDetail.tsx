@@ -142,9 +142,24 @@ import { popOutOpened } from '../../utils/popOutWindow';
 import { isConcreteChatProvider, resolveActiveChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 import { RestartWithProviderButton } from './RestartWithProviderButton';
 import { useChatHistoryPagingEnabled } from './hooks/useChatHistoryPagingEnabled';
-import { scrollToTurnElement, useChatHistoryPaging } from './hooks/useChatHistoryPaging';
+import { ObsoleteChatReadError, scrollToTurnElement, useChatHistoryPaging } from './hooks/useChatHistoryPaging';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
+
+function chatTaskFromProcess(taskId: string, processId: string, process: AIProcess) {
+    return {
+        id: taskId,
+        processId,
+        status: process.status,
+        type: process.type ?? 'chat',
+        payload: process.payload ?? {},
+        metadata: process.metadata ?? {},
+        title: process.title,
+        customTitle: process.customTitle,
+        lastMessagePreview: process.lastMessagePreview,
+        displayName: process.customTitle || process.title,
+    };
+}
 
 export interface ChatDetailProps {
     taskId: string;
@@ -285,7 +300,29 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // synthetic bubble live; reloads / other tabs derive it from process state.
     const [compacting, setCompacting] = useState(false);
     const [localCompactInstructions, setLocalCompactInstructions] = useState<string | undefined>(undefined);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setErrorState] = useState<string | null>(null);
+    const lastFailedMessageRef = useRef('');
+    const setError = useCallback((message: string | null) => {
+        // A new error cannot inherit a preceding submission's retry.
+        lastFailedMessageRef.current = '';
+        setErrorState(message);
+    }, []);
+    const readScope = useMemo(() => ({ active: true, request: 0, pending: false }),
+        [client, conversationStateKey, historyOwner, historyBaseUrl, pagingEnabled, workspaceId]);
+    const loadedReadScope = useRef<typeof readScope>();
+    const activeReadScope = useRef(readScope);
+    activeReadScope.current = readScope;
+    useEffect(() => {
+        readScope.active = true;
+        return () => { readScope.active = false; };
+    }, [readScope]);
+    const [readError, setReadError] = useState<{
+        scope: typeof readScope; message: string; recovery: 'load' | 'refresh'; processId?: string;
+    } | null>(null);
+    const [readPending, setReadPending] = useState(false);
+    const [loadVersion, setLoadVersion] = useState(0);
+    const currentReadError = readError?.scope === readScope ? readError : null;
+    const displayedError = currentReadError?.message ?? error;
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -354,7 +391,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
     }>>([]);
-    const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -1542,14 +1578,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, []);
     const historyPaging = useChatHistoryPaging({
         enabled: pagingEnabled,
-        scopeKey: `${conversationStateKey}|${historyBaseUrl ?? ''}`,
+        scopeKey: `${conversationStateKey}|${historyOwner ?? ''}|${historyBaseUrl ?? ''}`,
         client,
         workspaceId: scopedOwner?.workspaceId ?? (pagingEnabled ? workspaceId : undefined),
         processId, turns, turnsRef, setTurns: setTurnsAndRef,
         scrollRef: conversationContainerRef, onReset: resetHistoryScroll,
     });
     historyRef.current = historyPaging;
-    const getOwnerProcess = historyPaging.readProcess;
+    const getOwnerProcess = useCallback(async (id: string, accept: () => boolean = () => true) => {
+        if (!readScope.active || activeReadScope.current !== readScope) throw new ObsoleteChatReadError();
+        const request = ++readScope.request;
+        readScope.pending = true;
+        setReadPending(true);
+        const isCurrent = () => readScope.active && activeReadScope.current === readScope
+            && request === readScope.request && accept();
+        try {
+            const data = await historyPaging.readProcess(id, isCurrent);
+            if (!isCurrent()) throw new ObsoleteChatReadError();
+            setReadError(null);
+            return data;
+        } catch (err) {
+            if (err instanceof ObsoleteChatReadError || !isCurrent()) {
+                throw new ObsoleteChatReadError();
+            }
+            setReadError({
+                scope: readScope, recovery: 'refresh', processId: id,
+                message: err instanceof Error ? err.message : 'Could not refresh the owning conversation.',
+            });
+            throw err;
+        } finally {
+            if (request === readScope.request) {
+                readScope.pending = false;
+                if (readScope.active && activeReadScope.current === readScope) setReadPending(false);
+            }
+        }
+    }, [historyPaging.readProcess, readScope]);
     useEffect(() => {
         if (pagingEnabled === null || loading || (pagingEnabled && !historyPaging.history)) return;
         const navigate = (event?: Event) => {
@@ -1592,12 +1655,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setLocalCompactInstructions(running ? instructions : undefined);
     }, []);
 
-    const conversationScopeRef = useRef({ processId, client });
-    conversationScopeRef.current = { processId, client };
-    const refreshConversation = useCallback(async (pid: string) => {
+    const refreshConversation = useCallback(async (pid: string, accept?: () => boolean) => {
         try {
-            const data = await getOwnerProcess(pid);
-            if (conversationScopeRef.current.processId !== pid || conversationScopeRef.current.client !== client) return;
+            const pending = getOwnerProcess(pid, accept);
+            const request = readScope.request;
+            const data = await pending;
+            if (!readScope.active || activeReadScope.current !== readScope || request !== readScope.request || accept?.() === false) return;
+            const process = data?.process;
+            if (process) setTask((prev: any) => ({
+                ...(prev ?? chatTaskFromProcess(taskId, pid, process)),
+                status: process.status, title: process.title,
+                customTitle: process.customTitle, metadata: process.metadata,
+            }));
             setProcessDetails(data?.process || null);
             // Re-seed the context-window meter from the refreshed record. This is
             // the deterministic delivery channel for a post-`/compact` usage
@@ -1629,8 +1698,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 status: 'queued' as const,
                 ...(Array.isArray(m.images) && m.images.length > 0 ? { images: m.images } : {}),
             })));
-        } catch { /* keep current turns */ }
-    }, [client, getOwnerProcess, setTurnsAndRef, seedSessionTokensFromProcess]);
+        } catch (err) {
+            if (err instanceof ObsoleteChatReadError || !readScope.active || activeReadScope.current !== readScope) return;
+            setReadError({ scope: readScope, recovery: 'refresh', processId: pid,
+                message: err instanceof Error ? err.message : 'Could not refresh the owning conversation.' });
+        }
+    }, [taskId, readScope, getOwnerProcess, setTurnsAndRef, seedSessionTokensFromProcess]);
     compactionRefreshRef.current = refreshConversation;
     useEffect(() => {
         if ((!scopedOwner && !historyBaseUrl) || !processId) return;
@@ -1653,23 +1726,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 scheduled = false;
                 if (!active) return;
                 const request = generation;
-                void getOwnerProcess(processId).then(data => {
-                    if (!active || request !== generation || !data.process) return;
-                    const process = data.process;
-                    setTask((prev: any) => prev ? {
-                        ...prev, status: process.status, title: process.title,
-                        customTitle: process.customTitle, metadata: process.metadata,
-                    } : prev);
-                    setProcessDetails(process);
-                    setTurnsAndRef(getConversationTurns(data));
-                }).catch(err => {
-                    if (active && request === generation) setError(err?.message ?? 'Could not refresh the owning conversation.');
-                });
+                void refreshConversation(processId, () => active && request === generation);
             });
         };
         window.addEventListener(eventName, handle);
         return () => { active = false; window.removeEventListener(eventName, handle); };
-    }, [scopedOwner, historyBaseUrl, workspaceId, processId, getOwnerProcess, setTurnsAndRef]);
+    }, [scopedOwner, historyBaseUrl, workspaceId, processId, refreshConversation]);
 
     // Auto-compact control in the context-usage popover, shared by every chat
     // mode. The owning server persists the setting and runs every check and
@@ -2129,9 +2191,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
         const currentTaskId = taskId;
+        const reloading = loadedReadScope.current === readScope;
+        loadedReadScope.current = readScope;
         setHydrationScope({ client, key: conversationStateKey });
         setLoading(true);
-        setError(null);
+        if (!reloading) setError(null);
+        setReadError(null);
         setSessionExpired(false);
         setTask(null);
         setFullTask(null);
@@ -2144,8 +2209,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setSessionSystemTokens(undefined);
         setSessionToolTokens(undefined);
         setSessionConversationTokens(undefined);
-        clearAttachments();
-        textPaste.clearPaste();
+        if (!reloading) {
+            clearAttachments();
+            textPaste.clearPaste();
+        }
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
@@ -2154,15 +2221,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setSending(false);
         setIsStreaming(false);
 
-        const draft = getDraft(conversationStateKey);
-        if (draft) {
-            setFollowUpInput(draft.text);
-            const draftMode = normalizeChatMode(draft.mode);
-            if (draftMode) {
-                setSelectedMode(draftMode);
+        if (!reloading) {
+            const draft = getDraft(conversationStateKey);
+            if (draft) {
+                setFollowUpInput(draft.text);
+                const draftMode = normalizeChatMode(draft.mode);
+                if (draftMode) {
+                    setSelectedMode(draftMode);
+                }
+            } else {
+                setFollowUpInput('');
             }
-        } else {
-            setFollowUpInput('');
         }
 
         (async () => {
@@ -2187,18 +2256,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             if (loadCounterRef.current !== loadId) return;
                             const loadedProcess = processData?.process ?? null;
                             if (!loadedProcess) return;
-                            setTask({
-                                id: taskId,
-                                processId: pid,
-                                status: loadedProcess.status,
-                                type: loadedProcess.type ?? 'chat',
-                                payload: loadedProcess.payload ?? {},
-                                metadata: loadedProcess.metadata ?? {},
-                                title: loadedProcess.title,
-                                customTitle: loadedProcess.customTitle,
-                                lastMessagePreview: loadedProcess.lastMessagePreview,
-                                displayName: loadedProcess.customTitle || loadedProcess.title,
-                            });
+                            setTask(chatTaskFromProcess(taskId, pid, loadedProcess));
                             const turns = getConversationTurns(processData);
                             setTurnsAndRef(turns);
                             setProcessDetails(loadedProcess);
@@ -2223,18 +2281,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     const loadedProcess = processData?.process ?? null;
 
                     if (loadedProcess) {
-                        setTask({
-                            id: taskId,
-                            processId: pid,
-                            status: loadedProcess.status,
-                            type: loadedProcess.type ?? 'chat',
-                            payload: loadedProcess.payload ?? {},
-                            metadata: loadedProcess.metadata ?? {},
-                            title: loadedProcess.title,
-                            customTitle: loadedProcess.customTitle,
-                            lastMessagePreview: loadedProcess.lastMessagePreview,
-                            displayName: loadedProcess.customTitle || loadedProcess.title,
-                        });
+                        setTask(chatTaskFromProcess(taskId, pid, loadedProcess));
                         const turns = getConversationTurns(processData);
                         setTurnsAndRef(turns);
                         setProcessDetails(loadedProcess);
@@ -2354,8 +2401,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     })));
                 }
             } catch (err: any) {
-                if (loadCounterRef.current !== loadId) return;
-                setError(err?.message ?? 'Failed to load chat');
+                if (loadCounterRef.current !== loadId || err instanceof ObsoleteChatReadError) return;
+                setReadError({ scope: readScope, recovery: 'load', message: err?.message ?? 'Failed to load chat' });
             } finally {
                 if (loadCounterRef.current === loadId) setLoading(false);
             }
@@ -2368,7 +2415,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             // Save draft on navigate-away; clear if input is empty
             setDraft(conversationStateKey, followUpInputRef.current, selectedModeRef.current);
         };
-    }, [client, taskId, conversationStateKey, getOwnerProcess, pagingEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [client, taskId, conversationStateKey, getOwnerProcess, pagingEnabled, loadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync mode selector with the loaded task's mode. Depends on the task
     // object (not just its id): a freshly enqueued chat's first snapshot may
@@ -2400,25 +2447,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             lastRefreshVersionRef.current !== queueState.refreshVersion;
         lastRefreshVersionRef.current = queueState.refreshVersion;
         if (!isRefresh || !taskId) return;
+        let active = true;
 
         (async () => {
             try {
                 // For processId-keyed taskIds, try loading process directly first
                 if (isQueueProcessId(taskId)) {
                     const procData = await getOwnerProcess(taskId);
+                    if (!active) return;
                     if (procData?.process) {
-                        setTask({
-                            id: taskId,
-                            processId: taskId,
-                            status: procData.process.status,
-                            type: procData.process.type ?? 'chat',
-                            payload: procData.process.payload ?? {},
-                            metadata: procData.process.metadata ?? {},
-                            title: procData.process.title,
-                            customTitle: procData.process.customTitle,
-                            lastMessagePreview: procData.process.lastMessagePreview,
-                            displayName: procData.process.customTitle || procData.process.title,
-                        });
+                        setTask(chatTaskFromProcess(taskId, taskId, procData.process));
                         setProcessDetails(procData.process);
                         const refreshedTurns = getConversationTurns(procData);
                         setTurnsAndRef(refreshedTurns);
@@ -2428,6 +2466,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 }
 
                 const queueData = await client.queue.getTask(bareTaskId);
+                if (!active) return;
                 const refreshedTask = queueData?.task ?? null;
 
                 const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
@@ -2437,6 +2476,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 }
 
                 const procData = await getOwnerProcess(pid);
+                if (!active) return;
 
                 // Reconcile: process status is authoritative over queue status.
                 // Also propagate customTitle/lastMessagePreview/title from the
@@ -2459,8 +2499,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 setProcessDetails(procData?.process || null);
                 const refreshedTurns = getConversationTurns(procData, effectiveTask);
                 setTurnsAndRef(refreshedTurns);
-            } catch { /* keep current state */ }
+            } catch (err) {
+                if (!active || err instanceof ObsoleteChatReadError || !readScope.active || activeReadScope.current !== readScope) return;
+                setReadError({ scope: readScope, recovery: 'load',
+                    message: err instanceof Error ? err.message : 'Failed to reload chat' });
+            }
         })();
+        return () => { active = false; };
     }, [client, taskId, queueState.refreshVersion, setTurnsAndRef, getOwnerProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Initial positioning precedes the history observer's first intersection.
@@ -2525,11 +2570,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     };
 
     const retryLastMessage = () => {
-        if (!lastFailedMessageRef.current) return;
-        void sendFollowUp(lastFailedMessageRef.current, 'enqueue', {
+        if (!readScope.active || activeReadScope.current !== readScope || inputDisabled || sending || !lastFailedMessageRef.current) return;
+        const content = lastFailedMessageRef.current;
+        lastFailedMessageRef.current = '';
+        void sendFollowUp(content, 'enqueue', {
             providerOverride: getRetryProvider(turnsRef.current, pendingProvider),
         });
     };
+    const retryRead = () => {
+        if (!currentReadError || readScope.pending || !readScope.active || activeReadScope.current !== readScope) return;
+        if (currentReadError.recovery === 'load') setLoadVersion(version => version + 1);
+        else if (currentReadError.processId) void refreshConversation(currentReadError.processId);
+    };
+    const retryError = currentReadError ? retryRead : error && lastFailedMessageRef.current && !inputDisabled ? retryLastMessage : undefined;
+    const retryLabel = currentReadError ? currentReadError.recovery === 'load' ? 'Reload chat' : 'Refresh chat' : 'Retry';
 
     const handleStop = useCallback(async () => {
         if (!processId) return;
@@ -3116,7 +3170,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         sourceSelectionId={sourceSelectionId}
                         sourceBaseUrl={sourceBaseUrl}
                         loading={loading}
-                        error={error}
+                        error={displayedError}
                         turns={turns}
                         historyPaging={pagingEnabled ? historyPaging : undefined}
                         pendingQueue={pendingQueue}
@@ -3320,7 +3374,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             sending={sending}
                             isActiveGeneration={isActiveGeneration}
                             isCancelling={isCancelling}
-                            error={error}
+                            error={displayedError}
                             nonRetryableError={nonRetryableFollowUpError}
                             onRetryTask={canRetryFailedTask ? handleRetrySameTask : undefined}
                             retryingTask={retryingTask}
@@ -3334,7 +3388,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             selectedMode={selectedMode}
                             setSelectedMode={setSelectedModeFromUser}
                             onSend={sendFollowUpWithPrefix}
-                            onRetry={retryLastMessage}
+                            onRetry={retryError}
+                            retryLabel={retryLabel}
+                            retrying={!!currentReadError && readPending}
                             onStop={handleStop}
                             skills={augmentedSkills}
                             attachments={attachments}
@@ -3478,7 +3534,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     sending={sending}
                     isActiveGeneration={isActiveGeneration}
                     isCancelling={isCancelling}
-                    error={error}
+                    error={displayedError}
                     nonRetryableError={nonRetryableFollowUpError}
                     onRetryTask={canRetryFailedTask ? handleRetrySameTask : undefined}
                     retryingTask={retryingTask}
@@ -3492,7 +3548,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     selectedMode={selectedMode}
                     setSelectedMode={setSelectedModeFromUser}
                     onSend={sendFollowUpWithPrefix}
-                    onRetry={retryLastMessage}
+                    onRetry={retryError}
+                    retryLabel={retryLabel}
+                    retrying={!!currentReadError && readPending}
                     onStop={handleStop}
                     skills={augmentedSkills}
                     attachments={attachments}

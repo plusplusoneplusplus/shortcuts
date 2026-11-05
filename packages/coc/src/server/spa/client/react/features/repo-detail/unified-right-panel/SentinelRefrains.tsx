@@ -7,6 +7,7 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { describeCron } from '../../../utils/cron';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
+import { createSentinelRefrainDragPayload, SENTINEL_REFRAIN_DRAG_MIME } from '../../chat/sentinelRefrainDrop';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
@@ -223,6 +224,7 @@ function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, o
 }) {
     const last = job.runs[0];
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [dragging, setDragging] = useState(false);
     const host = useContext(RefrainHistoryHostContext);
     // Lifted so the title and the card select the same detail slot as history rows.
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -253,6 +255,14 @@ function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, o
         data-selected={cardSelected} onClick={event => selectCardOnClick(event, selectOverview)}>
         <div className="sentinel-automation-header">
             <div className="sentinel-automation-title">
+                <span draggable role="img" aria-label={`Drag instructions for ${job.name} into its Sentinel chat`}
+                    title="Drag into this Sentinel's composer to copy saved instructions"
+                    className={`cursor-grab active:cursor-grabbing select-none ${dragging ? 'opacity-50' : ''}`}
+                    onDragStart={event => {
+                        event.dataTransfer.effectAllowed = 'copy';
+                        event.dataTransfer.setData(SENTINEL_REFRAIN_DRAG_MIME, JSON.stringify(createSentinelRefrainDragPayload(owner, job)));
+                        setDragging(true);
+                    }} onDragEnd={() => setDragging(false)} onClick={event => event.stopPropagation()}>⠿</span>
                 <AutomationTitleButton ref={titleRef} name={job.name} selected={cardSelected} controls={detailId} onSelect={selectOverview}>
                     <strong>{job.name}</strong>
                 </AutomationTitleButton>

@@ -2,9 +2,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import { CocNetworkError, type CocClient } from '@plusplusoneplusplus/coc-client';
 import { PAGE_TURNS } from '@plusplusoneplusplus/forge/history-paging';
-import { useChatHistoryPaging } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatHistoryPaging';
+import { ObsoleteChatReadError, useChatHistoryPaging } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatHistoryPaging';
 import { ConversationArea } from '../../../../src/server/spa/client/react/features/chat/ConversationArea';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
 import type { TurnReference } from '../../../../src/server/spa/client/react/features/chat/conversation/turnReference';
@@ -238,6 +238,84 @@ describe('owner-scoped conversation history paging', () => {
         await act(async () => pending.resolve({ process: { conversationTurns: turns(0, 30) }, history: page(0, 30) }));
         expect(screen.queryByText('message-0')).toBeNull();
         expect(current.history?.oldestTurnIndex).toBe(170);
+    });
+    it.each(['rejects', 'ignores abort'] as const)('classifies a same-owner revision cancellation when fetch %s', async behavior => {
+        await mount();
+        const pending = deferred<any>();
+        get.mockImplementationOnce((_id, _options, { signal }) => {
+            if (behavior === 'rejects') signal.addEventListener('abort', () => pending.reject(
+                new CocNetworkError('CoC API request was aborted', { url: '/processes/chat', code: 'ABORTED' }),
+            ));
+            return pending.promise;
+        });
+        const result = current.readProcess('chat').catch(error => error);
+        const signal = get.mock.calls.at(-1)![2].signal;
+        await act(async () => {
+            current.acceptSnapshot(turns(170, 200), page(170, 200, 1));
+            if (behavior === 'ignores abort') pending.resolve({
+                process: { conversationTurns: turns(0, 30) }, history: page(0, 30),
+            });
+        });
+        expect(signal.aborted).toBe(true);
+        expect(await result).toBeInstanceOf(ObsoleteChatReadError);
+        expect(current.history?.historyRevision).toBe(1);
+        expect(current.history?.oldestTurnIndex).toBe(170);
+    });
+    it.each(['ABORTED', 'TIMEOUT', 'NETWORK_ERROR'] as const)('preserves a genuine %s failure without hook invalidation', async code => {
+        await mount();
+        const error = new CocNetworkError('real failure', { url: '/processes/chat', code });
+        get.mockRejectedValueOnce(error);
+        await expect(current.readProcess('chat')).rejects.toBe(error);
+        expect(current.history?.historyRevision).toBe(0);
+    });
+    it('rejects a caller-superseded response before merging its history revision', async () => {
+        await mount();
+        const pending = deferred<any>();
+        get.mockReturnValueOnce(pending.promise);
+        let accepted = true;
+        const result = current.readProcess('chat', () => accepted).catch(error => error);
+        accepted = false;
+        await act(async () => pending.resolve({
+            process: { conversationTurns: turns(0, 30) }, history: page(0, 30, 1),
+        }));
+        expect(await result).toBeInstanceOf(ObsoleteChatReadError);
+        expect(current.history?.historyRevision).toBe(0);
+        expect(reset).not.toHaveBeenCalled();
+    });
+    it('does not cancel a pending read for the same revision or cancel the response accepting a new revision', async () => {
+        await mount();
+        const pending = deferred<any>();
+        get.mockReturnValueOnce(pending.promise);
+        const result = current.readProcess('chat');
+        const signal = get.mock.calls.at(-1)![2].signal;
+        await act(async () => current.acceptSnapshot(turns(170, 200), page(170, 200)));
+        expect(signal.aborted).toBe(false);
+        await act(async () => {
+            pending.resolve({ process: { conversationTurns: turns(170, 200) }, history: page(170, 200, 1) });
+            await result;
+        });
+        expect(signal.aborted).toBe(false);
+        expect(current.history?.historyRevision).toBe(1);
+    });
+    it.each(['owner', 'client', 'workspace', 'unmount'] as const)('revokes pending and retained read callbacks on %s changes', async change => {
+        const view = await mount();
+        const read = current.readProcess;
+        const pending = deferred<any>();
+        get.mockReturnValueOnce(pending.promise);
+        const result = read('chat').catch(error => error);
+        const signal = get.mock.calls.at(-1)![2].signal;
+        if (change === 'unmount') view.unmount();
+        else view.rerender(<Harness
+            scope={change === 'owner' ? 'other-owner|chat' : 'local|chat'}
+            workspace={change === 'workspace' ? 'other-workspace' : 'workspace'}
+            client={change === 'client' ? { processes: { get, listTurns: list, pinnedTurns: pinned } } as unknown as CocClient : mockClient}
+        />);
+        expect(signal.aborted).toBe(true);
+        await act(async () => pending.resolve({ process: { conversationTurns: turns(0, 30) }, history: page(0, 30) }));
+        expect(await result).toBeInstanceOf(ObsoleteChatReadError);
+        const reads = get.mock.calls.length;
+        await expect(read('chat')).rejects.toBeInstanceOf(ObsoleteChatReadError);
+        expect(get).toHaveBeenCalledTimes(reads);
     });
     it('same-revision reconnect replaces only the tail and a revision reset drops all older history', async () => {
         await mount();

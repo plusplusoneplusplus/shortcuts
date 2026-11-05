@@ -1254,6 +1254,7 @@ timeout: 300
                 '  panelTabReordering: true',
                 '  panelTabGroups: false',
                 '  binaryFileReveal: true',
+                '  fileHistory: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
                 '  htmlPageTab: false',
@@ -1301,6 +1302,7 @@ timeout: 300
             expect(result.resolved.features.panelTabGroups).toBe(false);
             expect(result.resolved.features.browserTabShortcuts).toBe(false);
             expect(result.resolved.features.chatScopedBrowserTabs).toBe(true);
+            expect(result.resolved.features.fileHistory).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
             expect(result.resolved.browserControl.demoRecordingEnabled).toBe(true);
@@ -1314,6 +1316,7 @@ timeout: 300
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
             'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
+            'fileHistory',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1618,6 +1621,7 @@ timeout: 300
                     "diffFilePicker": true,
                     "explorerDelete": true,
                     "explorerEditorTabs": true,
+                    "fileHistory": false,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
@@ -1885,6 +1889,7 @@ timeout: 300
                   "features.diffFilePicker": "default",
                   "features.explorerDelete": "default",
                   "features.explorerEditorTabs": "default",
+                  "features.fileHistory": "default",
                   "features.focusedDiff": "file",
                   "features.gitCrossCloneCherryPick": "default",
                   "features.gitWorktreeExecution": "file",

@@ -15,12 +15,23 @@ unresolved remote selections cannot hydrate locally.
 
 REST hydration, queued transitions and SSE snapshots share the revision-aware merger.
 Owner WebSocket process-added/updated notifications coalesce into one detail GET per
-microtask batch; later notifications can start another read. Each matching notification
-supersedes prior handler results, and effect cleanup discards scheduled work.
+microtask batch; later notifications can start another read. Shared refreshes and queued
+transitions reject superseded results before history merging or state publication.
+Each matching notification supersedes prior handler results, and effect cleanup
+discards scheduled work.
 Same-revision snapshots replace the latest tail while retaining loaded older pages;
-revision changes cancel reads and reset to the latest page and bottom. Conversation
-caches retain only that latest page and mark it as paged, so disabling the flag cannot
-reuse it as full history.
+revision changes invalidate pending reads and reset to the latest page and bottom.
+`ObsoleteChatReadError` identifies owner/revision-invalidated or superseded reads, including transports
+that ignore abort; current-generation network, timeout and abort errors remain failures.
+Conversation caches retain only the latest page and mark it as paged, so disabling
+the flag cannot reuse it as full history.
+
+`ChatDetail` scopes read errors and pending recovery to the concrete owner and paging
+selection. A successful current read clears its read error without clearing a failed
+message submission. Read recovery repeats the failed hydration or process-detail read;
+it never submits a message. The composer exposes message retry only with a remembered
+failed submission, consumes that retry before dispatch, and omits retry for unrelated
+errors. Other composer errors revoke a preceding message retry.
 
 An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
 one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,

@@ -82,6 +82,8 @@ function browserAnnotation(command: BrowserAnnotationCommand, clipRect: typeof b
         host.tabIndex = -1;
         const root = host.attachShadow({ mode: 'closed' });
         const style = document.createElement('style');
+        // `*` below also matches this element, so keep its CSS source out of the rendered root.
+        style.hidden = true;
         style.textContent = `
             :host, * { all: initial; box-sizing: border-box; }
             .shield { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }

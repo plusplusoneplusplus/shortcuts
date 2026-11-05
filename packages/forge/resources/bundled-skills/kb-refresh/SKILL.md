@@ -14,11 +14,11 @@ Prefer the built-in conversation-history tools for chat access:
 - `search_conversations` with no query to browse recent session metadata by workspace and time window.
 - `get_conversation` to fetch selected transcripts by process ID.
 
-Use the `coc-chat` skill only as a fallback for workspace resolution or when the conversation-history tools are unavailable. Read-only on the chat side, write-only on the skill side.
+Keep chat access read-only and limit writes to the target skill and refresh cursor.
 
 ## Step 1 — Parse Intent
 
-Ask the user which skill to refresh (e.g. `my-queries`, `coc-chat`).
+Ask the user which skill to refresh (e.g. `my-queries`, `coc-knowledge`).
 
 Optionally accept `--workspace <name-or-path>` to target a specific workspace; default to the current working directory. Accept `--limit N` to override the default cap of 50 chats.
 
@@ -37,13 +37,9 @@ If not found at all, stop and report: **"Skill '<name>' not found."**
 
 ## Step 3 — Resolve Workspace
 
-Use `--workspace` directly when the user provides a workspace ID. If the user provides a local path/name or no workspace value, use the `coc-chat` skill only for workspace resolution because `search_conversations` scopes by `workspaceId` but does not resolve paths:
+Use `--workspace` directly when the user provides a workspace ID. For a local path/name or the current working directory, list registered workspaces with `GET /api/workspaces` on the target CoC server. Match the workspace's `rootPath` or name and use its `id` for conversation-history queries.
 
-```bash
-python <coc-chat-skill-dir>/scripts/coc_chat.py resolve-workspace <current-working-directory>
-```
-
-If no workspace matches, run `workspaces` and prompt the user to pick one.
+If the match is missing or ambiguous, ask the user to select a registered workspace. If workspace lookup is unavailable, ask for the workspace ID. Keep all chat retrieval scoped to that workspace.
 
 ## Step 4 — Read Cursor
 
@@ -95,16 +91,9 @@ Skip conversations with no substantive assistant prose, including processes wher
 
 Collect for each: process ID, title, end time or activity time, and the transcript or relevant excerpts.
 
-### Conversation-History Fallback
+### Conversation-History Availability
 
-If `search_conversations` or `get_conversation` is unavailable, or if the tool result reports that recent listing/transcript retrieval is not available, fall back to the existing `coc-chat` commands:
-
-```bash
-python <coc-chat-skill-dir>/scripts/coc_chat.py list <wsId> --status completed [--since <lastRunAt>] --limit <limit>
-python <coc-chat-skill-dir>/scripts/coc_chat.py conversation <wsId> <processId>
-```
-
-Report that fallback was used so the user understands why the old path ran.
+If `search_conversations` or `get_conversation` is unavailable, or reports that recent listing/transcript retrieval is unavailable, stop and report the limitation. Leave the target skill and refresh cursor unchanged so a later run can scan the same window.
 
 ## Step 7 — Distill
 

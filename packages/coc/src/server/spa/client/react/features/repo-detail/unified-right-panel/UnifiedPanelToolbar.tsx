@@ -4,8 +4,9 @@
  * Rendered only while a file tab is active; every other kind brings its own
  * toolbar inside its own view, and the panel does not stack two of them. It
  * reuses the Explorer's own `Breadcrumbs` so the two surfaces read identically
- * and hosts the active file's "Reload from disk" button (registered by its
- * `PreviewPane`) beside the shared navigator toggle at its right edge.
+ * and hosts the active file's History toggle (`features.fileHistory`) and
+ * "Reload from disk" button (registered by its `PreviewPane`) beside the
+ * shared navigator toggle at its right edge.
  *
  * A segment click opens a directory picker listing that folder's files and
  * subfolders. The picker uses the active file tab's owner, so it remains correct
@@ -41,6 +42,8 @@ export interface UnifiedPanelToolbarProps {
     onOpenFile: (entry: TreeEntry) => void;
     /** The active file buffer's "Reload from disk" control, once it is mounted. */
     reload?: FileReloadControl;
+    /** The active file's Git history toggle (`features.fileHistory`); absent when unavailable. */
+    history?: { open: boolean; onToggle: () => void };
     /** Panel-level navigator control rendered at the row's right edge. */
     trailing?: ReactNode;
 }
@@ -51,6 +54,7 @@ export function UnifiedPanelToolbar({
     routingRef,
     onOpenFile,
     reload,
+    history,
     trailing,
 }: UnifiedPanelToolbarProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -166,7 +170,31 @@ export function UnifiedPanelToolbar({
                     </span>
                 )}
             </div>
-            {reload && <ReloadFromDiskButton onReload={reload.reload} busy={reload.busy} />}
+            {history && (
+                <button
+                    type="button"
+                    aria-label="History"
+                    title={history.open ? 'Back to file' : 'History'}
+                    aria-pressed={history.open}
+                    onClick={history.onToggle}
+                    data-testid="file-history-toggle"
+                    className={cn(
+                        'flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded border-none p-0',
+                        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
+                        history.open
+                            ? 'bg-[#e0e0e0] text-[#1f1f1f] dark:bg-[#37373d] dark:text-white'
+                            : 'bg-transparent text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
+                    )}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M3 12a9 9 0 1 0 3-6.7" />
+                        <path d="M3 4v5h5" />
+                        <path d="M12 7v5l3 2" />
+                    </svg>
+                </button>
+            )}
+            {reload && !history?.open && <ReloadFromDiskButton onReload={reload.reload} busy={reload.busy} />}
             {trailing}
             {directoryPath !== null && (
                 <div

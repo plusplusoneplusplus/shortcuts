@@ -21,11 +21,6 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'go-deep',
     },
     {
-        name: 'coc-chat',
-        description: 'Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server',
-        relativePath: 'coc-chat',
-    },
-    {
         name: 'delegate',
         description: 'Delegate a job to a relevant existing chat or a new conversation. Use when the user asks to delegate or hand off work.',
         relativePath: 'delegate',

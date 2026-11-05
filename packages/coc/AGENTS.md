@@ -117,6 +117,10 @@ references before editing. Paths are package-relative.
   the Desktop machine switch (default on) can target a registered remote.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
+  Hook-invalidated history reads are obsolete, not failures; preserve genuine current
+  read errors. Read recovery stays owner-scoped and repeats only the failed read.
+  Reject superseded detail reads before history merging or state publication.
+  Message retry requires its own failed submission and cannot be triggered by read errors.
   Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
   read-only topology and title-search requests. Capabilities bind a raw owner workspace and dashboard
   revision; scope/topology changes revoke pending reads. `ReposContext` publishes the
@@ -809,7 +813,10 @@ references before editing. Paths are package-relative.
   Bind workspace, parent Sentinel and concrete server identity; remote selections
   never fall back locally. Serialize only user-facing tracking fields, not job links
   or internal audit metadata. Attaching is read-only and grants no execution authority;
-  manual items remain tracking-only. See the composer knowledge reference for lifecycle rules.
+  manual items remain tracking-only. Refrain copy drags carry the exact owner and ID;
+  the owning Sentinel composer reads saved instructions into its existing draft.
+  Dropping never runs, edits or schedules a refrain. See the composer knowledge
+  reference for lifecycle rules.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

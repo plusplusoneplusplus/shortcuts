@@ -59,6 +59,19 @@ describe('createCommitDiffSource', () => {
         );
     });
 
+    it('fileDiffUrl names the old path only for a file the commit renamed', () => {
+        const source = createCommitDiffSource(ws, hash, { renames: { 'src/new name.ts': 'lib/old.ts' } });
+        expect(source.fileDiffUrl('src/new name.ts')).toBe(
+            '/workspaces/ws1/git/commits/abc1234def5678/files/src%2Fnew%20name.ts/diff?oldPath=lib%2Fold.ts',
+        );
+        expect(source.fileDiffUrl('src/new name.ts', true)).toBe(
+            '/workspaces/ws1/git/commits/abc1234def5678/files/src%2Fnew%20name.ts/diff?full=true&oldPath=lib%2Fold.ts',
+        );
+        expect(source.fileDiffUrl('src/foo.ts')).toBe(
+            '/workspaces/ws1/git/commits/abc1234def5678/files/src%2Ffoo.ts/diff',
+        );
+    });
+
     it('fileDiffUrl encodes special characters', () => {
         const source = createCommitDiffSource('my workspace', hash);
         expect(source.fileDiffUrl('path with spaces/file.ts')).toBe(
