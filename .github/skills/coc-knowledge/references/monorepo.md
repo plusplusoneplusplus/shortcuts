@@ -47,6 +47,9 @@ Package `test` scripts run Vitest watch mode; `test:run` is non-watch.
 The root test chain excludes `coc-connector` and `coccontainer`; test them explicitly
 with `npm run test:run -w packages/<name>`. Native integration tests require binaries.
 Root lint/coverage covers selected packages; `package.json` is authoritative.
+CoC CI shards have a one-hour job limit. macOS test steps stop after 45 minutes
+and preserve verbose, heap and hanging-process output in per-shard diagnostic
+artifacts, including on failure. Logging preserves the test command's exit status.
 
 CI audits production, full npm, SkillOpt and Rust dependency graphs.
 `scripts/ci-npm-audit.sh` retries npm advisory endpoint failures and permits only

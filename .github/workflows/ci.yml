@@ -406,6 +406,7 @@ jobs:
   coc-test:
     runs-on: ${{ matrix.os }}
     needs: [coc-native, build-shared]
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -467,9 +468,29 @@ jobs:
         run: rustup component add rust-analyzer
 
       - name: Run coc tests (shard ${{ matrix.shard }}/5)
-        if: matrix.os != 'ubuntu-latest'
+        if: runner.os == 'Windows'
         run: npm run test:run -- --shard=${{ matrix.shard }}/5
         working-directory: packages/coc
+
+      # Leave time to upload logs before the job deadline, even when a native call hangs.
+      - name: Run macOS coc tests (shard ${{ matrix.shard }}/5)
+        if: runner.os == 'macOS'
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:run -- --shard=${{ matrix.shard }}/5 --reporter=verbose --reporter=hanging-process --logHeapUsage 2>&1 |
+            tee "$RUNNER_TEMP/coc-test-${{ matrix.shard }}.log"
+        working-directory: packages/coc
+
+      - name: Upload macOS coc test diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-test-diagnostics-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/coc-test-${{ matrix.shard }}.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run coc tests with coverage (shard ${{ matrix.shard }}/5)
         if: matrix.os == 'ubuntu-latest'

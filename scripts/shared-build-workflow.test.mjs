@@ -254,6 +254,33 @@ test("coc-test runs no package build steps of its own", () => {
     );
 });
 
+test("macOS coc tests leave time for diagnostics after a stalled test step", () => {
+    const jobTimeout = /^ {4}timeout-minutes: (\d+)$/m.exec(cocTest);
+    assert.ok(jobTimeout, "coc-test needs a bounded job lifetime");
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step, "macOS must have its own bounded diagnostic test step");
+    const body = step.groups.body;
+    const stepTimeout = /timeout-minutes: (\d+)/.exec(body);
+    assert.ok(stepTimeout, "a step timeout must allow diagnostic upload before the job ends");
+    assert.ok(Number(stepTimeout[1]) < Number(jobTimeout[1]));
+    assert.match(body, /if: runner\.os == 'macOS'/);
+    assert.match(body, /shell: bash/);
+    assert.match(body, /set -o pipefail/);
+    assert.match(body, /npm run test:run -- --shard=\$\{\{ matrix\.shard \}\}\/5/);
+    assert.match(body, /--reporter=verbose --reporter=hanging-process --logHeapUsage/);
+    assert.match(body, /2>&1 \|\n\s+tee "\$RUNNER_TEMP\/coc-test-\$\{\{ matrix\.shard \}\}\.log"/);
+    assert.doesNotMatch(body, /continue-on-error|\|\| true|--passWithNoTests|--dangerouslyIgnoreUnhandledErrors/);
+});
+
+test("macOS coc test diagnostics upload on failure with shard-specific names", () => {
+    const step = /- name: Upload macOS coc test diagnostics\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step, "macOS needs persistent logs even when tests time out");
+    assert.match(step.groups.body, /if: always\(\) && runner\.os == 'macOS'/);
+    assert.match(step.groups.body, /uses: actions\/upload-artifact@v4/);
+    assert.match(step.groups.body, /name: coc-test-diagnostics-\$\{\{ matrix\.os \}\}-\$\{\{ matrix\.shard \}\}/);
+    assert.match(step.groups.body, /path: \$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}\.log/);
+});
+
 // e2e boots the real server, so it needs packages/coc's own dist/ and every
 // workspace dist/ -- but `npm run build` in packages/coc already produces all of
 // them, because npm runs scripts/prebuild.mjs first and that walks
