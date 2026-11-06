@@ -353,9 +353,9 @@ export interface CLIConfig {
         sentinelTodoJobs?: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions?: boolean;
-        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Enabled by default. */
         toolScripting?: boolean;
-        /** Allow scripts to call workspace MCP servers. Requires toolScripting; default off. */
+        /** Allow scripts to call workspace MCP servers. Requires toolScripting; default on. */
         toolScriptingMcp?: boolean;
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool?: boolean;
@@ -812,9 +812,9 @@ export interface ResolvedCLIConfig {
         sentinelTodoJobs: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions: boolean;
-        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Enabled by default. */
         toolScripting: boolean;
-        /** Allow scripts to call workspace MCP servers. Requires toolScripting; default off. */
+        /** Allow scripts to call workspace MCP servers. Requires toolScripting; default on. */
         toolScriptingMcp: boolean;
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool: boolean;
@@ -1179,7 +1179,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoJobs: false,
         sentinelAdditionalInstructions: true,
         toolScripting: true,
-        toolScriptingMcp: false,
+        toolScriptingMcp: true,
         queryPullRequestTool: true,
         sentinelPrOutcomeWake: false,
         sentinelFollowUpResults: false,

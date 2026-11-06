@@ -379,10 +379,10 @@ function isToolScriptingEnabled(options: ChatToolBundleOptions): boolean {
     return readFeatures(options.dataDir).toolScripting !== false;
 }
 
-/** Whether scripts may reach MCP servers: needs both `features.toolScripting` and `features.toolScriptingMcp`. */
+/** Both script flags default on; an explicit false on either disables MCP access. */
 export function isToolScriptingMcpEnabled(dataDir: string | undefined): boolean {
     const features = readFeatures(dataDir);
-    return features.toolScripting !== false && features.toolScriptingMcp === true;
+    return features.toolScripting !== false && features.toolScriptingMcp !== false;
 }
 
 function mergeDisabledTools(

@@ -856,13 +856,15 @@ timeout, failed connects are retried), its tool list is cached per client, and `
 closes every client and kills stdio children. Stdio inherits `process.env` plus the
 server's `env`; HTTP/SSE send static headers, or a still-valid Bearer token from
 `readMcpServerAccessToken()` (read-only; the token never appears in `McpServerAuthInfo`)
-when no `Authorization` header is configured. A 401 maps to `auth-required: <server>`;
+when no `Authorization` header is configured. Scripts cannot sign in, refresh tokens or
+use provider-native Entra/Teams authentication. A 401 maps to `auth-required: <server>`;
 other failures are `unknown-server`, `unknown-tool`, `tool-not-allowed` (config `tools`
 allowlist or the scope's `isToolAllowed`) and tool `isError` text. `createMcpScriptTools()`
 exposes the scope as `mcp_list_tools({ server })` and `mcp_call({ server, tool, args })`;
 results are `structuredContent` JSON or joined text content. When
-`isToolScriptingMcpEnabled()` (both `features.toolScripting` and `features.toolScriptingMcp`)
-holds, `buildChatTurnContext` resolves the turn workspace's servers with
+`isToolScriptingMcpEnabled()` holds (both `features.toolScripting` and
+`features.toolScriptingMcp` default on; explicit `false` on either disables access),
+`buildChatTurnContext` resolves the turn workspace's servers with
 `resolveChatMcpServersForWorkspace` (`workingDirectory` is the root fallback) and
 `buildChatToolBundle` opens one scope per turn when it has servers: the pair is added only to
 the script runtime (never the model's direct tools), the `run_tool_script` description lists the

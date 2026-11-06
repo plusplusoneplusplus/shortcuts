@@ -125,7 +125,7 @@ browser control. The registry derives validation, merge and source tracking.
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `canvasToolScripts` | on | Canvas `host.runScript` (below); effective only while `canvasHostApis` (off by default) and `toolScripting` are on |
-| `toolScriptingMcp` | off | Live MCP opt-in for tool scripts; Admin → Features places it beside Tool scripting with `features.toolScripting` as its dependency |
+| `toolScriptingMcp` | on | Live MCP access for chat and owner-bound tool scripts; absent is on, explicit `false` disables. Requires `features.toolScripting`; Admin → Features places the dependent toggle beside Tool scripting. Workspace allowlists and approval policy remain enforced |
 | `chatStyleSelector` | on | Chat Style chip (below) |
 | `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`terse`\|`structured`); style new conversations start on (below) |
 | `chatProviderSwitching` | off | Concrete provider changes between idle Ask/Autopilot follow-up turns (below) |
