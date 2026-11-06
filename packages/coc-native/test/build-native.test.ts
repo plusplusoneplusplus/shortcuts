@@ -19,6 +19,7 @@ import {
     assertTransactionReady,
     buildArgs,
     buildNative,
+    hostTriple,
     napiCli,
     nativeBinaryName as scriptBinaryName,
     renderBindings,
@@ -262,6 +263,7 @@ describe('native build execution', () => {
     let root: string;
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllEnvs();
         if (root) fs.rmSync(root, { recursive: true, force: true });
     });
 
@@ -276,6 +278,7 @@ describe('native build execution', () => {
         const options = {
             packageRoot: root, run, logger: { log: vi.fn() },
             buildSymbolsLsp: vi.fn(), buildWebView2: vi.fn(),
+            hostTriple: vi.fn(() => 'x86_64-unknown-linux-gnu'),
         };
         return { generated, options };
     }
@@ -298,6 +301,27 @@ describe('native build execution', () => {
         expect(options.buildSymbolsLsp).toHaveBeenCalledTimes(2);
         expect(options.buildWebView2).toHaveBeenCalledTimes(2);
         expect(fs.readdirSync(root).filter(name => name.startsWith('.napi-dts-'))).toEqual([]);
+    });
+
+    it('builds the language server and WebView2 helper for the host triple napi targets', () => {
+        // napi always passes `--target`; a helper built without one compiles
+        // every dependency again under `target/<profile>`.
+        vi.stubEnv('CARGO_BUILD_TARGET', undefined);
+        const { options } = fixture();
+        buildNative(options);
+        expect(options.hostTriple).toHaveBeenCalledTimes(1);
+        expect(options.buildSymbolsLsp).toHaveBeenCalledWith(expect.objectContaining({ target: 'x86_64-unknown-linux-gnu' }));
+        expect(options.buildWebView2).toHaveBeenCalledWith(expect.objectContaining({ target: 'x86_64-unknown-linux-gnu' }));
+    });
+
+    it('keeps an explicit CARGO_BUILD_TARGET for every crate', () => {
+        vi.stubEnv('CARGO_BUILD_TARGET', 'aarch64-apple-darwin');
+        const { options } = fixture();
+        buildNative(options);
+        expect(options.hostTriple).not.toHaveBeenCalled();
+        expect(options.run.mock.calls[0][1]).toEqual(expect.arrayContaining(['--target', 'aarch64-apple-darwin']));
+        expect(options.buildSymbolsLsp).toHaveBeenCalledWith(expect.objectContaining({ target: 'aarch64-apple-darwin' }));
+        expect(options.buildWebView2).toHaveBeenCalledWith(expect.objectContaining({ target: 'aarch64-apple-darwin' }));
     });
 
     it.each(['owner.json', 'state.json'])('fails before compilation when %s is missing, preserving recovery data', missing => {
@@ -465,5 +489,17 @@ describe('native build execution', () => {
         });
         buildNative(options);
         expect(fs.readFileSync(path.join(root, BINDINGS_FILE), 'utf-8')).toBe(renderBindings(changed));
+    });
+});
+
+describe('hostTriple', () => {
+    it('reads the host line from `rustc -vV`', () => {
+        const run = vi.fn(() => 'rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\nhost: x86_64-pc-windows-msvc\r\nrelease: 1.99.1\n');
+        expect(hostTriple(run)).toBe('x86_64-pc-windows-msvc');
+        expect(run).toHaveBeenCalledWith('rustc', ['-vV'], expect.objectContaining({ encoding: 'utf-8' }));
+    });
+
+    it('fails loudly when rustc reports no host', () => {
+        expect(() => hostTriple(() => 'rustc 1.99.1\n')).toThrow('could not read the host triple');
     });
 });
