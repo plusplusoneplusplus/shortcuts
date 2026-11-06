@@ -38,7 +38,20 @@ Connections uses `#admin/messaging`: normal CoC renders `TeamsConnectionCard` fo
 global Teams MCP endpoint and team/channel inbound bridge, followed by
 `WhatsAppConnectionCard` for pairing and selecting a single group. Container
 mode renders `IMSettingsSection` for its separate WhatsApp and Teams relay;
-both WhatsApp surfaces share QR and connection-status presentation. The Teams card shows
+both WhatsApp surfaces share QR and connection-status presentation.
+
+### Container Teams card
+
+`TeamsSettingsCard` uses the same `ar-teams` layout as the normal card. A labelled
+enable switch posts `enabled`; while disabled only the restart notice shows. When
+enabled it has a sign-in step (native link with cancellation) and a channel step with one form for team, channel and bot name. The form
+keeps an unsaved draft across polls and saves only changed fields: team, channel and
+IC3 region go together, the bot name alone. IC3 region, transport (MCP only) and
+resolved team/channel IDs sit in a collapsed Advanced options disclosure.
+
+### Teams connection settings
+
+The normal Teams card shows
 connection and OAuth status, saves the endpoint and channel separately, and returns
 a user-clickable Microsoft sign-in link for native server-owned OAuth. It polls the
 shared pending state and enables or reconnects the bridge after native verification
@@ -59,8 +72,9 @@ facts, not delivery checks. Missing notification snapshots show unavailable, not
 disabled, unless own commands are disabled. Errors remain visible in this overview.
 `TeamsConnectionCard` owns channel polling and configuration and accepts the
 `TeamsIc3StatusCard` as status content, avoiding duplicate status readers.
-Detailed configuration follows the overview, grouping endpoint/sign-in and channel settings separately,
-with optional outbound-backend, IC3 and notification settings in a native advanced-options disclosure.
+Detailed configuration follows the overview as three numbered steps: endpoint/sign-in, channel
+settings (with optional outbound-backend, IC3 and notification settings in a native advanced-options
+disclosure), and Connect, which holds the primary enable/reconnect and Disable actions.
 `outboundBackend` defaults to Graph, with explicit MCP available; Graph channel sends/replies require separate
 server-side Azure CLI credentials matching the MCP reader, with delegated `ChannelMessage.Send`
 (recommended for new clients) or an existing `Group.ReadWrite.All` compatibility grant.
@@ -83,7 +97,11 @@ The Teams-only registry controls (`features.teamsBridgeObservability`,
 `features.teamsAiAnswerRelay`, `features.teamsMessageReaction` and the independent
 IC3 own-command enable/workspace settings and reaction-delegation enable/workspace/skill
 settings; `ui.tab: 'teams'`) render
-only in a "Teams features" card below detailed configuration on Connectors → Teams. That card
+only in a "Teams features" card below detailed configuration on Connectors → Teams. Its groups are
+Teams channel bridge (observability, answer relay, reaction), IC3 own commands, reaction
+delegation and outbound compliance. Follow-up rows (workspaces, dispatcher skill, compliance
+prompt) use `dependsOn` and appear only while their parent toggle is on; hidden values stay
+in the draft and save unchanged, and Features search links only the parent toggles. That card
 saves only its keys through `PUT /api/admin/config`, separately from the connection's
 `/api/messaging/teams/*` actions; Ctrl+S there saves only the card. Features search links
 them to `#admin/messaging`. The IC3 workspace picker lists local registrations from

@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands' | 'teamsReactionDelegation' | 'teamsOutboundCompliance';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsBridge' | 'teamsOwnCommands' | 'teamsReactionDelegation' | 'teamsOutboundCompliance';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -98,6 +98,7 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'infrastructure', heading: 'Infrastructure', testId: 'feature-group-infrastructure' },
     { id: 'browserAutomation', heading: 'AI Browser Control', testId: 'feature-group-browser-automation' },
     { id: 'browserPages', heading: 'Pages & Previews', testId: 'feature-group-browser-pages' },
+    { id: 'teamsBridge', heading: 'Teams channel bridge', testId: 'feature-group-teams-bridge' },
     { id: 'teamsOwnCommands', heading: 'IC3 @coc own commands', testId: 'feature-group-teams-own-commands' },
     { id: 'teamsReactionDelegation', heading: 'Reaction delegation', testId: 'feature-group-teams-reaction-delegation' },
     { id: 'teamsOutboundCompliance', heading: 'Outbound compliance', testId: 'feature-group-teams-outbound-compliance' },
@@ -1071,7 +1072,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsBridgeObservability', default: false, runtime: 'live', runtimeFlag: 'teamsBridgeObservabilityEnabled',
         ui: {
-            tab: 'teams', group: 'dashboard', order: 61, label: 'Teams bridge observability', badge: 'experimental',
+            tab: 'teams', group: 'teamsBridge', order: 61, label: 'Teams bridge observability', badge: 'experimental',
             hint: 'Collect safe, bounded history for normal CoC Teams channel connections. Disabled by default.',
             testId: 'toggle-teams-bridge-observability-enabled',
         },
@@ -1079,7 +1080,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsAiAnswerRelay', default: true, runtime: 'live', runtimeFlag: 'teamsAiAnswerRelayEnabled',
         ui: {
-            tab: 'teams', group: 'dashboard', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
+            tab: 'teams', group: 'teamsBridge', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
             hint: 'Enabled by default for a connected bridge. Reply with completed Ask answers or safe terminal notices in their originating Teams threads for new requests. Turn off to stop answer relay and thread reply polling immediately; no restart or reconnect required.',
             testId: 'toggle-teams-ai-answer-relay-enabled',
         },
@@ -1087,7 +1088,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsMessageReaction', default: false, runtime: 'live', runtimeFlag: 'teamsMessageReactionEnabled',
         ui: {
-            tab: 'teams', group: 'dashboard', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
+            tab: 'teams', group: 'teamsBridge', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
             hint: 'Attempt a Like reaction on new channel messages before processing; ordinary replies remain unchanged. Disabled by default.',
             testId: 'toggle-teams-message-reaction-enabled',
         },
@@ -1103,7 +1104,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     {
         key: 'teamsOutboundCompliance.prompt', value: { kind: 'string' }, default: '', runtime: 'live',
         ui: {
-            tab: 'teams', group: 'teamsOutboundCompliance', order: 20, label: 'Compliance decision prompt',
+            tab: 'teams', group: 'teamsOutboundCompliance', order: 20, label: 'Compliance decision prompt', dependsOn: 'features.teamsOutboundCompliance',
             hint: 'Define when outbound text is allowed or blocked. Required when the check is enabled. The decision includes the complete formatted message and its source trigger, not unrelated chat history. Policy rejection or a decision API error sends no Teams text; the failure is reported in CoC on the Teams status card.',
             control: { type: 'textarea' }, testId: 'textarea-teams-outbound-compliance-prompt',
         },
@@ -1125,7 +1126,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
         default: '', runtime: 'live',
         ui: {
-            tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace',
+            tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace', dependsOn: 'features.teamsIc3OwnCommands',
             hint: 'Required. Teams commands run in this registered local workspace or repo group on the configured machine, not the dashboard selection.',
             control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-ic3-command-workspace',
         },
@@ -1147,7 +1148,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
         default: '', runtime: 'live',
         ui: {
-            tab: 'teams', group: 'teamsReactionDelegation', order: 20, label: 'Execution workspace',
+            tab: 'teams', group: 'teamsReactionDelegation', order: 20, label: 'Execution workspace', dependsOn: 'features.teamsReactionDelegation',
             hint: 'Required when enabled. Teams reaction jobs run in this registered local workspace or repo group on the configured machine, with its normal provider and model defaults.',
             control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-reaction-workspace',
         },
@@ -1162,7 +1163,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
         default: '', runtime: 'live',
         ui: {
-            tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill',
+            tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill', dependsOn: 'features.teamsReactionDelegation',
             hint: 'Select one enabled skill from the execution workspace to handle Teams reactions. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
             control: { type: 'skill', workspaceKey: 'teamsReactionDelegation.workspaceId' },
             testId: 'select-teams-reaction-dispatcher-skill',

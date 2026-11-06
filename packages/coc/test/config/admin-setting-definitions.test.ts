@@ -564,7 +564,7 @@ describe('Features card UI metadata', () => {
         expect(reaction.runtime).toBe('live');
         expect(reaction.runtimeFlag).toBe('teamsMessageReactionEnabled');
         expect(reaction.ui).toMatchObject({
-            group: 'dashboard',
+            group: 'teamsBridge',
             testId: 'toggle-teams-message-reaction-enabled',
         });
         expect(readAdminSettingValue(reaction, {})).toBe(false);
@@ -576,17 +576,17 @@ describe('Features card UI metadata', () => {
 
     it('exposes Teams answer relay as an independent live, default-on toggle beside bridge observability', () => {
         const relay = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsAiAnswerRelay')!;
-        const dashboard = getFeatureCardSettings('dashboard');
+        const bridge = getFeatureCardSettings('teamsBridge');
         expect(relay.default).toBe(true);
         expect(relay.runtime).toBe('live');
         expect(relay.absentFallback).toBeUndefined();
         expect(relay.runtimeFlag).toBe('teamsAiAnswerRelayEnabled');
         expect(relay.ui).toMatchObject({
-            group: 'dashboard',
+            group: 'teamsBridge',
             label: 'Teams AI answer relay',
             testId: 'toggle-teams-ai-answer-relay-enabled',
         });
-        expect(dashboard.indexOf(relay)).toBe(dashboard.indexOf(
+        expect(bridge.indexOf(relay)).toBe(bridge.indexOf(
             ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsBridgeObservability')!,
         ) + 1);
         expect(readAdminSettingValue(relay, {})).toBe(true);

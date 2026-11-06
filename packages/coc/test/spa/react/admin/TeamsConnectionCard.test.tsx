@@ -101,6 +101,8 @@ describe('TeamsConnectionCard', () => {
         const history = screen.getByRole('region', { name: 'Connection attempts' }).querySelector('details')!;
         expect(history.hasAttribute('open')).toBe(false);
         expect(screen.getByRole('button', { name: 'Enable & connect' }).className).toContain('ar-btn-primary');
+        expect(screen.getByRole('region', { name: 'Connect' })
+            .contains(screen.getByRole('button', { name: 'Enable & connect' }))).toBe(true);
         expect(screen.getByRole('button', { name: 'Save MCP endpoint' }).className).toContain('ar-btn-secondary');
         expect(screen.getByText(/AI answer relay is enabled by default/).textContent)
             .toContain('without restarting or reconnecting');
@@ -214,7 +216,7 @@ describe('TeamsConnectionCard', () => {
         expect(select.value).toBe(region === '' ? 'emea' : '');
         expect(Array.from(select.options).map(option => option.value)).toEqual(['', 'amer', 'emea', 'apac']);
         fireEvent.change(select, { target: { value: region } });
-        fireEvent.click(screen.getByText('Save & Resolve'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save channel' }));
         await waitFor(() => expect(fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/container\/messaging\/teams\/config$/),
             expect.objectContaining({ body: JSON.stringify({

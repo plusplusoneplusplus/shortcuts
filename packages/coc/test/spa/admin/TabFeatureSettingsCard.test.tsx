@@ -83,9 +83,10 @@ beforeEach(() => {
 describe('TabFeatureSettingsCard', () => {
     it.each(['', ' \n\t'])('associates an inline error with an enabled blank prompt (%j), retaining the draft on Save', async draft => {
         render(<Harness tabs={['teams']} />);
+        expect(screen.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
         const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
         fireEvent.change(textarea, { target: { value: draft } });
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
         const error = screen.getByRole('alert');
         expect(error.textContent).toBe('A nonblank decision prompt is required when outbound compliance check is enabled.');
         expect(textarea.getAttribute('aria-invalid')).toBe('true');
@@ -101,14 +102,14 @@ describe('TabFeatureSettingsCard', () => {
         expect(screen.getByRole('alert')).toBe(error);
         fireEvent.click(cancel);
         expect(screen.queryByRole('alert')).toBeNull();
-        expect(textarea.hasAttribute('aria-invalid')).toBe(false);
+        expect(screen.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();
         expect(controller.isTabDirty('teams')).toBe(false);
     });
 
     it('clears the inline error when corrected, saves the exact policy and restores it on Cancel', async () => {
         render(<Harness tabs={['teams']} />);
-        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
         fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
         const errorId = screen.getByRole('alert').id;
         const policy = '  Allow public text.\nBlock private text.  ';
         fireEvent.change(textarea, { target: { value: policy } });
@@ -128,47 +129,43 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty('teams')).toBe(false);
     });
 
-    it('allows disabled blank prompts and clears validation without erasing the draft when disabled', async () => {
+    it('hides the prompt while disabled without erasing or rejecting its blank draft', async () => {
         render(<Harness tabs={['teams']} />);
         const toggle = screen.getByRole('checkbox', { name: 'Outbound compliance check' });
-        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
-        expect(screen.queryByRole('alert')).toBeNull();
-        fireEvent.change(textarea, { target: { value: ' \n\t' } });
         fireEvent.click(toggle);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Compliance decision prompt' }), { target: { value: ' \n\t' } });
         expect(screen.getByRole('alert')).toBeTruthy();
         fireEvent.click(toggle);
         expect(screen.queryByRole('alert')).toBeNull();
-        expect(textarea.hasAttribute('aria-invalid')).toBe(false);
+        expect(screen.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();
         await act(async () => { fireEvent.click(screen.getByTestId('settings-tab-features-teams-save')); });
         expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
             'features.teamsOutboundCompliance': false, 'teamsOutboundCompliance.prompt': ' \n\t',
         }));
-        expect(textarea).toHaveProperty('value', ' \n\t');
         expect(controller.isTabDirty('teams')).toBe(false);
+        fireEvent.click(toggle);
+        expect(screen.getByRole('textbox', { name: 'Compliance decision prompt' })).toHaveProperty('value', ' \n\t');
     });
 
     it('keeps fail-closed Teams delivery and CoC reporting help associated with the prompt', () => {
         render(<Harness tabs={['teams']} />);
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
         const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
-        const hintId = textarea.getAttribute('aria-describedby')!;
-        const hint = document.getElementById(hintId)!;
+        const hint = document.getElementById(textarea.getAttribute('aria-describedby')!.split(' ')[0])!;
         expect(hint.textContent).toContain('Policy rejection or a decision API error sends no Teams text');
         expect(hint.textContent).toContain('the failure is reported in CoC on the Teams status card');
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
-        expect(textarea.getAttribute('aria-describedby')?.split(' ')).toContain(hintId);
-        expect(document.getElementById(hintId)).toBe(hint);
     });
 
     it('renders the default-off compliance toggle and an editable multiline prompt in the Teams section', async () => {
         render(<Harness tabs={['teams']} />);
         const toggle = screen.getByRole('checkbox', { name: 'Outbound compliance check' });
-        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
         expect(toggle).toHaveProperty('checked', false);
+        fireEvent.click(toggle);
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
         expect(textarea.tagName).toBe('TEXTAREA');
         expect(textarea).toHaveProperty('rows', 5);
         expect(textarea.closest('#teams-group-teamsOutboundCompliance')).not.toBeNull();
         fireEvent.change(textarea, { target: { value: 'Allow public text.\nBlock private text.' } });
-        fireEvent.click(toggle);
         await act(async () => { await controller.handleSaveTab('teams'); });
         expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
             'features.teamsOutboundCompliance': true,
@@ -179,12 +176,26 @@ describe('TabFeatureSettingsCard', () => {
         expect(textarea).toHaveProperty('value', 'Allow public text.\nBlock private text.');
     });
 
+    it('groups Teams switches by feature and shows follow-up settings only when a feature is on', () => {
+        render(<Harness tabs={['teams']} />);
+        const bridge = screen.getByTestId('teams-group-teamsBridge');
+        expect(bridge.textContent).toContain('Teams channel bridge');
+        for (const id of ['toggle-teams-bridge-observability-enabled', 'toggle-teams-ai-answer-relay-enabled', 'toggle-teams-message-reaction-enabled']) {
+            expect(bridge.contains(screen.getByTestId(id)), id).toBe(true);
+        }
+        const followUps = ['textarea-teams-outbound-compliance-prompt', 'select-teams-ic3-command-workspace',
+            'select-teams-reaction-workspace', 'select-teams-reaction-dispatcher-skill'];
+        for (const id of followUps) expect(screen.queryByTestId(id), id).toBeNull();
+        expect(controller.isTabDirty('teams')).toBe(false);
+    });
+
     it('shows a default-off reaction delegation group with one workspace and dispatcher selector', () => {
         render(<Harness tabs={['teams']} />);
         const toggle = screen.getByTestId('toggle-teams-reaction-delegation-enabled');
         expect(toggle).toHaveProperty('checked', false);
         expect(toggle.closest('#teams-group-teamsReactionDelegation')).not.toBeNull();
         expect(toggle.closest('.ar-row')?.textContent).toContain('Experimental');
+        fireEvent.click(toggle);
         expect(screen.getByTestId('select-teams-reaction-workspace').tagName).toBe('SELECT');
         expect(screen.getByTestId('select-teams-reaction-dispatcher-skill')).toHaveProperty('disabled', true);
         const keys = getTabFeatureSettings('teams').filter(def => def.ui?.group === 'teamsReactionDelegation').map(def => def.key);
@@ -195,6 +206,8 @@ describe('TabFeatureSettingsCard', () => {
 
     it('offers repo groups for reaction execution and IC3 own commands', async () => {
         render(<Harness tabs={['teams']} />);
+        fireEvent.click(screen.getByTestId('toggle-teams-reaction-delegation-enabled'));
+        fireEvent.click(screen.getByTestId('toggle-teams-ic3-own-commands-enabled'));
         const reactions = screen.getByTestId('select-teams-reaction-workspace');
         const commands = screen.getByTestId('select-teams-ic3-command-workspace');
         await waitFor(() => expect(reactions).toHaveProperty('disabled', false));

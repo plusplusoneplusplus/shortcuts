@@ -317,7 +317,7 @@ export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
                 </SettingsCard>
                 {children}
             </section>
-        <SettingsCard title="Microsoft Teams configuration" description="Set up sign-in, channel routing and optional transports."
+        <SettingsCard title="Microsoft Teams setup" description="Sign in, choose a channel, then connect. Optional transports are under Advanced options."
             badge="Global" data-testid="teams-connection-card">
             <div className="ar-teams">
                 <section className="ar-teams-section" aria-label="Endpoint and sign-in">
@@ -426,25 +426,28 @@ export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
                             })}>Save channel</Button>
                     </div>
                 </section>
-                <div className="ar-teams-connect">
-                    <p className={dirty ? 'ar-teams-warning' : 'ar-teams-hint'}>
-                        {dirty ? 'Save endpoint and channel changes before connecting.'
-                            : status?.status === 'connected' ? 'Connected. Send a message in your Teams channel to get started.'
-                                : 'Once your endpoint and channel are saved, connect to start receiving messages.'}
-                    </p>
-                    <div className="ar-teams-actions">
-                        <Button size="sm" className="ar-btn ar-btn-primary ar-btn-sm"
-                            disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
-                            onClick={() => void run(async () => {
-                                if (!status?.enabled) await request(adminServer, '/messaging/teams/config', { enabled: true });
-                                await request(adminServer, '/messaging/teams/reconnect', {});
-                            })}>{status?.enabled ? 'Reconnect' : 'Enable & connect'}</Button>
-                        {status?.enabled && <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
-                            disabled={busy} onClick={() => void run(async () => {
-                                await request(adminServer, '/messaging/teams/config', { enabled: false });
-                            })}>Disable</Button>}
+                <section className="ar-teams-section" aria-label="Connect">
+                    <h4><span className="ar-teams-step" aria-hidden="true">3</span> Connect</h4>
+                    <div className="ar-teams-connect">
+                        <p className={dirty ? 'ar-teams-warning' : 'ar-teams-hint'}>
+                            {dirty ? 'Save endpoint and channel changes before connecting.'
+                                : status?.status === 'connected' ? 'Connected. Send a message in your Teams channel to get started.'
+                                    : 'Once your endpoint and channel are saved, connect to start receiving messages.'}
+                        </p>
+                        <div className="ar-teams-actions">
+                            <Button size="sm" className="ar-btn ar-btn-primary ar-btn-sm"
+                                disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
+                                onClick={() => void run(async () => {
+                                    if (!status?.enabled) await request(adminServer, '/messaging/teams/config', { enabled: true });
+                                    await request(adminServer, '/messaging/teams/reconnect', {});
+                                })}>{status?.enabled ? 'Reconnect' : 'Enable & connect'}</Button>
+                            {status?.enabled && <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
+                                disabled={busy} onClick={() => void run(async () => {
+                                    await request(adminServer, '/messaging/teams/config', { enabled: false });
+                                })}>Disable</Button>}
+                        </div>
                     </div>
-                </div>
+                </section>
                 <details className="ar-teams-help">
                     <summary>How workspace routing works</summary>
                     <p className="ar-teams-hint">

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, Button, Spinner } from '../ui';
 import { Dialog } from '../ui/Dialog';
 import { SettingsCard } from './SettingsCard';
+import { AdminToggle } from './adminControls';
 import { getRawApiBase } from '../utils/config';
 import { WhatsAppPairingContent, WhatsAppStatusIndicator, type WhatsAppConnectionState } from './WhatsAppConnectionUI';
 
@@ -286,105 +287,32 @@ export function IMSettingsSection() {
     );
 }
 
-function TeamsStatusDot({ status }: { status: TeamsStatus['status'] }) {
-    const colors: Record<string, string> = {
-        connected: 'bg-green-500',
-        connecting: 'bg-blue-500 animate-pulse',
-        authenticating: 'bg-amber-500 animate-pulse',
-        error: 'bg-red-500',
-        disconnected: 'bg-gray-400',
+const TEAMS_STATUS_LABELS: Record<string, string> = {
+    connected: 'Connected',
+    connecting: 'Connecting…',
+    authenticating: 'Waiting for login…',
+    error: 'Error',
+    disconnected: 'Not connected',
+};
+
+interface TeamsChannelDraft { teamName: string; channelName: string; botName: string; ic3Region: string }
+
+function savedChannelSettings(status: TeamsStatus): TeamsChannelDraft {
+    return {
+        teamName: status.teamName ?? '',
+        channelName: status.channelName ?? '',
+        botName: status.botName,
+        ic3Region: status.ic3Region ?? '',
     };
-    return <span className={`inline-block w-2 h-2 rounded-full ${colors[status] ?? colors.disconnected}`} />;
-}
-
-function TeamsStatusLabel({ status }: { status: TeamsStatus['status'] }) {
-    const labels: Record<string, string> = {
-        connected: 'Connected',
-        connecting: 'Connecting…',
-        authenticating: 'Waiting for login…',
-        error: 'Error',
-        disconnected: 'Not connected',
-    };
-    return <span className="text-sm">{labels[status] ?? status}</span>;
-}
-
-/** Inline editable fields for Team name + Channel name. */
-function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus; onSaved: () => void; setError: (e: string) => void }) {
-    const [teamName, setTeamName] = useState(status.teamName ?? '');
-    const [channelName, setChannelName] = useState(status.channelName ?? '');
-    const [ic3Region, setIc3Region] = useState(status.ic3Region ?? '');
-    const [saving, setSaving] = useState(false);
-
-    const dirty = teamName !== (status.teamName ?? '') || channelName !== (status.channelName ?? '')
-        || ic3Region !== (status.ic3Region ?? '');
-
-    return (
-        <div className="space-y-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-            <p className="text-[10px] text-[#616161] dark:text-[#999]">
-                Set the team & channel where CoC messages are sent. If they don't exist they'll be created automatically.
-            </p>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
-                <label className="text-xs text-[#616161] dark:text-[#999]">Team</label>
-                <input
-                    type="text"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
-                    placeholder="Coc"
-                />
-                <label className="text-xs text-[#616161] dark:text-[#999]">Channel</label>
-                <input
-                    type="text"
-                    value={channelName}
-                    onChange={(e) => setChannelName(e.target.value)}
-                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
-                    placeholder="Coc-General"
-                />
-                <label htmlFor="container-teams-ic3-region" className="text-xs text-[#616161] dark:text-[#999]">IC3 region</label>
-                <select id="container-teams-ic3-region" value={ic3Region}
-                    onChange={e => setIc3Region(e.target.value as typeof ic3Region)}
-                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc]">
-                    <option value="">Unconfigured</option>
-                    <option value="amer">Americas</option>
-                    <option value="emea">Europe-Middle East-Africa</option>
-                    <option value="apac">Asia-Pacific</option>
-                </select>
-            </div>
-            <p className="text-[10px] text-[#616161] dark:text-[#999]">
-                IC3 writes and @coc own commands share this account region. MCP polling and sends work unconfigured.
-                Automatic discovery is not available. Save to restart own commands; reconnect the bridge.
-            </p>
-            {dirty && (
-                <Button
-                    size="sm"
-                    variant="primary"
-                    loading={saving}
-                    onClick={async () => {
-                        setSaving(true);
-                        try {
-                            await postTeamsConfig({ teamName: teamName.trim(), channelName: channelName.trim(), ic3Region: ic3Region || null });
-                            onSaved();
-                        } catch (e: any) {
-                            setError(e.message);
-                        } finally {
-                            setSaving(false);
-                        }
-                    }}
-                >
-                    Save & Resolve
-                </Button>
-            )}
-        </div>
-    );
 }
 
 export function TeamsSettingsCard() {
     const [status, setStatus] = useState<TeamsStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [editName, setEditName] = useState('');
-    const [nameEditing, setNameEditing] = useState(false);
-    const [nameSaving, setNameSaving] = useState(false);
+    // Unsaved channel edits; null shows the saved values so polling never clobbers a draft.
+    const [draft, setDraft] = useState<TeamsChannelDraft | null>(null);
+    const [saving, setSaving] = useState(false);
     const [toggling, setToggling] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
     const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
@@ -396,14 +324,13 @@ export function TeamsSettingsCard() {
         try {
             const data = await fetchTeamsStatus();
             setStatus(data);
-            if (!nameEditing) setEditName(data.botName);
             setError(null);
         } catch (e: any) {
             setError(e.message ?? 'Failed to fetch status');
         } finally {
             setLoading(false);
         }
-    }, [nameEditing]);
+    }, []);
 
     useEffect(() => {
         void loadStatus();
@@ -475,189 +402,190 @@ export function TeamsSettingsCard() {
         );
     }
 
+    const saved = status ? savedChannelSettings(status) : null;
+    const form = draft ?? saved;
+    const botNameDirty = !!form && !!saved && form.botName !== saved.botName;
+    const targetDirty = !!form && !!saved && (form.teamName !== saved.teamName
+        || form.channelName !== saved.channelName || form.ic3Region !== saved.ic3Region);
+    const edit = (patch: Partial<TeamsChannelDraft>) => { if (form) setDraft({ ...form, ...patch }); };
+    const signingIn = authBusy || !!authorizationUrl;
+
+    const saveChannel = async () => {
+        if (!form) return;
+        setSaving(true);
+        try {
+            // Send only what changed; team, channel and region resolve together.
+            await postTeamsConfig({
+                ...(targetDirty ? {
+                    teamName: form.teamName.trim(), channelName: form.channelName.trim(),
+                    ic3Region: (form.ic3Region || null) as TeamsStatus['ic3Region'],
+                } : {}),
+                ...(botNameDirty ? { botName: form.botName.trim() || 'CoC' } : {}),
+            });
+            setDraft(null);
+            await loadStatus();
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const connect = async () => {
+        const generation = ++authGeneration.current;
+        authActive.current = true;
+        setAuthBusy(true);
+        setAuthError(null);
+        try {
+            const url = await postTeamsReconnect();
+            if (generation === authGeneration.current) setAuthorizationUrl(url);
+        } catch (error) {
+            if (generation !== authGeneration.current) return;
+            authActive.current = false;
+            setAuthError(error instanceof Error ? error.message : 'Teams sign-in failed');
+            void cancelTeamsAuth().catch(() => console.error('Teams sign-in cancellation failed'));
+        } finally {
+            if (generation === authGeneration.current) setAuthBusy(false);
+        }
+    };
+
+    const cancelSignIn = async () => {
+        try {
+            await cancelTeamsAuth();
+            authGeneration.current++;
+            authActive.current = false;
+            setAuthorizationUrl(null);
+            setAuthError(null);
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Teams sign-in cancellation failed');
+        }
+    };
+
     return (
         <SettingsCard
             title="Microsoft Teams"
-            description="Bridge CoC conversations to Teams. Connection and authentication must be performed on the container node (where CoC server runs)."
+            description="Bridge CoC conversations to a Teams channel. Sign-in runs on the container node, where the CoC server runs."
             badge="Container"
             data-testid="im-settings-teams"
         >
-            {error && (
-                <div className="text-xs text-red-600 dark:text-red-400 mb-2">
-                    ⚠ {error}
+            <div className="ar-teams">
+                <div className="ar-teams-overview">
+                    <div className="ar-teams-actions">
+                        <AdminToggle
+                            checked={status?.enabled === true}
+                            disabled={toggling || signingIn}
+                            aria-label="Enable Teams bridge"
+                            data-testid="container-teams-enabled"
+                            onChange={async enabled => {
+                                setToggling(true);
+                                try {
+                                    await postTeamsConfig({ enabled });
+                                    setTimeout(() => void loadStatus(), 1000);
+                                } catch (e: any) {
+                                    setError(e.message);
+                                } finally {
+                                    setToggling(false);
+                                }
+                            }}
+                        />
+                        <span>{status?.enabled ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                    {status?.enabled && (
+                        <div role="status" className="ar-teams-status">
+                            <span className={`ar-badge ${status.status === 'connected' ? 'ar-badge-success' : status.status === 'error' ? 'ar-badge-danger' : ''}`}>
+                                {TEAMS_STATUS_LABELS[status.status] ?? status.status}
+                            </span>
+                        </div>
+                    )}
                 </div>
-            )}
-            {authError && <div role="alert" className="text-xs text-red-600 mb-2">{authError}</div>}
+                {error && <p className="ar-teams-error">{error}</p>}
+                {authError && <p role="alert" className="ar-teams-error">{authError}</p>}
+                {status?.enabled && status.error && <p className="ar-teams-error">Error: {status.error}</p>}
 
-            {/* Enable/Disable toggle */}
-            <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
-                    {status?.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-                <button
-                    disabled={toggling || authBusy || !!authorizationUrl}
-                    onClick={async () => {
-                        setToggling(true);
-                        try {
-                            await postTeamsConfig({ enabled: !status?.enabled });
-                            setTimeout(() => void loadStatus(), 1000);
-                        } catch (e: any) {
-                            setError(e.message);
-                        } finally {
-                            setToggling(false);
-                        }
-                    }}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${status?.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-[#555]'} ${toggling ? 'opacity-50' : ''}`}
-                >
-                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${status?.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
-                </button>
-            </div>
-
-            {!status?.enabled ? (
-                <p className="text-xs text-[#616161] dark:text-[#999]">
-                    Teams integration is disabled. Toggle the switch above to enable it. A container restart is required for changes to take effect.
-                </p>
-            ) : (
-                <div className="space-y-3">
-                    {/* Mode selector — only MCP is available. Graph API mode is preserved in code
-                       but disabled because az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes. */}
-                    <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <label className="text-xs text-[#616161] dark:text-[#999]">Transport mode</label>
-                        <select
-                            value="mcp"
-                            disabled
-                            className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none opacity-80"
-                        >
-                            <option value="mcp">MCP Server</option>
-                        </select>
-                    </div>
-
-                    {/* Container-node requirement notice */}
-                    {status.status !== 'connected' && (
-                        <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2 text-blue-700 dark:text-blue-300">
-                            ℹ️ Complete Microsoft sign-in on the <strong>container node</strong> (where CoC server runs), using the link returned by Connect.
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <TeamsStatusDot status={status.status} />
-                            <TeamsStatusLabel status={status.status} />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                size="sm"
-                                variant={status.status === 'connected' ? 'secondary' : 'primary'}
-                                disabled={authBusy || !!authorizationUrl}
-                                onClick={async () => {
-                                    const generation = ++authGeneration.current;
-                                    authActive.current = true;
-                                    setAuthBusy(true);
-                                    setAuthError(null);
-                                    try {
-                                        const url = await postTeamsReconnect();
-                                        if (generation === authGeneration.current) setAuthorizationUrl(url);
-                                    } catch (error) {
-                                        if (generation !== authGeneration.current) return;
-                                        authActive.current = false;
-                                        setAuthError(error instanceof Error ? error.message : 'Teams sign-in failed');
-                                        void cancelTeamsAuth().catch(() => console.error('Teams sign-in cancellation failed'));
-                                    } finally {
-                                        if (generation === authGeneration.current) setAuthBusy(false);
-                                    }
-                                }}
-                            >
-                                {authBusy || authorizationUrl ? 'Authorizing...' : status.status === 'connected' ? 'Reconnect' : 'Connect'}
-                            </Button>
-                            <button
-                                onClick={() => void loadStatus()}
-                                title="Refresh status"
-                                className="text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-base leading-none px-1"
-                            >↻</button>
-                        </div>
-                    </div>
-
-                    {authorizationUrl && (
-                            <div className="flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs">
-                                <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
-                                    Open Microsoft sign-in
-                                </a>
-                                <Button size="sm" variant="secondary" onClick={async () => {
-                                    try {
-                                        await cancelTeamsAuth();
-                                        authGeneration.current++;
-                                        authActive.current = false;
-                                        setAuthorizationUrl(null);
-                                        setAuthError(null);
-                                    } catch (error) {
-                                        setAuthError(error instanceof Error ? error.message : 'Teams sign-in cancellation failed');
-                                    }
-                                }}>Cancel</Button>
-                            </div>
-                    )}
-
-                    {status.error && (
-                        <div className="text-xs text-red-600 dark:text-red-400">
-                            Error: {status.error}
-                        </div>
-                    )}
-
-                    {/* Editable bot name */}
-                    <div className="space-y-2">
-                        <label className="block text-xs text-[#616161] dark:text-[#999]">
-                            Bot name <span className="text-[10px] italic">(shown in Teams messages)</span>
-                        </label>
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                value={editName}
-                                onChange={(e) => { setEditName(e.target.value); setNameEditing(true); }}
-                                className="flex-1 text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
-                                placeholder="CoC"
-                            />
-                            {nameEditing && editName !== status.botName && (
-                                <Button
-                                    size="sm"
-                                    variant="primary"
-                                    loading={nameSaving}
-                                    onClick={async () => {
-                                        setNameSaving(true);
-                                        try {
-                                            await postTeamsConfig({ botName: editName.trim() || 'CoC' });
-                                            setNameEditing(false);
-                                            setTimeout(() => void loadStatus(), 1000);
-                                        } catch (e: any) {
-                                            setError(e.message);
-                                        } finally {
-                                            setNameSaving(false);
-                                        }
-                                    }}
-                                >
-                                    Save
-                                </Button>
+                {!status?.enabled || !form ? (
+                    <p className="ar-teams-hint">
+                        Teams integration is disabled. Turn it on above, then restart the container for the change to take effect.
+                    </p>
+                ) : (
+                    <>
+                        <section className="ar-teams-section" aria-label="Sign-in">
+                            <h4><span className="ar-teams-step" aria-hidden="true">1</span> Sign in</h4>
+                            {status.status !== 'connected' && (
+                                <p className="ar-teams-hint">
+                                    Connect returns a Microsoft sign-in link. Complete it on the container node.
+                                </p>
                             )}
-                        </div>
-                    </div>
+                            <div className="ar-teams-actions">
+                                <Button size="sm" variant={status.status === 'connected' ? 'secondary' : 'primary'}
+                                    disabled={signingIn} onClick={() => void connect()}>
+                                    {signingIn ? 'Authorizing...' : status.status === 'connected' ? 'Reconnect' : 'Connect'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => void loadStatus()}>Refresh status</Button>
+                            </div>
+                            {authorizationUrl && (
+                                <div className="ar-teams-actions">
+                                    <a className="ar-teams-auth-link" href={authorizationUrl} target="_blank" rel="noopener noreferrer">
+                                        Open Microsoft sign-in
+                                    </a>
+                                    <Button size="sm" variant="secondary" onClick={() => void cancelSignIn()}>Cancel</Button>
+                                </div>
+                            )}
+                        </section>
 
-                    {/* Team & Channel name inputs */}
-                    <TeamsTargetConfig status={status} onSaved={() => void loadStatus()} setError={setError} />
-
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <span className="text-[#616161] dark:text-[#999]">Resolved Team</span>
-                        <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
-                            {status.teamId
-                                ? status.teamId
-                                : <span className="italic text-[#999]">not resolved</span>}
-                        </span>
-                        <span className="text-[#616161] dark:text-[#999]">Resolved Channel</span>
-                        <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
-                            {status.channelId
-                                ? status.channelId
-                                : <span className="italic text-[#999]">not resolved</span>}
-                        </span>
-                    </div>
-                </div>
-            )}
+                        <section className="ar-teams-section" aria-label="Channel settings">
+                            <h4><span className="ar-teams-step" aria-hidden="true">2</span> Choose a channel</h4>
+                            <p className="ar-teams-hint">A missing team or channel is created automatically.</p>
+                            <div className="ar-teams-fields">
+                                <label className="ar-teams-field">Team
+                                    <input className="ar-input ar-full" value={form.teamName} placeholder="Coc"
+                                        onChange={e => edit({ teamName: e.target.value })} />
+                                </label>
+                                <label className="ar-teams-field">Channel
+                                    <input className="ar-input ar-full" value={form.channelName} placeholder="Coc-General"
+                                        onChange={e => edit({ channelName: e.target.value })} />
+                                </label>
+                                <label className="ar-teams-field">Bot name
+                                    <input className="ar-input ar-full" value={form.botName} placeholder="CoC"
+                                        onChange={e => edit({ botName: e.target.value })} />
+                                </label>
+                            </div>
+                            <details className="ar-teams-advanced">
+                                <summary>Advanced options <span className="ar-teams-hint">Optional</span></summary>
+                                <div className="ar-teams-advanced-body">
+                                    <label className="ar-teams-field">IC3 region
+                                        <select className="ar-input ar-full" value={form.ic3Region}
+                                            onChange={e => edit({ ic3Region: e.target.value })}
+                                            aria-describedby="container-teams-region-hint">
+                                            <option value="">Unconfigured</option>
+                                            <option value="amer">Americas</option>
+                                            <option value="emea">Europe-Middle East-Africa</option>
+                                            <option value="apac">Asia-Pacific</option>
+                                        </select>
+                                    </label>
+                                    <p id="container-teams-region-hint" className="ar-teams-hint">
+                                        IC3 writes and @coc own commands share this account region. MCP polling and sends work unconfigured.
+                                        Automatic discovery is not available. Save to restart own commands; reconnect the bridge.
+                                    </p>
+                                    <dl className="ar-teams-status-facts">
+                                        <div><dt>Transport</dt><dd>MCP server</dd></div>
+                                        <div><dt>Resolved team</dt><dd className="ar-mono">{status.teamId || 'not resolved'}</dd></div>
+                                        <div><dt>Resolved channel</dt><dd className="ar-mono">{status.channelId || 'not resolved'}</dd></div>
+                                    </dl>
+                                </div>
+                            </details>
+                            <div className="ar-teams-actions">
+                                <Button size="sm" variant="secondary" loading={saving}
+                                    disabled={saving || (!targetDirty && !botNameDirty)} onClick={() => void saveChannel()}>
+                                    Save channel
+                                </Button>
+                                {draft && (targetDirty || botNameDirty) && (
+                                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => setDraft(null)}>Discard</Button>
+                                )}
+                            </div>
+                        </section>
+                    </>
+                )}
+            </div>
         </SettingsCard>
     );
 }
