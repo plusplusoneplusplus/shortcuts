@@ -477,6 +477,10 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 45
         shell: bash
+        env:
+          COC_VITEST_TIMEOUT_MS: '2400000'
+          COC_VITEST_SAMPLE_IDLE_MS: '120000'
+          COC_VITEST_DIAGNOSTICS_DIR: ${{ runner.temp }}/coc-test-${{ matrix.shard }}-samples
         run: |
           set -o pipefail
           npm run test:run -- --shard=${{ matrix.shard }}/5 --maxWorkers=1 --reporter=verbose --reporter=hanging-process --logHeapUsage 2>&1 |
@@ -488,7 +492,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coc-test-diagnostics-${{ matrix.os }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/coc-test-${{ matrix.shard }}.log
+          path: |
+            ${{ runner.temp }}/coc-test-${{ matrix.shard }}.log
+            ${{ runner.temp }}/coc-test-${{ matrix.shard }}-samples
           if-no-files-found: warn
           retention-days: 7
 

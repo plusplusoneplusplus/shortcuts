@@ -48,10 +48,13 @@ The root test chain excludes `coc-connector` and `coccontainer`; test them expli
 with `npm run test:run -w packages/<name>`. Native integration tests require binaries.
 Root lint/coverage covers selected packages; `package.json` is authoritative.
 CoC CI shards have a one-hour job limit. macOS runs one test-file worker per shard
-to bound concurrent native/jsdom resource use. Its test steps stop after 45 minutes
-and preserve verbose, heap and hanging-process output in per-shard diagnostic
-artifacts, including on failure. Logging preserves the test command's exit status;
-Linux coverage and Windows retain their configured worker limits.
+to bound concurrent native/jsdom resource use. The test wrapper's opt-in
+`COC_VITEST_TIMEOUT_MS` stops its owned POSIX process group with TERM/KILL after
+40 minutes, before the 45-minute step deadline; a timeout always fails.
+`COC_VITEST_SAMPLE_IDLE_MS` captures external macOS process samples after two quiet
+minutes, writing stacks to stderr and `COC_VITEST_DIAGNOSTICS_DIR`. Per-shard artifacts
+retain samples and verbose/heap/hanging-process logs on failure. These controls
+default off; Linux coverage and Windows retain their configured worker limits.
 
 CI audits production, full npm, SkillOpt and Rust dependency graphs.
 `scripts/ci-npm-audit.sh` retries npm advisory endpoint failures and permits only

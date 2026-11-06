@@ -263,6 +263,11 @@ test("macOS coc tests leave time for diagnostics after a stalled test step", () 
     const stepTimeout = /timeout-minutes: (\d+)/.exec(body);
     assert.ok(stepTimeout, "a step timeout must allow diagnostic upload before the job ends");
     assert.ok(Number(stepTimeout[1]) < Number(jobTimeout[1]));
+    const processTimeout = /COC_VITEST_TIMEOUT_MS: '(\d+)'/.exec(body);
+    assert.ok(processTimeout, "the wrapper must stop test processes before GitHub cancels the step");
+    assert.ok(Number(processTimeout[1]) < Number(stepTimeout[1]) * 60_000);
+    assert.match(body, /COC_VITEST_SAMPLE_IDLE_MS: '120000'/);
+    assert.match(body, /COC_VITEST_DIAGNOSTICS_DIR: \$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}-samples/);
     assert.match(body, /if: runner\.os == 'macOS'/);
     assert.match(body, /shell: bash/);
     assert.match(body, /set -o pipefail/);
@@ -278,7 +283,8 @@ test("macOS coc test diagnostics upload on failure with shard-specific names", (
     assert.match(step.groups.body, /if: always\(\) && runner\.os == 'macOS'/);
     assert.match(step.groups.body, /uses: actions\/upload-artifact@v4/);
     assert.match(step.groups.body, /name: coc-test-diagnostics-\$\{\{ matrix\.os \}\}-\$\{\{ matrix\.shard \}\}/);
-    assert.match(step.groups.body, /path: \$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}\.log/);
+    assert.match(step.groups.body, /path: \|\n\s+\$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}\.log/);
+    assert.match(step.groups.body, /\$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}-samples/);
 });
 
 test("macOS coc shards run every assigned file with one worker", () => {
