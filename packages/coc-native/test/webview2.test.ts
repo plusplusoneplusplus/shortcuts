@@ -10,7 +10,11 @@ import { builtBinaryPaths } from '../scripts/ensure-native.mjs';
 // @ts-expect-error -- build scripts have no type declarations.
 import { isStageableBinary, tripleFromBinaryName } from '../../../scripts/stage-native-binaries.mjs';
 
-const activationHelper = path.resolve('rust', 'target', 'debug', 'coc-webview2.exe');
+// `build:native` builds for the explicit host triple; a bare `cargo build` does not.
+const activationHelper = [
+    path.resolve('rust', 'target', 'x86_64-pc-windows-msvc', 'debug', 'coc-webview2.exe'),
+    path.resolve('rust', 'target', 'debug', 'coc-webview2.exe'),
+].find(existsSync) ?? '';
 
 describe('desktop native WebView2 packaging contract', () => {
     it.skipIf(process.platform !== 'win32' || process.arch !== 'x64' || !existsSync(activationHelper))('probes the installed ClickOnce handler and rejects invalid input without activating anything', () => {
