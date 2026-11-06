@@ -468,6 +468,8 @@ describe('browser navigation approval relay', () => {
     const decisions = (c: ReturnType<typeof client>) => sent(c).filter(message => message.type === 'browser-navigation-decision');
     const setup = () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-nav-approval-'));
+        // Start from an empty saved list so the built-in default sites still prompt.
+        fs.writeFileSync(path.join(dir, 'browser-approved-sites.json'), JSON.stringify({ sites: [] }));
         const approvals = new BrowserNavigationApprovals(dir);
         const relay = enabled(), win = client('win');
         relay.setNavigationApprovals(approvals);
