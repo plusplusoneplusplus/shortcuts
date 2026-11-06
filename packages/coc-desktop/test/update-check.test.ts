@@ -614,6 +614,7 @@ describe('checkForUpdate', () => {
         const result = await checkForUpdate({
             currentVersion: '3.4.2',
             platform: 'darwin',
+            arch: 'arm64',
             fetchFn: fakeFetch([ghPayload()]),
         });
         expect(result.reason).toBe('newer');

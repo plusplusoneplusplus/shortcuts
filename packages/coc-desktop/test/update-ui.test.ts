@@ -100,7 +100,7 @@ describe('native update dialogs', () => {
     });
 
     it.each(['Update', 'Skip This Version', 'Later', 'dismiss'])('preserves the %s action', async choice => {
-        const prompt = formatUpdatePrompt(release, '3.5.2', 'win32');
+        const prompt = formatUpdatePrompt(release, '3.5.2', 'win32', 'x64');
         const show = vi.fn(async () => ({ response: prompt.buttons.indexOf(choice) }));
         const openBrowser = vi.fn(async () => {});
         const actions = { startUpdate: vi.fn(async () => {}), skipVersion: vi.fn() };
@@ -113,7 +113,7 @@ describe('native update dialogs', () => {
 
     it.each(['javascript:alert(1)', 'file:///tmp/setup.exe', 'ms-settings:privacy', 'not a URL', '', 'https://example.com/\nfile'])
     ('rejects an unsafe manual download URL: %s', async downloadUrl => {
-        const prompt = formatUpdatePrompt(release, '3.5.2', 'win32');
+        const prompt = formatUpdatePrompt(release, '3.5.2', 'win32', 'x64');
         const show = vi.fn(async () => ({ response: 1 }));
         const openBrowser = vi.fn(async () => {});
         const startUpdate = vi.fn(async () => {});
@@ -132,7 +132,7 @@ describe('native update dialogs', () => {
         const openBrowser = vi.fn(async () => { throw new Error('No system browser available'); });
         const startUpdate = vi.fn(async () => {});
         await createUpdateDialogs(show, openBrowser).promptUpdate(
-            formatUpdatePrompt(release, '3.5.2', 'win32'), { startUpdate, skipVersion: vi.fn() },
+            formatUpdatePrompt(release, '3.5.2', 'win32', 'x64'), { startUpdate, skipVersion: vi.fn() },
         );
         expect(startUpdate).not.toHaveBeenCalled();
         expect(show).toHaveBeenLastCalledWith(expect.objectContaining({
