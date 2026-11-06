@@ -133,6 +133,11 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggl
         </button>
     ),
     DiffWordWrapToggle: () => <button data-testid="diff-word-wrap-toggle">Word wrap</button>,
+    MarkdownDiffModeToggle: ({ mode, onChange }: any) => (
+        <button data-testid="markdown-diff-mode-toggle" data-value={mode}
+            onClick={() => onChange(mode === 'source' ? 'rendered' : 'source')}>{mode}</button>
+    ),
+    isMarkdownDiffPath: (fp: string) => /\.(md|markdown)$/i.test(fp),
 }));
 
 // Mock DiffMiniMap
@@ -462,6 +467,68 @@ describe('FileDiffPanel', () => {
             expect(screen.getByTestId('file-diff-content')).toBeTruthy();
             expect(screen.queryByTestId('file-diff-editor')).toBeNull();
             expect(fetchFileContent).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Markdown Source / Rendered toggle', () => {
+        const mdContent = (overrides: Record<string, unknown> = {}) => ({
+            path: 'docs/readme.md', fileName: 'readme.md', language: 'markdown',
+            base: { content: '# Old\n', ref: 'base', exists: true },
+            head: { content: '# New\n', ref: 'head', exists: true },
+            binary: false, tooLarge: false, ...overrides,
+        });
+
+        it.each(['docs/readme.md', 'docs/README.MD', 'notes/guide.markdown', 'notes/Guide.Markdown'])(
+            'shows the toggle for %s, starting in Source', async (fp) => {
+                const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+                render(<FileDiffPanel workspaceId="ws1" filePath={fp} source={makeCommitSource({ fetchFileContent })} />);
+                const toggle = await screen.findByTestId('markdown-diff-mode-toggle');
+                expect(toggle.getAttribute('data-value')).toBe('source');
+                expect(fetchFileContent).toHaveBeenCalledWith(fp);
+            });
+
+        it('shows the toggle for markdown under the Classic engine too', async () => {
+            mockDiffEngine = 'legacy';
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeBranchSource({ fetchFileContent })} />);
+            expect(await screen.findByTestId('markdown-diff-mode-toggle')).toBeTruthy();
+            expect(screen.getByTestId('file-diff-content')).toBeTruthy();
+        });
+
+        it('hides the toggle for non-markdown files', async () => {
+            const fetchFileContent = vi.fn().mockResolvedValue({ ...mdContent(), path: 'src/foo.ts' });
+            render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeCommitSource({ fetchFileContent })} />);
+            await screen.findByTestId('file-diff-editor');
+            expect(screen.queryByTestId('markdown-diff-mode-toggle')).toBeNull();
+        });
+
+        it('hides the toggle when the source cannot load file content', () => {
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeCommitSource()} />);
+            expect(screen.getByTestId('file-diff-content')).toBeTruthy();
+            expect(screen.queryByTestId('markdown-diff-mode-toggle')).toBeNull();
+        });
+
+        it.each([
+            ['binary', { binary: true }],
+            ['too large', { tooLarge: true }],
+        ])('hides the toggle for %s content', async (_kind, flags) => {
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent(flags));
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeCommitSource({ fetchFileContent })} />);
+            await waitFor(() => expect(fetchFileContent).toHaveBeenCalled());
+            await screen.findByTestId('file-diff-content');
+            expect(screen.queryByTestId('markdown-diff-mode-toggle')).toBeNull();
+        });
+
+        it('switches to Rendered and opens the next file in Source', async () => {
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+            const source = makeCommitSource({ fetchFileContent });
+            const { rerender } = render(<FileDiffPanel workspaceId="ws1" filePath="docs/a.md" source={source} />);
+            fireEvent.click(await screen.findByTestId('markdown-diff-mode-toggle'));
+            expect(screen.getByTestId('markdown-diff-mode-toggle').getAttribute('data-value')).toBe('rendered');
+
+            rerender(<FileDiffPanel workspaceId="ws1" filePath="docs/b.md" source={source} />);
+            await waitFor(() => expect(fetchFileContent).toHaveBeenCalledWith('docs/b.md'));
+            expect((await screen.findByTestId('markdown-diff-mode-toggle')).getAttribute('data-value')).toBe('source');
         });
     });
 

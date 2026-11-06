@@ -14,7 +14,7 @@ import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { useDiffEngine } from '../hooks/useDiffEngine';
-import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle } from './DiffViewToggle';
+import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle, MarkdownDiffModeToggle, isMarkdownDiffPath } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
@@ -166,6 +166,8 @@ export function FileDiffPanel({
     const [editorAttempt, setEditorAttempt] = useState(0);
     const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
     const wantsEditor = diffEngine === 'monaco' && source.fetchFileContent !== undefined;
+    // Markdown files also load both sides so the Rendered mode can be offered.
+    const wantsContent = wantsEditor || (isMarkdownDiffPath(filePath) && source.fetchFileContent !== undefined);
     const editorContentKey = `${workspaceId}\u0000${source.cacheKey}\u0000${filePath}\u0000${editorAttempt}`;
     const sourceRef = useRef(source);
     sourceRef.current = source;
@@ -173,7 +175,7 @@ export function FileDiffPanel({
     useEffect(() => {
         const requestedSource = sourceRef.current;
         const fetchFileContent = requestedSource.fetchFileContent;
-        if (!wantsEditor || !fetchFileContent) return;
+        if (!wantsContent || !fetchFileContent) return;
         let cancelled = false;
         // Retain the last editor models while the next file loads.
         setEditorContent(previous => previous?.status === 'loaded' ? previous : { key: editorContentKey, status: 'loading' });
@@ -190,7 +192,7 @@ export function FileDiffPanel({
             })
             .catch(() => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'failed' }); });
         return () => { cancelled = true; };
-    }, [wantsEditor, filePath, editorContentKey]);
+    }, [wantsContent, filePath, editorContentKey]);
 
     const currentEditorContent = editorContent?.key === editorContentKey ? editorContent : null;
     const contentLoadState: DiffContentLoadState | null = !currentEditorContent ? null
@@ -214,6 +216,12 @@ export function FileDiffPanel({
     const fallbackReason = classicActive ? engineSelection.fallback : null;
     const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
+    // Rendered is a per-view switch for one file; any other file opens in Source.
+    const markdownContent = isMarkdownDiffPath(filePath) && currentEditorContent?.status === 'loaded'
+        && !currentEditorContent.content.binary && !currentEditorContent.content.tooLarge
+        ? currentEditorContent.content : null;
+    const [renderedMarkdownKey, setRenderedMarkdownKey] = useState<string | null>(null);
+    const markdownMode = markdownContent && renderedMarkdownKey === editorContentKey ? 'rendered' : 'source';
     const [dismissedSearchTarget, setDismissedSearchTarget] = useState<ReviewContentSearchTarget | null>(null);
     const searchTarget = contentSearchTarget !== dismissedSearchTarget && contentSearchTarget?.filePath === filePath
         ? contentSearchTarget : null;
@@ -533,6 +541,10 @@ export function FileDiffPanel({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    {markdownContent && (
+                        <MarkdownDiffModeToggle mode={markdownMode}
+                            onChange={mode => setRenderedMarkdownKey(mode === 'rendered' ? editorContentKey : null)} />
+                    )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
