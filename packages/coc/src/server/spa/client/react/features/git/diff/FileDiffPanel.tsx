@@ -16,6 +16,7 @@ import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { useDiffEngine } from '../hooks/useDiffEngine';
 import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle, MarkdownDiffModeToggle, isMarkdownDiffPath } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
+import { MarkdownRenderedDiff } from './MarkdownRenderedDiff';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
@@ -647,7 +648,7 @@ export function FileDiffPanel({
                             )}
                         </div>
                     )}
-                    {displayedEditor && (
+                    {displayedEditor && markdownMode === 'source' && (
                         <div hidden={!showEditor} className="h-full" aria-hidden={!showEditor}>
                             <MonacoFileDiffViewer
                                 key={editorAttempt}
@@ -680,7 +681,9 @@ export function FileDiffPanel({
 
                         </div>
                     )}
-                    {showEditor ? null : editorLoading ? (
+                    {markdownMode === 'rendered' && markdownContent ? (
+                        <MarkdownRenderedDiff base={markdownContent.base.content} head={markdownContent.head.content} />
+                    ) : showEditor ? null : editorLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-editor-loading">
                             <Spinner size="sm" /> Loading file content...
                         </div>

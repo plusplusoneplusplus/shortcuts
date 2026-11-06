@@ -519,6 +519,31 @@ describe('FileDiffPanel', () => {
             expect(screen.queryByTestId('markdown-diff-mode-toggle')).toBeNull();
         });
 
+        it('Rendered shows the rich diff instead of the line diff, and Source restores it', async () => {
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeCommitSource({ fetchFileContent })} />);
+            await screen.findByTestId('file-diff-editor');
+            fireEvent.click(screen.getByTestId('markdown-diff-mode-toggle'));
+
+            const rendered = screen.getByTestId('markdown-rendered-diff');
+            expect(rendered.querySelector('[data-md-diff="removed"]')?.textContent).toContain('Old');
+            expect(rendered.querySelector('[data-md-diff="added"]')?.textContent).toContain('New');
+            expect(screen.queryByTestId('file-diff-editor')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('markdown-diff-mode-toggle'));
+            expect(screen.queryByTestId('markdown-rendered-diff')).toBeNull();
+            expect(await screen.findByTestId('file-diff-editor')).toBeTruthy();
+        });
+
+        it('Rendered replaces the classic line diff too', async () => {
+            mockDiffEngine = 'legacy';
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeBranchSource({ fetchFileContent })} />);
+            fireEvent.click(await screen.findByTestId('markdown-diff-mode-toggle'));
+            expect(screen.getByTestId('markdown-rendered-diff')).toBeTruthy();
+            expect(screen.queryByTestId('file-diff-content')).toBeNull();
+        });
+
         it('switches to Rendered and opens the next file in Source', async () => {
             const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
             const source = makeCommitSource({ fetchFileContent });
