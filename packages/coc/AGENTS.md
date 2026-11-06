@@ -34,8 +34,9 @@ references before editing. Paths are package-relative.
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
 - Browser Downloads uses installation-wide desktop main metadata and ID-only IPC,
-  never workspace/server file paths. Electron retains original transfers with a
-  native Save dialog; WebView2 requires explicit source-page system-browser handoff.
+  never workspace/server file paths. Both engines retain original transfers with a
+  native Save dialog. WebView2 accepts native HTTP(S)/blob operations through bounded,
+  exact-view approval deferrals; navigation remains HTTP(S)-only.
   Completed file actions validate native-selected file identity; record clearing
   preserves files. See the shell knowledge reference for lifecycle and bounds.
 - Windows ClickOnce is an installation-wide, default-off Desktop Preferences toggle,
@@ -500,9 +501,14 @@ references before editing. Paths are package-relative.
   active provider (fallback: executor provider) controls Codex nested-script omission.
   Reuse shared helper dependencies for the full owner-bound CoC tool list, not the
   chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
-  `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
+  `create_pull_request`. Supply no provider approval callback. Provider-native
   shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
-  never model-call emulation. `SentinelRefrainService` owns live-flag/job-revision checks
+  never model-call emulation. Chat and owner scripts share workspace-resolved MCP
+  access through `mcp_list_tools` / `mcp_call`: `features.toolScripting` and
+  `features.toolScriptingMcp` default on; explicit `false` on either disables it.
+  Preserve workspace server/tool allowlists, approval denial for unattended
+  approval-required calls, credential boundaries and per-turn/run cleanup.
+  `SentinelRefrainService` owns live-flag/job-revision checks
   and aborts the signal on edit, revocation and shutdown; `routes/index.ts` injects
   `bridge.runRefrainGate` and the live `features.toolScripting` flag.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.

@@ -42,10 +42,11 @@ export function matchesGreenSummary(text) {
  * Runs where a test file actually failed never produce a green summary, so
  * their non-zero exit is preserved.
  *
- * @param {{ sawGreenSummary: boolean, code: number | null, signal: string | null }} params
+ * @param {{ sawGreenSummary: boolean, timedOut?: boolean, code: number | null, signal: string | null }} params
  * @returns {number} exit code for the wrapper process
  */
-export function decideExitCode({ sawGreenSummary, code, signal }) {
+export function decideExitCode({ sawGreenSummary, timedOut = false, code, signal }) {
+    if (timedOut) return 1;
     if (sawGreenSummary) return 0;
     if (typeof code === 'number') return code;
     // Closed on a signal with no numeric code, and tests did not all pass.

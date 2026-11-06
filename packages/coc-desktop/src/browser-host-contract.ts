@@ -46,6 +46,8 @@ export interface FileViewRequest {
 }
 
 export interface BrowserEventSink {
+    /** Main-only, exact-source lease; native Save As is still required for every download. */
+    downloadApproval?(sourceViewId?: string): { current(): boolean; dispose(): void } | undefined;
     application?(request: BrowserApplicationRequest, current: () => boolean): void;
     state(state: BrowserViewState): void;
     /** A new main document invalidates the previous document's copy identity. */

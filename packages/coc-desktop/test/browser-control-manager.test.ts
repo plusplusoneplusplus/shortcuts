@@ -71,6 +71,16 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
 }
 
 describe('main browser control scope and selection', () => {
+    it('disables the native navigation gate before a replacement control turn enables it', async () => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const gate = vi.mocked(h.views[0].setNavigationGate!);
+            gate.mockClear();
+            await h.run({ action: 'select', tab: opened.tab! }, undefined, 'replacement');
+            expect(gate.mock.calls.map(([enabled]) => enabled)).toEqual([false, true]);
+        } finally { await h.manager.dispose(); }
+    });
     it.each(['electron', 'webview2'] as const)('injects the cursor overlay through the %s host only while the setting is on', async engine => {
         const h = harness(undefined, undefined, false, engine);
         const creates = vi.spyOn(h.manager['options'].hosts[engine], 'create');

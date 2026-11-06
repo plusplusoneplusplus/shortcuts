@@ -69,7 +69,7 @@ describe('owner scripts reach the owner workspace MCP servers', () => {
         sdk.resetAll();
         dataDir = fs.mkdtempSync(path.join(tmpdir(), 'owner-script-mcp-'));
         store = new SqliteProcessStore({ dbPath: ':memory:' });
-        setFeatures({ toolScripting: true, toolScriptingMcp: true });
+        setFeatures({ toolScripting: true });
         vi.mocked(buildMemoryV2Addon).mockImplementation(async () => ({
             tools: [], suffix: '', excludedBuiltinTools: [], dispose: () => {},
         }));
@@ -125,11 +125,40 @@ describe('owner scripts reach the owner workspace MCP servers', () => {
         expect((run.result as { denied?: string }).denied).toBeTruthy();
     });
 
-    it('offers nothing MCP-related when the flag is off', async () => {
-        setFeatures({ toolScripting: true, toolScriptingMcp: false });
+    it.each([
+        ['MCP is off', { toolScripting: true, toolScriptingMcp: false }],
+        ['MCP is off with its parent unset', { toolScriptingMcp: false }],
+        ['tool scripting is off with MCP unset', { toolScripting: false }],
+        ['tool scripting is off with MCP on', { toolScripting: false, toolScriptingMcp: true }],
+    ])('offers nothing MCP-related when %s', async (_label, features) => {
+        setFeatures(features);
         const run = await runOwner(`return await tools.mcp_list_tools({ server: 'alpha' });`);
         expect(run.ok).toBe(false);
         expect(run.error?.name).toBe('ToolCallError');
+    });
+
+    it('calls MCP with both feature settings unset', async () => {
+        fs.unlinkSync(path.join(dataDir, CONFIG_FILE_NAME));
+        writeRepoPreferences(dataDir, 'ws-a', { disabledLlmTools: [], approvalOptOutLlmTools: [] });
+        const run = await runOwner(PID_SCRIPT);
+        expect(run.ok).toBe(true);
+        await waitForExit(run.result as number);
+    });
+
+    it('keeps the owner server and tool allowlists with MCP enabled by default', async () => {
+        writeRepoPreferences(dataDir, 'ws-a', { disabledLlmTools: [], enabledMcpTools: { alpha: ['echo'] } });
+        const run = await runOwner(`
+            const listed = await tools.mcp_list_tools({ server: 'alpha' });
+            let denied;
+            try { await tools.mcp_call({ server: 'alpha', tool: 'secret' }); } catch (e) { denied = e.message; }
+            return { names: listed.tools.map(t => t.name), denied };`);
+        expect(run.ok).toBe(true);
+        expect(run.result).toEqual({ names: ['echo'], denied: expect.stringContaining('tool-not-allowed: alpha/secret') });
+
+        await store.updateWorkspace('ws-a', { enabledMcpServers: [] });
+        const disabled = await runOwner(`return await tools.mcp_list_tools({ server: 'alpha' });`);
+        expect(disabled.ok).toBe(false);
+        expect(disabled.error?.name).toBe('ToolCallError');
     });
 
     it('still reaches MCP for a Codex owner, whose turns leave run_tool_script out', async () => {

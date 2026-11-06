@@ -1,8 +1,14 @@
 use serde::Deserialize;
 use serde_json::Value;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_TRANSPORT_BYTES: usize = 1_048_576;
+static OUTPUT_FAILED: AtomicBool = AtomicBool::new(false);
+
+pub fn output_failed() -> bool {
+    OUTPUT_FAILED.load(Ordering::Relaxed)
+}
 
 pub fn read_command(
     input: &mut impl io::BufRead,
@@ -62,6 +68,8 @@ pub struct Command {
     pub url: Option<String>,
     pub bounds: Option<Bounds>,
     pub action: Option<String>,
+    pub download_id: Option<String>,
+    pub destination: Option<String>,
     pub cookies: Option<Vec<ImportCookie>>,
     pub page_zoom_percent: Option<f64>,
     pub method: Option<String>,
@@ -239,6 +247,36 @@ pub fn gate_navigation(current: &str, target: &str, new_document: bool) -> bool 
     host(current).is_none() || host(current) != host(target)
 }
 
+/// Exact origins approved for one view's active control lease, never shared across views.
+#[derive(Default)]
+pub struct NavigationApprovals(std::collections::HashSet<String>);
+
+impl NavigationApprovals {
+    fn origin(value: &str) -> Option<String> {
+        url::Url::parse(value)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .map(|url| url.origin().ascii_serialization())
+    }
+
+    pub fn allow(&mut self, value: &str) -> Result<(), &'static str> {
+        let origin = Self::origin(value).ok_or("Invalid navigation approval origin.")?;
+        if self.0.len() >= 256 && !self.0.contains(&origin) {
+            return Err("Navigation approval origin limit exceeded.");
+        }
+        self.0.insert(origin);
+        Ok(())
+    }
+
+    pub fn contains(&self, value: &str) -> bool {
+        Self::origin(value).is_some_and(|origin| self.0.contains(&origin))
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
 #[cfg(test)]
 mod navigation_gate_tests {
     use super::*;
@@ -254,6 +292,42 @@ mod navigation_gate_tests {
         assert!(!gate_navigation("https://a.test/", "about:blank", true));
         assert!(!gate_navigation("https://a.test/", "data:text/html,x", true));
         assert!(!gate_navigation("https://a.test/", "file:///C:/x.html", true));
+    }
+
+    #[test]
+    fn approved_origins_preserve_return_posts_without_authorizing_other_origins() {
+        let mut approvals = NavigationApprovals::default();
+        approvals.allow("https://portal.test/start?query=value").unwrap();
+        assert!(approvals.contains("https://PORTAL.test:443/return"));
+        for target in [
+            "http://portal.test/return",
+            "https://portal.test:8443/return",
+            "https://child.portal.test/return",
+            "https://portal.test.other.test/return",
+            "https://other.test/",
+            "about:blank",
+            "file:///synthetic",
+        ] {
+            assert!(!approvals.contains(target));
+        }
+        assert!(!NavigationApprovals::default().contains("https://portal.test/return"));
+        approvals.clear();
+        assert!(!approvals.contains("https://portal.test/return"));
+    }
+
+    #[test]
+    fn origin_approvals_are_bounded_and_reject_non_web_urls() {
+        let mut approvals = NavigationApprovals::default();
+        for value in ["invalid", "about:blank", "file:///synthetic", "data:text/html,test"] {
+            assert!(approvals.allow(value).is_err());
+        }
+        for index in 0..256 {
+            approvals.allow(&format!("https://site{index}.test/")).unwrap();
+        }
+        assert!(approvals.allow("https://extra.test/").is_err());
+        assert!(approvals.allow("https://site0.test/new").is_ok());
+        approvals.clear();
+        assert!(approvals.allow("https://extra.test/").is_ok());
     }
 
     #[test]
@@ -452,10 +526,14 @@ fn png_data_url(png: &[u8], limit: usize) -> Option<String> {
 }
 
 pub fn emit(value: Value) {
+    if output_failed() {
+        return;
+    }
     let stdout = io::stdout();
     let mut output = stdout.lock();
     if writeln!(output, "{value}").and_then(|_| output.flush()).is_err() {
-        std::process::exit(1);
+        // Let the STA pump cancel operations and complete deferrals before exiting.
+        OUTPUT_FAILED.store(true, Ordering::Relaxed);
     }
 }
 

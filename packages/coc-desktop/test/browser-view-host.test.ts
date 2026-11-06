@@ -13,6 +13,9 @@ import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_
 const mocks = vi.hoisted(() => ({
     downloads: undefined as BrowserDownloadStore | undefined,
     previewDownloads: undefined as BrowserDownloadStore | undefined,
+    chooseDownload: undefined as ((ownerId: number, filename: string) => Promise<string | undefined>) | undefined,
+    downloadOwnerCurrent: undefined as ((ownerId: number) => boolean) | undefined,
+    saveDialog: vi.fn(async () => ({ canceled: false, filePath: 'selected' })),
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], views: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
     menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })), confirm: vi.fn(() => 0),
@@ -20,10 +23,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('electron', () => ({
     clipboard: { availableFormats: () => [], write: vi.fn() },
     Menu: { buildFromTemplate: (...args: any[]) => mocks.menu(...args) },
-    app: { on: vi.fn() }, webContents: { getAllWebContents: () => [] },
+    app: { on: vi.fn(), getPath: () => 'downloads' }, webContents: { getAllWebContents: () => [] },
     BrowserWindow: { fromWebContents: (sender: unknown) => mocks.windows.get(sender) },
     ipcMain: { handle: (channel: string, handler: any) => mocks.handlers.set(channel, handler), on: (channel: string, handler: any) => mocks.events.set(channel, handler) },
-    dialog: { showMessageBox: (...args: any[]) => mocks.dialog(...args), showMessageBoxSync: (...args: any[]) => mocks.confirm(...args) }, shell: { openExternal: vi.fn() },
+    dialog: { showSaveDialog: (...args: unknown[]) => mocks.saveDialog(...args),
+        showMessageBox: (...args: any[]) => mocks.dialog(...args), showMessageBoxSync: (...args: any[]) => mocks.confirm(...args) }, shell: { openExternal: vi.fn() },
 }));
 vi.mock('../src/server-controller', () => ({ defaultDataDir: () => 'unused' }));
 vi.mock('../src/electron-browser-host', () => ({ ElectronBrowserHost: class {
@@ -43,7 +47,12 @@ vi.mock('../src/electron-browser-host', () => ({ ElectronBrowserHost: class {
 } }));
 vi.mock('../src/webview2-browser-host', async () => {
     const { ElectronBrowserHost } = await import('../src/electron-browser-host');
-    return { WebView2BrowserHost: class extends ElectronBrowserHost { engine = 'webview2' as any; } };
+    return { WebView2BrowserHost: class extends ElectronBrowserHost {
+        engine = 'webview2' as any;
+        constructor(profile: string, downloads: BrowserDownloadStore, choose: typeof mocks.chooseDownload, current: typeof mocks.downloadOwnerCurrent) {
+            super(profile, downloads); mocks.chooseDownload = choose; mocks.downloadOwnerCurrent = current;
+        }
+    } };
 });
 vi.mock('../src/file-preview-host', () => ({ ElectronFilePreviewHost: class {
     constructor(downloads?: BrowserDownloadStore) { mocks.previewDownloads = downloads; }
@@ -82,6 +91,27 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('requires the registered exact owner for native Save As and overwrite confirmation', async () => {
+        const spa = owner(1), foreign = owner(2, 'https://foreign.test/');
+        expect(mocks.downloadOwnerCurrent!(1)).toBe(true);
+        expect(mocks.downloadOwnerCurrent!(2)).toBe(false);
+        expect(await mocks.chooseDownload!(2, 'report.csv')).toBeUndefined();
+        expect(mocks.saveDialog).not.toHaveBeenCalled();
+        expect(await mocks.chooseDownload!(1, 'report.csv')).toBe('selected');
+        expect(mocks.saveDialog).toHaveBeenCalledWith(spa.window, {
+            title: 'Save browser download', defaultPath: path.join('downloads', 'report.csv'),
+            properties: ['showOverwriteConfirmation', 'createDirectory'],
+        });
+        let resolve!: (value: { canceled: boolean; filePath: string }) => void;
+        mocks.saveDialog.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+        const choosing = mocks.chooseDownload!(1, 'report.csv');
+        spa.contents.emit('did-start-navigation', {}, 'https://foreign.test/', false, true);
+        // A removed registered owner cannot receive the result of an outstanding dialog.
+        spa.window.emit('closed');
+        resolve({ canceled: false, filePath: 'late-path' });
+        expect(await choosing).toBeUndefined();
+        expect(foreign.contents.send).not.toHaveBeenCalled();
+    });
     async function recordDemo(spa: ReturnType<typeof owner>, viewId = 'demo-tab') {
         await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, viewId, 'https://fixture.test/', 'w');
         mocks.views.at(-1).cdp.mockImplementation(async (method: string) => {

@@ -69,7 +69,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
@@ -206,10 +206,14 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Saved from main only. The repository cache budget holds roughly one
+      # ~1 GB target cache per OS; PR-scoped copies no other branch can read
+      # evicted main's, and a miss doubles this job on the critical path.
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/coc-native/rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: cargo fmt --manifest-path packages/coc-native/rust/Cargo.toml --all -- --check
@@ -350,7 +354,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
@@ -406,6 +410,7 @@ jobs:
   coc-test:
     runs-on: ${{ matrix.os }}
     needs: [coc-native, build-shared]
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -467,9 +472,40 @@ jobs:
         run: rustup component add rust-analyzer
 
       - name: Run coc tests (shard ${{ matrix.shard }}/5)
-        if: matrix.os != 'ubuntu-latest'
+        if: runner.os == 'Windows'
         run: npm run test:run -- --shard=${{ matrix.shard }}/5
         working-directory: packages/coc
+
+      # Leave time to upload logs before the job deadline, even when a native call hangs.
+      - name: Run macOS coc tests (shard ${{ matrix.shard }}/5)
+        if: runner.os == 'macOS'
+        timeout-minutes: 45
+        shell: bash
+        env:
+          COC_VITEST_TIMEOUT_MS: '2400000'
+          COC_VITEST_SAMPLE_IDLE_MS: '120000'
+          COC_VITEST_DIAGNOSTICS_DIR: ${{ runner.temp }}/coc-test-${{ matrix.shard }}-samples
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/coc-test-${{ matrix.shard }}.log"
+          status=0
+          echo "Running CoC tests; full output is retained in the diagnostic artifact."
+          npm run test:run -- --shard=${{ matrix.shard }}/5 --maxWorkers=1 --reporter=verbose --reporter=hanging-process --logHeapUsage > "$log" 2>&1 || status=$?
+          tail -c 32768 "$log"
+          printf '\nCoC test exit status: %s\n' "$status"
+          exit "$status"
+        working-directory: packages/coc
+
+      - name: Upload macOS coc test diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-test-diagnostics-${{ matrix.os }}-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/coc-test-${{ matrix.shard }}.log
+            ${{ runner.temp }}/coc-test-${{ matrix.shard }}-samples
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run coc tests with coverage (shard ${{ matrix.shard }}/5)
         if: matrix.os == 'ubuntu-latest'
@@ -598,7 +634,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install native build dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
@@ -675,7 +711,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
@@ -738,7 +774,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'

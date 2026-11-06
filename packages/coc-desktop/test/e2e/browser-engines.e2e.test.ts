@@ -170,11 +170,10 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
             expect(steps.get('mixed')?.existing.engine).toBe(engine);
         }
         expect(steps.get('related')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url' });
-        if (engine === 'electron') {
-            expect(steps.get('download')?.download).toMatchObject({ state: 'completed', fileAvailable: true, filename: 'fixture.zip' });
-        } else {
-            expect(steps.get('download')?.download).toMatchObject({ ok: false, error: expect.stringContaining('Open in system browser') });
-        }
+        expect(steps.get('download')).toMatchObject({
+            download: { engine, state: 'completed', fileAvailable: true, filename: 'fixture.zip' },
+            content: 'fixture', externalCalls: [], notices: [],
+        });
         expect(steps.get('cancel')?.result).toEqual({ ok: false, reason: 'cancelled' });
         expect(steps.get('cancel')?.tab).toEqual({ ok: true, engine });
         if (engine === 'webview2') expect(steps.get('profile-lock')?.result).toMatchObject({ ok: false, reason: 'profile-locked' });

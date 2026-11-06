@@ -95,11 +95,22 @@ test("macOS CI builds and consumes native artifacts on the same pinned Intel run
     }
 });
 
-test("macOS consumers cannot restore node_modules cached for another architecture", () => {
-    for (const name of ["forge-test", "coc-test", "coc-desktop-test"]) {
-        assert.match(jobBlock(ci, name), /key: \$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node-modules-/,
-            `${name} must not restore ARM64 native npm dependencies on Intel`);
+// One key format for every job: an OS-only key restores another
+// architecture's native npm dependencies, and two formats store the same
+// node_modules twice in a cache budget the Rust caches already strain.
+test("every node_modules cache is keyed by OS and architecture", () => {
+    const keys = [...ci.matchAll(/^ +key: (.*-node-modules-.*)$/gm)].map(match => match[1]);
+    assert.ok(keys.length >= 8, `expected the node_modules caches, found ${keys.length}`);
+    for (const key of keys) {
+        assert.equal(key, "${{ runner.os }}-${{ runner.arch }}-node-modules-${{ hashFiles('package-lock.json') }}");
     }
+});
+
+test("the Rust target cache is saved from main only", () => {
+    const step = jobBlock(ci, "coc-native").split("- name: ").find(block => block.startsWith("Cache Rust build"));
+    assert.ok(step, "coc-native caches its Rust build");
+    assert.match(step, /uses: Swatinem\/rust-cache@v2/);
+    assert.match(step, /^ {10}save-if: \$\{\{ github\.ref == 'refs\/heads\/main' \}\}$/m);
 });
 
 test("desktop browser control builds its server contracts and runs the live relay workflow on every platform", () => {

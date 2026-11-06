@@ -23,7 +23,7 @@ function request(
     options: http.RequestOptions = {},
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
     return new Promise((resolve, reject) => {
-        const req = http.request(reqUrl, options, (res) => {
+        const req = http.request(reqUrl, { agent: false, ...options }, (res) => {
             let body = '';
             res.on('data', (chunk) => (body += chunk));
             res.on('end', () =>
@@ -107,8 +107,9 @@ describe('Notes Comments Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-        return server;
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+        // The display URL uses localhost; connect directly to the bound address.
+        return { ...server, url: `http://${server.host}:${server.port}` };
     }
 
     async function registerWorkspace(srv: ExecutionServer, rootPath: string): Promise<string> {
@@ -140,6 +141,20 @@ describe('Notes Comments Handler', () => {
         expect(res.status).toBe(201);
         return JSON.parse(res.body).thread;
     }
+
+    it('uses a fresh IPv4 loopback connection for every request', async () => {
+        const srv = await startServer();
+        expect(srv.host).toBe('127.0.0.1');
+        expect(new URL(srv.url).hostname).toBe(srv.host);
+        const addresses: (string | undefined)[] = [];
+        srv.server.on('connection', socket => { addresses.push(socket.remoteAddress); });
+
+        await registerWorkspace(srv, workspaceDir);
+        const url = commentsUrl(srv, '', 'path=page.md');
+        expect((await request(url)).status).toBe(200);
+        expect((await request(url)).status).toBe(200);
+        expect(addresses).toEqual(['127.0.0.1', '127.0.0.1', '127.0.0.1']);
+    });
 
     // ========================================================================
     // 1. GET returns empty threads for note with no comments

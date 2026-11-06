@@ -322,8 +322,15 @@ describe('TasksPanel', () => {
         });
     });
 
-    it('restores open file from initialNavState', async () => {
+    it.each(['immediate', 'deferred'])('restores open file from initialNavState with %s tree loading', async loading => {
+        let resolveTree!: () => void;
+        const treeReady = loading === 'deferred'
+            ? new Promise<void>(resolve => { resolveTree = resolve; })
+            : Promise.resolve();
         fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('/workspaces/ws1/summary')) {
+                return treeReady.then(() => ({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) }));
+            }
             if (url.includes('tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Restored heading' }) });
             }
@@ -337,10 +344,16 @@ describe('TasksPanel', () => {
         });
         const navState = makeNavState({ openFilePath: 'feature1/design.md' });
         render(<Wrap><TasksPanel wsId="ws1" initialNavState={navState} /></Wrap>);
+        if (loading === 'deferred') {
+            expect(screen.getByText(/Loading tasks/)).toBeTruthy();
+            expect(screen.queryByTestId('miller-column-1')).toBeNull();
+            await act(async () => { resolveTree(); });
+        }
         await waitFor(() => {
-            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
+            expect(screen.getByTestId('task-preview')).toBeTruthy();
+            const restoredColumn = screen.getByTestId('miller-column-1');
+            expect(within(restoredColumn).getByTestId('task-tree-item-design')).toBeTruthy();
         });
-        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
     });
 
     it('calls onNavStateChange when a file is opened', async () => {

@@ -930,11 +930,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.toolScriptingMcp', default: false, runtime: 'live',
+        key: 'features.toolScriptingMcp', default: true, runtime: 'live',
         ui: {
             group: 'review', order: 64.55, label: 'MCP in tool scripts', badge: 'experimental',
             dependsOn: 'features.toolScripting',
-            hint: 'Allow tool scripts to list and call the workspace provider’s MCP tools, subject to tool filters and approval. Requires tool scripting. Disabled by default.',
+            hint: 'Allow chat and owner-bound tool scripts to list and call the workspace’s MCP tools, subject to server/tool allowlists and existing approval policy. Requires tool scripting. Enabled by default.',
             testId: 'toggle-tool-scripting-mcp-enabled',
         },
     }),

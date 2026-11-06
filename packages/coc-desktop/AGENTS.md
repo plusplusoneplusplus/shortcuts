@@ -11,6 +11,14 @@ Paths below are package-relative.
 view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
+WebView2 control readiness waits for pending site decisions, approved navigation
+dispatch and document loading before CDP inspection. A cancelled pre-approval
+load cannot make the blank document ready. Denial and dispatch failures reach
+the caller; cancellation, replacement and closure retire the exact view's wait.
+Native WebView2 approvals retain exact HTTP(S) origins only for the active view's
+control lease. Return navigations to approved origins preserve their method and
+body without cancellation. Disabling the gate clears approvals; turn replacement
+must dispatch disable before enable, even within one microtask interval.
 
 `browser-annotation-dom.ts` owns self-contained selection, comment editing and
 saved pins for owned URL documents. Execute its generation-matched
@@ -95,6 +103,16 @@ Owner reload/crash/closure revokes notification leases before native cleanup. Pr
 late notifications/replies in the caller. Never install annotation scripts on
 future documents or expose CDP to the SPA.
 
+`browser-downloads.ts` owns installation-wide download metadata and verified
+completed-file actions for both engines. WebView2 retains the original native
+operation behind a one-time, exact-view deferral. Main requires a registered
+owner, live document/control-turn lease and native Save As with overwrite
+confirmation. Pending approval is bounded and expires; source teardown revokes
+pending requests, while approved transfers remain independent. Blob download
+support never broadens navigation policy or authorizes through a URL/origin.
+Paths and native operation IDs stay in main/helper; renderer actions use store
+IDs only. Native progress, not approval, determines completion.
+
 For demonstration recording, read
 [browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
 The feature is default off, Electron-only and memory-only until reviewed Send.
@@ -149,5 +167,6 @@ request path; its process endpoint is a deterministic receiver. Run with
 on Linux after desktop compilation and SPA stylesheet build. Shared DOM e2e covers
 1x/2x pixels, fractional zoom and overlay stylesheet ink. `browser-annotation-capture.e2e.test.ts`
 compares both engines' crops byte-for-byte with a full native capture of a fractional
-`<webview>` at 1x/1.5x/2x, four zooms and every viewport edge. Windows WebView2
-runtime behavior needs a Windows host.
+`<webview>` at 1x/1.5x/2x, four zooms and every viewport edge. Real desktop interaction
+requires explicit manual verification; Windows WebView2 runtime behavior requires
+a Windows host. Downloads have store, engine adapter, owner/chooser IPC and panel suites.

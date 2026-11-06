@@ -527,17 +527,19 @@ describe('Features card UI metadata', () => {
         })).toolScriptingEnabled).toBe(true);
     });
 
-    it('keeps MCP in tool scripts opt-in and dependent on tool scripting', () => {
+    it('defaults MCP in tool scripts on and keeps the tool scripting dependency and opt-out', () => {
         const def = getAdminSettingDefinition('features.toolScriptingMcp')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.ui).toMatchObject({
             group: 'review', badge: 'experimental',
             dependsOn: 'features.toolScripting',
             testId: 'toggle-tool-scripting-mcp-enabled',
         });
-        expect(DEFAULT_CONFIG.features.toolScriptingMcp).toBe(false);
-        expect(readAdminSettingValue(def, {})).toBe(false);
+        expect(def.ui?.hint).toContain('Enabled by default');
+        expect(DEFAULT_CONFIG.features.toolScriptingMcp).toBe(true);
+        expect(readAdminSettingValue(def, {})).toBe(true);
+        expect(readAdminSettingValue(def, { features: { toolScriptingMcp: false } })).toBe(false);
     });
 
     it('exposes the query pull request tool as a live, default-on toggle', () => {

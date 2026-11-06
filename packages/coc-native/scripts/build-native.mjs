@@ -149,8 +149,22 @@ export function buildNative(options = {}) {
     // is built here rather than behind its own command so that every caller of
     // `build:native` — CI, the serve loop's staleness check, a fresh clone —
     // ends up with both, and neither can quietly lag the other.
-    (options.buildSymbolsLsp ?? buildSymbolsLsp)({ profile, target });
-    (options.buildWebView2 ?? buildWebView2)({ profile, target });
+    //
+    // napi always passes `--target`, so the addon lands in
+    // `target/<triple>/<profile>`. Building the other two crates for the same
+    // explicit triple shares that directory; a bare `cargo build` would use
+    // `target/<profile>` and compile every dependency a second time.
+    const sharedTarget = target ?? (options.hostTriple ?? hostTriple)();
+    (options.buildSymbolsLsp ?? buildSymbolsLsp)({ profile, target: sharedTarget });
+    (options.buildWebView2 ?? buildWebView2)({ profile, target: sharedTarget });
+}
+
+/** The triple rustc builds for by default — what napi uses without `--target`. */
+export function hostTriple(run = execFileSync) {
+    const output = run('rustc', ['-vV'], { encoding: 'utf-8' });
+    const host = /^host: (\S+)/m.exec(output)?.[1];
+    if (!host) throw new Error(`could not read the host triple from \`rustc -vV\`:\n${output}`);
+    return host;
 }
 
 /** Clear empty cleanup remnants; leave transaction recovery to napi-rs. */

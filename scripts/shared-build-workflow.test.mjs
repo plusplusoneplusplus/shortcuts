@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -252,6 +254,89 @@ test("coc-test runs no package build steps of its own", () => {
         /^ {6}- name: Build /m,
         "coc-test must not rebuild anything; the shared-build artifact is the build",
     );
+});
+
+test("macOS coc tests leave time for diagnostics after a stalled test step", () => {
+    const jobTimeout = /^ {4}timeout-minutes: (\d+)$/m.exec(cocTest);
+    assert.ok(jobTimeout, "coc-test needs a bounded job lifetime");
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step, "macOS must have its own bounded diagnostic test step");
+    const body = step.groups.body;
+    const stepTimeout = /timeout-minutes: (\d+)/.exec(body);
+    assert.ok(stepTimeout, "a step timeout must allow diagnostic upload before the job ends");
+    assert.ok(Number(stepTimeout[1]) < Number(jobTimeout[1]));
+    const processTimeout = /COC_VITEST_TIMEOUT_MS: '(\d+)'/.exec(body);
+    assert.ok(processTimeout, "the wrapper must stop test processes before GitHub cancels the step");
+    assert.ok(Number(processTimeout[1]) < Number(stepTimeout[1]) * 60_000);
+    assert.match(body, /COC_VITEST_SAMPLE_IDLE_MS: '120000'/);
+    assert.match(body, /COC_VITEST_DIAGNOSTICS_DIR: \$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}-samples/);
+    assert.match(body, /if: runner\.os == 'macOS'/);
+    assert.match(body, /shell: bash/);
+    assert.match(body, /set -o pipefail/);
+    assert.match(body, /npm run test:run -- --shard=\$\{\{ matrix\.shard \}\}\/5/);
+    assert.match(body, /--reporter=verbose --reporter=hanging-process --logHeapUsage/);
+    assert.match(body, /--logHeapUsage > "\$log" 2>&1 \|\| status=\$\?/);
+    assert.match(body, /tail -c 32768 "\$log"/);
+    assert.match(body, /exit "\$status"/);
+    assert.doesNotMatch(body, /\btee\b/);
+    assert.doesNotMatch(body, /continue-on-error|\|\| true|--passWithNoTests|--dangerouslyIgnoreUnhandledErrors/);
+});
+
+test("macOS log routing retains complete output and the command's exit status", { skip: process.platform === "win32" }, () => {
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    const run = /        run: \|\n(?<script>(?: {10}.*\n)+)/.exec(step.groups.body);
+    const script = run.groups.script.replace(/^ {10}/gm, "").replaceAll("${{ matrix.shard }}", "1");
+    const directory = mkdtempSync(path.join(os.tmpdir(), "coc-ci-logs-"));
+    try {
+        for (const status of [0, 17, 124]) {
+            const fixture = `npm() {
+                printf 'test-start\\n'
+                head -c 2200000 /dev/zero | tr '\\000' x
+                printf '\\ntest-end\\n' >&2
+                return ${status}
+            }\n`;
+            const result = spawnSync("bash", ["-e", "-c", fixture + script], {
+                env: { ...process.env, RUNNER_TEMP: directory },
+                encoding: "utf8",
+                timeout: 10_000,
+            });
+            assert.ifError(result.error);
+            assert.equal(result.status, status, "logging must not turn a failed test command green");
+            assert.ok(Buffer.byteLength(result.stdout) < 33_000, "terminal output must have a byte bound");
+            assert.match(result.stdout, /test-end/);
+            assert.match(result.stdout, new RegExp(`CoC test exit status: ${status}`));
+            const log = readFileSync(path.join(directory, "coc-test-1.log"), "utf8");
+            assert.ok(log.length > 2_200_000, "the artifact must retain output beyond the runner's first log block");
+            assert.ok(log.startsWith("test-start\n"));
+            assert.ok(log.endsWith("\ntest-end\n"), "stderr must be retained too");
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("macOS coc test diagnostics upload on failure with shard-specific names", () => {
+    const step = /- name: Upload macOS coc test diagnostics\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step, "macOS needs persistent logs even when tests time out");
+    assert.match(step.groups.body, /if: always\(\) && runner\.os == 'macOS'/);
+    assert.match(step.groups.body, /uses: actions\/upload-artifact@v4/);
+    assert.match(step.groups.body, /name: coc-test-diagnostics-\$\{\{ matrix\.os \}\}-\$\{\{ matrix\.shard \}\}/);
+    assert.match(step.groups.body, /path: \|\n\s+\$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}\.log/);
+    assert.match(step.groups.body, /\$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}-samples/);
+});
+
+test("macOS coc shards run every assigned file with one worker", () => {
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step);
+    assert.match(step.groups.body, /--shard=\$\{\{ matrix\.shard \}\}\/5 --maxWorkers=1\b/);
+    assert.doesNotMatch(step.groups.body, /--exclude|--testNamePattern|--passWithNoTests|continue-on-error/);
+    assert.match(cocTest, /shard: \[1, 2, 3, 4, 5\]/);
+    const windows = /- name: Run coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(windows);
+    assert.doesNotMatch(windows.groups.body, /--maxWorkers/);
+    const coverage = /- name: Run coc tests with coverage[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(coverage);
+    assert.doesNotMatch(coverage.groups.body, /--maxWorkers/);
 });
 
 // e2e boots the real server, so it needs packages/coc's own dist/ and every

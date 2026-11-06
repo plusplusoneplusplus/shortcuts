@@ -270,7 +270,7 @@ inject Rust transports; `test/teams.test.ts` covers built-addon and wrapper beha
   N-API row projections; returned row count alone does not bound visited work.
 - `src/<capability>.ts` — one module per Node-facing capability (`repo-files.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`. `sqlite.ts` wraps the synchronous `NativeDatabase`/`NativeStatement` API: positional and named parameters, iterators, callback transactions, pragma simple values, and SQLite error codes. `NativeDatabase.searchConversations()`, `getConversationTurns()`, `getAllProcesses()`, `getProcessSummaries()`, and `listRecentProcesses()` dispatch typed Rust `AsyncTask`s over pooled read connections. `getConversationTurns()` serializes ordered turn rows as JSON; `getAllProcesses()` streams each process's ordered turns into grouped JSON buffers across bounded process-ID batches; `getProcessSummaries()` reads the count, page, and chat-folder membership in one snapshot; `listRecentProcesses()` serializes its filtered page. The wrapper restores BLOB and non-finite REAL values in all JSON paths before exposing row objects. `upsertStreamingTurn()` dispatches an atomic `AsyncTask` under the writer lock. All typed process operations reject unsupported schema versions. Forge converts returned rows to its JSON/date-rich `ProcessStore` shapes, maps folder IDs on summaries, and emits process-change events after streaming writes complete.
 - `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
-- `scripts/build-symbols-lsp.mjs` — a plain `cargo build -p coc-symbols-lsp`, no napi involved, renaming the output to the triple-qualified name `src/symbols-lsp.ts` computes. `build-native.mjs` calls it, so one `npm run build:native` produces both artifacts and neither can quietly lag the other; `npm run build:symbols-lsp` runs it alone when only the language server changed.
+- `scripts/build-symbols-lsp.mjs` — a plain `cargo build -p coc-symbols-lsp`, no napi involved, renaming the output to the triple-qualified name `src/symbols-lsp.ts` computes. `build-native.mjs` calls it (and the WebView2 helper build) with napi's target triple — `CARGO_BUILD_TARGET` or the `rustc -vV` host — so all three share `rust/target/<triple>/<profile>` instead of compiling every dependency twice, and one `npm run build:native` produces every artifact without one quietly lagging another; `npm run build:symbols-lsp` runs it alone when only the language server changed.
 - `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when either built binary — the `.node` or `coc-symbols-lsp` — is missing or older than a file under `rust/`, including `rust/teams-sdk/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
@@ -380,6 +380,11 @@ dispatch and publish state before acknowledgement; asynchronous `NavigationStart
 binds the navigation ID. Matching completion clears loading; committed same-document
 source changes settle fragment/history requests. Stop, crash and dispatch failure
 retire readiness. Navigation IDs reject superseded, stopped and repeated completions.
+Native navigation gating retains up to 256 exact HTTP(S) origins per active
+view control lease. An approved `navigate` authorizes its origin; subsequent
+return navigations preserve POST bodies without cancellation. Other origins
+still require approval. Disabling the gate clears this view-local authorization;
+new views and popups start with an empty set.
 
 `NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
 emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
@@ -404,6 +409,29 @@ intercepts HTTPS `.application` navigation/new windows and deployment MIME downl
 as source-qualified `application` events. Main owns opt-in and lifecycle policy.
 Redirect recognition retains the original correlated HTTPS activation URL without
 creating successful-document history events. General navigation policy stays HTTP(S)-only.
+
+Managed downloads retain the original browser-native operation and STA deferral;
+they never replay URLs or transfer bytes through HTTP clients/CDP. `DownloadStarting`
+cancels and handles the default UI before holding HTTP(S)/blob downloads. Actual live
+view identity, including announced popups, authorizes the source. Opaque one-time
+GUIDs bind decisions/actions to that view. Pending approval expires after 60 seconds
+on the STA timer; limits are eight pending and twenty total operations. ClickOnce
+deployment handling stays distinct; unsupported schemes emit a bounded URL without
+a download ID. Admission-limit rejection cancels only the new request; native
+retirement failures stop the helper rather than leave an uncontrolled operation.
+
+`download-decide` approves only a main-owned native-dialog absolute Windows path or
+cancels the pending deferral. `download-action` cancels pending/approved operations
+and pauses/resumes only approved native operations; resume requires explicit pause,
+never interruption replay. Native progress reports received/total bytes, state,
+capabilities and one terminal event without paths. Completion requires native
+`COMPLETED`. Navigation/source failure/closure cancel pending approvals; approved downloads retain
+hidden detached controllers until settlement and remain actionable after tab closure.
+Browser-process failure, clear and shutdown cancel all operations and retire deferrals/subscriptions.
+Focused policy tests are platform-neutral; `webview2/tests/managed_downloads.rs` has
+opt-in real-runtime Windows HTTP/blob CSV, admission isolation, detached-controller pause/resume and STA
+timeout tests (`cargo test -p coc-webview2 --test managed_downloads -- --ignored`).
+
 Typed `import-cookies` commands
 target an existing view and use its profile cookie manager independently of the
 current page URL. `import-profile-cookies` initializes the helper when needed,
