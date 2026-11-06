@@ -1,4 +1,3 @@
-use crate::Secret;
 use std::path::{Path, PathBuf};
 
 use super::credentials::CREDENTIALS_FILE;
@@ -135,6 +134,7 @@ async fn try_write_keychain(json_str: &str) -> Option<PersistResult> {
     #[cfg(target_os = "macos")]
     {
         use super::keychain::ClaudeStore;
+        use crate::Secret;
         let account = match std::env::var("USER") {
             Ok(u) if !u.is_empty() => u,
             _ => return None,
@@ -196,6 +196,7 @@ fn set_file_permissions(_path: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Secret;
 
     fn default_fields() -> PersistFields<'static> {
         PersistFields {
