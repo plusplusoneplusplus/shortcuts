@@ -19,6 +19,14 @@ describe('GitClient', () => {
     ]);
   });
 
+  it('requests one file blame with the path as a query value', async () => {
+    const adapter = createMockAdapter({});
+    await new GitClient(adapter).getFileBlame('repo/a', 'src/app file.ts');
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/repo%2Fa/git/file-blame', options: { query: { path: 'src/app file.ts' } } },
+    ]);
+  });
+
   it('calls commit and branch-range routes with encoded workspace and ref segments', async () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);

@@ -22,6 +22,7 @@ import type {
   GitDiscardAllResponse,
   GitFileContentResponse,
   GitFileDiffContentResponse,
+  GitFileBlameResponse,
   GitFileHistoryResponse,
   GitPatchApplyRequest,
   GitPatchApplyResponse,
@@ -242,6 +243,13 @@ export class GitClient {
   listFileHistory(workspaceId: string, filePath: string, query?: { limit?: number; skip?: number }): Promise<GitFileHistoryResponse> {
     return this.transport.request<GitFileHistoryResponse>(workspaceGitPath(workspaceId, '/file-history'), {
       query: { path: filePath, limit: query?.limit, skip: query?.skip },
+    });
+  }
+
+  /** The commit that last changed each line of one file at HEAD. */
+  getFileBlame(workspaceId: string, filePath: string): Promise<GitFileBlameResponse> {
+    return this.transport.request<GitFileBlameResponse>(workspaceGitPath(workspaceId, '/file-blame'), {
+      query: { path: filePath },
     });
   }
 
