@@ -54,7 +54,7 @@ describe('resolveEffortTierConfig', () => {
 
         resolveEffortTierConfig(input, makeContext());
 
-        expect(input.config.model).toBe('gpt-5.6-terra');
+        expect(input.config.model).toBe('gpt-6.1-terra');
         expect(input.config.reasoningEffort).toBe('xhigh');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });

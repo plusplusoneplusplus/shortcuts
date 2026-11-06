@@ -36,7 +36,7 @@ describe('getDefaultEffortTiers', () => {
         const defaults = getDefaultEffortTiers('copilot');
         expect(defaults).toEqual({
             'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh' },
-            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'xhigh' },
             medium: { model: 'gpt-6.1-sol',   reasoningEffort: 'medium' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
         });
@@ -86,7 +86,7 @@ describe('getDefaultEffortTiers', () => {
         a.low.model = 'mutated';
         const b = getDefaultEffortTiers('copilot')!;
         expect(b['very-low'].model).toBe('gpt-6-luna');
-        expect(b.low.model).toBe('gpt-5.6-terra');
+        expect(b.low.model).toBe('gpt-6.1-terra');
     });
 });
 
@@ -95,7 +95,7 @@ describe('mergeEffortTiersWithDefaults', () => {
         const merged = mergeEffortTiersWithDefaults('copilot', {});
         expect(merged).toEqual({
             'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh', source: 'default' },
-            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh', source: 'default' },
+            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'xhigh', source: 'default' },
             medium: { model: 'gpt-6.1-sol',   reasoningEffort: 'medium', source: 'default' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium', source: 'default' },
         });
@@ -125,7 +125,7 @@ describe('mergeEffortTiersWithDefaults', () => {
         expect(merged.medium).toEqual({ model: 'my-mid', reasoningEffort: 'low', source: 'config' });
         expect(merged.low?.source).toBe('default');
         expect(merged.high?.source).toBe('default');
-        expect(merged.low?.model).toBe('gpt-5.6-terra');
+        expect(merged.low?.model).toBe('gpt-6.1-terra');
     });
 
     it('treats stored reasoningEffort=null as a valid explicit override (not a fallback trigger)', () => {
@@ -140,7 +140,7 @@ describe('mergeEffortTiersWithDefaults', () => {
             low: { model: '', reasoningEffort: 'low' },
         });
         expect(merged.low?.source).toBe('default');
-        expect(merged.low?.model).toBe('gpt-5.6-terra');
+        expect(merged.low?.model).toBe('gpt-6.1-terra');
     });
 
     it('omits entirely for unknown providers when stored is empty', () => {
