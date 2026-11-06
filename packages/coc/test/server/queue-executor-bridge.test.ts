@@ -6816,9 +6816,13 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         executor.dispose();
     });
 
-    it('should accept a custom isExclusive callback', async () => {
+    it.each([0, 250])('should accept a custom isExclusive callback with %i ms SDK startup', async startupDelay => {
         const queueManager = new TaskQueueManager();
         const customIsExclusive = vi.fn().mockReturnValue(false);
+        mockIsAvailable.mockImplementation(async () => {
+            await delay(startupDelay);
+            return { available: true };
+        });
         const { executor } = createQueueExecutorBridge(queueManager, store, {
             isExclusive: customIsExclusive,
             autoStart: false,
@@ -6833,26 +6837,29 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         });
 
         executor.start();
-        await delay(200);
-
-        expect(customIsExclusive).toHaveBeenCalled();
-        executor.dispose();
+        try {
+            await waitForCondition(() => queueManager.getCompleted().length === 1);
+            expect(customIsExclusive).toHaveBeenCalled();
+        } finally {
+            executor.dispose();
+        }
     });
 
-    it('should allow a shared task to start while an exclusive task is running', async () => {
+    it.each([0, 250])('should allow a shared task during exclusive execution with %i ms SDK startup', async startupDelay => {
         const queueManager = new TaskQueueManager();
 
-        // Make the exclusive task take 300ms, the shared task finishes quickly
-        let exclusiveResolve: () => void;
-        const exclusivePromise = new Promise<void>(resolve => { exclusiveResolve = resolve; });
-        let callCount = 0;
-        mockSendMessage.mockImplementation(async () => {
-            callCount++;
-            if (callCount === 1) {
-                // Exclusive task — slow
-                await exclusivePromise;
+        mockIsAvailable.mockImplementation(async () => {
+            await delay(startupDelay);
+            return { available: true };
+        });
+        const exclusiveStarted = deferred<void>();
+        const exclusiveFinished = deferred<void>();
+        mockSendMessage.mockImplementation(async (options: { prompt: string }) => {
+            if (options.prompt.includes('exclusive task')) {
+                exclusiveStarted.resolve();
+                await exclusiveFinished.promise;
             }
-            return { success: true, response: 'done', sessionId: `sess-${callCount}` };
+            return { success: true, response: 'done', sessionId: 'sess-dual' };
         });
 
         const { executor } = createQueueExecutorBridge(queueManager, store, {
@@ -6861,7 +6868,7 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         });
 
         // Enqueue exclusive task first
-        queueManager.enqueue({
+        const exclusiveId = queueManager.enqueue({
             type: 'chat',
             priority: 'normal',
             payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive task' },
@@ -6869,49 +6876,36 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
             displayName: 'Exclusive',
         });
 
-        // Wait for it to start processing
-        await delay(50);
-
-        // Enqueue shared task
-        const sharedCompleted = new Promise<void>(resolve => {
-            executor.on('taskCompleted', (task: QueuedTask) => {
-                if (task.payload?.mode === 'ask') { resolve(); }
+        try {
+            await exclusiveStarted.promise;
+            const sharedId = queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'shared task' },
+                config: {},
+                displayName: 'Shared',
             });
-        });
-        queueManager.enqueue({
-            type: 'chat',
-            priority: 'normal',
-            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'shared task' },
-            config: {},
-            displayName: 'Shared',
-        });
-
-        // The shared task should complete even though exclusive is still running
-        await sharedCompleted;
-
-        // Exclusive is still running
-        expect(queueManager.getRunning().some(t => t.type === 'chat' && t.payload?.mode === 'autopilot')).toBe(true);
-
-        // Now let the exclusive task finish
-        exclusiveResolve!();
-        await delay(200);
-
-        executor.dispose();
+            await waitForCondition(() => queueManager.getCompleted().some(task => task.id === sharedId));
+            expect(queueManager.getRunning().some(task => task.id === exclusiveId)).toBe(true);
+            exclusiveFinished.resolve();
+            await waitForCondition(() => queueManager.getCompleted().some(task => task.id === exclusiveId));
+        } finally {
+            exclusiveFinished.resolve();
+            executor.dispose();
+        }
     });
 
     it('should allow an ask-mode chat task to start while an exclusive autopilot task is running', async () => {
         const queueManager = new TaskQueueManager();
 
-        // Block the first sendMessage (exclusive task) while allowing shared task to proceed
-        let exclusiveResolve: () => void;
-        const exclusivePromise = new Promise<void>(resolve => { exclusiveResolve = resolve; });
-        let callCount = 0;
-        mockSendMessage.mockImplementation(async () => {
-            callCount++;
-            if (callCount === 1) {
-                await exclusivePromise;
+        const exclusiveStarted = deferred<void>();
+        const exclusiveFinished = deferred<void>();
+        mockSendMessage.mockImplementation(async (options: { prompt: string }) => {
+            if (options.prompt.includes('exclusive task')) {
+                exclusiveStarted.resolve();
+                await exclusiveFinished.promise;
             }
-            return { success: true, response: 'done', sessionId: `sess-${callCount}` };
+            return { success: true, response: 'done', sessionId: 'sess-dual' };
         });
 
         const { executor } = createQueueExecutorBridge(queueManager, store, {
@@ -6919,7 +6913,7 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
             exclusiveConcurrency: 1,
         });
 
-        queueManager.enqueue({
+        const exclusiveId = queueManager.enqueue({
             type: 'chat',
             priority: 'normal',
             payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive task' },
@@ -6927,29 +6921,23 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
             displayName: 'Exclusive',
         });
 
-        await delay(50);
-
-        const sharedCompleted = new Promise<void>(resolve => {
-            executor.on('taskCompleted', (task: QueuedTask) => {
-                if ((task.payload as any)?.mode === 'ask') { resolve(); }
+        try {
+            await exclusiveStarted.promise;
+            const sharedId = queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'ask-mode shared task' },
+                config: {},
+                displayName: 'Shared Ask',
             });
-        });
-        queueManager.enqueue({
-            type: 'chat',
-            priority: 'normal',
-            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'ask-mode shared task' },
-            config: {},
-            displayName: 'Shared Ask',
-        });
-
-        await sharedCompleted;
-
-        expect(queueManager.getRunning().some(t => t.type === 'chat' && (t.payload as any)?.mode === 'autopilot')).toBe(true);
-
-        exclusiveResolve!();
-        await delay(200);
-
-        executor.dispose();
+            await waitForCondition(() => queueManager.getCompleted().some(task => task.id === sharedId));
+            expect(queueManager.getRunning().some(task => task.id === exclusiveId)).toBe(true);
+            exclusiveFinished.resolve();
+            await waitForCondition(() => queueManager.getCompleted().some(task => task.id === exclusiveId));
+        } finally {
+            exclusiveFinished.resolve();
+            executor.dispose();
+        }
     });
 
     it('should serialise two exclusive tasks', async () => {
