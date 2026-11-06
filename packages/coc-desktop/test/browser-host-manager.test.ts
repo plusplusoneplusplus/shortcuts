@@ -164,6 +164,37 @@ describe('trusted controlling-turn visibility', () => {
         if (popout) h.created[0].sink.controlPopoutOpened!('popup', view);
         return { ...h, view, target: popout ? 't2:popup' : 't2:view' };
     }
+    it('binds native download approval to the exact root/popout, owner and controlling turn', async () => {
+        const h = await setup(true);
+        await h.manager.open(2, 'other', 'https://fixture.test/', 'w');
+        await h.manager.open(3, 'view', 'https://fixture.test/', 'remote:server:w');
+        const approve = h.created[0].sink.downloadApproval!;
+        expect(approve('other')).toBeUndefined();
+        expect(approve('foreign')).toBeUndefined();
+        const manual = approve()!;
+        const popup = approve('popup')!;
+        expect(manual.current()).toBe(true);
+        expect(popup.current()).toBe(true);
+        manual.dispose(); manual.dispose();
+        expect(manual.current()).toBe(false);
+        const request = { id: 'download-turn', turnId: 'download-turn', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' as const } };
+        await h.manager.executeControl(1, request);
+        expect(popup.current()).toBe(false);
+        popup.dispose();
+        const active = approve('popup')!;
+        expect(active.current()).toBe(true);
+        h.manager.finishControl(1, request.turnId);
+        expect(active.current()).toBe(false);
+        active.dispose();
+        const beforeClose = approve()!;
+        await h.manager.closeOwner(2);
+        expect(beforeClose.current()).toBe(false);
+        expect(approve()).toBeUndefined();
+        beforeClose.dispose();
+        expect(h.created[2].sink.downloadApproval!()!.current()).toBe(true);
+        await h.manager.dispose();
+    });
     it('reveals and badges the actual owner on remembered nonmutating commands and follow-ups', async () => {
         const h = await setup();
         for (const turnId of ['first', 'follow-up']) {

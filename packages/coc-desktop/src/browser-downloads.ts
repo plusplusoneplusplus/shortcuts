@@ -19,7 +19,7 @@ export interface DownloadProgress {
 }
 export interface DownloadRecord extends DownloadProgress {
     id: string;
-    engine: 'electron';
+    engine: 'electron' | 'webview2';
     filename: string;
     source: string;
     started: number;
@@ -31,9 +31,9 @@ interface FileIdentity { size: number; mtimeMs: number; dev: number; ino: number
 interface StoredDownload extends DownloadRecord { filePath?: string; identity?: FileIdentity }
 /** Main-only adapter. URLs, headers, cookies and save paths never cross the renderer API. */
 export interface DownloadHandle {
-    pause(): void;
-    resume(): void;
-    cancel(): void;
+    pause(): void | Promise<void>;
+    resume(): void | Promise<void>;
+    cancel(): void | Promise<void>;
     dispose(): void;
 }
 const states: DownloadState[] = ['downloading', 'paused', 'completed', 'cancelled', 'interrupted', 'failed'];
@@ -87,7 +87,7 @@ export class BrowserDownloadStore {
             const data = JSON.parse(fs.readFileSync(this.filename, 'utf8'));
             if (data.version !== 1 || !Array.isArray(data.entries) || data.entries.length > MAX_DOWNLOAD_RECORDS) { throw new Error('invalid'); }
             for (const value of data.entries) {
-                if (!value || typeof value.id !== 'string' || !/^[a-f0-9-]{36}$/.test(value.id) || value.engine !== 'electron'
+                if (!value || typeof value.id !== 'string' || !/^[a-f0-9-]{36}$/.test(value.id) || !['electron', 'webview2'].includes(value.engine)
                     || !states.includes(value.state) || typeof value.filename !== 'string' || typeof value.source !== 'string'
                     || !Number.isSafeInteger(value.started) || value.started < 0 || !Number.isSafeInteger(value.updated)
                     || value.updated < this.now() - RETENTION_MS || value.started > this.now() + 86400000 || value.updated > this.now() + 86400000) {continue; }
@@ -97,7 +97,7 @@ export class BrowserDownloadStore {
                 const fileIdentity = value.identity && ['size', 'mtimeMs', 'dev', 'ino'].every(key =>
                     typeof value.identity[key] === 'number' && Number.isFinite(value.identity[key]) && value.identity[key] >= 0) ? value.identity : undefined;
                 this.records.set(value.id, {
-                    id: value.id, engine: 'electron', filename: downloadFilename(value.filename), source: ['Unknown source', 'Local or private source'].includes(value.source) ? value.source : downloadSource(`https://${value.source}`),
+                    id: value.id, engine: value.engine, filename: downloadFilename(value.filename), source: ['Unknown source', 'Local or private source'].includes(value.source) ? value.source : downloadSource(`https://${value.source}`),
                     started: value.started, updated: value.updated, state: active ? 'interrupted' : value.state,
                     received: bytes(value.received), total: bytes(value.total), canPause: false, canResume: false,
                     active: false, fileAvailable: false,
@@ -110,10 +110,10 @@ export class BrowserDownloadStore {
     }
 
     /** Admission happens before Chromium starts saving; excess downloads are cancelled, never replayed. */
-    start(filename: string, url: string, handle: DownloadHandle): { id: string; update(progress: DownloadProgress, final?: boolean, filePath?: string): void } | null {
+    start(filename: string, url: string, handle: DownloadHandle, engine: DownloadRecord['engine'] = 'electron'): { id: string; update(progress: DownloadProgress, final?: boolean, filePath?: string): void } | null {
         if (this.closing || this.live.size >= MAX_ACTIVE_DOWNLOADS) { return null; }
         const id = randomUUID();
-        const record: StoredDownload = { id, engine: 'electron', filename: downloadFilename(filename), source: downloadSource(url),
+        const record: StoredDownload = { id, engine, filename: downloadFilename(filename), source: downloadSource(url),
             started: this.now(), updated: this.now(), state: 'downloading', received: 0, total: 0,
             canPause: false, canResume: false, active: true, fileAvailable: false };
         this.records.set(id, record);
@@ -135,11 +135,13 @@ export class BrowserDownloadStore {
                 if (progress.state === 'completed' && filePath && filePath.length <= 32768 && path.isAbsolute(filePath)) {
                     record.filename = downloadFilename(path.basename(filePath));
                     const completed = identity(filePath);
-                    if (completed) {
+                    if (completed && (engine !== 'webview2' || completed.size === record.received
+                        && (!record.total || record.total === record.received))) {
                         try { record.filePath = fs.realpathSync(filePath); record.identity = completed; }
                         catch { /* completion remains real, but file actions are unavailable */ }
                     }
                 }
+                if (engine === 'webview2' && progress.state === 'completed' && !record.filePath) record.state = 'failed';
                 record.fileAvailable = !!record.filePath;
             }
             this.schedule(final);
@@ -154,7 +156,7 @@ export class BrowserDownloadStore {
         }));
         return { ok: true as const, entries: entries.filter(record => this.records.get(record.id) === record).map(publicRecord), storageError: this.error,
             engines: { electron: { managed: true, message: 'Downloads use a native Save dialog.' },
-                webview2: { managed: false, message: 'WebView2 cannot manage downloads here. Use Open in system browser to download from the source page.' } } };
+                webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' } } };
     }
 
     async action(id: unknown, action: unknown, files: { open(file: string): Promise<string>; show(file: string): void }, current = () => true) {
@@ -176,9 +178,9 @@ export class BrowserDownloadStore {
             if (this.error) { throw new Error('Could not save download history.'); }
             return;
         }
-        if (action === 'cancel' && handle) { handle.cancel(); return; }
-        if (action === 'pause' && handle && record.canPause) { handle.pause(); return; }
-        if (action === 'resume' && handle && record.canResume) { handle.resume(); return; }
+        if (action === 'cancel' && handle) { await handle.cancel(); return; }
+        if (action === 'pause' && handle && record.canPause) { await handle.pause(); return; }
+        if (action === 'resume' && handle && record.canResume) { await handle.resume(); return; }
         if ((action === 'open' || action === 'show') && record.state === 'completed' && record.filePath) {
             const observed = await currentIdentity(record.filePath);
             if (!current() || this.closing || this.records.get(id) !== record || !sameFile(record.identity, observed)) { throw new Error('Downloaded file is missing or has changed.'); }
@@ -221,13 +223,18 @@ export class BrowserDownloadStore {
         if (this.closing) { await this.pending; return; }
         this.closing = true;
         clearTimeout(this.timer); this.timer = undefined;
+        const cancellations: Promise<void>[] = [];
         for (const [id, handle] of this.live) {
             const record = this.records.get(id)!;
             record.state = 'interrupted'; record.active = false; record.canPause = false; record.canResume = false;
             record.updated = this.now();
-            try { handle.cancel(); } catch { /* shutdown must retire every handle */ }
+            try { cancellations.push(Promise.resolve(handle.cancel())); } catch { console.error('[coc-desktop] Download shutdown cancellation failed.'); }
             handle.dispose();
         }
-        this.live.clear(); this.save(); await this.pending;
+        this.live.clear();
+        for (const result of await Promise.allSettled(cancellations)) {
+            if (result.status === 'rejected') console.error('[coc-desktop] Download shutdown cancellation failed.');
+        }
+        this.save(); await this.pending;
     }
 }

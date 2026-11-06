@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -160,20 +161,34 @@ describe('persisted canvas extension reopening routes', () => {
         expect(startHost).toHaveBeenCalledOnce();
     });
 
-    it('serializes tab reopening with a concurrent agent close', async () => {
+    it.each([0, 1100])('serializes tab reopening with a concurrent agent close after %i ms startup', async startupDelay => {
         const canvas = saved();
+        startHost.mockImplementationOnce(async options => {
+            await delay(startupDelay);
+            return CanvasExtensionHost.start(options);
+        });
         const original = hosts.open.bind(hosts);
         let release!: () => void;
         const held = new Promise<void>(resolve => { release = resolve; });
+        let entered!: () => void;
+        const opening = new Promise<void>(resolve => { entered = resolve; });
         const open = vi.spyOn(hosts, 'open').mockImplementationOnce(async (...args) => {
+            entered();
             await held;
             return original(...args);
         });
         const pending = post(canvas.id);
+        let closed: Promise<unknown> | undefined;
         try {
-            await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+            await Promise.race([
+                opening,
+                pending.then(response => {
+                    throw new Error(`Reopen returned HTTP ${response.status} before entering hosts.open`);
+                }),
+            ]);
+            expect(open).toHaveBeenCalledOnce();
             const close = createCanvasExtensionTools(deps()).find(tool => tool.name === 'manage_canvas')!;
-            const closed = close.handler({ action: 'close', instanceId: 'saved-instance' });
+            closed = close.handler({ action: 'close', instanceId: 'saved-instance' });
             release();
             expect((await pending).status).toBe(200);
             expect(await closed).toEqual({ success: true, instanceId: 'saved-instance' });
@@ -182,6 +197,7 @@ describe('persisted canvas extension reopening routes', () => {
         } finally {
             release();
             await pending;
+            await closed;
         }
     });
 

@@ -40,6 +40,8 @@ use windows::{
 type HostResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 type Result<T> = windows::core::Result<T>;
 type State = Rc<RefCell<Host>>;
+#[path = "native_downloads.rs"]
+mod native_downloads;
 thread_local! { static WINDOWS: RefCell<HashMap<usize, Weak<View>>> = RefCell::new(HashMap::new()); }
 
 fn wire_title(title: &str) -> String {
@@ -55,6 +57,13 @@ struct Host {
     profile: HSTRING,
     _lock: File,
     next_popup: u64,
+    downloads: native_downloads::Downloads,
+}
+
+impl Drop for Host {
+    fn drop(&mut self) {
+        native_downloads::cancel_all(&self.downloads);
+    }
 }
 
 struct View {
@@ -66,6 +75,9 @@ struct View {
     webview: ICoreWebView2,
     history: RefCell<HistoryNavigation>,
     closed: Cell<bool>,
+    controller_disposed: Cell<bool>,
+    closing: Cell<bool>,
+    download_starting_token: Cell<Option<i64>>,
     requested: RefCell<String>,
     error: RefCell<Option<(String, String)>>,
     bounds: Cell<Option<Bounds>>,
@@ -86,8 +98,7 @@ struct View {
     tab_shortcuts: Cell<bool>,
     /// A forwarded Ctrl hold that has not been reported released yet.
     tab_modifier_held: Cell<bool>,
-    /// One approved URL the next non-redirected navigation may load without asking again.
-    gate_bypass: RefCell<Option<String>>,
+    gate_approvals: RefCell<protocol::NavigationApprovals>,
     /// Current document's PNG icon data URL; cleared when a new document starts.
     favicon: RefCell<Option<String>>,
     /// Superseded documents and icon requests cannot publish a late icon.
@@ -517,6 +528,10 @@ impl View {
         }
         self.history.borrow_mut().invalidate();
         if code == "runtime-crashed" {
+            if let Some(host) = self.host.upgrade() {
+                let downloads = host.borrow().downloads.clone();
+                native_downloads::cancel_view(&downloads, self, true);
+            }
             if let Err(error) = self.clear_cdp_subscriptions() {
                 eprintln!("WebView2 CDP cleanup failed: {error}");
             }
@@ -587,8 +602,13 @@ impl View {
         if self.closed.replace(true) {
             return Ok(());
         }
+        self.closing.set(true);
         if let Some(host) = self.host.upgrade() {
-            host.borrow_mut().views.remove(&self.id);
+            let mut host = host.borrow_mut();
+            if host.views.get(&self.id).is_some_and(|current| std::ptr::eq(current.as_ref(), self))
+            {
+                host.views.remove(&self.id);
+            }
         }
         let popups = if self.popup { Ok(()) } else { self.close_popups() };
         if self.popup && self.announced.replace(false) {
@@ -598,6 +618,64 @@ impl View {
         }
         WINDOWS.with(|windows| windows.borrow_mut().remove(&(self.window.0 as usize)));
         let subscriptions = self.clear_cdp_subscriptions();
+        let downloads = self.host.upgrade().map(|host| host.borrow().downloads.clone());
+        if let Some(downloads) = &downloads {
+            native_downloads::cancel_view(downloads, self, true);
+        }
+        let download_subscription = unsafe {
+            self.download_starting_token.take().map_or(Ok(()), |token| {
+                self.webview.cast::<ICoreWebView2_4>()?.remove_DownloadStarting(token)
+            })
+        };
+        self.closing.set(false);
+        if downloads.as_ref().is_some_and(|downloads| native_downloads::retains(downloads, self)) {
+            // Approved transfers outlive their UI tab. Detach the hidden host HWND so an
+            // Electron parent-window shutdown cannot destroy the retained controller.
+            let hidden = unsafe {
+                (|| {
+                    self.controller.SetIsVisible(false)?;
+                    let _ = ShowWindow(self.window, SW_HIDE);
+                    SetLastError(WIN32_ERROR(0));
+                    let previous_style =
+                        SetWindowLongPtrW(self.window, GWL_STYLE, WS_POPUP.0 as isize);
+                    if previous_style == 0 && GetLastError().0 != 0 {
+                        return Err(windows::core::Error::from_thread());
+                    }
+                    SetLastError(WIN32_ERROR(0));
+                    let reparented = SetParent(self.window, None);
+                    // A top-level/owned HWND can have a null previous parent on success.
+                    if reparented.is_err() && GetLastError().0 != 0 {
+                        return reparented.map(|_| ());
+                    }
+                    if GetWindowLongPtrW(self.window, GWL_HWNDPARENT) != 0 {
+                        SetLastError(WIN32_ERROR(0));
+                        let previous_owner = SetWindowLongPtrW(self.window, GWL_HWNDPARENT, 0);
+                        if previous_owner == 0 && GetLastError().0 != 0 {
+                            return Err(windows::core::Error::from_thread());
+                        }
+                    }
+                    Ok(())
+                })()
+            };
+            if hidden.is_ok() {
+                return complete_cleanup([popups, subscriptions, download_subscription, hidden]);
+            }
+            native_downloads::cancel_view(downloads.as_ref().unwrap(), self, false);
+            return complete_cleanup([
+                popups,
+                subscriptions,
+                download_subscription,
+                hidden,
+                self.dispose_controller(),
+            ]);
+        }
+        complete_cleanup([popups, subscriptions, download_subscription, self.dispose_controller()])
+    }
+
+    fn dispose_controller(&self) -> Result<()> {
+        if self.controller_disposed.replace(true) {
+            return Ok(());
+        }
         unsafe {
             let controller = self.controller.Close();
             let window = if IsWindow(Some(self.window)).as_bool() {
@@ -605,7 +683,7 @@ impl View {
             } else {
                 Ok(())
             };
-            complete_cleanup([popups, subscriptions, controller, window])
+            complete_cleanup([controller, window])
         }
     }
 }
@@ -836,6 +914,7 @@ pub fn run() -> HostResult<()> {
         profile: HSTRING::from(profile),
         _lock: lock,
         next_popup: 0,
+        downloads: Rc::new(RefCell::new(HashMap::new())),
     }));
     let thread_id = unsafe { GetCurrentThreadId() };
     let mut msg = MSG::default();
@@ -869,16 +948,29 @@ pub fn run() -> HostResult<()> {
             let _ = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
         }
     });
+    let timer = unsafe { SetTimer(None, 0, 1000, None) };
+    if timer == 0 {
+        return Err(windows::core::Error::from_thread().into());
+    }
     protocol::emit(json!({ "event": "ready" }));
+    let mut pump_error = None;
     loop {
+        if protocol::output_failed() {
+            pump_error = Some(windows::core::Error::from(E_FAIL));
+            break;
+        }
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) }.0;
         if result == -1 {
-            return Err(windows::core::Error::from_thread().into());
+            pump_error = Some(windows::core::Error::from_thread());
+            break;
         }
         if result == 0 {
             break;
         }
-        if msg.message == WM_APP {
+        if msg.message == WM_TIMER && msg.wParam.0 == timer {
+            let downloads = state.borrow().downloads.clone();
+            native_downloads::tick(&downloads);
+        } else if msg.message == WM_APP {
             while let Ok(command) = rx.try_recv() {
                 dispatch(&state, command);
             }
@@ -914,6 +1006,11 @@ pub fn run() -> HostResult<()> {
             }
         }
     }
+    unsafe {
+        let _ = KillTimer(None, timer);
+    }
+    let downloads = state.borrow().downloads.clone();
+    native_downloads::cancel_all(&downloads);
     let views = std::mem::take(&mut state.borrow_mut().views);
     let views_cleanup = complete_cleanup(views.values().map(|view| view.close()));
     drop(views);
@@ -924,10 +1021,25 @@ pub fn run() -> HostResult<()> {
         CoUninitialize();
     }
     complete_cleanup([views_cleanup, profile_cleanup])?;
+    if let Some(error) = pump_error {
+        return Err(error.into());
+    }
     Ok(())
 }
 
 fn dispatch(state: &State, command: Command) {
+    if command.op == "download-decide" || command.op == "download-action" {
+        let downloads = state.borrow().downloads.clone();
+        match native_downloads::command(&downloads, &command) {
+            Ok(()) => protocol::success(command.id),
+            Err(_) => protocol::failure(
+                command.id,
+                "invalid",
+                "The native download command was rejected.",
+            ),
+        }
+        return;
+    }
     if command.op == "quit" {
         protocol::success(command.id);
         unsafe {
@@ -936,6 +1048,10 @@ fn dispatch(state: &State, command: Command) {
         return;
     }
     if command.op == "open" || command.op == "clear" || command.op == "import-profile-cookies" {
+        if command.op == "clear" {
+            let downloads = state.borrow().downloads.clone();
+            native_downloads::cancel_all(&downloads);
+        }
         if command.op == "open"
             && (!command.url.as_deref().is_some_and(|url| allowed_url(url, false))
                 || command.view_id.as_ref().is_none_or(|id| !allowed_view_id(id)))
@@ -1132,7 +1248,7 @@ fn dispatch(state: &State, command: Command) {
                 Some(enabled) if !view.closed.get() => {
                     view.navigation_gate.set(enabled);
                     if !enabled {
-                        view.gate_bypass.borrow_mut().take();
+                        view.gate_approvals.borrow_mut().clear();
                     }
                     Ok(())
                 }
@@ -1164,10 +1280,14 @@ fn dispatch(state: &State, command: Command) {
             }
             "navigate" => {
                 if let Some(url) = command.url.filter(|url| allowed_url(url, false)) {
+                    if command.approved == Some(true) && view.navigation_gate.get() {
+                        if let Err(error) = view.gate_approvals.borrow_mut().allow(&url) {
+                            protocol::failure(command.id, "invalid", error);
+                            return;
+                        }
+                    }
                     *view.requested.borrow_mut() = url.clone();
                     *view.error.borrow_mut() = None;
-                    *view.gate_bypass.borrow_mut() =
-                        (command.approved == Some(true)).then(|| url.clone());
                     view.navigate(|| view.webview.Navigate(&HSTRING::from(url)))
                 } else {
                     Err(windows::core::Error::from(E_INVALIDARG))
@@ -1442,6 +1562,9 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             webview,
                             history: RefCell::new(HistoryNavigation::default()),
                             closed: Cell::new(false),
+                            controller_disposed: Cell::new(false),
+                            closing: Cell::new(false),
+                            download_starting_token: Cell::new(None),
                             requested: RefCell::new(command.url.clone().unwrap_or_default()),
                             error: RefCell::new(None),
                             bounds: Cell::new(None),
@@ -1462,7 +1585,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             navigation_gate: Cell::new(command.navigation_gate == Some(true)),
                             tab_shortcuts: Cell::new(command.tab_shortcuts == Some(true)),
                             tab_modifier_held: Cell::new(false),
-                            gate_bypass: RefCell::new(None),
+                            gate_approvals: RefCell::new(protocol::NavigationApprovals::default()),
                             favicon: RefCell::new(None),
                             favicon_generation: Cell::new(0),
                         });
@@ -1534,6 +1657,10 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                         WINDOWS.with(|windows| {
                             windows.borrow_mut().insert(window.0 as usize, Rc::downgrade(&view))
                         });
+                        let previous = callback_state.borrow_mut().views.remove(&id);
+                        if let Some(previous) = previous {
+                            previous.close()?;
+                        }
                         callback_state.borrow_mut().views.insert(id.clone(), view.clone());
                         if let Some((args, deferral, _)) = popup.as_ref() {
                             let _ = ShowWindow(window, SW_SHOW);
@@ -1664,6 +1791,10 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     args.SetCancel(true)?;
                     return Ok(());
                 }
+                if let Some(host) = view.host.upgrade() {
+                    let downloads = host.borrow().downloads.clone();
+                    native_downloads::cancel_view(&downloads, &view, true);
+                }
                 let mut url = PWSTR::null();
                 let mut navigation_id = 0;
                 args.NavigationId(&mut navigation_id)?;
@@ -1693,8 +1824,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     if let Ok(args) = args.cast::<ICoreWebView2NavigationStartingEventArgs3>() {
                         args.NavigationKind(&mut kind)?;
                     }
-                    let bypass = view.gate_bypass.borrow_mut().take();
-                    let approved = !redirected.as_bool() && bypass.as_deref() == Some(url.as_str());
+                    let approved = view.gate_approvals.borrow().contains(&url);
                     let mut current = PWSTR::null();
                     view.webview.Source(&mut current)?;
                     let current = CoTaskMemPWSTR::from(current).to_string();
@@ -1844,7 +1974,13 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
         view.webview.add_ProcessFailed(&ProcessFailedEventHandler::create(Box::new(move |_, args| {
             if let Some(view) = weak.upgrade() {
                 let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
-                if let Some(args) = args { args.ProcessFailedKind(&mut kind)?; }
+                if let Some(args) = args { let _ = args.ProcessFailedKind(&mut kind); }
+                if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED {
+                    if let Some(host) = view.host.upgrade() {
+                        let downloads = host.borrow().downloads.clone();
+                        native_downloads::fail_all(&downloads);
+                    }
+                }
                 view.fail("runtime-crashed", format!("WebView2 process failed ({}). Retry or select Electron in Desktop Preferences.", kind.0));
             }
             Ok(())
@@ -1864,16 +2000,18 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
         let weak = Rc::downgrade(view);
         view.webview.cast::<ICoreWebView2_4>()?.add_DownloadStarting(
             &DownloadStartingEventHandler::create(Box::new(move |_, args| {
-                let (Some(view), Some(args)) = (weak.upgrade(), args) else {
-                    return Ok(());
-                };
+                let Some(args) = args else { return Ok(()); };
                 args.SetCancel(true)?;
                 args.SetHandled(true)?;
-                let mut url = PWSTR::null();
-                let operation = args.DownloadOperation()?;
-                operation.Uri(&mut url)?;
-                let url = CoTaskMemPWSTR::from(url).to_string();
-                if !view.closed.get() {
+                let Some(view) = weak.upgrade() else { return Ok(()); };
+                if !native_downloads::live(&view) {
+                    return Ok(());
+                }
+                let handle = || -> Result<()> {
+                    let mut url = PWSTR::null();
+                    let operation = args.DownloadOperation()?;
+                    operation.Uri(&mut url)?;
+                    let url = CoTaskMemPWSTR::from(url).to_string();
                     if view.click_once_enabled {
                         let mut mime = PWSTR::null();
                         operation.MimeType(&mut mime)?;
@@ -1890,14 +2028,20 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                             return Ok(());
                         }
                     }
-                    protocol::emit(
-                        json!({ "event": "download", "viewId": view.root_id, "url": url }),
-                    );
+                    if let Some(host) = view.host.upgrade() {
+                        let downloads = host.borrow().downloads.clone();
+                        native_downloads::starting(&downloads, view.clone(), &args, operation, &url)?;
+                    }
+                    Ok(())
+                };
+                if handle().is_err() {
+                    protocol::emit(json!({ "event": "download-error", "viewId": view.id }));
                 }
                 Ok(())
             })),
             &mut token,
         )?;
+        view.download_starting_token.set(Some(token));
         let weak = Rc::downgrade(view);
         view.controller.add_AcceleratorKeyPressed(
             &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
@@ -2060,6 +2204,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     url: Some(url),
                     bounds: None,
                     action: None,
+                    download_id: None,
+                    destination: None,
                     cookies: None,
                     page_zoom_percent: Some(view.page_zoom_percent.get()),
                     method: None,

@@ -359,6 +359,11 @@ dispatch and publish state before acknowledgement; asynchronous `NavigationStart
 binds the navigation ID. Matching completion clears loading; committed same-document
 source changes settle fragment/history requests. Stop, crash and dispatch failure
 retire readiness. Navigation IDs reject superseded, stopped and repeated completions.
+Native navigation gating retains up to 256 exact HTTP(S) origins per active
+view control lease. An approved `navigate` authorizes its origin; subsequent
+return navigations preserve POST bodies without cancellation. Other origins
+still require approval. Disabling the gate clears this view-local authorization;
+new views and popups start with an empty set.
 
 `NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
 emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
@@ -383,6 +388,29 @@ intercepts HTTPS `.application` navigation/new windows and deployment MIME downl
 as source-qualified `application` events. Main owns opt-in and lifecycle policy.
 Redirect recognition retains the original correlated HTTPS activation URL without
 creating successful-document history events. General navigation policy stays HTTP(S)-only.
+
+Managed downloads retain the original browser-native operation and STA deferral;
+they never replay URLs or transfer bytes through HTTP clients/CDP. `DownloadStarting`
+cancels and handles the default UI before holding HTTP(S)/blob downloads. Actual live
+view identity, including announced popups, authorizes the source. Opaque one-time
+GUIDs bind decisions/actions to that view. Pending approval expires after 60 seconds
+on the STA timer; limits are eight pending and twenty total operations. ClickOnce
+deployment handling stays distinct; unsupported schemes emit a bounded URL without
+a download ID. Admission-limit rejection cancels only the new request; native
+retirement failures stop the helper rather than leave an uncontrolled operation.
+
+`download-decide` approves only a main-owned native-dialog absolute Windows path or
+cancels the pending deferral. `download-action` cancels pending/approved operations
+and pauses/resumes only approved native operations; resume requires explicit pause,
+never interruption replay. Native progress reports received/total bytes, state,
+capabilities and one terminal event without paths. Completion requires native
+`COMPLETED`. Navigation/source failure/closure cancel pending approvals; approved downloads retain
+hidden detached controllers until settlement and remain actionable after tab closure.
+Browser-process failure, clear and shutdown cancel all operations and retire deferrals/subscriptions.
+Focused policy tests are platform-neutral; `webview2/tests/managed_downloads.rs` has
+opt-in real-runtime Windows HTTP/blob CSV, admission isolation, detached-controller pause/resume and STA
+timeout tests (`cargo test -p coc-webview2 --test managed_downloads -- --ignored`).
+
 Typed `import-cookies` commands
 target an existing view and use its profile cookie manager independently of the
 current page URL. `import-profile-cookies` initializes the helper when needed,

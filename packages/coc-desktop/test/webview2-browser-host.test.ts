@@ -5,6 +5,7 @@ import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, type BrowserEventSink, type
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserControlPage } from '../src/browser-control-page';
+import { BrowserDownloadStore } from '../src/browser-downloads';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -1213,6 +1214,37 @@ describe('WebView2 agent navigation approval gate', () => {
     }
     const navigates = () => mocks.request.mock.calls.filter(call => call[0] === 'navigate');
 
+    it('keeps control pending across a cancelled load until approval and the redirected document settle', async () => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const state = (loading: boolean, url: string) => mocks.onEvent({
+            event: 'state', viewId: '7:tab:1',
+            state: { url, title: '', loading, canGoBack: false, canGoForward: false },
+        });
+        const controller = new AbortController();
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            state(false, 'about:blank');
+            let ready = false;
+            const waiting = Promise.resolve(h.root.waitForControlReady?.(controller.signal)).then(() => { ready = true; });
+            await new Promise(resolve => setTimeout(resolve, 40));
+            expect(ready).toBe(false);
+            mocks.request.mockImplementation(async op => {
+                if (op === 'navigate') state(true, 'https://other.test/login');
+            });
+            decide(true);
+            await vi.waitFor(() => expect(navigates()).toHaveLength(1));
+            await new Promise(resolve => setTimeout(resolve, 40));
+            expect(ready).toBe(false);
+            state(false, 'https://other.test/destination');
+            await waiting;
+            expect(ready).toBe(true);
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+        }
+    });
+
     it('opens gated, toggles root and popup gates natively, and keeps popups gated while their root is', async () => {
         const h = await opened();
         expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ viewId: '7:tab:1', navigationGate: true }));
@@ -1235,6 +1267,34 @@ describe('WebView2 agent navigation approval gate', () => {
         await h.host.dispose();
     });
 
+    it.each(['denied', 'failed', 'cancelled', 'closed'] as const)('reports %s approval waits without reading the cancelled document', async outcome => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const controller = new AbortController();
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+                url: 'about:blank', title: '', loading: false, canGoBack: false, canGoForward: false,
+            } });
+            const waiting = h.root.waitForControlReady!(controller.signal);
+            const rejected = expect(waiting).rejects.toThrow({
+                denied: 'denied', failed: 'native navigation failed', cancelled: 'aborted', closed: 'closed',
+            }[outcome]);
+            if (outcome === 'closed') await h.root.close();
+            else if (outcome === 'cancelled') controller.abort(new Error('cancelled'));
+            else {
+                if (outcome === 'failed') mocks.request.mockRejectedValueOnce(new Error('native navigation failed'));
+                decide(outcome !== 'denied');
+            }
+            await rejected;
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+            log.mockRestore();
+        }
+    });
+
     it('re-issues a natively cancelled navigation only after the sink allows it', async () => {
         let decide!: (allow: boolean) => void;
         const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
@@ -1250,6 +1310,28 @@ describe('WebView2 agent navigation approval gate', () => {
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(navigates()).toHaveLength(1);
         await h.host.dispose();
+    });
+
+    it.each(['navigate', 'stop'] as const)('retires a pending readiness wait on manual %s without replaying its approval', async action => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        const controller = new AbortController();
+        try {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+                url: 'https://start.test/', title: '', loading: false, canGoBack: false, canGoForward: false,
+            } });
+            if (action === 'navigate') await h.root.navigate('https://typed.test/');
+            else await h.root.nav('stop');
+            decide(true);
+            await h.root.waitForControlReady!(controller.signal);
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(navigates()).toEqual(action === 'navigate'
+                ? [['navigate', { viewId: '7:tab:1', url: 'https://typed.test/' }]] : []);
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+        }
     });
 
     it('asks through the root sink with the public popout id for popup navigations', async () => {
@@ -1320,7 +1402,78 @@ describe('WebView2 site information facts', () => {
     });
 });
 
-it('offers explicit system-browser fallback without replaying authenticated/non-idempotent download URLs', async () => {
+describe('WebView2 managed native download routing', () => {
+    beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });
+    it('reports native admission limits and setup failures without failing other browser views', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const download = vi.fn(), state = vi.fn();
+        try {
+            await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'w', url: 'https://fixture.test/' }, { ...sink, download, state });
+            mocks.onEvent({ event: 'download', viewId: '7:tab:1', url: 'blob:https://fixture.test/id', reason: 'limit' });
+            expect(download).toHaveBeenLastCalledWith({ viewId: 'tab', url: 'Local or private source', ok: false,
+                error: 'Too many active downloads or pending approvals.' });
+            mocks.onEvent({ event: 'download-error', viewId: '7:tab:1' });
+            expect(download).toHaveBeenLastCalledWith({ viewId: 'tab', url: 'Local or private source', ok: false,
+                error: 'The native download could not be managed safely.' });
+            expect(state).not.toHaveBeenCalled();
+        } finally { await host.dispose(); }
+    });
+    it.each(['blob:https://fixture.test/native-id', 'http://fixture.test/file.csv', 'https://fixture.test/file.csv?private=value'])(
+        'preserves native %s operations and routes completion after source closure', async url => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-download-host-'));
+            const file = path.join(dir, 'report.csv'); fs.writeFileSync(file, 'a,b\n1');
+            const store = new BrowserDownloadStore(dir);
+            const choose = vi.fn(async () => file), approval = { current: () => true, dispose: vi.fn() };
+            const downloadApproval = vi.fn(() => approval);
+            const host = new WebView2BrowserHost('profile', store, choose, ownerId => ownerId === 7);
+            try {
+                const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'w', url: 'https://fixture.test/' }, { ...sink, downloadApproval });
+                const downloadId = '00000000-0000-0000-0000-000000000001';
+                mocks.onEvent({ event: 'download', viewId: '7:tab:1', downloadId, url, filename: '../../report?.csv' });
+                await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledWith('download-decide', {
+                    viewId: '7:tab:1', downloadId, action: 'approve', destination: file,
+                }));
+                expect(choose).toHaveBeenCalledExactlyOnceWith(7, 'report_.csv');
+                await view.close();
+                mocks.onEvent({ event: 'download-progress', viewId: '8:tab:1', downloadId, state: 'completed', received: 5, total: 5, final: true, canPause: false, canResume: false });
+                expect((await store.query()).entries[0].active).toBe(true);
+                mocks.onEvent({ event: 'download-progress', viewId: '7:tab:1', downloadId, state: 'completed', received: 5, total: 5, final: true, canPause: false, canResume: false });
+                const record = (await store.query()).entries[0];
+                expect(record).toMatchObject({ engine: 'webview2', state: 'completed', fileAvailable: true });
+                expect(JSON.stringify(record)).not.toContain(file);
+                expect(shell.openExternal).not.toHaveBeenCalled();
+            } finally { await host.dispose(); await store.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+        },
+    );
+    it('rejects unregistered, foreign and stale native sources before native approval', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-download-owner-'));
+        const store = new BrowserDownloadStore(dir);
+        let finish!: (file: string) => void;
+        const choose = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+        const host = new WebView2BrowserHost('profile', store, choose, id => id === 7);
+        try {
+            const downloadApproval = () => ({ current: () => true, dispose() {} });
+            await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'w', url: 'https://fixture.test/' }, { ...sink, downloadApproval });
+            await host.create({ ownerId: 8, viewId: 'tab', sessionKey: 'remote:w', url: 'https://fixture.test/' }, { ...sink, downloadApproval });
+            const event = (viewId: string, index: number) => ({
+                event: 'download', viewId, downloadId: `00000000-0000-0000-0000-00000000000${index}`,
+                url: 'blob:https://fixture.test/native-id', filename: 'report.csv',
+            });
+            mocks.onEvent(event('foreign', 1));
+            mocks.onEvent(event('8:tab:2', 2));
+            expect(choose).not.toHaveBeenCalled();
+            mocks.onEvent(event('7:tab:1', 3));
+            expect(choose).toHaveBeenCalledOnce();
+            mocks.onEvent({ event: 'document-starting', viewId: '7:tab:1' });
+            finish(path.join(dir, 'late.csv'));
+            await Promise.resolve(); await Promise.resolve();
+            expect(mocks.request.mock.calls.some(([op, payload]) => op === 'download-decide' && payload.action === 'approve')).toBe(false);
+            expect((await store.query()).entries[0]).toMatchObject({ state: 'cancelled', fileAvailable: false });
+        } finally { await host.dispose(); await store.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+});
+
+it('rejects an outdated native helper without replaying authenticated/non-idempotent download URLs', async () => {
     const host = new WebView2BrowserHost('profile');
     const download = vi.fn();
     const view = await host.create({ ownerId: 7, viewId: 'fallback-download', sessionKey: 'workspace', url: 'https://files.test/source' }, { ...sink, download });
@@ -1328,7 +1481,7 @@ it('offers explicit system-browser fallback without replaying authenticated/non-
     mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://user:secret@files.test/file?auth=token#private' });
     expect(shell.openExternal).not.toHaveBeenCalled();
     expect(download).toHaveBeenCalledWith({ viewId: 'fallback-download', url: 'files.test', ok: false,
-        error: 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.' });
+        error: 'Native download management is unavailable. Rebuild or update the desktop app.' });
     expect(JSON.stringify(download.mock.calls)).not.toMatch(/secret|token|private|auth=/);
     await view.close();
     download.mockClear();

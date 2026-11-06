@@ -54,7 +54,7 @@ export interface DesktopBrowserHistory {
 /** Mirrors desktop main's public download metadata; no local paths or request URLs. */
 export interface BrowserManagedDownload {
     id: string;
-    engine: 'electron';
+    engine: BrowserEngine;
     filename: string;
     source: string;
     started: number;
