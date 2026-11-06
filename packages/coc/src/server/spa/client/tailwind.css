@@ -3378,6 +3378,33 @@
     background: rgba(120, 110, 40, 0.42);
 }
 
+/* ── File blame gutter labels (features.fileBlame) ─────────────────────
+   Fixed-width text injected before each line of a Monaco file view; the
+   first line of a run names its commit, the rest stay blank. */
+
+.file-blame-label {
+    color: #6e6e6e;
+    background: rgba(0, 0, 0, 0.04);
+    font-style: normal;
+    cursor: pointer;
+    white-space: pre;
+}
+
+.file-blame-label.file-blame-uncommitted {
+    color: #a0a0a0;
+    font-style: italic;
+    cursor: default;
+}
+
+.dark .file-blame-label {
+    color: #9d9d9d;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.dark .file-blame-label.file-blame-uncommitted {
+    color: #6e6e6e;
+}
+
 /* ── Math (KaTeX) rendering (AC-01) ─────────────────────────────────────
    Long display equations must scroll horizontally on narrow screens instead
    of wrapping character-by-character or forcing the page wider. The base
