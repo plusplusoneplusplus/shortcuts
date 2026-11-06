@@ -536,9 +536,18 @@ executors read one canonical location.
 Effort-tier mode is enabled by default through `effortLevels.enabled` and can be turned off
 live from Admin to get the separate model picker and reasoning-effort controls.
 `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, `High`. For concrete providers,
-tooltips expose the model and effort each tier maps to (empty effort shows as `Auto`) and
-unconfigured options stay disabled with an Admin tooltip. Under Auto, every tier stays
-selectable and tooltips explain that provider and model resolve at scheduling time.
+each row and tooltip shows the model and effort the tier maps to (empty effort shows as
+`Auto`) and unconfigured options stay disabled with an Admin tooltip. Under Auto, every tier
+stays selectable and tooltips explain that provider and model resolve at scheduling time.
+When the owner passes `onCustomChange` (both chat composers do), a **Custom model &
+effort…** row opens an in-menu panel: the model list is the selected provider's own
+`useModels` catalog and the effort buttons are Auto plus that model's
+`supportedReasoningEfforts`. A custom pick replaces the tier (chip `✎ <model> · <effort>`),
+is sent as plain `model` + `reasoningEffort`, and is cleared by any tier pick or provider
+change; it is unavailable under Auto. New chats send `config.customModelEffort: true`, and
+the lifecycle runner seeds `metadata.afterCustomModelEffort` (`{ model, reasoningEffort }`) so
+`ChatDetail` restores it for follow-ups; follow-up picks PATCH that key and a tier pick
+unsets it.
 The shared selector opens the existing server-wide tier editor through
 `admin/openConfiguration.ts`, carrying its exact workspace owner and concrete provider
 (Auto leaves provider selection to Admin). Composers, compact settings, review and modal

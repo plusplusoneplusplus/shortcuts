@@ -308,6 +308,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 delete config.reasoningEffort;
                 delete config.effortTier;
                 delete config.afterEffortTier;
+                delete config.customModelEffort;
                 const context = payload.context as Record<string, unknown> | undefined;
                 if (context && typeof context === 'object' && 'autoProviderRouting' in context) {
                     const { autoProviderRouting: _stale, ...rest } = context;

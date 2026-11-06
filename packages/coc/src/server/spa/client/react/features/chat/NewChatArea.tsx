@@ -59,6 +59,7 @@ import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapR
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
+import type { CustomModelEffort } from './EffortTierSelector';
 import { ChatStyleSelector } from './ChatStyleSelector';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
@@ -155,7 +156,7 @@ export interface InitialChatComposerSubmission {
     provider?: ChatProvider;
     model?: string;
     reasoningEffort?: EffortLevel;
-    config?: { effortTier?: EffortTierKey };
+    config?: { effortTier?: EffortTierKey; customModelEffort?: true };
     /**
      * How the response should be written. Only sent when the owning server
      * enables the Style chip and the mode is Ask or Autopilot; every adapter
@@ -388,6 +389,8 @@ export function InitialChatComposer({
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
+    // Exact model + effort picked instead of a tier; cleared by a tier pick or provider change.
+    const [customModelEffort, setCustomModelEffort] = useState<CustomModelEffort | null>(null);
     // Seeded from the server-wide `features.defaultChatStyle`, read once at
     // mount so an admin change never yanks the chip out from under a composer
     // the user has already touched. There is still no workspace- or user-level
@@ -460,6 +463,9 @@ export function InitialChatComposer({
     const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
     const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
     const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
+    const activeCustomModelEffort = useEffortTierMode && !autoProviderSelected ? customModelEffort : null;
+    // A custom model belongs to one provider's catalog, so any provider change drops it.
+    useEffect(() => { setCustomModelEffort(null); }, [selectedProvider]);
 
     // Model command support
     const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks, cloneBaseUrl);
@@ -534,7 +540,8 @@ export function InitialChatComposer({
     const compactSettingsLabel = [
         PROVIDER_LABELS[selectedProvider],
         activeModeLabel,
-        useEffortTierMode ? EFFORT_TIER_LABELS[selectedEffortTier] : getEffortLabel(effortOverride),
+        activeCustomModelEffort ? activeCustomModelEffort.model
+            : useEffortTierMode ? EFFORT_TIER_LABELS[selectedEffortTier] : getEffortLabel(effortOverride),
     ].join(' · ');
 
     useEffect(() => {
@@ -791,6 +798,7 @@ export function InitialChatComposer({
     }
 
     function handleEffortTierChange(tier: EffortTierKey) {
+        setCustomModelEffort(null);
         setSelectedEffortTier(tier);
         localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
     }
@@ -856,6 +864,13 @@ export function InitialChatComposer({
         if (autoProviderSelected) {
             return { effortTier: selectedEffortTier, autoProviderRouting: true };
         }
+        if (activeCustomModelEffort) {
+            return {
+                ...(shouldSendProviderOverride(selectedProvider) ? { provider: selectedProvider } : {}),
+                model: activeCustomModelEffort.model,
+                ...(activeCustomModelEffort.reasoningEffort ? { reasoningEffort: activeCustomModelEffort.reasoningEffort } : {}),
+            };
+        }
         const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
         const model = useEffortTierMode ? (tierPayload?.model ?? undefined) : (validModelOverride ?? undefined);
         const reasoningEffort = useEffortTierMode
@@ -867,6 +882,12 @@ export function InitialChatComposer({
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
         };
+    }
+
+    /** Task config: the launched tier, or a marker so the chat keeps its custom model for follow-ups. */
+    function submissionConfig(resolvedAi: ResolvedModalJobAiSelection): InitialChatComposerSubmission['config'] {
+        if (resolvedAi.effortTier) return { effortTier: resolvedAi.effortTier };
+        return activeCustomModelEffort ? { customModelEffort: true } : undefined;
     }
 
     // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
@@ -958,7 +979,7 @@ export function InitialChatComposer({
                 ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
                 ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
                 ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
-                ...(resolvedAi.effortTier ? { config: { effortTier: resolvedAi.effortTier } } : {}),
+                ...(submissionConfig(resolvedAi) ? { config: submissionConfig(resolvedAi) } : {}),
                 ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(selectedMode) ? { chatStyle: selectedChatStyle } : {}),
             });
             // Acceptance consumes only this exact snapshot, even after unmount.
@@ -1089,7 +1110,7 @@ export function InitialChatComposer({
 
             const resolvedAi = resolveComposerAiSelection();
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
-            const config = resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : undefined;
+            const config = submissionConfig(resolvedAi);
 
             const submittedTaskId = await onSubmit({
                 mode,
@@ -1465,6 +1486,9 @@ export function InitialChatComposer({
                     tiers={effortTierMap}
                     selectedTier={selectedEffortTier}
                     onChange={handleEffortTierChange}
+                    custom={activeCustomModelEffort}
+                    onCustomChange={setCustomModelEffort}
+                    models={pickableModels}
                     disabled={sending}
                     data-testid="effort-tier-selector"
                     className={className}
@@ -1734,8 +1758,8 @@ export function InitialChatComposer({
                         onChange={setRalphGrillSetup}
                         defaultProvider={selectedProviderForClientHooks}
                         defaultModel={validModelOverride ?? defaultModelId}
-                        defaultReasoningEffort={(useEffortTierMode
-                            ? resolveEffortTier(selectedEffortTier, effortTierMap)?.reasoningEffort
+                        defaultReasoningEffort={(activeCustomModelEffort ? activeCustomModelEffort.reasoningEffort
+                            : useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap)?.reasoningEffort
                             : effortOverride) ?? undefined}
                         defaultEffortTier={selectedEffortTier}
                         effortLevelsEnabled={isEffortLevelsEnabled()}

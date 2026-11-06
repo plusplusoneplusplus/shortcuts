@@ -796,6 +796,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // conversation instead of from a workspace-global localStorage key.
         const rawAfterEffortTier = (task.config as { afterEffortTier?: unknown }).afterEffortTier;
         const afterEffortTier = typeof rawAfterEffortTier === 'string' ? rawAfterEffortTier : undefined;
+        // A chat launched with an exact model + effort (instead of a tier) keeps that
+        // pick for its follow-ups via `metadata.afterCustomModelEffort`.
+        const afterCustomModelEffort = (task.config as { customModelEffort?: unknown }).customModelEffort === true && processModel
+            ? { model: processModel, reasoningEffort: task.config.reasoningEffort ?? null }
+            : undefined;
 
         // Spawn link (AC-01): a conversation started via the `send_to_conversation`
         // tool carries its originating chat's processId in
@@ -828,6 +833,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 model: processModel,
                 reasoningEffort: task.config.reasoningEffort,
                 afterEffortTier,
+                ...(afterCustomModelEffort ? { afterCustomModelEffort } : {}),
                 mode: normalizedPayloadMode,
                 ...(isChatPayload(task.payload) && task.payload.context?.browserMode === true ? { browserMode: true } : {}),
                 workspaceId: payload?.workspaceId || task.repoId,
