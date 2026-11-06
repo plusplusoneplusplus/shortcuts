@@ -219,9 +219,18 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-ri
     openUnifiedPanelTab: (...args: any[]) => mockOpenUnifiedPanelTab(...args),
 }));
 
+// Wrapped (not replaced) so the real diff source factories can be driven
+// end to end with a stubbed content loader.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>();
+    return { ...actual, getCocClientForWorkspace: vi.fn(actual.getCocClientForWorkspace) };
+});
+
 import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { createBranchRangeDiffSource, createCommitDiffSource, createPrDiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import type { DiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
+import { getCocClientForWorkspace } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // --- Helpers ---
 
@@ -577,6 +586,29 @@ describe('FileDiffPanel', () => {
             expect(mockFindShortcut.enabled).toBe(true);
             act(() => mockFindShortcut.onTrigger());
             expect(screen.getByTestId('diff-find-widget')).toBeTruthy();
+        });
+
+        it.each([
+            ['commit', 'git', 'getCommitFileDiffContent', () => createCommitDiffSource('ws1', 'abc1234def')],
+            ['branch range', 'git', 'getBranchRangeFileDiffContent', () => createBranchRangeDiffSource('ws1')],
+            ['pull request', 'pullRequests', 'getFileDiffContentForOrigin', () => createPrDiffSource('ws1', 'repo1', '42', { originId: 'gh_owner_repo' })],
+        ] as const)('real %s source loads content and shows the toggle', async (_kind, area, method, makeSource) => {
+            const mocked = vi.mocked(getCocClientForWorkspace);
+            const real = mocked.getMockImplementation()!;
+            const loader = vi.fn().mockResolvedValue(mdContent());
+            mocked.mockImplementation((target) => {
+                const client = real(target);
+                return { ...client, [area]: Object.assign(Object.create(client[area]), { [method]: loader }) } as typeof client;
+            });
+            try {
+                render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makeSource()} />);
+                fireEvent.click(await screen.findByTestId('markdown-diff-mode-toggle'));
+                expect(screen.getByTestId('markdown-rendered-diff')).toBeTruthy();
+                expect(loader).toHaveBeenCalled();
+                expect(loader.mock.calls[0]).toContain('docs/readme.md');
+            } finally {
+                mocked.mockImplementation(real);
+            }
         });
 
         it('switches to Rendered and opens the next file in Source', async () => {
