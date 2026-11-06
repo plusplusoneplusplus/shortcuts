@@ -52,9 +52,11 @@ to bound concurrent native/jsdom resource use. The test wrapper's opt-in
 `COC_VITEST_TIMEOUT_MS` stops its owned POSIX process group with TERM/KILL after
 40 minutes, before the 45-minute step deadline; a timeout always fails.
 `COC_VITEST_SAMPLE_IDLE_MS` captures external macOS process samples after two quiet
-minutes, writing stacks to stderr and `COC_VITEST_DIAGNOSTICS_DIR`. Per-shard artifacts
-retain samples and verbose/heap/hanging-process logs on failure. These controls
-default off; Linux coverage and Windows retain their configured worker limits.
+minutes, writing stacks to stderr and `COC_VITEST_DIAGNOSTICS_DIR`. macOS redirects
+verbose/heap/hanging-process output to a per-shard file and prints its final 32 KiB,
+preserving the test exit status. Artifacts retain complete logs and samples on
+failure. These controls default off; Linux coverage and Windows retain their
+configured worker limits.
 
 CI audits production, full npm, SkillOpt and Rust dependency graphs.
 `scripts/ci-npm-audit.sh` retries npm advisory endpoint failures and permits only

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -273,8 +275,44 @@ test("macOS coc tests leave time for diagnostics after a stalled test step", () 
     assert.match(body, /set -o pipefail/);
     assert.match(body, /npm run test:run -- --shard=\$\{\{ matrix\.shard \}\}\/5/);
     assert.match(body, /--reporter=verbose --reporter=hanging-process --logHeapUsage/);
-    assert.match(body, /2>&1 \|\n\s+tee "\$RUNNER_TEMP\/coc-test-\$\{\{ matrix\.shard \}\}\.log"/);
+    assert.match(body, /--logHeapUsage > "\$log" 2>&1 \|\| status=\$\?/);
+    assert.match(body, /tail -c 32768 "\$log"/);
+    assert.match(body, /exit "\$status"/);
+    assert.doesNotMatch(body, /\btee\b/);
     assert.doesNotMatch(body, /continue-on-error|\|\| true|--passWithNoTests|--dangerouslyIgnoreUnhandledErrors/);
+});
+
+test("macOS log routing retains complete output and the command's exit status", { skip: process.platform === "win32" }, () => {
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    const run = /        run: \|\n(?<script>(?: {10}.*\n)+)/.exec(step.groups.body);
+    const script = run.groups.script.replace(/^ {10}/gm, "").replaceAll("${{ matrix.shard }}", "1");
+    const directory = mkdtempSync(path.join(os.tmpdir(), "coc-ci-logs-"));
+    try {
+        for (const status of [0, 17, 124]) {
+            const fixture = `npm() {
+                printf 'test-start\\n'
+                head -c 2200000 /dev/zero | tr '\\000' x
+                printf '\\ntest-end\\n' >&2
+                return ${status}
+            }\n`;
+            const result = spawnSync("bash", ["-e", "-c", fixture + script], {
+                env: { ...process.env, RUNNER_TEMP: directory },
+                encoding: "utf8",
+                timeout: 10_000,
+            });
+            assert.ifError(result.error);
+            assert.equal(result.status, status, "logging must not turn a failed test command green");
+            assert.ok(Buffer.byteLength(result.stdout) < 33_000, "terminal output must have a byte bound");
+            assert.match(result.stdout, /test-end/);
+            assert.match(result.stdout, new RegExp(`CoC test exit status: ${status}`));
+            const log = readFileSync(path.join(directory, "coc-test-1.log"), "utf8");
+            assert.ok(log.length > 2_200_000, "the artifact must retain output beyond the runner's first log block");
+            assert.ok(log.startsWith("test-start\n"));
+            assert.ok(log.endsWith("\ntest-end\n"), "stderr must be retained too");
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
 });
 
 test("macOS coc test diagnostics upload on failure with shard-specific names", () => {
