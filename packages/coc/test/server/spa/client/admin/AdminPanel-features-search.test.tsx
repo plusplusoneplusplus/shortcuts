@@ -232,8 +232,9 @@ describe('AdminPanel — Workspace Features search', () => {
         await gotoTeamsPage();
         const section = within(screen.getByTestId('settings-tab-features-teams'));
         const toggle = section.getByRole('checkbox', { name: 'Outbound compliance check' });
-        const prompt = section.getByRole('textbox', { name: 'Compliance decision prompt' });
+        expect(section.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();
         fireEvent.click(toggle);
+        const prompt = section.getByRole('textbox', { name: 'Compliance decision prompt' });
         fireEvent.change(prompt, { target: { value: ' \n' } });
         fireEvent.click(section.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.stringContaining('nonblank'), 'error'));
@@ -255,8 +256,10 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(toggle).toHaveProperty('checked', true);
         expect(section.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false);
         fireEvent.click(section.getByRole('button', { name: 'Cancel' }));
-        expect(prompt).toHaveProperty('value', '');
+        expect(section.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();
         expect(toggle).toHaveProperty('checked', false);
+        fireEvent.click(toggle);
+        expect(section.getByRole('textbox', { name: 'Compliance decision prompt' })).toHaveProperty('value', '');
     });
 
     it('loads an enabled Teams message reaction and saves disabling it', async () => {
@@ -378,7 +381,12 @@ describe('AdminPanel — Workspace Features search', () => {
             'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId',
             'teamsReactionDelegation.dispatcherSkill',
         ]);
+        // Follow-up settings appear only after their parent is on; search links the parent toggle.
         for (const def of defs) {
+            if (def.ui!.dependsOn) {
+                expect(defs.find(parent => parent.key === def.ui!.dependsOn), def.key).toBeDefined();
+                continue;
+            }
             fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: def.ui!.label } });
             expect(screen.queryByTestId(def.ui!.testId)).toBeNull();
             const link = screen.getByTestId(`feature-search-link-${def.ui!.testId}`);
@@ -393,7 +401,7 @@ describe('AdminPanel — Workspace Features search', () => {
         await screen.findByTestId('settings-tab-features-teams');
         expect(window.location.hash).toBe('#admin/messaging');
         expect(screen.getByTestId('teams-connection-card')).toBeTruthy();
-        for (const def of defs) expect(screen.getAllByTestId(def.ui!.testId)).toHaveLength(1);
+        for (const def of defs.filter(def => !def.ui!.dependsOn)) expect(screen.getAllByTestId(def.ui!.testId)).toHaveLength(1);
         expect(screen.queryByTestId('feature-search-input')).toBeNull();
         expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
     });

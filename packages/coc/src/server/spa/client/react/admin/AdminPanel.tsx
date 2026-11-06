@@ -928,7 +928,7 @@ export function AdminPanel() {
                             {activeTab === 'messaging' && !configLoading && !configError && renderTabFeatures(
                                 'teams',
                                 'Teams features',
-                                'Optional Teams bridge behavior. Saved separately from the connection settings.',
+                                'Optional Teams behavior. Turning a feature on shows its extra settings. Saved separately from the connection.',
                             )}
                             {activeTab === 'whatsapp' && !isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>

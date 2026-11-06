@@ -1505,7 +1505,7 @@ describe('AdminPanel', () => {
             expect(overview.contains(screen.getByTestId('teams-bridge-status'))).toBe(true);
             expect(overview.compareDocumentPosition(configuration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             expect(configuration.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-            for (const id of TEAMS_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
+            for (const id of TEAMS_TOGGLES.filter(id => id.startsWith('toggle-'))) expect(screen.getAllByTestId(id), id).toHaveLength(1);
             for (const id of INTEGRATIONS_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
             for (const id of ['toggle-teams-bridge-observability-enabled', 'toggle-teams-message-reaction-enabled']) {
                 expect(screen.getByTestId(id).closest('.ar-row')?.textContent, id).toContain('Experimental');
@@ -1516,6 +1516,10 @@ describe('AdminPanel', () => {
             expect(card.textContent).toContain('Teams @coc <prompt> messages share one Ask conversation per Teams chat');
             expect(screen.queryByTestId('select-teams-ic3-own-command-region')).toBeNull();
             expect(screen.getByLabelText('IC3 region')).toBeDefined();
+            // Follow-up settings stay hidden until their feature is turned on.
+            expect(screen.queryByTestId('select-teams-ic3-command-workspace')).toBeNull();
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-teams-ic3-own-commands-enabled')); });
+            expect(screen.getAllByTestId('select-teams-ic3-command-workspace')).toHaveLength(1);
         });
 
         it('links Features search results for Teams settings to Connectors → Teams', async () => {

@@ -197,7 +197,8 @@ both names when enabled; disabled drafts may be incomplete. Workspace IDs exclud
 remote selectors, and dispatcher values identify a skill by name, not a path.
 The strict namespace accepts neither permission/source selectors nor provider/model
 overrides. Connections -> Teams presents one registry group with the experimental
-toggle, local execution workspace (repo or repo group) and dispatcher skill selectors. `AdminSkillSelect`
+toggle; its local execution workspace (repo or repo group) and dispatcher skill selectors
+use `dependsOn` and appear once the toggle is on. `AdminSkillSelect`
 uses ordinary workspace skill listing and filters workspace/global disabled names.
 `adminWorkspaceSkills.ts` checks repo/group registration and enabled skills on the
 selected Admin server; enabled UI saves re-read these before persisting. Failures
@@ -219,8 +220,9 @@ copy. Admission must invoke it with current configuration and cancellation.
 
 `features.teamsOutboundCompliance` defaults off; `teamsOutboundCompliance.prompt`
 defaults to an empty string. Both are server-wide, live admin registry settings.
-Connections -> Teams renders the toggle and multiline decision prompt in one
-Outbound compliance group. File and merged admin validation require a nonblank
+Connections -> Teams renders the toggle in one Outbound compliance group; the
+multiline decision prompt uses `dependsOn` and appears once the toggle is on, keeping
+any hidden draft unchanged. File and merged admin validation require a nonblank
 prompt when enabled, preserving disabled drafts and the exact saved policy text.
 The prompt shows an inline alert for enabled blank drafts, associated through
 `aria-invalid` and `aria-describedby`; its help explains fail-closed Teams delivery
