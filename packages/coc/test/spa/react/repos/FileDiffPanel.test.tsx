@@ -140,6 +140,15 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggl
     isMarkdownDiffPath: (fp: string) => /\.(md|markdown)$/i.test(fp),
 }));
 
+// Capture the Ctrl+F shortcut (jsdom has no layout, so the real hook never fires).
+const mockFindShortcut = vi.hoisted(() => ({ onTrigger: () => {}, enabled: true }));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/useDiffFindShortcut', () => ({
+    useDiffFindShortcut: (_ref: unknown, onTrigger: () => void, enabled = true) => {
+        mockFindShortcut.onTrigger = onTrigger;
+        mockFindShortcut.enabled = enabled;
+    },
+}));
+
 // Mock DiffMiniMap
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap', () => ({
     DiffMiniMap: () => <div data-testid="diff-mini-map" />,
@@ -542,6 +551,32 @@ describe('FileDiffPanel', () => {
             fireEvent.click(await screen.findByTestId('markdown-diff-mode-toggle'));
             expect(screen.getByTestId('markdown-rendered-diff')).toBeTruthy();
             expect(screen.queryByTestId('file-diff-content')).toBeNull();
+        });
+
+        it('Rendered is read-only: diff controls, find and comments come back only in Source', async () => {
+            mockDiffEngine = 'legacy';
+            mockUseDiffComments.mockReturnValue(makeCommentsHook({
+                comments: [{ id: 'c1', selection: { startLine: 1, endLine: 1, side: 'new' }, comment: 'hi', status: 'open' }],
+            }));
+            const fetchFileContent = vi.fn().mockResolvedValue(mdContent());
+            render(<FileDiffPanel workspaceId="ws1" filePath="docs/readme.md" source={makePrSource({ fetchFileContent })} />);
+            const toggle = await screen.findByTestId('markdown-diff-mode-toggle');
+            const controls = ['hunk-nav-buttons', 'diff-engine-toggle', 'diff-view-toggle', 'full-context-toggle-btn', 'diff-mini-map'];
+            for (const id of controls) expect(screen.getByTestId(id)).toBeTruthy();
+            expect(mockFindShortcut.enabled).toBe(true);
+
+            fireEvent.click(toggle);
+            for (const id of controls) expect(screen.queryByTestId(id)).toBeNull();
+            expect(screen.queryByTestId('diff-word-wrap-toggle')).toBeNull();
+            expect(screen.queryByTestId('trigger-add-comment')).toBeNull();
+            expect(mockFindShortcut.enabled).toBe(false);
+
+            fireEvent.click(screen.getByTestId('markdown-diff-mode-toggle'));
+            for (const id of controls) expect(screen.getByTestId(id)).toBeTruthy();
+            expect(screen.getByTestId('file-diff-content').getAttribute('data-comment-count')).toBe('1');
+            expect(mockFindShortcut.enabled).toBe(true);
+            act(() => mockFindShortcut.onTrigger());
+            expect(screen.getByTestId('diff-find-widget')).toBeTruthy();
         });
 
         it('switches to Rendered and opens the next file in Source', async () => {
