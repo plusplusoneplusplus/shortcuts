@@ -110,6 +110,16 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(source).toMatch(/run\.isRemoteTarget\s*\?\s*getCocClientForWorkspace\(run\.targetWorkspaceId\)/);
     });
 
+    it('reads run and source process headers without downloading conversations', () => {
+        // Status and PR sync need only status/metadata; a long chat can be tens of MB.
+        const runReads = source.match(/runClient\.processes\.get\([^)]*\)/g) ?? [];
+        expect(runReads).toHaveLength(2);
+        for (const call of [...runReads, ...(source.match(/client\.processes\.get\(processId[^)]*\)/g) ?? [])]) {
+            expect(call).toContain("{ exclude: 'conversation' }");
+        }
+        expect(source).toContain("await client.processes.get(processId, { exclude: 'conversation' })");
+    });
+
     it('passes sourceProcessId and sourceMetadata for persistence', () => {
         const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
         expect(cardBlock).not.toBeNull();

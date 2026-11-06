@@ -233,7 +233,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         options: { baseUrl },
         queue: { list: (query: any) => mockRemoteQueue(baseUrl, query), getTask: (id: string) => mockFetchApi(`/queue/${id}`) },
         workspaces: { history: (id: string) => mockRemoteHistory(baseUrl, id), pinned: (id: string) => mockRemotePinned(baseUrl, id) },
-        processes: { get: (id: string) => mockFetchApi(`/processes/${id}`), listGroupPins: async () => ({ pins: [] }) },
+        processes: { get: (id: string, query?: any) => mockFetchApi(`/processes/${id}`, query ? { query } : undefined), listGroupPins: async () => ({ pins: [] }) },
     }),
     getSpaCocClient: () => ({
         workspaces: {
@@ -257,7 +257,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             skipTaskDelay: (scopeName: string, scope?: { repoId?: string }) => mockFetchApi('/queue/task-delay/skip?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', body: { scope: scopeName } }),
         },
         processes: {
-            get: (processId: string) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`),
+            get: (processId: string, query?: any) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`, query ? { query } : undefined),
             listGroupPins: (workspaceId: string) => mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/group-pins`),
             setPinOrder: (workspaceId: string, entries: any[]) => mockSetPinOrder(workspaceId, entries),
             pinGroup: (workspaceId: string, type: string, groupId: string, pinned: boolean) => mockFetchApi(
@@ -1724,6 +1724,14 @@ describe('RepoChatTab: selection-clearing fallback', () => {
                 (c: any) => typeof c[0] === 'string' && c[0].includes('/processes/raw-task-id'),
             );
             expect(processCalls).toHaveLength(0);
+        });
+    });
+    it('probes a deep-linked process without downloading its conversation', async () => {
+        await renderTabWithDeepLink('queue_unlisted');
+
+        // A long chat can be tens of MB; existence needs only the process header.
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith('/processes/queue_unlisted', { query: { exclude: 'conversation' } });
         });
     });
 });
@@ -3451,7 +3459,7 @@ describe('Back to Sentinel through mounted routing and chat selection', () => {
             <HostedOrigin workspaceId={selectionId} /></>);
         await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_child'));
         fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalledWith('/processes/queue_missing'));
+        await waitFor(() => expect(mockFetchApi).toHaveBeenCalledWith('/processes/queue_missing', { query: { exclude: 'conversation' } }));
         await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
         expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/queue_missing`);
         expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_missing');

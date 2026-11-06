@@ -1270,7 +1270,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         ? getCocClientForWorkspace(run.targetWorkspaceId)
                         : client;
                     try {
-                        const data = await runClient.processes.get(run.processId);
+                        const data = await runClient.processes.get(run.processId, { exclude: 'conversation' });
                         return parseImplementationPrAnnotation(data?.process?.metadata?.implementationPr);
                     } catch (error) {
                         console.warn(`Failed to read implementation PR state for ${run.processId}:`, error);
@@ -1285,7 +1285,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 }));
                 if (Object.keys(byProcessId).length === 0) return;
 
-                const source = await client.processes.get(processId);
+                const source = await client.processes.get(processId, { exclude: 'conversation' });
                 const current = Array.isArray(source?.process?.metadata?.implementations)
                     ? source.process.metadata.implementations as ImplementationRecord[]
                     : rawImplementations;
@@ -1352,7 +1352,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     ? getCocClientForWorkspace(run.targetWorkspaceId)
                     : client;
                 try {
-                    const data = await runClient.processes.get(run.processId);
+                    const data = await runClient.processes.get(run.processId, { exclude: 'conversation' });
                     return { processId: run.processId, status: data?.process?.status as RunLiveStatus ?? 'unknown' };
                 } catch {
                     return { processId: run.processId, status: 'unknown' as RunLiveStatus };
