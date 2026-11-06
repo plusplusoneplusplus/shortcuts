@@ -479,7 +479,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:run -- --shard=${{ matrix.shard }}/5 --reporter=verbose --reporter=hanging-process --logHeapUsage 2>&1 |
+          npm run test:run -- --shard=${{ matrix.shard }}/5 --maxWorkers=1 --reporter=verbose --reporter=hanging-process --logHeapUsage 2>&1 |
             tee "$RUNNER_TEMP/coc-test-${{ matrix.shard }}.log"
         working-directory: packages/coc
 

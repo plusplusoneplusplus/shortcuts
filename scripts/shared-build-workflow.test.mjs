@@ -281,6 +281,20 @@ test("macOS coc test diagnostics upload on failure with shard-specific names", (
     assert.match(step.groups.body, /path: \$\{\{ runner\.temp \}\}\/coc-test-\$\{\{ matrix\.shard \}\}\.log/);
 });
 
+test("macOS coc shards run every assigned file with one worker", () => {
+    const step = /- name: Run macOS coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(step);
+    assert.match(step.groups.body, /--shard=\$\{\{ matrix\.shard \}\}\/5 --maxWorkers=1\b/);
+    assert.doesNotMatch(step.groups.body, /--exclude|--testNamePattern|--passWithNoTests|continue-on-error/);
+    assert.match(cocTest, /shard: \[1, 2, 3, 4, 5\]/);
+    const windows = /- name: Run coc tests[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(windows);
+    assert.doesNotMatch(windows.groups.body, /--maxWorkers/);
+    const coverage = /- name: Run coc tests with coverage[^\n]*\n(?<body>(?: {8}.*\n|\n)+)/.exec(cocTest);
+    assert.ok(coverage);
+    assert.doesNotMatch(coverage.groups.body, /--maxWorkers/);
+});
+
 // e2e boots the real server, so it needs packages/coc's own dist/ and every
 // workspace dist/ -- but `npm run build` in packages/coc already produces all of
 // them, because npm runs scripts/prebuild.mjs first and that walks
