@@ -48,10 +48,11 @@ import {
     type PreviewNavigateTarget,
 } from './useFilePreviewSession';
 import { usePreviewModelAttachment } from './usePreviewModelAttachment';
+import { isRepoRelativePath, useEditorFileBlame, type FileBlameHostProps } from '../unified-right-panel/useEditorFileBlame';
 
 export type { FileReloadControl, PreviewStatus } from './useFilePreviewSession';
 
-export interface PreviewPaneProps {
+export interface PreviewPaneProps extends FileBlameHostProps {
     editingScope?: string;
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
@@ -171,7 +172,7 @@ function RenderedMarkdown({ content, selectionContext }: {
     );
 }
 
-export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealBinary = false, revealLine, endLine, revealColumn, revealNonce, rawSource, symbolCandidate, onClose, ...host }: PreviewPaneProps) {
+export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealBinary = false, revealLine, endLine, revealColumn, revealNonce, rawSource, symbolCandidate, onClose, blame, onBlameSupportChange, onOpenBlameCommit, ...host }: PreviewPaneProps) {
     const identity = useMemo(
         () => resolveFilePreviewIdentity({ workspaceId: repoId, routingRef, editingScope, filePath }),
         [repoId, routingRef, editingScope, filePath],
@@ -217,12 +218,15 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
         ? (viewOnly ? mountNonEditableModel : mountLanguageModel)
         : undefined;
     const { editorRef } = session;
+    const [blameEditor, setBlameEditor] = useState<EditorModelMountContext | null>(null);
     const mountSharedModel = useMemo(() => (mountModel
         ? (context: EditorModelMountContext) => {
             editorRef.current = context.editor;
             const cleanup = mountModel(context);
             if (sharesModel) modelShareRef.current?.(context);
+            setBlameEditor(context);
             return () => {
+                setBlameEditor(current => (current === context ? null : current));
                 if (sharesModel) modelShareRef.current?.(null);
                 if (editorRef.current === context.editor) editorRef.current = null;
                 cleanup?.();
@@ -230,6 +234,18 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
         }
         : undefined
     ), [mountModel, sharesModel, editorRef]);
+
+    const blameState = useEditorFileBlame({
+        supported: identity.kind === 'repo' && isRepoRelativePath(actualPath) && !loading && !error && !isOversized
+            && displayBlob?.encoding === 'utf-8' && !markdown.showRendered,
+        workspaceId: repoId,
+        routingRef,
+        filePath: actualPath,
+        editor: blameEditor,
+        blame,
+        onBlameSupportChange,
+        onOpenBlameCommit,
+    });
 
     const [downloadError, setDownloadError] = useState('');
     const [downloading, setDownloading] = useState(false);
@@ -410,6 +426,17 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                     onCancel={reload.cancel}
                     onConfirm={reload.confirm}
                 />
+            )}
+            {blameState.status === 'loading' && (
+                <div role="status" className="absolute bottom-1 left-3 z-10 flex items-center gap-1 text-xs text-[#848484]" data-testid="file-blame-loading">
+                    <Spinner size="sm" /> Loading blame…
+                </div>
+            )}
+            {blameState.status === 'error' && (
+                <div role="alert" className="absolute bottom-1 left-3 z-10 flex items-center gap-2 rounded border border-[#f1b8ad] bg-[#fdf0ee] px-2 py-0.5 text-xs text-[#a1260d] dark:border-[#5a1d1d] dark:bg-[#3a1d1d] dark:text-[#f48771]" data-testid="file-blame-error">
+                    <span>Blame unavailable: {blameState.message}</span>
+                    <button type="button" className="underline" onClick={blameState.retry}>Retry</button>
+                </div>
             )}
             {downloadError && <div role="alert" className="absolute bottom-2 left-2 text-xs text-red-600">{downloadError}</div>}
 

@@ -44,6 +44,8 @@ export interface UnifiedPanelToolbarProps {
     reload?: FileReloadControl;
     /** The active file's Git history toggle (`features.fileHistory`); absent when unavailable. */
     history?: { open: boolean; onToggle: () => void };
+    /** The active file's Git blame toggle (`features.fileBlame`); absent when unavailable. */
+    blame?: { shown: boolean; onToggle: () => void };
     /** Panel-level navigator control rendered at the row's right edge. */
     trailing?: ReactNode;
 }
@@ -55,6 +57,7 @@ export function UnifiedPanelToolbar({
     onOpenFile,
     reload,
     history,
+    blame,
     trailing,
 }: UnifiedPanelToolbarProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -191,6 +194,29 @@ export function UnifiedPanelToolbar({
                         <path d="M3 12a9 9 0 1 0 3-6.7" />
                         <path d="M3 4v5h5" />
                         <path d="M12 7v5l3 2" />
+                    </svg>
+                </button>
+            )}
+            {blame && !history?.open && (
+                <button
+                    type="button"
+                    aria-label="Blame"
+                    title={blame.shown ? 'Hide blame' : 'Show blame'}
+                    aria-pressed={blame.shown}
+                    onClick={blame.onToggle}
+                    data-testid="file-blame-toggle"
+                    className={cn(
+                        'flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded border-none p-0',
+                        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
+                        blame.shown
+                            ? 'bg-[#e0e0e0] text-[#1f1f1f] dark:bg-[#37373d] dark:text-white'
+                            : 'bg-transparent text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
+                    )}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <circle cx="12" cy="7" r="3" />
+                        <path d="M6 20v-1a6 6 0 0 1 12 0v1" />
                     </svg>
                 </button>
             )}
