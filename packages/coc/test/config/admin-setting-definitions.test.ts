@@ -965,6 +965,25 @@ describe('Features card UI metadata', () => {
         })).fileHistoryEnabled).toBe(true);
     });
 
+    it('exposes file blame as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.fileBlame')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.ui?.hint).toContain('Disabled by default');
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('fileBlameEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', badge: 'experimental',
+            testId: 'toggle-file-blame-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.fileBlame).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).fileBlameEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).fileBlameEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { fileBlame: true },
+        })).fileBlameEnabled).toBe(true);
+    });
+
     it.each(['features.chatHistoryPaging', 'features.canvasToolScripts'])('defaults experimental %s on and keeps explicit false', key => {
         const def = getAdminSettingDefinition(key)!;
         const name = key.slice('features.'.length);
@@ -1125,6 +1144,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.panelTabGroups': 'appearance',
         'features.binaryFileReveal': 'appearance',
         'features.fileHistory': 'appearance',
+        'features.fileBlame': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',
         'features.chatScopedBrowserTabs': 'browser',

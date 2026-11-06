@@ -1475,6 +1475,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.fileBlame', default: false, runtime: 'live', runtimeFlag: 'fileBlameEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 49, label: 'File blame', badge: 'experimental',
+            hint: 'Adds a Blame button to right-panel file tabs. It shows who last changed each line on the current branch; hover for the full commit and click to open it. Unsaved or changed lines show "Not committed yet". Read-only. Disabled by default.',
+            testId: 'toggle-file-blame-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',

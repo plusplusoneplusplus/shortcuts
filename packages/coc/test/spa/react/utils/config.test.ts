@@ -23,6 +23,7 @@ import {
     isBinaryFileRevealEnabled,
     isBrowserTabShortcutsEnabled,
     isChatScopedBrowserTabsEnabled,
+    isFileBlameEnabled,
     isFileHistoryEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
@@ -359,6 +360,16 @@ describe('file history runtime flag', () => {
         expect(isFileHistoryEnabled()).toBe(true);
         applyRuntimeConfigPatch({ fileHistoryEnabled: false });
         expect(isFileHistoryEnabled()).toBe(false);
+    });
+});
+
+describe('file blame runtime flag', () => {
+    it('defaults off, turns on only for an explicit true and follows live updates', () => {
+        expect(isFileBlameEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ fileBlameEnabled: true });
+        expect(isFileBlameEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ fileBlameEnabled: false });
+        expect(isFileBlameEnabled()).toBe(false);
     });
 });
 
