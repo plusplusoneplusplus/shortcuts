@@ -1,9 +1,9 @@
+use super::{config::OAuthRefreshOptions, identity, Dependencies, OAuthOptions};
 use crate::{
     contracts::{fail, Lifetime},
     oauth::{self, CredentialLock, ExchangeOptions},
     Account, AuthError, CredentialStore, ErrorCode, Result, Secret, Token,
 };
-use super::{identity, config::OAuthRefreshOptions, Dependencies, OAuthOptions};
 use tokio_util::sync::CancellationToken;
 
 pub(crate) type TokenResponse = oauth::OAuthRefreshResponse;

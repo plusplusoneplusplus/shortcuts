@@ -1,4 +1,7 @@
-use super::{config::timeout_valid, identity, oauth, provider::default_dependencies, Dependencies, OAuthOptions};
+use super::{
+    config::timeout_valid, identity, oauth, provider::default_dependencies, Dependencies,
+    OAuthOptions,
+};
 use crate::oauth::CredentialLock;
 use crate::{
     contracts::{bounded, fail, Lifetime},

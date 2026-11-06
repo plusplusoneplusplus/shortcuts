@@ -65,35 +65,62 @@ impl CredentialStore for AuthSdkCredentialStore {
 impl CredentialStore for OsCredentialStore {
     fn read(&self, key: &str) -> Result<Option<Secret>> {
         #[cfg(target_os = "windows")]
-        { windows::read(&self.service, key) }
+        {
+            windows::read(&self.service, key)
+        }
         #[cfg(target_os = "macos")]
-        { macos::read(&self.service, key) }
+        {
+            macos::read(&self.service, key)
+        }
         #[cfg(target_os = "linux")]
-        { linux::read(&self.service, key) }
+        {
+            linux::read(&self.service, key)
+        }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        { let _ = key; fail(ErrorCode::StorageUnavailable) }
+        {
+            let _ = key;
+            fail(ErrorCode::StorageUnavailable)
+        }
     }
 
     fn write(&self, key: &str, value: &Secret) -> Result<()> {
         #[cfg(target_os = "windows")]
-        { windows::write(&self.service, key, value) }
+        {
+            windows::write(&self.service, key, value)
+        }
         #[cfg(target_os = "macos")]
-        { macos::write(&self.service, key, value) }
+        {
+            macos::write(&self.service, key, value)
+        }
         #[cfg(target_os = "linux")]
-        { linux::write(&self.service, key, value) }
+        {
+            linux::write(&self.service, key, value)
+        }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        { let _ = (key, value); fail(ErrorCode::StorageUnavailable) }
+        {
+            let _ = (key, value);
+            fail(ErrorCode::StorageUnavailable)
+        }
     }
 
     fn delete(&self, key: &str) -> Result<()> {
         #[cfg(target_os = "windows")]
-        { windows::delete(&self.service, key) }
+        {
+            windows::delete(&self.service, key)
+        }
         #[cfg(target_os = "macos")]
-        { macos::delete(&self.service, key) }
+        {
+            macos::delete(&self.service, key)
+        }
         #[cfg(target_os = "linux")]
-        { linux::delete(&self.service, key) }
+        {
+            linux::delete(&self.service, key)
+        }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        { let _ = key; fail(ErrorCode::StorageUnavailable) }
+        {
+            let _ = key;
+            fail(ErrorCode::StorageUnavailable)
+        }
     }
 }
 
@@ -315,7 +342,8 @@ mod tests {
 
     #[test]
     fn auth_sdk_store_accepts_valid_key_format() {
-        let valid_key = "auth-sdk:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let valid_key =
+            "auth-sdk:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         assert_eq!(valid_key.len(), 76);
         assert!(validate_sdk_key(valid_key).is_ok());
     }

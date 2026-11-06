@@ -33,11 +33,7 @@ pub struct ClaudeRefreshOptions<'a> {
 
 impl Default for ClaudeRefreshOptions<'_> {
     fn default() -> Self {
-        Self {
-            token_endpoint: TOKEN_ENDPOINT,
-            client_id: DEFAULT_CLIENT_ID,
-            scopes: &[],
-        }
+        Self { token_endpoint: TOKEN_ENDPOINT, client_id: DEFAULT_CLIENT_ID, scopes: &[] }
     }
 }
 
@@ -138,9 +134,10 @@ pub async fn refresh_token(
         return Err(parse_error_response(output.body.expose(), output.status));
     }
 
-    let response: TokenResponse = serde_json::from_str(output.body.expose())
-        .map_err(|_| OAuthRefreshError::from(AuthError::new(ErrorCode::InvalidTokenResponse))
-            .with_status(output.status))?;
+    let response: TokenResponse = serde_json::from_str(output.body.expose()).map_err(|_| {
+        OAuthRefreshError::from(AuthError::new(ErrorCode::InvalidTokenResponse))
+            .with_status(output.status)
+    })?;
 
     validate_response(&response, refresh, output.status)?;
 
@@ -155,7 +152,8 @@ pub async fn refresh_token(
             response.refresh_token.unwrap_or_else(|| refresh.expose().to_owned()),
         ),
         expires_at: now_ms + response.expires_in * 1000,
-        scopes: response.scope
+        scopes: response
+            .scope
             .as_deref()
             .unwrap_or("")
             .split_whitespace()
@@ -170,8 +168,7 @@ fn validate_response(
     status: u16,
 ) -> std::result::Result<(), OAuthRefreshError> {
     let err = || {
-        OAuthRefreshError::from(AuthError::new(ErrorCode::InvalidTokenResponse))
-            .with_status(status)
+        OAuthRefreshError::from(AuthError::new(ErrorCode::InvalidTokenResponse)).with_status(status)
     };
 
     if response.access_token.is_empty()
@@ -195,9 +192,8 @@ fn validate_response(
 }
 
 fn parse_error_response(body: &str, status: u16) -> OAuthRefreshError {
-    let rejection = serde_json::from_str::<ErrorResponse>(body)
-        .ok()
-        .and_then(|e| match e.error.as_str() {
+    let rejection =
+        serde_json::from_str::<ErrorResponse>(body).ok().and_then(|e| match e.error.as_str() {
             "invalid_grant" => Some(OAuthRefreshRejection::InvalidGrant),
             "interaction_required" => Some(OAuthRefreshRejection::InteractionRequired),
             "consent_required" => Some(OAuthRefreshRejection::ConsentRequired),
@@ -216,11 +212,7 @@ fn parse_error_response(body: &str, status: u16) -> OAuthRefreshError {
         })
         .unwrap_or(ErrorCode::InvalidTokenResponse);
 
-    OAuthRefreshError {
-        error: AuthError::new(code),
-        status: Some(status),
-        rejection,
-    }
+    OAuthRefreshError { error: AuthError::new(code), status: Some(status), rejection }
 }
 
 /// Returns `true` when the token's `expiresAt` (epoch ms) is within
@@ -256,10 +248,7 @@ mod tests {
 
     impl FakeTransport {
         fn new(responses: Vec<(u16, String)>) -> Self {
-            Self {
-                responses: Mutex::new(responses),
-                captured_bodies: Mutex::new(Vec::new()),
-            }
+            Self { responses: Mutex::new(responses), captured_bodies: Mutex::new(Vec::new()) }
         }
 
         fn captured(&self) -> Vec<String> {
@@ -277,11 +266,7 @@ mod tests {
             unreachable!("Claude refresh uses request_json, not request");
         }
 
-        async fn request_json(
-            &self,
-            _url: &str,
-            body: &str,
-        ) -> crate::Result<HttpResponse> {
+        async fn request_json(&self, _url: &str, body: &str) -> crate::Result<HttpResponse> {
             self.captured_bodies.lock().unwrap().push(body.to_owned());
             let (status, body) = self.responses.lock().unwrap().remove(0);
             Ok(HttpResponse { status, body: Secret::new(body) })
@@ -289,10 +274,7 @@ mod tests {
     }
 
     fn cancel_and_deadline() -> (CancellationToken, tokio::time::Instant) {
-        (
-            CancellationToken::new(),
-            tokio::time::Instant::now() + std::time::Duration::from_secs(30),
-        )
+        (CancellationToken::new(), tokio::time::Instant::now() + std::time::Duration::from_secs(30))
     }
 
     #[tokio::test]
@@ -311,9 +293,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("old-refresh".to_owned());
 
-        let result = refresh_token(&transport, &options, &refresh, &cancel, deadline)
-            .await
-            .unwrap();
+        let result =
+            refresh_token(&transport, &options, &refresh, &cancel, deadline).await.unwrap();
 
         assert_eq!(result.access_token.expose(), "new-access");
         assert_eq!(result.refresh_token.expose(), "new-refresh");
@@ -368,8 +349,7 @@ mod tests {
 
         let _ = refresh_token(&transport, &options, &refresh, &cancel, deadline).await;
 
-        let body: serde_json::Value =
-            serde_json::from_str(&transport.captured()[0]).unwrap();
+        let body: serde_json::Value = serde_json::from_str(&transport.captured()[0]).unwrap();
         let scope = body["scope"].as_str().unwrap();
         for s in DEFAULT_SCOPES {
             assert!(scope.contains(s), "missing scope: {s}");
@@ -389,16 +369,12 @@ mod tests {
         )]);
         let (cancel, deadline) = cancel_and_deadline();
         let scopes = vec!["user:inference".to_owned()];
-        let options = ClaudeRefreshOptions {
-            scopes: &scopes,
-            ..Default::default()
-        };
+        let options = ClaudeRefreshOptions { scopes: &scopes, ..Default::default() };
         let refresh = Secret::new("rt".to_owned());
 
         let _ = refresh_token(&transport, &options, &refresh, &cancel, deadline).await;
 
-        let body: serde_json::Value =
-            serde_json::from_str(&transport.captured()[0]).unwrap();
+        let body: serde_json::Value = serde_json::from_str(&transport.captured()[0]).unwrap();
         assert_eq!(body["scope"], "user:inference");
     }
 
@@ -416,9 +392,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("keep-me".to_owned());
 
-        let result = refresh_token(&transport, &options, &refresh, &cancel, deadline)
-            .await
-            .unwrap();
+        let result =
+            refresh_token(&transport, &options, &refresh, &cancel, deadline).await.unwrap();
 
         assert_eq!(result.refresh_token.expose(), "keep-me");
     }
@@ -433,9 +408,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("expired".to_owned());
 
-        let err = unwrap_err(
-            refresh_token(&transport, &options, &refresh, &cancel, deadline).await,
-        );
+        let err =
+            unwrap_err(refresh_token(&transport, &options, &refresh, &cancel, deadline).await);
 
         assert_eq!(err.rejection, Some(OAuthRefreshRejection::InvalidGrant));
         assert_eq!(err.status, Some(401));
@@ -452,9 +426,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("rt".to_owned());
 
-        let err = unwrap_err(
-            refresh_token(&transport, &options, &refresh, &cancel, deadline).await,
-        );
+        let err =
+            unwrap_err(refresh_token(&transport, &options, &refresh, &cancel, deadline).await);
 
         assert_eq!(err.rejection, None);
         assert_eq!(err.error.code, ErrorCode::InvalidTokenResponse);
@@ -467,9 +440,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new(String::new());
 
-        let err = unwrap_err(
-            refresh_token(&transport, &options, &refresh, &cancel, deadline).await,
-        );
+        let err =
+            unwrap_err(refresh_token(&transport, &options, &refresh, &cancel, deadline).await);
 
         assert_eq!(err.error.code, ErrorCode::InvalidConfiguration);
     }
@@ -489,9 +461,8 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("rt".to_owned());
 
-        let err = unwrap_err(
-            refresh_token(&transport, &options, &refresh, &cancel, deadline).await,
-        );
+        let err =
+            unwrap_err(refresh_token(&transport, &options, &refresh, &cancel, deadline).await);
 
         assert_eq!(err.error.code, ErrorCode::InvalidTokenResponse);
     }
@@ -511,19 +482,17 @@ mod tests {
         let options = ClaudeRefreshOptions::default();
         let refresh = Secret::new("rt".to_owned());
 
-        let err = unwrap_err(
-            refresh_token(&transport, &options, &refresh, &cancel, deadline).await,
-        );
+        let err =
+            unwrap_err(refresh_token(&transport, &options, &refresh, &cancel, deadline).await);
 
         assert_eq!(err.error.code, ErrorCode::InvalidTokenResponse);
     }
 
     #[test]
     fn is_expired_returns_true_within_margin() {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+                as u64;
 
         assert!(is_expired(now_ms)); // at exactly now
         assert!(is_expired(now_ms + EXPIRY_MARGIN_MS)); // at margin boundary

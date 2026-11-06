@@ -284,20 +284,18 @@ mod tests {
     #[tokio::test]
     async fn persist_to_file_creates_credentials() {
         let dir = tempfile::tempdir().unwrap();
-        let target = PersistTarget {
-            home_dir: dir.path().to_owned(),
-            skip_keychain: true,
-        };
+        let target = PersistTarget { home_dir: dir.path().to_owned(), skip_keychain: true };
         let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
         assert!(result.warning.is_some());
 
-        let content = std::fs::read_to_string(
-            dir.path().join(".claude/.credentials.json"),
-        )
-        .unwrap();
+        let content =
+            std::fs::read_to_string(dir.path().join(".claude/.credentials.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(!content.contains('\n'), "Credential JSON must also be safe for CLI Keychain readers");
+        assert!(
+            !content.contains('\n'),
+            "Credential JSON must also be safe for CLI Keychain readers"
+        );
         assert_eq!(parsed["claudeAiOauth"]["accessToken"], "new-access");
         assert_eq!(parsed["claudeAiOauth"]["refreshToken"], "new-refresh");
     }
@@ -313,17 +311,12 @@ mod tests {
         )
         .unwrap();
 
-        let target = PersistTarget {
-            home_dir: dir.path().to_owned(),
-            skip_keychain: true,
-        };
+        let target = PersistTarget { home_dir: dir.path().to_owned(), skip_keychain: true };
         let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
 
-        let content = std::fs::read_to_string(
-            dir.path().join(".claude/.credentials.json"),
-        )
-        .unwrap();
+        let content =
+            std::fs::read_to_string(dir.path().join(".claude/.credentials.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert_eq!(parsed["mcpOAuth"]["figma"], "tok");
         assert_eq!(parsed["claudeAiOauth"]["accessToken"], "new-access");
@@ -334,26 +327,17 @@ mod tests {
     async fn persist_sets_file_permissions_600() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let target = PersistTarget {
-            home_dir: dir.path().to_owned(),
-            skip_keychain: true,
-        };
+        let target = PersistTarget { home_dir: dir.path().to_owned(), skip_keychain: true };
         persist_credentials(&default_fields(), &target).await;
 
-        let meta = std::fs::metadata(
-            dir.path().join(".claude/.credentials.json"),
-        )
-        .unwrap();
+        let meta = std::fs::metadata(dir.path().join(".claude/.credentials.json")).unwrap();
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
     }
 
     #[tokio::test]
     async fn persist_creates_directory_if_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let target = PersistTarget {
-            home_dir: dir.path().to_owned(),
-            skip_keychain: true,
-        };
+        let target = PersistTarget { home_dir: dir.path().to_owned(), skip_keychain: true };
         let result = persist_credentials(&default_fields(), &target).await;
         assert!(result.success);
         assert!(dir.path().join(".claude/.credentials.json").exists());

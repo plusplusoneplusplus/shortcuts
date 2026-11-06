@@ -114,7 +114,8 @@ pub(crate) fn extract_token(raw: &str) -> Option<ClaudeToken> {
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
 
     // Try nested claudeAiOauth format first.
-    if let Some((nested, access_token)) = value.get("claudeAiOauth")
+    if let Some((nested, access_token)) = value
+        .get("claudeAiOauth")
         .and_then(|v| v.as_object())
         .and_then(|nested| non_empty_str(nested.get("accessToken")).map(|token| (nested, token)))
     {
@@ -126,9 +127,7 @@ pub(crate) fn extract_token(raw: &str) -> Option<ClaudeToken> {
             scopes: nested
                 .get("scopes")
                 .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()
-                })
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
                 .unwrap_or_default(),
             subscription_type: non_empty_str(nested.get("subscriptionType")),
             rate_limit_tier: non_empty_str(nested.get("rateLimitTier")),
@@ -149,10 +148,7 @@ pub(crate) fn extract_token(raw: &str) -> Option<ClaudeToken> {
 }
 
 fn non_empty_str(value: Option<&serde_json::Value>) -> Option<String> {
-    value
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+    value.and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -240,11 +236,7 @@ mod tests {
             serde_json::json!({"claudeAiOauth": {}}),
             serde_json::json!({}),
         ] {
-            assert!(
-                extract_token(&json.to_string()).is_none(),
-                "expected None for: {}",
-                json
-            );
+            assert!(extract_token(&json.to_string()).is_none(), "expected None for: {}", json);
         }
     }
 
@@ -274,11 +266,7 @@ mod tests {
         let creds_dir = dir.path().join(".claude");
         std::fs::create_dir_all(&creds_dir).unwrap();
         let creds_file = creds_dir.join(".credentials.json");
-        std::fs::write(
-            &creds_file,
-            r#"{"claudeAiOauth":{"accessToken":"file-token"}}"#,
-        )
-        .unwrap();
+        std::fs::write(&creds_file, r#"{"claudeAiOauth":{"accessToken":"file-token"}}"#).unwrap();
         let sources = ClaudeCredentialSources {
             credentials_file_override: None,
             home_dir: dir.path().to_owned(),
@@ -292,11 +280,7 @@ mod tests {
     async fn read_credentials_from_override_file() {
         let dir = tempfile::tempdir().unwrap();
         let override_file = dir.path().join("custom-creds.json");
-        std::fs::write(
-            &override_file,
-            r#"{"access_token":"override-token"}"#,
-        )
-        .unwrap();
+        std::fs::write(&override_file, r#"{"access_token":"override-token"}"#).unwrap();
         let sources = ClaudeCredentialSources {
             credentials_file_override: Some(override_file),
             home_dir: dir.path().to_owned(),

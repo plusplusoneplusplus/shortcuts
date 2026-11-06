@@ -269,11 +269,9 @@ impl MicrosoftTokenProvider {
             match &self.options.source {
                 MicrosoftTokenSource::OAuth { options, account } => {
                     let key = options.credential_key(account);
-                    let _lock = crate::oauth::CredentialLock::acquire(
-                        &options.coordination_dir,
-                        &key,
-                    )
-                    .await?;
+                    let _lock =
+                        crate::oauth::CredentialLock::acquire(&options.coordination_dir, &key)
+                            .await?;
                     self.life.publish(|| self.dependencies.store.delete(&key))?;
                 }
                 MicrosoftTokenSource::AzureCli(_) => return fail(ErrorCode::InvalidConfiguration),
