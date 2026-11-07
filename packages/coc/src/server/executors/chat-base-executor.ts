@@ -514,6 +514,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         provider?: ChatProvider,
         service?: ISDKService,
     ): Promise<ModelInfo | undefined> {
+        if (provider && provider !== 'copilot') {
+            return service ? this.getProviderReasoningModel(provider, service, modelId) : undefined;
+        }
+
         if (modelId) {
             let model = modelMetadataStore.getModel(modelId);
             if (!model && !modelMetadataStore.isInitialized()) {
@@ -525,15 +529,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
         }
 
-        // The shared store only holds the default provider's catalog (typically
-        // Copilot). For other providers, resolve from that provider's own model
-        // list so reasoning-effort validation sees the model's supported efforts
-        // instead of failing with "Supported efforts: unknown". An undefined
-        // modelId (provider default) resolves to the provider's own default
-        // catalog entry when it advertises one.
-        if (provider && provider !== 'copilot' && service) {
-            return this.getProviderReasoningModel(provider, service, modelId);
-        }
         return undefined;
     }
 

@@ -6,6 +6,9 @@
   "types": "dist/index.d.ts",
   "typesVersions": {
     "*": {
+      "model-reasoning": [
+        "dist/model-reasoning.d.ts"
+      ],
       "platform": [
         "dist/platform/index.d.ts"
       ],
@@ -21,6 +24,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./model-reasoning": {
+      "types": "./dist/model-reasoning.d.ts",
+      "default": "./dist/model-reasoning.js"
     },
     "./platform": {
       "types": "./dist/platform/index.d.ts",

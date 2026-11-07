@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RequestRunner } from '../../src/request-runner';
+import { resolveReasoningSelection } from '../../src/model-reasoning';
 import { denyAllPermissions } from '../../src/types';
 import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
@@ -111,6 +112,45 @@ describe('RequestRunner.send() — availability', () => {
         const result = await runner.send({ prompt: 'test', loadDefaultMcpConfig: false });
         expect(result.success).toBe(false);
         expect(result.error).toContain('not available');
+    });
+});
+
+describe('RequestRunner.send() — resolved reasoning effort', () => {
+    it.each([undefined, 'existing-session'])('omits SDK-disabled effort on create/resume %s', async sessionId => {
+        const selection = resolveReasoningSelection({
+            modelId: 'gemini-4-argon',
+            model: {
+                id: 'gemini-4-argon',
+                name: 'Gemini',
+                capabilities: {
+                    supports: { vision: false, reasoningEffort: false, reasoning_effort: ['low', 'medium', 'high'] },
+                    limits: { max_context_window_tokens: 200_000 },
+                },
+            },
+        });
+        const { runner, mockClient, mockSession } = makeRunner();
+        expect((await runner.send({
+            prompt: 'test', model: selection.modelId, reasoningEffort: selection.reasoningEffort,
+            sessionId, loadDefaultMcpConfig: false,
+        })).success).toBe(true);
+        const config = sessionId ? mockClient.resumeSession.mock.calls[0][1] : mockClient.createSession.mock.calls[0][0];
+        expect(config.model).toBe('gemini-4-argon');
+        expect(config).not.toHaveProperty('reasoningEffort');
+        expect(mockSession.setModel).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, 'existing-session'])('passes supported effort through setModel on create/resume %s', async sessionId => {
+        const selection = resolveReasoningSelection({
+            modelId: 'gpt-5',
+            requestedEffort: 'medium',
+            model: { id: 'gpt-5', name: 'GPT-5', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+        });
+        const { runner, mockSession } = makeRunner();
+        expect((await runner.send({
+            prompt: 'test', model: selection.modelId, reasoningEffort: selection.reasoningEffort,
+            sessionId, loadDefaultMcpConfig: false,
+        })).success).toBe(true);
+        expect(mockSession.setModel).toHaveBeenCalledWith('gpt-5', { reasoningEffort: 'medium' });
     });
 });
 

@@ -28,6 +28,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { PermissionHandler, ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
+import { getSupportedReasoningEfforts } from '@plusplusoneplusplus/coc-agent-sdk/model-reasoning';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { buildChatStyleBlock, recordedChatStyle, shouldInjectChatStyle, persistChatStyleOnUserTurn } from './chat-style-prompt';
 import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
@@ -151,42 +152,6 @@ function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
     return typeof value === 'string' && (KNOWN_REASONING_EFFORTS as readonly string[]).includes(value);
-}
-
-function normalizeReasoningEffortList(values: readonly unknown[] | undefined): ReasoningEffort[] | undefined {
-    if (!values) {
-        return undefined;
-    }
-
-    const normalized: ReasoningEffort[] = [];
-    for (const value of values) {
-        if (isReasoningEffort(value) && !normalized.includes(value)) {
-            normalized.push(value);
-        }
-    }
-    return normalized;
-}
-
-function getSupportedReasoningEfforts(model: ModelInfo | undefined): ReasoningEffort[] | undefined {
-    if (!model) {
-        return undefined;
-    }
-
-    const rawCapabilityEfforts = normalizeReasoningEffortList(model.capabilities?.supports?.reasoning_effort);
-    if (rawCapabilityEfforts) {
-        return rawCapabilityEfforts;
-    }
-
-    const contractEfforts = normalizeReasoningEffortList(model.supportedReasoningEfforts);
-    if (contractEfforts) {
-        return contractEfforts;
-    }
-
-    if (model.capabilities?.supports?.reasoningEffort === false) {
-        return [];
-    }
-
-    return undefined;
 }
 
 function formatSupportedReasoningEfforts(model: ModelInfo | undefined): string {

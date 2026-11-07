@@ -8,6 +8,7 @@
  * Returns ModelInfo[] for interface compatibility with consumers.
  */
 import { useState, useEffect, useCallback } from 'react';
+import { getSupportedReasoningEfforts, KNOWN_REASONING_EFFORTS } from '@plusplusoneplusplus/coc-agent-sdk/model-reasoning';
 import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
@@ -47,7 +48,7 @@ interface RawModel {
         supports?: {
             vision?: boolean;
             reasoningEffort?: boolean;
-            /** Raw CAPI metadata: list of accepted reasoning_effort values. Authoritative when present. */
+            /** Raw provider levels, subject to the SDK reasoningEffort opt-out. */
             reasoning_effort?: unknown;
         };
         limits?: { max_context_window_tokens?: number; max_prompt_tokens?: number };
@@ -58,23 +59,7 @@ interface RawModel {
     billing?: ModelBillingInfo;
 }
 
-const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 type KnownReasoningEffort = typeof KNOWN_REASONING_EFFORTS[number];
-
-function normalizeReasoningEfforts(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const item of value) {
-        if (typeof item !== 'string') continue;
-        if (!(KNOWN_REASONING_EFFORTS as readonly string[]).includes(item)) continue;
-        if (seen.has(item)) continue;
-        seen.add(item);
-        result.push(item);
-    }
-    // Preserve canonical ordering for stable rendering
-    return KNOWN_REASONING_EFFORTS.filter(e => seen.has(e));
-}
 
 function normalizeDefaultReasoningEffort(value: unknown, supported: string[]): string | undefined {
     if (typeof value !== 'string') return undefined;
@@ -83,14 +68,9 @@ function normalizeDefaultReasoningEffort(value: unknown, supported: string[]): s
 }
 
 function mapModel(m: RawModel): ModelInfo {
-    // Raw CAPI capability metadata wins over the SDK contract field — it is the
-    // direct source for the values CAPI actually accepts.
-    const supportedReasoningEfforts = normalizeReasoningEfforts(
-        m.capabilities?.supports?.reasoning_effort ?? m.supportedReasoningEfforts,
-    );
+    const supported = getSupportedReasoningEfforts(m);
+    const supportedReasoningEfforts = KNOWN_REASONING_EFFORTS.filter(e => supported?.includes(e));
     const defaultReasoningEffort = normalizeDefaultReasoningEffort(m.defaultReasoningEffort, supportedReasoningEfforts);
-    // Treat the presence of a non-empty supported list as definitive proof
-    // the model exposes reasoning, even if the boolean flag is missing.
     const reasoningEffort = supportedReasoningEfforts.length > 0
         ? true
         : (m.capabilities?.supports?.reasoningEffort ?? false);

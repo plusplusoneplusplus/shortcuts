@@ -456,6 +456,38 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — single-tier upsert
         expect((body as { error: string }).error).toContain('not supported by model');
     });
 
+    it('rejects raw provider levels when the SDK explicitly disables effort overrides', async () => {
+        const metadata = makeModelInfo('gemini-4-argon', 'Gemini');
+        metadata.capabilities!.supports.reasoning_effort = ['low', 'medium', 'high'];
+        mockGetAll.mockReturnValue([metadata]);
+        const cfgFns = makeConfigFunctions({});
+        server = makeServer(makeCtx({ ...cfgFns }));
+        await startServer();
+        const { status, body } = await apiPut('/api/agent-providers/copilot/effort-tiers', {
+            tier: 'low', model: metadata.id, reasoningEffort: 'medium',
+        });
+        expect(status).toBe(400);
+        expect((body as { error: string }).error).toContain('Supported: none');
+        expect(cfgFns.writtenConfig).toBeUndefined();
+        expect((await apiPut('/api/agent-providers/copilot/effort-tiers', {
+            tier: 'low', model: metadata.id, reasoningEffort: null,
+        })).status).toBe(200);
+    });
+
+    it('validates effort tiers against raw SDK-enabled levels instead of stale contract levels', async () => {
+        const metadata = makeModelInfo('reasoning-model', 'Reasoning', ['medium']);
+        metadata.capabilities!.supports.reasoning_effort = ['high'];
+        mockGetAll.mockReturnValue([metadata]);
+        server = makeServer(makeCtx());
+        await startServer();
+        expect((await apiPut('/api/agent-providers/copilot/effort-tiers', {
+            tier: 'high', model: metadata.id, reasoningEffort: 'high',
+        })).status).toBe(200);
+        expect((await apiPut('/api/agent-providers/copilot/effort-tiers', {
+            tier: 'high', model: metadata.id, reasoningEffort: 'medium',
+        })).status).toBe(400);
+    });
+
     it('allows null reasoningEffort (Auto) for any model', async () => {
         mockGetAll.mockReturnValue(CATALOG_WITH_REASONING);
         const cfgFns = makeConfigFunctions({});

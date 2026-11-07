@@ -4,6 +4,7 @@
  * operations from GET /api/agent-providers/:provider/models*.
  */
 import { useState, useEffect, useCallback } from 'react';
+import { getSupportedReasoningEfforts, KNOWN_REASONING_EFFORTS } from '@plusplusoneplusplus/coc-agent-sdk/model-reasoning';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
@@ -50,19 +51,6 @@ interface RawModel {
     billing?: ProviderModelBillingInfo;
 }
 
-const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
-
-function normalizeReasoningEfforts(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    const seen = new Set<string>();
-    for (const item of value) {
-        if (typeof item !== 'string') continue;
-        if (!(KNOWN_REASONING_EFFORTS as readonly string[]).includes(item)) continue;
-        seen.add(item);
-    }
-    return KNOWN_REASONING_EFFORTS.filter(e => seen.has(e));
-}
-
 function normalizeDefaultReasoningEffort(value: unknown, supported: string[]): string | undefined {
     if (typeof value !== 'string') return undefined;
     if (!supported.includes(value)) return undefined;
@@ -70,9 +58,8 @@ function normalizeDefaultReasoningEffort(value: unknown, supported: string[]): s
 }
 
 function mapModel(m: RawModel): ProviderModelInfo {
-    const supportedReasoningEfforts = normalizeReasoningEfforts(
-        m.capabilities?.supports?.reasoning_effort ?? m.supportedReasoningEfforts,
-    );
+    const supported = getSupportedReasoningEfforts(m);
+    const supportedReasoningEfforts = KNOWN_REASONING_EFFORTS.filter(e => supported?.includes(e));
     const defaultReasoningEffort = normalizeDefaultReasoningEffort(m.defaultReasoningEffort, supportedReasoningEfforts);
     const reasoningEffort = supportedReasoningEfforts.length > 0
         ? true

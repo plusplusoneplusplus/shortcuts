@@ -167,6 +167,23 @@ describe('resolveReasoningEffort', () => {
         })).toBeUndefined();
     });
 
+    it.each(['gemini-3.8-flash', 'gemini-4-argon'])('respects the SDK opt-out despite raw provider levels for %s', id => {
+        const metadata = model(id, {
+            supportsReasoning: false,
+            rawEfforts: ['low', 'medium', 'high'],
+            supportedEfforts: ['low', 'medium', 'high'],
+            defaultEffort: 'medium',
+        });
+        expect(resolveReasoningSelection({ modelId: id, model: metadata })).toEqual({
+            modelId: id,
+            reasoningEffort: undefined,
+        });
+        for (const requestedEffort of ['low', 'medium', 'high'] as const) {
+            expect(() => resolveReasoningEffort({ modelId: id, model: metadata, requestedEffort }))
+                .toThrow('Supported efforts: none');
+        }
+    });
+
     // =========================================================================
     // Suffix-based fallback (no raw CAPI capabilities)
     // =========================================================================
@@ -197,13 +214,13 @@ describe('resolveReasoningEffort', () => {
         });
     });
 
-    it('infers effort from suffix when metadata has no reasoning support info', () => {
+    it('does not infer effort from a suffix when the SDK explicitly opts out', () => {
         expect(resolveReasoningSelection({
             modelId: 'some-model-medium',
             model: model('some-model-medium', { supportsReasoning: false }),
         })).toEqual({
-            modelId: 'some-model',
-            reasoningEffort: 'medium',
+            modelId: 'some-model-medium',
+            reasoningEffort: undefined,
         });
     });
 

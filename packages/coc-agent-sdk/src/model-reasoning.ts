@@ -1,7 +1,7 @@
 import type { ModelInfo } from './model-info';
 import type { ReasoningEffort } from './types';
 
-const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const satisfies readonly ReasoningEffort[];
+export const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const satisfies readonly ReasoningEffort[];
 const FALLBACK_REASONING_EFFORT_ORDER = ['high', 'medium'] as const satisfies readonly ReasoningEffort[];
 
 export interface ResolveReasoningEffortOptions {
@@ -19,8 +19,8 @@ function isReasoningEffort(value: unknown): value is ReasoningEffort {
     return typeof value === 'string' && (KNOWN_REASONING_EFFORTS as readonly string[]).includes(value);
 }
 
-function normalizeReasoningEffortList(values: readonly unknown[] | undefined): ReasoningEffort[] | undefined {
-    if (!values) {
+function normalizeReasoningEffortList(values: unknown): ReasoningEffort[] | undefined {
+    if (!Array.isArray(values)) {
         return undefined;
     }
 
@@ -33,9 +33,24 @@ function normalizeReasoningEffortList(values: readonly unknown[] | undefined): R
     return normalized;
 }
 
-function getSupportedReasoningEfforts(model: ModelInfo | undefined): ReasoningEffort[] | undefined {
+export interface ReasoningModelMetadata {
+    capabilities?: {
+        supports?: {
+            reasoningEffort?: boolean;
+            reasoning_effort?: unknown;
+        };
+    };
+    supportedReasoningEfforts?: unknown;
+}
+
+/** SDK opt-out wins over raw provider levels, which may not be configurable through the SDK. */
+export function getSupportedReasoningEfforts(model: ReasoningModelMetadata | undefined): ReasoningEffort[] | undefined {
     if (!model) {
         return undefined;
+    }
+
+    if (model.capabilities?.supports?.reasoningEffort === false) {
+        return [];
     }
 
     const rawCapabilityEfforts = normalizeReasoningEffortList(model.capabilities?.supports?.reasoning_effort);
@@ -46,10 +61,6 @@ function getSupportedReasoningEfforts(model: ModelInfo | undefined): ReasoningEf
     const contractEfforts = normalizeReasoningEffortList(model.supportedReasoningEfforts);
     if (contractEfforts) {
         return contractEfforts;
-    }
-
-    if (model.capabilities?.supports?.reasoningEffort === false) {
-        return [];
     }
 
     return undefined;
@@ -65,8 +76,8 @@ function formatSupportedEfforts(supportedEfforts: ReasoningEffort[] | undefined)
 /**
  * Resolves the reasoning effort to pass to the Copilot SDK for a model.
  *
- * Raw CAPI capability metadata wins over SDK contract fields when present,
- * because it is the most direct source for the values CAPI accepts.
+ * An explicit SDK opt-out forbids overrides. Otherwise raw CAPI capability
+ * metadata wins over SDK contract effort lists when present.
  */
 export function resolveReasoningEffort(options: ResolveReasoningEffortOptions): ReasoningEffort | undefined {
     const { modelId, requestedEffort, model } = options;
@@ -126,7 +137,7 @@ export function resolveReasoningSelection(options: ResolveReasoningEffortOptions
     // be incompatible with the model. If the model ID itself encodes a known
     // effort suffix (e.g. "claude-opus-4.7-xhigh"), trust that suffix as the
     // authoritative signal and strip it to derive the base model ID.
-    if (!rawCapabilityEfforts && options.modelId) {
+    if (!rawCapabilityEfforts && options.modelId && options.model?.capabilities?.supports?.reasoningEffort !== false) {
         const suffixInferred = inferFromModelIdSuffix(options.modelId);
         if (suffixInferred) {
             // When the suffix-derived effort differs from the resolved one,

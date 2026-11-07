@@ -129,6 +129,20 @@ describe('useProviderModels', () => {
         expect(result.current.models[0].defaultReasoningEffort).toBe('high');
     });
 
+    it.each(['copilot', 'claude', 'codex'] as const)('respects the SDK reasoning opt-out for %s', async provider => {
+        mocks.agentProviders.listModels.mockResolvedValue({ models: [{
+            id: 'non-configurable-model',
+            capabilities: { supports: { reasoningEffort: false, reasoning_effort: ['low', 'medium', 'high'] } },
+            supportedReasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+        }] });
+        const { result } = renderHook(() => useProviderModels(provider));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].capabilities?.supports.reasoningEffort).toBe(false);
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual([]);
+        expect(result.current.models[0].defaultReasoningEffort).toBeUndefined();
+    });
+
     it('includes xhigh for Codex gpt-5.5 from supportedReasoningEfforts (AC-02)', async () => {
         // Verifies that xhigh is preserved end-to-end through the SPA normalization
         // path when the backend catalog reports it via supportedReasoningEfforts.
