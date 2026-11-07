@@ -1483,6 +1483,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.panelAddressBar', default: false, runtime: 'live', runtimeFlag: 'panelAddressBarEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 49.5, label: 'Panel address bar', badge: 'experimental',
+            hint: 'Shows a coc:// address bar for right-panel To-do, Settings and Terminal tabs. Type coc://todo, coc://settings or coc://terminal to open one; Ctrl+L (Cmd+L) focuses it. Disabled by default.',
+            testId: 'toggle-panel-address-bar-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',

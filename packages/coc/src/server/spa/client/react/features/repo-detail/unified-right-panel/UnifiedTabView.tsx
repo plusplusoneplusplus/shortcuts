@@ -91,6 +91,9 @@ export interface UnifiedTabViewProps {
      * confirmation because the ✕ is in the strip, not in the terminal view.
      */
     terminalOpenRequest?: number;
+    /** A To-do tab's `coc://todo/<itemId>` request; see `UnifiedTodoTab`. */
+    todoSelectItemRequest?: { id: string; nonce: number } | null;
+    onTodoSelectionChange?: (tabId: string, itemId: string | null) => void;
     isActive?: boolean;
     onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
     /**
@@ -142,7 +145,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
+    onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, todoSelectItemRequest, onTodoSelectionChange, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, onReloadControlChange, canvasSwitcher,
     blameShown, onBlameSupportChange, onOpenBlameCommit,
@@ -346,6 +349,8 @@ export function UnifiedTabView({
                     scopeWorkspaceId={scopeWorkspaceId}
                     chatId={tab.chatId}
                     onErrorChange={handleError}
+                    selectItemRequest={todoSelectItemRequest}
+                    onSelectionChange={onTodoSelectionChange ? itemId => onTodoSelectionChange(tab.id, itemId) : undefined}
                 />
             );
         case 'git':

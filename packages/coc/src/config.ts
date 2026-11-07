@@ -416,6 +416,8 @@ export interface CLIConfig {
         fileHistory?: boolean;
         /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
         fileBlame?: boolean;
+        /** `coc://` address bar for right-panel To-do, Settings and Terminal tabs. Disabled by default. */
+        panelAddressBar?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -877,6 +879,8 @@ export interface ResolvedCLIConfig {
         fileHistory: boolean;
         /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
         fileBlame: boolean;
+        /** `coc://` address bar for right-panel To-do, Settings and Terminal tabs. Disabled by default. */
+        panelAddressBar: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -1221,6 +1225,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         binaryFileReveal: true,
         fileHistory: false,
         fileBlame: false,
+        panelAddressBar: false,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
         browserFavorites: false,

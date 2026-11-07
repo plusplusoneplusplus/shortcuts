@@ -25,6 +25,7 @@ import {
     isChatScopedBrowserTabsEnabled,
     isBrowserFavoritesEnabled,
     isFileBlameEnabled,
+    isPanelAddressBarEnabled,
     isFileHistoryEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
@@ -381,6 +382,16 @@ describe('file blame runtime flag', () => {
         expect(isFileBlameEnabled()).toBe(true);
         applyRuntimeConfigPatch({ fileBlameEnabled: false });
         expect(isFileBlameEnabled()).toBe(false);
+    });
+});
+
+describe('panel address bar runtime flag', () => {
+    it('defaults off, turns on only for an explicit true and follows live updates', () => {
+        expect(isPanelAddressBarEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ panelAddressBarEnabled: true });
+        expect(isPanelAddressBarEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
+        expect(isPanelAddressBarEnabled()).toBe(false);
     });
 });
 

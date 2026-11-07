@@ -66,6 +66,7 @@ import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges
 import { browserOpenInput } from './unifiedBrowserTabs';
 import { GIT_ICON, SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { formatCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** Results requested and rendered per query, matching QuickOpen. */
 const RESULT_LIMIT = 50;
@@ -95,6 +96,11 @@ export interface UnifiedPanelOpenMenuProps {
     onOpenWorkspaceResource: (action: 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
+    /**
+     * Open a `coc://` address (`features.panelAddressBar`); a string is an
+     * inline error. Without it a `coc://` query is an unsupported URL.
+     */
+    onOpenCocAddress?: (address: CocAddress) => string | void;
 }
 
 export function UnifiedPanelOpenMenu({
@@ -109,6 +115,7 @@ export function UnifiedPanelOpenMenu({
     gitAvailable = false,
     onOpenWorkspaceResource,
     onClose,
+    onOpenCocAddress,
 }: UnifiedPanelOpenMenuProps) {
     const [query, setQuery] = useState('');
     const [files, setFiles] = useState<readonly OpenMenuFileResult[]>([]);
@@ -117,6 +124,8 @@ export function UnifiedPanelOpenMenu({
     const [canvases, setCanvases] = useState<readonly OpenMenuCanvasResult[]>([]);
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [cocError, setCocError] = useState<string | null>(null);
+    useEffect(() => { setCocError(null); }, [query]);
     const [view, setView] = useState<OpenMenuView>('main');
     const [extensions, setExtensions] = useState<readonly OpenMenuExtensionResult[]>([]);
     const [openingExtension, setOpeningExtension] = useState<string | null>(null);
@@ -151,8 +160,8 @@ export function UnifiedPanelOpenMenu({
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
-        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view }),
-        [actions, files, canvases, extensions, chatId, query, view],
+        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view, cocAddresses: onOpenCocAddress !== undefined }),
+        [actions, files, canvases, extensions, chatId, query, view, onOpenCocAddress],
     );
 
     // The cursor is an index into a list that changes under it; re-seat it on
@@ -343,6 +352,12 @@ export function UnifiedPanelOpenMenu({
 
     const selectItem = useCallback((item: OpenMenuItem) => {
         if (item.type === 'url-error') return;
+        if (item.type === 'coc') {
+            const failure = onOpenCocAddress?.(item.address);
+            if (failure) setCocError(failure);
+            else onClose();
+            return;
+        }
         if (item.type === 'url') {
             onOpenResource(browserOpenInput(browserContext, item.url));
             onClose();
@@ -403,7 +418,7 @@ export function UnifiedPanelOpenMenu({
         }
         onOpenWorkspaceResource(item.action.id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, todoInput, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, todoInput, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -508,6 +523,22 @@ export function UnifiedPanelOpenMenu({
                                 <span aria-hidden className="opacity-60">{ACTION_ICONS.browser}</span>
                                 <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Open {item.url}</span>
                                 <span className="ml-auto flex-shrink-0 text-[10px] text-[#8a8a8a]">Browser</span>
+                            </button>
+                        );
+                    }
+                    if (item.type === 'coc') {
+                        const text = formatCocAddress(item.address);
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={rowClass}
+                                title={text}
+                                onMouseEnter={() => setCursor(index)}
+                                onClick={() => selectItem(item)}
+                                data-testid="unified-panel-open-menu-coc"
+                            >
+                                <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Open {text}</span>
                             </button>
                         );
                     }
@@ -632,6 +663,11 @@ export function UnifiedPanelOpenMenu({
                 {extensionError && (
                     <div className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-extension-error">
                         {extensionError}
+                    </div>
+                )}
+                {cocError && (
+                    <div role="alert" className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-coc-error">
+                        {cocError}
                     </div>
                 )}
                 {createError && (

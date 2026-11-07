@@ -29,6 +29,7 @@
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { formatCocAddress, isCocAddressText, parseCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** The non-search entries the menu offers. */
 export type OpenMenuActionId = 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
@@ -179,6 +180,7 @@ export type OpenMenuItem =
     | { key: string; type: 'action'; action: OpenMenuAction }
     | { key: string; type: 'url'; url: string }
     | { key: string; type: 'url-error'; reason: string }
+    | { key: string; type: 'coc'; address: CocAddress }
     | { key: string; type: 'file'; file: OpenMenuFileResult }
     | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult }
     | { key: string; type: 'extension'; extension: OpenMenuExtensionResult }
@@ -193,6 +195,8 @@ export interface BuildOpenMenuItemsInput {
     query: string;
     /** Defaults to the main list. */
     view?: OpenMenuView;
+    /** Whether a `coc://` query opens a panel address (`features.panelAddressBar`). */
+    cocAddresses?: boolean;
 }
 
 /**
@@ -243,6 +247,14 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
     // A pasted URL with its scheme is unambiguous, so its row leads and Enter
     // opens it. A bare domain (`notes.md` is one too) follows the file hits so
     // file search keeps the top slot.
+    // A `coc://` query is a panel address, never a web address.
+    if (input.cocAddresses && isCocAddressText(input.query)) {
+        const address = parseCocAddress(input.query);
+        const cocItem: OpenMenuItem = 'error' in address
+            ? { key: 'url-error', type: 'url-error', reason: address.error }
+            : { key: `coc:${formatCocAddress(address)}`, type: 'coc', address };
+        return [cocItem, ...fileItems, ...actionItems, ...canvasItems, ...extensionItems];
+    }
     const candidate = openMenuUrlCandidate(input.query);
     const urlItems: OpenMenuItem[] = candidate === null ? []
         : 'url' in candidate

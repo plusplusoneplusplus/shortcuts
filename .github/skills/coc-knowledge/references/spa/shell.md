@@ -971,6 +971,7 @@ features default off.
 | `features.fileHistory` | `isFileHistoryEnabled()` | off |
 | `features.fileBlame` | `isFileBlameEnabled()` | off |
 | `features.browserFavorites` | `isBrowserFavoritesEnabled()` | off |
+| `features.panelAddressBar` | `isPanelAddressBarEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -1329,6 +1330,13 @@ With `features.fileBlame` enabled, a Blame toggle beside History shows per-line
 `HEAD` attribution in the editor gutter of repo-relative text files (not binary,
 external, oversized or rendered Markdown). Lines edited in the live buffer show
 `Not committed yet`; a click opens the owner-routed Git commit detail.
+
+With `features.panelAddressBar` enabled, To-do, Settings and Terminal tabs show
+a `coc://` address row (`coc://todo[/<itemId>]`, `coc://settings`,
+`coc://terminal`) in the toolbar slot. Typing opens or focuses the tab with the
+`+` menu's owner (the text never names one), Ctrl/Cmd+L focuses it, and the `+`
+menu accepts the same addresses. `coc://` stays in the SPA and never reaches the
+web browser; see `unified-right-panel/AGENTS.md`.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

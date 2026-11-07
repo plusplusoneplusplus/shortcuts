@@ -127,9 +127,10 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, the active file's History toggle and "Reload from disk" button, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
-| `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
+| `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or the address row or, when neither is shown, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
+| `unifiedPanelAddresses.ts` + `UnifiedPanelAddressRow.tsx` | The `coc://` address row (see "Panel addresses"): pure parsing/formatting and the per-kind address, plus the row that wraps `BrowserAddressBar` (no history) with an owner chip, inline errors and the navigator controls. |
 | `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes and supplied expiry/session semantics; pairs use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import, surviving CoC restarts in that engine's installation-wide profile. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. The address pill's leading `BrowserSiteInfo` control reads `bridge.siteInfo(viewId, sessionKey)` for the committed document and closes on any owner, view, document or visibility change; HTML page tabs show it with a static local-file description. |
 | `BrowserAddressBar.tsx` | Shared address editing and optional history combobox. Blank input makes no suggestion queries or dropdown; clearing invalidates replies. Main ranks eight suggestions with case-preserving suffix completion. Stored-URL activation, Escape, deletion/paste/caret/IME and owner checks preserve editing. Standard Copy adds escaped HTML plus the raw URL only for a fully selected, unedited committed page; drafts, partial selections and cut retain native defaults. Optional native address menus dispatch ordinary editing commands. See the knowledge shell reference for committed-page identity and clipboard fallback contracts. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
@@ -319,8 +320,9 @@ against the live buffer so changed or unmappable lines show `Not committed yet`;
 a click opens `openPanelGitCommit` only when the tab's route matches the panel
 owner's.
 
-The Search and Explorer controls sit at the row's right edge. When the file
-toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
+The Search and Explorer controls sit at the row's right edge. When neither the
+file toolbar nor the address row is rendered, the same pair moves beside the
+tab strip's `+`. Each
 selects its navigator mode, opens it when needed, and collapses it when selected
 again.
 
@@ -334,6 +336,44 @@ does not change Explorer selection, expansion, mode, or focus.
 `unifiedToolbarBreadcrumbs` shows a plain path label for `__trusted__:` and
 `__workspace_preview__:` paths. These read-only resources do not use the repo
 directory API or expose relative-path copy and Explorer reveal actions.
+
+## Panel addresses
+
+Default-off `features.panelAddressBar` (`isPanelAddressBarEnabled`) adds a
+Chrome-style address row in the toolbar row's slot while the active tab is
+To-do, Settings or Terminal; it never shows with the file toolbar.
+`cocAddressForTab` returns `null` for every other kind, which removes the row.
+
+| Address | Opens or focuses |
+|---|---|
+| `coc://settings` | `openWorkspaceResource('settings')` on the panel scope; an error when the panel does not own Settings. |
+| `coc://terminal` | `openWorkspaceResource('terminal')` on the dock target, with its `terminalOpenRequests` bump; an error when the target is unavailable. |
+| `coc://todo` | The selected Sentinel chat's `todoInput`; "To-do is only available in a Sentinel chat" otherwise. |
+| `coc://todo/<itemId>` | The same tab, plus an in-memory `{ tabId, id, nonce }` select request passed to `UnifiedTodoTab` as `selectItemRequest`. |
+
+- `parseCocAddress` is case-insensitive for scheme and host, ignores a trailing
+  `/`, rejects query/hash, and reports other hosts as "Not supported yet".
+  `coc://` is parsed only in the SPA; it never reaches a webview,
+  `normalizeBrowserUrl`, browser history or site approval.
+- The text never names an owner. A typed address uses the `+` menu's owner, so a
+  repo group or remote clone cannot be routed by text. The row shows the active
+  tab's `repoLabel` as an owner chip when it has one.
+- Typing opens or focuses a tab; a tab never changes kind. Enter on the unchanged
+  address does nothing, Escape (`restoreOnEscape`) puts the address back, and a
+  tab change drops the draft and error.
+- `UnifiedTodoTab` applies a request once its ledger loads (reusing the
+  Overture reveal path), repeats it for a new nonce, and shows an "item not
+  found" note for an unknown id without changing the selection. It reports the
+  open item through `onSelectionChange` so the row shows `coc://todo/<itemId>`.
+  The panel drops the request when another tab becomes active; nothing is
+  persisted.
+- Ctrl+L (Cmd+L on macOS) focuses and selects the address while the panel is
+  visible and focus is inside it, except in editable fields, Monaco and xterm,
+  which keep their own binding.
+- The `+` menu (`onOpenCocAddress`) adds a leading "Open coc://…" row for a
+  parsed address, or the unselectable `url-error` row for an invalid one; an
+  availability error shows inline and keeps the menu open. With the flag off a
+  `coc://` query is an unsupported URL as before.
 
 ## The Search/Explorer navigator
 
@@ -1470,6 +1510,9 @@ the diff, source-link, note-link, and canvas cases, plus the guard that the chat
 grows no canvas column of its own. `UnifiedCanvasTab.test.tsx` and
 `unifiedChatCanvasActions.test.tsx` cover the tab's chat actions, pop-out, and
 created-query routing.
+`unifiedPanelAddresses.test.ts`, `UnifiedPanelAddressRow.test.tsx`,
+`UnifiedRightPanel.addressBar.test.tsx` and
+`test/server/sentinel-todos/select-request-panel.test.tsx` cover panel addresses.
 `WorkspaceSettingsHost.test.tsx` and `WorkspaceSettingsOwner.test.tsx` cover shared
 form identity, draft/error retention, concrete-owner routing and unavailable owners.
 `test/spa/react/repos/RepoGroupView.dock.test.tsx` and
