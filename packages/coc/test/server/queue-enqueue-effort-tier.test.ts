@@ -55,8 +55,18 @@ describe('resolveEffortTierConfig', () => {
         resolveEffortTierConfig(input, makeContext());
 
         expect(input.config.model).toBe('gpt-6.1-terra');
-        expect(input.config.reasoningEffort).toBe('xhigh');
+        expect(input.config.reasoningEffort).toBe('medium');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+
+        const veryLowInput = makeInput({
+            config: { effortTier: 'very-low' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(veryLowInput, makeContext());
+
+        expect(veryLowInput.config.model).toBe('gpt-6-luna');
+        expect(veryLowInput.config.reasoningEffort).toBe('medium');
+        expect((veryLowInput.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
     it('resolves the Codex low tier to the gpt-6.1-terra default unless the user overrides it', () => {
