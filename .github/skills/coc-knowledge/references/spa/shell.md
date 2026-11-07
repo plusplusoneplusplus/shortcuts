@@ -950,6 +950,7 @@ features default off.
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | on |
 | `features.fileHistory` | `isFileHistoryEnabled()` | off |
+| `features.fileBlame` | `isFileBlameEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -1303,6 +1304,11 @@ a repo-relative file tab's view with its read-only commit list on HEAD
 (`UnifiedFileHistory`, paged, follows renames) and a picked commit's file diff.
 The `PreviewPane` stays mounted but hidden, so unsaved edits survive. Reads use
 the tab's owner and concrete clone route; see `unified-right-panel/AGENTS.md`.
+
+With `features.fileBlame` enabled, a Blame toggle beside History shows per-line
+`HEAD` attribution in the editor gutter of repo-relative text files (not binary,
+external, oversized or rendered Markdown). Lines edited in the live buffer show
+`Not committed yet`; a click opens the owner-routed Git commit detail.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

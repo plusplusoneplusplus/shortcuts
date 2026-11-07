@@ -96,6 +96,35 @@ export function DiffEngineToggle({ engine, onChange }: DiffEngineToggleProps) {
     );
 }
 
+export type MarkdownDiffMode = 'source' | 'rendered';
+
+/** Markdown files only: case-insensitive `.md` / `.markdown`. */
+export function isMarkdownDiffPath(filePath: string): boolean {
+    return /\.(md|markdown)$/i.test(filePath);
+}
+
+interface MarkdownDiffModeToggleProps {
+    mode: MarkdownDiffMode;
+    onChange: (mode: MarkdownDiffMode) => void;
+}
+
+const MARKDOWN_BUTTONS: [ToggleOption<MarkdownDiffMode>, ToggleOption<MarkdownDiffMode>] = [
+    { value: 'source',   icon: '</>', label: 'Source', title: 'Markdown source diff' },
+    { value: 'rendered', icon: '¶', label: 'Rendered', title: 'Rendered markdown diff' },
+];
+
+/** Source / Rendered toggle for markdown file diffs. */
+export function MarkdownDiffModeToggle({ mode, onChange }: MarkdownDiffModeToggleProps) {
+    return (
+        <DiffToolbarToggle
+            value={mode}
+            onChange={onChange}
+            buttons={MARKDOWN_BUTTONS}
+            testId="markdown-diff-mode-toggle"
+        />
+    );
+}
+
 /** Shared, keyboard-accessible toggle for Monaco's original and modified panes. */
 export function DiffWordWrapToggle() {
     const [enabled, setEnabled] = useDiffWordWrap();

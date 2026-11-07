@@ -414,6 +414,8 @@ export interface CLIConfig {
         binaryFileReveal?: boolean;
         /** Read-only Git history view for right-panel file tabs. Disabled by default. */
         fileHistory?: boolean;
+        /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
+        fileBlame?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -871,6 +873,8 @@ export interface ResolvedCLIConfig {
         binaryFileReveal: boolean;
         /** Read-only Git history view for right-panel file tabs. Disabled by default. */
         fileHistory: boolean;
+        /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
+        fileBlame: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
@@ -1212,6 +1216,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelTabGroups: true,
         binaryFileReveal: true,
         fileHistory: false,
+        fileBlame: false,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
         htmlPageTab: true,

@@ -122,6 +122,12 @@ export interface UnifiedTabViewProps {
     onSourceModelChange?: (tabId: string, context: EditorModelMountContext | null) => void;
     /** File tabs only: the "Reload from disk" control the panel toolbar renders. */
     onReloadControlChange?: (tabId: string, control: FileReloadControl | null) => void;
+    /** File tabs only: show the file's Git blame (`features.fileBlame`). */
+    blameShown?: boolean;
+    /** File tabs only: whether the tab's view can show blame. */
+    onBlameSupportChange?: (tabId: string, supported: boolean) => void;
+    /** File tabs only: opens a commit clicked in the blame gutter. */
+    onOpenBlameCommit?: (tab: UnifiedPanelTab, hash: string) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
     /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
@@ -139,6 +145,7 @@ export function UnifiedTabView({
     onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, onReloadControlChange, canvasSwitcher,
+    blameShown, onBlameSupportChange, onOpenBlameCommit,
 }: UnifiedTabViewProps) {
     const panelHost = useUnifiedPanelHost();
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
@@ -211,6 +218,14 @@ export function UnifiedTabView({
         (control: FileReloadControl | null) => onReloadControlChange?.(tab.id, control),
         [onReloadControlChange, tab.id],
     );
+    const handleBlameSupport = useCallback(
+        (supported: boolean) => onBlameSupportChange?.(tab.id, supported),
+        [onBlameSupportChange, tab.id],
+    );
+    const handleOpenBlameCommit = useCallback(
+        (hash: string) => onOpenBlameCommit?.(tab, hash),
+        [onOpenBlameCommit, tab],
+    );
     const handleNotesSelection = useCallback(
         (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
         [onNotesSelectionChange, tab.id],
@@ -264,6 +279,9 @@ export function UnifiedTabView({
                     onNavigationLocation={handleNavigationLocation}
                     onModelShare={onSourceModelChange ? handleModelShare : undefined}
                     onReloadControlChange={onReloadControlChange ? handleReloadControl : undefined}
+                    blame={blameShown}
+                    onBlameSupportChange={onBlameSupportChange ? handleBlameSupport : undefined}
+                    onOpenBlameCommit={onOpenBlameCommit ? handleOpenBlameCommit : undefined}
                 />
             </>);
         case 'external':

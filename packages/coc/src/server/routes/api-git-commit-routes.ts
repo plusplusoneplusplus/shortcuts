@@ -13,6 +13,7 @@ import type { APIError } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { loadCommitFileDiffContent } from '../git/ref-file-content';
 import { loadFileHistory, loadRenamedCommitFilePatch } from '../git/file-history';
+import { loadFileBlame } from '../git/file-blame';
 import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
@@ -109,6 +110,19 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             if (!query.path) return void handleAPIError(res, badRequest('Missing path'));
             return loadFileHistory(ws.rootPath, query.path, query);
+        },
+    }));
+
+    // GET /api/workspaces/:id/git/file-blame?path= — Per-line last-change commit of one file at HEAD
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/file-blame$/,
+        parseQuery: (q) => ({ path: asString(q.path, '') }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            if (!query.path) return void handleAPIError(res, badRequest('Missing path'));
+            return loadFileBlame(ws.rootPath, query.path);
         },
     }));
 

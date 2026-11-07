@@ -308,6 +308,17 @@ active-tab change. The list reads `git/file-history` through the tab's owner and
 `ownerRoutingRef`; a row opens the Git tab's `FileDiffPanel` on a commit source
 with the file's path in that commit and, for a rename, its older path.
 
+Default-off `features.fileBlame` adds a Blame toggle beside History. `PreviewPane`
+reports support (`useEditorFileBlame`: repo owner, repo-relative path, loaded
+utf-8 text, not oversized or rendered Markdown) through `onBlameSupportChange`;
+the panel keeps per-tab in-memory supported/shown sets, default off and never
+persisted. `useFileBlame` reads `git/file-blame` (HEAD) through the tab's owner
+and `ownerRoutingRef`, dropping stale answers. `fileBlameModel` diffs HEAD lines
+against the live buffer so changed or unmappable lines show `Not committed yet`;
+`fileBlameDecorations` renders Monaco gutter labels with full-subject hovers, and
+a click opens `openPanelGitCommit` only when the tab's route matches the panel
+owner's.
+
 The Search and Explorer controls sit at the row's right edge. When the file
 toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
 selects its navigator mode, opens it when needed, and collapses it when selected

@@ -33,6 +33,23 @@ export interface GitFileHistoryResponse {
   hasMore: boolean;
 }
 
+export interface GitFileBlameCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  /** The file's path in this commit. */
+  path: string;
+}
+
+export interface GitFileBlameResponse {
+  /** One entry per line of the file at HEAD; empty when HEAD has no such file. */
+  lines: Array<{ hash: string; text: string }>;
+  commits: Record<string, GitFileBlameCommit>;
+}
+
 export interface GitFileChange {
   status: string;
   path: string;

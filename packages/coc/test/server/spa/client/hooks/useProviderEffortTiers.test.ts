@@ -33,7 +33,7 @@ function makeEffortTiersResponse(
 
 const COPILOT_DEFAULTS = {
     'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh' },
-    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+    low:    { model: 'gpt-6.1-terra', reasoningEffort: 'xhigh' },
     medium: { model: 'claude-opus-4.8', reasoningEffort: 'xhigh' },
     high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh' },
 };
@@ -184,7 +184,7 @@ describe('useProviderEffortTiers', () => {
 
         // Reverted to default, not removed.
         expect(result.current.tiers.low).toEqual({
-            model: 'gpt-5.6-terra',
+            model: 'gpt-6.1-terra',
             reasoningEffort: 'xhigh',
             source: 'default',
         });

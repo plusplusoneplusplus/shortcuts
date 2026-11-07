@@ -376,6 +376,8 @@ export interface RuntimeDashboardConfig {
     binaryFileRevealEnabled: boolean;
     /** Read-only Git history view for right-panel file tabs (`features.fileHistory`); defaults off. */
     fileHistoryEnabled: boolean;
+    /** VS Code-style Git blame toggle for right-panel file tabs (`features.fileBlame`); defaults off. */
+    fileBlameEnabled: boolean;
     /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults on. */
     browserTabShortcutsEnabled: boolean;
     /** Right-panel web pages scoped to the conversation that opened them (`features.chatScopedBrowserTabs`); defaults off. */

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { DiffViewToggle, DiffEngineToggle } from '../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle';
+import { DiffViewToggle, DiffEngineToggle, MarkdownDiffModeToggle, isMarkdownDiffPath } from '../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle';
 
 describe('DiffViewToggle', () => {
     it('shows only the current mode as one button', () => {
@@ -63,5 +63,29 @@ describe('DiffEngineToggle', () => {
         expect(screen.getByTestId('diff-engine-toggle').getAttribute('title')).toBe('Classic diff viewer — switch to Editor');
         fireEvent.click(screen.getByTestId('diff-engine-toggle'));
         expect(onChange).toHaveBeenLastCalledWith('monaco');
+    });
+});
+
+describe('MarkdownDiffModeToggle', () => {
+    it('shows the current mode and flips to the other', () => {
+        const onChange = vi.fn();
+        const { rerender } = render(<MarkdownDiffModeToggle mode="source" onChange={onChange} />);
+        const btn = screen.getByTestId('markdown-diff-mode-toggle');
+        expect(btn.getAttribute('data-value')).toBe('source');
+        expect(screen.getByTestId('markdown-diff-mode-toggle-label').textContent).toBe('Source');
+        fireEvent.click(btn);
+        expect(onChange).toHaveBeenLastCalledWith('rendered');
+        rerender(<MarkdownDiffModeToggle mode="rendered" onChange={onChange} />);
+        fireEvent.click(screen.getByTestId('markdown-diff-mode-toggle'));
+        expect(onChange).toHaveBeenLastCalledWith('source');
+    });
+
+    it('matches markdown paths case-insensitively', () => {
+        expect(isMarkdownDiffPath('a/README.md')).toBe(true);
+        expect(isMarkdownDiffPath('a/x.MD')).toBe(true);
+        expect(isMarkdownDiffPath('a/x.Markdown')).toBe(true);
+        expect(isMarkdownDiffPath('a/x.ts')).toBe(false);
+        expect(isMarkdownDiffPath('a/md')).toBe(false);
+        expect(isMarkdownDiffPath('a/x.mdx')).toBe(false);
     });
 });

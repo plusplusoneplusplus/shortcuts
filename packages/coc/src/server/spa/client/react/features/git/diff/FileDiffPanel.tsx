@@ -14,8 +14,9 @@ import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { useDiffEngine } from '../hooks/useDiffEngine';
-import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle } from './DiffViewToggle';
+import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle, MarkdownDiffModeToggle, isMarkdownDiffPath } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
+import { MarkdownRenderedDiff } from './MarkdownRenderedDiff';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
@@ -166,6 +167,8 @@ export function FileDiffPanel({
     const [editorAttempt, setEditorAttempt] = useState(0);
     const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
     const wantsEditor = diffEngine === 'monaco' && source.fetchFileContent !== undefined;
+    // Markdown files also load both sides so the Rendered mode can be offered.
+    const wantsContent = wantsEditor || (isMarkdownDiffPath(filePath) && source.fetchFileContent !== undefined);
     const editorContentKey = `${workspaceId}\u0000${source.cacheKey}\u0000${filePath}\u0000${editorAttempt}`;
     const sourceRef = useRef(source);
     sourceRef.current = source;
@@ -173,7 +176,7 @@ export function FileDiffPanel({
     useEffect(() => {
         const requestedSource = sourceRef.current;
         const fetchFileContent = requestedSource.fetchFileContent;
-        if (!wantsEditor || !fetchFileContent) return;
+        if (!wantsContent || !fetchFileContent) return;
         let cancelled = false;
         // Retain the last editor models while the next file loads.
         setEditorContent(previous => previous?.status === 'loaded' ? previous : { key: editorContentKey, status: 'loading' });
@@ -190,7 +193,7 @@ export function FileDiffPanel({
             })
             .catch(() => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'failed' }); });
         return () => { cancelled = true; };
-    }, [wantsEditor, filePath, editorContentKey]);
+    }, [wantsContent, filePath, editorContentKey]);
 
     const currentEditorContent = editorContent?.key === editorContentKey ? editorContent : null;
     const contentLoadState: DiffContentLoadState | null = !currentEditorContent ? null
@@ -214,6 +217,14 @@ export function FileDiffPanel({
     const fallbackReason = classicActive ? engineSelection.fallback : null;
     const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
+    // Rendered is a per-view switch for one file; any other file opens in Source.
+    const markdownContent = isMarkdownDiffPath(filePath) && currentEditorContent?.status === 'loaded'
+        && !currentEditorContent.content.binary && !currentEditorContent.content.tooLarge
+        ? currentEditorContent.content : null;
+    const [renderedMarkdownKey, setRenderedMarkdownKey] = useState<string | null>(null);
+    const markdownMode = markdownContent && renderedMarkdownKey === editorContentKey ? 'rendered' : 'source';
+    // Rendered mode is read-only: diff navigation, find and comment controls are hidden.
+    const markdownRendered = markdownMode === 'rendered';
     const [dismissedSearchTarget, setDismissedSearchTarget] = useState<ReviewContentSearchTarget | null>(null);
     const searchTarget = contentSearchTarget !== dismissedSearchTarget && contentSearchTarget?.filePath === filePath
         ? contentSearchTarget : null;
@@ -247,7 +258,7 @@ export function FileDiffPanel({
         viewerRef.current?.scrollLineIntoView(lineIndex);
     }, []);
     const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
-    useDiffFindShortcut(scrollContainerRef, find.openFind);
+    useDiffFindShortcut(scrollContainerRef, find.openFind, !markdownRendered);
 
     const classicSearchLine = useMemo(() => {
         if (!searchTarget || !classicActive || loading || error) return undefined;
@@ -533,11 +544,19 @@ export function FileDiffPanel({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
-                    <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
-                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    {editorSides && <DiffWordWrapToggle />}
-                    {classicActive && source.fullContextFileDiffUrl && (
+                    {markdownContent && (
+                        <MarkdownDiffModeToggle mode={markdownMode}
+                            onChange={mode => setRenderedMarkdownKey(mode === 'rendered' ? editorContentKey : null)} />
+                    )}
+                    {!markdownRendered && (
+                        <>
+                            <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
+                            <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
+                            <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                            {editorSides && <DiffWordWrapToggle />}
+                        </>
+                    )}
+                    {!markdownRendered && classicActive && source.fullContextFileDiffUrl && (
                         <button
                             onClick={() => setFullContextMode(m => !m)}
                             title={fullContextMode ? 'Switch to hunk-only diff' : 'Show full-file context'}
@@ -598,7 +617,7 @@ export function FileDiffPanel({
             {/* ── Main content area ── */}
             <div className="relative flex flex-1 min-h-0">
                 {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
-                {classicActive && find.open && diff && !loading && !error && (
+                {!markdownRendered && classicActive && find.open && diff && !loading && !error && (
                     <DiffFindWidget
                         query={find.query}
                         caseSensitive={find.caseSensitive}
@@ -618,11 +637,11 @@ export function FileDiffPanel({
                     data-testid="file-diff-section"
                     tabIndex={-1}
                 >
-                    <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />
-                    {fallbackReason && (
+                    {!markdownRendered && <FileLevelComments comments={fileComments} renderCommentThread={renderCommentThread} />}
+                    {fallbackReason && !markdownRendered && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
-                    {searchOutsidePatch && (
+                    {searchOutsidePatch && !markdownRendered && (
                         <div className="flex items-center gap-2 px-4 py-2 text-xs" role="status" data-testid="search-outside-patch">
                             <span>{searchTarget.side.toUpperCase()} line {searchTarget.line} is outside the displayed diff.</span>
                             {source.fetchFileContent && (
@@ -635,7 +654,7 @@ export function FileDiffPanel({
                             )}
                         </div>
                     )}
-                    {displayedEditor && (
+                    {displayedEditor && !markdownRendered && (
                         <div hidden={!showEditor} className="h-full" aria-hidden={!showEditor}>
                             <MonacoFileDiffViewer
                                 key={editorAttempt}
@@ -668,7 +687,9 @@ export function FileDiffPanel({
 
                         </div>
                     )}
-                    {showEditor ? null : editorLoading ? (
+                    {markdownRendered && markdownContent ? (
+                        <MarkdownRenderedDiff base={markdownContent.base.content} head={markdownContent.head.content} />
+                    ) : showEditor ? null : editorLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-editor-loading">
                             <Spinner size="sm" /> Loading file content...
                         </div>
@@ -769,7 +790,7 @@ export function FileDiffPanel({
                 </div>
 
                 {/* ── DiffMiniMap ── */}
-                {diff && !loading && !error && classicActive && (
+                {diff && !loading && !error && classicActive && !markdownRendered && (
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 

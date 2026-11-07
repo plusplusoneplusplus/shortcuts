@@ -60,10 +60,10 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Mou
 import type { AppAction } from '../../../contexts/AppContext';
 import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
 import {
-    chatCommitPanelTarget, gitTabOpenSource, gitTabOwnerClient, openPanelGitBranchChanges, type UnifiedPanelGitOpenSource,
+    chatCommitPanelTarget, gitTabOpenSource, gitTabOwnerClient, openPanelGitBranchChanges, openPanelGitCommit, type UnifiedPanelGitOpenSource,
 } from './panelGitCommit';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isFileHistoryEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isFileHistoryEnabled, isFileBlameEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -287,6 +287,7 @@ export function UnifiedRightPanel({
     const groupOrder = useUnifiedTabGroupOrder(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const [fileHistoryEnabled, setFileHistoryEnabled] = useState(() => isFileHistoryEnabled());
+    const [fileBlameEnabled, setFileBlameEnabled] = useState(() => isFileBlameEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
     useEffect(() => {
         const update = () => {
@@ -296,6 +297,7 @@ export function UnifiedRightPanel({
             setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
             setFileHistoryEnabled(isFileHistoryEnabled());
+            setFileBlameEnabled(isFileBlameEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -594,6 +596,44 @@ export function UnifiedRightPanel({
     useEffect(() => { setHistoryTabId(null); }, [activeId]);
     const historyAvailable = fileHistoryEnabled && !splitShown && toolbar?.interactive === true;
     const historyTab = historyAvailable && active && active.id === historyTabId ? active : null;
+
+    // Git blame (`features.fileBlame`) is a per-tab view choice kept in memory
+    // only: every file view starts without it. A view reports whether its file
+    // can carry blame (repo-relative text shown in the code editor).
+    const [blameSupportedIds, setBlameSupportedIds] = useState<ReadonlySet<string>>(() => new Set());
+    const [blameShownIds, setBlameShownIds] = useState<ReadonlySet<string>>(() => new Set());
+    const handleBlameSupport = useCallback((id: string, supported: boolean) => {
+        setBlameSupportedIds(prev => {
+            if (prev.has(id) === supported) return prev;
+            const next = new Set(prev);
+            if (supported) next.add(id); else next.delete(id);
+            return next;
+        });
+    }, []);
+    useEffect(() => {
+        setBlameShownIds(prev => {
+            const live = new Set(tabs.map(tab => tab.id));
+            return [...prev].every(id => live.has(id)) ? prev : new Set([...prev].filter(id => live.has(id)));
+        });
+    }, [tabs]);
+    const blameAvailable = fileBlameEnabled && toolbar?.interactive === true && !!active
+        && blameSupportedIds.has(active.id);
+    const toggleBlame = useCallback((id: string) => {
+        setBlameShownIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    }, []);
+    // A clicked blame line opens its commit in the owner's Git detail. Only a
+    // tab whose owner route matches the panel's resolution for that owner can
+    // navigate; anything else stays inert rather than guess a server.
+    const openBlameCommit = useCallback((tab: UnifiedPanelTab, hash: string) => {
+        if (!appDispatch) return;
+        if ((tab.ownerRoutingRef ?? null) !== (routingRefForPanelOwner(routingRef, tab.ownerWorkspaceId) ?? null)) return;
+        const commitTarget = chatCommitPanelTarget({ workspaceId, chatId, routingRef }, tab.ownerWorkspaceId);
+        if (commitTarget) openPanelGitCommit(appDispatch, commitTarget, hash);
+    }, [appDispatch, workspaceId, chatId, routingRef]);
 
     const explorerToggle = useCallback(
         (placement: 'toolbar' | 'strip') => (
@@ -2337,6 +2377,10 @@ export function UnifiedRightPanel({
                                 open: historyTab !== null,
                                 onToggle: () => setHistoryTabId(historyTab ? null : active.id),
                             } : undefined}
+                            blame={blameAvailable && active ? {
+                                shown: blameShownIds.has(active.id),
+                                onToggle: () => toggleBlame(active.id),
+                            } : undefined}
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
@@ -2484,6 +2528,9 @@ export function UnifiedRightPanel({
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                     onSourceModelChange={splitEnabled ? handleSourceModelChange : undefined}
                                     onReloadControlChange={handleReloadControl}
+                                    blameShown={fileBlameEnabled && blameShownIds.has(tab.id)}
+                                    onBlameSupportChange={fileBlameEnabled ? handleBlameSupport : undefined}
+                                    onOpenBlameCommit={openBlameCommit}
                                     onNotesSelectionChange={updateNotesSelection}
                                     canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
                                         <UnifiedPanelCanvasStack
