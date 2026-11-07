@@ -1,9 +1,10 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Chrome-style resource-tabbed column
-holding Terminal, Work Items, Pull Requests, Notes, Settings, files, canvases,
-chat diffs, local HTML pages and web browser tabs, with a Search/Explorer navigator
-at its right edge. It mounts at every breakpoint.
+holding Work Items, Pull Requests, Notes, files, canvases, chat diffs, local HTML
+pages and web browser tabs, with a Search/Explorer navigator at its right edge.
+Terminal, Settings and To-do are `coc://` pages inside web tabs; there are no
+dedicated tabs for them. It mounts at every breakpoint.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
@@ -30,10 +31,11 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned
+Tabs are scoped by kind: `work-items | pull-requests | notes | note | html-page | browser` are workspace-owned
 (a `browser` tab may also name an owning chat; see "Browser tabs"),
-`file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
-A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
+`file | canvas | diff | git | external | paste` belong to the selected chat (`scopeForKind`).
+A restored workspace list drops chat-owned kinds (legacy workspace Git tabs) and
+the removed `terminal`, `settings` and `todo` kinds.
 Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
 drops it from tab identity but records the active tab under that chat's scope,
 so a note link clicked in a hosted chat selects that note (`noteTabInput`).
@@ -45,7 +47,8 @@ Display grouping is separate from ownership. Default-on `features.panelTabGroups
 partitions the saved order into Tools, Files, Web and Canvas blocks in one row, with
 three visible slots per group; an explicit `false` restores the ungrouped strip.
 `unifiedPanelTabs.css` owns the rounded tab surfaces, active-tab corners, inline
-colored group labels and group lines in both themes. Pinned To-do, active and
+colored group labels and group lines in both themes. `coc://` pages sit in the
+Web group with other web tabs. Pinned To-do, active and
 preview tabs take priority; promoted active/preview tabs occupy trailing slots
 without changing saved order. Folded groups retain the active and pinned tabs;
 a ▾ button beside a folded pill opens the shared searchable menu over all the
@@ -63,7 +66,7 @@ cancel and suppress the trailing click) or Alt+Arrow on the focused pill. Block
 moves only rewrite the order list, so members, activation, folds and keyed hosted
 views are untouched.
 
-With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
+With groups off, `displayGroupForKind` puts `canvas` and `git` with
 workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
 Default-on `features.panelTabReordering` uses `moveVisibleTab` and per-chat/draft
 `orderByScope` in the owner-qualified panel scope; disabling it confines moves to
@@ -90,8 +93,9 @@ copies share a snapshot until the last copy closes. Clearing panel state release
 its snapshots. `UnifiedPasteTab` reads the panel-scope snapshot and hydrates
 `RichEditorCore` in read-only mode using Markdown conversion without note I/O.
 Its copy action uses the raw snapshot; it registers no dirty or save handlers.
-`browser` is a session-only web tab (see "Browser
-tabs"); every open mints a fresh resource id, so it never dedupes. `unifiedTabId`
+`browser` is a web tab (see "Browser tabs"), session-only unless it shows a
+`coc://` page; every open mints a fresh resource id, so only `coc://` page opens
+dedupe (`openCocPageTab`). `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
 queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
@@ -130,7 +134,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
-| `unifiedPanelAddresses.ts` + `UnifiedCocPage.tsx` | `coc://` pages in web tabs (see "`coc://` pages in web tabs"): pure parsing, formatting, labels and the resolved `CocPage`, plus the view switch that reuses the To-do, Settings and Terminal views. |
+| `unifiedPanelAddresses.ts` + `UnifiedCocPage.tsx` | `coc://` pages in web tabs (see "`coc://` pages in web tabs"): pure parsing, formatting, labels, `cocPageKindOf` and the resolved `CocPage`, plus the view switch that reuses the To-do, Settings and Terminal views. |
 | `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes and supplied expiry/session semantics; pairs use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import, surviving CoC restarts in that engine's installation-wide profile. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. The address pill's leading `BrowserSiteInfo` control reads `bridge.siteInfo(viewId, sessionKey)` for the committed document and closes on any owner, view, document or visibility change; HTML page tabs show it with a static local-file description. |
 | `BrowserAddressBar.tsx` | Shared address editing and optional history combobox. Blank input makes no suggestion queries or dropdown; clearing invalidates replies. Main ranks eight suggestions with case-preserving suffix completion. Stored-URL activation, Escape, deletion/paste/caret/IME and owner checks preserve editing. Standard Copy adds escaped HTML plus the raw URL only for a fully selected, unedited committed page; drafts, partial selections and cut retain native defaults. Optional native address menus dispatch ordinary editing commands. See the knowledge shell reference for committed-page identity and clipboard fallback contracts. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
@@ -138,7 +142,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`; `unifiedGitTabId` takes the chat id). The "+" menu's **Git** entry (`gitAvailable`: an `appDispatch` host and a concrete target repo, so never a group root) opens it on the target's branch changes through `openPanelGitBranchChanges`. Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, `openPanelGitWorkingChanges` all pending working changes, and `openPanelGitBranchChanges` the branch range, in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits and "Open working tree" use them. Working and branch changes carry a fresh `openRequest` token so an unchanged route reapplies; the caller also calls `useSplitGitPanel.revealView`, which focuses the Git tab even when it already shows that view. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). The Git tab Open submenu reuses that target through `gitTabOpenOwners` (the tab's repo, its `gitMemberId`, or — for a group tab naming no member — the dock's live members as an explicit choice) and reads `git.listCommits` through `gitTabOwnerClient`: a matching `WorkspaceOwnerContext`, the registered remote, the group's `baseUrl`, or the page origin only for an explicitly local owner; an unconnected remote returns null and the menu shows it unavailable. Its opens also activate the clicked Git tab. |
-| `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
+| `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do page (see "Sentinel To-do"). |
 | `sentinelTodoExcursion.ts` + `SentinelTodoOriginBar.tsx` | The way back from a chat opened through a To-do link (see "To-do excursions"). |
 | `unifiedChatCanvasActions.ts` + `currentChatSend.ts` | Canvas actions resolve their originating chat by chat id. Git review batch sends and the branch view's **Submit PR** (`BranchSubmitPrButton`: asks the chat to call `create_pull_request` on the exact range with `autoFix: true`) use the selected chat's exact panel, clone, endpoint and hydrated conversation/provider binding. Ask requires explicit Autopilot confirmation; changed bindings revoke it. Mode-locked workflows retain their restrictions and Sentinel stays in its terminal mode. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
@@ -147,17 +151,18 @@ model. A dock target change keeps explicit member opens valid within that panel.
 
 Work Items, Pull Requests, Notes and Settings exist for repos and groups as
 panel tools. The add-tab menu always offers them. WI/PR tools follow the dock
-target and carry its concrete owner route; Notes/Settings belong to the panel
-workspace. `UnifiedWorkResourceTab` reuses the existing list/detail screens under
+target and carry its concrete owner route; Notes and the `coc://settings` page
+belong to the panel workspace. `UnifiedWorkResourceTab` reuses the existing list/detail screens under
 the pinned owner client. Their descriptor `workPath` owns detail selection;
 `workResourceNavigation.tsx` preserves hosting scope and selected chat through
 canonical `/panel/<kind>/<owner>/...` routes. WI/PR views remain mounted when
 closed to preserve filters and drafts. Container width selects their compact
 list/detail presentation. `unifiedPanelWorkspaceResources.ts` builds their
-workspace-owned descriptors (Settings carries the panel's concrete owner, never
-the dock target) for the menu and for every outside link
+workspace-owned descriptors for the menu and for every outside link
 (`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`), so links focus
-the same tab, select a requested note and reveal the dock. Settings uses
+the same tab, select a requested note and reveal the dock. Outside Settings links
+open or focus the panel owner's `coc://settings` web tab (`panelSettingsInput`,
+`openCocPageTab`; never the dock target). Settings uses
 `repo-settings/WorkspaceSettingsHost.tsx`: one live `RepoSettingsTab` or
 `RepoGroupSettingsTab` mounts on first open and portals into the panel slot.
 Navigation stays local. Closing parks the form in a hidden node without
@@ -174,9 +179,10 @@ restored from its descriptor (a missing path clears after tree validation)
 and a container-width layout,
 `diff` renders the chat's `WhisperDiffPanel` (the shared `ReviewFiles`
 navigator over the captured tool-call snapshot; see the knowledge
-chat-conversation reference), and `terminal` renders
-`TerminalView`. The add menu activates the target-owned Terminal tab and passes an
-in-memory `openRequest`; descriptors never persist creation intent. `TerminalView`
+chat-conversation reference), and a `coc://terminal` page renders
+`TerminalView`. The add menu opens or focuses the target-owned Terminal page and
+bumps the tab's in-memory `cocOpenRequest`; descriptors never persist creation
+intent, so a restored page passes request 0. `TerminalView`
 waits for successful hydration before creating through its existing WebSocket
 lifecycle if empty, retains pending creates across repeated requests, and requests
 xterm focus only while active. Existing sessions are focused without adding a PTY.
@@ -338,26 +344,33 @@ directory API or expose relative-path copy and Explorer reveal actions.
 
 ## `coc://` pages in web tabs
 
-Default-off `features.panelAddressBar` (`isPanelAddressBarEnabled`) lets a web
-tab show To-do, Settings and Terminal as `coc://` pages, like `chrome://`
-pages: same toolbar, same address bar, the page's view in place of the web
-content. Dedicated To-do, Settings and Terminal tabs are unchanged.
+Terminal, Settings and To-do exist only as `coc://` pages in web tabs, like
+`chrome://` pages: same toolbar, same address bar, the page's view in place of
+the web content. The `+` menu entries, outside Settings links and Sentinel's
+To-do all open (or focus) a web tab at the page's address.
 
 | Address | Shows (`UnifiedCocPage`) | Owner (resolved by the panel's `resolveCocPage`) |
 |---|---|---|
 | `coc://settings` | `WorkspaceSettingsSlot` | The panel scope; an error when the panel does not own Settings. |
-| `coc://terminal` | `TerminalView` | The web tab's own owner. |
-| `coc://todo[/<itemId>]` | `UnifiedTodoTab` | The selected Sentinel chat; "To-do is only available in a Sentinel chat" otherwise. |
+| `coc://terminal` | `TerminalView` | The web tab's own owner (the dock target when the tab opened). |
+| `coc://todo[/<itemId>]` | `UnifiedTodoTab` | The selected Sentinel chat, or the origin Sentinel in the pinned excursion tab; "To-do is only available in a Sentinel chat" otherwise. |
 
 - `parseCocAddress` is case-insensitive for scheme and host, ignores a trailing
   `/`, rejects query/hash, and reports other hosts as "Not supported yet".
   `coc://` is parsed only in the SPA; it never reaches a webview,
-  `normalizeBrowserUrl`, browser history or site approval. With the flag off it
-  stays an unsupported URL.
+  `normalizeBrowserUrl`, browser history or site approval.
 - The text never names an owner. The page keeps the owner resolved when it
-  opened, so a later chat or target change never re-routes it.
+  opened, so a later chat or target change never re-routes it. A restored page
+  whose owner is not known yet (a Sentinel chat still loading) shows the inline
+  error and resolves once it is, unless the user navigated meanwhile.
+- `openCocPageTab` / the panel's `openCocPage` focus a visible web tab already
+  showing the same page for the same owner (`isSameCocPageTab`; To-do matches by
+  page, not item) instead of adding one; a `coc://todo/<itemId>` address always
+  opens anew. Availability errors show inline in the `+` menu and keep it open.
 - `browserUrl` holds the shown address and `browserLabelForUrl` labels a
-  `coc://` tab by its page, so a reopened tab returns to it. The engine keeps
+  `coc://` tab by its page; the strip shows the page's icon. A web tab is
+  persisted only while it shows a `coc://` page, so Terminal, Settings and To-do
+  tabs survive a reload while web pages stay session-only. The engine keeps
   the last http(s) page loaded but hidden; its state never relabels a tab while
   a `coc://` page shows, and a URL set from elsewhere (an AI turn) brings the
   web page back.
@@ -374,15 +387,14 @@ content. Dedicated To-do, Settings and Terminal tabs are unchanged.
   shows the form in the newest, handing it back when that one unmounts. A
   `coc://settings` page mounts its slot only while its tab is active.
 - Terminal sessions are the workspace's server sessions; leaving the page only
-  detaches. Each navigation to `coc://terminal` is an open request, as the `+`
-  menu's.
+  detaches. The page the tab opened at asks for a session only through the
+  panel's `cocOpenRequest`; a later navigation to `coc://terminal` is its own
+  request. The page reports live sessions through `onTerminalSessionsChange`
+  (empty once the tab shows another page) for the close guard.
 - Ctrl+L (Cmd+L on macOS) from a `coc://` page focuses and selects the address,
   except inside xterm. It is a DOM listener because the Settings form is a
-  portal whose React events bubble to its provider.
-- The `+` menu (`onOpenCocAddress`) adds a leading "Open coc://…" row for a
-  parsed address, or the unselectable `url-error` row for an invalid one;
-  choosing it opens a new web tab at the address, and an availability error
-  shows inline and keeps the menu open.
+  portal whose React events bubble to its provider. Ctrl/Cmd+T and the close
+  shortcut treat focus inside a page as content, not as the address bar.
 
 ## The Search/Explorer navigator
 
@@ -396,7 +408,7 @@ The navigator is panel-level chrome, not a tab: it renders for every tab kind
 and for none at all. Its panel-scoped open bit lets the user collapse it without
 closing resource tabs or the right panel.
 
-Activating a `todo` tab hides Explorer through this open bit; Search keeps its
+Activating a tab showing `coc://todo` hides Explorer through this open bit; Search keeps its
 state. Explicit Explorer reopen survives
 item interactions, portaled menus, ledger refreshes and rerenders. Selecting To-do
 again or returning focus/pointer interaction from another content view hides
@@ -540,8 +552,9 @@ follows the portal host even though React events belong to the left Git list.
 The one `ignore` beyond "not our focus" is the terminal: a plain Ctrl+W is
 readline's delete-previous-word, so it is handed to xterm — which sends `\x17`
 and preventDefaults it itself, so the browser still never sees it. The carve-out
-is keyed on the active tab being a `terminal` **and** the focus sitting inside
-that tab's own `unified-panel-view-<id>` container, never on platform detection;
+is keyed on the active tab showing `coc://terminal` **and** the focus sitting inside
+that tab's `coc://` page within its own `unified-panel-view-<id>` container (not
+its toolbar), never on platform detection;
 focus on the strip's tab button is not somebody typing at a prompt. Cmd/Meta+W
 closes a terminal normally. The accepted consequence is that on Linux/Windows a
 terminal tab is closed with the ✕ or a middle click, not the keyboard.
@@ -676,8 +689,8 @@ disabled button with a visible reason; failures show an alert, not success.
 ## Keep-alive and terminals
 
 A tab joins the mounted set when it **first becomes active**, and leaves on close.
-Mount-on-activation (not mount-on-presence) is what makes a restored terminal
-descriptor attach nothing until it is shown — restoration never spawns a PTY.
+Mount-on-activation (not mount-on-presence) is what makes a restored
+`coc://terminal` tab attach nothing until it is shown — restoration never spawns a PTY.
 Collapse is `display:none` on the whole column, so a tab switch, chat switch,
 collapse, or workspace navigation detaches nothing. Only an explicit close ends a
 session.
@@ -692,7 +705,7 @@ process them in rendered order through the same protected path. Cancel leaves
 that target open and continues with later targets. File tabs use only the strip's
 ✕ because `PreviewPane`'s floating close button would duplicate it:
 
-- **Terminal.** `TerminalView` reports its sessions through `onSessionsChange`;
+- **Terminal.** A `coc://terminal` page's `TerminalView` reports its sessions through `onSessionsChange`;
   `liveTerminalSessionIds` counts only `running` sessions that have a server id, so
   a tombstone-only tab closes with no prompt. Terminate happens **before** the
   close and routes through `getCocClientForWorkspace(owner)`; 404 counts as
@@ -1013,10 +1026,11 @@ unresolved remote owners never fall through to the local client. Automatic outco
 bindings stay out of the editable delegation-trigger list.
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
-withdraws it with the host. The `todo` descriptor is
-one tab per concrete owner and chat: `resourceId` is the parent process id.
+withdraws it with the host. The ledger shows as the `coc://todo` page of a web
+tab owned by the ledger workspace and kept with that chat (`sentinelTodoTabInput`
+sets `browserChatId`, which `releaseBrowserChatOwners` never drops for To-do).
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
-including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
+including repo-group members. Only the tab persists; the ledger is fetched from the owning server
 (`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
 `sentinel-todos-changed` events on a workspace-subscribed socket. Default-off live
 `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`: an owner-client
@@ -1037,13 +1051,13 @@ grip on a category section (a mount-local drag ticket; other drops bubble to Don
 reopening), or by Category selects in add/edit forms and non-archived details.
 Moves are revisioned item updates; add forms default to Pick automatically and
 send no `categoryId`; edit conflicts keep the category draft. Owner/transport remounts and request generations discard late results;
-unresolved remote owners make no local requests. Stored `todo`
-tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
-selected hosted Sentinel chat.
+unresolved remote owners make no local requests. Stored To-do pages
+remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
+selected hosted Sentinel chat and focuses the chat's open To-do page.
 
-The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
-shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` shares
+The first ledger write (`ledgerRevision === 1`) opens the page only when the chat
+shows no tab at all and no To-do page (`shouldAutoOpenSentinelTodoTab`), so it
+never steals focus and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` shares
 `sentinelTodoRecentPage` with REST/tool/messaging lists: every unarchived non-Done
 item is included, then recently updated Done items fill a 50-item budget. Active
 counts above 50 stay complete; archived history follows Done. Saved fulfillment,
@@ -1393,7 +1407,9 @@ a link in the pinned list keeps the path and only updates the link to refocus.
 Modified clicks, external links and reloads never start or keep one.
 
 On the path, `useUnifiedPanelTabs` layers the origin's To-do over the read state
-(`withPinnedSentinelTodo`, labelled `To-do · <Sentinel>`); it is never stored, its
+(`withPinnedSentinelTodo`: a `coc://todo` web tab with a fixed owner-keyed id,
+labelled `To-do · <Sentinel>`; the panel resolves its page to the origin's
+ledger even though the visited chat is not a Sentinel); it is never stored, its
 selection is kept with `rememberActiveTab` (the codec drops it), and the shell
 reopens the dock and activates it when `pinnedId` changes. The pinned copy reads
 the origin's ledger owner and shows an owner banner with Unpin. Each owner's view

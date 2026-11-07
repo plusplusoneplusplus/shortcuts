@@ -313,7 +313,7 @@ test.describe('Sub-tab Navigation', () => {
 
         await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
         await openWorkspacePanel(page, 'settings');
-        const settingsTab = page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="settings"]');
+        const settingsTab = page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="browser"]');
         await settingsTab.getByRole('button', { name: /Close/ }).click();
         await expect(page.getByTestId('settings-content-panel')).toBeHidden();
         await openWorkspacePanel(page, 'settings');

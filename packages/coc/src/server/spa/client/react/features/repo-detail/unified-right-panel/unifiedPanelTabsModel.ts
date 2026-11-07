@@ -10,7 +10,7 @@
  * fiddly part — are testable without a DOM.
  *
  * Invariants for every value this module returns:
- *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
+ *  1. **Ownership follows the kind.** Notes and web tabs belong
  *     to the workspace and stay visible across chat switches; file, canvas,
  *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
  *     no chat is selected). See `scopeForKind`. A `browser` tab is filed with
@@ -41,6 +41,7 @@
  */
 
 import type { PersistedGitView } from '../../git/repoGitTab/types';
+import { cocPageKindOf, isCocAddressText } from './unifiedPanelAddresses';
 
 /** The serializable selection owned by a panel-local Notes view. */
 export interface PersistedNotesView {
@@ -50,10 +51,13 @@ export interface PersistedNotesView {
 /**
  * What a tab renders.
  *
- * `terminal` is one live PTY session and `notes` the singleton note navigator —
- * both workspace-owned. `file`, `note`, `canvas`, and `diff` are concrete
- * opened resources; `note` is workspace-owned (a note belongs to the workspace,
- * not to the chat that linked it), the rest follow the selected chat.
+ * `notes` is the singleton note navigator — workspace-owned. `file`, `note`,
+ * `canvas`, and `diff` are concrete opened resources; `note` is
+ * workspace-owned (a note belongs to the workspace, not to the chat that
+ * linked it), the rest follow the selected chat.
+ *
+ * Terminal, Settings and a Sentinel chat's To-do are not kinds: they are
+ * `coc://` pages shown in a `browser` tab (`unifiedPanelAddresses`).
  *
  * There is deliberately no `explorer` kind: the file tree is a panel-level
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
@@ -70,19 +74,15 @@ export interface PersistedNotesView {
  * server named as a definition. Its `resourceId` is the opaque capability the
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
- *
- * `todo` is a Sentinel chat's to-do ledger: one tab per concrete owner and
- * chat, whose `resourceId` is the ledger's parent process id. Only the
- * descriptor persists; the ledger itself lives on the owning server.
  */
-export type UnifiedTabKind = 'terminal' | 'work-items' | 'pull-requests' | 'notes' | 'settings' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
+export type UnifiedTabKind = 'work-items' | 'pull-requests' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'work-items', 'pull-requests', 'notes', 'settings', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
+    'work-items', 'pull-requests', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -94,11 +94,17 @@ export const GIT_TAB_RESOURCE_ID = 'git';
  * show "unavailable"; running Go to Definition again is the real recovery.
  * `html-page` tabs are persisted: the desktop keeps their view live across a
  * full SPA reload, and the restored tab reattaches it by `htmlPageId`.
+ * A `browser` tab is persisted only while it shows a `coc://` page, which
+ * needs no live web view (see `isPersistedTab`).
  */
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'browser', 'paste']);
 
+function isPersistedTab(tab: Pick<UnifiedPanelTab, 'kind' | 'browserUrl'>): boolean {
+    return !EPHEMERAL_KINDS.has(tab.kind) || (tab.kind === 'browser' && isCocAddressText(tab.browserUrl ?? ''));
+}
+
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'work-items', 'pull-requests', 'notes', 'settings', 'note', 'html-page', 'browser']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['work-items', 'pull-requests', 'notes', 'note', 'html-page', 'browser']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -107,7 +113,7 @@ const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['t
 export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
- * Ownership rule (AC-02). Terminals, Notes, and note documents are
+ * Ownership rule (AC-02). Notes, note documents and web tabs are
  * workspace-owned; specific files, canvases, diffs, and the Git tab follow the
  * chat that opened them. Files opened with no chat selected fall back to the workspace,
  * which `scopeKeyFor` handles.
@@ -120,13 +126,13 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
 export type UnifiedTabDisplayGroup = 'tools' | 'resources';
 
 /**
- * Display grouping, separate from ownership. Canvases, Git, and the To-do tab are chat-owned but render
- * with the workspace tools (Terminal, Notes) because they are something
+ * Display grouping, separate from ownership. Canvases and Git are chat-owned but render
+ * with the workspace tools (Notes, web tabs) because they are something
  * the user works in, not a repo file; files, diffs, and external sources form
  * the resource group after the strip's divider.
  */
 export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
-    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'git' || kind === 'todo' ? 'tools' : 'resources';
+    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'git' ? 'tools' : 'resources';
 }
 
 /**
@@ -233,8 +239,8 @@ export interface UnifiedPanelTab {
     /** Desktop view id; a restored page tab reopens this id to reattach the live view. */
     htmlPageId?: string;
     /**
-     * A `browser` tab's current http(s) URL, or absent for a blank tab. Browser
-     * tabs are session-only; the URL is never persisted.
+     * A `browser` tab's current http(s) URL or `coc://` page, or absent for a
+     * blank tab. Only a `coc://` page is persisted; web pages are session-only.
      */
     browserUrl?: string;
     /** A page-requested tab inherits its opener's engine rather than the current default. */
@@ -348,14 +354,16 @@ function visibleBrowserTab(tab: UnifiedPanelTab, chatId: string | null): boolean
 /**
  * Drop every page's conversation owner, so all pages show in every chat again.
  * Used when `features.chatScopedBrowserTabs` turns off; retains the state
- * reference when no page has an owner.
+ * reference when no page has an owner. A Sentinel chat's `coc://todo` page
+ * always stays with its chat: it shows that chat's ledger.
  */
 export function releaseBrowserChatOwners(state: UnifiedPanelState): UnifiedPanelState {
-    if (!state.workspaceTabs.some(tab => tab.browserChatId !== undefined)) return state;
+    const releasable = (tab: UnifiedPanelTab) => tab.browserChatId !== undefined && cocPageKindOf(tab.browserUrl) !== 'todo';
+    if (!state.workspaceTabs.some(releasable)) return state;
     return {
         ...state,
         workspaceTabs: state.workspaceTabs.map(tab => {
-            if (tab.browserChatId === undefined) return tab;
+            if (!releasable(tab)) return tab;
             const { browserChatId: _owner, ...rest } = tab;
             return rest;
         }),
@@ -1090,8 +1098,8 @@ export function serializeUnifiedPanelState(state: UnifiedPanelState): string {
     // `revealNonce` is a "scroll there again now" signal, not identity: writing
     // it would put a value in storage that a restore must ignore anyway.
     const persistable = (list: readonly UnifiedPanelTab[]) => list
-        .filter(tab => !EPHEMERAL_KINDS.has(tab.kind))
-        .map(({ revealNonce: _nonce, ...tab }) => tab);
+        .filter(isPersistedTab)
+        .map(({ revealNonce: _nonce, browserEngine: _engine, ...tab }) => tab);
     const written = new Set<string>();
     const workspaceTabs = persistable(state.workspaceTabs);
     for (const tab of workspaceTabs) written.add(tab.id);
@@ -1134,7 +1142,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
     if (raw === null || typeof raw !== 'object') return null;
     const value = raw as Record<string, unknown>;
     const { kind, ownerWorkspaceId, resourceId, label, id } = value;
-    if (!isKind(kind) || EPHEMERAL_KINDS.has(kind)) return null;
+    if (!isKind(kind) || !isPersistedTab({ kind, browserUrl: typeof value.browserUrl === 'string' ? value.browserUrl : undefined })) return null;
     if (typeof ownerWorkspaceId !== 'string' || ownerWorkspaceId === '') return null;
     if (typeof resourceId !== 'string' || resourceId === '') return null;
     if (typeof label !== 'string' || label === '') return null;
@@ -1178,6 +1186,8 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
         ...(typeof value.workPath === 'string' ? { workPath: value.workPath } : {}),
         ...(kind === 'html-page' ? { htmlPageId: value.htmlPageId as string } : {}),
+        ...(kind === 'browser' ? { browserUrl: value.browserUrl as string } : {}),
+        ...(kind === 'browser' && isNonEmptyString(value.browserChatId) ? { browserChatId: value.browserChatId } : {}),
     };
     return tab;
 }
@@ -1292,8 +1302,8 @@ function stripPreview(tab: UnifiedPanelTab): UnifiedPanelTab {
  * that *are* valid rather than to a blank panel, and a wholly unusable payload
  * returns the empty state. Selections pointing at rejected tabs are dropped.
  *
- * Restoring never creates anything: a terminal descriptor here means "attach to
- * this session id if it still exists", never "spawn a replacement".
+ * Restoring never creates anything: a descriptor names a resource, never a
+ * request to spawn one.
  */
 export function parseUnifiedPanelState(raw: string | null): UnifiedPanelState {
     return restoreUnifiedPanelState(raw).state;

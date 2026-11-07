@@ -6,7 +6,8 @@
  * record per window naming the origin Sentinel (panel scope, chat, ledger
  * owner, title, route) and the hosted chats visited since. While the selected
  * chat is on that path, the panel layers the origin's To-do over the stored
- * tabs as a transient, owner-labelled tab, and the chat shows an origin bar
+ * tabs as a transient, owner-labelled `coc://todo` web tab whose page the
+ * panel resolves to the origin's ledger, and the chat shows an origin bar
  * with Back to Sentinel. Back, arriving at the origin from anywhere, Unpin, or
  * closing the pinned tab ends it. Nothing here writes ledger or chat state, and
  * a reload forgets it.
@@ -77,8 +78,17 @@ export function pinnedSentinelTodoLabel(origin: SentinelTodoExcursionOrigin): st
     return `To-do · ${origin.title ?? 'Sentinel'}`;
 }
 
+/**
+ * The pinned To-do: a `coc://todo` web tab in the visited chat with a fixed
+ * id, so the same excursion layers the same tab on every read. The panel
+ * resolves its page to the origin's ledger (`pinnedSentinelTodoTabId`).
+ */
 function pinnedInput(excursion: SentinelTodoExcursion, chatId: string) {
-    return { ...sentinelTodoTabInput(excursion.origin.owner, chatId), label: pinnedSentinelTodoLabel(excursion.origin) };
+    return {
+        ...sentinelTodoTabInput(excursion.origin.owner, chatId),
+        resourceId: `sentinel-todo-pin:${encodeURIComponent(sentinelTodoOwnerKey(excursion.origin.owner))}`,
+        label: pinnedSentinelTodoLabel(excursion.origin),
+    };
 }
 
 /** Id of the pinned To-do in a chat on the path, or null elsewhere. */

@@ -984,16 +984,10 @@ describe('Features card UI metadata', () => {
         })).fileBlameEnabled).toBe(true);
     });
 
-    it('exposes the panel address bar as a live, experimental default-off Appearance toggle', () => {
-        const def = getAdminSettingDefinition('features.panelAddressBar')!;
-        expect(def.value).toEqual({ kind: 'boolean' });
-        expect(def.default).toBe(false);
-        expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('panelAddressBarEnabled');
-        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental', testId: 'toggle-panel-address-bar-enabled' });
-        expect(DEFAULT_CONFIG.features.panelAddressBar).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).panelAddressBarEnabled).toBe(false);
-        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, { features: { panelAddressBar: true } })).panelAddressBarEnabled).toBe(true);
+    it('has no panel address bar setting or runtime flag; coc:// pages are always on', () => {
+        expect(getAdminSettingDefinition('features.panelAddressBar')).toBeUndefined();
+        expect(DEFAULT_CONFIG.features).not.toHaveProperty('panelAddressBar');
+        expect(buildRuntimeFeatureFlags({})).not.toHaveProperty('panelAddressBarEnabled');
     });
 
     it.each(['features.chatHistoryPaging', 'features.canvasToolScripts'])('defaults experimental %s on and keeps explicit false', key => {
@@ -1176,7 +1170,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.binaryFileReveal': 'appearance',
         'features.fileHistory': 'appearance',
         'features.fileBlame': 'appearance',
-        'features.panelAddressBar': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',
         'features.chatScopedBrowserTabs': 'browser',

@@ -3434,15 +3434,15 @@ describe('Sentinel chat registry and persistent tabs', () => {
             first: useUnifiedPanelTabs('ws-1', 'chat-1'),
             second: useUnifiedPanelTabs('ws-2', 'chat-1'),
         }));
-        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
-        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.first.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
+        expect(result.current.second.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
         act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false }));
-        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
-        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.first.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
+        expect(result.current.second.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
         expect(['ws-1', 'ws-2'].map(readUnifiedPanelState)).toEqual(saved);
         act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true }));
-        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
-        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.first.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
+        expect(result.current.second.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
     });
 
     it('publishes per panel scope and chat and withdraws on unmount', () => {
@@ -3459,8 +3459,8 @@ describe('Sentinel chat registry and persistent tabs', () => {
     it('restores stored To-do tabs without runtime feature configuration', () => {
         act(() => writeUnifiedPanelState('ws-1', openTab(EMPTY_UNIFIED_PANEL, sentinelTodoTabInput(OWNER, 'chat-1'))));
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-1'));
-        expect(result.current.tabs.map(tab => tab.kind)).toEqual(['todo']);
-        expect(result.current.active?.resourceId).toBe(OWNER.processId);
+        expect(result.current.tabs.map(tab => tab.browserUrl)).toEqual(['coc://todo']);
+        expect(result.current.active).toMatchObject({ ownerWorkspaceId: OWNER.ownerWorkspaceId, browserChatId: 'chat-1' });
     });
 });
 

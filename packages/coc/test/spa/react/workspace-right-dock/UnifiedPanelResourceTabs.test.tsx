@@ -86,6 +86,8 @@ vi.mock('../../../../src/server/spa/client/react/tasks/WorkspaceFileNoteEditorIO
     createWorkspaceFileNoteEditorIO: () => ({ tag: 'workspace-file' }),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
+    lookupCloneBaseUrl: () => null,
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
 }));
 // `PreviewPane` opens a language document for every live repo file; this suite
@@ -224,7 +226,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         await screen.findByTestId('mock-terminal');
@@ -236,7 +238,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabReorderingEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         const terminal = await screen.findByTestId('mock-terminal');
@@ -258,7 +260,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabReorderingEnabled: true, markdownPanelPreviewEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         const terminal = await screen.findByTestId('mock-terminal');
@@ -296,7 +298,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
     it('shows a hidden tab\'s unsaved edits in the strip, and clears them when it closes', async () => {
         const fileId = openFile({ path: 'src/a.ts' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
 

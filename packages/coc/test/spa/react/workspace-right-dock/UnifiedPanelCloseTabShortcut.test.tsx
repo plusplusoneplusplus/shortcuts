@@ -70,6 +70,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearClosedBrowserTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedClosedBrowserTabs';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import { getUnifiedGitTabDirtyBridge, openUnifiedGitTab, useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
@@ -155,6 +156,8 @@ describe('unified panel close-tab shortcut', () => {
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        // A closed coc:// tab is a reopenable web tab; never carry one between cases.
+        clearClosedBrowserTabs();
         stubOffsetParent();
     });
     afterEach(() => {
@@ -260,12 +263,12 @@ describe('unified panel close-tab shortcut', () => {
         renderPanel();
         openResource('terminal');
         openResource('notes');
-        expect(tabKinds()).toEqual(['terminal', 'notes']);
+        expect(tabKinds()).toEqual(['notes', 'browser']);
 
         // Notes was opened last, so it is the active tab.
         focusIn('mock-notes-input');
         pressCloseTab();
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('does nothing when focus is outside the panel', () => {
@@ -337,7 +340,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('closes the terminal tab on Cmd+W', () => {
@@ -353,7 +356,7 @@ describe('unified panel close-tab shortcut', () => {
     it('takes Ctrl+W when a terminal is active but the focus is on the tab strip', () => {
         renderPanel();
         openResource('terminal');
-        const tab = document.querySelector('[role="tab"][data-kind="terminal"]') as HTMLElement;
+        const tab = document.querySelector('[role="tab"][data-kind="browser"]') as HTMLElement;
         act(() => { tab.focus(); });
 
         const event = pressCloseTab();
@@ -370,7 +373,7 @@ describe('unified panel close-tab shortcut', () => {
         pressCloseTab({ metaKey: true });
 
         expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('stops propagation, so no bubble-phase owner sees the key', () => {
@@ -400,6 +403,8 @@ describe('unified panel new-browser shortcut', () => {
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        // A closed coc:// tab is a reopenable web tab; never carry one between cases.
+        clearClosedBrowserTabs();
         stubOffsetParent();
     });
     afterEach(() => { cleanup(); nativeMenu.enabled = false; clearUnifiedPanelState(); clearUnifiedTreeState(); });
@@ -489,8 +494,9 @@ describe('unified panel new-browser shortcut', () => {
         editable.remove();
         focusIn('unified-panel-open-menu');
         expect(pressAddTab().defaultPrevented).toBe(true);
-        expect(tabKinds()).toEqual(['notes', 'terminal', 'browser']);
-        expect(document.activeElement).toBe(screen.getByTestId('browser-address'));
+        expect(tabKinds()).toEqual(['notes', 'browser', 'browser']);
+        expect(document.activeElement?.getAttribute('data-testid')).toBe('browser-address');
+        expect((document.activeElement as HTMLInputElement).value).toBe('');
     });
 
     it('preserves Monaco bindings even on non-editable editor chrome', () => {

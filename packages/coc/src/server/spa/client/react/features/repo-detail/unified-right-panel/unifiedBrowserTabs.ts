@@ -1,8 +1,8 @@
 /**
  * unifiedBrowserTabs — pure rules for the panel's general-purpose `browser` tab.
  *
- * A browser tab is workspace-owned and session-only: it never reaches storage,
- * so restarting CoC starts with none. Each Browser open is a new tab (no dedupe
+ * A browser tab is workspace-owned and a web page is session-only: it never
+ * reaches storage, so restarting CoC starts with none. Each Browser open is a new tab (no dedupe
  * by URL), and the tab carries the concrete owner the dock targeted when it was
  * opened. That identity governs routing; each engine's persistent sign-ins are
  * shared installation-wide. Changing the dock target never retargets a tab.
@@ -12,14 +12,18 @@
  * its view; a tab opened with no conversation stays workspace-global. Copies
  * of a tab (duplicate, popup, reopen) keep the source's owner exactly.
  *
+ * A tab may also show a `coc://` page (Terminal, Settings, To-do). Such a
+ * tab is persisted, and opening a page focuses a visible tab already showing
+ * it for the same owner (`openCocPageTab`).
+ *
  * URL handling is deliberately narrow: only http(s) is accepted, a bare domain
  * gets `https://` (loopback hosts get `http://`), and arbitrary text is rejected
  * rather than turned into a search query.
  */
 
 import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
-import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
-import { cocAddressLabel, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
+import { activateTab, openTab, visibleTabs, type OpenUnifiedTabInput, type UnifiedPanelState, type UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { cocAddressLabel, cocPageKindOf, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -206,4 +210,21 @@ export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | 
         label: tab.label,
         ...(tab.browserEngine ? { browserEngine: tab.browserEngine } : {}),
     };
+}
+
+/** Whether `tab` is a web tab showing `input`'s `coc://` page for the same owner. */
+export function isSameCocPageTab(tab: UnifiedPanelTab, input: OpenUnifiedTabInput): boolean {
+    const kind = cocPageKindOf(input.browserUrl);
+    return kind !== null && tab.kind === 'browser' && cocPageKindOf(tab.browserUrl) === kind
+        && tab.ownerWorkspaceId === input.ownerWorkspaceId
+        && (tab.ownerRoutingRef ?? null) === (input.ownerRoutingRef ?? null);
+}
+
+/**
+ * Open a `coc://` page tab, or focus the visible tab already showing that page
+ * for the same owner. `input` is a `browserOpenInput` at the page's address.
+ */
+export function openCocPageTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): UnifiedPanelState {
+    const existing = visibleTabs(state, input.chatId, false).find(tab => isSameCocPageTab(tab, input));
+    return existing ? activateTab(state, input.chatId, existing.id) : openTab(state, input);
 }

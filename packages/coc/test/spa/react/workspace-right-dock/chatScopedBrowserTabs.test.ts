@@ -46,7 +46,7 @@ describe('browser tab conversation ownership', () => {
     it('A -> Sentinel -> B -> A shows only the selected chat\'s pages and restores each chat\'s selection', () => {
         applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: true });
         let state = EMPTY_UNIFIED_PANEL;
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'term', label: 'Terminal' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: null, resourceId: 'term', label: 'Terminal' });
         const docs = page(state, 'chat-a', 'Docs'); state = docs.state;
         const report = page(state, 'chat-a', 'Report'); state = report.state;
         const results = page(state, 'chat-b', 'Results'); state = results.state;
@@ -104,6 +104,15 @@ describe('browser tab conversation ownership', () => {
         expect(labels(released, 'chat-b')).toEqual(['A']);
         expect(releaseBrowserChatOwners(released)).toBe(released);
         expect(releaseBrowserChatOwners(EMPTY_UNIFIED_PANEL)).toBe(EMPTY_UNIFIED_PANEL);
+    });
+
+    it('keeps a Sentinel chat\'s coc://todo page with its chat when owners are released', () => {
+        const todo = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'browser', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'todo-page', label: 'To-do',
+            browserUrl: 'coc://todo', browserChatId: 'chat-a',
+        });
+        expect(releaseBrowserChatOwners(todo)).toBe(todo);
+        expect(labels(todo, 'chat-b')).toEqual([]);
     });
 
     it('duplicates and reopens with the source page\'s owner, global staying global', () => {

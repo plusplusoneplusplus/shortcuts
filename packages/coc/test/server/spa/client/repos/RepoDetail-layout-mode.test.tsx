@@ -335,7 +335,7 @@ describe('RepoDetail — panel reordering configuration', () => {
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         if (enabled !== undefined) applyRuntimeConfigPatch({ panelTabReorderingEnabled: enabled });
         mockActiveRepoSubTab = 'activity';
-        const ids = (['terminal', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {
+        const ids = (['notes', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {
             kind, ownerWorkspaceId: workspaceId, chatId: null, resourceId: kind, label: kind,
         }));
         renderDetail(makeRepo(workspaceId));

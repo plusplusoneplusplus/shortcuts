@@ -148,30 +148,19 @@ describe('buildOpenMenuItems', () => {
         expect(firstOpenMenuIndex(items)).toBe(-1);
     });
 
-    it('leads with an Open coc:// row for a panel address when enabled', () => {
-        const items = buildOpenMenuItems({ actions, files, canvases, query: ' COC://Settings/ ', cocAddresses: true });
+    it('leads with an Open coc:// row for a panel address', () => {
+        const items = buildOpenMenuItems({ actions, files, canvases, query: ' COC://Settings/ ' });
         expect(items[0]).toEqual({ key: 'coc:coc://settings', type: 'coc', address: { kind: 'settings' } });
         expect(firstOpenMenuIndex(items)).toBe(0);
         expect(items.some(item => item.type === 'url' || item.type === 'url-error')).toBe(false);
-        expect(buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://todo/item-1', cocAddresses: true })[0])
+        expect(buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://todo/item-1' })[0])
             .toMatchObject({ type: 'coc', address: { kind: 'todo', itemId: 'item-1' } });
     });
 
     it('reports an unknown coc:// host inline as an unselectable row', () => {
-        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://git', cocAddresses: true });
+        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://git' });
         expect(items[0]).toEqual({ key: 'url-error', type: 'url-error', reason: 'Not supported yet' });
         expect(isOpenMenuItemEnabled(items[0])).toBe(false);
-    });
-
-    it('treats coc:// as an unsupported URL when panel addresses are off', () => {
-        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://settings' });
-        expect(items[0]).toMatchObject({ type: 'url-error' });
-        expect(items.some(item => item.type === 'coc')).toBe(false);
-    });
-
-    it('keeps plain text unchanged with panel addresses on', () => {
-        const query = { actions, files, canvases, query: 'app' };
-        expect(buildOpenMenuItems({ ...query, cocAddresses: true })).toEqual(buildOpenMenuItems(query));
     });
 
     it('leaves plain text to file search, never a web search', () => {

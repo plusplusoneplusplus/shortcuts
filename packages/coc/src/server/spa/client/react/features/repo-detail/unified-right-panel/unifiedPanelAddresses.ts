@@ -1,10 +1,10 @@
 /**
- * unifiedPanelAddresses — the `coc://` pages a web tab can show
- * (`features.panelAddressBar`).
+ * unifiedPanelAddresses — the `coc://` pages a web tab can show.
  *
- * Phase 1 covers To-do, Settings and Terminal. An address names a page only,
- * never an owner: the panel resolves the owner the same way its "+" menu does,
- * so text can never route a repo group or remote clone to the wrong repo.
+ * To-do, Settings and Terminal exist only as these pages; there is no
+ * dedicated tab kind for them. An address names a page only, never an owner:
+ * the panel resolves the owner from the tab and the selected chat, so text can
+ * never route a repo group or remote clone to the wrong repo.
  * `coc://` is parsed here only; it never reaches a webview, browser URL
  * normalization, history or site approval.
  */
@@ -50,6 +50,13 @@ export function parseCocAddress(text: string): CocAddress | { error: string } {
         return { kind: 'todo', itemId };
     }
     return { error: COC_ADDRESS_UNSUPPORTED };
+}
+
+/** The page a tab URL shows, or null for a web page, a blank tab or an invalid address. */
+export function cocPageKindOf(url: string | undefined): CocAddress['kind'] | null {
+    if (!url || !isCocAddressText(url)) return null;
+    const address = parseCocAddress(url);
+    return 'error' in address ? null : address.kind;
 }
 
 /** The canonical text of an address. */

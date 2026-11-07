@@ -24,6 +24,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
     },
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
+    lookupCloneBaseUrl: () => null,
     getCocClientForWorkspace: () => ({
         canvases: {
             list: (...args: unknown[]) => listCanvases(...args),
@@ -49,6 +51,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
     const handlers = {
         onOpenResource: props.onOpenResource ?? vi.fn(),
         onOpenWorkspaceResource: props.onOpenWorkspaceResource ?? vi.fn(),
+        onOpenCocAddress: props.onOpenCocAddress ?? vi.fn(),
         onClose: props.onClose ?? vi.fn(),
     };
     const view = render(
@@ -58,7 +61,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
             target={props.target ?? WS}
             targetRoutingRef={props.targetRoutingRef}
             targets={props.targets}
-            todoInput={props.todoInput}
+            todoAvailable={props.todoAvailable}
             settingsAvailable={props.settingsAvailable}
             gitAvailable={props.gitAvailable}
             {...handlers}
@@ -115,21 +118,21 @@ describe('actions', () => {
         const { unmount } = renderMenu();
         expect(screen.queryByTestId('unified-panel-open-settings')).toBeNull();
         unmount();
-        const { onOpenWorkspaceResource, onClose } = renderMenu({ settingsAvailable: true });
+        const { onOpenCocAddress, onClose } = renderMenu({ settingsAvailable: true });
         const row = screen.getByTestId('unified-panel-open-settings');
         expect(row.textContent).toContain('Settings');
         expect(row.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
         fireEvent.click(row);
-        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('settings');
+        expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'settings' });
         expect(onClose).toHaveBeenCalledOnce();
     });
 
     it('opens Settings through keyboard filtering and Enter without navigation', async () => {
-        const { onOpenWorkspaceResource } = renderMenu({ settingsAvailable: true });
+        const { onOpenCocAddress } = renderMenu({ settingsAvailable: true });
         const hash = location.hash;
         await search('settings');
         fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
-        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('settings');
+        expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'settings' });
         expect(location.hash).toBe(hash);
     });
     it('offers Git only when admitted and opens it through the panel callback', () => {
@@ -144,10 +147,19 @@ describe('actions', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('opens a workspace resource through the panel callback', async () => {
-        const { onOpenWorkspaceResource } = renderMenu();
+    it('opens Terminal as the coc://terminal page', async () => {
+        const { onOpenCocAddress, onOpenWorkspaceResource, onClose } = renderMenu();
         fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
-        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('terminal');
+        expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'terminal' });
+        expect(onOpenWorkspaceResource).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the menu open with an inline error when a page is unavailable', () => {
+        const { onClose } = renderMenu({ onOpenCocAddress: vi.fn(() => 'Settings is not available for this workspace'), settingsAvailable: true });
+        fireEvent.click(screen.getByTestId('unified-panel-open-settings'));
+        expect(screen.getByText('Settings is not available for this workspace')).toBeTruthy();
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('hides Explorer for a repo group root and keeps Terminal and Notes', () => {
@@ -249,6 +261,7 @@ describe('file search', () => {
                 targets={targets}
                 onOpenResource={onOpenResource}
                 onOpenWorkspaceResource={vi.fn()}
+                onOpenCocAddress={vi.fn()}
                 onClose={vi.fn()}
             />,
         );
@@ -312,7 +325,7 @@ describe('keyboard', () => {
     });
 
     it('never parks the cursor on a disabled action', async () => {
-        const { onOpenResource, onOpenWorkspaceResource } = renderMenu({ chatId: null });
+        const { onOpenResource, onOpenCocAddress } = renderMenu({ chatId: null });
         const input = screen.getByTestId('unified-panel-open-menu-search');
         // terminal, explorer, work-items, pull-requests, notes, browser, [canvas disabled] — arrowing past
         // Browser must wrap to Terminal rather than land on Canvas.
@@ -323,7 +336,7 @@ describe('keyboard', () => {
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('terminal');
+        expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'terminal' });
         expect(onOpenResource).not.toHaveBeenCalled();
     });
 
@@ -526,7 +539,7 @@ describe('icon contrast', () => {
     it('gives every monochrome action icon the theme foreground, selected or not', () => {
         renderMenu({
             settingsAvailable: true,
-            todoInput: { kind: 'todo', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do' },
+            todoAvailable: true,
         });
         for (const action of MONOCHROME) expectThemedRow(screen.getByTestId(`unified-panel-open-${action}`));
         // Hover moves the cursor; the selected row keeps the foreground too.
@@ -564,24 +577,21 @@ describe('icon contrast', () => {
 });
 
 describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
-    const todoInput = {
-        kind: 'todo' as const, ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do',
-    };
-
-    it('is omitted unless the panel hands it a Sentinel To-do tab', () => {
+    it('is omitted unless the panel reports a Sentinel To-do', () => {
         renderMenu();
         expect(screen.queryByTestId('unified-panel-open-todo')).toBeNull();
     });
 
-    it('opens (or reopens) the chat\'s To-do tab and closes the menu', () => {
-        const { onOpenResource, onClose } = renderMenu({ todoInput });
+    it('opens (or focuses) the chat\'s coc://todo page and closes the menu', () => {
+        const { onOpenCocAddress, onOpenResource, onClose } = renderMenu({ todoAvailable: true });
         fireEvent.click(screen.getByTestId('unified-panel-open-todo'));
-        expect(onOpenResource).toHaveBeenCalledWith(todoInput);
+        expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'todo' });
+        expect(onOpenResource).not.toHaveBeenCalled();
         expect(onClose).toHaveBeenCalled();
     });
 
     it('leads with the shared checklist icon like every other action row', () => {
-        renderMenu({ todoInput });
+        renderMenu({ todoAvailable: true });
         const row = screen.getByTestId('unified-panel-open-todo');
         const icon = row.firstElementChild as HTMLElement;
         expect(icon.getAttribute('aria-hidden')).not.toBeNull();

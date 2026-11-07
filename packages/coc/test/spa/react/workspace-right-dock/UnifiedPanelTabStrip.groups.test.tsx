@@ -127,7 +127,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
     });
 
     it.each([
-        ['terminal', 'tools'], ['browser', 'web'], ['canvas', 'canvas'],
+        ['work-items', 'tools'], ['browser', 'web'], ['canvas', 'canvas'],
     ] as const)('shows the matching %s icon in expanded %s overflow', (kind, group) => {
         const tabs = Array.from({ length: 4 }, (_, index) => tab(kind, `Resource ${index}`));
         const { props, rerender } = renderStrip({ tabs });
@@ -162,10 +162,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
         expect(screen.getByRole('tablist', { name: 'Open resources' })).toHaveAttribute('aria-orientation', 'horizontal');
         expect(screen.getAllByRole('group').map(node => node.getAttribute('aria-label'))).toEqual([
-            'Tools, 7 tabs, 4 hidden', 'Files, 5 tabs, 2 hidden',
+            'Tools, 4 tabs, 1 hidden', 'Files, 5 tabs, 2 hidden',
             'Web, 2 tabs, 0 hidden', 'Canvas, 1 tabs, 0 hidden',
         ]);
-        for (const [name, count] of [['Tools', 7], ['Files', 5], ['Web', 2], ['Canvas', 1]]) {
+        for (const [name, count] of [['Tools', 4], ['Files', 5], ['Web', 2], ['Canvas', 1]]) {
             expect(screen.getByRole('button', { name: `${name}, ${count} tabs` })).toHaveAttribute('aria-expanded', 'true');
         }
         expect(tabNode(tabs.find(entry => entry.kind === 'browser')!)).toHaveAttribute('aria-selected', 'true');
@@ -285,7 +285,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('closes one hidden row and bulk-closes all group members except the active one, independent of search', () => {
         const groupTabs = files();
-        const tabs = Object.freeze([tab('terminal', 'Shell'), ...groupTabs, tab('canvas', 'Plan')]);
+        const tabs = Object.freeze([tab('work-items', 'Shell'), ...groupTabs, tab('canvas', 'Plan')]);
         const { props } = renderStrip({ tabs, activeId: groupTabs[1].id });
         fireEvent.click(overflow());
         fireEvent.click(within(screen.getByRole('listbox')).getByRole('button', { name: `Close ${groupTabs[4].label}` }));
@@ -299,7 +299,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('bulk-closes the whole group when the active tab belongs to another group', () => {
         const groupTabs = files();
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const { props } = renderStrip({ tabs: Object.freeze([shell, ...groupTabs]), activeId: shell.id });
         fireEvent.click(overflow());
         fireEvent.click(screen.getByRole('button', { name: 'Close all in group' }));
@@ -361,7 +361,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
     });
 
     it('keeps a folded inactive group label without exposing its ordinary tabs or overflow', () => {
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         renderStrip({ tabs: [shell, ...files()], activeId: shell.id, foldedGroups: new Set(['files']) });
         expect(shownIds('files')).toEqual([]);
         expect(screen.getByRole('button', { name: 'Files, 5 tabs' })).toHaveAttribute('aria-expanded', 'false');
@@ -371,7 +371,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('rejects cross-group dragging and clears an existing drop marker', () => {
         const tabs = files(2);
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: tabs[0].id });
         const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
         fireEvent.dragStart(tabNode(tabs[0]), { dataTransfer });
@@ -387,7 +387,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('uses group-local after-target ids for drops even when other kinds are interleaved in saved order', () => {
         const tabs = files(3);
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const web = tab('browser', 'Website');
         const { props } = renderStrip({ tabs: [tabs[0], shell, tabs[1], web, tabs[2]] });
         fireEvent.dragStart(tabNode(tabs[0]));
@@ -400,7 +400,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('stops Alt arrows at group edges and targets hidden neighbours within the same group', () => {
         const tabs = files();
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const { props } = renderStrip({ tabs: [tabs[0], shell, ...tabs.slice(1)], activeId: tabs[4].id });
         fireEvent.keyDown(tabNode(shell), { key: 'ArrowRight', altKey: true });
         fireEvent.keyDown(tabNode(tabs[0]), { key: 'ArrowLeft', altKey: true });
@@ -415,7 +415,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('traverses group labels, tabs and +N with arrow keys, Home and End without activating labels', () => {
         const tabs = files();
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: tabs[0].id });
         const toolsLabel = screen.getByRole('button', { name: 'Tools, 1 tabs' });
         const filesLabel = screen.getByRole('button', { name: 'Files, 5 tabs' });
@@ -447,7 +447,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('offers group bulk commands and disables moves at group boundaries, not global boundaries', () => {
         const tabs = files();
-        const shell = tab('terminal', 'Shell');
+        const shell = tab('work-items', 'Shell');
         const { props } = renderStrip({ tabs: [shell, ...tabs], activeId: tabs[4].id });
         fireEvent.contextMenu(tabNode(tabs[0]));
         expect(screen.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
@@ -474,7 +474,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 });
 
 describe('UnifiedPanelTabStrip group block reordering', () => {
-    const tools = [tab('terminal', 'Shell')];
+    const tools = [tab('work-items', 'Shell')];
     const fileTabs = [tab('file', 'a.ts'), tab('file', 'b.ts'), tab('file', 'c.ts')];
     const web = ['Google', 'Bing', 'YouTube', 'Docs'].map(label => tab('browser', label));
     const tabs = Object.freeze([...tools, ...fileTabs, ...web]);
@@ -656,7 +656,7 @@ describe('UnifiedPanelTabStrip folded group menu', () => {
         localStorage.clear();
     });
 
-    const shell = tab('terminal', 'Shell');
+    const shell = tab('work-items', 'Shell');
     const groupMenu = (group: UnifiedTabStripGroup = 'files') => screen.getByTestId(`unified-panel-group-menu-${group}`);
     const optionNames = () => screen.getAllByRole('option').map(node => node.textContent);
 

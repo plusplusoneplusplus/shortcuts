@@ -1,7 +1,8 @@
 /**
  * unifiedPanelWorkspaceResources — the one way to open or focus a workspace's
  * resource tools. Notes/Settings belong to the panel workspace; WI/PR tabs
- * carry a concrete repo or group-member owner. The add-tab menu and
+ * carry a concrete repo or group-member owner. Settings is the `coc://settings`
+ * page in a web tab. The add-tab menu and
  * every link outside the panel build the same descriptor and land on the same
  * tab instead of switching a page-level view.
  */
@@ -13,9 +14,11 @@ import type { SettingsSection } from '../../../types/dashboard';
 import { openWorkspaceDock } from '../WorkspaceDockToggle';
 import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { useUnifiedPanelHost } from './unifiedPanelHost';
-import { openTab, unifiedTabId, updateNotesView, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { activeTabId, openTab, unifiedTabId, updateNotesView, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { browserOpenInput, openCocPageTab } from './unifiedBrowserTabs';
 
 export type PanelWorkspaceResourceKind = 'notes' | 'settings' | 'work-items' | 'pull-requests';
+type PanelTabResourceKind = Exclude<PanelWorkspaceResourceKind, 'settings'>;
 
 export interface PanelWorkspaceResourceOwner {
     /** The panel's scope and the resource owner: a raw repo or group workspace id. */
@@ -34,7 +37,7 @@ export function panelOwnerForSelection(selectionId: string, chatId: string | nul
 
 /** One workspace-owned tool descriptor, shared by the menu and external links. */
 export function panelWorkspaceResourceInput(
-    kind: PanelWorkspaceResourceKind,
+    kind: PanelTabResourceKind,
     owner: PanelWorkspaceResourceOwner,
 ): OpenUnifiedTabInput {
     return {
@@ -43,25 +46,40 @@ export function panelWorkspaceResourceInput(
         ...(kind !== 'notes' ? { ownerRoutingRef: owner.routingRef } : {}),
         chatId: owner.chatId,
         resourceId: kind,
-        label: kind === 'settings' ? 'Settings' : kind === 'notes' ? 'Notes' : kind === 'work-items' ? 'Work Items' : 'Pull Requests',
+        label: kind === 'notes' ? 'Notes' : kind === 'work-items' ? 'Work Items' : 'Pull Requests',
     };
 }
 
+/** The panel workspace's `coc://settings` web tab. */
+export function panelSettingsInput(owner: PanelWorkspaceResourceOwner): OpenUnifiedTabInput {
+    return browserOpenInput({ ownerWorkspaceId: owner.workspaceId, ownerRoutingRef: owner.routingRef, chatId: owner.chatId }, 'coc://settings');
+}
+
 /**
- * Open (or focus) `owner`'s resource tab and reveal its panel. A
- * `notePath` selects that note in the Notes tab, mounted or not.
+ * Open (or focus) `owner`'s resource tab and reveal its panel; returns the
+ * tab id. A `notePath` selects that note in the Notes tab, mounted or not.
  */
 export function openPanelWorkspaceResource(
     kind: PanelWorkspaceResourceKind,
     owner: PanelWorkspaceResourceOwner,
     options: { notePath?: string } = {},
 ): string {
-    const input = panelWorkspaceResourceInput(kind, owner);
-    const id = unifiedTabId(input);
-    updateUnifiedPanelState(owner.workspaceId, prev => {
-        const opened = openTab(prev, input);
-        return kind === 'notes' && options.notePath ? updateNotesView(opened, id, options.notePath) : opened;
-    });
+    let id = '';
+    if (kind === 'settings') {
+        const input = panelSettingsInput(owner);
+        updateUnifiedPanelState(owner.workspaceId, prev => {
+            const opened = openCocPageTab(prev, input);
+            id = activeTabId(opened, owner.chatId) ?? '';
+            return opened;
+        });
+    } else {
+        const input = panelWorkspaceResourceInput(kind, owner);
+        id = unifiedTabId(input);
+        updateUnifiedPanelState(owner.workspaceId, prev => {
+            const opened = openTab(prev, input);
+            return kind === 'notes' && options.notePath ? updateNotesView(opened, id, options.notePath) : opened;
+        });
+    }
     openWorkspaceDock(owner.workspaceId);
     return id;
 }

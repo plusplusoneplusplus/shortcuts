@@ -15,8 +15,8 @@ const shown = (overrides: Partial<GroupStripTabsOptions> = {}) =>
 
 describe('stripGroupForKind', () => {
     const mapping: Record<UnifiedTabKind, UnifiedTabStripGroup> = {
-        terminal: 'tools', notes: 'tools', settings: 'tools', 'work-items': 'tools',
-        'pull-requests': 'tools', todo: 'tools', git: 'tools', file: 'files',
+        notes: 'tools', 'work-items': 'tools',
+        'pull-requests': 'tools', git: 'tools', file: 'files',
         diff: 'files', note: 'files', paste: 'files', external: 'files',
         browser: 'web', 'html-page': 'web', canvas: 'canvas',
     };
@@ -27,7 +27,7 @@ describe('stripGroupForKind', () => {
 
 describe('groupStripTabs', () => {
     it('returns only nonempty groups in fixed order and retains saved order inside each', () => {
-        const input = [tab('c', 'canvas'), tab('w', 'browser'), tab('f'), tab('t', 'todo'), tab('f2')];
+        const input = [tab('c', 'canvas'), tab('w', 'browser'), tab('f'), tab('t', 'git'), tab('f2')];
         const result = groupStripTabs(input, options);
         expect(result.map(item => item.group)).toEqual(['tools', 'files', 'web', 'canvas']);
         expect(result[1].tabs.map(item => item.id)).toEqual(['f', 'f2']);
@@ -112,7 +112,7 @@ describe('groupStripTabs', () => {
 });
 
 describe('group block order', () => {
-    const input = [tab('t', 'todo'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), tab('c', 'canvas')];
+    const input = [tab('t', 'git'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), tab('c', 'canvas')];
 
     it('renders blocks in saved order, keeping members, their order and selection intact', () => {
         const result = groupStripTabs(input, { ...options, order: ['web', 'tools', 'files', 'canvas'], activeId: 'w2' });
@@ -149,7 +149,7 @@ describe('group block order', () => {
 });
 
 describe('isGroupBoundaryMove', () => {
-    const tabs = [tab('f'), tab('n', 'note'), tab('t', 'terminal'), tab('w', 'browser'), tab('c', 'canvas')];
+    const tabs = [tab('f'), tab('n', 'note'), tab('t', 'work-items'), tab('w', 'browser'), tab('c', 'canvas')];
     it('allows same-group moves, including the same id', () => {
         expect(isGroupBoundaryMove(tabs, 'f', 'n')).toBe(false);
         expect(isGroupBoundaryMove(tabs, 'f', 'f')).toBe(false);

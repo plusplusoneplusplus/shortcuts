@@ -86,21 +86,21 @@ export interface UnifiedPanelOpenMenuProps {
     targets?: readonly DockTarget[];
     /** Open a concrete resource — a searched file or a chat canvas. */
     onOpenResource: (input: OpenUnifiedTabInput) => void;
-    /** The selected Sentinel chat's To-do tab; null hides the entry. */
-    todoInput?: OpenUnifiedTabInput | null;
+    /** The selected chat is a Sentinel chat with a To-do; false hides the entry. */
+    todoAvailable?: boolean;
     /** The panel's workspace owns a Settings page; see `openMenuActions`. */
     settingsAvailable?: boolean;
     /** The panel can host the target repo's Git tab; see `openMenuActions`. */
     gitAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (action: 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
+    onOpenWorkspaceResource: (action: 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
     /**
-     * Open a `coc://` address (`features.panelAddressBar`); a string is an
-     * inline error. Without it a `coc://` query is an unsupported URL.
+     * Open a `coc://` page — a typed address, or the Terminal, Settings and
+     * To-do entries; a string is an inline error.
      */
-    onOpenCocAddress?: (address: CocAddress) => string | void;
+    onOpenCocAddress: (address: CocAddress) => string | void;
 }
 
 export function UnifiedPanelOpenMenu({
@@ -110,7 +110,7 @@ export function UnifiedPanelOpenMenu({
     targetRoutingRef,
     targets,
     onOpenResource,
-    todoInput = null,
+    todoAvailable = false,
     settingsAvailable = false,
     gitAvailable = false,
     onOpenWorkspaceResource,
@@ -149,19 +149,19 @@ export function UnifiedPanelOpenMenu({
         targetWorkspaceId: target,
         chatId,
         chatHasChanges: chatChanges !== null,
-        todoAvailable: todoInput !== null,
+        todoAvailable,
         settingsAvailable,
         gitAvailable,
         extensionsAvailable: extensions.length > 0,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoInput, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoAvailable, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
-        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view, cocAddresses: onOpenCocAddress !== undefined }),
-        [actions, files, canvases, extensions, chatId, query, view, onOpenCocAddress],
+        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view }),
+        [actions, files, canvases, extensions, chatId, query, view],
     );
 
     // The cursor is an index into a list that changes under it; re-seat it on
@@ -353,7 +353,7 @@ export function UnifiedPanelOpenMenu({
     const selectItem = useCallback((item: OpenMenuItem) => {
         if (item.type === 'url-error') return;
         if (item.type === 'coc') {
-            const failure = onOpenCocAddress?.(item.address);
+            const failure = onOpenCocAddress(item.address);
             if (failure) setCocError(failure);
             else onClose();
             return;
@@ -411,14 +411,16 @@ export function UnifiedPanelOpenMenu({
             onClose();
             return;
         }
-        if (item.action.id === 'todo') {
-            if (todoInput !== null) onOpenResource(todoInput);
-            onClose();
+        const id = item.action.id;
+        if (id === 'terminal' || id === 'settings' || id === 'todo') {
+            const failure = onOpenCocAddress({ kind: id });
+            if (failure) setCocError(failure);
+            else onClose();
             return;
         }
-        onOpenWorkspaceResource(item.action.id);
+        onOpenWorkspaceResource(id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, todoInput, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

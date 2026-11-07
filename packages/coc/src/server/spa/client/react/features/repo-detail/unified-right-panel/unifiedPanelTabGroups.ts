@@ -32,12 +32,9 @@ export function moveGroupInOrder(
 
 export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
     switch (kind) {
-        case 'terminal':
         case 'notes':
-        case 'settings':
         case 'work-items':
         case 'pull-requests':
-        case 'todo':
         case 'git':
             return 'tools';
         case 'file':

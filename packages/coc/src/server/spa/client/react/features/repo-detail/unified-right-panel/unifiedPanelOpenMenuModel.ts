@@ -195,8 +195,6 @@ export interface BuildOpenMenuItemsInput {
     query: string;
     /** Defaults to the main list. */
     view?: OpenMenuView;
-    /** Whether a `coc://` query opens a panel address (`features.panelAddressBar`). */
-    cocAddresses?: boolean;
 }
 
 /**
@@ -248,7 +246,7 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
     // opens it. A bare domain (`notes.md` is one too) follows the file hits so
     // file search keeps the top slot.
     // A `coc://` query is a panel address, never a web address.
-    if (input.cocAddresses && isCocAddressText(input.query)) {
+    if (isCocAddressText(input.query)) {
         const address = parseCocAddress(input.query);
         const cocItem: OpenMenuItem = 'error' in address
             ? { key: 'url-error', type: 'url-error', reason: address.error }

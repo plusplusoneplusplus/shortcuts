@@ -77,6 +77,7 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
@@ -184,11 +185,12 @@ describe('UnifiedRightPanel collapses when its last tab closes', () => {
     });
 
     it('requests creation in an existing empty terminal tab without adding another tab', async () => {
-        openUnifiedPanelTab(WS, { kind: 'terminal', ownerWorkspaceId: WS, ownerRoutingRef: null,
-            resourceId: 'terminal', label: 'Terminal' });
+        // A restored coc://terminal tab asks for no session on its own.
+        openUnifiedPanelTab(WS, { kind: 'browser', ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: null,
+            resourceId: 'browser-restored', label: 'Terminal', browserUrl: 'coc://terminal' });
         renderPanel();
         const terminal = await screen.findByTestId('mock-terminal');
-        expect(terminal.dataset.request).toBeUndefined();
+        expect(terminal.dataset.request).toBe('0');
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByText('New Terminal'));
         expect(terminal.dataset.request).toBe('1');

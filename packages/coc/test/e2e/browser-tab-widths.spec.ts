@@ -34,7 +34,7 @@ test.beforeAll(async () => {
             for (const label of ${JSON.stringify(TITLES)}) {
                 state = openTab(state, { kind: 'browser', ownerWorkspaceId: 'ws', chatId: 'chat', resourceId: label, label });
             }
-            state = openTab(state, { kind: 'terminal', ownerWorkspaceId: 'ws', chatId: 'chat', resourceId: 't', label: 'bash' });
+            state = openTab(state, { kind: 'work-items', ownerWorkspaceId: 'ws', chatId: 'chat', resourceId: 't', label: 'bash' });
             const tabs = visibleTabs(state, 'chat');
             window.fixtureTabs = tabs.map(tab => ({ id: tab.id, kind: tab.kind }));
             function Fixture() {
@@ -104,14 +104,14 @@ test('browser tabs share one width regardless of title, then shrink evenly and s
     expect(wide.overflow).toBe(false);
 
     // Constrained: browser tabs shrink together while other kinds hold their width.
-    const terminalWidth = wide.tabs.find(tab => tab.kind === 'terminal')!.width;
+    const terminalWidth = wide.tabs.find(tab => tab.kind === 'work-items')!.width;
     await page.evaluate(() => (window as any).setStripWidth(560));
     await expect.poll(async () => (await measure(page)).tabs[0].width).toBeLessThan(160);
     const narrow = await measure(page);
     const shrunk = narrow.tabs.filter(tab => tab.kind === 'browser').map(tab => tab.width);
     expect(Math.max(...shrunk) - Math.min(...shrunk)).toBeLessThan(1);
     expect(shrunk[0]).toBeGreaterThan(96);
-    expect(narrow.tabs.find(tab => tab.kind === 'terminal')!.width).toBe(terminalWidth);
+    expect(narrow.tabs.find(tab => tab.kind === 'work-items')!.width).toBe(terminalWidth);
     expect(narrow.overflow).toBe(false);
 
     // Below the floor the row scrolls instead of squeezing further.
@@ -143,7 +143,7 @@ test('held-modifier shortcut pills fit inside browser tabs without moving the st
         expect(browser.every(tab => tab.hint!.trailing && tab.hint!.inside && tab.hint!.height <= 16 && tab.closeInside)).toBe(true);
         // The long title keeps its ellipsis; other kinds get no pill.
         expect(browser[1].ellipsized).toBe(true);
-        expect(after.tabs.find(tab => tab.kind === 'terminal')!.hint).toBeNull();
+        expect(after.tabs.find(tab => tab.kind === 'work-items')!.hint).toBeNull();
     }
 
     await page.evaluate(() => (window as any).setShortcuts({ mac: true, hintsVisible: true }));

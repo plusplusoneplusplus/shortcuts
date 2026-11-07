@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { TerminalSessionSummary } from '../../terminal/TerminalView';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { BrowserDownloadsPanel } from './BrowserDownloadsPanel';
@@ -57,27 +58,37 @@ export interface UnifiedBrowserTabProps {
     onNavigate: (id: string, url: string) => void;
     /** Follow the live page: its URL after redirects and its title. */
     onPageState: (id: string, page: { url: string; title: string }) => void;
+    /** Resolve a `coc://` address to a page with this tab's owners; a string is an inline error. */
+    resolveCocPage: (address: CocAddress) => CocPage | string;
     /**
-     * Resolve a `coc://` address to a page with this tab's owners
-     * (`features.panelAddressBar`); a string is an inline error. Without it
-     * `coc://` is an unsupported URL.
+     * Live sessions of this tab's `coc://terminal` page; empty when it shows
+     * another page. The panel confirms before a close kills them.
      */
-    resolveCocPage?: (address: CocAddress) => CocPage | string;
+    onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
+    /**
+     * Bumped each time the panel opens or focuses this tab at `coc://terminal`
+     * (the "+" menu, a link). The page the tab opened at asks for a session only
+     * through it, so a restored tab never starts one on its own.
+     */
+    cocOpenRequest?: number;
 }
 
 /**
  * One step of the tab's own history. The live web page is a single `web`
  * entry whose back/forward the engine owns; `coc://` pages sit around it.
  */
-type CocEntry = { kind: 'coc'; address: CocAddress; page: CocPage; nonce: number; request: { id: string; nonce: number } | null };
+type CocEntry = {
+    kind: 'coc'; address: CocAddress; page: CocPage; nonce: number; request: { id: string; nonce: number } | null;
+    /** The page the tab opened at; its terminal requests come from the panel (`cocOpenRequest`). */
+    initial?: true;
+};
 type BrowserTabEntry = { kind: 'web' } | CocEntry;
 const WEB_ENTRY: BrowserTabEntry = { kind: 'web' };
 
 const isWebUrl = (value: string | undefined): value is string => Boolean(value) && !isCocAddressText(value!);
 let cocNavigationSequence = 0;
 
-function cocEntry(text: string, resolve: ((address: CocAddress) => CocPage | string) | undefined): CocEntry | string {
-    if (!resolve) return 'coc: URLs are not supported. Use http or https.';
+function cocEntry(text: string, resolve: (address: CocAddress) => CocPage | string): CocEntry | string {
     const address = parseCocAddress(text);
     if ('error' in address) return address.error;
     const page = resolve(address);
@@ -89,8 +100,8 @@ function cocEntry(text: string, resolve: ((address: CocAddress) => CocPage | str
 
 /**
  * A general web browser tab. The address field accepts an http(s) URL or a
- * bare domain, and with `features.panelAddressBar` a `coc://` page that shows
- * the panel's own view in place of the page; anything else is rejected inline
+ * bare domain, or a `coc://` page (Terminal, Settings, To-do) that shows the
+ * panel's own view in place of the page; anything else is rejected inline
  * and never searched. The web page stays loaded, hidden, while a `coc://` page
  * shows, and the tab's back/forward step between them.
  *
@@ -99,18 +110,30 @@ function cocEntry(text: string, resolve: ((address: CocAddress) => CocPage | str
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled, resolveCocPage,
+    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled, resolveCocPage, onTerminalSessionsChange, cocOpenRequest,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     // A tab opened (or reopened) at a `coc://` address resolves it once.
     const [initial] = useState(() => {
         const entry = url && isCocAddressText(url) ? cocEntry(url, resolveCocPage) : null;
-        return typeof entry === 'string' ? { entry: WEB_ENTRY, error: entry } : { entry: entry ?? WEB_ENTRY, error: null };
+        return typeof entry === 'string' ? { entry: WEB_ENTRY, error: entry }
+            : { entry: entry ? { ...entry, initial: true as const } : WEB_ENTRY, error: null };
     });
     const [error, setError] = useState<string | null>(initial.error);
     const [tabHistory, setTabHistory] = useState<{ entries: readonly BrowserTabEntry[]; index: number }>({ entries: [initial.entry], index: 0 });
     const tabHistoryRef = useRef(tabHistory);
     tabHistoryRef.current = tabHistory;
+    // A restored page whose owner is not known yet (a Sentinel chat still
+    // loading) resolves once it is, unless the user has navigated since.
+    const initialPending = useRef(initial.error !== null && Boolean(url && isCocAddressText(url)));
+    useEffect(() => {
+        if (!initialPending.current || !url) return;
+        const entry = cocEntry(url, resolveCocPage);
+        if (typeof entry === 'string') return;
+        initialPending.current = false;
+        setTabHistory({ entries: [{ ...entry, initial: true }], index: 0 });
+        setError(null);
+    }, [resolveCocPage, url]);
     const current = tabHistory.entries[tabHistory.index];
     const cocPage = current.kind === 'coc' ? current : null;
     const onCocRef = useRef(cocPage !== null);
@@ -240,6 +263,7 @@ export function UnifiedBrowserTab({
 
     // Show one entry of the tab's history and record its address on the tab.
     const showEntry = (entries: readonly BrowserTabEntry[], index: number) => {
+        initialPending.current = false;
         const entry = entries[index];
         setTabHistory({ entries, index });
         setError(null);
@@ -273,9 +297,21 @@ export function UnifiedBrowserTab({
         onNavigate(tabId, text);
     };
 
+    // A session list belongs to the page showing it; leaving the page clears it.
+    const onTerminalSessionsRef = useRef(onTerminalSessionsChange);
+    onTerminalSessionsRef.current = onTerminalSessionsChange;
+    const reportTerminalSessions = useCallback(
+        (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsRef.current?.(tabId, sessions),
+        [tabId],
+    );
+    const onTerminalPage = cocPage?.page.kind === 'terminal';
+    useEffect(() => {
+        if (!onTerminalPage) reportTerminalSessions([]);
+    }, [onTerminalPage, reportTerminalSessions]);
+
     const navigateAddress = (address: string) => {
         // A `coc://` page shows in place of the web page and never reaches it.
-        if (resolveCocPage && isCocAddressText(address)) {
+        if (isCocAddressText(address)) {
             const entry = cocEntry(address, resolveCocPage);
             if (typeof entry === 'string') {
                 setError(entry);
@@ -289,6 +325,7 @@ export function UnifiedBrowserTab({
             } else showEntry([...entries.slice(0, index + 1), entry], index + 1);
             return formatCocAddress(entry.address);
         }
+        initialPending.current = false;
         const result = normalizeBrowserUrl(address);
         if (!result.ok) {
             setError(result.reason);
@@ -368,16 +405,14 @@ export function UnifiedBrowserTab({
             }}
         >
             {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} viewId={viewId} />}
-            {(bridge || resolveCocPage) && (
-                <NativeViewNavButtons
-                    canGoBack={(!cocPage && Boolean(page?.canGoBack)) || canStep(-1)}
-                    canGoForward={(!cocPage && Boolean(page?.canGoForward)) || canStep(1)}
-                    loading={cocPage ? false : page?.loading}
-                    disabled={!cocPage && !opened && tabHistory.entries.length < 2}
-                    onNav={nav}
-                    testIdPrefix="browser"
-                />
-            )}
+            <NativeViewNavButtons
+                canGoBack={(!cocPage && Boolean(page?.canGoBack)) || canStep(-1)}
+                canGoForward={(!cocPage && Boolean(page?.canGoForward)) || canStep(1)}
+                loading={cocPage ? false : page?.loading}
+                disabled={!cocPage && !opened && tabHistory.entries.length < 2}
+                onNav={nav}
+                testIdPrefix="browser"
+            />
             <BrowserAddressBar
                 inputRef={addressRef}
                 url={cocPage ? formatCocAddress(cocPage.address) : url}
@@ -465,9 +500,10 @@ export function UnifiedBrowserTab({
                         key={`${tabHistory.index}:${cocReload}`}
                         page={cocPage.page}
                         active={active && visible}
-                        terminalOpenRequest={cocPage.nonce}
+                        terminalOpenRequest={cocPage.initial ? cocOpenRequest ?? 0 : cocPage.nonce}
                         selectItemRequest={cocPage.request}
                         onTodoSelectionChange={followTodoSelection}
+                        onTerminalSessionsChange={reportTerminalSessions}
                     />
                 </div>
             ) : bridge ? (

@@ -4,11 +4,10 @@
  * Every kind maps onto a view that already exists elsewhere in the app; nothing
  * here is a second editor, a second file transport, or a second canvas store:
  *
- *  - `terminal` / `notes` — `TerminalView` and the full editable `NotesView`. There is no Explorer
+ *  - `notes` — the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
- *    shell renders beside whichever view is active.
- *  - `settings` — the workspace's full Settings page, portaled in through
- *    `WorkspaceSettingsSlot` so closing the tab parks the form with its drafts.
+ *    shell renders beside whichever view is active. Terminal, Settings and
+ *    To-do are `coc://` pages inside web tabs (`UnifiedCocPage`).
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. Trusted absolute paths are
@@ -29,8 +28,6 @@
  *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
  *    canvas wires a note link, with the resolution decoded from the descriptor
  *    rather than re-run (`UnifiedNoteTab`).
- *  - `todo` — a Sentinel chat's ledger on its owning server (`UnifiedTodoTab`);
- *    `resourceId` is the ledger's parent process id.
  *
  * The fallback state is for a descriptor this build has no view for at all — a
  * kind from a newer version, say — never for a kind listed above.
@@ -42,7 +39,6 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type FileReloadControl, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
@@ -57,11 +53,9 @@ import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { UnifiedPasteTab } from './UnifiedPasteTab';
-import { UnifiedTodoTab } from './UnifiedTodoTab';
 import { UnifiedWorkResourceTab } from './UnifiedWorkResourceTab';
 import { useUnifiedPanelHost } from './unifiedPanelHost';
 import { DiffDefinitionReturnChip } from '../../git/diff/DiffDefinitionReturnChip';
-import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isBinaryFileRevealEnabled, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
 
@@ -86,13 +80,6 @@ export interface UnifiedTabViewProps {
      * Called with `null` when the buffer stops being editable or unmounts.
      */
     onRegisterSave?: (tabId: string, save: (() => Promise<boolean>) | null) => void;
-    /**
-     * Live-session state for a terminal tab (AC-05). The panel owns the close
-     * confirmation because the ✕ is in the strip, not in the terminal view.
-     */
-    terminalOpenRequest?: number;
-    isActive?: boolean;
-    onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
     /**
      * Where a language-server jump out of a file tab goes. `origin` carries the
      * SOURCE tab's owner and repo label, not the dock's current target, so a
@@ -142,7 +129,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
+    onRegisterSave, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, onReloadControlChange, canvasSwitcher,
     blameShown, onBlameSupportChange, onOpenBlameCommit,
@@ -196,10 +183,6 @@ export function UnifiedTabView({
         }),
         [onOpenExternal, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
     );
-    const handleTerminalSessions = useCallback(
-        (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
-        [onTerminalSessionsChange, tab.id],
-    );
     const handleNavigationMount = useCallback(
         (controller: EditorNavigationController | null) => onFileNavigationMount?.(tab.id, controller),
         [onFileNavigationMount, tab.id],
@@ -234,13 +217,8 @@ export function UnifiedTabView({
         case 'work-items':
         case 'pull-requests':
             return <UnifiedWorkResourceTab tab={tab} scopeId={panelHost?.routingRef ?? scopeWorkspaceId} />;
-        case 'settings':
-            return <WorkspaceSettingsSlot ownerKey={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} />;
         case 'paste':
             return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
-        case 'terminal':
-            return <TerminalView workspaceId={tab.ownerWorkspaceId} routingRef={tab.ownerRoutingRef}
-                openRequest={terminalOpenRequest} isActive={isActive} onSessionsChange={handleTerminalSessions} />;
         case 'notes':
             return (
                 <NotesView
@@ -332,19 +310,6 @@ export function UnifiedTabView({
                     scopeWorkspaceId={scopeWorkspaceId}
                     chatId={tab.chatId}
                     onClose={close}
-                    onErrorChange={handleError}
-                />
-            );
-        case 'todo':
-            return (
-                <UnifiedTodoTab
-                    owner={{
-                        ownerWorkspaceId: tab.ownerWorkspaceId,
-                        ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
-                        processId: tab.resourceId,
-                    }}
-                    scopeWorkspaceId={scopeWorkspaceId}
-                    chatId={tab.chatId}
                     onErrorChange={handleError}
                 />
             );

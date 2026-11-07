@@ -144,7 +144,6 @@ interface DashboardConfig {
     fileHistoryEnabled?: boolean;
     fileBlameEnabled?: boolean;
     /** Whether right-panel web tabs show `coc://` To-do, Settings and Terminal pages. Default false. */
-    panelAddressBarEnabled?: boolean;
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
     browserTabShortcutsEnabled?: boolean;
     /** Whether right-panel web pages belong to the conversation that opened them. Default false. */
@@ -387,11 +386,6 @@ export function isFileHistoryEnabled(): boolean {
 /** Git blame toggle for right-panel file tabs (`features.fileBlame`); off unless the server says on. */
 export function isFileBlameEnabled(): boolean {
     return getConfig().fileBlameEnabled === true;
-}
-
-/** `coc://` To-do, Settings and Terminal pages in right-panel web tabs (`features.panelAddressBar`); off unless the server says on. */
-export function isPanelAddressBarEnabled(): boolean {
-    return getConfig().panelAddressBarEnabled === true;
 }
 
 /** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); on unless the server says off. */

@@ -57,6 +57,7 @@ import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGr
 import { unifiedTabRepoLabel } from './unifiedTabLabels';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import { useBrowserTabFavicon } from './browserTabFavicons';
+import { cocPageKindOf, type CocAddress } from './unifiedPanelAddresses';
 import {
     unifiedPanelTabMenuItems,
     unifiedTabFilePathLabel,
@@ -122,18 +123,24 @@ export const GIT_ICON = (
     </svg>
 );
 
+const TERMINAL_ICON = (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="3,4 6,8 3,12" />
+        <line x1="8" y1="12" x2="13" y2="12" />
+    </svg>
+);
+
+/** A web tab showing a `coc://` page wears that page's icon instead of a site's. */
+const COC_PAGE_ICONS: Readonly<Record<CocAddress['kind'], JSX.Element>> = {
+    settings: SETTINGS_ICON,
+    terminal: TERMINAL_ICON,
+    todo: TODO_ICON,
+};
+
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
     'work-items': TODO_ICON,
     'pull-requests': PULL_REQUESTS_ICON,
     external: <span aria-hidden="true">↗</span>,
-    settings: SETTINGS_ICON,
-    todo: TODO_ICON,
-    terminal: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="3,4 6,8 3,12" />
-            <line x1="8" y1="12" x2="13" y2="12" />
-        </svg>
-    ),
     notes: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
@@ -222,7 +229,10 @@ function UnifiedTabIcon({ tab, testIds = true }: { tab: UnifiedPanelTab; testIds
     if (tab.kind === 'file') {
         return <FileNameIcon fileName={tab.label} showTitle={false} testId={testIds ? `unified-panel-tab-file-icon-${tab.id}` : undefined} />;
     }
-    if (tab.kind === 'browser') return <BrowserTabIcon tabId={tab.id} testId={testIds} />;
+    if (tab.kind === 'browser') {
+        const page = cocPageKindOf(tab.browserUrl);
+        return page ? COC_PAGE_ICONS[page] : <BrowserTabIcon tabId={tab.id} testId={testIds} />;
+    }
     return KIND_ICONS[tab.kind];
 }
 

@@ -78,6 +78,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     getMonacoLanguage: () => 'plaintext',
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
@@ -162,7 +163,7 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
 describe('unifiedToolbarBreadcrumbs', () => {
     it('renders no row for a kind that brings its own toolbar', () => {
         expect(unifiedToolbarBreadcrumbs(null)).toBeNull();
-        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'terminal' }))).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'notes' }))).toBeNull();
         expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'canvas' }))).toBeNull();
     });
 

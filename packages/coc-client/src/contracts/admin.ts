@@ -378,8 +378,6 @@ export interface RuntimeDashboardConfig {
     fileHistoryEnabled: boolean;
     /** VS Code-style Git blame toggle for right-panel file tabs (`features.fileBlame`); defaults off. */
     fileBlameEnabled: boolean;
-    /** `coc://` To-do, Settings and Terminal pages in right-panel web tabs (`features.panelAddressBar`); defaults off. */
-    panelAddressBarEnabled: boolean;
     /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults on. */
     browserTabShortcutsEnabled: boolean;
     /** Right-panel web pages scoped to the conversation that opened them (`features.chatScopedBrowserTabs`); defaults off. */

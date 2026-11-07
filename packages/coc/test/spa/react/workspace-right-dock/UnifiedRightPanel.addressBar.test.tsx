@@ -1,9 +1,8 @@
 /**
- * UnifiedRightPanel — `coc://` pages in web tabs (`features.panelAddressBar`):
- * a web tab's address bar shows To-do, Settings and Terminal in place of the
- * page with the owner the "+" menu uses, back/forward step across them, the
- * "+" menu opens a web tab at an address, and the flag off leaves `coc://` an
- * unsupported URL.
+ * UnifiedRightPanel — `coc://` pages in web tabs: a web tab's address bar
+ * shows To-do, Settings and Terminal in place of the page with the owner the
+ * "+" menu uses, back/forward step across them, and the "+" menu opens or
+ * focuses a web tab at an address. There are no dedicated tabs for them.
  *
  * @vitest-environment jsdom
  */
@@ -15,9 +14,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     lookupCloneBaseUrl: () => null,
     subscribeCloneBaseUrl: () => () => {},
 }));
+// The panel's ledger listener; a test fires a change through it.
+let emitTodoChange: ((event: { workspaceId: string; processId: string; ledgerRevision: number }) => void) | null = null;
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats', async importOriginal => ({
     ...(await importOriginal<object>()),
-    useSentinelTodoEvents: () => {},
+    useSentinelTodoEvents: (_owner: unknown, onChange: typeof emitTodoChange) => { emitTodoChange = onChange; },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
     async () => await import('../language-servers/inertTransportMock'));
@@ -55,13 +56,16 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-ri
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { WorkspaceSettingsProvider } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
-import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { EMPTY_UNIFIED_PANEL, openTab, unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { browserOpenInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { clearSentinelTodoChats, publishSentinelTodoChat } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import {
+    clearSentinelTodoExcursion, startSentinelTodoExcursion, visitSentinelTodoExcursionChat,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 const WS = 'ws-1';
 
@@ -102,7 +106,6 @@ const browserTabs = (workspaceId = WS) => tabsOf(workspaceId).filter(tab => tab.
 const cocPage = () => screen.queryByTestId('browser-coc-page');
 const click = (testId: string) => act(() => { fireEvent.click(screen.getByTestId(testId)); });
 const webTab = (owner = WS, url?: string) => browserOpenInput({ ownerWorkspaceId: owner, chatId: 'chat-1' }, url);
-const settingsInput = { kind: 'settings' as const, ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: 'chat-1', resourceId: 'settings', label: 'Settings' };
 
 beforeEach(() => {
     localStorage.clear();
@@ -110,7 +113,6 @@ beforeEach(() => {
     clearUnifiedTreeState();
     // jsdom has no layout; the panel's visibility checks read offsetParent.
     vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function (this: HTMLElement) { return this.parentElement; });
-    applyRuntimeConfigPatch({ panelAddressBarEnabled: true });
 });
 
 afterEach(() => {
@@ -118,6 +120,8 @@ afterEach(() => {
     clearUnifiedPanelState();
     clearUnifiedTreeState();
     clearSentinelTodoChats();
+    clearSentinelTodoExcursion();
+    emitTodoChange = null;
     _resetRuntimeConfig();
     vi.restoreAllMocks();
 });
@@ -228,14 +232,15 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
     });
 
     it('shows the shared Settings form in whichever tab is active', () => {
-        const web = webTab();
-        seed(WS, settingsInput, web);
+        const first = webTab(WS, 'coc://settings');
+        seed(WS, first, webTab());
         renderPanel();
         typeAddress('coc://settings');
-        expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
-        click(`unified-panel-tab-${unifiedTabId(settingsInput)}`);
-        expect(screen.getByTestId('panel-settings-host')).toContainElement(screen.getByTestId('settings-page'));
-        expect(screen.getByTestId('settings-page').closest('[data-testid="browser-coc-page"]')).toBeNull();
+        const activeView = () => document.querySelector('[data-testid^="unified-panel-view-"][data-active="true"]')!;
+        expect(activeView().querySelector('[data-testid="browser-coc-page"]')).toContainElement(screen.getByTestId('settings-page'));
+        click(`unified-panel-tab-${unifiedTabId(first)}`);
+        expect(activeView().querySelector('[data-testid="browser-coc-page"]')).toContainElement(screen.getByTestId('settings-page'));
+        expect(screen.getAllByTestId('settings-page')).toHaveLength(1);
     });
 
     it('opens a tab restored at a coc:// address on that page', () => {
@@ -243,6 +248,16 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         renderPanel();
         expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${WS}`);
         expect(address().value).toBe('coc://terminal');
+    });
+
+    it('shows a restored To-do page once its Sentinel chat is known', () => {
+        seed(WS, webTab(WS, 'coc://todo'));
+        renderPanel();
+        expect(screen.getByTestId('browser-address-error').textContent).toBe('To-do is only available in a Sentinel chat');
+        act(() => { publishSentinelTodoChat(WS, 'chat-1', { ownerWorkspaceId: WS, processId: 'sentinel-1', title: 'Sentinel' }); });
+        expect(screen.getByTestId('mock-todo').dataset.owner).toBe(WS);
+        expect(screen.queryByTestId('browser-address-error')).toBeNull();
+        expect(address().value).toBe('coc://todo');
     });
 
     it('opens a new web tab at an address typed in the "+" menu', async () => {
@@ -263,25 +278,62 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(screen.getByTestId('unified-panel-open-menu-coc-error').textContent).toBe('To-do is only available in a Sentinel chat');
         expect(browserTabs()).toHaveLength(0);
     });
+});
 
-    it('with the flag off keeps coc:// an unsupported URL and offers no menu row', async () => {
-        applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
-        seed(WS, webTab());
+describe('UnifiedRightPanel Terminal, Settings and To-do entry points', () => {
+    const openFromMenu = (action: string) => {
+        click('unified-panel-open-menu');
+        click(`unified-panel-open-${action}`);
+    };
+    const activeTab = () => readUnifiedPanelState(WS).activeByScope['chat-1'];
+
+    it.each([['terminal', 'coc://terminal', 'mock-terminal'], ['settings', 'coc://settings', 'settings-page']])(
+        'opens %s as a web tab at its coc:// page and focuses that tab on the next open', (action, url, view) => {
+            seed(WS, webTab(WS, 'https://example.com/'));
+            renderPanel();
+            openFromMenu(action);
+            const [page] = browserTabs().filter(tab => tab.browserUrl === url);
+            expect(page).toMatchObject({ ownerWorkspaceId: WS });
+            expect(activeTab()).toBe(page.id);
+            expect(cocPage()).toContainElement(screen.getByTestId(view));
+
+            click(`unified-panel-tab-${browserTabs()[0].id}`);
+            openFromMenu(action);
+            expect(browserTabs().filter(tab => tab.browserUrl === url)).toHaveLength(1);
+            expect(activeTab()).toBe(page.id);
+        });
+
+    it('opens and focuses the chat\'s To-do page from the menu', () => {
+        publishSentinelTodoChat(WS, 'chat-1', { ownerWorkspaceId: WS, processId: 'sentinel-1', title: 'Sentinel' });
         renderPanel();
-        typeAddress('coc://terminal');
-        expect(screen.getByTestId('browser-address-error').textContent).toMatch(/coc: URLs are not supported/);
-        expect(cocPage()).toBeNull();
-        expect(tabsOf(WS)).toHaveLength(1);
-        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
-        await act(async () => { fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'coc://settings' } }); });
-        expect(screen.queryByTestId('unified-panel-open-menu-coc')).toBeNull();
-        expect(screen.getByTestId('unified-panel-open-menu-url-error')).toBeTruthy();
+        openFromMenu('todo');
+        openFromMenu('todo');
+        expect(browserTabs()).toEqual([expect.objectContaining({ browserUrl: 'coc://todo', browserChatId: 'chat-1' })]);
+        expect(screen.getByTestId('mock-todo').dataset.owner).toBe(WS);
     });
 
-    it('keeps dedicated Settings and Terminal tabs free of an address row', () => {
-        seed(WS, settingsInput);
+    it('opens the To-do page on the first ledger write when the chat shows no tab', () => {
+        publishSentinelTodoChat(WS, 'chat-1', { ownerWorkspaceId: WS, processId: 'sentinel-1', title: 'Sentinel' });
         renderPanel();
-        expect(screen.queryByTestId('browser-address')).toBeNull();
-        expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
+        act(() => emitTodoChange!({ workspaceId: WS, processId: 'sentinel-1', ledgerRevision: 1 }));
+        expect(browserTabs()).toEqual([expect.objectContaining({ browserUrl: 'coc://todo', browserChatId: 'chat-1' })]);
+        expect(screen.getByTestId('mock-todo')).toBeTruthy();
+        act(() => emitTodoChange!({ workspaceId: WS, processId: 'sentinel-1', ledgerRevision: 1 }));
+        expect(browserTabs()).toHaveLength(1);
+    });
+
+    it('shows the origin Sentinel\'s ledger in the pinned To-do of a visited chat', () => {
+        const origin = { scopeWorkspaceId: WS, chatId: 'chat-s', title: 'Release', href: '#repos/ws-1/chats/chat-s' };
+        act(() => {
+            startSentinelTodoExcursion({ ...origin, owner: { ownerWorkspaceId: 'origin-ws', processId: 'sentinel-9' }, linkKey: 'i1|ref:x' });
+            visitSentinelTodoExcursionChat({ scopeWorkspaceId: WS, chatId: 'chat-1', title: 'Child', href: '#repos/ws-1/chats/chat-1' });
+        });
+        renderPanel();
+        // The visited chat is not a Sentinel chat; the pinned page still resolves.
+        expect(screen.getByTestId('mock-todo').dataset.owner).toBe('origin-ws');
+        expect(address().value).toBe('coc://todo');
+        expect(screen.getByText('To-do · Release')).toBeTruthy();
+        // The pinned tab is layered on read, never stored.
+        expect(browserTabs()).toHaveLength(0);
     });
 });

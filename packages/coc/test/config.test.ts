@@ -1273,7 +1273,6 @@ timeout: 300
                 '  binaryFileReveal: true',
                 '  fileHistory: true',
                 '  fileBlame: true',
-                '  panelAddressBar: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
                 '  browserFavorites: true',
@@ -1325,7 +1324,6 @@ timeout: 300
             expect(result.resolved.features.browserFavorites).toBe(true);
             expect(result.resolved.features.fileHistory).toBe(true);
             expect(result.resolved.features.fileBlame).toBe(true);
-            expect(result.resolved.features.panelAddressBar).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
             expect(result.resolved.browserControl.demoRecordingEnabled).toBe(true);
@@ -1339,7 +1337,7 @@ timeout: 300
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
             'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
-            'fileHistory', 'fileBlame', 'browserFavorites', 'panelAddressBar',
+            'fileHistory', 'fileBlame', 'browserFavorites',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1351,6 +1349,18 @@ timeout: 300
                 expect(result.resolved.features[feature]).toBe(value ?? DEFAULT_CONFIG.features[feature]);
                 expect(result.sources[`features.${feature}`]).toBe(value === undefined ? 'default' : 'file');
             });
+        });
+
+        it('ignores a persisted panel address bar flag; coc:// pages are always on', () => {
+            const configPath = path.join(tmpDir, 'stale-panel-address-bar.yaml');
+            const yaml = 'features:\n  panelAddressBar: false\n  fileBlame: true\n';
+            fs.writeFileSync(configPath, yaml);
+
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.features).not.toHaveProperty('panelAddressBar');
+            expect(result.sources).not.toHaveProperty('features.panelAddressBar');
+            expect(result.resolved.features.fileBlame).toBe(true);
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(yaml);
         });
 
         it.each([false, true])('ignores persisted panel tab categories and preserves groups (%s)', groups => {
@@ -1654,7 +1664,6 @@ timeout: 300
                     "htmlPageTab": true,
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
-                    "panelAddressBar": false,
                     "panelSourceSplit": true,
                     "panelTabGroups": true,
                     "panelTabReordering": true,
@@ -1924,7 +1933,6 @@ timeout: 300
                   "features.htmlPageTab": "default",
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
-                  "features.panelAddressBar": "default",
                   "features.panelSourceSplit": "default",
                   "features.panelTabGroups": "default",
                   "features.panelTabReordering": "default",

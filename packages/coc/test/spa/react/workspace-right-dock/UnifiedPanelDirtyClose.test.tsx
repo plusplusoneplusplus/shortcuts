@@ -87,6 +87,7 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
@@ -97,9 +98,8 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
-import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { openUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -232,9 +232,7 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         await screen.findByTestId(`unified-panel-tab-${cleanTabId}`);
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
-        const terminalTabId = unifiedTabId({
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal',
-        });
+        const terminalTabId = readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.browserUrl === 'coc://terminal')!.id;
         act(() => {
             reportTerminalSessions([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
         });

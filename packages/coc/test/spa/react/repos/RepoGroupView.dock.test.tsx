@@ -104,6 +104,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 
 const GROUP_ID = 'group-ai-repos';
 
@@ -324,19 +325,17 @@ describe('RepoGroupView right panel', () => {
         await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
 
+        const terminalOwners = () => readUnifiedPanelState(GROUP_ID).workspaceTabs
+            .filter(tab => tab.browserUrl === 'coc://terminal').map(tab => tab.ownerWorkspaceId);
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
-        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
-            kind: 'terminal', ownerWorkspaceId: 'r1', chatId: null, resourceId: 'terminal',
-        })}`)).toBeTruthy();
+        expect(terminalOwners()).toEqual(['r1']);
 
         // Retarget, then open again: the second terminal is owned by r2, so the
         // two members' terminals coexist rather than one replacing the other.
         pickRepo('r2');
         openMenu();
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
-        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
-            kind: 'terminal', ownerWorkspaceId: 'r2', chatId: null, resourceId: 'terminal',
-        })}`)).toBeTruthy();
+        expect(terminalOwners()).toEqual(['r1', 'r2']);
 
         // Notes are group-level whatever the target is.
         openMenu();

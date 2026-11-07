@@ -30,7 +30,7 @@ const CHAT = 'chat-1';
 /** Build the visible strip for a workspace terminal plus two chat files. */
 function sampleTabs(): readonly UnifiedPanelTab[] {
     let state = EMPTY_UNIFIED_PANEL;
-    state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+    state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/b.ts', label: 'b.ts' });
     return visibleTabs(state, CHAT);
@@ -52,7 +52,7 @@ function tabsOfEveryKind(): readonly UnifiedPanelTab[] {
 
 function manyCanvasTabs(count = CANVAS_TAB_COMPRESSION_THRESHOLD): readonly UnifiedPanelTab[] {
     let state = EMPTY_UNIFIED_PANEL;
-    state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+    state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     for (let index = 1; index <= count; index++) {
         state = openTab(state, {
@@ -111,7 +111,7 @@ describe('UnifiedPanelTabStrip', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
-            .toEqual(['terminal', 'file', 'file']);
+            .toEqual(['work-items', 'file', 'file']);
         // The boundary is derived from the kinds, not passed in: exactly one tab
         // opens the chat section and the divider remains outside both tabs.
         const starts = screen.getAllByRole('tab').filter(el => el.getAttribute('data-section-start') === 'true');
@@ -124,13 +124,13 @@ describe('UnifiedPanelTabStrip', () => {
 
     it('puts chat canvases on the tools side of the divider, before files', () => {
         let state = EMPTY_UNIFIED_PANEL;
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
         state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
         state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
-            .toEqual(['terminal', 'canvas', 'file']);
+            .toEqual(['work-items', 'canvas', 'file']);
         const divider = screen.getByTestId('unified-panel-tab-section-divider');
         expect(divider.previousElementSibling?.getAttribute('data-kind')).toBe('canvas');
         expect(divider.nextElementSibling?.getAttribute('data-kind')).toBe('file');
@@ -140,7 +140,7 @@ describe('UnifiedPanelTabStrip', () => {
 
     it('draws no divider while only tools (including canvases) are open', () => {
         let state = EMPTY_UNIFIED_PANEL;
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
         state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
         renderStrip({ tabs: visibleTabs(state, CHAT) });
         expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
@@ -175,7 +175,7 @@ describe('UnifiedPanelTabStrip', () => {
 
             expect(screen.getByTestId('unified-panel-canvas-stack').textContent).toContain('Canvases 4');
             expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind')))
-                .toEqual(['terminal', 'file']);
+                .toEqual(['work-items', 'file']);
         });
 
         it('searches and activates a collapsed canvas with the keyboard', () => {
@@ -1084,7 +1084,7 @@ describe('UnifiedPanelTabStrip', () => {
     });
 
     it.each([false, true])('hides only browser repo labels in repo groups (grouped tabs: %s)', groupsEnabled => {
-        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'terminal', 'canvas', 'file', 'note'].includes(tab.kind))
+        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'work-items', 'canvas', 'file', 'note'].includes(tab.kind))
             .map(tab => ({ ...tab, repoLabel: 'Target repo' }));
         renderStrip({ tabs, hideBrowserRepoLabels: true, groupsEnabled });
         for (const tab of tabs) {
@@ -1120,7 +1120,7 @@ describe('UnifiedPanelTabStrip', () => {
         for (const label of ['Google', 'Search - Microsoft Bing with a very long page title', 'YouTube', 'A']) {
             state = openTab(state, { kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: label, label });
         }
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs, activeId: tabs[0].id });
         const browserTabs = tabs.filter(tab => tab.kind === 'browser');
@@ -1132,7 +1132,7 @@ describe('UnifiedPanelTabStrip', () => {
             expect(screen.getByTestId(`unified-panel-tab-label-${tab.id}`).className).toMatch(/\btruncate\b.*\bflex-1\b/);
         }
         // Other kinds keep their content-sized, non-shrinking tabs.
-        expect(sizing(tabs.find(tab => tab.kind === 'terminal')!)).toBe('flex-shrink-0 max-w-[180px] min-w-0');
+        expect(sizing(tabs.find(tab => tab.kind === 'work-items')!)).toBe('flex-shrink-0 max-w-[180px] min-w-0');
     });
 
     it('keeps the "+" outside the scrolling tab row', () => {

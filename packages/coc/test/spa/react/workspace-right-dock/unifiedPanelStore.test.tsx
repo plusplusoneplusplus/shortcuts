@@ -99,12 +99,12 @@ describe('unifiedPanelStore', () => {
     it('closes native browser views across cached inactive workspaces without removing other tabs', () => {
         for (const workspaceId of ['local-workspace', 'remote-workspace']) {
             let state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'browser', ownerWorkspaceId: workspaceId, chatId: null, resourceId: 'closed-view', label: 'Browser' });
-            state = openTab(state, { kind: 'terminal', ownerWorkspaceId: workspaceId, chatId: null, resourceId: 'terminal', label: 'Terminal' });
+            state = openTab(state, { kind: 'work-items', ownerWorkspaceId: workspaceId, chatId: null, resourceId: 'work-items', label: 'Terminal' });
             writeUnifiedPanelState(workspaceId, state);
         }
         closeBrowserPanelView('closed-view');
         for (const workspaceId of ['local-workspace', 'remote-workspace']) {
-            expect(readUnifiedPanelState(workspaceId).workspaceTabs.map(tab => tab.kind)).toEqual(['terminal']);
+            expect(readUnifiedPanelState(workspaceId).workspaceTabs.map(tab => tab.kind)).toEqual(['work-items']);
         }
         closeBrowserPanelView('missing-view');
         expect(readUnifiedPanelState('local-workspace').workspaceTabs).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('unifiedPanelStore', () => {
         expect(labels('a')).toBe('');
 
         act(() => {
-            api.open({ kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'sess-1', label: 'bash' });
+            api.open({ kind: 'work-items', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'sess-1', label: 'bash' });
         });
 
         expect(labels('a')).toBe('bash');
@@ -145,11 +145,11 @@ describe('unifiedPanelStore', () => {
         const props = { workspaceId: ownerA, chatId: 'chat-a', name: 'a', reorderEnabled: true, onApi: (next: UnifiedPanelTabsApi) => { api = next; } };
         const mounted = render(<Probe {...props} />);
         act(() => {
-            api.open({ kind: 'terminal', ownerWorkspaceId: 'workspace', ownerRoutingRef: ownerA, chatId: 'chat-a', resourceId: 'terminal', label: 'Terminal' });
+            api.open({ kind: 'work-items', ownerWorkspaceId: 'workspace', ownerRoutingRef: ownerA, chatId: 'chat-a', resourceId: 'work-items', label: 'Terminal' });
             api.open({ kind: 'file', ownerWorkspaceId: 'workspace', ownerRoutingRef: ownerA, chatId: 'chat-a', resourceId: 'sample.md', label: 'File' });
         });
         act(() => {
-            api.move(api.tabs.find(tab => tab.kind === 'file')!.id, api.tabs.find(tab => tab.kind === 'terminal')!.id);
+            api.move(api.tabs.find(tab => tab.kind === 'file')!.id, api.tabs.find(tab => tab.kind === 'work-items')!.id);
         });
         expect(labels('a')).toBe('File,Terminal');
         const selected = api.activeId;
@@ -202,7 +202,7 @@ describe('unifiedPanelStore', () => {
         );
 
         act(() => {
-            a.open({ kind: 'terminal', ownerWorkspaceId: 'ws-a', chatId: null, resourceId: 's', label: 'bash' });
+            a.open({ kind: 'work-items', ownerWorkspaceId: 'ws-a', chatId: null, resourceId: 's', label: 'bash' });
         });
 
         expect(labels('a')).toBe('bash');
@@ -214,7 +214,7 @@ describe('unifiedPanelStore', () => {
         const { rerender } = render(<Probe workspaceId={WS} chatId="chat-1" name="a" onApi={next => { api = next; }} />);
 
         act(() => {
-            api.open({ kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 's', label: 'bash' });
+            api.open({ kind: 'work-items', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 's', label: 'bash' });
             api.open({ kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/a.ts', label: 'a.ts' });
         });
         expect(labels('a')).toBe('bash,a.ts');
@@ -233,7 +233,7 @@ describe('unifiedPanelStore', () => {
         let api!: UnifiedPanelTabsApi;
         const { unmount } = render(<Probe workspaceId={WS} chatId="chat-1" name="a" onApi={next => { api = next; }} />);
         act(() => {
-            api.open({ kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 's', label: 'bash' });
+            api.open({ kind: 'work-items', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 's', label: 'bash' });
             api.open({ kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/a.ts', label: 'a.ts' });
             api.open({ kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/b.ts', label: 'b.ts' });
             api.activate(unifiedTabId({ kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/a.ts' }));
@@ -339,7 +339,7 @@ describe('readUnifiedPanelState', () => {
 
     it('returns the same reference while the stored text is unchanged', () => {
         const state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 's', label: 'bash',
+            kind: 'work-items', ownerWorkspaceId: WS, chatId: null, resourceId: 's', label: 'bash',
         });
         localStorage.setItem(unifiedPanelStorageKey(WS), JSON.stringify({
             version: 1,

@@ -1483,14 +1483,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.panelAddressBar', default: false, runtime: 'live', runtimeFlag: 'panelAddressBarEnabled',
-        ui: {
-            tab: 'appearance', group: 'editorFiles', order: 49.5, label: 'coc:// pages in web tabs', badge: 'experimental',
-            hint: 'Type coc://settings, coc://terminal or coc://todo in a right-panel web tab to show that view in the tab, with Back and Forward across web and coc:// pages. The + menu accepts the same addresses. Disabled by default.',
-            testId: 'toggle-panel-address-bar-enabled',
-        },
-    }),
-    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',
