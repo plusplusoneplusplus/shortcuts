@@ -18,7 +18,7 @@ const shown = (overrides: Partial<GroupStripTabsOptions> = {}) =>
 
 describe('stripGroupForKind', () => {
     const mapping: Record<UnifiedTabKind, UnifiedTabStripGroup> = {
-        notes: 'tools', 'work-items': 'tools',
+        'work-items': 'tools',
         'pull-requests': 'tools', git: 'tools', file: 'files',
         diff: 'files', note: 'files', paste: 'files', external: 'files',
         browser: 'web', 'html-page': 'web',
@@ -27,8 +27,9 @@ describe('stripGroupForKind', () => {
         expect(stripGroupForKind(kind as UnifiedTabKind)).toBe(group);
     });
 
-    it('keeps a coc://canvas page in the canvas block', () => {
+    it('keeps a coc://canvas page in the canvas block and Notes with Tools', () => {
         expect(stripGroupForTab(canvas('plan'))).toBe('canvas');
+        expect(stripGroupForTab({ ...tab('notes', 'browser'), browserUrl: 'coc://notes/Plans/Release.md' })).toBe('tools');
         expect(stripGroupForTab(tab('page', 'browser'))).toBe('web');
     });
 });

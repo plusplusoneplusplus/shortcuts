@@ -36,7 +36,9 @@ describe('openPanelWorkspaceResource', () => {
     it('opens a workspace-owned Notes tab, activates it for the current chat and reveals the dock', () => {
         const id = openPanelWorkspaceResource('notes', { workspaceId: 'ws-a', routingRef: null, chatId: 'chat-1' });
         const state = readUnifiedPanelState('ws-a');
-        expect(state.workspaceTabs).toEqual([expect.objectContaining({ id, kind: 'notes', ownerWorkspaceId: 'ws-a', chatId: null, label: 'Notes' })]);
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({
+            id, kind: 'browser', browserUrl: 'coc://notes', ownerWorkspaceId: 'ws-a', chatId: null, label: 'Notes',
+        })]);
         expect(state.activeByScope['chat-1']).toBe(id);
         expect(localStorage.getItem(workspaceDockOpenStorageKey('ws-a'))).toBe('1');
     });
@@ -48,7 +50,7 @@ describe('openPanelWorkspaceResource', () => {
         const state = readUnifiedPanelState('ws-a');
         expect(second).toBe(first);
         expect(state.workspaceTabs).toHaveLength(1);
-        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'dir/b.md' });
+        expect(state.workspaceTabs[0].browserUrl).toBe('coc://notes/dir/b.md');
     });
 
     it('opens Settings as a coc://settings web tab, focuses it again, and reopens it after a close', () => {

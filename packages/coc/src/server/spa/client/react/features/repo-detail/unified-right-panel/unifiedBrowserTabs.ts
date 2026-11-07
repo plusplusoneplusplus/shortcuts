@@ -12,7 +12,7 @@
  * its view; a tab opened with no conversation stays workspace-global. Copies
  * of a tab (duplicate, popup, reopen) keep the source's owner exactly.
  *
- * A tab may also show a `coc://` page (Terminal, Settings, To-do, Canvas).
+ * A tab may also show a `coc://` page (Terminal, Settings, To-do, Canvas, Notes).
  * Such a tab is persisted, and opening a page focuses a visible tab already
  * showing it for the same owner (`openCocPageTab`). Canvas pages match by
  * canvas id, so each document keeps its own tab.
@@ -227,6 +227,20 @@ export function canvasPageInput(
         ...browserOpenInput(context, formatCocAddress({ kind: 'canvas', canvasId: canvas.id })),
         resourceId: canvasPageResourceId(context.browserChatId !== undefined ? context.browserChatId : context.chatId, canvas.id),
         label: title === '' ? 'Untitled canvas' : title,
+    };
+}
+
+/**
+ * The panel workspace's Notes page. `coc://notes` opens the collection;
+ * `coc://notes/<path>` selects that note. One page per workspace, so a later
+ * open focuses it and the address follows the path.
+ */
+export function notesPageInput(context: BrowserOpenContext, notePath?: string): OpenUnifiedTabInput {
+    const path = notePath?.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    return {
+        ...browserOpenInput({ ...context, browserChatId: null }, formatCocAddress(path ? { kind: 'notes', notePath: path } : { kind: 'notes' })),
+        resourceId: 'coc-notes',
+        label: 'Notes',
     };
 }
 

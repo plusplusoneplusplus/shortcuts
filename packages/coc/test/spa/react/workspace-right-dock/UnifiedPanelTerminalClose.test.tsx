@@ -203,7 +203,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByTestId('unified-panel-open-notes'));
         const notesTabId = unifiedTabId({
-            kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'coc-notes',
         });
 
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${notesTabId}`));

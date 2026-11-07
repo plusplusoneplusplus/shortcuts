@@ -412,7 +412,7 @@ export function UnifiedPanelOpenMenu({
             return;
         }
         const id = item.action.id;
-        if (id === 'terminal' || id === 'settings' || id === 'todo') {
+        if (id === 'terminal' || id === 'settings' || id === 'todo' || id === 'notes') {
             const failure = onOpenCocAddress({ kind: id });
             if (failure) setCocError(failure);
             else onClose();

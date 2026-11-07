@@ -341,7 +341,7 @@ describe('RepoGroupView right panel', () => {
         openMenu();
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-notes')); });
         expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
-            kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes',
+            kind: 'browser', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'coc-notes',
         })}`)).toBeTruthy();
     });
 

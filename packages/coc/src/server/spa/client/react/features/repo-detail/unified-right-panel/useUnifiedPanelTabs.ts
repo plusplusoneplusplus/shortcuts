@@ -44,7 +44,6 @@ import {
     previewTabToReplace,
     promoteTab,
     rememberActiveTab,
-    updateNotesView,
     updateBrowserTab,
     visibleTabIds,
     visibleTabs,
@@ -93,8 +92,6 @@ export interface UnifiedPanelTabsApi {
     close(id: string): void;
     /** Reorder the current view, or the tab's section with mixed ordering disabled. */
     move(id: string, beforeId: string | null): void;
-    /** Persist the Notes tab's local selection without changing panel focus. */
-    updateNotesSelection(id: string, notePath: string | null): void;
     /** Follow a browser tab's live URL and title without changing panel focus. */
     updateBrowser(id: string, update: { url?: string; label?: string }): void;
     /**
@@ -169,9 +166,6 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null, 
             : moveTab(prev, id, beforeId));
     }, [setState, reorderEnabled]);
 
-    const updateNotesSelection = useCallback((id: string, notePath: string | null) => {
-        setState(prev => updateNotesView(prev, id, notePath));
-    }, [setState]);
     const updateBrowser = useCallback((id: string, update: { url?: string; label?: string }) => {
         setState(prev => updateBrowserTab(prev, id, update));
     }, [setState]);
@@ -191,9 +185,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null, 
 
     return useMemo(() => ({
         state, tabs, activeId, active, pinnedId, preview,
-        open, openBeside, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
+        open, openBeside, openPreview, promote, activate, close, move, updateBrowser,
         previewToReplace, find, visibleIds,
     }), [state, tabs, activeId, active, pinnedId, preview,
-        open, openBeside, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
+        open, openBeside, openPreview, promote, activate, close, move, updateBrowser,
         previewToReplace, find, visibleIds]);
 }

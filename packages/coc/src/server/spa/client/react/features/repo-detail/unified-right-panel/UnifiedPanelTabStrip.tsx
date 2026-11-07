@@ -141,24 +141,26 @@ const CANVAS_ICON = (
     </svg>
 );
 
+const NOTES_ICON = (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-icon="notes">
+        <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
+        <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
+        <line x1="6" y1="8.2" x2="10.5" y2="8.2" />
+    </svg>
+);
+
 const COC_PAGE_ICONS: Readonly<Record<CocAddress['kind'], JSX.Element>> = {
     settings: SETTINGS_ICON,
     terminal: TERMINAL_ICON,
     todo: TODO_ICON,
     canvas: CANVAS_ICON,
+    notes: NOTES_ICON,
 };
 
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
     'work-items': TODO_ICON,
     'pull-requests': PULL_REQUESTS_ICON,
     external: <span aria-hidden="true">↗</span>,
-    notes: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
-            <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
-            <line x1="6" y1="8.2" x2="10.5" y2="8.2" />
-        </svg>
-    ),
     note: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />

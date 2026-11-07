@@ -1,7 +1,7 @@
 /**
  * unifiedPanelAddresses — the `coc://` pages a web tab can show.
  *
- * To-do, Settings, Terminal and Canvas exist only as these pages; there is no
+ * To-do, Settings, Terminal, Canvas and Notes exist only as these pages; there is no
  * dedicated tab kind for them. An address names a page only, never an owner:
  * the panel resolves the owner from the tab and the selected chat, so text can
  * never route a repo group or remote clone to the wrong repo.
@@ -9,13 +9,15 @@
  * normalization, history or site approval.
  */
 
+import { decodePath, encodePath } from '../../../layout/routePath';
 import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 export type CocAddress =
     | { kind: 'settings' }
     | { kind: 'terminal' }
     | { kind: 'todo'; itemId?: string }
-    | { kind: 'canvas'; canvasId: string };
+    | { kind: 'canvas'; canvasId: string }
+    | { kind: 'notes'; notePath?: string };
 
 /** Canvas ids, matching `canvas://` embeds: 1–128 letters, digits or hyphens. */
 const CANVAS_ID = /^[a-z0-9][a-z0-9-]{0,127}$/i;
@@ -67,7 +69,20 @@ export function parseCocAddress(text: string): CocAddress | { error: string } {
         try { canvasId = decodeURIComponent(parts[1]); } catch { return { error: COC_ADDRESS_INVALID }; }
         return CANVAS_ID.test(canvasId) ? { kind: 'canvas', canvasId } : { error: COC_ADDRESS_INVALID };
     }
+    if (host === 'notes') {
+        if (parts.length === 1) return { kind: 'notes' };
+        let notePath: string;
+        try { notePath = decodePath(parts.slice(1)); } catch { return { error: COC_ADDRESS_INVALID }; }
+        if (!isNoteDeepPath(notePath)) return { error: COC_ADDRESS_INVALID };
+        return { kind: 'notes', notePath };
+    }
     return { error: COC_ADDRESS_UNSUPPORTED };
+}
+
+/** A note path a deep `coc://notes/…` address may name: relative, with no empty or parent segments. */
+function isNoteDeepPath(path: string): boolean {
+    if (!path || path.includes('\\')) return false;
+    return path.split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..');
 }
 
 /** The page a tab URL shows, or null for a web page, a blank tab or an invalid address. */
@@ -81,6 +96,7 @@ export function cocPageKindOf(url: string | undefined): CocAddress['kind'] | nul
 export function formatCocAddress(address: CocAddress): string {
     if (address.kind === 'todo' && address.itemId) return `coc://todo/${encodeURIComponent(address.itemId)}`;
     if (address.kind === 'canvas') return `coc://canvas/${encodeURIComponent(address.canvasId)}`;
+    if (address.kind === 'notes' && address.notePath) return `coc://notes/${encodePath(address.notePath)}`;
     return `coc://${address.kind}`;
 }
 
@@ -96,6 +112,7 @@ export function cocAddressLabel(address: CocAddress): string {
     if (address.kind === 'settings') return 'Settings';
     if (address.kind === 'terminal') return 'Terminal';
     if (address.kind === 'canvas') return 'Canvas';
+    if (address.kind === 'notes') return 'Notes';
     return 'To-do';
 }
 
@@ -118,4 +135,12 @@ export type CocPage =
         /** The conversation the canvas is linked to. */
         chatId: string;
         repoLabel?: string;
+    }
+    | {
+        kind: 'notes';
+        /** The panel workspace whose Notes collection this page shows. */
+        ownerWorkspaceId: string;
+        ownerRoutingRef?: string | null;
+        /** The note the deep address selected, or null for the collection. */
+        notePath: string | null;
     };

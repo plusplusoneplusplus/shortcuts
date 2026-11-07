@@ -42,6 +42,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     getMonacoLanguage: () => 'plaintext',
 }));
 // The To-do view's own selection is pinned in select-request-panel.test.tsx.
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: ({ workspaceId, initialNotePath }: { workspaceId: string; initialNotePath?: string | null }) => (
+        <div data-testid="mock-notes" data-path={initialNotePath ?? ''}>notes:{workspaceId}</div>
+    ),
+}));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCanvasTab', () => ({
     UnifiedCanvasTab: ({ canvasId, chatId }: { canvasId: string; chatId: string }) => (
         <div data-testid="mock-canvas" data-chat={chatId}>{canvasId}</div>
@@ -191,6 +196,22 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${member}`);
         typeAddress('coc://settings');
         expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
+    });
+
+    it('shows a note deep address and follows it inside the Notes page', () => {
+        seed(WS, webTab());
+        renderPanel();
+        typeAddress('coc://notes/Plans/Release.md');
+        expect(screen.getByTestId('mock-notes').getAttribute('data-path')).toBe('Plans/Release.md');
+        expect(address().value).toBe('coc://notes/Plans/Release.md');
+        expect(browserTabs()[0]).toMatchObject({ browserUrl: 'coc://notes/Plans/Release.md', label: 'Notes' });
+        typeAddress('coc://notes/Notes/One.md');
+        expect(address().value).toBe('coc://notes/Notes/One.md');
+        expect(screen.getByTestId('mock-notes').getAttribute('data-path')).toBe('Notes/One.md');
+        expect(browserTabs()).toHaveLength(1);
+        click('browser-back');
+        expect(cocPage()).toBeNull();
+        expect(browserTabs()[0].browserUrl).toBeUndefined();
     });
 
     it('shows coc://canvas/<id> in the web tab and steps between canvases', () => {

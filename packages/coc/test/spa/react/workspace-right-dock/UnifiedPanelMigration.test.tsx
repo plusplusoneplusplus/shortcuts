@@ -137,7 +137,7 @@ describe('unified panel — codec v2 migration', () => {
         seedLegacyState();
         renderPanel();
 
-        expect(tabLabels()).toEqual(['notes', 'src/a.ts']);
+        expect(tabLabels()).toEqual(['coc-notes', 'src/a.ts']);
         expect(screen.queryByTestId(`unified-panel-tab-${legacyExplorerId}`)).toBeNull();
         // The Explorer's replacement is the column, which is now open.
         await waitFor(() => expect(readUnifiedTreeState(WS).open).toBe(true));
@@ -150,7 +150,7 @@ describe('unified panel — codec v2 migration', () => {
 
         await waitFor(() => expect(storedPayload().version).toBe(UNIFIED_PANEL_STATE_VERSION));
         const kinds = (storedPayload().workspaceTabs as { kind: string }[]).map(tab => tab.kind);
-        expect(kinds).toEqual(['notes']);
+        expect(kinds).toEqual(['browser']);
     });
 
     it('leaves a tree the user already closed alone when nothing needs migrating', async () => {

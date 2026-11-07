@@ -35,7 +35,6 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type FileReloadControl, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
@@ -110,8 +109,6 @@ export interface UnifiedTabViewProps {
     onBlameSupportChange?: (tabId: string, supported: boolean) => void;
     /** File tabs only: opens a commit clicked in the blame gutter. */
     onOpenBlameCommit?: (tab: UnifiedPanelTab, hash: string) => void;
-    /** Persist the panel-local Notes selection without activating its tab. */
-    onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -124,7 +121,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
-    onNotesSelectionChange, onReloadControlChange,
+    onReloadControlChange,
     blameShown, onBlameSupportChange, onOpenBlameCommit,
 }: UnifiedTabViewProps) {
     const panelHost = useUnifiedPanelHost();
@@ -202,27 +199,12 @@ export function UnifiedTabView({
         (hash: string) => onOpenBlameCommit?.(tab, hash),
         [onOpenBlameCommit, tab],
     );
-    const handleNotesSelection = useCallback(
-        (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
-        [onNotesSelectionChange, tab.id],
-    );
     switch (tab.kind) {
         case 'work-items':
         case 'pull-requests':
             return <UnifiedWorkResourceTab tab={tab} scopeId={panelHost?.routingRef ?? scopeWorkspaceId} />;
         case 'paste':
             return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
-        case 'notes':
-            return (
-                <NotesView
-                    workspaceId={scopeWorkspaceId}
-                    initialNotePath={tab.notesView?.notePath ?? null}
-                    navigation="local"
-                    layout="container"
-                    active={false}
-                    onSelectedNotePathChange={handleNotesSelection}
-                />
-            );
         case 'file':
             return (<>
                 <DiffDefinitionReturnChip scopeWorkspaceId={scopeWorkspaceId} tabId={tab.id} />

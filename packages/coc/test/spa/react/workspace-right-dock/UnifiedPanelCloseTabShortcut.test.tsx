@@ -193,7 +193,7 @@ describe('unified panel close-tab shortcut', () => {
         act(() => { editor.dispatchEvent(event); });
         expect(event.defaultPrevented).toBe(true);
         expect(editorHandler).not.toHaveBeenCalled();
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('closes only the focused panel and yields when the composer regains focus', () => {
@@ -241,7 +241,7 @@ describe('unified panel close-tab shortcut', () => {
     it('closes the active tab on Ctrl+W with focus inside the panel', () => {
         renderPanel();
         openResource('notes');
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
 
         focusIn('mock-notes-input');
         const event = pressCloseTab();
@@ -263,7 +263,7 @@ describe('unified panel close-tab shortcut', () => {
         renderPanel();
         openResource('terminal');
         openResource('notes');
-        expect(tabKinds()).toEqual(['notes', 'browser']);
+        expect(tabKinds()).toEqual(['browser', 'browser']);
 
         // Notes was opened last, so it is the active tab.
         focusIn('mock-notes-input');
@@ -281,7 +281,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
         outside.remove();
     });
 
@@ -293,7 +293,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('does nothing while the panel is collapsed', () => {
@@ -305,16 +305,16 @@ describe('unified panel close-tab shortcut', () => {
         openResource('notes');
         cleanup();
         renderPanel({ dock: dockStub({ isOpen: false }) });
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
 
-        const tab = document.querySelector('[role="tab"][data-kind="notes"]') as HTMLElement;
+        const tab = document.querySelector('[role="tab"][data-tab-id$="|coc-notes"]') as HTMLElement;
         act(() => { tab.focus(); });
         expect(document.activeElement).toBe(tab);
         expect(screen.getByTestId('unified-right-panel').offsetParent).toBeNull();
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('swallows the key with an empty strip — the browser window never closes', () => {
@@ -494,7 +494,7 @@ describe('unified panel new-browser shortcut', () => {
         editable.remove();
         focusIn('unified-panel-open-menu');
         expect(pressAddTab().defaultPrevented).toBe(true);
-        expect(tabKinds()).toEqual(['notes', 'browser', 'browser']);
+        expect(tabKinds()).toEqual(['browser', 'browser', 'browser']);
         expect(document.activeElement?.getAttribute('data-testid')).toBe('browser-address');
         expect((document.activeElement as HTMLInputElement).value).toBe('');
     });
@@ -550,7 +550,7 @@ describe('unified panel new-browser shortcut', () => {
         openResource('notes');
         act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
         // Default tab groups show Tools before Web.
-        expect(tabKinds()).toEqual(['notes', 'browser', 'browser']);
+        expect(tabKinds()).toEqual(['browser', 'browser', 'browser']);
         const latest = readUnifiedPanelState(WS).workspaceTabs[1];
         fireEvent.click(screen.getByTestId(`unified-panel-tab-${latest.id}`));
         view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);

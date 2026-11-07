@@ -1,11 +1,11 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Chrome-style resource-tabbed column
-holding Work Items, Pull Requests, Notes, files, chat diffs, local HTML
+holding Work Items, Pull Requests, files, chat diffs, local HTML
 pages and web browser tabs, with a Search/Explorer navigator at its right edge.
-Terminal, Settings, To-do and Canvas are `coc://` pages inside web tabs; there
-are no dedicated tabs for them. A canvas is `coc://canvas/<canvasId>`. It mounts
-at every breakpoint.
+Terminal, Settings, To-do, Canvas and Notes are `coc://` pages inside web tabs;
+there are no dedicated tabs for them. A canvas is `coc://canvas/<canvasId>`.
+Notes is `coc://notes` or `coc://notes/<path>`. The panel mounts at every breakpoint.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
@@ -32,13 +32,19 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `work-items | pull-requests | notes | note | html-page | browser` are workspace-owned
+Tabs are scoped by kind: `work-items | pull-requests | note | html-page | browser` are workspace-owned
 (a `browser` tab may also name an owning chat; see "Browser tabs"),
 `file | diff | git | external | paste` belong to the selected chat (`scopeForKind`).
 A canvas is a `coc://canvas/<canvasId>` web tab kept with its chat (`browserChatId`).
+Notes is one `coc://notes` web tab for the panel workspace (`browserChatId` unset,
+resource id `coc-notes`). Its deep path is the address: `coc://notes/<path>`,
+encoded per segment. A bare reopen keeps a path already on that page; an explicit
+deep address replaces it. Selecting a note rewrites the current history entry.
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs) and
-the removed `terminal`, `settings`, `todo` and `canvas` kinds. A stored `canvas`
-tab is rewritten to a `coc://canvas/<id>` web tab kept with that chat.
+the removed `terminal`, `settings`, `todo`, `canvas` and `notes` kinds. A stored
+`canvas` tab is rewritten to a `coc://canvas/<id>` web tab kept with that chat.
+A stored `notes` tab is rewritten to the panel's Notes page, with `notesView.notePath`
+as `coc://notes/<path>`.
 Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
 drops it from tab identity but records the active tab under that chat's scope,
 so a note link clicked in a hosted chat selects that note (`noteTabInput`).
@@ -51,7 +57,8 @@ partitions the saved order into Tools, Files, Web and Canvas blocks in one row, 
 three visible slots per group; an explicit `false` restores the ungrouped strip.
 `unifiedPanelTabs.css` owns the rounded tab surfaces, active-tab corners, inline
 colored group labels and group lines in both themes. `coc://` pages sit in the
-Web group with other web tabs. Pinned To-do, active and
+Web group with other web tabs, except Canvas (its own block) and Notes (Tools).
+Pinned To-do, active and
 preview tabs take priority; promoted active/preview tabs occupy trailing slots
 without changing saved order. Folded groups retain the active and pinned tabs;
 a ▾ button beside a folded pill opens the shared searchable menu over all the
@@ -117,7 +124,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: reading, opening, preview replacement, draft inheritance, promotion, activation, closing, section moves and mixed visible-order moves, plus the versioned localStorage codec. Every no-op retains the state reference for `useSyncExternalStore`. `orderByScope` holds id-only presentation order without moving descriptors between lists. Notes descriptors hold only panel-local selection. External tabs and their selections are ephemeral. Line-targeted opens mint a non-persisted `revealNonce`; ordinary refocusing retains position without scrolling. |
+| `unifiedPanelTabsModel.ts` | Pure state: reading, opening, preview replacement, draft inheritance, promotion, activation, closing, section moves and mixed visible-order moves, plus the versioned localStorage codec. Every no-op retains the state reference for `useSyncExternalStore`. `orderByScope` holds id-only presentation order without moving descriptors between lists. A Notes page stores its path in `browserUrl`. External tabs and their selections are ephemeral. Line-targeted opens mint a non-persisted `revealNonce`; ordinary refocusing retains position without scrolling. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
@@ -178,9 +185,9 @@ There is no second editor, search backend, terminal manager, or canvas store.
 Explorer sub-tab uses), a `coc://canvas/<id>` page renders `CanvasPanel` through
 `UnifiedCanvasTab` (the panel is its ONLY host — the chat has no canvas column
 of its own), `note` renders
-`NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
-restored from its descriptor (a missing path clears after tree validation)
-and a container-width layout,
+`NoteEditor`, a `coc://notes` page renders the shared `NotesView` with
+panel-local selection from the address (a missing path clears after tree
+validation) and a container-width layout,
 `diff` renders the chat's `WhisperDiffPanel` (the shared `ReviewFiles`
 navigator over the captured tool-call snapshot; see the knowledge
 chat-conversation reference), and a `coc://terminal` page renders
@@ -348,10 +355,10 @@ directory API or expose relative-path copy and Explorer reveal actions.
 
 ## `coc://` pages in web tabs
 
-Terminal, Settings, To-do and Canvas exist only as `coc://` pages in web tabs, like
+Terminal, Settings, To-do, Canvas and Notes exist only as `coc://` pages in web tabs, like
 `chrome://` pages: same toolbar, same address bar, the page's view in place of
 the web content. The `+` menu entries, outside Settings links, Sentinel's
-To-do and every canvas open all open (or focus) a web tab at the page's address.
+To-do, every canvas open and Notes all open (or focus) a web tab at the page's address.
 
 | Address | Shows (`UnifiedCocPage`) | Owner (resolved by the panel's `resolveCocPage`) |
 |---|---|---|
@@ -359,6 +366,7 @@ To-do and every canvas open all open (or focus) a web tab at the page's address.
 | `coc://terminal` | `TerminalView` | The web tab's own owner (the dock target when the tab opened). |
 | `coc://todo[/<itemId>]` | `UnifiedTodoTab` | The selected Sentinel chat, or the origin Sentinel in the pinned excursion tab; "To-do is only available in a Sentinel chat" otherwise. |
 | `coc://canvas/<canvasId>` | `UnifiedCanvasTab` | The web tab's owner workspace. The page stays with the chat that linked it (`browserChatId`). "Open a chat to view a canvas" when there is no chat. |
+| `coc://notes[/<path>]` | `NotesView` | The panel workspace, visible in every chat. One page (`coc-notes`). The path is the address. |
 
 - `parseCocAddress` is case-insensitive for scheme and host, ignores a trailing
   `/`, rejects query/hash, and reports other hosts as "Not supported yet".
@@ -370,21 +378,25 @@ To-do and every canvas open all open (or focus) a web tab at the page's address.
   error and resolves once it is, unless the user navigated meanwhile.
 - `openCocPageTab` / the panel's `openCocPage` focus a visible web tab already
   showing the same page for the same owner (`isSameCocPageTab`; To-do matches by
-  page, not item; Canvas matches by canvas id) instead of adding one; a
+  page, not item; Canvas matches by canvas id; Notes matches the one panel page)
+  instead of adding one; a
   `coc://todo/<itemId>` address always opens anew. Opening the same canvas in
-  the same chat focuses its page. Availability errors show inline in the `+`
+  the same chat focuses its page. Reopening bare `coc://notes` keeps a deep path
+  already on that page; `coc://notes/<path>` sets it. Availability errors show inline in the `+`
   menu and keep it open.
 - `browserUrl` holds the shown address and `browserLabelForUrl` labels a
   `coc://` tab by its page; the strip shows the page's icon. A web tab is
-  persisted only while it shows a `coc://` page, so Terminal, Settings and To-do
-  tabs survive a reload while web pages stay session-only. The engine keeps
+  persisted only while it shows a `coc://` page, so Terminal, Settings, To-do,
+  Canvas and Notes survive a reload while web pages stay session-only. The engine keeps
   the last http(s) page loaded but hidden; its state never relabels a tab while
   a `coc://` page shows, and a URL set from elsewhere (an AI turn) brings the
   web page back.
 - `UnifiedBrowserTab` keeps an in-memory tab history of `coc://` entries around
   one `web` entry. Back/Forward use the engine's history on the web page first,
   then step across entries; a new web address drops forward entries, and the
-  same `coc://` page again replaces its entry. Reload remounts Terminal.
+  same `coc://` page again replaces its entry. A different Notes path replaces
+  the current Notes entry, so Back leaves Notes. Selecting a note rewrites that
+  entry's address without a new step. Reload remounts Terminal.
   Settings and To-do stay mounted: the toolbar reload rebuilds the Settings form
   and re-reads that workspace's git info, and To-do refreshes its ledger in place.
 - `coc://todo/<itemId>` passes `selectItemRequest` (`{ id, nonce }`, fixed at

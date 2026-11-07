@@ -202,8 +202,24 @@ export function UnifiedBrowserTab({
         if (onCocRef.current && isWebUrl(url) && url !== sentUrl.current) {
             const { entries, index } = tabHistoryRef.current;
             setTabHistory({ entries: [...entries.slice(0, index + 1), WEB_ENTRY], index: index + 1 });
+            return;
         }
-    }, [url]);
+        // A Notes open from outside this tab (a link, the menu) moves the deep address.
+        if (!url || !isCocAddressText(url) || url === sentUrl.current) return;
+        const entry = cocEntry(url, resolveCocPage);
+        if (typeof entry === 'string' || entry.page.kind !== 'notes') return;
+        const { entries, index } = tabHistoryRef.current;
+        const here = entries[index];
+        sentUrl.current = formatCocAddress(entry.address);
+        if (here?.kind === 'coc' && here.page.kind === 'notes') {
+            setTabHistory({
+                entries: entries.map((candidate, at) => at === index ? { ...here, address: entry.address, page: entry.page } : candidate),
+                index,
+            });
+        } else {
+            setTabHistory({ entries: [...entries.slice(0, index + 1), entry], index: index + 1 });
+        }
+    }, [url, resolveCocPage]);
 
     useEffect(() => {
         if (!active || !visible) return;
@@ -299,6 +315,18 @@ export function UnifiedBrowserTab({
         const address: CocAddress = { kind: 'todo', ...(itemId ? { itemId } : {}) };
         const text = formatCocAddress(address);
         setTabHistory({ entries: entries.map((candidate, at) => at === index ? { ...entry, address } : candidate), index });
+        sentUrl.current = text;
+        onNavigate(tabId, text);
+    };
+    // An open Notes page follows its selection without a new history step.
+    const followNotesSelection = (notePath: string | null) => {
+        const { entries, index } = tabHistoryRef.current;
+        const entry = entries[index];
+        if (entry.kind !== 'coc' || entry.address.kind !== 'notes' || (entry.address.notePath ?? null) === notePath) return;
+        const address: CocAddress = { kind: 'notes', ...(notePath ? { notePath } : {}) };
+        const text = formatCocAddress(address);
+        const page = entry.page.kind === 'notes' ? { ...entry.page, notePath } : entry.page;
+        setTabHistory({ entries: entries.map((candidate, at) => at === index ? { ...entry, address, page } : candidate), index });
         sentUrl.current = text;
         onNavigate(tabId, text);
     };
@@ -521,6 +549,8 @@ export function UnifiedBrowserTab({
                         onRegisterSave={onRegisterSave}
                         canvasSwitcher={canvasSwitcher}
                         onCanvasTitle={onCanvasTitle}
+                        notePath={cocPage.address.kind === 'notes' ? cocPage.address.notePath ?? null : null}
+                        onNotesSelectionChange={followNotesSelection}
                     />
                 </div>
             ) : bridge ? (

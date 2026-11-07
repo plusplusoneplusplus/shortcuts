@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { canvasPageInput, notesPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { pasteOpenInput, pasteResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPasteTabs';
 import { openMenuActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
 import {
@@ -76,7 +76,9 @@ describe('coc:// page tabs', () => {
             activeByScope: {},
         });
         const restored = parseUnifiedPanelState(raw);
-        expect(restored.workspaceTabs.map(tab => tab.kind)).toEqual(['notes']);
+        expect(restored.workspaceTabs).toEqual([expect.objectContaining({
+            kind: 'browser', browserUrl: 'coc://notes', label: 'Notes',
+        })]);
         expect(restored.chatTabs).toEqual({});
     });
 
@@ -201,14 +203,14 @@ function withoutRevealNonce(state: UnifiedPanelState): UnifiedPanelState {
 /** A workspace terminal + a notes tab + one chat-1 file, in that strip order. */
 function baseState(): UnifiedPanelState {
     let state = open(EMPTY_UNIFIED_PANEL, { kind: 'work-items', resourceId: 'sess-1', label: 'bash' });
-    state = open(state, { kind: 'notes', resourceId: 'notes', label: 'Notes' });
+    state = open(state, notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null }));
     state = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', chatId: CHAT_1 });
     return state;
 }
 
 describe('unifiedPanelTabsModel — ownership', () => {
     it('files terminal, notes and note documents under the workspace', () => {
-        for (const kind of ['work-items', 'notes', 'note'] as const) {
+        for (const kind of ['work-items', 'note'] as const) {
             expect(scopeForKind(kind)).toBe('workspace');
             expect(scopeKeyFor(kind, CHAT_1)).toBe(WORKSPACE_SCOPE_KEY);
         }
@@ -279,7 +281,7 @@ describe('unifiedPanelTabsModel — ownership', () => {
     it('orders workspace tabs before the selected chat tabs', () => {
         let state = baseState();
         state = open(state, { kind: 'note', resourceId: 'notes/plan.md', label: 'plan.md' });
-        expect(visibleTabs(state, CHAT_1).map(t => t.kind)).toEqual(['work-items', 'notes', 'note', 'file']);
+        expect(visibleTabs(state, CHAT_1).map(t => t.kind)).toEqual(['work-items', 'browser', 'note', 'file']);
     });
 });
 
@@ -573,7 +575,7 @@ describe('unifiedPanelTabsModel — closing', () => {
 
 describe('unifiedPanelTabsModel — display groups', () => {
     it('groups git with the workspace tools and files/diffs/external as resources', () => {
-        for (const kind of ['work-items', 'notes', 'note', 'git', 'browser'] as const) {
+        for (const kind of ['work-items', 'note', 'git', 'browser'] as const) {
             expect(displayGroupForKind(kind)).toBe('tools');
         }
         for (const kind of ['file', 'diff', 'external'] as const) {
@@ -596,7 +598,7 @@ describe('unifiedPanelTabsModel — display groups', () => {
             .toEqual(['bash', 'Notes', 'Plan', 'Draft', 'a.ts', 'b.ts']);
         expect(state.workspaceTabs.map(t => t.label)).toEqual(['bash', 'Notes', 'Plan', 'Draft']);
         expect(state.workspaceTabs.filter(t => t.browserUrl).map(t => t.browserUrl))
-            .toEqual(['coc://canvas/c1', 'coc://canvas/c2']);
+            .toEqual(['coc://notes', 'coc://canvas/c1', 'coc://canvas/c2']);
         expect(state.chatTabs[CHAT_1]!.map(t => t.label)).toEqual(['a.ts', 'b.ts']);
         // Another chat never sees these canvases.
         expect(visibleTabs(state, CHAT_2).map(t => t.label)).toEqual(['bash', 'Notes']);
@@ -692,7 +694,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
     it('never persists content — only descriptor fields', () => {
         const payload = JSON.parse(serializeUnifiedPanelState(baseState()));
         const fields = new Set(payload.workspaceTabs.flatMap((t: object) => Object.keys(t)));
-        expect([...fields].sort()).toEqual(['chatId', 'id', 'kind', 'label', 'ownerWorkspaceId', 'resourceId']);
+        expect([...fields].sort()).toEqual(['browserUrl', 'chatId', 'id', 'kind', 'label', 'ownerWorkspaceId', 'resourceId']);
     });
 
     it('returns the empty state for absent, unparseable, or wrongly versioned payloads', () => {
@@ -710,7 +712,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         payload.workspaceTabs.push({ kind: 'work-items', ownerWorkspaceId: '', chatId: null, resourceId: 'x', label: 'x', id: 'x' });
         const restored = parseUnifiedPanelState(JSON.stringify(payload));
         expect(restored.workspaceTabs).toHaveLength(2);
-        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['work-items', 'notes']);
+        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['work-items', 'browser']);
     });
 
     it('rejects a descriptor whose id does not match its own fields', () => {
@@ -719,7 +721,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         // aliased descriptor must not restore.
         payload.workspaceTabs[0].ownerWorkspaceId = 'other-repo';
         const restored = parseUnifiedPanelState(JSON.stringify(payload));
-        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['notes']);
+        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['browser']);
     });
 
     it('rejects a descriptor filed under the wrong scope', () => {
@@ -1054,7 +1056,7 @@ describe('unifiedPanelTabsModel — codec v3: clone routes, preview repair, and 
         const restored = restoreUnifiedPanelState(JSON.stringify(legacyPayload()));
         expect(restored.migrated).toBe(true);
         expect(restored.openTree).toBe(true);
-        expect(restored.state.workspaceTabs.map(t => t.kind)).toEqual(['work-items', 'notes']);
+        expect(restored.state.workspaceTabs.map(t => t.kind)).toEqual(['work-items', 'browser']);
         expect(restored.state.chatTabs[CHAT_1].map(t => t.label)).toEqual(['a.ts']);
     });
 
@@ -1133,7 +1135,7 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
     it('is dropped from storage, along with any selection naming it', () => {
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(withExternal()));
 
-        expect(visibleTabs(restored, CHAT_1).map(tab => tab.kind)).toEqual(['work-items', 'notes', 'file']);
+        expect(visibleTabs(restored, CHAT_1).map(tab => tab.kind)).toEqual(['work-items', 'browser', 'file']);
         expect(activeTabId(restored, CHAT_1)).not.toBe(
             unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' }),
         );
@@ -1159,26 +1161,20 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
 
         const closed = closeTab(state, id);
 
-        expect(visibleTabs(closed, CHAT_1).map(tab => tab.resourceId)).toEqual(['sess-1', 'notes', 'src/a.ts']);
+        expect(visibleTabs(closed, CHAT_1).map(tab => tab.resourceId)).toEqual(['sess-1', 'coc-notes', 'src/a.ts']);
     });
 });
 
 describe('notes tab view state', () => {
-    const notesInput: OpenUnifiedTabInput = {
-        kind: 'notes',
-        ownerWorkspaceId: WS,
-        chatId: null,
-        resourceId: 'notes',
-        label: 'Notes',
-    };
+    const notesInput = notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null });
 
-    it('persists and restores the panel-local selected note', () => {
+    it('persists and restores the selected note in the deep address', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
         state = updateNotesView(state, state.workspaceTabs[0].id, 'Plans/Release.md');
 
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
 
-        expect(restored.workspaceTabs[0].notesView).toEqual({ notePath: 'Plans/Release.md' });
+        expect(restored.workspaceTabs[0].browserUrl).toBe('coc://notes/Plans/Release.md');
     });
 
     it('updates and clears selection without changing the active panel tab', () => {
@@ -1191,11 +1187,11 @@ describe('notes tab view state', () => {
 
         state = updateNotesView(state, notesId, 'Notes/One.md');
         expect(activeTabId(state, null)).toBe(activeId);
-        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'Notes/One.md' });
+        expect(state.workspaceTabs[0].browserUrl).toBe('coc://notes/Notes/One.md');
 
         state = updateNotesView(state, notesId, null);
         expect(activeTabId(state, null)).toBe(activeId);
-        expect(state.workspaceTabs[0].notesView).toBeUndefined();
+        expect(state.workspaceTabs[0].browserUrl).toBe('coc://notes');
     });
 
     it('keeps selection when the existing Notes tab is opened again', () => {
@@ -1204,10 +1200,10 @@ describe('notes tab view state', () => {
 
         state = openTab(state, notesInput);
 
-        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'Notes/One.md' });
+        expect(state.workspaceTabs[0].browserUrl).toBe('coc://notes/Notes/One.md');
     });
 
-    it('drops malformed view state and ignores it on other tab kinds', () => {
+    it('drops a note path stored on a tab that is not the Notes page', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
         const payload = JSON.parse(serializeUnifiedPanelState(state));
         payload.workspaceTabs[0].notesView = { notePath: 42, content: 'not descriptor state' };
@@ -1316,7 +1312,7 @@ describe('git tab kind', () => {
 
     it('ignores a git view on any other kind', () => {
         const state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes',
+            kind: 'work-items', ownerWorkspaceId: WS, chatId: null, resourceId: 'sess-9', label: 'Other',
             gitView: { type: 'branch-range' },
         });
         expect(state.workspaceTabs[0].gitView).toBeUndefined();

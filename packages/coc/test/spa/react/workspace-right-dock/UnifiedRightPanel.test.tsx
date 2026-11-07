@@ -104,7 +104,7 @@ import {
     readUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { canvasPageInput, notesPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import {
     EMPTY_UNIFIED_PANEL,
     activateTab,
@@ -292,9 +292,7 @@ describe('UnifiedRightPanel', () => {
         });
 
         function seedCanvasBurst() {
-            let state = openTab(EMPTY_UNIFIED_PANEL, {
-                kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes',
-            });
+            let state = openTab(EMPTY_UNIFIED_PANEL, notesPageInput({ ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: null }));
             state = openTab(state, {
                 kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
             });
@@ -1288,7 +1286,7 @@ describe('UnifiedRightPanel', () => {
 
         expect(screen.getAllByTestId('unified-right-panel')).toHaveLength(1);
         const terminalId = terminalTabId();
-        const notesId = unifiedTabId({ kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes' });
+        const notesId = unifiedTabId({ kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'coc-notes' });
         // Opening activates the new tab; the terminal stays mounted but hidden.
         expect(screen.getByTestId(`unified-panel-view-${notesId}`).getAttribute('data-active')).toBe('true');
         expect(screen.getByTestId(`unified-panel-view-${terminalId}`).getAttribute('data-active')).toBe('false');
@@ -1321,9 +1319,7 @@ describe('UnifiedRightPanel', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal',
         });
-        state = openTab(state, {
-            kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes',
-        });
+            state = openTab(state, notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null }));
         writeUnifiedPanelState(WS, state);
 
         renderPanel();

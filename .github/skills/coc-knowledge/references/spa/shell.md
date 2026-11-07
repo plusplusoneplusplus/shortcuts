@@ -122,10 +122,12 @@ hiding the panel restores the selected list segment.
 WI/PR list/detail layouts respond to the panel width with their single-pane back
 navigation and restore the split when widened.
 
-`unifiedPanelWorkspaceResources.ts` builds Notes descriptors and the
-`coc://settings` web tab (`panelSettingsInput`, focused again through
-`openCocPageTab`) for the menu and outside links. Those resources belong to the
-panel workspace; WI/PR tools use the current dock target. Group dock controls resolve clone selections to raw
+`unifiedPanelWorkspaceResources.ts` builds the panel workspace's `coc://notes`
+page (`panelNotesInput` / `notesPageInput`, one `coc-notes` tab; a deep path is
+`coc://notes/<path>`) and the `coc://settings` web tab (`panelSettingsInput`,
+focused again through `openCocPageTab`) for the menu and outside links. Those
+resources belong to the panel workspace; WI/PR tools use the current dock target.
+Group dock controls resolve clone selections to raw
 workspace ids while descriptors retain concrete server routes.
 
 `features/repo-settings/WorkspaceSettingsHost.tsx` mounts one `RepoSettingsTab`
@@ -1086,9 +1088,10 @@ Source and row previews highlight the exact server-provided UTF-16 column span,
 including regex and multiline pieces, with malformed offsets clamped by the
 shared Explorer match-text splitter.
 
-The panel holds Notes, files, notes, canvases, chat diffs and web tabs as tabs.
-Terminal, Settings and To-do have no tab kind: they are `coc://` pages in web
-tabs. The add-menu Terminal action opens or focuses the dock-target-owned
+The panel holds files, notes, canvases, chat diffs and web tabs as tabs.
+Terminal, Settings, To-do, Canvas and Notes have no tab kind: they are `coc://`
+pages in web tabs. Notes is `coc://notes` or `coc://notes/<path>` and stays in
+the Tools group. The add-menu Terminal action opens or focuses the dock-target-owned
 `coc://terminal` tab and passes an ephemeral request to `TerminalView`. Successful session hydration precedes empty-tab
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only

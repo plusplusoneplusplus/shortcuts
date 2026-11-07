@@ -28,11 +28,14 @@ describe('parseCocAddress', () => {
         ['coc://todo/a%20b', { kind: 'todo', itemId: 'a b' }],
         ['coc://canvas/plan-1', { kind: 'canvas', canvasId: 'plan-1' }],
         ['COC://Canvas/Plan-1/', { kind: 'canvas', canvasId: 'Plan-1' }],
+        ['coc://notes', { kind: 'notes' }],
+        ['coc://notes/Plans/Release.md', { kind: 'notes', notePath: 'Plans/Release.md' }],
+        ['coc://notes/My%20Note.md/', { kind: 'notes', notePath: 'My Note.md' }],
     ])('parses %j', (text, expected) => {
         expect(parseCocAddress(text)).toEqual(expected);
     });
 
-    it.each(['coc://git', 'coc://file/a.ts', 'coc://notes'])('reports unknown host %j as not supported yet', text => {
+    it.each(['coc://git', 'coc://file/a.ts', 'coc://calendar'])('reports unknown host %j as not supported yet', text => {
         expect(parseCocAddress(text)).toEqual({ error: COC_ADDRESS_UNSUPPORTED });
     });
 
@@ -40,6 +43,7 @@ describe('parseCocAddress', () => {
         'coc://settings?tab=ai', 'coc://todo#x', 'coc://todo/a?b', 'coc://', 'coc:///settings', 'coc://settings/extra',
         'coc://todo/a/b', 'coc://todo//a', 'coc://todo/%E0%A4%A', 'https://settings', 'settings', 'coc:settings',
         'coc://canvas', 'coc://canvas/', 'coc://canvas/plan/extra', 'coc://canvas/bad id', 'coc://canvas/_no',
+        'coc://notes/../secret', 'coc://notes//Plans', 'coc://notes/./here',
     ])('rejects %j', text => {
         expect(parseCocAddress(text)).toEqual({ error: COC_ADDRESS_INVALID });
     });
@@ -51,7 +55,7 @@ describe('parseCocAddress', () => {
     });
 
     it('round-trips through formatCocAddress', () => {
-        for (const text of ['coc://settings', 'coc://terminal', 'coc://todo', 'coc://todo/item-1', 'coc://todo/a%20b', 'coc://canvas/plan-1']) {
+        for (const text of ['coc://settings', 'coc://terminal', 'coc://todo', 'coc://todo/item-1', 'coc://todo/a%20b', 'coc://canvas/plan-1', 'coc://notes', 'coc://notes/Plans/Release.md', 'coc://notes/My%20Note.md']) {
             const parsed = parseCocAddress(text);
             expect('error' in parsed).toBe(false);
             if (!('error' in parsed)) expect(formatCocAddress(parsed)).toBe(text);
@@ -66,6 +70,8 @@ describe('coc:// labels', () => {
         expect(cocAddressLabel({ kind: 'todo', itemId: 'x' })).toBe('To-do');
         expect(cocAddressLabel({ kind: 'canvas', canvasId: 'plan-1' })).toBe('Canvas');
         expect(browserLabelForUrl('coc://canvas/plan-1')).toBe('Canvas');
+        expect(cocAddressLabel({ kind: 'notes', notePath: 'Plans/Release.md' })).toBe('Notes');
+        expect(browserLabelForUrl('coc://notes/Plans/Release.md')).toBe('Notes');
         expect(browserLabelForUrl('coc://todo/item-1')).toBe('To-do');
         expect(browserLabelForUrl('coc://git')).toBe('New Tab');
         expect(browserLabelForUrl('https://example.com/a')).toBe('example.com');

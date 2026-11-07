@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
+import { UnifiedCocPage } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCocPage';
 import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
 import type { UnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
@@ -41,14 +42,13 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
     } as UnifiedPanelTab;
 }
 
-function renderTab(tab: UnifiedPanelTab, onOpenFile?: any, onNotesSelectionChange?: any) {
+function renderTab(tab: UnifiedPanelTab, onOpenFile?: any) {
     return render(
         <UnifiedTabView
             tab={tab}
             scopeWorkspaceId="group-1"
             onClose={() => undefined}
             {...(onOpenFile ? { onOpenFile } : {})}
-            {...(onNotesSelectionChange ? { onNotesSelectionChange } : {})}
         />,
     );
 }
@@ -98,14 +98,17 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
 
     it('renders the full Notes view with panel-local navigation for the panel scope', () => {
         const onNotesSelectionChange = vi.fn();
-        renderTab({
-            id: 'notes',
-            kind: 'notes',
-            ownerWorkspaceId: 'member-b',
-            resourceId: 'notes',
-            label: 'Notes',
-            notesView: { notePath: 'Plans/Release.md' },
-        } as UnifiedPanelTab, undefined, onNotesSelectionChange);
+        render(
+            <UnifiedCocPage
+                page={{ kind: 'notes', ownerWorkspaceId: 'group-1', notePath: 'Plans/Release.md' }}
+                active
+                terminalOpenRequest={0}
+                selectItemRequest={null}
+                notePath="Plans/Release.md"
+                onTodoSelectionChange={() => undefined}
+                onNotesSelectionChange={onNotesSelectionChange}
+            />,
+        );
 
         expect(viewProps.notes).toMatchObject({
             workspaceId: 'group-1',
@@ -115,6 +118,6 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
             active: false,
         });
         viewProps.notes.onSelectedNotePathChange('Plans/Next.md');
-        expect(onNotesSelectionChange).toHaveBeenCalledWith('notes', 'Plans/Next.md');
+        expect(onNotesSelectionChange).toHaveBeenCalledWith('Plans/Next.md');
     });
 });

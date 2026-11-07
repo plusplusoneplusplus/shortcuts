@@ -163,8 +163,9 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
 describe('unifiedToolbarBreadcrumbs', () => {
     it('renders no row for a kind that brings its own toolbar', () => {
         expect(unifiedToolbarBreadcrumbs(null)).toBeNull();
-        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'notes' }))).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'browser', browserUrl: 'coc://notes' }))).toBeNull();
         expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }))).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'browser', browserUrl: 'coc://notes/Plans/Release.md' }))).toBeNull();
     });
 
     it('splits a repo-relative path into navigable segments', () => {

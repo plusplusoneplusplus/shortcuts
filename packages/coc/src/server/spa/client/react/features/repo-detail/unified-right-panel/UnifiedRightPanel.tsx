@@ -125,7 +125,7 @@ import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useWorkspaceSettingsOwner } from '../../repo-settings/WorkspaceSettingsHost';
-import { panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
+import { panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
@@ -308,7 +308,6 @@ export function UnifiedRightPanel({
     }, []);
     const {
         state, tabs, activeId, active, pinnedId, open, openBeside, openPreview, previewToReplace, promote, activate, close, move,
-        updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
     // With `features.chatScopedBrowserTabs` off, every page shows in every chat again.
@@ -495,7 +494,7 @@ export function UnifiedRightPanel({
     // member or a remote clone) so two same-named tabs stay tellable apart.
     const openWorkspaceResource = useCallback((kind: 'notes' | 'work-items' | 'pull-requests') => {
         if (kind === 'notes') {
-            open(panelWorkspaceResourceInput(kind, { workspaceId, routingRef: routingRef ?? null, chatId }));
+            open(panelNotesInput({ workspaceId, routingRef: routingRef ?? null, chatId }));
             return;
         }
         open({ ...panelWorkspaceResourceInput(kind, { workspaceId: target, routingRef: targetRoutingRef ?? null, chatId }), ...(target !== workspaceId ? { repoLabel: targetLabel } : {}) });
@@ -2243,6 +2242,12 @@ export function UnifiedRightPanel({
                 ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
             };
         }
+        if (address.kind === 'notes') {
+            return {
+                kind: 'notes', ownerWorkspaceId: workspaceId, ownerRoutingRef: routingRef ?? null,
+                notePath: address.notePath ?? null,
+            };
+        }
         const owner = tab.id !== undefined && tab.id === pinnedId && excursion ? excursion.origin.owner : todoOwner;
         if (owner === null || chatId === null) return 'To-do is only available in a Sentinel chat';
         return { kind: 'todo', owner, scopeWorkspaceId: workspaceId, chatId };
@@ -2259,6 +2264,11 @@ export function UnifiedRightPanel({
         });
     }, [state.workspaceTabs]);
     const openCocPage = useCallback((address: CocAddress): string | void => {
+        if (address.kind === 'notes') {
+            setMenuOpen(false);
+            open(panelNotesInput({ workspaceId, routingRef: routingRef ?? null, chatId }, address.notePath));
+            return;
+        }
         if (address.kind === 'canvas') {
             if (chatId === null) return 'Open a chat to view a canvas';
             setMenuOpen(false);
@@ -2606,7 +2616,6 @@ export function UnifiedRightPanel({
                                     blameShown={fileBlameEnabled && blameShownIds.has(tab.id)}
                                     onBlameSupportChange={fileBlameEnabled ? handleBlameSupport : undefined}
                                     onOpenBlameCommit={openBlameCommit}
-                                    onNotesSelectionChange={updateNotesSelection}
                                 />}
                             </div>
                             );

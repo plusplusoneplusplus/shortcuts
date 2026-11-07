@@ -321,7 +321,7 @@ describe('DreamsPanel', () => {
         render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'chat-1' }}><DreamsPanel workspaceId="ws-1" /></UnifiedPanelHostProvider>);
         fireEvent.click(await screen.findByTestId('dream-open-note-dream-note'));
         const [tab] = readUnifiedPanelState('ws-1').workspaceTabs;
-        expect(tab).toMatchObject({ kind: 'notes', ownerWorkspaceId: 'ws-1', notesView: { notePath: 'Dreams/dream-note.md' } });
+        expect(tab).toMatchObject({ kind: 'browser', ownerWorkspaceId: 'ws-1', browserUrl: 'coc://notes/Dreams/dream-note.md' });
         expect(readUnifiedPanelState('ws-1').activeByScope['chat-1']).toBe(tab.id);
     });
 

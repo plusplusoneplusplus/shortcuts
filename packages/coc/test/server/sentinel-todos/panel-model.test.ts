@@ -33,7 +33,7 @@ import {
     serializeUnifiedPanelState,
     visibleTabs,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { canvasPageInput, openCocPageTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { canvasPageInput, notesPageInput, openCocPageTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openMenuActions } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
 import { sentinelTodoRecentPage } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoStatusModel';
 
@@ -343,7 +343,7 @@ describe('shouldAutoOpenSentinelTodoTab', () => {
             ownerWorkspaceId: 'ws-1', chatId: 'chat-1', browserChatId: 'chat-1',
         }));
         expect(shouldAutoOpenSentinelTodoTab(withCanvas, 'chat-1', input, first)).toBe(false);
-        const withNotes = openTab(EMPTY_UNIFIED_PANEL, { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
+        const withNotes = openTab(EMPTY_UNIFIED_PANEL, notesPageInput({ ownerWorkspaceId: 'ws-1', chatId: null, browserChatId: null }));
         expect(shouldAutoOpenSentinelTodoTab(withNotes, 'chat-1', input, first)).toBe(false);
     });
 
