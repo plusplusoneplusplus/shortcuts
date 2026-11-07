@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReleaseInfo } from '../src/update-check';
 import {
-    downloadUpdate, selectUpdateAssets,
+    downloadUpdate, isInAppUpdateSupported, selectUpdateAssets,
     type DownloadProgress, type DownloadUpdateOptions, type UpdateDownloadFileSystem,
 } from '../src/update-install';
 
@@ -50,6 +50,18 @@ function fixture(overrides: Partial<DownloadUpdateOptions> = {}) {
     };
     return { options, store, fetchFn, close, contents: () => contents };
 }
+
+describe('isInAppUpdateSupported', () => {
+    it.each([
+        ['darwin', 'arm64', true],
+        ['win32', 'x64', true],
+        ['darwin', 'x64', false],
+        ['win32', 'arm64', false],
+        ['linux', 'x64', false],
+    ] as const)('returns %s for %s/%s', (platform, arch, expected) => {
+        expect(isInAppUpdateSupported(platform, arch)).toBe(expected);
+    });
+});
 
 describe('selectUpdateAssets', () => {
     it.each([

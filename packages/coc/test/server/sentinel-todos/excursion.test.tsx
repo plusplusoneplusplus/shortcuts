@@ -690,6 +690,44 @@ describe('Sentinel delegated-result Open job link', () => {
     const openJob = () => screen.getByRole('link', { name: 'Open job' });
     beforeEach(() => { notify.mockReset(); history.replaceState(null, '', ORIGIN.href); });
 
+    it('resolves a remote result reference on its durable destination before changing the current conversation', async () => {
+        publishDashboardTopology('ws-1', [{ id: 'ws-2', name: 'Local collision' } as WorkspaceInfo,
+            ...tagRemoteWorkspaces({ id: 'destination', label: 'Remote', kind: 'url', serverIdentity: 'destination-identity' },
+                'https://destination.example', [{ id: 'ws-2', name: 'Destination workspace' } as WorkspaceInfo])], 'local');
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            const url = new URL(String(input));
+            const data = url.pathname.endsWith('/health') ? { serverIdentity: 'destination-identity' }
+                : { process: { id: 'job-1', type: 'chat', metadata: { workspaceId: 'ws-2' } } };
+            return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+        });
+        vi.stubGlobal('fetch', fetcher);
+        const card = result({ workspaceId: 'ws-2', processId: 'job-1' });
+        card.data.links = ['#chat-references/destination-identity/ws-2/job-1'];
+        render(<Card card={card} />);
+        fireEvent.click(openJob());
+        expect(location.hash).toBe(ORIGIN.href);
+        expect(getSentinelTodoExcursion()).toBeNull();
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        expect(location.hash).toBe('#repos/remote%3Adestination%3Aws-2/chats/job-1');
+        expect(fetcher.mock.calls.every(([url]) => String(url).startsWith('https://destination.example/'))).toBe(true);
+        expect(getSentinelTodoExcursion()?.origin.owner).toEqual(OWNER);
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('leaves selection and origin unchanged when a result reference is unavailable', async () => {
+        publishDashboardTopology('ws-1', []);
+        const fetcher = vi.fn();
+        vi.stubGlobal('fetch', fetcher);
+        const card = result({ workspaceId: 'ws-2', processId: 'job-1' });
+        card.data.links = ['#chat-references/missing/ws-2/job-1'];
+        render(<Card card={card} />);
+        fireEvent.click(openJob());
+        await waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+        expect(location.hash).toBe(ORIGIN.href);
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(fetcher).not.toHaveBeenCalled();
+    });
+
     it('opens the job and shows the existing Back to Sentinel bar that returns to the origin', () => {
         const fetcher = vi.fn();
         vi.stubGlobal('fetch', fetcher);

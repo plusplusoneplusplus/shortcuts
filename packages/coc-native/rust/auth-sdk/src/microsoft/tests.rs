@@ -947,7 +947,7 @@ async fn advisory_lock_contention_is_bounded_and_released() {
     let f = Fixture::new();
     f.seed(&f.oauth());
     let key = f.oauth().credential_key(&Account { id: ACCOUNT.into(), tenant: TENANT.into() });
-    let lock = coordination::CredentialLock::acquire(f.directory.path(), &key).await.unwrap();
+    let lock = crate::oauth::CredentialLock::acquire(f.directory.path(), &key).await.unwrap();
     let mut options = f.options(Refresh::Auto, true);
     options.timeout = Duration::from_millis(100);
     let p = MicrosoftTokenProvider::with_dependencies(options, f.deps.clone()).unwrap();
@@ -1244,37 +1244,37 @@ async fn process_runner_missing_executable_and_bounded_output_are_redacted() {
 
 #[test]
 fn secret_store_rejects_non_sdk_entries_without_account_access() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     for key in [
         "copilot-cli/fixture",
         "auth-sdk:v1:short",
         "auth-sdk:v1:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
     ] {
-        assert_eq!(code(OsCredentialStore.read(key)), ErrorCode::InvalidConfiguration);
+        assert_eq!(code(store.read(key)), ErrorCode::InvalidConfiguration);
         assert_eq!(
-            code(OsCredentialStore.write(key, &Secret::new("fixture".into()))),
+            code(store.write(key, &Secret::new("fixture".into()))),
             ErrorCode::InvalidConfiguration
         );
-        assert_eq!(code(OsCredentialStore.delete(key)), ErrorCode::InvalidConfiguration);
+        assert_eq!(code(store.delete(key)), ErrorCode::InvalidConfiguration);
     }
 }
 
 #[test]
 #[ignore = "Explicit isolated OS-store fixture; enable in native CI only"]
 fn isolated_os_store_fixture() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     let directory = tempfile::tempdir().unwrap();
     let key = format!(
         "auth-sdk:v1:{}",
         config::hash(&["isolated-fixture", &directory.path().to_string_lossy()])
     );
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
-    OsCredentialStore.write(&key, &Secret::new("synthetic-refresh-fixture".into())).unwrap();
-    let stored = OsCredentialStore.read(&key);
-    let deleted = OsCredentialStore.delete(&key);
+    assert!(store.read(&key).unwrap().is_none());
+    store.write(&key, &Secret::new("synthetic-refresh-fixture".into())).unwrap();
+    let stored = store.read(&key);
+    let deleted = store.delete(&key);
     assert_eq!(stored.unwrap().unwrap().expose(), "synthetic-refresh-fixture");
     deleted.unwrap();
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
+    assert!(store.read(&key).unwrap().is_none());
 }
 
 #[cfg(target_os = "linux")]
@@ -1292,30 +1292,30 @@ fn linux_unavailable_store_is_an_explicit_failure() {
 #[test]
 #[ignore = "Writes and deletes one isolated SDK credential in Windows Credential Manager"]
 fn windows_isolated_os_store_fixture_utf8_capacity_and_roundtrip() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     let directory = tempfile::tempdir().unwrap();
     let key = format!(
         "auth-sdk:v1:{}",
         config::hash(&["isolated-utf8-fixture", &directory.path().to_string_lossy()])
     );
     let result = (|| -> Result<()> {
-        assert!(OsCredentialStore.read(&key)?.is_none());
+        assert!(store.read(&key)?.is_none());
         for value in ["x".repeat(2560), "\u{e9}".repeat(1280)] {
             let secret = Secret::new(value);
-            OsCredentialStore.write(&key, &secret)?;
-            assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), secret.expose());
+            store.write(&key, &secret)?;
+            assert_eq!(store.read(&key)?.unwrap().expose(), secret.expose());
         }
         assert_eq!(
-            code(OsCredentialStore.write(&key, &Secret::new("x".repeat(2561)))),
+            code(store.write(&key, &Secret::new("x".repeat(2561)))),
             ErrorCode::StorageFailed,
         );
-        assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), "\u{e9}".repeat(1280));
+        assert_eq!(store.read(&key)?.unwrap().expose(), "\u{e9}".repeat(1280));
         Ok(())
     })();
-    let deleted = OsCredentialStore.delete(&key);
+    let deleted = store.delete(&key);
     result.unwrap();
     deleted.unwrap();
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
+    assert!(store.read(&key).unwrap().is_none());
 }
 
 #[cfg(target_os = "linux")]
@@ -1323,14 +1323,14 @@ fn windows_isolated_os_store_fixture_utf8_capacity_and_roundtrip() {
 #[ignore = "Subprocess isolates DBus environment"]
 fn linux_unavailable_store_child() {
     let key = format!("auth-sdk:v1:{}", config::hash(&["unavailable-fixture"]));
-    assert_eq!(code(crate::OsCredentialStore.read(&key)), ErrorCode::StorageUnavailable);
+    assert_eq!(code(crate::AuthSdkCredentialStore::os().read(&key)), ErrorCode::StorageUnavailable);
 }
 
 #[tokio::test]
 async fn competing_processes_coordinate_on_the_same_credential_lock() {
     let f = Fixture::new();
     let key = "cross-process-fixture";
-    let lock = coordination::CredentialLock::acquire(f.directory.path(), key).await.unwrap();
+    let lock = crate::oauth::CredentialLock::acquire(f.directory.path(), key).await.unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--ignored", "--exact", "microsoft::tests::coordination_child"])
         .env("AUTH_SDK_TEST_LOCK_DIR", f.directory.path())
@@ -1346,7 +1346,7 @@ async fn coordination_child() {
     let directory = std::env::var_os("AUTH_SDK_TEST_LOCK_DIR").unwrap();
     let result = tokio::time::timeout(
         Duration::from_millis(100),
-        coordination::CredentialLock::acquire(
+        crate::oauth::CredentialLock::acquire(
             std::path::Path::new(&directory),
             "cross-process-fixture",
         ),

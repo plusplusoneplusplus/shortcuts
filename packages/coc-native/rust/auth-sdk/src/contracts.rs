@@ -182,3 +182,14 @@ pub(crate) fn checkpoint(cancel: &CancellationToken, deadline: tokio::time::Inst
     }
     Ok(())
 }
+
+/// Length-prefixed SHA-256 digest of multiple parts, preventing delimiter collisions.
+pub(crate) fn hash(parts: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    for part in parts {
+        digest.update((part.len() as u64).to_be_bytes());
+        digest.update(part.as_bytes());
+    }
+    format!("{:x}", digest.finalize())
+}

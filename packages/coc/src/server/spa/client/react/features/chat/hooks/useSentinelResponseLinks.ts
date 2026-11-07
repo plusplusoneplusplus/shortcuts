@@ -61,7 +61,8 @@ export function useSentinelResponseLinks(origin: ResponseLinkOrigin | null, noti
         cancel();
         const href = anchor.getAttribute('href') ?? '';
         if (!href.startsWith('#')) return;
-        if (resultJob) {
+        const reference = parseDashboardChatReference(href);
+        if (resultJob && !reference) {
             // The card's route comes from the owner-validated delivery, not model
             // text, so it opens like before and only adds the way back.
             let job: ReturnType<typeof chatTarget>;
@@ -75,7 +76,6 @@ export function useSentinelResponseLinks(origin: ResponseLinkOrigin | null, noti
             }
             return;
         }
-        const reference = parseDashboardChatReference(href);
         let target: ReturnType<typeof chatTarget>;
         try { target = reference ? null : chatTarget(href, origin); } catch { return; }
         if (reference?.artifactPath !== undefined || (!reference && !target)) return;

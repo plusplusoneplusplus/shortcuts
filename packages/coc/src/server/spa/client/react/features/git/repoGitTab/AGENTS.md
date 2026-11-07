@@ -49,7 +49,11 @@ refresh, and the two layouts. Everything else lives here.
 - **Data does not own selection.** `refreshAll` reads and writes the right panel
   only through the injected `selection` bridge, and decides *what* to select via
   the pure `reconcileSelectionAfterRefresh`. `changed: false` means "leave the
-  view alone" — distinct from `next: null`, which clears it.
+  view alone" — distinct from `next: null`, which clears it. The hash picker uses
+  this same forced refresh:
+  retained selections survive, missing selections fall back to the first commit
+  or clear on an empty page. Navigation during a pending refresh wins. Request
+  generations reject superseded reads and results from disposed owners.
 - **Selection attachment ownership.** `RepoGitTab.sourceSelectionId` identifies
   the concrete source clone. The list pane forwards it through `CommitList` to
   commit drag payloads. The detail pane forwards it as

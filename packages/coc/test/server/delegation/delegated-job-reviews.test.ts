@@ -139,6 +139,9 @@ describe('delegated success/failure review scheduling', () => {
             remote: { serverIdentity: 'destination-owner', requestId: job.remote!.requestId } });
         expect(data.repository.name).toBeUndefined();
         expect(data.links[0]).toBe(`#chat-references/destination-owner/${parentWorkspace}/${childId}`);
+        const turn = (await store.getProcess(parentId))!.conversationTurns![0];
+        const card = parseSentinelResult({ ...turn, timeline: [] }, turn.content, parentWorkspace, parentId);
+        expect(card?.data).toEqual(data);
         expect(queueMessagingResult).not.toHaveBeenCalled();
         expect((await store.getProcess(parentId))?.conversationTurns?.[0].role).toBe('user');
         await reviews.schedule(job);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
-import { parseSentinelResult, sentinelResultJobHref } from '../../../src/server/spa/client/react/features/chat/conversation/sentinelResult';
+import { isSentinelResultReviewTurn, parseSentinelResult, sentinelResultJobHref } from '../../../src/server/spa/client/react/features/chat/conversation/sentinelResult';
 import { SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 import { copyToClipboard } from '../../../src/server/spa/client/react/utils/format';
@@ -9,6 +9,8 @@ import type { ClientConversationTurn } from '../../../src/server/spa/client/reac
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { registerCloneBaseUrls } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
+import { publishDashboardTopology } from '../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+import { tagRemoteWorkspaces } from '../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
@@ -27,6 +29,14 @@ const payload = {
     links: ['javascript:alert(1)', '#repos/other/chats/other'],
     todo: { id: 'todo-1', revision: 2, title: 'Search', completionCondition: 'Search works', status: 'in_progress' },
 };
+const remotePayload = {
+    ...payload,
+    child: { ...payload.child, serverId: 'destination-alias' },
+    jobId: 'remote:request-1', reviewProcessId: payload.child.processId,
+    remote: { originServerIdentity: 'origin-identity', serverIdentity: 'destination-identity', requestId: 'request-1', kind: 'launch' },
+    repository: { workspaceId: payload.child.workspaceId },
+    links: ['#chat-references/destination-identity/ws-child/queue_child'],
+};
 function turn(data: unknown = payload, overrides: Partial<ClientConversationTurn> = {}): ClientConversationTurn {
     return {
         role: 'user', content: `${SENTINEL_JOB_REVIEW_PREFIX}\n${JSON.stringify(data)}`,
@@ -44,6 +54,7 @@ beforeEach(() => {
     _resetRuntimeConfig();
     delete (window as any).__DASHBOARD_CONFIG__;
     registerCloneBaseUrls([]);
+    publishDashboardTopology(null, []);
     vi.mocked(copyToClipboard).mockReset().mockResolvedValue(undefined);
 });
 
@@ -74,6 +85,7 @@ describe('Sentinel result presentation', () => {
         expect(view.getByText('Fix search')).toBeTruthy();
         expect(view.getByText('Child repo')).toBeTruthy();
         expect(view.getByText('Job completed')).toBeTruthy();
+        expect(view.getByTestId('sentinel-result-preview').textContent).toContain('Fixed search.');
         expect(view.getByRole('link', { name: 'Open job' }).getAttribute('href')).toBe('#repos/ws-child/chats/queue_child');
         expect([...view.container.querySelectorAll('details')].every(element => !element.open)).toBe(true);
         expect(view.getByText('Details').tagName).toBe('SUMMARY');
@@ -116,7 +128,7 @@ describe('Sentinel result presentation', () => {
 
     it.each(['completed', 'failed', 'cancelled', 'capped'])('labels the job outcome %s separately', outcome => {
         const view = bubble(turn({ ...payload, outcome, reason: 'Reported reason' }));
-        expect(view.getByText(`Job ${outcome}`)).toBeTruthy();
+        expect(view.getByText(outcome === 'capped' ? 'Job incomplete (capped)' : `Job ${outcome}`)).toBeTruthy();
         expect(view.getByText('Reason:').parentElement?.textContent).toBe('Reason: Reported reason');
     });
 
@@ -139,13 +151,76 @@ describe('Sentinel result presentation', () => {
 
     it('handles empty summaries and maximum-size summaries without truncating raw JSON', () => {
         const empty = bubble(turn({ ...payload, summary: '' }));
-        expect(empty.getByText('No summary provided.')).toBeTruthy();
+        expect(empty.getByTestId('sentinel-result-preview').textContent).toBe('No summary provided.');
         empty.unmount();
         const largePayload = { ...payload, summary: 'x'.repeat(8_000) };
         const large = bubble(turn(largePayload));
         expect(large.getByTestId('sentinel-result-raw').textContent).toBe(JSON.stringify(largePayload));
         expect(large.getByTestId('sentinel-result-card').className).toContain('min-w-0');
         expect(large.getByTestId('sentinel-result-card').className).toContain('dark:');
+    });
+
+    it('recognizes the long remote envelope without exposing provenance in its compact view', () => {
+        const data = { ...remotePayload, summary: 'Remote result.\n\nCommit: abc1234.\n'.repeat(200) };
+        const message = turn(data);
+        const view = bubble(message);
+        expect(parse(message)?.data).toEqual(data);
+        expect(view.getByText('Remote workspace')).toBeTruthy();
+        expect(view.getByTestId('sentinel-result-preview').textContent!.length).toBeLessThanOrEqual(180);
+        expect(view.getByTestId('sentinel-result-raw').textContent).toBe(JSON.stringify(data));
+        expect(view.getByRole('link', { name: 'Open job' }).getAttribute('href')).toBe(data.links[0]);
+        for (const label of ['Job ID', 'Workspace ID', 'Chat ID', 'Terminal event', 'Destination server identity']) {
+            expect(view.getByText(label).closest('details')?.open).toBe(false);
+        }
+        expect(view.queryByTestId('user-plain-text')).toBeNull();
+    });
+
+    it.each([
+        { ...payload, jobId: 'follow-up:request-1', child: { ...payload.child, requestId: 'request-1' }, kind: 'follow-up' },
+        { ...remotePayload, child: { ...remotePayload.child, requestId: 'request-1' },
+            remote: { ...remotePayload.remote, kind: 'follow-up' }, kind: 'follow-up' },
+        { ...remotePayload, child: { ...remotePayload.child, sessionId: 'session-1' },
+            remote: { ...remotePayload.remote, kind: 'ralph' }, outcome: 'capped' },
+    ])('accepts producer follow-up and whole-session shapes %#', data => {
+        const view = bubble(turn(data));
+        expect(parse(turn(data))?.data).toEqual(data);
+        expect(view.queryByText('Job outcome unavailable')).toBeNull();
+        expect(view.getByTestId('sentinel-result-card')).toBeTruthy();
+    });
+
+    it('uses only the exact visible destination for an absent remote repository label and refreshes it live', () => {
+        const view = bubble(turn(remotePayload));
+        act(() => publishDashboardTopology('ws-parent', tagRemoteWorkspaces(
+            { id: 'destination-alias', label: 'Destination server', kind: 'url', serverIdentity: 'destination-identity' },
+            'https://destination.example', [{ id: 'ws-child', name: 'Destination repository', rootPath: '/repo' }],
+        )));
+        expect(view.getByText('Destination server / Destination repository')).toBeTruthy();
+        act(() => publishDashboardTopology('ws-parent', tagRemoteWorkspaces(
+            { id: 'unrelated-alias', label: 'Other server', kind: 'url', serverIdentity: 'unrelated-identity' },
+            'https://other.example', [{ id: 'ws-child', name: 'Wrong repository', rootPath: '/repo' }],
+        )));
+        expect(view.getByText('Remote workspace')).toBeTruthy();
+        expect(view.queryByText(/Wrong repository/)).toBeNull();
+    });
+
+    it('does not navigate or change selection when Details or raw JSON is inspected', () => {
+        const view = bubble(turn(remotePayload));
+        const hash = location.hash;
+        fireEvent.click(view.getByText('Details'));
+        fireEvent.click(view.getByText('Raw JSON'));
+        expect(location.hash).toBe(hash);
+    });
+
+    it('resets inspection state on an owner change without altering the transcript', () => {
+        const message = turn(remotePayload);
+        const original = message.content;
+        const view = bubble(message, { sourceBaseUrl: 'https://owner.example/' });
+        const details = view.getByText('Details').parentElement as HTMLDetailsElement;
+        details.open = true;
+        view.rerender(<ConversationTurnBubble turn={message} wsId="ws-parent" processId="queue_parent"
+            sourceBaseUrl="https://replacement.example/" />);
+        expect((view.getByText('Details').parentElement as HTMLDetailsElement).open).toBe(false);
+        expect(message.content).toBe(original);
     });
 });
 
@@ -175,9 +250,31 @@ describe('fail-closed result recognition', () => {
         expect(parse(message)).toBeNull();
         if (message.role === 'user') {
             const view = bubble(message);
-            expect(view.queryByTestId('sentinel-result-card')).toBeNull();
-            expect(view.getByTestId(message.pasteExternalized ? 'large-paste-card' : 'user-plain-text')).toBeTruthy();
+            if (isSentinelResultReviewTurn(message, message.content, 'ws-parent', 'queue_parent')) {
+                expect(view.getByText('Job outcome unavailable')).toBeTruthy();
+                expect(view.getByTestId('sentinel-result-card').querySelector('a, pre, button')).toBeNull();
+                expect(view.queryByTestId('user-plain-text')).toBeNull();
+            } else {
+                expect(view.queryByTestId('sentinel-result-card')).toBeNull();
+                expect(view.getByTestId(message.pasteExternalized ? 'large-paste-card' : 'user-plain-text')).toBeTruthy();
+            }
         }
+    });
+
+    it.each([
+        { ...remotePayload, remote: { ...remotePayload.remote, proofToken: 'private-proof-placeholder' } },
+        { ...remotePayload, child: { ...remotePayload.child, requestId: 'wrong-request' } },
+        { ...remotePayload, reviewProcessId: 'other-chat' },
+        { ...remotePayload, remote: { ...remotePayload.remote, kind: 'unknown' } },
+        { ...remotePayload, remote: { ...remotePayload.remote, kind: 'ralph' } },
+        { ...remotePayload, outcome: 'incomplete' },
+        { ...payload, kind: 'follow-up' },
+    ])('shows a fixed warning for unsupported or inconsistent received fields %#', data => {
+        expect(parse(turn(data))).toBeNull();
+        const view = bubble(turn(data));
+        expect(view.getByText('Job outcome unavailable')).toBeTruthy();
+        expect(view.queryByTestId('sentinel-result-raw')).toBeNull();
+        expect(view.container.textContent).not.toContain('private-proof-placeholder');
     });
 
     describe('inert summary Markdown', () => {
@@ -215,6 +312,26 @@ describe('fail-closed result recognition', () => {
 });
 
 describe('result owner navigation', () => {
+    it('reuses the producer reference rather than a transport alias or the parent server', () => {
+        const result = parse(turn(remotePayload))!;
+        expect(sentinelResultJobHref(result, buildRemoteCloneKey('parent-alias', 'ws-parent'), 'https://parent.example/'))
+            .toBe(remotePayload.links[0]);
+    });
+
+    it.each([
+        ['javascript:alert(1)'],
+        ['https://untrusted.example/'],
+        ['#repos/ws-child/chats/queue_child'],
+        ['#chat-references/wrong-identity/ws-child/queue_child'],
+        ['#chat-references/destination-identity/other-workspace/queue_child'],
+        ['#chat-references/destination-identity/ws-child/other-chat'],
+        ['#chat-references/destination-identity/ws-child/queue_child/artifacts/%2Ftmp%2Fresult.md'],
+        [],
+    ])('withholds remote navigation for unverified job references %j', (...links) => {
+        const result = parse(turn({ ...remotePayload, links }))!;
+        expect(sentinelResultJobHref(result, 'ws-parent')).toBeNull();
+    });
+
     it('inherits the parent server for cross-repository jobs even with colliding workspace ids', () => {
         const selection = buildRemoteCloneKey('server-a', 'ws-parent');
         registerCloneBaseUrls([

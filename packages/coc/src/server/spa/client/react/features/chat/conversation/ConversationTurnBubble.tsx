@@ -41,7 +41,7 @@ import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
 import { InjectedBlockChips } from './InjectedBlockChips';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { SentinelResultCard } from './SentinelResultCard';
-import { parseSentinelResult } from './sentinelResult';
+import { isSentinelResultReviewTurn, parseSentinelResult } from './sentinelResult';
 import { useSentinelResultCardsEnabled } from '../../../hooks/feature-flags/useSentinelResultCardsEnabled';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseTurnReferenceBlocks, turnReferenceExcerpt, type TurnReference } from './turnReference';
@@ -1427,18 +1427,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         () => sentinelResultCardsEnabled ? parseSentinelResult(turn, injectedBlocks.text, wsId, processId) : null,
         [sentinelResultCardsEnabled, turn, injectedBlocks.text, wsId, processId],
     );
+    const isSentinelReview = sentinelResultCardsEnabled && isSentinelResultReviewTurn(turn, injectedBlocks.text, wsId, processId);
     const largePasteParts = useMemo(
         () => isUser && turn.pasteExternalized ? splitLargePasteTurnContent(userContentText) : null,
         [isUser, turn.pasteExternalized, userContentText],
     );
     const visibleUserContentText = largePasteParts ? largePasteParts.promptContent : userContentText;
     const userContentHtml = useMemo(() => {
-        if (!isUser || !visibleUserContentText.trim()) return '';
+        if (!isUser || isSentinelReview || !visibleUserContentText.trim()) return '';
         // Escape-at-generation markdown pipeline shared with assistant bubbles:
         // `breaks: true` keeps single newlines, linkifyFilePaths skips code
         // spans/blocks, and raw HTML in the message is escaped, never injected.
         return chatMarkdownToHtml(visibleUserContentText, wsId).trim();
-    }, [isUser, visibleUserContentText, wsId]);
+    }, [isUser, isSentinelReview, visibleUserContentText, wsId]);
 
     // Lazy image fetching state
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -2033,24 +2034,24 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             <span>{turn.turnSource.source}</span>
                         </span>
                     )}
-                    {isUser && !showRaw && turnReferences.references.map((reference, index) => (
+                    {isUser && !showRaw && !isSentinelReview && turnReferences.references.map((reference, index) => (
                         <TurnReferenceCard
                             key={`turn-ref:${reference.turnIndex}:${index}`}
                             reference={reference}
                             onGoTo={onGoToTurnReference ? () => onGoToTurnReference(reference, turnIndex) : undefined}
                         />
                     ))}
-                    {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (
+                    {isUser && !showRaw && !isSentinelReview && parsedUserContent.attachedContexts.map((context, index) => (
                         <AttachedContextBlockCard
                             key={`${context.kind}:${context.sourceWorkspaceId}:${index}`}
                             context={context}
                         />
                     ))}
-                    {isUser && !showRaw && sentinelResult && (
-                        <SentinelResultCard key={`${sourceSelectionId}:${sentinelResult.rawJson}`} result={sentinelResult}
+                    {isUser && !showRaw && isSentinelReview && (
+                        <SentinelResultCard key={`${conversationOwnerKey}:${sourceSelectionId}:${sourceBaseUrl}:${turn.content}`} result={sentinelResult}
                             sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} />
                     )}
-                    {isUser && !showRaw && !sentinelResult && visibleUserContentText.trim() && (
+                    {isUser && !showRaw && !isSentinelReview && visibleUserContentText.trim() && (
                         <div className="markdown-body break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
                             onClick={(e) => openFromTarget(e.target)}
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}

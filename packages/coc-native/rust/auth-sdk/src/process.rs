@@ -1,6 +1,9 @@
 use crate::{contracts::fail, AuthError, ErrorCode, Result, Secret};
 use std::process::Stdio;
-use tokio::{io::AsyncReadExt, process::Command};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+};
 use zeroize::Zeroizing;
 
 #[cfg(windows)]
@@ -102,12 +105,25 @@ async fn read_bounded(
 }
 
 /// Dropping this future closes the process tree and lets Tokio reap the child.
-pub(crate) async fn run(mut command: Command, limit: u64) -> Result<(bool, Secret)> {
+pub(crate) async fn run(command: Command, limit: u64) -> Result<(bool, Secret)> {
+    run_with_input(command, limit, None).await
+}
+
+/// Secret input travels through a pipe, never process arguments or a file.
+pub(crate) async fn run_with_input(
+    mut command: Command,
+    limit: u64,
+    input: Option<&Secret>,
+) -> Result<(bool, Secret)> {
     #[cfg(windows)]
     command.creation_flags(0x08000004);
     #[cfg(unix)]
     command.process_group(0);
-    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    command
+        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     let mut child = command.spawn().map_err(|e| {
         AuthError::new(if e.kind() == std::io::ErrorKind::NotFound {
             ErrorCode::CliUnavailable
@@ -123,11 +139,62 @@ pub(crate) async fn run(mut command: Command, limit: u64) -> Result<(bool, Secre
         child.stdout.take().ok_or_else(|| AuthError::new(ErrorCode::InvalidTokenResponse))?;
     let stderr =
         child.stderr.take().ok_or_else(|| AuthError::new(ErrorCode::InvalidTokenResponse))?;
-    let (out, _err, status) =
-        tokio::try_join!(read_bounded(stdout, limit), read_bounded(stderr, limit), async {
-            child.wait().await.map_err(|_| AuthError::new(ErrorCode::InvalidTokenResponse))
-        })?;
+    let stdin = child.stdin.take();
+    let (out, _err, status, ()) = tokio::try_join!(
+        read_bounded(stdout, limit),
+        read_bounded(stderr, limit),
+        async { child.wait().await.map_err(|_| AuthError::new(ErrorCode::InvalidTokenResponse)) },
+        async {
+            if let (Some(mut stdin), Some(input)) = (stdin, input) {
+                stdin
+                    .write_all(input.expose().as_bytes())
+                    .await
+                    .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?;
+                stdin.shutdown().await.map_err(|_| AuthError::new(ErrorCode::StorageFailed))?;
+            }
+            Ok(())
+        }
+    )?;
     let text =
         std::str::from_utf8(&out).map_err(|_| AuthError::new(ErrorCode::InvalidTokenResponse))?;
     Ok((status.success(), Secret::new(text.to_owned())))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn large_secret_stdin_drains_while_output_is_read() {
+        let input = Secret::new("dummy-pipe-fixture".repeat(16384));
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "cat"]);
+        let (success, output) = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_with_input(command, 1024 * 1024, Some(&input)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(success);
+        assert_eq!(output.expose(), input.expose());
+    }
+
+    #[tokio::test]
+    async fn blocked_secret_stdin_is_cancelled_and_nonzero_exit_is_preserved() {
+        let input = Secret::new("x".repeat(1024 * 1024));
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            run_with_input(command, 1024, Some(&input))
+        )
+        .await
+        .is_err());
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "cat >/dev/null; exit 7"]);
+        let (success, _) =
+            run_with_input(command, 1024, Some(&Secret::new("dummy".into()))).await.unwrap();
+        assert!(!success);
+    }
 }

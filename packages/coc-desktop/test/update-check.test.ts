@@ -378,8 +378,8 @@ describe('pickDownloadUrl', () => {
 });
 
 describe('formatUpdatePrompt', () => {
-    it('macOS prompt offers an explicit verified download and preserves Skip/Later', () => {
-        const p = formatUpdatePrompt(release(), '3.4.2', 'darwin');
+    it('macOS/arm64 prompt offers an explicit verified download and preserves Skip/Later', () => {
+        const p = formatUpdatePrompt(release(), '3.4.2', 'darwin', 'arm64');
         expect(p.version).toBe('3.4.6');
         expect(p.message).toContain('3.4.6');
         expect(p.message).toContain('3.4.2');
@@ -390,14 +390,14 @@ describe('formatUpdatePrompt', () => {
         expect(p.detail).toContain('does not start an in-app update');
     });
 
-    it('Windows prompt offers an explicit verified download', () => {
-        const p = formatUpdatePrompt(release(), '3.4.2', 'win32');
+    it('Windows/x64 prompt offers an explicit verified download', () => {
+        const p = formatUpdatePrompt(release(), '3.4.2', 'win32', 'x64');
         expect(p.buttons).toEqual(['Update', DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later']);
         expect(p.detail).toContain('download and verify');
     });
 
     it('normalizes a v-prefixed current version in the message', () => {
-        const p = formatUpdatePrompt(release(), 'v3.4.2', 'darwin');
+        const p = formatUpdatePrompt(release(), 'v3.4.2', 'darwin', 'arm64');
         expect(p.message).toContain('you have 3.4.2');
     });
 
@@ -408,11 +408,13 @@ describe('formatUpdatePrompt', () => {
         });
         expect(formatUpdatePrompt(r, '3.4.2', 'win32', 'x64').downloadUrl).toBe('https://e/setup.exe');
         // No mac asset → mac prompt falls back to the release page.
-        expect(formatUpdatePrompt(r, '3.4.2', 'darwin').downloadUrl).toBe('https://e/page');
+        expect(formatUpdatePrompt(r, '3.4.2', 'darwin', 'arm64').downloadUrl).toBe('https://e/page');
     });
 
-    it('offers only browser download, Skip and Later on unsupported automatic-update platforms', () => {
-        const p = formatUpdatePrompt(release(), '3.4.2', 'linux', 'x64');
+    it.each([
+        ['darwin', 'x64'], ['win32', 'arm64'], ['linux', 'x64'],
+    ] as const)('offers only browser download on unsupported %s/%s', (platform, arch) => {
+        const p = formatUpdatePrompt(release(), '3.4.2', platform, arch);
         expect(p.buttons).toEqual([DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later']);
         expect(p.detail).toContain('install it yourself');
     });
@@ -612,6 +614,7 @@ describe('checkForUpdate', () => {
         const result = await checkForUpdate({
             currentVersion: '3.4.2',
             platform: 'darwin',
+            arch: 'arm64',
             fetchFn: fakeFetch([ghPayload()]),
         });
         expect(result.reason).toBe('newer');
@@ -777,6 +780,7 @@ describe('checkForUpdate', () => {
         const result = await checkForUpdate({
             currentVersion: '3.4.2',
             platform: 'win32',
+            arch: 'x64',
             channel: 'stable',
             fetchFn: fakeFetch([ghPayload()]),
         });

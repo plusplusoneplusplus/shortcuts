@@ -56,7 +56,7 @@ impl From<OAuthRefreshResponse> for MicrosoftOAuthRefreshResponse {
     }
 }
 
-fn refresh_error_reason(value: OAuthRefreshError) -> String {
+pub(super) fn refresh_error_reason(value: OAuthRefreshError) -> String {
     let rejection = match value.rejection {
         Some(OAuthRefreshRejection::InvalidGrant) => "invalid_grant",
         Some(OAuthRefreshRejection::InteractionRequired) => "interaction_required",

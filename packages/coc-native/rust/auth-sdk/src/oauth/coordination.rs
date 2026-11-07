@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-pub(crate) struct CredentialLock(File);
+pub struct CredentialLock(File);
 
 impl CredentialLock {
     /// OS advisory locks survive neither a crash nor process exit. Secret stores are not CAS.
@@ -23,7 +23,7 @@ impl CredentialLock {
                 return fail(ErrorCode::CoordinationUnavailable);
             }
         }
-        let path = directory.join(format!("{}.lock", super::config::hash(&[key])));
+        let path = directory.join(format!("{}.lock", crate::contracts::hash(&[key])));
         if std::fs::symlink_metadata(&path)
             .is_ok_and(|m| !m.is_file() || m.file_type().is_symlink())
         {

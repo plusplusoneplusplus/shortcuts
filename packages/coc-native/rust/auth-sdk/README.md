@@ -1,17 +1,22 @@
 # auth-sdk
 
 Standalone, unpublished Rust library in the native Cargo workspace. It has no
-Node dependency or application policy. `auth_sdk::microsoft` implements Microsoft
-public-cloud, US-government and China-cloud OAuth, plus Azure CLI acquisition.
+Node dependency or application policy. `auth_sdk::oauth` provides vendor-neutral
+OAuth primitives: token exchange, HTTP transport, and file-advisory lock
+coordination. `auth_sdk::microsoft` builds on `oauth` for Microsoft public-cloud,
+US-government and China-cloud OAuth, plus Azure CLI acquisition.
 `auth_sdk::github` reads existing, explicitly selected Copilot CLI and GitHub CLI credentials.
+`auth_sdk::claude` reads, refreshes and persists Claude Code OAuth credentials
+with source-pinned, coordinated demand acquisition.
 Shared `Account`, `Token`, `Secret`, `Clock`, `CredentialStore`, lifecycle and
-`AuthError` contracts are vendor-neutral. Future vendors use separate modules,
-not a universal vendor options object.
+`AuthError` contracts are vendor-neutral. Future vendors use separate modules
+and the shared `oauth` primitives, not a universal vendor options object.
 
 The N-API addon exports `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through
 the native package. Nothing automatically instantiates them. Existing consumers,
 Microsoft handles have their own lifecycle; GitHub acquisition uses one-shot
-`readGitHubCredential` requests through the native package.
+`readGitHubCredential` requests through the native package. Claude uses one-shot
+`acquireClaudeCredential` requests.
 
 ## GitHub CLI credential acquisition
 
@@ -59,6 +64,113 @@ binary capabilities and sanitized `AuthError` codes propagate without a JS
 reader fallback. Environment/custom JS resolvers and Copilot SDK RPC stay in
 TypeScript, as do Copilot API authorization and allowed token-family checks.
 JavaScript token strings cannot be zeroized.
+
+## Claude credentials
+
+`claude::read_credentials(sources).await` reads Claude Code OAuth credentials from
+the first available source:
+
+1. `credentials_file_override` — an explicit path (e.g. `$CLAUDE_CREDENTIALS_FILE`).
+   When set, this path is the only source; keychain is not consulted.
+2. `~/.claude/.credentials.json` — the default file used by Claude Code on
+   Linux/Windows and as a fallback on macOS.
+3. macOS Keychain — service `"Claude Code-credentials"`, account is the current
+   `$USER`. Used only on macOS when no file source yields credentials.
+
+macOS Claude reads and writes run `/usr/bin/security`, using the same
+`apple-tool:` Keychain partition as Claude Code's reader. Host-native password
+updates replace that partition with the host's code identity and cause repeated
+access prompts. Reads require JSON. Writes send
+one hex-encoded command through stdin, without credentials in argv or files.
+The command must fit the helper's 4096-byte line buffer; unsupported payloads
+fail before launch, with a preflight check before token rotation. A rotated
+response that cannot be saved returns an error and may require sign-in.
+
+`ClaudeToken` contains `access_token`, optional `refresh_token`, optional
+epoch-millisecond `expires_at` and `refresh_token_expires_at`, a `scopes` list,
+optional `subscription_type` and optional `rate_limit_tier`. Two JSON formats
+are supported: the nested `{ "claudeAiOauth": { "accessToken": … } }` format
+written by `claude login`, and a flat `{ "access_token": … }` fallback.
+
+`ClaudeCredentialSources` controls the resolution: `credentials_file_override`,
+`home_dir` (for locating `~/.claude/.credentials.json`), and `skip_keychain`
+(to suppress macOS Keychain access in tests or headless environments).
+
+`claude::refresh_token(http, options, refresh, cancel, deadline)` refreshes
+an expired access token by posting a JSON body to the Claude token endpoint
+(`https://platform.claude.com/v1/oauth/token`). The request uses `Content-Type:
+application/json` (not form-urlencoded), matching the Claude Code CLI protocol.
+`ClaudeRefreshOptions` defaults to the production endpoint, the registered
+Claude Code client ID (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`), and five
+default scopes (`user:profile`, `user:inference`, `user:sessions:claude_code`,
+`user:mcp_servers`, `user:file_upload`). `ClaudeRefreshResponse` returns the
+new access token, a **rotated** refresh token, absolute `expires_at` in epoch
+milliseconds, and granted scopes. `is_expired(expires_at)` checks whether
+a token is within the 5-minute expiry margin.
+
+`claude::acquire_token(http, options, cancel, deadline)` returns a `ClaudeToken`.
+`ClaudeTokenOptions` supplies credential sources, refresh options and an existing
+private coordination directory. Fresh tokens and tokens with unknown expiry
+return unchanged unless `force_refresh` is set. Known expiries within the
+five-minute margin require renewal. Forced acquisition reuses fresh credentials
+if another lock holder has already replaced the observed token.
+The operation pins the selected file or Keychain account, acquires its advisory
+lock, re-reads credentials, and refreshes only if renewal is still needed.
+
+Rotation is saved to the selected source before returning the new token. File
+overrides stay exclusive; Keychain failures never redirect writes to a file.
+Atomic file replacement syncs the temporary file and uses mode `0o600` on Unix.
+Sibling keys and existing OAuth metadata survive read-modify-write, including
+sibling updates during the exchange. A detected external token replacement
+returns `AccountMismatch` without overwriting it. Missing credentials or refresh
+tokens return `LoginRequired`; expired refresh credentials require interaction.
+Safe `OAuthRefreshError` codes and endpoint status/rejection propagate.
+
+All SDK callers sharing credentials must use the same coordination directory.
+File aliases use the canonical target path as their lock identity. The lock wait
+and HTTP exchange honor cancellation and the deadline. macOS helper reads share
+that deadline and cancellation; standalone reads have a five-second bound.
+`read_credentials` and `persist_credentials` are async. File I/O still runs on
+the caller's worker. Once a rotation response is accepted, its save completes
+before checking cancellation for publication, with a separate five-second
+macOS helper deadline. Failed saves
+never return the rotated token and may require sign-in; the operation never
+retries an exchange automatically. The Claude CLI and other external writers do
+not share this lock protocol, so their concurrent refreshes remain uncoordinated.
+
+The native package exposes `acquireClaudeCredential(options, signal?)` through a
+one-shot `NativeClaudeCredentialRequest`. Options require absolute `homeDir` and
+`coordinationDirectory`, with optional absolute `credentialsFile`, `skipKeychain`
+and `timeoutMs` (100..900,000 ms, default 30,000). `forceRefresh` requests renewal
+of a fresh token rejected by a consuming API. The caller resolves home and
+environment overrides explicitly; construction performs no I/O. JavaScript
+cannot override the token endpoint or client registration.
+
+Acquisition runs on a blocking worker; cancelled or timed-out queued work is
+revoked before I/O. One deadline covers worker
+queueing, lock contention, HTTP and Node publication; cancellation is per request.
+A synchronous store transaction already running must settle before the promise
+settles. Publication checks both cancellation and deadline before copying the
+access token into JavaScript. Results freeze the snapshot and scopes and contain
+`accessToken`, optional `expiresAt`, `scopes`, optional `subscriptionType` and
+`rateLimitTier`. Refresh secrets stay native. `ClaudeCredentialError` retains only
+SDK `code`, optional HTTP `status` and allowlisted `rejection`; raw provider
+messages and causes are discarded. JavaScript token strings cannot be zeroized.
+
+The lower-level `refresh_token` performs only the exchange. Its caller must
+coordinate and persist the rotated refresh token before using the access token.
+
+`claude::persist_credentials(fields, target)` writes refreshed credentials
+back to the credential store using a read-modify-write pattern. The existing
+JSON is read, only the `claudeAiOauth` section is updated (preserving sibling
+keys like `mcpOAuth`), and the result is written according to `PersistTarget`. `PersistFields` can be
+constructed from a `&ClaudeRefreshResponse` via the `From` impl.
+
+On macOS, the Keychain is tried first; file is the fallback. On Linux/Windows,
+credentials are written to `~/.claude/.credentials.json` with `0o600` permissions
+via atomic temp-file rename. `PersistResult` reports success and an optional
+warning (e.g. when plaintext fallback is used). `PersistTarget` controls the
+home directory and `skip_keychain` flag.
 
 ## Source selection
 
@@ -139,14 +251,17 @@ Raw CLI output never enters diagnostics.
 
 ## Token lifecycle
 
-Rust `exchange_refresh_token(http, options, refresh, cancel, deadline)` exchanges a
-caller-owned `Secret` without credential-store access or account metadata.
-`OAuthRefreshOptions` validates a supported Microsoft HTTPS login origin, tenant
+`oauth::exchange_refresh_token(http, options, refresh, cancel, deadline)` is the
+vendor-neutral refresh exchange. `ExchangeOptions` takes a `token_endpoint` URL,
+`client_id`, `scopes` and optional `resource` — no vendor host validation. It
+posts directly using the shared transport, zeroized form and response parser.
+
+`microsoft::exchange_refresh_token` wraps the generic exchange: it validates
+Microsoft-specific `OAuthRefreshOptions` (supported HTTPS login origin, tenant
 UUID or `common`/`organizations`/`consumers`, client UUID, scopes and optional
-resource. It posts directly to the authority's v2 token endpoint using the shared
-transport, zeroized form and response parser. Callers prepare scopes (including
-`offline_access` and any `.default` normalization) and own scheduling, cache
-updates, credential coordination and persistence.
+resource), resolves the token endpoint, then delegates. Callers prepare scopes
+(including `offline_access` and any `.default` normalization) and own scheduling,
+cache updates, credential coordination and persistence.
 
 `OAuthRefreshResponse` reports secret-wrapped access, optional rotated refresh
 and unverified ID tokens, token type, relative expiry and optional reported scope.
@@ -235,9 +350,16 @@ credentials/login/consent are needed; it never starts interactive sign-in.
 
 ## Storage and security boundaries
 
-Refresh credentials use exact `auth-sdk:v1:<digest>` keys: Windows Credential
-Manager, non-synchronizing macOS Keychain, and Linux Secret Service with encrypted
-DBus sessions. There is no plaintext or Linux keyutils fallback. Linux/macOS
+`CredentialStore` is a key-format–agnostic trait for OS-backed credential stores.
+`OsCredentialStore` implements it with a caller-chosen service name and no key
+validation: Windows Credential Manager, non-synchronizing macOS Keychain, and
+Linux Secret Service with encrypted DBus sessions. `AuthSdkCredentialStore`
+wraps any `CredentialStore` and enforces exact `auth-sdk:v1:<64 hex>` key format
+before delegating — use it for SDK-owned credentials (Microsoft OAuth refresh
+tokens). `AuthSdkCredentialStore::os()` is the production convenience constructor
+(`AuthSdkCredentialStore` wrapping `OsCredentialStore` with service `"auth-sdk"`).
+
+There is no plaintext or Linux keyutils fallback. Linux/macOS
 storage queries reject locked/denied stores without opening an unlock prompt.
 Windows stores UTF-8 secret blobs rather than UTF-16 passwords; its 2,560-byte
 credential limit applies to the complete encoded refresh credential.
@@ -303,8 +425,11 @@ real user authentication.
 config fixtures. Rust Windows tests create and remove unique generic credentials;
 the ignored `github::tests::isolated_macos_cli_keychain_fixture` checks exact
 same-account CLI Keychain import on macOS with scoped cleanup.
-`cargo test --locked -p coc-native auth::refresh::tests` uses trusted Rust
-HTTP injection for boundary conversion, safe errors, one-shot handles and
-cancelled/timed-out work cleanup. `test/oauth-refresh.test.ts` covers built-addon
-validation and trusted loader fixtures for the exported TypeScript wrapper.
-Refresh tests make no auth network requests or credential-store accesses.
+`cargo test --locked -p coc-native --features napi/dyn-symbols auth::` exercises
+Microsoft refresh and Claude acquisition boundaries with trusted HTTP injection,
+safe errors, one-shot handles, cancellation, deadlines and queued-worker cleanup.
+Dynamic N-API symbols let these tests run without a Node host. The native package's
+`test/oauth-refresh.test.ts` and `test/claude-auth.test.ts` cover built-addon
+validation and trusted loader fixtures. Claude tests use isolated files and
+synthetic credentials; refresh tests make no auth network requests or live
+credential-store accesses.

@@ -1077,10 +1077,12 @@ references before editing. Paths are package-relative.
   Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
   `features.sentinelResultCards` is a default-on, live presentation gate; explicit false
-  opts out. Cards require server delivery correlation, the exact result envelope and
-  matching parent identity;
-  invalid messages keep ordinary rendering. Inert summary Markdown and exact raw JSON
-  never change model payloads, assessment or authorization. Job links inherit the source owner.
+  opts out. Cards require server delivery correlation and the exact review prefix;
+  malformed or unsupported deliveries show fixed warnings without active payload content.
+  Valid local, follow-up and remote envelopes require matching parent/child identity.
+  Summaries are inert; provenance and exact JSON stay in disclosures without changing
+  model payloads, assessment or authorization. Generated durable job references use the
+  shared owner-verifying resolver; ordinary child routes inherit the source owner.
   `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Handoffs prefer relevant same-task, same-owner chats when
   tracking and reuse are supported; follow-ups retain their provider. New-chat delegation

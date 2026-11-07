@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     contracts::{bounded, fail, Lifetime},
-    Clock, CredentialStore, ErrorCode, OsCredentialStore, Refresh, Result, SystemClock, Token,
+    AuthSdkCredentialStore, Clock, CredentialStore, ErrorCode, Refresh, Result, SystemClock, Token,
 };
 use std::{
     collections::HashMap,
@@ -25,7 +25,7 @@ impl Default for Dependencies {
     fn default() -> Self {
         Self {
             clock: Arc::new(SystemClock),
-            store: Arc::new(OsCredentialStore),
+            store: Arc::new(AuthSdkCredentialStore::os()),
             http: Arc::new(ReqwestTransport),
             cli: Arc::new(ProcessCliRunner::default()),
         }
@@ -269,11 +269,9 @@ impl MicrosoftTokenProvider {
             match &self.options.source {
                 MicrosoftTokenSource::OAuth { options, account } => {
                     let key = options.credential_key(account);
-                    let _lock = super::coordination::CredentialLock::acquire(
-                        &options.coordination_dir,
-                        &key,
-                    )
-                    .await?;
+                    let _lock =
+                        crate::oauth::CredentialLock::acquire(&options.coordination_dir, &key)
+                            .await?;
                     self.life.publish(|| self.dependencies.store.delete(&key))?;
                 }
                 MicrosoftTokenSource::AzureCli(_) => return fail(ErrorCode::InvalidConfiguration),

@@ -40,6 +40,13 @@ export declare class GitPatchStore {
   dispose(): void
 }
 
+/** One acquisition, one cancellation scope. No cached provider or token state. */
+export declare class NativeClaudeCredentialRequest {
+  constructor(options: ClaudeCredentialOptions)
+  acquire(): Promise<ClaudeCredentialSnapshot>
+  cancel(): void
+}
+
 export declare class NativeDatabaseHandle {
   constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
   exec(sql: string): void
@@ -217,6 +224,24 @@ export declare function buildNotesIndex(root: string, options?: NotesIndexBuildO
 
 /** Construct a batch of remote patches on a worker; authentication stays in transport. */
 export declare function buildRemoteGitPatch(files: Array<RemotePatchInput>): Promise<string>
+
+export interface ClaudeCredentialOptions {
+  homeDir: string
+  coordinationDirectory: string
+  credentialsFile?: string
+  skipKeychain?: boolean
+  forceRefresh?: boolean
+  timeoutMs?: number
+}
+
+/** Refresh secrets stay in Rust; JS receives only the access credential and metadata. */
+export interface ClaudeCredentialSnapshot {
+  accessToken: string
+  expiresAt?: number
+  scopes: Array<string>
+  subscriptionType?: string
+  rateLimitTier?: string
+}
 
 export declare function composeGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
 

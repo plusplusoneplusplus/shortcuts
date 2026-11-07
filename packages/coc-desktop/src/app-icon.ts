@@ -49,3 +49,7 @@ export function resolveIconPath(
     }
     return null;
 }
+
+/** Fallback tray glyph used when the real icon file cannot be found. */
+export const TRAY_ICON_FALLBACK_DATA_URL =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGNgoBH4jwNTpJkoQwhpxmsIsZqxGkKqZgxDRg2gggHkGIIVUKSZWEOIAhRpJgkAANCAm2UMZlD6AAAAAElFTkSuQmCC';

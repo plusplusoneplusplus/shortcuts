@@ -562,6 +562,12 @@ owner's `getGitReviewClient` route, only while `gitCommitLookup` is on. Late loo
 are discarded after close. The Git tab wires `selection.selectCommit`, so switching
 publishes a commit route and never a working-tree view; other hosts omit the picker.
 
+The picker delegates refresh to `useRepoGitData.refreshAll`, with loading and errors
+visible alongside retained commits. Selection uses `reconcileSelectionAfterRefresh`:
+keep a listed commit, otherwise choose the first commit or clear an empty page.
+Navigation during refresh wins. Request generations discard superseded reads and
+disposed-owner results before state or cache writes.
+
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a
 critical marker, and their selected-file unified diff views render test fidelity

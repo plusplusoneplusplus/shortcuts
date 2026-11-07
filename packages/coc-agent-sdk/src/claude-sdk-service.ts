@@ -21,11 +21,8 @@
  *
  * Authentication detection
  * ─────────────────────────
- * Claude credentials are managed entirely outside CoC (via the `claude` CLI or
- * the `@anthropic-ai/claude-agent-sdk` SDK's own auth mechanism). CoC does not store
- * or retrieve any Anthropic API key or OAuth token. Availability checks detect
- * whether Claude auth exists on the server without touching the credentials
- * themselves.
+ * Claude login remains owned by the CLI/SDK. Quota reads and demand renewal use
+ * the native auth SDK; refresh secrets and credential persistence stay in Rust.
  */
 
 import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage, Attachment } from './types';
@@ -50,13 +47,14 @@ import { unavailableToolInventory } from './tool-inventory';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { evaluateClaudeImageFile } from './image-converter';
-import { spawn, execFileSync } from 'child_process';
+import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
+import { acquireClaudeCredential } from '@plusplusoneplusplus/coc-native';
 
 // ============================================================================
 // @anthropic-ai/claude-agent-sdk type stubs
@@ -611,14 +609,8 @@ interface ClaudeExceptionLogContext extends ClaudeDiagnosticLogContext {
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
-/** Wall-clock guard for the credential-refresh `accountInfo()` probe. */
-const CLAUDE_CREDENTIAL_REFRESH_TIMEOUT_MS = 30_000;
-/**
- * Minimum gap between credential-refresh probes. The OAuth access token lives
- * ~8h, so one successful refresh covers many quota polls; the gap keeps a
- * logged-out or offline machine from spawning a probe on every poll.
- */
-const CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS = 5 * 60_000;
+/** One deadline covers native credential acquisition, usage HTTP and its retry. */
+const CLAUDE_QUOTA_TIMEOUT_MS = 30_000;
 /**
  * Wall-clock guard for the `getContextUsage()` control request. It is now issued
  * while the SDK subprocess is still alive (before the input gate closes), so it
@@ -706,8 +698,7 @@ export class ClaudeSDKService implements ISDKService {
     private getSessionMessagesFn: ClaudeGetSessionMessagesFn | null = null;
     private lastRateLimitInfo: ClaudeRateLimitInfo | null = null;
     private lastAccountInfo: ClaudeAccountInfo | null = null;
-    private credentialRefresh: Promise<void> | null = null;
-    private lastCredentialRefreshAt = 0;
+    private readonly quotaRequests = new Set<AbortController>();
     private disposed = false;
 
     /** sessionId → active session metadata (request/active-session state only) */
@@ -1014,71 +1005,18 @@ export class ClaudeSDKService implements ISDKService {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
-        // Every platform tries the OAuth usage endpoint first: `claude login`
-        // writes `~/.claude/.credentials.json` on Linux and Windows, and macOS
-        // additionally falls back to the Keychain. An expired or rejected token
-        // is refreshed through the Claude SDK (see refreshClaudeCredentials).
-        // If OAuth still yields no snapshots — e.g. the token lives only in
-        // Windows Credential Manager, or the refresh failed — fall through to
-        // the cached rate-limit / account-info snapshots below.
-        const oauthQuota = await fetchClaudeOAuthQuota({
-            refreshCredentials: () => this.refreshClaudeCredentials(),
-        });
-        if (Object.keys(oauthQuota.quotaSnapshots).length > 0) return oauthQuota;
-        if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
-        if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
-        return { quotaSnapshots: {} };
-    }
-
-    /**
-     * Let the Claude SDK refresh the on-disk OAuth credentials. CoC never calls
-     * the token endpoint or writes credentials itself — refresh tokens rotate,
-     * so a second writer would log the CLI out. Instead a short promptless SDK
-     * session issues the `accountInfo()` control request, which makes the CLI
-     * refresh an expired access token and persist it. Concurrent callers share
-     * one probe, and probes are spaced by
-     * {@link CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS}.
-     */
-    private refreshClaudeCredentials(): Promise<void> {
-        if (this.credentialRefresh) return this.credentialRefresh;
-        if (Date.now() - this.lastCredentialRefreshAt < CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS) {
-            return Promise.resolve();
-        }
-        this.lastCredentialRefreshAt = Date.now();
-        this.credentialRefresh = this.runCredentialRefreshProbe()
-            .finally(() => { this.credentialRefresh = null; });
-        return this.credentialRefresh;
-    }
-
-    private async runCredentialRefreshProbe(): Promise<void> {
-        const queryFn = this.queryFn;
-        if (!queryFn) return;
-        // No initial message: the gate keeps input open so the control request
-        // can be answered, and no prompt is ever sent to the model.
-        const inputGate = new ClaudeInputGate([]);
-        const abortController = new AbortController();
-        const claudeExecutable = this.resolveClaudeExecutablePath();
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const controller = new AbortController();
+        this.quotaRequests.add(controller);
         try {
-            const handle = queryFn({
-                prompt: inputGate.stream(),
-                abortController,
-                options: {
-                    ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
-                    settingSources: [],
-                },
-            });
-            const timeout = new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                    () => reject(new Error('Claude credential refresh timed out')),
-                    CLAUDE_CREDENTIAL_REFRESH_TIMEOUT_MS,
-                );
-            });
-            await Promise.race([handle.accountInfo?.(), timeout]);
+            const oauthQuota = await fetchClaudeOAuthQuota({ signal: controller.signal });
+            if (controller.signal.aborted) return { quotaSnapshots: {} };
+            if (Object.keys(oauthQuota.quotaSnapshots).length > 0) return oauthQuota;
+            if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
+            if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
+            return { quotaSnapshots: {} };
         } finally {
-            clearTimeout(timer);
-            inputGate.close();
-            abortController.abort();
+            this.quotaRequests.delete(controller);
         }
     }
 
@@ -2696,6 +2634,8 @@ export class ClaudeSDKService implements ISDKService {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     public async cleanup(): Promise<void> {
+        for (const controller of this.quotaRequests) controller.abort();
+        this.quotaRequests.clear();
         for (const [, session] of this.sessions) {
             session.abortController.abort();
         }
@@ -3397,217 +3337,51 @@ export function mapOAuthUsageToQuota(data: Record<string, unknown>): IAccountQuo
 }
 
 /**
- * Extracts the OAuth access token from a parsed Claude credentials object.
- *
- * Two on-disk formats exist:
- * - The Claude Code CLI writes `{ "claudeAiOauth": { "accessToken": "…" } }`.
- * - The lower-level `@anthropic-ai/sdk` user-oauth store writes a flat
- *   `{ "access_token": "…" }`.
- *
- * The nested Claude Code shape is preferred (it is what `claude login`
- * produces); the flat shape is accepted as a fallback. Returns `undefined`
- * when no non-empty token is present in either location.
- */
-export function extractClaudeAccessToken(credentials: Record<string, unknown>): string | undefined {
-    const nested = credentials['claudeAiOauth'];
-    if (nested && typeof nested === 'object') {
-        const nestedToken = (nested as Record<string, unknown>)['accessToken'];
-        if (typeof nestedToken === 'string' && nestedToken) return nestedToken;
-    }
-
-    const flatToken = credentials['access_token'];
-    if (typeof flatToken === 'string' && flatToken) return flatToken;
-
-    return undefined;
-}
-
-/**
- * macOS Keychain service name under which `claude login` stores the OAuth
- * credentials JSON (the same `{ claudeAiOauth: { accessToken, … } }` shape the
- * Linux on-disk file uses). Read with
- * `security find-generic-password -s "Claude Code-credentials" -w`.
- */
-const MACOS_KEYCHAIN_SERVICE = 'Claude Code-credentials';
-
-/**
- * Reads the raw Claude credentials JSON from the macOS Keychain by shelling out
- * to the `security` CLI with an argument array (no shell string interpolation,
- * so no injection surface). Returns the trimmed payload, or `undefined` on any
- * failure — binary absent, non-zero exit (no matching entry), or empty output.
- *
- * Only meaningful on darwin; on other platforms the `security` binary is absent
- * so the call throws and is swallowed, yielding `undefined`. The `exec`
- * parameter is injectable so unit tests never invoke the real binary.
- */
-export function readKeychainCredentials(
-    exec: typeof execFileSync = execFileSync,
-): string | undefined {
-    try {
-        const output = exec(
-            'security',
-            ['find-generic-password', '-s', MACOS_KEYCHAIN_SERVICE, '-w'],
-            { encoding: 'utf8' },
-        );
-        const text = String(output).trim();
-        return text ? text : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-/** Reads a UTF-8 file synchronously, returning `undefined` on any error. */
-function safeReadFileUtf8(filePath: string): string | undefined {
-    try {
-        return fs.readFileSync(filePath, 'utf8');
-    } catch {
-        return undefined;
-    }
-}
-
-/** Injectable credential sources for {@link resolveClaudeCredentialsRaw}. */
-export interface ClaudeCredentialSources {
-    /** Value of `$CLAUDE_CREDENTIALS_FILE`, or `undefined` when unset. */
-    credentialsFileEnv: string | undefined;
-    /** Home directory used to locate `~/.claude/.credentials.json`. */
-    homeDir: string;
-    /** Reads a file's UTF-8 contents; returns `undefined` on any error. */
-    readFile: (filePath: string) => string | undefined;
-    /** Reads raw credentials JSON from the macOS Keychain; `undefined` on failure. */
-    readKeychain: () => string | undefined;
-}
-
-/**
- * Resolves the raw Claude credentials JSON string from the first available
- * source, in priority order:
- *   (a) `$CLAUDE_CREDENTIALS_FILE`, when set — used exclusively; the Keychain is
- *       never consulted in this case, preserving existing Linux behaviour.
- *   (b) `~/.claude/.credentials.json`, when it exists and is non-empty.
- *   (c) the macOS Keychain (darwin only; the reader yields `undefined` elsewhere).
- *
- * Returns `undefined` when no source yields a non-empty payload. Parsing/token
- * extraction happens later, so a present-but-malformed payload still "wins" here
- * and is rejected downstream.
- */
-export function resolveClaudeCredentialsRaw(sources: ClaudeCredentialSources): string | undefined {
-    const { credentialsFileEnv, homeDir, readFile, readKeychain } = sources;
-
-    if (credentialsFileEnv) {
-        const content = readFile(credentialsFileEnv);
-        return content && content.trim() ? content : undefined;
-    }
-
-    const defaultFile = path.join(homeDir, '.claude', '.credentials.json');
-    const fileContent = readFile(defaultFile);
-    if (fileContent && fileContent.trim()) return fileContent;
-
-    const keychainContent = readKeychain();
-    return keychainContent && keychainContent.trim() ? keychainContent : undefined;
-}
-
-/**
- * Extracts the access token's expiry (epoch ms) from the Claude Code nested
- * `claudeAiOauth.expiresAt` field. Returns `undefined` when absent, so tokens
- * without a known expiry are simply used as-is.
- */
-export function extractClaudeTokenExpiry(credentials: Record<string, unknown>): number | undefined {
-    const nested = credentials['claudeAiOauth'];
-    if (!nested || typeof nested !== 'object') return undefined;
-    const expiresAt = (nested as Record<string, unknown>)['expiresAt'];
-    return typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? expiresAt : undefined;
-}
-
-/** Treat the access token as expired this long before its `expiresAt`. */
-const CLAUDE_TOKEN_EXPIRY_SKEW_MS = 60_000;
-
-/**
- * Reads the current Claude OAuth credentials (file or, on macOS, the Keychain)
- * and calls the Anthropic OAuth usage endpoint. Credentials are read fresh on
- * every call — no token is cached here, and CoC never writes credentials back.
- *
- * The access token expires after a few hours and only the Claude CLI refreshes
- * it. When `refreshCredentials` is given, it is invoked (at most once per call)
- * if the token is already expired or the endpoint answers 401; the credentials
- * are then re-read and the request is retried only if the token changed.
- *
- * Returns empty snapshots on any I/O, Keychain, parse, or network error so
- * callers never need to handle rejections.
+ * Acquires credentials through native auth, then requests live OAuth usage.
+ * A 401 permits one forced native renewal and one retry with a changed token.
+ * Credential, HTTP and parse failures yield no snapshots so SDK-event fallbacks
+ * remain available. No credential JSON or refresh secret enters TypeScript.
  */
 export async function fetchClaudeOAuthQuota(deps: {
-    readKeychain?: () => string | undefined;
-    readFile?: (filePath: string) => string | undefined;
+    acquireCredential?: typeof acquireClaudeCredential;
     homeDir?: string;
-    refreshCredentials?: () => Promise<void>;
-    now?: () => number;
+    signal?: AbortSignal;
 } = {}): Promise<IAccountQuotaResult> {
-    const readToken = (): { accessToken: string; expiresAt?: number } | undefined => {
-        const rawContent = resolveClaudeCredentialsRaw({
-            credentialsFileEnv: process.env['CLAUDE_CREDENTIALS_FILE'],
-            homeDir: deps.homeDir ?? os.homedir(),
-            readFile: deps.readFile ?? safeReadFileUtf8,
-            readKeychain: deps.readKeychain ?? readKeychainCredentials,
-        });
-        if (!rawContent) return undefined;
-        let credentials: unknown;
-        try {
-            credentials = JSON.parse(rawContent);
-        } catch {
-            return undefined;
-        }
-        if (!credentials || typeof credentials !== 'object') return undefined;
-        const accessToken = extractClaudeAccessToken(credentials as Record<string, unknown>);
-        if (!accessToken) return undefined;
-        return { accessToken, expiresAt: extractClaudeTokenExpiry(credentials as Record<string, unknown>) };
-    };
-
+    const timeout = AbortSignal.timeout(CLAUDE_QUOTA_TIMEOUT_MS);
+    const signal = deps.signal ? AbortSignal.any([deps.signal, timeout]) : timeout;
     try {
-        let token = readToken();
-        if (!token) return { quotaSnapshots: {} };
-
-        let refreshAttempted = false;
-        /** Refreshes via the SDK once; resolves true only if a new token was written. */
-        const refresh = async (): Promise<boolean> => {
-            if (refreshAttempted || !deps.refreshCredentials) return false;
-            refreshAttempted = true;
-            try {
-                await deps.refreshCredentials();
-            } catch {
-                return false;
-            }
-            const next = readToken();
-            if (!next || next.accessToken === token!.accessToken) return false;
-            token = next;
-            return true;
+        if (signal.aborted) return { quotaSnapshots: {} };
+        const homeDir = path.resolve(deps.homeDir ?? os.homedir());
+        // Credentials are user-wide, so every workspace shares this private lock
+        // directory. It contains lock files only, never tokens or per-repo data.
+        const coordinationDirectory = path.join(homeDir, '.coc', 'auth', 'claude', 'locks');
+        await fs.promises.mkdir(coordinationDirectory, { recursive: true, mode: 0o700 });
+        if (signal.aborted) return { quotaSnapshots: {} };
+        const override = process.env['CLAUDE_CREDENTIALS_FILE'];
+        const options = {
+            homeDir, coordinationDirectory,
+            ...(override ? { credentialsFile: path.resolve(override) } : {}),
+            timeoutMs: CLAUDE_QUOTA_TIMEOUT_MS,
         };
-
-        const now = deps.now ?? Date.now;
-        if (token.expiresAt !== undefined && token.expiresAt <= now() + CLAUDE_TOKEN_EXPIRY_SKEW_MS) {
-            await refresh();
-        }
-
-        const requestUsage = async (accessToken: string): Promise<Response | undefined> => {
-            try {
-                return await fetch('https://api.anthropic.com/api/oauth/usage', {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                });
-            } catch {
-                return undefined;
-            }
-        };
-
+        const acquire = deps.acquireCredential ?? acquireClaudeCredential;
+        let token = await acquire(options, signal);
+        if (signal.aborted) return { quotaSnapshots: {} };
+        const requestUsage = (accessToken: string): Promise<Response> => fetch(
+            'https://api.anthropic.com/api/oauth/usage', {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                redirect: 'error', signal,
+            },
+        );
         let response = await requestUsage(token.accessToken);
-        if (response?.status === 401 && await refresh()) {
+        if (response.status === 401 && !signal.aborted) {
+            const next = await acquire({ ...options, forceRefresh: true }, signal);
+            if (signal.aborted || next.accessToken === token.accessToken) return { quotaSnapshots: {} };
+            token = next;
             response = await requestUsage(token.accessToken);
         }
-        if (!response?.ok) return { quotaSnapshots: {} };
-
-        let data: unknown;
-        try {
-            data = await response.json();
-        } catch {
-            return { quotaSnapshots: {} };
-        }
-
-        if (!data || typeof data !== 'object') return { quotaSnapshots: {} };
+        if (!response.ok || signal.aborted) return { quotaSnapshots: {} };
+        const data: unknown = await response.json();
+        if (!data || typeof data !== 'object' || signal.aborted) return { quotaSnapshots: {} };
         return mapOAuthUsageToQuota(data as Record<string, unknown>);
     } catch {
         return { quotaSnapshots: {} };
