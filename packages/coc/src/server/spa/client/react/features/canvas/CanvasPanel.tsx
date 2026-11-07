@@ -79,6 +79,8 @@ export interface CanvasPanelProps {
     onCanvasCreated?: (canvasId: string) => void;
     /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
     reloadNonce?: number;
+    /** The saved title, once known, so a host can label its tab. */
+    onTitleChange?: (title: string) => void;
     /**
      * Reports unsaved-edit state to the host, so a panel that hides this canvas
      * behind another tab can still show that it holds unwritten work. Reports
@@ -95,7 +97,7 @@ export interface CanvasPanelProps {
 
 export function CanvasPanel({
     workspaceId, routingRef, canvasId, liveEvent, onClose, onAskAi, onAttachToChat, onSendToAi, onFullscreenChange,
-    onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce,
+    onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce, onTitleChange,
     onDirtyChange, onRegisterSave, allowDesktopGuest = false,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
@@ -170,6 +172,9 @@ export function CanvasPanel({
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
     const kind = canvasKind(canvas, displayedContent);
     const panelTitle = canvas?.title || availableCanvases.find(item => item.id === canvasId)?.title || 'Canvas';
+    useEffect(() => {
+        if (canvas?.title) onTitleChange?.(canvas.title);
+    }, [canvas?.title, onTitleChange]);
 
     const selectionContainerRef = useRef<HTMLDivElement>(null);
     const selectionContentRef = useRef<HTMLDivElement>(null);

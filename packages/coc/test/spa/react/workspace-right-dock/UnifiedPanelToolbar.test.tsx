@@ -164,7 +164,7 @@ describe('unifiedToolbarBreadcrumbs', () => {
     it('renders no row for a kind that brings its own toolbar', () => {
         expect(unifiedToolbarBreadcrumbs(null)).toBeNull();
         expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'notes' }))).toBeNull();
-        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'canvas' }))).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }))).toBeNull();
     });
 
     it('splits a repo-relative path into navigable segments', () => {

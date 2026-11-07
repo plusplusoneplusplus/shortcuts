@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-    groupStripTabs, isGroupBoundaryMove, moveGroupInOrder, normalizeGroupOrder, stripGroupForKind,
+    groupStripTabs, isGroupBoundaryMove, moveGroupInOrder, normalizeGroupOrder, stripGroupForKind, stripGroupForTab,
     type GroupStripTabsOptions, type UnifiedTabStripGroup,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
 import type { UnifiedPanelTab, UnifiedTabKind } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
 const tab = (id: string, kind: UnifiedTabKind = 'file'): UnifiedPanelTab => ({
     id, kind, ownerWorkspaceId: 'workspace', chatId: 'chat', resourceId: id, label: id,
+});
+const canvas = (id: string): UnifiedPanelTab => ({
+    ...tab(id, 'browser'), browserUrl: `coc://canvas/${id}`, browserChatId: 'chat', chatId: null,
 });
 const options: GroupStripTabsOptions = { folded: new Set(), narrow: false };
 const files = ['a', 'b', 'c', 'd', 'e', 'f'].map(id => tab(id));
@@ -18,21 +21,26 @@ describe('stripGroupForKind', () => {
         notes: 'tools', 'work-items': 'tools',
         'pull-requests': 'tools', git: 'tools', file: 'files',
         diff: 'files', note: 'files', paste: 'files', external: 'files',
-        browser: 'web', 'html-page': 'web', canvas: 'canvas',
+        browser: 'web', 'html-page': 'web',
     };
     it.each(Object.entries(mapping))('maps %s to %s', (kind, group) => {
         expect(stripGroupForKind(kind as UnifiedTabKind)).toBe(group);
+    });
+
+    it('keeps a coc://canvas page in the canvas block', () => {
+        expect(stripGroupForTab(canvas('plan'))).toBe('canvas');
+        expect(stripGroupForTab(tab('page', 'browser'))).toBe('web');
     });
 });
 
 describe('groupStripTabs', () => {
     it('returns only nonempty groups in fixed order and retains saved order inside each', () => {
-        const input = [tab('c', 'canvas'), tab('w', 'browser'), tab('f'), tab('t', 'git'), tab('f2')];
+        const input = [canvas('c'), tab('w', 'browser'), tab('f'), tab('t', 'git'), tab('f2')];
         const result = groupStripTabs(input, options);
         expect(result.map(item => item.group)).toEqual(['tools', 'files', 'web', 'canvas']);
         expect(result[1].tabs.map(item => item.id)).toEqual(['f', 'f2']);
         expect(groupStripTabs([], options)).toEqual([]);
-        expect(groupStripTabs([tab('c', 'canvas')], options).map(item => item.group)).toEqual(['canvas']);
+        expect(groupStripTabs([canvas('c')], options).map(item => item.group)).toEqual(['canvas']);
     });
 
     it('uses the default cap and fills remaining room from the saved prefix', () => {
@@ -112,7 +120,7 @@ describe('groupStripTabs', () => {
 });
 
 describe('group block order', () => {
-    const input = [tab('t', 'git'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), tab('c', 'canvas')];
+    const input = [tab('t', 'git'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), canvas('c')];
 
     it('renders blocks in saved order, keeping members, their order and selection intact', () => {
         const result = groupStripTabs(input, { ...options, order: ['web', 'tools', 'files', 'canvas'], activeId: 'w2' });
@@ -149,7 +157,7 @@ describe('group block order', () => {
 });
 
 describe('isGroupBoundaryMove', () => {
-    const tabs = [tab('f'), tab('n', 'note'), tab('t', 'work-items'), tab('w', 'browser'), tab('c', 'canvas')];
+    const tabs = [tab('f'), tab('n', 'note'), tab('t', 'work-items'), tab('w', 'browser'), canvas('c')];
     it('allows same-group moves, including the same id', () => {
         expect(isGroupBoundaryMove(tabs, 'f', 'n')).toBe(false);
         expect(isGroupBoundaryMove(tabs, 'f', 'f')).toBe(false);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TerminalSessionSummary } from '../../terminal/TerminalView';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
@@ -71,6 +71,12 @@ export interface UnifiedBrowserTabProps {
      * through it, so a restored tab never starts one on its own.
      */
     cocOpenRequest?: number;
+    /** Canvas page: close, unsaved edits, the switcher chip, and the loaded title. */
+    onClose?: () => void;
+    onDirtyChange?: (isDirty: boolean) => void;
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    canvasSwitcher?: ReactNode;
+    onCanvasTitle?: (title: string) => void;
 }
 
 /**
@@ -100,7 +106,7 @@ function cocEntry(text: string, resolve: (address: CocAddress) => CocPage | stri
 
 /**
  * A general web browser tab. The address field accepts an http(s) URL or a
- * bare domain, or a `coc://` page (Terminal, Settings, To-do) that shows the
+ * bare domain, or a `coc://` page (Terminal, Settings, To-do, Canvas) that shows the
  * panel's own view in place of the page; anything else is rejected inline
  * and never searched. The web page stays loaded, hidden, while a `coc://` page
  * shows, and the tab's back/forward step between them.
@@ -110,7 +116,7 @@ function cocEntry(text: string, resolve: (address: CocAddress) => CocPage | stri
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled, resolveCocPage, onTerminalSessionsChange, cocOpenRequest,
+    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled, resolveCocPage, onTerminalSessionsChange, cocOpenRequest, onClose, onDirtyChange, onRegisterSave, canvasSwitcher, onCanvasTitle,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     // A tab opened (or reopened) at a `coc://` address resolves it once.
@@ -320,7 +326,10 @@ export function UnifiedBrowserTab({
             const { entries, index } = tabHistoryRef.current;
             const here = entries[index];
             // The same page again replaces its entry (a new item request) instead of stacking.
-            if (here.kind === 'coc' && here.page.kind === entry.page.kind) {
+            // Two canvases are different pages, so moving between them is a step.
+            const samePage = here.kind === 'coc' && here.page.kind === entry.page.kind
+                && (here.page.kind !== 'canvas' || entry.page.kind !== 'canvas' || here.page.canvasId === entry.page.canvasId);
+            if (samePage && here.kind === 'coc') {
                 showEntry(entries.map((candidate, at) => at === index ? entry : candidate), index);
             } else showEntry([...entries.slice(0, index + 1), entry], index + 1);
             return formatCocAddress(entry.address);
@@ -497,7 +506,9 @@ export function UnifiedBrowserTab({
             {cocPage ? (
                 <div ref={setCocPageNode} className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="browser-coc-page">
                     <UnifiedCocPage
-                        key={cocPage.page.kind === 'terminal' ? `${tabHistory.index}:${cocReload}` : String(tabHistory.index)}
+                        key={cocPage.page.kind === 'terminal' ? `${tabHistory.index}:${cocReload}`
+                            : cocPage.page.kind === 'canvas' ? `${tabHistory.index}:${cocPage.page.canvasId}`
+                            : String(tabHistory.index)}
                         page={cocPage.page}
                         active={active && visible}
                         terminalOpenRequest={cocPage.initial ? cocOpenRequest ?? 0 : cocPage.nonce}
@@ -505,6 +516,11 @@ export function UnifiedBrowserTab({
                         reloadNonce={cocReload}
                         onTodoSelectionChange={followTodoSelection}
                         onTerminalSessionsChange={reportTerminalSessions}
+                        onClose={onClose}
+                        onDirtyChange={onDirtyChange}
+                        onRegisterSave={onRegisterSave}
+                        canvasSwitcher={canvasSwitcher}
+                        onCanvasTitle={onCanvasTitle}
                     />
                 </div>
             ) : bridge ? (

@@ -3,7 +3,7 @@ import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspaceP
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
 import { parseNoteResourceId } from './unifiedNoteTabs';
-import { isGroupBoundaryMove, stripGroupForKind } from './unifiedPanelTabGroups';
+import { isGroupBoundaryMove, stripGroupForTab } from './unifiedPanelTabGroups';
 import { canDuplicateBrowserTab } from './unifiedBrowserTabs';
 
 export type UnifiedPanelBulkCloseAction =
@@ -54,8 +54,8 @@ export function unifiedPanelBulkCloseTargets(
     switch (action) {
         case 'close-group':
         case 'close-others-in-group': {
-            const group = stripGroupForKind(tabs[sourceIndex].kind);
-            return tabs.filter(tab => stripGroupForKind(tab.kind) === group
+            const group = stripGroupForTab(tabs[sourceIndex]);
+            return tabs.filter(tab => stripGroupForTab(tab) === group
                 && (action === 'close-group' || tab.id !== sourceId)).map(tab => tab.id);
         }
         case 'close-others':

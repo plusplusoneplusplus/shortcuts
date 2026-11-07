@@ -1,4 +1,5 @@
 import { cn } from '../../../ui/cn';
+import { cocPageKindOf } from './unifiedPanelAddresses';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
@@ -8,10 +9,10 @@ export function compressedCanvasTabs(
     tabs: readonly UnifiedPanelTab[],
     activeId: string | null,
 ): { visibleTabs: readonly UnifiedPanelTab[]; canvasTabs: readonly UnifiedPanelTab[] } {
-    const canvasTabs = tabs.filter(tab => tab.kind === 'canvas');
+    const canvasTabs = tabs.filter(tab => cocPageKindOf(tab.browserUrl) === 'canvas');
     if (canvasTabs.length < CANVAS_TAB_COMPRESSION_THRESHOLD) return { visibleTabs: tabs, canvasTabs: [] };
     return {
-        visibleTabs: tabs.filter(tab => tab.kind !== 'canvas' || tab.id === activeId),
+        visibleTabs: tabs.filter(tab => cocPageKindOf(tab.browserUrl) !== 'canvas' || tab.id === activeId),
         canvasTabs,
     };
 }

@@ -64,7 +64,7 @@ describe('source split rules', () => {
     it('ends the split when a pane file is no longer visible', () => {
         const split: SourceSplitState = { left: 'a', right: 'b', focus: 'left', ratio: 0.5 };
         expect(reconcileSourceSplit(split, [file('a')], file('a'))).toBeNull();
-        expect(reconcileSourceSplit(split, [file('a'), terminal, { ...file('b'), kind: 'canvas' }], file('a'))).toBeNull();
+        expect(reconcileSourceSplit(split, [file('a'), terminal, { ...file('b'), kind: 'diff' }], file('a'))).toBeNull();
     });
 
     it('collapses below two minimum panes plus the divider', () => {

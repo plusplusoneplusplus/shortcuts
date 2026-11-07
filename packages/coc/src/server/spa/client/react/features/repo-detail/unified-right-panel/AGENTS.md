@@ -1,10 +1,11 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Chrome-style resource-tabbed column
-holding Work Items, Pull Requests, Notes, files, canvases, chat diffs, local HTML
+holding Work Items, Pull Requests, Notes, files, chat diffs, local HTML
 pages and web browser tabs, with a Search/Explorer navigator at its right edge.
-Terminal, Settings and To-do are `coc://` pages inside web tabs; there are no
-dedicated tabs for them. It mounts at every breakpoint.
+Terminal, Settings, To-do and Canvas are `coc://` pages inside web tabs; there
+are no dedicated tabs for them. A canvas is `coc://canvas/<canvasId>`. It mounts
+at every breakpoint.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
@@ -33,9 +34,11 @@ Three different workspace ids, kept apart on purpose:
 
 Tabs are scoped by kind: `work-items | pull-requests | notes | note | html-page | browser` are workspace-owned
 (a `browser` tab may also name an owning chat; see "Browser tabs"),
-`file | canvas | diff | git | external | paste` belong to the selected chat (`scopeForKind`).
+`file | diff | git | external | paste` belong to the selected chat (`scopeForKind`).
+A canvas is a `coc://canvas/<canvasId>` web tab kept with its chat (`browserChatId`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs) and
-the removed `terminal`, `settings` and `todo` kinds.
+the removed `terminal`, `settings`, `todo` and `canvas` kinds. A stored `canvas`
+tab is rewritten to a `coc://canvas/<id>` web tab kept with that chat.
 Open inputs still carry the opening chat for workspace-owned kinds: `openTab`
 drops it from tab identity but records the active tab under that chat's scope,
 so a note link clicked in a hosted chat selects that note (`noteTabInput`).
@@ -172,8 +175,9 @@ owner and rejects missing or changed remote routes without falling through local
 There is no second editor, search backend, terminal manager, or canvas store.
 `git` is filled by `RepoGitTab`'s own `RepoGitDetailPane` through a portal.
 `file` renders the Explorer's own `PreviewPane` (the same buffer controller the
-Explorer sub-tab uses), `canvas` renders `CanvasPanel` (the panel is its ONLY
-host — the chat has no canvas column of its own), `note` renders
+Explorer sub-tab uses), a `coc://canvas/<id>` page renders `CanvasPanel` through
+`UnifiedCanvasTab` (the panel is its ONLY host — the chat has no canvas column
+of its own), `note` renders
 `NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
 restored from its descriptor (a missing path clears after tree validation)
 and a container-width layout,
@@ -344,16 +348,17 @@ directory API or expose relative-path copy and Explorer reveal actions.
 
 ## `coc://` pages in web tabs
 
-Terminal, Settings and To-do exist only as `coc://` pages in web tabs, like
+Terminal, Settings, To-do and Canvas exist only as `coc://` pages in web tabs, like
 `chrome://` pages: same toolbar, same address bar, the page's view in place of
-the web content. The `+` menu entries, outside Settings links and Sentinel's
-To-do all open (or focus) a web tab at the page's address.
+the web content. The `+` menu entries, outside Settings links, Sentinel's
+To-do and every canvas open all open (or focus) a web tab at the page's address.
 
 | Address | Shows (`UnifiedCocPage`) | Owner (resolved by the panel's `resolveCocPage`) |
 |---|---|---|
 | `coc://settings` | `WorkspaceSettingsSlot` | The panel scope; an error when the panel does not own Settings. |
 | `coc://terminal` | `TerminalView` | The web tab's own owner (the dock target when the tab opened). |
 | `coc://todo[/<itemId>]` | `UnifiedTodoTab` | The selected Sentinel chat, or the origin Sentinel in the pinned excursion tab; "To-do is only available in a Sentinel chat" otherwise. |
+| `coc://canvas/<canvasId>` | `UnifiedCanvasTab` | The web tab's owner workspace. The page stays with the chat that linked it (`browserChatId`). "Open a chat to view a canvas" when there is no chat. |
 
 - `parseCocAddress` is case-insensitive for scheme and host, ignores a trailing
   `/`, rejects query/hash, and reports other hosts as "Not supported yet".
@@ -365,8 +370,10 @@ To-do all open (or focus) a web tab at the page's address.
   error and resolves once it is, unless the user navigated meanwhile.
 - `openCocPageTab` / the panel's `openCocPage` focus a visible web tab already
   showing the same page for the same owner (`isSameCocPageTab`; To-do matches by
-  page, not item) instead of adding one; a `coc://todo/<itemId>` address always
-  opens anew. Availability errors show inline in the `+` menu and keep it open.
+  page, not item; Canvas matches by canvas id) instead of adding one; a
+  `coc://todo/<itemId>` address always opens anew. Opening the same canvas in
+  the same chat focuses its page. Availability errors show inline in the `+`
+  menu and keep it open.
 - `browserUrl` holds the shown address and `browserLabelForUrl` labels a
   `coc://` tab by its page; the strip shows the page's icon. A web tab is
   persisted only while it shows a `coc://` page, so Terminal, Settings and To-do
@@ -713,9 +720,9 @@ that target open and continues with later targets. File tabs use only the strip'
   a tombstone-only tab closes with no prompt. Terminate happens **before** the
   close and routes through `getCocClientForWorkspace(owner)`; 404 counts as
   success, anything else rejects and the tab, the view, and the PTYs all stay.
-- **Dirty buffers.** `DIRTY_CLOSE_KINDS` is `file | note | canvas | git` — the
-  kinds that both report dirtiness (`onDirtyChange`) and hand back a way to write
-  it (`onRegisterSave`), so the Save button always has something behind it. The
+- **Dirty buffers.** `file`, `note`, `git`, and a `coc://canvas` page report
+  dirtiness (`onDirtyChange`) and hand back a way to write it (`onRegisterSave`),
+  so the Save button always has something behind it. The
   prompt is the Explorer's own `explorer/ExplorerCloseTabsDialog`. A rejected or
   `false` save keeps the tab, the buffer, and the prompt as a retry. The `git`
   tab's body (`UnifiedGitTab`) publishes its bound callbacks as a dirty bridge in

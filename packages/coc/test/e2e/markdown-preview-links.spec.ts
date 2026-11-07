@@ -37,7 +37,9 @@ test.beforeAll(async () => {
             openUnifiedPanelTab('ws', { kind: 'file', ownerWorkspaceId: 'ws', ownerRoutingRef: null,
                 chatId: 'chat', resourceId: 'docs/plan.md', label: 'plan.md' });
             window.fixture = { editors: {}, openCanvas: () => openUnifiedPanelTab('ws', {
-                kind: 'canvas', ownerWorkspaceId: 'ws', ownerRoutingRef: null, chatId: 'chat', resourceId: 'canvas-plan', label: 'Canvas plan',
+                kind: 'browser', ownerWorkspaceId: 'ws', ownerRoutingRef: null, chatId: 'chat',
+                browserChatId: 'chat', browserUrl: 'coc://canvas/canvas-plan',
+                resourceId: 'coc-canvas:chat:canvas-plan', label: 'Canvas plan',
             }) };
             function Fixture() {
                 const api = useUnifiedPanelTabs('ws', 'chat', true);
@@ -48,7 +50,7 @@ test.beforeAll(async () => {
                     <UnifiedPanelTabStrip tabs={api.tabs} activeId={api.activeId} onActivate={api.activate}
                         onClose={api.close} onCloseMany={() => {}} />
                     {api.tabs.map(tab => <div key={tab.id} style={{display: api.activeId === tab.id ? 'block' : 'none', height: 500}}>
-                        {tab.kind === 'canvas' ? <CanvasBodyRenderer workspaceId="ws" routingRef={null} canvasId="canvas-plan"
+                        {tab.browserUrl === 'coc://canvas/canvas-plan' ? <CanvasBodyRenderer workspaceId="ws" routingRef={null} canvasId="canvas-plan"
                             canvas={{ id: 'canvas-plan', type: 'markdown', content: '[Canvas source](src/main.txt#L13-L16)' }}
                             kind={{ isCode: false, isSvg: false, isExtension: false, isExcalidraw: false, isKusto: false }}
                             loading={false} loadError={null} viewingVersion={null} viewingRevision={1}

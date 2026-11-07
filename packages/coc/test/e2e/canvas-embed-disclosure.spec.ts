@@ -112,7 +112,7 @@ for (const dark of [false, true]) {
             await expect(open).toBeFocused();
             await page.keyboard.press('Enter');
             expect(await page.evaluate(() => Reflect.get(window, 'readCanvasTabs')())).toMatchObject([
-                { kind: 'canvas', ownerWorkspaceId: 'ws-fixture', resourceId: 'first', label: 'Message draft first' },
+                { kind: 'browser', browserUrl: 'coc://canvas/first', browserChatId: 'chat', ownerWorkspaceId: 'ws-fixture', label: 'Message draft first' },
             ]);
             await expect(toggle).toHaveAttribute('aria-expanded', 'false');
             await toggle.focus();

@@ -1332,11 +1332,11 @@ With `features.fileBlame` enabled, a Blame toggle beside History shows per-line
 external, oversized or rendered Markdown). Lines edited in the live buffer show
 `Not committed yet`; a click opens the owner-routed Git commit detail.
 
-Terminal, Settings and To-do exist only as `coc://settings`, `coc://terminal`
-and `coc://todo[/<itemId>]` pages in web tabs, like `chrome://` pages: the same
+Terminal, Settings, To-do and Canvas exist only as `coc://settings`, `coc://terminal`,
+`coc://todo[/<itemId>]` and `coc://canvas/<canvasId>` pages in web tabs, like `chrome://` pages: the same
 toolbar, the existing view in place of the web content, and back/forward across
 web and `coc://` steps. Toolbar reload remounts Terminal; Settings rebuilds its
-form and re-reads git info, and To-do refreshes its ledger in place. The owner comes from the panel (the text never names
+form and re-reads git info, To-do refreshes its ledger, and Canvas re-reads its record. The owner comes from the panel (the text never names
 one); the `+` menu and outside links open or focus a web tab at the address.
 Web tabs persist only while they show a `coc://` page. `coc://` never reaches
 the engine; see `unified-right-panel/AGENTS.md`.

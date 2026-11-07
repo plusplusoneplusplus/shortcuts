@@ -99,6 +99,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { openUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
@@ -136,13 +137,9 @@ function openFile(opts: { path: string; chatId?: string | null } = { path: 'src/
 }
 
 function openCanvas(canvasId = 'canvas-1') {
-    return openUnifiedPanelTab(WS, {
-        kind: 'canvas',
-        ownerWorkspaceId: WS,
-        chatId: CHAT,
-        resourceId: canvasId,
-        label: 'Plan canvas',
-    });
+    return openUnifiedPanelTab(WS, canvasPageInput({ id: canvasId, title: 'Plan canvas' }, {
+        ownerWorkspaceId: WS, chatId: CHAT, browserChatId: CHAT,
+    }));
 }
 
 /** Open a dirty file tab and hand back its id and its ✕. */

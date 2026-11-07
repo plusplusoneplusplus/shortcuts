@@ -104,6 +104,7 @@ import {
     readUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import {
     EMPTY_UNIFIED_PANEL,
     activateTab,
@@ -298,10 +299,9 @@ describe('UnifiedRightPanel', () => {
                 kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
             });
             for (let index = 1; index <= 5; index++) {
-                state = openTab(state, {
-                    kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a',
-                    resourceId: `canvas-${index}`, label: `Canvas ${index}`,
-                });
+                state = openTab(state, canvasPageInput({ id: `canvas-${index}`, title: `Canvas ${index}` }, {
+                    ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: 'chat-a',
+                }));
             }
             writeUnifiedPanelState(WS, state);
             return state;
@@ -331,7 +331,7 @@ describe('UnifiedRightPanel', () => {
             const tabIds = () => screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'));
             const renderedIds = tabIds();
             expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'file')).toHaveLength(2);
-            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(groups ? 3 : 1);
+            expect(screen.getAllByRole('tab').filter(node => node.querySelector('[data-icon="canvas-palette"]'))).toHaveLength(groups ? 3 : 1);
             expect(screen.queryByTestId('unified-panel-category-canvas')).toBeNull();
             if (groups) {
                 expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toBeTruthy();
@@ -444,7 +444,7 @@ describe('UnifiedRightPanel', () => {
             act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: true }); });
             expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toHaveAttribute('aria-expanded', 'false');
             expect(screen.queryByTestId('unified-panel-group-overflow-canvas')).toBeNull();
-            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(1);
+            expect(screen.getAllByRole('tab').filter(node => node.querySelector('[data-icon="canvas-palette"]'))).toHaveLength(1);
         });
 
         it.each(['Alt+ArrowRight', 'Move right menu'] as const)(
@@ -1238,9 +1238,9 @@ describe('UnifiedRightPanel', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
         });
-        state = openTab(state, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1', label: 'Canvas',
-        });
+        state = openTab(state, canvasPageInput({ id: 'canvas-1', title: 'Canvas' }, {
+            ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: 'chat-a',
+        }));
         writeUnifiedPanelState(WS, state);
         const rememberedState = readUnifiedPanelState(WS);
 
@@ -1254,9 +1254,7 @@ describe('UnifiedRightPanel', () => {
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-a" dock={dockStub({ isOpen: false })} />);
         expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
         expect(readUnifiedPanelState(WS)).toEqual(rememberedState);
-        const canvasId = unifiedTabId({
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1',
-        });
+        const canvasId = rememberedState.workspaceTabs.find(tab => tab.browserUrl === 'coc://canvas/canvas-1')!.id;
         expect(screen.getByTestId(`unified-panel-tab-${canvasId}`).getAttribute('aria-selected')).toBe('true');
     });
 

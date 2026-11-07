@@ -21,6 +21,7 @@
  */
 
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
+import { cocPageKindOf } from './unifiedPanelAddresses';
 import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
 
 /**
@@ -29,9 +30,10 @@ import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
  * The bar for membership is the same for every kind: the view reports dirtiness
  * (`onDirtyChange`) AND hands the panel a way to write the draft back
  * (`onRegisterSave`), so the prompt's Save button always has something behind
- * it. `file` writes through `PreviewPane`'s buffer; `note` and `canvas`
- * autosave, so their unsaved window is a pending debounce and their save
- * flushes it (`flushSave` / `saveNow`) and reports whether the write landed.
+ * it. `file` writes through `PreviewPane`'s buffer; `note` and a
+ * `coc://canvas` page autosave, so their unsaved window is a pending debounce
+ * and their save flushes it (`flushSave` / `saveNow`) and reports whether the
+ * write landed.
  * `git` reports through its working-tree diff when that diff is edited (the
  * detail `RepoGitTab` portals into the tab) and saves through the same write.
  *
@@ -40,18 +42,18 @@ import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
  * navigators.
  */
 export const DIRTY_CLOSE_KINDS: ReadonlySet<UnifiedTabKind> =
-    new Set<UnifiedTabKind>(['file', 'note', 'canvas', 'git']);
+    new Set<UnifiedTabKind>(['file', 'note', 'git']);
 
 /**
  * Whether closing `tab` right now would discard unsaved edits, and therefore
  * has to ask first. A missing or clean tab closes straight through.
  */
 export function needsDirtyCloseConfirm(
-    tab: Pick<UnifiedPanelTab, 'kind'> | undefined | null,
+    tab: Pick<UnifiedPanelTab, 'kind' | 'browserUrl'> | undefined | null,
     isDirty: boolean,
 ): boolean {
     if (!tab || !isDirty) return false;
-    return DIRTY_CLOSE_KINDS.has(tab.kind);
+    return DIRTY_CLOSE_KINDS.has(tab.kind) || cocPageKindOf(tab.browserUrl) === 'canvas';
 }
 
 /**
@@ -59,7 +61,11 @@ export function needsDirtyCloseConfirm(
  * trusted-path marker, prefixed with the owning repo when the tab is attributed
  * to one. Falls back to the label for a descriptor with no usable path.
  */
-export function dirtyCloseLabel(tab: Pick<UnifiedPanelTab, 'resourceId' | 'label' | 'repoLabel' | 'gitView'>): string {
+export function dirtyCloseLabel(tab: Pick<UnifiedPanelTab, 'resourceId' | 'label' | 'repoLabel' | 'gitView' | 'browserUrl'>): string {
+    // A canvas page's resource id is its address key; the prompt uses the title.
+    if (cocPageKindOf(tab.browserUrl) === 'canvas') {
+        return tab.repoLabel ? `${tab.repoLabel}: ${tab.label}` : tab.label;
+    }
     // The Git tab's resource is its fixed slot; the edited file is in its view.
     if (tab.gitView?.type === 'working-tree-file') {
         return tab.repoLabel ? `${tab.repoLabel}: ${tab.gitView.filePath}` : tab.gitView.filePath;

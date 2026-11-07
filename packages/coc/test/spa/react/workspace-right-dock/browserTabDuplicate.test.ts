@@ -74,7 +74,7 @@ describe('duplicateBrowserTabInput', () => {
     });
 
     it('rejects non-browser tabs and non-http(s) pages', () => {
-        for (const kind of ['html-page', 'file', 'work-items', 'canvas'] as const) {
+        for (const kind of ['html-page', 'file', 'work-items'] as const) {
             const tab = browserTab({ kind, htmlPageId: 'page-1' });
             expect(canDuplicateBrowserTab(tab)).toBe(false);
             expect(duplicateBrowserTabInput(tab, CHAT)).toBeNull();
@@ -91,7 +91,7 @@ describe('Duplicate menu item', () => {
         const source = browserTab();
         expect(unifiedPanelTabMenuItems(source, [source], new Set())
             .find(item => item.action === 'duplicate')).toEqual({ action: 'duplicate', label: 'Duplicate', group: 'browser', disabled: false });
-        for (const kind of ['html-page', 'file', 'work-items', 'notes', 'canvas'] as const) {
+        for (const kind of ['html-page', 'file', 'work-items', 'notes', 'diff'] as const) {
             const other = browserTab({ kind });
             expect(unifiedPanelTabMenuItems(other, [other], new Set()).some(item => item.action === 'duplicate')).toBe(false);
         }

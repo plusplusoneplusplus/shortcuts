@@ -11,8 +11,8 @@
  *
  * Invariants for every value this module returns:
  *  1. **Ownership follows the kind.** Notes and web tabs belong
- *     to the workspace and stay visible across chat switches; file, canvas,
- *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
+ *     to the workspace and stay visible across chat switches; file, diff, and
+ *     Git tabs belong to the chat that opened them (or to the workspace when
  *     no chat is selected). See `scopeForKind`. A `browser` tab is filed with
  *     the workspace but may name an owning conversation (`browserChatId`); it
  *     is then visible only from that chat, and hidden elsewhere without closing.
@@ -41,7 +41,7 @@
  */
 
 import type { PersistedGitView } from '../../git/repoGitTab/types';
-import { cocPageKindOf, isCocAddressText } from './unifiedPanelAddresses';
+import { canvasPageResourceId, cocPageKindOf, formatCocAddress, isCocAddressText } from './unifiedPanelAddresses';
 
 /** The serializable selection owned by a panel-local Notes view. */
 export interface PersistedNotesView {
@@ -52,12 +52,13 @@ export interface PersistedNotesView {
  * What a tab renders.
  *
  * `notes` is the singleton note navigator — workspace-owned. `file`, `note`,
- * `canvas`, and `diff` are concrete opened resources; `note` is
- * workspace-owned (a note belongs to the workspace, not to the chat that
- * linked it), the rest follow the selected chat.
+ * and `diff` are concrete opened resources; `note` is workspace-owned (a note
+ * belongs to the workspace, not to the chat that linked it), the rest follow
+ * the selected chat.
  *
- * Terminal, Settings and a Sentinel chat's To-do are not kinds: they are
- * `coc://` pages shown in a `browser` tab (`unifiedPanelAddresses`).
+ * Terminal, Settings, a Sentinel chat's To-do and Canvas are not kinds: they
+ * are `coc://` pages shown in a `browser` tab (`unifiedPanelAddresses`). A
+ * canvas page is `coc://canvas/<id>` and stays with the chat that linked it.
  *
  * There is deliberately no `explorer` kind: the file tree is a panel-level
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
@@ -75,14 +76,14 @@ export interface PersistedNotesView {
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'work-items' | 'pull-requests' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
+export type UnifiedTabKind = 'work-items' | 'pull-requests' | 'notes' | 'file' | 'note' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'work-items', 'pull-requests', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste',
+    'work-items', 'pull-requests', 'notes', 'file', 'note', 'diff', 'git', 'html-page', 'browser', 'paste',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -114,9 +115,10 @@ export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
  * Ownership rule (AC-02). Notes, note documents and web tabs are
- * workspace-owned; specific files, canvases, diffs, and the Git tab follow the
- * chat that opened them. Files opened with no chat selected fall back to the workspace,
- * which `scopeKeyFor` handles.
+ * workspace-owned; specific files, diffs, and the Git tab follow the chat that
+ * opened them. Canvas is a `coc://canvas/<id>` page on a web tab, kept with its
+ * chat through `browserChatId`. Files opened with no chat selected fall back to
+ * the workspace, which `scopeKeyFor` handles.
  */
 export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
     return WORKSPACE_KINDS.has(kind) ? 'workspace' : 'chat';
@@ -126,13 +128,14 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
 export type UnifiedTabDisplayGroup = 'tools' | 'resources';
 
 /**
- * Display grouping, separate from ownership. Canvases and Git are chat-owned but render
- * with the workspace tools (Notes, web tabs) because they are something
- * the user works in, not a repo file; files, diffs, and external sources form
- * the resource group after the strip's divider.
+ * Display grouping, separate from ownership. Git is chat-owned but renders
+ * with the workspace tools (Notes, web tabs) because it is something the user
+ * works in, not a repo file; files, diffs, and external sources form the
+ * resource group after the strip's divider. Canvas pages are web tabs, so
+ * they sit with the other tools.
  */
 export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
-    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'git' ? 'tools' : 'resources';
+    return WORKSPACE_KINDS.has(kind) || kind === 'git' ? 'tools' : 'resources';
 }
 
 /**
@@ -312,8 +315,9 @@ function escapePart(part: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The tabs visible for a chat selection, in strip order: workspace tabs first,
- * then that chat's canvases, then the chat's other tabs. Passing null (no chat
+ * The tabs visible for a chat selection, in strip order: workspace tabs first
+ * (including that chat's `coc://canvas` pages), then the chat's other tabs.
+ * Passing null (no chat
  * selected) shows workspace tabs plus draft tabs. A saved per-view id order
  * interleaves groups without changing descriptors; missing ids are discarded
  * and newly opened tabs are inserted before the preview or appended.
@@ -355,10 +359,13 @@ function visibleBrowserTab(tab: UnifiedPanelTab, chatId: string | null): boolean
  * Drop every page's conversation owner, so all pages show in every chat again.
  * Used when `features.chatScopedBrowserTabs` turns off; retains the state
  * reference when no page has an owner. A Sentinel chat's `coc://todo` page
- * always stays with its chat: it shows that chat's ledger.
+ * and a `coc://canvas` page always stay with their chat.
  */
 export function releaseBrowserChatOwners(state: UnifiedPanelState): UnifiedPanelState {
-    const releasable = (tab: UnifiedPanelTab) => tab.browserChatId !== undefined && cocPageKindOf(tab.browserUrl) !== 'todo';
+    const releasable = (tab: UnifiedPanelTab) => {
+        const page = cocPageKindOf(tab.browserUrl);
+        return tab.browserChatId !== undefined && page !== 'todo' && page !== 'canvas';
+    };
     if (!state.workspaceTabs.some(releasable)) return state;
     return {
         ...state,
@@ -1332,6 +1339,72 @@ function noRestore(state: UnifiedPanelState): UnifiedPanelRestore {
  * carry: whether the payload needs rewriting, and whether it held an `explorer`
  * tab whose replacement is the tree column.
  */
+/** The tab kind canvas used before it became a `coc://canvas/<id>` page. */
+const LEGACY_CANVAS_KIND = 'canvas';
+
+/**
+ * Move persisted `canvas` tabs onto web tabs at `coc://canvas/<id>`. They
+ * join the workspace list and keep the chat they were filed under. Returns
+ * whether any descriptor moved, and rewrites active/order ids to the new ones.
+ */
+function migrateLegacyCanvasTabs(payload: Record<string, unknown>): boolean {
+    const idMap = new Map<string, string>();
+    const moved: Record<string, unknown>[] = [];
+    const adopt = (entry: unknown, chatId: string | null): boolean => {
+        if (entry === null || typeof entry !== 'object') return false;
+        const value = entry as Record<string, unknown>;
+        if (value.kind !== LEGACY_CANVAS_KIND) return false;
+        const canvasId = value.resourceId;
+        const ownerWorkspaceId = value.ownerWorkspaceId;
+        if (typeof canvasId !== 'string' || canvasId === '' || typeof ownerWorkspaceId !== 'string' || ownerWorkspaceId === '') return true;
+        const ownerRoutingRef = value.ownerRoutingRef === null || typeof value.ownerRoutingRef === 'string'
+            ? value.ownerRoutingRef : undefined;
+        const resourceId = canvasPageResourceId(chatId, canvasId);
+        const id = unifiedTabId({
+            kind: 'browser', ownerWorkspaceId,
+            ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
+            chatId: null, resourceId,
+        });
+        if (typeof value.id === 'string') idMap.set(value.id, id);
+        moved.push({
+            id, kind: 'browser', ownerWorkspaceId, chatId: null, resourceId,
+            label: typeof value.label === 'string' && value.label !== '' ? value.label : 'Canvas',
+            browserUrl: formatCocAddress({ kind: 'canvas', canvasId }),
+            ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
+            ...(chatId ? { browserChatId: chatId } : {}),
+            ...(typeof value.repoLabel === 'string' ? { repoLabel: value.repoLabel } : {}),
+        });
+        return true;
+    };
+    const keep = (raw: unknown, chatId: string | null): unknown[] => {
+        if (!Array.isArray(raw)) return [];
+        return raw.filter(entry => !adopt(entry, chatId));
+    };
+    payload.workspaceTabs = keep(payload.workspaceTabs, null);
+    const rawChatTabs = payload.chatTabs;
+    if (rawChatTabs !== null && typeof rawChatTabs === 'object' && !Array.isArray(rawChatTabs)) {
+        for (const [key, list] of Object.entries(rawChatTabs as Record<string, unknown>)) {
+            (rawChatTabs as Record<string, unknown>)[key] = keep(list, key === WORKSPACE_SCOPE_KEY ? null : key);
+        }
+    }
+    if (moved.length === 0) return false;
+    payload.workspaceTabs = [...(payload.workspaceTabs as unknown[]), ...moved];
+    const rewrite = (id: unknown): unknown => typeof id === 'string' && idMap.has(id) ? idMap.get(id) : id;
+    const rawActive = payload.activeByScope;
+    if (rawActive !== null && typeof rawActive === 'object' && !Array.isArray(rawActive)) {
+        for (const [key, id] of Object.entries(rawActive as Record<string, unknown>)) {
+            (rawActive as Record<string, unknown>)[key] = rewrite(id);
+        }
+    }
+    const rawOrder = payload.orderByScope;
+    if (rawOrder !== null && typeof rawOrder === 'object' && !Array.isArray(rawOrder)) {
+        for (const [key, order] of Object.entries(rawOrder as Record<string, unknown>)) {
+            if (Array.isArray(order)) (rawOrder as Record<string, unknown>)[key] = order.map(rewrite);
+        }
+    }
+    return true;
+}
+
 export function restoreUnifiedPanelState(raw: string | null): UnifiedPanelRestore {
     if (!raw) return noRestore(EMPTY_UNIFIED_PANEL);
     let parsed: unknown;
@@ -1343,8 +1416,10 @@ export function restoreUnifiedPanelState(raw: string | null): UnifiedPanelRestor
     if (parsed === null || typeof parsed !== 'object') return noRestore(EMPTY_UNIFIED_PANEL);
     const payload = parsed as Record<string, unknown>;
     const version = payload.version;
-    const migrated = typeof version === 'number' && UNIFIED_PANEL_LEGACY_VERSIONS.includes(version);
-    if (version !== UNIFIED_PANEL_STATE_VERSION && !migrated) return noRestore(EMPTY_UNIFIED_PANEL);
+    const legacyVersion = typeof version === 'number' && UNIFIED_PANEL_LEGACY_VERSIONS.includes(version);
+    if (version !== UNIFIED_PANEL_STATE_VERSION && !legacyVersion) return noRestore(EMPTY_UNIFIED_PANEL);
+    const canvasMigrated = migrateLegacyCanvasTabs(payload);
+    const migrated = legacyVersion || canvasMigrated;
 
     // Only workspace kinds belong in this list. A chat-owned kind found here
     // was written when it was still workspace-owned (the Git tab) and would

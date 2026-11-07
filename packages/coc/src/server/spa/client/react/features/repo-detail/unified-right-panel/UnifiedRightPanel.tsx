@@ -119,7 +119,7 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { moveTabGroup, toggleGroupFolded, useUnifiedTabGroupOrder, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
-import { cocPageKindOf, formatCocAddress, type CocAddress, type CocPage } from './unifiedPanelAddresses';
+import { canvasIdOfAddress, cocPageKindOf, formatCocAddress, type CocAddress, type CocPage } from './unifiedPanelAddresses';
 import { UnifiedFileHistory } from './UnifiedFileHistory';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -130,7 +130,7 @@ import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
 import {
-    browserLabelForUrl, browserOpenInput, browserSessionKey, duplicateBrowserTabInput, isSameCocPageTab, normalizeBrowserUrl,
+    browserLabelForUrl, browserOpenInput, browserSessionKey, canvasPageInput, duplicateBrowserTabInput, isSameCocPageTab, normalizeBrowserUrl,
 } from './unifiedBrowserTabs';
 import {
     closedBrowserTabScopeKey,
@@ -913,8 +913,16 @@ export function UnifiedRightPanel({
             return { ...prev, [id]: control };
         });
     }, []);
+    const workspaceTabsRef = useRef(state.workspaceTabs);
+    workspaceTabsRef.current = state.workspaceTabs;
     const navigateBrowser = useCallback(
-        (id: string, url: string) => updateBrowser(id, { url, label: browserLabelForUrl(url) }),
+        (id: string, url: string) => {
+            const current = workspaceTabsRef.current.find(tab => tab.id === id);
+            const canvasId = canvasIdOfAddress(url);
+            // Staying on the same canvas keeps its title; a new page takes the address label.
+            const keepLabel = canvasId !== null && canvasId === canvasIdOfAddress(current?.browserUrl);
+            updateBrowser(id, keepLabel ? { url } : { url, label: browserLabelForUrl(url) });
+        },
         [updateBrowser],
     );
     const followBrowserPage = useCallback(
@@ -928,8 +936,6 @@ export function UnifiedRightPanel({
     // target moved since. An opener hidden in another conversation still counts.
     // A page an AI turn drives unseen opens its tab unseen too: no selection change,
     // and the guest is created here because the tab does not mount.
-    const workspaceTabsRef = useRef(state.workspaceTabs);
-    workspaceTabsRef.current = state.workspaceTabs;
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
@@ -2214,18 +2220,28 @@ export function UnifiedRightPanel({
         setWorkspaceDockOpen(workspaceId, true);
     });
 
-    // Terminal, Settings and To-do are `coc://` pages in web tabs. The text
-    // never names an owner: Settings uses the panel scope, Terminal the web
-    // tab's own owner, To-do the selected Sentinel chat — or, in the pinned
-    // excursion tab, the origin Sentinel's ledger.
+    // Terminal, Settings, To-do and Canvas are `coc://` pages in web tabs. The
+    // text never names an owner: Settings uses the panel scope, Terminal and
+    // Canvas the web tab's own owner, To-do the selected Sentinel chat — or,
+    // in the pinned excursion tab, the origin Sentinel's ledger. A canvas page
+    // stays with the chat stored on the tab.
     const excursion = useSentinelTodoExcursion();
     const settingsAvailable = settingsOwner === (routingRef ?? workspaceId);
-    const resolveCocPage = useCallback((address: CocAddress, tab: { id?: string; ownerWorkspaceId: string; ownerRoutingRef?: string | null }): CocPage | string => {
+    const resolveCocPage = useCallback((address: CocAddress, tab: { id?: string; ownerWorkspaceId: string; ownerRoutingRef?: string | null; browserChatId?: string; repoLabel?: string }): CocPage | string => {
         if (address.kind === 'settings') {
             return settingsAvailable ? { kind: 'settings', ownerKey: routingRef ?? workspaceId } : 'Settings is not available for this workspace';
         }
         if (address.kind === 'terminal') {
             return { kind: 'terminal', ownerWorkspaceId: tab.ownerWorkspaceId, ownerRoutingRef: tab.ownerRoutingRef };
+        }
+        if (address.kind === 'canvas') {
+            const pageChat = tab.browserChatId ?? chatId;
+            if (!pageChat) return 'Open a chat to view a canvas';
+            return {
+                kind: 'canvas', canvasId: address.canvasId, ownerWorkspaceId: tab.ownerWorkspaceId,
+                ownerRoutingRef: tab.ownerRoutingRef, scopeWorkspaceId: workspaceId, chatId: pageChat,
+                ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
+            };
         }
         const owner = tab.id !== undefined && tab.id === pinnedId && excursion ? excursion.origin.owner : todoOwner;
         if (owner === null || chatId === null) return 'To-do is only available in a Sentinel chat';
@@ -2243,6 +2259,20 @@ export function UnifiedRightPanel({
         });
     }, [state.workspaceTabs]);
     const openCocPage = useCallback((address: CocAddress): string | void => {
+        if (address.kind === 'canvas') {
+            if (chatId === null) return 'Open a chat to view a canvas';
+            setMenuOpen(false);
+            const input = canvasPageInput({ id: address.canvasId }, {
+                ownerWorkspaceId: workspaceId,
+                ...(routingRef === undefined ? {} : { ownerRoutingRef: routingRef }),
+                chatId,
+                browserChatId: chatId,
+            });
+            const existing = tabs.find(tab => isSameCocPageTab(tab, input));
+            if (existing) activate(existing.id);
+            else open(input);
+            return;
+        }
         const owner = address.kind === 'settings' ? { ownerWorkspaceId: workspaceId, ownerRoutingRef: routingRef ?? null }
             : address.kind === 'todo' && todoOwner ? todoOwner
                 : { ownerWorkspaceId: target, ownerRoutingRef: targetRoutingRef };
@@ -2542,6 +2572,22 @@ export function UnifiedRightPanel({
                                         historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}
+                                        onClose={() => requestClose(tab.id)}
+                                        onDirtyChange={isDirty => handleDirtyChange(tab.id, isDirty)}
+                                        onRegisterSave={save => handleRegisterSave(tab.id, save)}
+                                        onCanvasTitle={title => updateBrowser(tab.id, { label: title })}
+                                        canvasSwitcher={tab.id === activeId && cocPageKindOf(tab.browserUrl) === 'canvas' && stackedCanvasTabs.some(item => item.id === tab.id) ? (
+                                            <UnifiedPanelCanvasStack
+                                                tabs={stackedCanvasTabs}
+                                                activeId={activeId}
+                                                dirtyIds={dirtyIds}
+                                                errorIds={errorIds}
+                                                onActivate={activateWithNavigation}
+                                                onClose={requestClose}
+                                                onCloseMany={requestBulkClose}
+                                                className="h-[22px]"
+                                            />
+                                        ) : undefined}
                                     />
                                 ) : <UnifiedTabView
                                     tab={tab}
@@ -2561,18 +2607,6 @@ export function UnifiedRightPanel({
                                     onBlameSupportChange={fileBlameEnabled ? handleBlameSupport : undefined}
                                     onOpenBlameCommit={openBlameCommit}
                                     onNotesSelectionChange={updateNotesSelection}
-                                    canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
-                                        <UnifiedPanelCanvasStack
-                                            tabs={stackedCanvasTabs}
-                                            activeId={activeId}
-                                            dirtyIds={dirtyIds}
-                                            errorIds={errorIds}
-                                            onActivate={activateWithNavigation}
-                                            onClose={requestClose}
-                                            onCloseMany={requestBulkClose}
-                                            className="h-[22px]"
-                                        />
-                                    ) : undefined}
                                 />}
                             </div>
                             );

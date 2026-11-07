@@ -248,8 +248,9 @@ describe('selection descriptors', () => {
 
     it('labels an untitled canvas rather than opening a blank tab', () => {
         expect(canvasOpenInput({ id: 'c1', title: '  ' }, context)).toMatchObject({
-            kind: 'canvas',
-            resourceId: 'c1',
+            kind: 'browser',
+            browserUrl: 'coc://canvas/c1',
+            browserChatId: 'chat-1',
             label: 'Untitled canvas',
             chatId: 'chat-1',
         });

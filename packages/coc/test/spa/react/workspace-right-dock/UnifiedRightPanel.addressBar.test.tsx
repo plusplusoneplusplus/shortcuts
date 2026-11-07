@@ -42,6 +42,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     getMonacoLanguage: () => 'plaintext',
 }));
 // The To-do view's own selection is pinned in select-request-panel.test.tsx.
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCanvasTab', () => ({
+    UnifiedCanvasTab: ({ canvasId, chatId }: { canvasId: string; chatId: string }) => (
+        <div data-testid="mock-canvas" data-chat={chatId}>{canvasId}</div>
+    ),
+}));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab', () => ({
     UnifiedTodoTab: ({ owner, selectItemRequest, onSelectionChange, reloadNonce = 0 }: {
         owner: { ownerWorkspaceId: string };
@@ -186,6 +191,30 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${member}`);
         typeAddress('coc://settings');
         expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
+    });
+
+    it('shows coc://canvas/<id> in the web tab and steps between canvases', () => {
+        seed(WS, webTab());
+        renderPanel();
+        typeAddress('coc://canvas/plan-1');
+        expect(screen.getByTestId('mock-canvas').textContent).toBe('plan-1');
+        expect(screen.getByTestId('mock-canvas').getAttribute('data-chat')).toBe('chat-1');
+        expect(address().value).toBe('coc://canvas/plan-1');
+        expect(browserTabs()[0]).toMatchObject({ browserUrl: 'coc://canvas/plan-1', label: 'Canvas' });
+        typeAddress('coc://canvas/other-2');
+        expect(screen.getByTestId('mock-canvas').textContent).toBe('other-2');
+        click('browser-back');
+        expect(address().value).toBe('coc://canvas/plan-1');
+        expect(screen.getByTestId('mock-canvas').textContent).toBe('plan-1');
+    });
+
+    it('refuses coc://canvas without a chat', () => {
+        seed(WS, webTab());
+        renderPanel({ chatId: null });
+        typeAddress('coc://canvas/plan-1');
+        expect(screen.getByTestId('browser-address-error').textContent).toBe('Open a chat to view a canvas');
+        expect(cocPage()).toBeNull();
+        expect(browserTabs()[0].browserUrl).toBeUndefined();
     });
 
     it('refuses coc://todo without a Sentinel chat and stays on the page', () => {

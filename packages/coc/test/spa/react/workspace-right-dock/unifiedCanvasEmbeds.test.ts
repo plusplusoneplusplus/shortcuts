@@ -31,10 +31,12 @@ function input(overrides: Partial<Parameters<typeof canvasEmbedTabInput>[0]> = {
 describe('canvasEmbedTabInput — what an inline canvas embed opens', () => {
     it('files the canvas under the chat it was embedded in', () => {
         expect(input()).toEqual({
-            kind: 'canvas',
+            kind: 'browser',
             ownerWorkspaceId: 'ws-1',
             chatId: 'task-A',
-            resourceId: 'canvas-9',
+            browserChatId: 'task-A',
+            browserUrl: 'coc://canvas/canvas-9',
+            resourceId: 'coc-canvas:task-A:canvas-9',
             label: 'Release plan',
         });
     });

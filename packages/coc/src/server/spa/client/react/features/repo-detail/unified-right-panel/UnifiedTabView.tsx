@@ -6,16 +6,12 @@
  *
  *  - `notes` — the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
- *    shell renders beside whichever view is active. Terminal, Settings and
- *    To-do are `coc://` pages inside web tabs (`UnifiedCocPage`).
+ *    shell renders beside whichever view is active. Terminal, Settings, To-do
+ *    and Canvas are `coc://` pages inside web tabs (`UnifiedCocPage`).
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. Trusted absolute paths are
  *    recognized inside `PreviewPane`, which keeps their write route absent.
- *  - `canvas` — `CanvasPanel`, routed at `tab.ownerWorkspaceId` so a canvas from
- *    a remote clone keeps hitting its own server for revisions and comments,
- *    with the live `canvas-updated` event for that clone's canvas wired in
- *    (`UnifiedCanvasTab`) so an AI edit reconciles in place.
  *  - `diff` — the chat's own read-only `WhisperDiffPanel`, resolved through the
  *    `unifiedDiffSources` registry, because a diff is reconstructed from an
  *    in-memory tool-call group rather than fetched. A tab whose group is gone
@@ -38,7 +34,7 @@
  * tab in turn.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type FileReloadControl, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
@@ -48,7 +44,6 @@ import type {
     EditorNavigationReason,
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
-import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
@@ -117,8 +112,6 @@ export interface UnifiedTabViewProps {
     onOpenBlameCommit?: (tab: UnifiedPanelTab, hash: string) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
-    /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
-    canvasSwitcher?: ReactNode;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -131,7 +124,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
-    onNotesSelectionChange, onReloadControlChange, canvasSwitcher,
+    onNotesSelectionChange, onReloadControlChange,
     blameShown, onBlameSupportChange, onOpenBlameCommit,
 }: UnifiedTabViewProps) {
     const panelHost = useUnifiedPanelHost();
@@ -271,21 +264,6 @@ export function UnifiedTabView({
                     revealColumn={tab.column}
                     revealNonce={tab.revealNonce}
                     onClose={close}
-                />
-            );
-        case 'canvas':
-            return (
-                <UnifiedCanvasTab
-                    routingRef={tab.ownerRoutingRef}
-                    workspaceId={tab.ownerWorkspaceId}
-                    scopeWorkspaceId={scopeWorkspaceId}
-                    canvasId={tab.resourceId}
-                    chatId={tab.chatId}
-                    {...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {})}
-                    titleAccessory={canvasSwitcher}
-                    onClose={close}
-                    onDirtyChange={handleDirty}
-                    onRegisterSave={handleRegisterSave}
                 />
             );
         case 'note':

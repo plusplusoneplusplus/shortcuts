@@ -33,15 +33,17 @@ describe('needsDirtyCloseConfirm', () => {
         // Both autosave, so their unsaved window is a debounce rather than a
         // buffer — but a close that beats the timer loses the text just the same.
         expect(needsDirtyCloseConfirm({ kind: 'note' }, true)).toBe(true);
-        expect(needsDirtyCloseConfirm({ kind: 'canvas' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }, true)).toBe(true);
         expect(needsDirtyCloseConfirm({ kind: 'note' }, false)).toBe(false);
-        expect(needsDirtyCloseConfirm({ kind: 'canvas' }, false)).toBe(false);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }, false)).toBe(false);
     });
 
     it('only prompts for kinds that can both report and write back edits', () => {
         const prompting = ALL_UNIFIED_TAB_KINDS.filter(kind => needsDirtyCloseConfirm({ kind }, true));
-        expect(prompting).toEqual(['file', 'note', 'canvas', 'git']);
-        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['canvas', 'file', 'git', 'note']);
+        expect(prompting).toEqual(['file', 'note', 'git']);
+        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['file', 'git', 'note']);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://settings' }, true)).toBe(false);
     });
 
     it('never prompts for a kind that holds nothing to save', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { pasteOpenInput, pasteResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPasteTabs';
 import { openMenuActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
 import {
@@ -77,6 +78,29 @@ describe('coc:// page tabs', () => {
         const restored = parseUnifiedPanelState(raw);
         expect(restored.workspaceTabs.map(tab => tab.kind)).toEqual(['notes']);
         expect(restored.chatTabs).toEqual({});
+    });
+
+    it('moves a persisted canvas tab onto coc://canvas/<id> and keeps it with its chat', () => {
+        const legacyId = ['canvas', CHAT_1, WS, 'plan-1'].join('|');
+        const raw = JSON.stringify({
+            version: UNIFIED_PANEL_STATE_VERSION,
+            workspaceTabs: [],
+            chatTabs: {
+                [CHAT_1]: [{
+                    kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'plan-1',
+                    label: 'Plan', id: legacyId,
+                }],
+            },
+            activeByScope: { [CHAT_1]: legacyId },
+        });
+        const restored = parseUnifiedPanelState(raw);
+        expect(restored.chatTabs).toEqual({});
+        expect(restored.workspaceTabs).toEqual([expect.objectContaining({
+            kind: 'browser', browserUrl: 'coc://canvas/plan-1', browserChatId: CHAT_1, label: 'Plan',
+        })]);
+        expect(restored.activeByScope[CHAT_1]).toBe(restored.workspaceTabs[0].id);
+        expect(visibleTabs(restored, CHAT_2)).toEqual([]);
+        expect(visibleTabs(restored, CHAT_1)).toHaveLength(1);
     });
 });
 
@@ -230,8 +254,8 @@ describe('unifiedPanelTabsModel — ownership', () => {
         });
     });
 
-    it('files opened files, canvases and diffs under the selected chat', () => {
-        for (const kind of ['file', 'canvas', 'diff'] as const) {
+    it('files opened files and diffs under the selected chat', () => {
+        for (const kind of ['file', 'diff'] as const) {
             expect(scopeForKind(kind)).toBe('chat');
             expect(scopeKeyFor(kind, CHAT_1)).toBe(CHAT_1);
         }
@@ -263,7 +287,7 @@ describe('unifiedPanelTabsModel — draft inheritance', () => {
     function draftState(): UnifiedPanelState {
         let state = open(EMPTY_UNIFIED_PANEL, { kind: 'work-items', resourceId: 'sess-1', label: 'Terminal' });
         state = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', line: 12, column: 3 });
-        state = open(state, { kind: 'canvas', resourceId: 'canvas-1', label: 'Canvas' });
+        state = open(state, { kind: 'git', resourceId: GIT_TAB_RESOURCE_ID, label: 'Git' });
         state = open(state, { kind: 'diff', resourceId: 'diff-1', label: 'Changes' });
         return openPreviewTab(state, {
             ownerWorkspaceId: WS,
@@ -283,7 +307,7 @@ describe('unifiedPanelTabsModel — draft inheritance', () => {
         const copies = next.chatTabs[CHAT_1]!;
 
         expect(copies.map(tab => tab.label)).toEqual(originalDraft.map(tab => tab.label));
-        expect(copies.map(tab => tab.kind)).toEqual(['file', 'canvas', 'diff', 'file']);
+        expect(copies.map(tab => tab.kind)).toEqual(['file', 'git', 'diff', 'file']);
         expect(copies.map(tab => tab.id)).toEqual(copies.map(tab => unifiedTabId({
             kind: tab.kind,
             ownerWorkspaceId: tab.ownerWorkspaceId,
@@ -548,36 +572,50 @@ describe('unifiedPanelTabsModel — closing', () => {
 });
 
 describe('unifiedPanelTabsModel — display groups', () => {
-    it('groups canvases with the workspace tools and files/diffs/external as resources', () => {
-        for (const kind of ['work-items', 'notes', 'note', 'git', 'canvas'] as const) {
+    it('groups git with the workspace tools and files/diffs/external as resources', () => {
+        for (const kind of ['work-items', 'notes', 'note', 'git', 'browser'] as const) {
             expect(displayGroupForKind(kind)).toBe('tools');
         }
         for (const kind of ['file', 'diff', 'external'] as const) {
             expect(displayGroupForKind(kind)).toBe('resources');
         }
-        // Grouping is display-only: a canvas still belongs to its chat.
-        expect(scopeForKind('canvas')).toBe('chat');
     });
 
-    it('shows the chat canvases right after the workspace tools, before its files', () => {
+    function openCanvas(state: UnifiedPanelState, id: string, label: string) {
+        return open(state, canvasPageInput({ id, title: label }, {
+            ownerWorkspaceId: WS, chatId: CHAT_1, browserChatId: CHAT_1,
+        }));
+    }
+
+    it('shows a chat\'s canvas pages with the workspace tools, before its files', () => {
         let state = baseState();
-        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
+        state = openCanvas(state, 'c1', 'Plan');
         state = open(state, { kind: 'file', resourceId: 'src/b.ts', label: 'b.ts', chatId: CHAT_1 });
-        state = open(state, { kind: 'canvas', resourceId: 'c2', label: 'Draft', chatId: CHAT_1 });
+        state = openCanvas(state, 'c2', 'Draft');
         expect(visibleTabs(state, CHAT_1).map(t => t.label))
             .toEqual(['bash', 'Notes', 'Plan', 'Draft', 'a.ts', 'b.ts']);
-        // Stored order is untouched; only the strip view is grouped.
-        expect(state.chatTabs[CHAT_1]!.map(t => t.label)).toEqual(['a.ts', 'Plan', 'b.ts', 'Draft']);
+        expect(state.workspaceTabs.map(t => t.label)).toEqual(['bash', 'Notes', 'Plan', 'Draft']);
+        expect(state.workspaceTabs.filter(t => t.browserUrl).map(t => t.browserUrl))
+            .toEqual(['coc://canvas/c1', 'coc://canvas/c2']);
+        expect(state.chatTabs[CHAT_1]!.map(t => t.label)).toEqual(['a.ts', 'b.ts']);
         // Another chat never sees these canvases.
         expect(visibleTabs(state, CHAT_2).map(t => t.label)).toEqual(['bash', 'Notes']);
     });
 
-    it('keeps the file preview slot last when canvases open after it', () => {
+    it('focuses the open canvas page instead of stacking a second one', () => {
+        let state = openCanvas(EMPTY_UNIFIED_PANEL, 'c1', 'Plan');
+        state = openCanvas(state, 'c1', 'Plan renamed');
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(1);
+        expect(visibleTabs(state, CHAT_1)[0].label).toBe('Plan renamed');
+        expect(visibleTabs(state, CHAT_1)[0].browserUrl).toBe('coc://canvas/c1');
+    });
+
+    it('keeps the file preview slot last when a canvas opens after it', () => {
         let state = baseState();
         state = openPreviewTab(state, {
             kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/p.ts', label: 'p.ts',
         });
-        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
+        state = openCanvas(state, 'c1', 'Plan');
         const labels = visibleTabs(state, CHAT_1).map(t => t.label);
         expect(labels).toEqual(['bash', 'Notes', 'Plan', 'a.ts', 'p.ts']);
         expect(visibleTabs(state, CHAT_1).at(-1)?.preview).toBe(true);
@@ -610,18 +648,10 @@ describe('unifiedPanelTabsModel — reordering', () => {
 
     it('refuses a drag across the tools/resources divider inside one chat', () => {
         let state = baseState();
-        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
-        state = open(state, { kind: 'canvas', resourceId: 'c2', label: 'Draft', chatId: CHAT_1 });
-        const [fileA, c1, c2] = state.chatTabs[CHAT_1]!;
-        // A canvas onto a file, and a file onto a canvas: both stay put.
-        expect(moveTab(state, c1.id, fileA.id)).toBe(state);
-        expect(moveTab(state, fileA.id, c1.id)).toBe(state);
-        // Canvases still reorder among themselves.
-        state = moveTab(state, c2.id, c1.id);
-        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Notes', 'Draft', 'Plan', 'a.ts']);
-        // "To the end" keeps a canvas in the canvas group.
-        state = moveTab(state, c2.id, null);
-        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Notes', 'Plan', 'Draft', 'a.ts']);
+        state = open(state, { kind: 'git', resourceId: GIT_TAB_RESOURCE_ID, label: 'Git', chatId: CHAT_1 });
+        const [fileA, git] = state.chatTabs[CHAT_1]!;
+        expect(moveTab(state, git.id, fileA.id)).toBe(state);
+        expect(moveTab(state, fileA.id, git.id)).toBe(state);
     });
 
     it('leaves the active selection alone', () => {

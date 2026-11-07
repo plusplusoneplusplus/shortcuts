@@ -28,7 +28,7 @@
 
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
-import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { canvasPageInput, hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { formatCocAddress, isCocAddressText, parseCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** The non-search entries the menu offers. */
@@ -341,18 +341,19 @@ export function fileOpenInput(path: string, context: OpenMenuTargetContext): Ope
 }
 
 /**
- * The tab a chat-linked canvas opens. A canvas is owned by the chat it is
- * linked to, so this is only ever called with a chat selected.
+ * The web tab a chat-linked canvas opens: `coc://canvas/<id>` inside the
+ * browser chrome. A canvas stays with the chat it is linked to, so this is
+ * only ever called with a chat selected. The same canvas in that chat focuses
+ * the existing page.
  */
 export function canvasOpenInput(canvas: OpenMenuCanvasResult, context: OpenMenuTargetContext): OpenUnifiedTabInput {
-    return {
-        kind: 'canvas',
+    const repoLabel = repoLabelFor(context)?.repoLabel;
+    return canvasPageInput(canvas, {
         ownerWorkspaceId: context.ownerWorkspaceId,
         chatId: context.chatId,
-        resourceId: canvas.id,
-        label: canvas.title.trim() === '' ? 'Untitled canvas' : canvas.title,
-        ...(repoLabelFor(context) ?? {}),
-    };
+        ...(context.chatId ? { browserChatId: context.chatId } : {}),
+        ...(repoLabel ? { repoLabel } : {}),
+    });
 }
 
 function repoLabelFor(context: OpenMenuTargetContext): { repoLabel: string } | null {

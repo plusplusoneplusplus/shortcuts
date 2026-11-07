@@ -22,7 +22,16 @@ import {
     type UnifiedPanelTab,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
-function tab(kind: UnifiedPanelTab['kind'], label: string, overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
+function tab(kind: UnifiedPanelTab['kind'] | 'canvas', label: string, overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
+    if (kind === 'canvas') {
+        const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'canvas';
+        return Object.freeze({
+            id: `canvas:${label}`, kind: 'browser', label, resourceId: `coc-canvas:${id}`,
+            ownerWorkspaceId: 'workspace', chatId: null, browserChatId: 'chat',
+            browserUrl: `coc://canvas/${id}`,
+            ...overrides,
+        });
+    }
     return Object.freeze({
         id: `${kind}:${label}`, kind, label, resourceId: label,
         ownerWorkspaceId: 'workspace', chatId: scopeForKind(kind) === 'workspace' ? null : 'chat',
@@ -157,7 +166,7 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
     it('uses fixed Tools, Files, Web, Canvas order and exposes counts and expanded state', () => {
         const tabs = Object.freeze([...ALL_UNIFIED_TAB_KINDS, 'external' as const].reverse()
-            .map(kind => tab(kind, kind)));
+            .map(kind => tab(kind, kind)).concat([tab('canvas', 'Plan')]));
         renderStrip({ tabs, activeId: tabs.find(entry => entry.kind === 'browser')!.id });
 
         expect(screen.getByRole('tablist', { name: 'Open resources' })).toHaveAttribute('aria-orientation', 'horizontal');

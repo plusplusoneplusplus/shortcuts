@@ -12,9 +12,10 @@
  * its view; a tab opened with no conversation stays workspace-global. Copies
  * of a tab (duplicate, popup, reopen) keep the source's owner exactly.
  *
- * A tab may also show a `coc://` page (Terminal, Settings, To-do). Such a
- * tab is persisted, and opening a page focuses a visible tab already showing
- * it for the same owner (`openCocPageTab`).
+ * A tab may also show a `coc://` page (Terminal, Settings, To-do, Canvas).
+ * Such a tab is persisted, and opening a page focuses a visible tab already
+ * showing it for the same owner (`openCocPageTab`). Canvas pages match by
+ * canvas id, so each document keeps its own tab.
  *
  * URL handling is deliberately narrow: only http(s) is accepted, a bare domain
  * gets `https://` (loopback hosts get `http://`), and arbitrary text is rejected
@@ -23,7 +24,7 @@
 
 import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
 import { activateTab, openTab, visibleTabs, type OpenUnifiedTabInput, type UnifiedPanelState, type UnifiedPanelTab } from './unifiedPanelTabsModel';
-import { cocAddressLabel, cocPageKindOf, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
+import { canvasIdOfAddress, canvasPageResourceId, cocAddressLabel, cocPageKindOf, formatCocAddress, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -212,12 +213,31 @@ export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | 
     };
 }
 
+/**
+ * The web tab a canvas opens in: `coc://canvas/<id>`, kept with the chat that
+ * linked it. The resource id is stable, so opening that canvas again focuses
+ * this tab instead of stacking another.
+ */
+export function canvasPageInput(
+    canvas: { id: string; title?: string },
+    context: BrowserOpenContext & { repoLabel?: string },
+): OpenUnifiedTabInput {
+    const title = canvas.title?.trim() ?? '';
+    return {
+        ...browserOpenInput(context, formatCocAddress({ kind: 'canvas', canvasId: canvas.id })),
+        resourceId: canvasPageResourceId(context.browserChatId !== undefined ? context.browserChatId : context.chatId, canvas.id),
+        label: title === '' ? 'Untitled canvas' : title,
+    };
+}
+
 /** Whether `tab` is a web tab showing `input`'s `coc://` page for the same owner. */
 export function isSameCocPageTab(tab: UnifiedPanelTab, input: OpenUnifiedTabInput): boolean {
     const kind = cocPageKindOf(input.browserUrl);
-    return kind !== null && tab.kind === 'browser' && cocPageKindOf(tab.browserUrl) === kind
-        && tab.ownerWorkspaceId === input.ownerWorkspaceId
-        && (tab.ownerRoutingRef ?? null) === (input.ownerRoutingRef ?? null);
+    if (kind === null || tab.kind !== 'browser' || cocPageKindOf(tab.browserUrl) !== kind) return false;
+    if (tab.ownerWorkspaceId !== input.ownerWorkspaceId) return false;
+    if ((tab.ownerRoutingRef ?? null) !== (input.ownerRoutingRef ?? null)) return false;
+    if (kind === 'canvas') return canvasIdOfAddress(tab.browserUrl) === canvasIdOfAddress(input.browserUrl);
+    return true;
 }
 
 /**

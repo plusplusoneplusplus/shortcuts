@@ -186,7 +186,7 @@ describe('actions', () => {
         await waitFor(() => expect(onOpenResource).toHaveBeenCalled());
         expect(createCanvas).toHaveBeenCalledWith(WS, expect.objectContaining({ type: 'markdown', processId: 'chat-1' }));
         expect(onOpenResource.mock.calls[0][0]).toMatchObject({
-            kind: 'canvas', resourceId: 'c-new', chatId: 'chat-1', ownerWorkspaceId: WS,
+            kind: 'browser', browserUrl: 'coc://canvas/c-new', browserChatId: 'chat-1', chatId: 'chat-1', ownerWorkspaceId: WS,
         });
         expect(onClose).toHaveBeenCalled();
     });
@@ -205,7 +205,7 @@ describe('actions', () => {
         await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-canvas-c1')).toBeTruthy());
         expect(listCanvases).toHaveBeenCalledWith(WS, { processId: 'chat-1' });
         fireEvent.click(screen.getByTestId('unified-panel-open-menu-canvas-c1'));
-        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ kind: 'canvas', resourceId: 'c1' }));
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ kind: 'browser', browserUrl: 'coc://canvas/c1' }));
         expect(onClose).toHaveBeenCalled();
     });
 });
@@ -643,7 +643,7 @@ describe('Extensions drill-in', () => {
         await waitFor(() => expect(onOpenResource).toHaveBeenCalled());
         expect(openExtension).toHaveBeenCalledWith(WS, { processId: 'chat-1', extensionKey: logTail.extensionKey });
         expect(onOpenResource.mock.calls[0][0]).toMatchObject({
-            kind: 'canvas', resourceId: 'rec-1', chatId: 'chat-1', ownerWorkspaceId: WS, label: 'CoC logs',
+            kind: 'browser', browserUrl: 'coc://canvas/rec-1', browserChatId: 'chat-1', chatId: 'chat-1', ownerWorkspaceId: WS, label: 'CoC logs',
         });
         expect(onClose).toHaveBeenCalledOnce();
     });
@@ -682,7 +682,7 @@ describe('Extensions drill-in', () => {
         fireEvent.keyDown(input, { key: 'Enter' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'Enter' });
-        await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ resourceId: 'rec-2' })));
+        await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ browserUrl: 'coc://canvas/rec-2' })));
     });
 
     it('reaches an extension straight from the main search box', async () => {
