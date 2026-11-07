@@ -43,6 +43,19 @@ export interface BrowserHistorySuggestions extends BrowserHistoryPage {
     entries: BrowserHistorySuggestion[];
 }
 
+export const BROWSER_MOST_VISITED_LIMIT = 10;
+
+/** One domain's retained visits; `url`/`title` are its most recently visited page. */
+export interface BrowserMostVisitedSite extends BrowserHistoryEntry {
+    domain: string;
+}
+
+export interface BrowserMostVisited {
+    sites: BrowserMostVisitedSite[];
+    recording: boolean;
+    storageError: string | null;
+}
+
 /** Apply the browser URL policy and remove embedded credentials before indexing. */
 export function sanitizeHistoryUrl(value: unknown): string | null {
     const checked = validateBrowserUrl(value);
@@ -157,6 +170,23 @@ export class BrowserHistoryStore {
         return { entries: ranked.slice(0, 8).map(entry => ({ ...entry,
             completion: search === search.trim() ? entry.completion : null })), total: entries.length,
             recording: this.data.recording, storageError: this.error };
+    }
+
+    /** Top domains by total retained visits, derived from history so delete/clear/expiry remove them. */
+    async mostVisited(): Promise<BrowserMostVisited> {
+        await this.pending;
+        const sites = new Map<string, BrowserMostVisitedSite>();
+        for (const entry of this.matchingEntries('')) {
+            const domain = new URL(entry.url).hostname;
+            const site = sites.get(domain);
+            if (!site) { sites.set(domain, { ...entry, domain }); continue; }
+            const visitCount = Math.min(Number.MAX_SAFE_INTEGER, site.visitCount + entry.visitCount);
+            if (recentFirst(entry, site) < 0) Object.assign(site, entry);
+            site.visitCount = visitCount;
+        }
+        const ranked = [...sites.values()].sort((a, b) => b.visitCount - a.visitCount
+            || b.lastVisited - a.lastVisited || (a.domain < b.domain ? -1 : a.domain > b.domain ? 1 : 0));
+        return { sites: ranked.slice(0, BROWSER_MOST_VISITED_LIMIT), recording: this.data.recording, storageError: this.error };
     }
 
     private matchingEntries(search: string): BrowserHistoryEntry[] {

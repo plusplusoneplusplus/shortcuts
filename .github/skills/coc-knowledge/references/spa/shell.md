@@ -231,6 +231,25 @@ case-preserving `completion` URL or scheme-omitted URL for prefix matches;
 title/substring and whitespace-padded input has null completion. Both
 APIs await queued saves, filter expiry and return recording/storage-error state.
 
+### Desktop favorites and most visited
+
+`BrowserFavoritesStore` (`packages/coc-desktop/src/browser-favorites.ts`) persists
+installation-wide favorites in `<desktopDataDir>/browser/favorites.json`: newest
+first, credential-free HTTP(S) URLs, titles bounded to 1024 characters, capped at
+500 (`reason: 'full'`). Saves are atomic and serialized like history. Favorites are
+independent of history: recording pause, history clear and engine data cleanup keep
+them. `BrowserHistoryStore.mostVisited()` derives the top 10 hostnames from
+retained history, ranked by summed visits, then recency, then name; each site opens
+its most recently visited page. Delete, clear, engine cleanup and expiry remove sites.
+
+`cocDesktop.browser.favorites` exposes `list()`, `add(url, title)`, `remove(url)` and
+`onChanged()`; `history.mostVisited()` is optional for older hosts. Both use the
+history IPC boundary (registered exact-source SPA main frame) and data-free
+invalidation broadcasts. With `features.browserFavorites` on, `BrowserFavoritesMenu`
+adds a toolbar star menu: Save current page (committed URL pages only), favorites
+with remove actions, and most-visited domains. Entries open in the current tab
+through the tab's validated `navigateAddress`; owner changes close the menu.
+
 ### Windows ClickOnce activation
 
 `packages/coc-desktop/src/browser-clickonce.ts` validates HTTPS deployment URLs and
@@ -951,6 +970,7 @@ features default off.
 | `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | on |
 | `features.fileHistory` | `isFileHistoryEnabled()` | off |
 | `features.fileBlame` | `isFileBlameEnabled()` | off |
+| `features.browserFavorites` | `isBrowserFavoritesEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 

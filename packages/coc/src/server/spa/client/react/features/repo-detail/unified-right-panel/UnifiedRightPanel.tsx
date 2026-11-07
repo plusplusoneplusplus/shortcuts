@@ -63,7 +63,7 @@ import {
     chatCommitPanelTarget, gitTabOpenSource, gitTabOwnerClient, openPanelGitBranchChanges, openPanelGitCommit, type UnifiedPanelGitOpenSource,
 } from './panelGitCommit';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isFileHistoryEnabled, isFileBlameEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isChatScopedBrowserTabsEnabled, isSessionContextAttachmentsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled, isFileHistoryEnabled, isFileBlameEnabled, isBrowserFavoritesEnabled } from '../../../utils/config';
 import {
     BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
     browserTabShortcutsMac, isBrowserTabShortcutModifier,
@@ -283,6 +283,7 @@ export function UnifiedRightPanel({
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
     const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
     const [chatScopedBrowserTabs, setChatScopedBrowserTabs] = useState(() => isChatScopedBrowserTabsEnabled());
+    const [browserFavoritesEnabled, setBrowserFavoritesEnabled] = useState(() => isBrowserFavoritesEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const groupOrder = useUnifiedTabGroupOrder(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
@@ -295,6 +296,7 @@ export function UnifiedRightPanel({
             setGroupsEnabled(isPanelTabGroupsEnabled());
             setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
             setChatScopedBrowserTabs(isChatScopedBrowserTabsEnabled());
+            setBrowserFavoritesEnabled(isBrowserFavoritesEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
             setFileHistoryEnabled(isFileHistoryEnabled());
             setFileBlameEnabled(isFileBlameEnabled());
@@ -2507,6 +2509,7 @@ export function UnifiedRightPanel({
                                         visible={isOpen}
                                         nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onOpenHistoryUrl={openBrowserFromShortcut}
+                                        favoritesEnabled={browserFavoritesEnabled}
                                         historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}

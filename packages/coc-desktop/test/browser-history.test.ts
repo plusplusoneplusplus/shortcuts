@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { BrowserHistoryStore, BROWSER_HISTORY_MAX_ENTRIES, BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
+import { BrowserHistoryStore, BROWSER_HISTORY_MAX_ENTRIES, BROWSER_HISTORY_RETENTION_MS, BROWSER_MOST_VISITED_LIMIT } from '../src/browser-history';
 
 const directories: string[] = [];
 function directory(): string {
@@ -24,6 +24,61 @@ afterEach(() => {
 });
 
 describe('desktop browser history store', () => {
+    it('ranks the top domains by visits across pages and engines, opening each domain\'s latest page', async () => {
+        const dir = directory();
+        const visits = (url: string, lastVisited: number, visitCount: number, title = 'Page') =>
+            ({ url, engines: { electron: { title, lastVisited, visitCount } } });
+        seed(dir, [
+            visits('https://docs.test/old', 100, 4, 'Old docs'),
+            { url: 'https://docs.test/new', engines: {
+                electron: { title: 'New docs', lastVisited: 300, visitCount: 1 },
+                webview2: { title: 'New docs WV2', lastVisited: 250, visitCount: 1 } } },
+            visits('http://docs.test:8080/port', 200, 1),
+            visits('https://news.test/', 400, 6, 'News'),
+            visits('https://tie-b.test/', 50, 2), visits('https://tie-a.test/', 50, 2),
+            visits('https://recent-tie.test/', 60, 2),
+            ...Array.from({ length: 12 }, (_, i) => visits(`https://tail${i}.test/`, 10, 1)),
+        ]);
+        const store = new BrowserHistoryStore(dir, () => 500);
+        const result = await store.mostVisited();
+        expect(result).toMatchObject({ recording: true, storageError: null });
+        expect(result.sites).toHaveLength(BROWSER_MOST_VISITED_LIMIT);
+        expect(result.sites.slice(0, 5)).toEqual([
+            { domain: 'docs.test', url: 'https://docs.test/new', title: 'New docs', lastVisited: 300, visitCount: 7 },
+            { domain: 'news.test', url: 'https://news.test/', title: 'News', lastVisited: 400, visitCount: 6 },
+            expect.objectContaining({ domain: 'recent-tie.test', visitCount: 2 }),
+            expect.objectContaining({ domain: 'tie-a.test', visitCount: 2 }),
+            expect.objectContaining({ domain: 'tie-b.test', visitCount: 2 }),
+        ]);
+    });
+
+    it('derives most-visited only from retained history: delete, clear, engine cleanup and expiry remove it', async () => {
+        const dir = directory();
+        let now = 1_000;
+        const store = new BrowserHistoryStore(dir, () => now);
+        await store.recordVisit('electron', 'https://a.test/1', 'A1');
+        await store.recordVisit('webview2', 'https://a.test/2', 'A2');
+        await store.recordVisit('electron', 'https://b.test/', 'B');
+        expect((await store.mostVisited()).sites.map(site => [site.domain, site.visitCount])).toEqual([['a.test', 2], ['b.test', 1]]);
+        await store.delete('https://a.test/2');
+        expect((await store.mostVisited()).sites.map(site => [site.domain, site.url])).toEqual([['a.test', 'https://a.test/1'], ['b.test', 'https://b.test/']]);
+        await store.clearEngine('electron');
+        expect((await store.mostVisited()).sites).toEqual([]);
+
+        await store.setRecording(false);
+        await store.recordVisit('electron', 'https://paused.test/', 'Paused');
+        expect((await store.mostVisited())).toMatchObject({ sites: [], recording: false });
+        await store.setRecording(true);
+        await store.recordVisit('electron', 'https://c.test/', 'C');
+        expect((await store.mostVisited()).sites.map(site => site.domain)).toEqual(['c.test']);
+        now += BROWSER_HISTORY_RETENTION_MS;
+        expect((await store.mostVisited()).sites).toEqual([]);
+        now = 2_000;
+        await store.recordVisit('electron', 'https://d.test/', 'D');
+        await store.clear();
+        expect((await store.mostVisited()).sites).toEqual([]);
+    });
+
     it('ranks prefixes before URL/title matches, then recency, frequency and stable URL order', async () => {
         const dir = directory();
         const frequent = entry('https://match.test/Frequent?q=Case#Part', 200);

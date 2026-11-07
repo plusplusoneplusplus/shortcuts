@@ -420,6 +420,8 @@ export interface CLIConfig {
         browserTabShortcuts?: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
         chatScopedBrowserTabs?: boolean;
+        /** Desktop browser toolbar star menu with favorites and most-visited sites. Disabled by default. */
+        browserFavorites?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -879,6 +881,8 @@ export interface ResolvedCLIConfig {
         browserTabShortcuts: boolean;
         /** Right-panel web pages opened in a conversation show only while that conversation is selected. Disabled by default. */
         chatScopedBrowserTabs: boolean;
+        /** Desktop browser toolbar star menu with favorites and most-visited sites. Disabled by default. */
+        browserFavorites: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -1219,6 +1223,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         fileBlame: false,
         browserTabShortcuts: true,
         chatScopedBrowserTabs: false,
+        browserFavorites: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

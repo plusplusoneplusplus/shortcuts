@@ -385,3 +385,10 @@ export const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear'
 export const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';
 /** Invalidation only, without history data. Query again for committed state/errors. */
 export const BROWSER_HISTORY_CHANGED_CHANNEL = 'coc-desktop:browser-history-changed';
+export const BROWSER_HISTORY_MOST_VISITED_CHANNEL = 'coc-desktop:browser-history-most-visited';
+/** Desktop-local favorites; the same registered SPA main-frame boundary as history. */
+export const BROWSER_FAVORITES_QUERY_CHANNEL = 'coc-desktop:browser-favorites-query';
+export const BROWSER_FAVORITES_ADD_CHANNEL = 'coc-desktop:browser-favorites-add';
+export const BROWSER_FAVORITES_REMOVE_CHANNEL = 'coc-desktop:browser-favorites-remove';
+/** Invalidation only, without favorite data. */
+export const BROWSER_FAVORITES_CHANGED_CHANNEL = 'coc-desktop:browser-favorites-changed';

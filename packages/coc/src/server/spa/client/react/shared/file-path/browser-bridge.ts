@@ -49,6 +49,28 @@ export interface DesktopBrowserHistory {
     delete(url: string): Promise<BrowserOperationResult>;
     clear(): Promise<BrowserOperationResult>;
     setRecording(recording: boolean): Promise<BrowserOperationResult>;
+    /** Top 10 domains by retained visits; absent on older desktop hosts. */
+    mostVisited?(): Promise<BrowserMostVisitedResult>;
+    onChanged(callback: () => void): () => void;
+}
+/** One domain's visits; `url`/`title` are its most recently visited page. */
+export interface BrowserMostVisitedSite extends BrowserHistoryEntry { domain: string }
+export type BrowserMostVisitedResult = {
+    ok: true; sites: BrowserMostVisitedSite[]; recording: boolean; storageError: string | null;
+} | { ok: false; reason: string; message?: string };
+export interface BrowserFavorite {
+    url: string;
+    title: string;
+    added: number;
+}
+export type BrowserFavoritesResult = {
+    ok: true; favorites: BrowserFavorite[]; storageError: string | null;
+} | { ok: false; reason: string; message?: string };
+/** Installation-wide favorites, independent of history recording and clearing. */
+export interface DesktopBrowserFavorites {
+    list(): Promise<BrowserFavoritesResult>;
+    add(url: string, title: string): Promise<BrowserOperationResult>;
+    remove(url: string): Promise<BrowserOperationResult>;
     onChanged(callback: () => void): () => void;
 }
 /** Mirrors desktop main's public download metadata; no local paths or request URLs. */
@@ -219,6 +241,8 @@ export interface DesktopBrowserBridge {
     };
     /** Installation-wide history; absent on older desktop hosts. */
     history?: DesktopBrowserHistory;
+    /** Installation-wide favorites; absent on older desktop hosts. */
+    favorites?: DesktopBrowserFavorites;
     /** Installation-wide downloads; absent on older hosts. */
     downloads?: DesktopBrowserDownloads;
     /** Task-demonstration recording; absent on older desktop hosts. */

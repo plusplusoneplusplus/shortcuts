@@ -1275,6 +1275,7 @@ timeout: 300
                 '  fileBlame: true',
                 '  browserTabShortcuts: false',
                 '  chatScopedBrowserTabs: true',
+                '  browserFavorites: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1320,6 +1321,7 @@ timeout: 300
             expect(result.resolved.features.panelTabGroups).toBe(false);
             expect(result.resolved.features.browserTabShortcuts).toBe(false);
             expect(result.resolved.features.chatScopedBrowserTabs).toBe(true);
+            expect(result.resolved.features.browserFavorites).toBe(true);
             expect(result.resolved.features.fileHistory).toBe(true);
             expect(result.resolved.features.fileBlame).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
@@ -1335,7 +1337,7 @@ timeout: 300
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
             'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts', 'chatScopedBrowserTabs',
-            'fileHistory', 'fileBlame',
+            'fileHistory', 'fileBlame', 'browserFavorites',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1623,6 +1625,7 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "binaryFileReveal": true,
                     "botManagedConversations": false,
+                    "browserFavorites": false,
                     "browserTabShortcuts": true,
                     "canvasHostApis": false,
                     "canvasToolScripts": true,
@@ -1892,6 +1895,7 @@ timeout: 300
                   "features.autoMemoryPromotion": "file",
                   "features.binaryFileReveal": "default",
                   "features.botManagedConversations": "default",
+                  "features.browserFavorites": "default",
                   "features.browserTabShortcuts": "default",
                   "features.canvasHostApis": "default",
                   "features.canvasToolScripts": "default",
