@@ -119,8 +119,7 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { moveTabGroup, toggleGroupFolded, useUnifiedTabGroupOrder, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
-import { UnifiedPanelAddressRow } from './UnifiedPanelAddressRow';
-import { cocAddressForTab, type CocAddress } from './unifiedPanelAddresses';
+import { formatCocAddress, type CocAddress, type CocPage } from './unifiedPanelAddresses';
 import { UnifiedFileHistory } from './UnifiedFileHistory';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -2242,59 +2241,27 @@ export function UnifiedRightPanel({
         setWorkspaceDockOpen(workspaceId, true);
     });
 
-    // The `coc://` address row (`features.panelAddressBar`). A typed address
-    // opens or focuses a tab with the same owner the "+" menu uses; the text
-    // never names one. A To-do item request is in memory only and is dropped
-    // once another tab is active.
-    const [todoSelections, setTodoSelections] = useState<Record<string, string | null>>({});
-    const handleTodoSelection = useCallback((tabId: string, itemId: string | null) => {
-        setTodoSelections(prev => (prev[tabId] === itemId ? prev : { ...prev, [tabId]: itemId }));
-    }, []);
-    const [todoSelectRequest, setTodoSelectRequest] = useState<{ tabId: string; id: string; nonce: number } | null>(null);
-    useEffect(() => {
-        setTodoSelectRequest(prev => (prev && prev.tabId !== activeId ? null : prev));
-    }, [activeId]);
+    // `coc://` pages in web tabs (`features.panelAddressBar`). An address uses
+    // the owner the "+" menu would: the panel scope for Settings, the web
+    // tab's own owner for Terminal, the selected Sentinel chat for To-do. The
+    // text never names one.
     const settingsAvailable = settingsOwner === (routingRef ?? workspaceId);
-    const targetOption = targetOptions.find(option => option.workspaceId === target);
-    const openCocAddress = useCallback((address: CocAddress): string | void => {
+    const resolveCocPage = useCallback((address: CocAddress, owner: { ownerWorkspaceId: string; ownerRoutingRef?: string | null }): CocPage | string => {
         if (address.kind === 'settings') {
-            if (!settingsAvailable) return 'Settings is not available for this workspace';
-            openWorkspaceResource('settings');
-            return;
+            return settingsAvailable ? { kind: 'settings', ownerKey: routingRef ?? workspaceId } : 'Settings is not available for this workspace';
         }
         if (address.kind === 'terminal') {
-            if (targetOption?.disabled) return `${targetOption.label ?? 'This repository'} is unavailable.`;
-            openWorkspaceResource('terminal');
-            return;
+            return { kind: 'terminal', ownerWorkspaceId: owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef };
         }
-        if (todoInput === null) return 'To-do is only available in a Sentinel chat';
-        open(todoInput);
-        const itemId = address.itemId;
-        if (itemId) setTodoSelectRequest(prev => ({ tabId: unifiedTabId(todoInput), id: itemId, nonce: (prev?.nonce ?? 0) + 1 }));
-    }, [settingsAvailable, targetOption, openWorkspaceResource, todoInput, open]);
-    const cocAddress = addressBarEnabled && toolbar === null ? cocAddressForTab(active, active ? todoSelections[active.id] : null) : null;
-    const cocAddressInputRef = useRef<HTMLInputElement>(null);
-    // Ctrl/Cmd+L focuses the address like a browser tab's, from anywhere in
-    // the visible panel except editors and terminals that keep their own binding.
-    const cocAddressShown = cocAddress !== null;
-    useEffect(() => {
-        if (!cocAddressShown || !isOpen) return;
-        const onKeyDown = (event: KeyboardEvent) => {
-            const input = cocAddressInputRef.current;
-            const root = panelRootRef.current;
-            const focused = document.activeElement;
-            if (event.defaultPrevented || event.isComposing || event.key.toLowerCase() !== 'l'
-                || !(browserTabShortcutsMac() ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey
-                || !input || !root || root.offsetParent === null || !focused || !root.contains(focused)) return;
-            if (focused !== input && (isEditableTarget(focused) || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'))) return;
-            event.preventDefault();
-            event.stopPropagation();
-            input.focus();
-            input.select();
-        };
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, [cocAddressShown, isOpen]);
+        if (todoOwner === null || chatId === null) return 'To-do is only available in a Sentinel chat';
+        return { kind: 'todo', owner: todoOwner, scopeWorkspaceId: workspaceId, chatId };
+    }, [settingsAvailable, routingRef, workspaceId, todoOwner, chatId]);
+    // The "+" menu opens a new web tab at the address, owned like any new web tab.
+    const openCocAddressInNewTab = useCallback((address: CocAddress): string | void => {
+        const page = resolveCocPage(address, { ownerWorkspaceId: target, ownerRoutingRef: targetRoutingRef });
+        if (typeof page === 'string') return page;
+        openBrowserFromShortcut(formatCocAddress(address));
+    }, [resolveCocPage, target, targetRoutingRef, openBrowserFromShortcut]);
 
     // The strip's repo picker. A switch closes the "+" menu: its search results
     // are scoped to the repo that was current when they were fetched, so keeping
@@ -2389,14 +2356,14 @@ export function UnifiedRightPanel({
                             onSelectTarget={selectTarget}
                         />
                     )}
-                    trailing={toolbar === null && cocAddress === null ? navigatorControls('strip') : undefined}
+                    trailing={toolbar === null ? navigatorControls('strip') : undefined}
                 />
 
                 {menuOpen && (
                     <div ref={menuRef} className="contents">
                         <UnifiedPanelOpenMenu
                             settingsAvailable={settingsAvailable}
-                            onOpenCocAddress={addressBarEnabled ? openCocAddress : undefined}
+                            onOpenCocAddress={addressBarEnabled ? openCocAddressInNewTab : undefined}
                             gitAvailable={gitMenuTarget !== null}
                             workspaceId={workspaceId}
                             chatId={chatId}
@@ -2442,17 +2409,6 @@ export function UnifiedRightPanel({
                                 shown: blameShownIds.has(active.id),
                                 onToggle: () => toggleBlame(active.id),
                             } : undefined}
-                            trailing={navigatorControls('toolbar')}
-                        />
-                    )}
-                    {cocAddress !== null && active && (
-                        <UnifiedPanelAddressRow
-                            inputRef={cocAddressInputRef}
-                            address={cocAddress}
-                            ownerKey={active.id}
-                            ownerLabel={active.repoLabel}
-                            enabled={isOpen}
-                            onOpenAddress={openCocAddress}
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
@@ -2580,7 +2536,7 @@ export function UnifiedRightPanel({
                                         nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onOpenHistoryUrl={openBrowserFromShortcut}
                                         favoritesEnabled={browserFavoritesEnabled}
-                                        onOpenCocAddress={addressBarEnabled ? openCocAddress : undefined}
+                                        resolveCocPage={addressBarEnabled ? address => resolveCocPage(address, tab) : undefined}
                                         historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}
@@ -2595,8 +2551,6 @@ export function UnifiedRightPanel({
                                     onRegisterSave={handleRegisterSave}
                                     onTerminalSessionsChange={handleTerminalSessions}
                                     terminalOpenRequest={terminalOpenRequests[tab.id]}
-                                    todoSelectItemRequest={todoSelectRequest?.tabId === tab.id ? todoSelectRequest : null}
-                                    onTodoSelectionChange={handleTodoSelection}
                                     isActive={isOpen && tab.id === activeId}
                                     onOpenFile={openNavigationFile}
                                     onOpenExternal={openNavigationExternal}

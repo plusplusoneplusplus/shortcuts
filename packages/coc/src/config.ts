@@ -416,7 +416,7 @@ export interface CLIConfig {
         fileHistory?: boolean;
         /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
         fileBlame?: boolean;
-        /** `coc://` address bar for right-panel To-do, Settings and Terminal tabs. Disabled by default. */
+        /** `coc://` To-do, Settings and Terminal pages in right-panel web tabs. Disabled by default. */
         panelAddressBar?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts?: boolean;
@@ -879,7 +879,7 @@ export interface ResolvedCLIConfig {
         fileHistory: boolean;
         /** VS Code-style Git blame toggle for right-panel file tabs. Disabled by default. */
         fileBlame: boolean;
-        /** `coc://` address bar for right-panel To-do, Settings and Terminal tabs. Disabled by default. */
+        /** `coc://` To-do, Settings and Terminal pages in right-panel web tabs. Disabled by default. */
         panelAddressBar: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Enabled by default. */
         browserTabShortcuts: boolean;

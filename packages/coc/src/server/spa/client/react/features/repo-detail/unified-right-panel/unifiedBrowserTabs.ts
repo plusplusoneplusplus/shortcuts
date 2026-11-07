@@ -19,6 +19,7 @@
 
 import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
 import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { cocAddressLabel, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -118,6 +119,10 @@ export function hasExplicitUrlScheme(input: string): boolean {
 /** The label a tab shows for a URL before its page reports a title. */
 export function browserLabelForUrl(url: string | undefined): string {
     if (!url) return BLANK_BROWSER_LABEL;
+    if (isCocAddressText(url)) {
+        const address = parseCocAddress(url);
+        return 'error' in address ? BLANK_BROWSER_LABEL : cocAddressLabel(address);
+    }
     try {
         return new URL(url).host || BLANK_BROWSER_LABEL;
     } catch {

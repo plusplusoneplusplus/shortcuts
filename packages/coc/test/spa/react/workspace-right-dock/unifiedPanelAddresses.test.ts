@@ -1,18 +1,18 @@
 /**
  * unifiedPanelAddresses — the phase 1 `coc://` addresses: parsing (case,
- * trailing slash, query/hash rejection, unknown hosts) and the address each
- * tab kind shows.
+ * trailing slash, query/hash rejection, unknown hosts), formatting and the
+ * label a web tab shows for each page.
  */
 import { describe, expect, it } from 'vitest';
 import {
     COC_ADDRESS_INVALID,
     COC_ADDRESS_UNSUPPORTED,
-    cocAddressForTab,
+    cocAddressLabel,
     formatCocAddress,
     isCocAddressText,
     parseCocAddress,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelAddresses';
-import { ALL_UNIFIED_TAB_KINDS } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { browserLabelForUrl } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 
 describe('parseCocAddress', () => {
     it.each([
@@ -56,19 +56,13 @@ describe('parseCocAddress', () => {
     });
 });
 
-describe('cocAddressForTab', () => {
-    it('addresses only To-do, Settings and Terminal tabs', () => {
-        const addressed = ALL_UNIFIED_TAB_KINDS.filter(kind => cocAddressForTab({ kind }) !== null);
-        expect(addressed.sort()).toEqual(['settings', 'terminal', 'todo']);
-        expect(cocAddressForTab({ kind: 'external' })).toBeNull();
-        expect(cocAddressForTab(null)).toBeNull();
-    });
-
-    it('shows the selected To-do item', () => {
-        expect(cocAddressForTab({ kind: 'todo' })).toBe('coc://todo');
-        expect(cocAddressForTab({ kind: 'todo' }, null)).toBe('coc://todo');
-        expect(cocAddressForTab({ kind: 'todo' }, 'item-1')).toBe('coc://todo/item-1');
-        expect(cocAddressForTab({ kind: 'settings' }, 'item-1')).toBe('coc://settings');
-        expect(cocAddressForTab({ kind: 'terminal' })).toBe('coc://terminal');
+describe('coc:// labels', () => {
+    it('labels each page and web tabs at its address', () => {
+        expect(cocAddressLabel({ kind: 'settings' })).toBe('Settings');
+        expect(cocAddressLabel({ kind: 'terminal' })).toBe('Terminal');
+        expect(cocAddressLabel({ kind: 'todo', itemId: 'x' })).toBe('To-do');
+        expect(browserLabelForUrl('coc://todo/item-1')).toBe('To-do');
+        expect(browserLabelForUrl('coc://git')).toBe('New Tab');
+        expect(browserLabelForUrl('https://example.com/a')).toBe('example.com');
     });
 });

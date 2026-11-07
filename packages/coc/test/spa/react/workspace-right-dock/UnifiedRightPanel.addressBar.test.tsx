@@ -1,8 +1,9 @@
 /**
- * UnifiedRightPanel — the `coc://` address row (`features.panelAddressBar`):
- * typed addresses open or focus To-do, Settings and Terminal tabs with the
- * owner the "+" menu uses, Ctrl/Cmd+L focuses the address, and the flag off
- * leaves the panel unchanged.
+ * UnifiedRightPanel — `coc://` pages in web tabs (`features.panelAddressBar`):
+ * a web tab's address bar shows To-do, Settings and Terminal in place of the
+ * page with the owner the "+" menu uses, back/forward step across them, the
+ * "+" menu opens a web tab at an address, and the flag off leaves `coc://` an
+ * unsupported URL.
  *
  * @vitest-environment jsdom
  */
@@ -82,8 +83,8 @@ function renderPanel({ workspaceId = WS, chatId = 'chat-1', dock = dockStub() }:
     );
 }
 
-function seed(workspaceId: string, input: Parameters<typeof openTab>[1]) {
-    writeUnifiedPanelState(workspaceId, openTab(EMPTY_UNIFIED_PANEL, input));
+function seed(workspaceId: string, ...inputs: Parameters<typeof openTab>[1][]) {
+    writeUnifiedPanelState(workspaceId, inputs.reduce(openTab, EMPTY_UNIFIED_PANEL));
 }
 
 const address = () => screen.getByTestId('browser-address') as HTMLInputElement;
@@ -97,11 +98,10 @@ const tabsOf = (workspaceId: string) => {
     const state = readUnifiedPanelState(workspaceId);
     return [...state.workspaceTabs, ...Object.values(state.chatTabs).flat()];
 };
-const pressL = (target: Element) => {
-    const event = new KeyboardEvent('keydown', { key: 'l', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true });
-    act(() => { target.dispatchEvent(event); });
-    return event.defaultPrevented;
-};
+const browserTabs = (workspaceId = WS) => tabsOf(workspaceId).filter(tab => tab.kind === 'browser');
+const cocPage = () => screen.queryByTestId('browser-coc-page');
+const click = (testId: string) => act(() => { fireEvent.click(screen.getByTestId(testId)); });
+const webTab = (owner = WS, url?: string) => browserOpenInput({ ownerWorkspaceId: owner, chatId: 'chat-1' }, url);
 const settingsInput = { kind: 'settings' as const, ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: 'chat-1', resourceId: 'settings', label: 'Settings' };
 
 beforeEach(() => {
@@ -122,169 +122,166 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('UnifiedRightPanel address row', () => {
-    it('shows the address of a Settings tab with navigator controls in its row', () => {
-        seed(WS, settingsInput);
+describe('UnifiedRightPanel coc:// pages in web tabs', () => {
+    it('shows coc://settings in place of the page, in the same tab, with the web toolbar', () => {
+        seed(WS, webTab());
         renderPanel();
-        expect(address().value).toBe('coc://settings');
-        const row = screen.getByTestId('unified-panel-address-row');
-        expect(row.querySelector('[data-testid="unified-panel-search-toggle"]')?.getAttribute('data-placement')).toBe('toolbar');
-        expect(screen.queryByTestId('unified-panel-address-owner')).toBeNull();
-    });
-
-    it('opens each address once and focuses the existing tab with no duplicate', () => {
-        seed(WS, settingsInput);
-        renderPanel();
-        typeAddress('coc://terminal');
-        expect(address().value).toBe('coc://terminal');
-        expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${WS}`);
         typeAddress('COC://Settings/');
+        expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
         expect(address().value).toBe('coc://settings');
-        typeAddress('coc://terminal');
-        expect(address().value).toBe('coc://terminal');
-        expect(tabsOf(WS).map(tab => tab.kind).sort()).toEqual(['settings', 'terminal']);
+        expect(screen.getByTestId('browser-toolbar')).toContainElement(address());
+        expect(browserTabs()).toEqual([expect.objectContaining({ browserUrl: 'coc://settings', label: 'Settings' })]);
+        expect(tabsOf(WS)).toHaveLength(1);
     });
 
-    it('opens Terminal for the dock target and Settings for the panel scope in a repo group', () => {
+    it('steps back to the web page and forward to the coc:// page', () => {
+        seed(WS, webTab());
+        renderPanel();
+        typeAddress('coc://terminal');
+        typeAddress('coc://settings');
+        expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
+        click('browser-back');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        expect(address().value).toBe('coc://terminal');
+        click('browser-back');
+        expect(cocPage()).toBeNull();
+        expect(browserTabs()[0]).toMatchObject({ label: 'New Tab' });
+        expect(browserTabs()[0].browserUrl).toBeUndefined();
+        expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(true);
+        click('browser-forward');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        click('browser-forward');
+        expect(address().value).toBe('coc://settings');
+        expect((screen.getByTestId('browser-forward') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('a web address from a coc:// page leaves it and drops forward steps', () => {
+        seed(WS, webTab());
+        renderPanel();
+        typeAddress('coc://terminal');
+        typeAddress('example.com');
+        expect(cocPage()).toBeNull();
+        expect(browserTabs()[0]).toMatchObject({ browserUrl: 'https://example.com/' });
+        click('browser-back');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        click('browser-forward');
+        expect(cocPage()).toBeNull();
+        expect(address().value).toBe('https://example.com/');
+    });
+
+    it('routes Terminal to the web tab owner and Settings to the panel scope in a repo group', () => {
         const group = 'group-g';
         const member = 'ws-member';
-        seed(group, { ...settingsInput, ownerWorkspaceId: group });
+        seed(group, webTab(member));
         renderPanel({ workspaceId: group, dock: dockStub({
             target: member, targets: [{ workspaceId: group, label: 'group' }, { workspaceId: member, label: 'api' }],
         }) });
         typeAddress('coc://terminal');
-        const terminal = tabsOf(group).find(tab => tab.kind === 'terminal');
-        expect(terminal).toMatchObject({ ownerWorkspaceId: member, repoLabel: 'api' });
-        expect(screen.getByTestId('unified-panel-address-owner').textContent).toBe('api');
+        expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${member}`);
         typeAddress('coc://settings');
-        expect(tabsOf(group).filter(tab => tab.kind === 'settings')).toEqual([expect.objectContaining({ ownerWorkspaceId: group })]);
-        expect(screen.queryByTestId('unified-panel-address-owner')).toBeNull();
+        expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
     });
 
-    it('refuses coc://todo without a Sentinel chat and opens nothing', () => {
-        seed(WS, settingsInput);
+    it('refuses coc://todo without a Sentinel chat and stays on the page', () => {
+        seed(WS, webTab());
         renderPanel();
         typeAddress('coc://todo');
-        expect(screen.getByTestId('unified-panel-address-error').textContent).toBe('To-do is only available in a Sentinel chat');
-        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['settings']);
+        expect(screen.getByTestId('browser-address-error').textContent).toBe('To-do is only available in a Sentinel chat');
+        expect(cocPage()).toBeNull();
+        typeAddress('coc://git');
+        expect(screen.getByTestId('browser-address-error').textContent).toBe('Not supported yet');
+        expect(browserTabs()[0].browserUrl).toBeUndefined();
     });
 
-    it('opens the Sentinel To-do and selects the addressed item', () => {
+    it('shows the Sentinel To-do, selects the addressed item and follows the selection', () => {
         publishSentinelTodoChat(WS, 'chat-1', { ownerWorkspaceId: WS, processId: 'chat-1', title: 'Sentinel' });
-        seed(WS, settingsInput);
+        seed(WS, webTab());
         renderPanel();
         typeAddress('coc://todo/item-7');
-        const todo = tabsOf(WS).find(tab => tab.kind === 'todo')!;
-        expect(todo).toMatchObject({ ownerWorkspaceId: WS, resourceId: 'chat-1', chatId: 'chat-1' });
-        expect(screen.getByTestId('mock-todo').dataset.request).toBe('item-7:1');
-        expect(address().value).toBe('coc://todo');
+        const todo = screen.getByTestId('mock-todo');
+        expect(todo.dataset.owner).toBe(WS);
+        const [id, nonce] = todo.dataset.request!.split(':');
+        expect(id).toBe('item-7');
         act(() => { fireEvent.click(screen.getByText('apply')); });
         expect(address().value).toBe('coc://todo/item-7');
-
-        // The same item again is a new request.
         act(() => { fireEvent.click(screen.getByText('clear')); });
+        expect(address().value).toBe('coc://todo');
+        expect(browserTabs()[0].browserUrl).toBe('coc://todo');
+
+        // The same page again is a new request, not a new history step.
         typeAddress('coc://todo/item-7');
-        expect(screen.getByTestId('mock-todo').dataset.request).toBe('item-7:2');
-        expect(tabsOf(WS).filter(tab => tab.kind === 'todo')).toHaveLength(1);
+        expect(screen.getByTestId('mock-todo').dataset.request).not.toBe(`item-7:${nonce}`);
+        click('browser-back');
+        expect(cocPage()).toBeNull();
+    });
 
-        // Leaving the tab drops the request.
+    it('Ctrl/Cmd+L on a coc:// page focuses and selects the address', () => {
+        seed(WS, webTab());
+        renderPanel();
         typeAddress('coc://settings');
-        typeAddress('coc://todo');
-        expect(screen.getByTestId('mock-todo').dataset.request).toBe('');
-    });
-
-    it('rejects unknown hosts inline without reaching the browser', () => {
-        seed(WS, settingsInput);
-        renderPanel();
-        typeAddress('coc://git');
-        expect(screen.getByTestId('unified-panel-address-error').textContent).toBe('Not supported yet');
-        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['settings']);
-    });
-
-    it('Ctrl/Cmd+L focuses and selects the address from the panel, but not from an editable field', () => {
-        seed(WS, settingsInput);
-        renderPanel();
-        const tab = screen.getByTestId(`unified-panel-tab-${unifiedTabId(settingsInput)}`);
-        tab.focus();
-        expect(pressL(tab)).toBe(true);
+        const page = screen.getByTestId('settings-page');
+        const event = new KeyboardEvent('keydown', { key: 'l', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true });
+        act(() => { page.dispatchEvent(event); });
+        expect(event.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(address());
-        expect(address().selectionStart).toBe(0);
         expect(address().selectionEnd).toBe('coc://settings'.length);
-
-        const field = document.createElement('input');
-        screen.getByTestId('settings-page').appendChild(field);
-        field.focus();
-        expect(pressL(field)).toBe(false);
-        expect(document.activeElement).toBe(field);
     });
 
-    it('keeps the breadcrumb toolbar for file tabs and never shows the address row', () => {
-        seed(WS, { kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/a.ts', label: 'a.ts' });
+    it('shows the shared Settings form in whichever tab is active', () => {
+        const web = webTab();
+        seed(WS, settingsInput, web);
         renderPanel();
-        expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
-        expect(screen.queryByTestId('unified-panel-address-row')).toBeNull();
+        typeAddress('coc://settings');
+        expect(cocPage()).toContainElement(screen.getByTestId('settings-page'));
+        click(`unified-panel-tab-${unifiedTabId(settingsInput)}`);
+        expect(screen.getByTestId('panel-settings-host')).toContainElement(screen.getByTestId('settings-page'));
+        expect(screen.getByTestId('settings-page').closest('[data-testid="browser-coc-page"]')).toBeNull();
     });
 
-    it('opens an address typed in the "+" menu', async () => {
-        seed(WS, settingsInput);
+    it('opens a tab restored at a coc:// address on that page', () => {
+        seed(WS, webTab(WS, 'coc://terminal'));
+        renderPanel();
+        expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${WS}`);
+        expect(address().value).toBe('coc://terminal');
+    });
+
+    it('opens a new web tab at an address typed in the "+" menu', async () => {
         renderPanel();
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
         await act(async () => { fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'coc://terminal' } }); });
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu-coc')); });
-        expect(tabsOf(WS).map(tab => tab.kind).sort()).toEqual(['settings', 'terminal']);
+        expect(browserTabs()).toEqual([expect.objectContaining({ browserUrl: 'coc://terminal', label: 'Terminal' })]);
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
         expect(screen.queryByTestId('unified-panel-open-menu-search')).toBeNull();
     });
 
     it('keeps the menu open with an inline error for an unavailable address', async () => {
-        seed(WS, settingsInput);
         renderPanel();
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
         await act(async () => { fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'coc://todo' } }); });
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu-coc')); });
         expect(screen.getByTestId('unified-panel-open-menu-coc-error').textContent).toBe('To-do is only available in a Sentinel chat');
-        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['settings']);
+        expect(browserTabs()).toHaveLength(0);
     });
 
-    it('opens a coc:// address typed in a web tab\'s address bar instead of rejecting it as a URL', () => {
-        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
-        renderPanel();
-        expect(screen.queryByTestId('unified-panel-address-row')).toBeNull();
-        typeAddress('coc://terminal');
-        expect(tabsOf(WS).map(tab => tab.kind).sort()).toEqual(['browser', 'terminal']);
-        expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${WS}`);
-    });
-
-    it('shows coc:// errors inline in a web tab without opening anything', () => {
-        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
-        renderPanel();
-        typeAddress('coc://todo');
-        expect(screen.getByText('To-do is only available in a Sentinel chat')).toBeTruthy();
-        typeAddress('coc://git');
-        expect(screen.getByText('Not supported yet')).toBeTruthy();
-        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['browser']);
-    });
-
-    it('with the flag off shows no row, binds no Ctrl/Cmd+L and offers no coc:// menu row', async () => {
+    it('with the flag off keeps coc:// an unsupported URL and offers no menu row', async () => {
         applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
-        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
-        const web = renderPanel();
-        typeAddress('coc://terminal');
-        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['browser']);
-        expect(screen.getByText(/coc: URLs are not supported/)).toBeTruthy();
-        web.unmount();
-        clearUnifiedPanelState();
-
-        applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
-        seed(WS, settingsInput);
+        seed(WS, webTab());
         renderPanel();
-        expect(screen.queryByTestId('unified-panel-address-row')).toBeNull();
-        expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
-        const tab = screen.getByTestId(`unified-panel-tab-${unifiedTabId(settingsInput)}`);
-        tab.focus();
-        expect(pressL(tab)).toBe(false);
+        typeAddress('coc://terminal');
+        expect(screen.getByTestId('browser-address-error').textContent).toMatch(/coc: URLs are not supported/);
+        expect(cocPage()).toBeNull();
+        expect(tabsOf(WS)).toHaveLength(1);
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
         await act(async () => { fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'coc://settings' } }); });
         expect(screen.queryByTestId('unified-panel-open-menu-coc')).toBeNull();
         expect(screen.getByTestId('unified-panel-open-menu-url-error')).toBeTruthy();
+    });
+
+    it('keeps dedicated Settings and Terminal tabs free of an address row', () => {
+        seed(WS, settingsInput);
+        renderPanel();
+        expect(screen.queryByTestId('browser-address')).toBeNull();
+        expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
     });
 });

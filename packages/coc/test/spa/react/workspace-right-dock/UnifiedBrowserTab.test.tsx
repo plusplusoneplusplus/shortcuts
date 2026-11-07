@@ -34,6 +34,35 @@ function tab(overrides: Partial<React.ComponentProps<typeof UnifiedBrowserTab>> 
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it('does not offer to save the hidden web page while a coc:// page is showing', async () => {
+        mocks.bridge!.favorites = {
+            list: vi.fn(async () => ({ ok: true, favorites: [], storageError: null })),
+            add: vi.fn(), remove: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        tab({ favoritesEnabled: true, resolveCocPage: () => ({ kind: 'settings', ownerKey: 'ws' }) });
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        act(() => emit({
+            viewId: 'view', engine: 'electron', sourceKind: 'url', url: 'https://example.test/', title: 'Fixture',
+            committedPage: { url: 'https://example.test/', title: 'Fixture', revision: 1 },
+            loading: false, canGoBack: false, canGoForward: false,
+        }));
+        fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Save current page' })).not.toBeDisabled());
+        fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        const input = screen.getByLabelText('Address');
+        fireEvent.change(input, { target: { value: 'coc://settings' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(input).toHaveValue('coc://settings');
+        fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        expect(screen.getByRole('menuitem', { name: 'Save current page' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        fireEvent.click(screen.getByLabelText('Back'));
+        fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        expect(screen.getByRole('menuitem', { name: 'Save current page' })).not.toBeDisabled();
+        expect(mocks.bridge!.favorites.add).not.toHaveBeenCalled();
+    });
+
     it.each(['electron', 'webview2'] as const)('exposes annotation only for loaded %s web pages, excluding previews, PDFs and the SPA', async engine => {
         open.mockResolvedValue({ ok: true, engine });
         mocks.bridge!.annotation = { supported: true, start: vi.fn(async () => true), stop: vi.fn(async () => {}),

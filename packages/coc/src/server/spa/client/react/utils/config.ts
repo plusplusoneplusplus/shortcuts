@@ -143,7 +143,7 @@ interface DashboardConfig {
     binaryFileRevealEnabled?: boolean;
     fileHistoryEnabled?: boolean;
     fileBlameEnabled?: boolean;
-    /** Whether right-panel To-do, Settings and Terminal tabs show a `coc://` address bar. Default false. */
+    /** Whether right-panel web tabs show `coc://` To-do, Settings and Terminal pages. Default false. */
     panelAddressBarEnabled?: boolean;
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
     browserTabShortcutsEnabled?: boolean;
@@ -389,7 +389,7 @@ export function isFileBlameEnabled(): boolean {
     return getConfig().fileBlameEnabled === true;
 }
 
-/** `coc://` address bar for right-panel To-do, Settings and Terminal tabs (`features.panelAddressBar`); off unless the server says on. */
+/** `coc://` To-do, Settings and Terminal pages in right-panel web tabs (`features.panelAddressBar`); off unless the server says on. */
 export function isPanelAddressBarEnabled(): boolean {
     return getConfig().panelAddressBarEnabled === true;
 }

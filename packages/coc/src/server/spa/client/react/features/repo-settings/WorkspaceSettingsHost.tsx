@@ -24,7 +24,10 @@ export function WorkspaceSettingsProvider(props: {
 }
 
 function SettingsOwner({ ownerKey, renderPage, children }: Parameters<typeof WorkspaceSettingsProvider>[0]) {
-    const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
+    // Every mounted slot, newest last: a web tab's `coc://settings` page and
+    // the Settings tab can both be mounted, and the form follows the newest.
+    const [slots, setSlots] = useState<readonly HTMLDivElement[]>([]);
+    const panelHost = slots[slots.length - 1] ?? null;
     const [parkingHost, setParkingHost] = useState<HTMLDivElement | null>(null);
     const [container] = useState(() => {
         const node = document.createElement('div');
@@ -40,9 +43,9 @@ function SettingsOwner({ ownerKey, renderPage, children }: Parameters<typeof Wor
         destination?.appendChild(container);
         return () => { container.remove(); };
     }, [container, destination, panelHost]);
-    const attach = useCallback((node: HTMLDivElement) => setPanelHost(node), []);
-    // A slot that unmounts after its replacement attached must not clear it.
-    const detach = useCallback((node: HTMLDivElement) => setPanelHost(current => (current === node ? null : current)), []);
+    const attach = useCallback((node: HTMLDivElement) => setSlots(current => [...current.filter(slot => slot !== node), node]), []);
+    // A slot that unmounts hands the form back to the previous one, if any.
+    const detach = useCallback((node: HTMLDivElement) => setSlots(current => current.filter(slot => slot !== node)), []);
     const context = useMemo(() => ({ ownerKey, attach, detach }), [ownerKey, attach, detach]);
     return (
         <SettingsHostContext.Provider value={context}>

@@ -6,7 +6,7 @@ import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { nativeViewAddressField } from './NativeViewTab';
 
 /** Editing stays local; matching, ranking and persistence belong to main. */
-export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError, leading, restoreOnEscape, placeholder = 'Enter a URL' }: {
+export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError, leading }: {
     inputRef: RefObject<HTMLInputElement>;
     url?: string;
     committedPage?: BrowserViewState['committedPage'];
@@ -21,9 +21,6 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
     onMenuError?(): void;
     /** Controls drawn inside the pill before the address, e.g. site information. */
     leading?: ReactNode;
-    /** Escape with no open suggestions puts `url` back over an edited draft. */
-    restoreOnEscape?: boolean;
-    placeholder?: string;
 }) {
     const id = useId();
     const [address, setAddress] = useState(url ?? '');
@@ -299,14 +296,6 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
                         event.preventDefault();
                         event.stopPropagation();
                         dismiss();
-                    } else if (event.key === 'Escape' && restoreOnEscape && address !== (url ?? '')) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        edited.current = false;
-                        typed.current = url ?? '';
-                        setAddress(typed.current);
-                        setSearch(typed.current);
-                        onEdit();
                     } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && shown && entries.length) {
                         event.preventDefault();
                         completion.current = null;
@@ -333,7 +322,7 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
                         suppress.current = false;
                     }
                 }}
-                placeholder={placeholder}
+                placeholder="Enter a URL"
                 aria-label="Address"
                 aria-invalid={invalid}
                 spellCheck={false}

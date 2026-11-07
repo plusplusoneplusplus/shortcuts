@@ -1,15 +1,15 @@
 /**
- * unifiedPanelAddresses — the `coc://` addresses the panel address bar shows
- * and accepts (`features.panelAddressBar`).
+ * unifiedPanelAddresses — the `coc://` pages a web tab can show
+ * (`features.panelAddressBar`).
  *
- * Phase 1 covers To-do, Settings and Terminal. An address names a tab kind
- * only, never an owner: the panel resolves the owner the same way its "+" menu
- * does, so text can never route a repo group or remote clone to the wrong
- * repo. `coc://` is parsed here only; it never reaches a webview, browser URL
+ * Phase 1 covers To-do, Settings and Terminal. An address names a page only,
+ * never an owner: the panel resolves the owner the same way its "+" menu does,
+ * so text can never route a repo group or remote clone to the wrong repo.
+ * `coc://` is parsed here only; it never reaches a webview, browser URL
  * normalization, history or site approval.
  */
 
-import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 export type CocAddress =
     | { kind: 'settings' }
@@ -58,13 +58,17 @@ export function formatCocAddress(address: CocAddress): string {
     return `coc://${address.kind}`;
 }
 
-/**
- * The address shown for a tab, or null for every kind outside phase 1. A
- * To-do tab includes its selected item.
- */
-export function cocAddressForTab(tab: Pick<UnifiedPanelTab, 'kind'> | null | undefined, todoSelection?: string | null): string | null {
-    if (!tab) return null;
-    if (tab.kind === 'settings' || tab.kind === 'terminal') return formatCocAddress({ kind: tab.kind });
-    if (tab.kind === 'todo') return formatCocAddress({ kind: 'todo', ...(todoSelection ? { itemId: todoSelection } : {}) });
-    return null;
+/** The tab label of a `coc://` page. */
+export function cocAddressLabel(address: CocAddress): string {
+    return address.kind === 'settings' ? 'Settings' : address.kind === 'terminal' ? 'Terminal' : 'To-do';
 }
+
+/**
+ * A resolved `coc://` page: the address plus the owner the panel chose when it
+ * was opened. A web tab keeps it in memory, so a later chat or target change
+ * never re-routes a page already showing.
+ */
+export type CocPage =
+    | { kind: 'settings'; ownerKey: string }
+    | { kind: 'terminal'; ownerWorkspaceId: string; ownerRoutingRef?: string | null }
+    | { kind: 'todo'; owner: SentinelTodoOwner; scopeWorkspaceId: string; chatId: string };
