@@ -349,11 +349,40 @@ describe('desktop history IPC', () => {
         const unregistered = { id: 4, mainFrame: {}, getURL: () => 'http://localhost:4000/' };
         mocks.windows.set(unregistered, { webContents: unregistered, isDestroyed: () => false });
         for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} }, { sender: guest, senderFrame: guest.mainFrame }, { sender: unregistered, senderFrame: unregistered.mainFrame }]) {
-            for (const channel of [policy.BROWSER_HISTORY_QUERY_CHANNEL, policy.BROWSER_HISTORY_SUGGEST_CHANNEL, policy.BROWSER_HISTORY_DELETE_CHANNEL, policy.BROWSER_HISTORY_CLEAR_CHANNEL, policy.BROWSER_HISTORY_RECORDING_CHANNEL, policy.BROWSER_CLEAR_DATA_CHANNEL]) {
+            for (const channel of [policy.BROWSER_HISTORY_QUERY_CHANNEL, policy.BROWSER_HISTORY_SUGGEST_CHANNEL, policy.BROWSER_HISTORY_DELETE_CHANNEL, policy.BROWSER_HISTORY_CLEAR_CHANNEL, policy.BROWSER_HISTORY_RECORDING_CHANNEL, policy.BROWSER_CLEAR_DATA_CHANNEL,
+                policy.BROWSER_HISTORY_MOST_VISITED_CHANNEL, policy.BROWSER_FAVORITES_QUERY_CHANNEL, policy.BROWSER_FAVORITES_ADD_CHANNEL, policy.BROWSER_FAVORITES_REMOVE_CHANNEL]) {
                 expect(await invoke(channel, event, 'https://example.test/')).toEqual({ ok: false, reason: 'no-window' });
             }
         }
         expect(mocks.dialog).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(dir, 'browser/favorites.json'))).toBe(false);
+    });
+
+    it('shares favorites installation-wide, validates inputs and keeps them when history is cleared or engine data is cleaned', async () => {
+        const a = owner(1), b = owner(2), arbitrary = owner(3, 'http://localhost:4000/other');
+        const favorites = async (event: any) => (await invoke(policy.BROWSER_FAVORITES_QUERY_CHANNEL, event)).favorites.map((item: any) => item.url);
+        expect(await invoke(policy.BROWSER_FAVORITES_ADD_CHANNEL, a.event, 'https://user:pw@saved.test/page', 'Saved')).toEqual({ ok: true });
+        for (const window of [a, b]) expect(window.contents.send).toHaveBeenCalledWith(policy.BROWSER_FAVORITES_CHANGED_CHANNEL);
+        expect(arbitrary.contents.send).not.toHaveBeenCalled();
+        expect(await favorites(b.event)).toEqual(['https://saved.test/page']);
+        for (const [url, title] of [['file:///secret', 'x'], ['javascript:alert(1)', 'x'], ['https://ok.test/', 7]]) {
+            expect(await invoke(policy.BROWSER_FAVORITES_ADD_CHANNEL, a.event, url, title)).toMatchObject({ ok: false, reason: 'invalid' });
+        }
+        expect(await invoke(policy.BROWSER_FAVORITES_REMOVE_CHANNEL, a.event, 'file:///secret')).toMatchObject({ ok: false, reason: 'invalid' });
+
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, a.event, 'a', 'https://example.test/', 'workspace-a');
+        mocks.sinks[0].visited('https://example.test/one', 'One');
+        mocks.sinks[0].visited('https://example.test/two', 'Two');
+        expect(await invoke(policy.BROWSER_HISTORY_MOST_VISITED_CHANNEL, b.event)).toMatchObject({ ok: true, recording: true, storageError: null,
+            sites: [{ domain: 'example.test', visitCount: 2 }] });
+        mocks.dialog.mockResolvedValueOnce({ response: 1 });
+        expect(await invoke(policy.BROWSER_HISTORY_CLEAR_CHANNEL, a.event)).toEqual({ ok: true });
+        expect(await invoke(policy.BROWSER_HISTORY_MOST_VISITED_CHANNEL, b.event)).toMatchObject({ ok: true, sites: [] });
+        mocks.dialog.mockResolvedValueOnce({ response: 1 });
+        await invoke(policy.BROWSER_CLEAR_DATA_CHANNEL, a.event, 'electron');
+        expect(await favorites(a.event)).toEqual(['https://saved.test/page']);
+        expect(await invoke(policy.BROWSER_FAVORITES_REMOVE_CHANNEL, b.event, 'https://saved.test/page')).toEqual({ ok: true });
+        expect(await favorites(a.event)).toEqual([]);
     });
 
     it('shares committed visits and deletion across registered windows/workspaces without leaking broadcasts', async () => {

@@ -60,7 +60,8 @@ import {
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
-    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
+    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL, BROWSER_HISTORY_MOST_VISITED_CHANNEL,
+    BROWSER_FAVORITES_QUERY_CHANNEL, BROWSER_FAVORITES_ADD_CHANNEL, BROWSER_FAVORITES_REMOVE_CHANNEL, BROWSER_FAVORITES_CHANGED_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL,
     BROWSER_VIEW_ADOPT_CHANNEL,
     BROWSER_VIEW_NAVIGATE_CHANNEL,
@@ -332,6 +333,26 @@ describe('preload bridge', () => {
         expect(callback).toHaveBeenCalledOnce();
         off();
         expect(removeListener).toHaveBeenCalledWith(BROWSER_HISTORY_CHANGED_CHANNEL, listener);
+        await history.mostVisited();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_MOST_VISITED_CHANNEL);
+    });
+
+    it('exposes favorites IPC and a payload-free invalidation subscription', async () => {
+        const favorites = exposedApi().browser.favorites;
+        invoke.mockResolvedValue({ ok: true });
+        await favorites.list();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_FAVORITES_QUERY_CHANNEL);
+        await favorites.add('https://example.test/', 'Example');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_FAVORITES_ADD_CHANNEL, 'https://example.test/', 'Example');
+        await favorites.remove('https://example.test/');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_FAVORITES_REMOVE_CHANNEL, 'https://example.test/');
+        const callback = vi.fn();
+        const off = favorites.onChanged(callback);
+        const listener = on.mock.calls.find(c => c[0] === BROWSER_FAVORITES_CHANGED_CHANNEL)![1];
+        listener({}, 'ignored payload');
+        expect(callback).toHaveBeenCalledOnce();
+        off();
+        expect(removeListener).toHaveBeenCalledWith(BROWSER_FAVORITES_CHANGED_CHANNEL, listener);
     });
 
     it('find.query sends on the real find-in-page channel', () => {

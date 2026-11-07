@@ -898,6 +898,15 @@ fresh tab through the panel's current dock target and concrete clone route, with
 no inherited engine override. Electron guests stay attached under the dialog;
 its modal/overlay marker hides WebView2 surfaces.
 
+Default-off `features.browserFavorites` adds `BrowserFavoritesMenu`, a desktop-only
+toolbar star menu (hidden on web and on hosts without `browser.favorites`). It saves
+the committed URL page, lists installation-wide favorites with remove actions, and
+lists `history.mostVisited()` domains when the host supports it. Unlike History,
+entries navigate the current tab through `navigateAddress`. Favorites load on mount
+so the star shows saved state; most-visited loads while open. Main invalidations
+refresh both. The panel uses the overlay marker, menu keyboard navigation and closes
+on owner, tab or visibility changes.
+
 `BrowserDownloadsPanel` opens from Downloads, including blank tabs, through optional
 `browser.downloads` IPC. Its records belong to the desktop installation across
 all windows/workspaces, with bounded main-owned persistence. The renderer sends

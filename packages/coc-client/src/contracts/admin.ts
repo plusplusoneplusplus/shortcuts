@@ -382,6 +382,8 @@ export interface RuntimeDashboardConfig {
     browserTabShortcutsEnabled: boolean;
     /** Right-panel web pages scoped to the conversation that opened them (`features.chatScopedBrowserTabs`); defaults off. */
     chatScopedBrowserTabsEnabled: boolean;
+    /** Desktop browser toolbar favorites and most-visited menu (`features.browserFavorites`); defaults off. */
+    browserFavoritesEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;
     /**

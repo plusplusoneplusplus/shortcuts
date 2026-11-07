@@ -9,6 +9,7 @@ import { BROWSER_DEMO_COMMAND_CHANNEL, runBrowserDemoCommand } from './browser-d
 import { ControlDeadline } from './browser-control-queue';
 import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
+import { BrowserFavoritesStore } from './browser-favorites';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserAppUrl, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
@@ -19,7 +20,8 @@ import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
-    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
+    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL, BROWSER_HISTORY_MOST_VISITED_CHANNEL,
+    BROWSER_FAVORITES_QUERY_CHANNEL, BROWSER_FAVORITES_ADD_CHANNEL, BROWSER_FAVORITES_REMOVE_CHANNEL, BROWSER_FAVORITES_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_SITE_INFO_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_PAGE_ZOOM_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
@@ -34,6 +36,7 @@ import {
 let manager: BrowserHostManager | undefined;
 let annotations: BrowserAnnotationBridge | undefined;
 let downloads: BrowserDownloadStore | undefined;
+let favorites: BrowserFavoritesStore | undefined;
 let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
 const controlRequests = new Map<number, Map<string, { controller: AbortController; sessionKey: string }>>();
@@ -63,11 +66,11 @@ function broadcastDownloads(): void {
     }
 }
 
-function broadcastHistory(): void {
+function broadcastInvalidation(channel: string): void {
     for (const window of owners.values()) {
         if (window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) continue;
-        try { window.webContents.send(BROWSER_HISTORY_CHANGED_CHANNEL); }
-        catch (error) { console.error('[coc-desktop] Browser history notification failed:', error); }
+        try { window.webContents.send(channel); }
+        catch (error) { console.error(`[coc-desktop] Browser notification failed on ${channel}:`, error); }
     }
 }
 
@@ -144,7 +147,8 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (result.canceled || !downloadOwnerCurrent(ownerId) || owners.get(ownerId) !== window) return;
         return result.filePath;
     }, downloadOwnerCurrent);
-    const history = new BrowserHistoryStore(dataDir, Date.now, broadcastHistory);
+    const history = new BrowserHistoryStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_HISTORY_CHANGED_CHANNEL));
+    const favoriteStore = favorites = new BrowserFavoritesStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_FAVORITES_CHANGED_CHANNEL));
     historyMaintenance = setInterval(() => {
         void history.pruneExpired().catch(error => console.error('[coc-desktop] Browser history maintenance failed:', error));
     }, 60 * 60 * 1000);
@@ -337,7 +341,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
             if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
             try { return await operation(event, ...args); }
-            catch (error) { return { ok: false, reason: error instanceof TypeError ? 'invalid' : 'storage-failed', message: String(error) }; }
+            catch (error) {
+                return { ok: false, reason: error instanceof TypeError ? 'invalid' : error instanceof RangeError ? 'full' : 'storage-failed', message: String(error) };
+            }
         };
     ipcMain.handle(BROWSER_HISTORY_QUERY_CHANNEL, historyHandler(async (_event, search = '', offset = 0, limit = 50) => {
         if (typeof search !== 'string' || typeof offset !== 'number' || typeof limit !== 'number') throw new TypeError('Invalid history query');
@@ -346,6 +352,16 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_HISTORY_SUGGEST_CHANNEL, historyHandler(async (_event, search = '') => {
         if (typeof search !== 'string') throw new TypeError('Invalid history query');
         return { ok: true, ...await history.suggest(search) };
+    }));
+    ipcMain.handle(BROWSER_HISTORY_MOST_VISITED_CHANNEL, historyHandler(async () => ({ ok: true, ...await history.mostVisited() })));
+    ipcMain.handle(BROWSER_FAVORITES_QUERY_CHANNEL, historyHandler(async () => ({ ok: true, ...await favoriteStore.list() })));
+    ipcMain.handle(BROWSER_FAVORITES_ADD_CHANNEL, historyHandler(async (_event, url, title) => {
+        await favoriteStore.add(url, title);
+        return { ok: true };
+    }));
+    ipcMain.handle(BROWSER_FAVORITES_REMOVE_CHANNEL, historyHandler(async (_event, url) => {
+        await favoriteStore.remove(url);
+        return { ok: true };
     }));
     ipcMain.handle(BROWSER_HISTORY_DELETE_CHANNEL, historyHandler(async (_event, url) => {
         if (!sanitizeHistoryUrl(url)) throw new TypeError('Invalid history URL');
@@ -458,5 +474,6 @@ export async function disposeBrowserViews(): Promise<void> {
     historyMaintenance = undefined;
     // Retire downloads before source guests; terminal callbacks cannot mark shutdown transfers completed.
     await downloads?.dispose();
+    await favorites?.flush();
     await manager?.dispose();
 }

@@ -3,6 +3,7 @@ import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { BrowserDownloadsPanel } from './BrowserDownloadsPanel';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
+import { BrowserFavoritesMenu } from './BrowserFavoritesMenu';
 import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
 import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
@@ -48,6 +49,8 @@ export interface UnifiedBrowserTabProps {
     onOpenHistoryUrl?: (url: string) => void;
     /** Dismiss history when the destination workspace or clone changes. */
     historyOwnerKey?: string;
+    /** `features.browserFavorites`: show the favorites and most-visited star menu. */
+    favoritesEnabled?: boolean;
     /** Record a new URL (and its provisional label) on the tab descriptor. */
     onNavigate: (id: string, url: string) => void;
     /** Follow the live page: its URL after redirects and its title. */
@@ -63,7 +66,7 @@ export interface UnifiedBrowserTabProps {
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
+    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [error, setError] = useState<string | null>(null);
@@ -78,6 +81,7 @@ export function UnifiedBrowserTab({
     const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [favoritesOpen, setFavoritesOpen] = useState(false);
     const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
     const [downloadsScope, setDownloadsScope] = useState<string | null>(null);
     const [historyScope, setHistoryScope] = useState<string | null>(null);
@@ -90,7 +94,7 @@ export function UnifiedBrowserTab({
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
 
-    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); setDownloadsScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
+    useEffect(() => { setMenuOpen(false); setFavoritesOpen(false); setCookieDialogOpen(false); setHistoryScope(null); setDownloadsScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
 
     useEffect(() => { setError(null); }, [url]);
 
@@ -99,6 +103,7 @@ export function UnifiedBrowserTab({
         return bridge?.onFocusAddressRequested?.(event => {
             if (event.viewId !== viewId) return;
             setMenuOpen(false);
+            setFavoritesOpen(false);
             addressRef.current?.focus();
             addressRef.current?.select();
         });
@@ -188,6 +193,9 @@ export function UnifiedBrowserTab({
         : !url || !opened ? { kind: 'unavailable', message: 'Open a page to see its site information.' }
         : { kind: 'web', load: () => bridge.siteInfo!(viewId, sessionKey) };
 
+    const committedPage = bridge && page?.sourceKind === 'url' && !page.loading && !page.error
+        && page.committedPage?.url === page.url ? page.committedPage : undefined;
+
     const toolbar = (
         <div
             className={`flex min-w-0 flex-wrap ${nativeViewToolbar}`}
@@ -209,6 +217,7 @@ export function UnifiedBrowserTab({
                     || !(mac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey
                     || !addressRef.current) return;
                 setMenuOpen(false);
+                setFavoritesOpen(false);
                 addressRef.current.focus();
                 addressRef.current.select();
                 event.preventDefault();
@@ -229,8 +238,7 @@ export function UnifiedBrowserTab({
             <BrowserAddressBar
                 inputRef={addressRef}
                 url={url}
-                committedPage={bridge && page?.sourceKind === 'url' && !page.loading && !page.error
-                    && page.committedPage?.url === page.url ? page.committedPage : undefined}
+                committedPage={committedPage}
                 history={bridge?.history}
                 enabled={active && visible}
                 ownerKey={pageOwner}
@@ -242,6 +250,14 @@ export function UnifiedBrowserTab({
                 onMenuError={() => setNotice('Address menu unavailable. Use the keyboard to copy or edit.')}
                 leading={<BrowserSiteInfoButton source={siteSource} scopeKey={siteScope} enabled={active && visible} />}
             />
+            {favoritesEnabled && bridge?.favorites && <BrowserFavoritesMenu
+                key={`favorites:${sessionKey}:${viewId}`}
+                open={favoritesOpen && active && visible}
+                onOpenChange={setFavoritesOpen}
+                favorites={bridge.favorites}
+                history={bridge.history}
+                currentPage={committedPage}
+                onOpen={navigateAddress} />}
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}
                 open={menuOpen && active && visible}

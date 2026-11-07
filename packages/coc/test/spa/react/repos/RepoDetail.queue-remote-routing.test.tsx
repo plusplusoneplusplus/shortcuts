@@ -131,6 +131,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isPanelTabGroupsEnabled: () => false,
     isFileHistoryEnabled: () => false,
     isFileBlameEnabled: () => false,
+    isBrowserFavoritesEnabled: () => false,
     isBrowserTabShortcutsEnabled: () => false,
     isChatScopedBrowserTabsEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

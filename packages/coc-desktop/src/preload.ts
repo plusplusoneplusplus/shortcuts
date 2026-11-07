@@ -52,6 +52,11 @@ const DOWNLOADS_QUERY_CHANNEL = 'coc-desktop:browser-downloads-query';
 const DOWNLOADS_ACTION_CHANNEL = 'coc-desktop:browser-downloads-action';
 const DOWNLOADS_CHANGED_CHANNEL = 'coc-desktop:browser-downloads-changed';
 const BROWSER_HISTORY_CHANGED_CHANNEL = 'coc-desktop:browser-history-changed';
+const BROWSER_HISTORY_MOST_VISITED_CHANNEL = 'coc-desktop:browser-history-most-visited';
+const BROWSER_FAVORITES_QUERY_CHANNEL = 'coc-desktop:browser-favorites-query';
+const BROWSER_FAVORITES_ADD_CHANNEL = 'coc-desktop:browser-favorites-add';
+const BROWSER_FAVORITES_REMOVE_CHANNEL = 'coc-desktop:browser-favorites-remove';
+const BROWSER_FAVORITES_CHANGED_CHANNEL = 'coc-desktop:browser-favorites-changed';
 const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
 const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
 const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
@@ -266,6 +271,8 @@ type BrowserHistoryFailure = { ok: false; reason: string; message?: string };
 type BrowserHistoryResult = { ok: true } | BrowserHistoryFailure;
 type BrowserHistoryQueryResult = { ok: true; entries: BrowserHistoryEntry[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
 type BrowserHistorySuggestResult = { ok: true; entries: (BrowserHistoryEntry & { completion: string | null })[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
+type BrowserMostVisitedResult = { ok: true; sites: (BrowserHistoryEntry & { domain: string })[]; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
+type BrowserFavoritesResult = { ok: true; favorites: { url: string; title: string; added: number }[]; storageError: string | null } | BrowserHistoryFailure;
 
 const browser = {
     showAddressMenu: (hasSelection: boolean): Promise<BrowserOperationResult> =>
@@ -349,7 +356,15 @@ const browser = {
         delete: (url: string): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_DELETE_CHANNEL, url),
         clear: (): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_CLEAR_CHANNEL),
         setRecording: (recording: boolean): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_RECORDING_CHANNEL, recording),
+        mostVisited: (): Promise<BrowserMostVisitedResult> => ipcRenderer.invoke(BROWSER_HISTORY_MOST_VISITED_CHANNEL),
         onChanged: (callback: () => void) => subscribe(BROWSER_HISTORY_CHANGED_CHANNEL, callback),
+    },
+    /** Installation-wide favorites; history clearing and recording pause keep them. */
+    favorites: {
+        list: (): Promise<BrowserFavoritesResult> => ipcRenderer.invoke(BROWSER_FAVORITES_QUERY_CHANNEL),
+        add: (url: string, title: string): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_FAVORITES_ADD_CHANNEL, url, title),
+        remove: (url: string): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_FAVORITES_REMOVE_CHANNEL, url),
+        onChanged: (callback: () => void) => subscribe(BROWSER_FAVORITES_CHANGED_CHANNEL, callback),
     },
     sources: BROWSER_SOURCE_KINDS,
     importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult> =>

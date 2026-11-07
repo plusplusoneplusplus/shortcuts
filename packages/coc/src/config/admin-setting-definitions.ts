@@ -1506,6 +1506,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-chat-scoped-browser-tabs-enabled',
         },
     }),
+    bool({
+        key: 'features.browserFavorites', default: false, runtime: 'live', runtimeFlag: 'browserFavoritesEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 40, label: 'Browser favorites', badge: 'experimental',
+            hint: 'Adds a star button to the desktop browser toolbar. It saves favorite pages for every workspace and lists your 10 most-visited sites from browser history. Clearing history clears most-visited sites but keeps favorites. Disabled by default.',
+            testId: 'toggle-browser-favorites-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',
