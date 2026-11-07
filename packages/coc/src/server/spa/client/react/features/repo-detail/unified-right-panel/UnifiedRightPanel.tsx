@@ -2580,6 +2580,7 @@ export function UnifiedRightPanel({
                                         nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onOpenHistoryUrl={openBrowserFromShortcut}
                                         favoritesEnabled={browserFavoritesEnabled}
+                                        onOpenCocAddress={addressBarEnabled ? openCocAddress : undefined}
                                         historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}

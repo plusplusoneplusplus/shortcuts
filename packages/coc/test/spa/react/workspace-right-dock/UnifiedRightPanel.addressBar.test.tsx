@@ -57,6 +57,7 @@ import { WorkspaceSettingsProvider } from '../../../../src/server/spa/client/rea
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { EMPTY_UNIFIED_PANEL, openTab, unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { browserOpenInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { clearSentinelTodoChats, publishSentinelTodoChat } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -244,7 +245,35 @@ describe('UnifiedRightPanel address row', () => {
         expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['settings']);
     });
 
+    it('opens a coc:// address typed in a web tab\'s address bar instead of rejecting it as a URL', () => {
+        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
+        renderPanel();
+        expect(screen.queryByTestId('unified-panel-address-row')).toBeNull();
+        typeAddress('coc://terminal');
+        expect(tabsOf(WS).map(tab => tab.kind).sort()).toEqual(['browser', 'terminal']);
+        expect(screen.getByTestId('mock-terminal').textContent).toBe(`terminal:${WS}`);
+    });
+
+    it('shows coc:// errors inline in a web tab without opening anything', () => {
+        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
+        renderPanel();
+        typeAddress('coc://todo');
+        expect(screen.getByText('To-do is only available in a Sentinel chat')).toBeTruthy();
+        typeAddress('coc://git');
+        expect(screen.getByText('Not supported yet')).toBeTruthy();
+        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['browser']);
+    });
+
     it('with the flag off shows no row, binds no Ctrl/Cmd+L and offers no coc:// menu row', async () => {
+        applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
+        seed(WS, browserOpenInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }));
+        const web = renderPanel();
+        typeAddress('coc://terminal');
+        expect(tabsOf(WS).map(tab => tab.kind)).toEqual(['browser']);
+        expect(screen.getByText(/coc: URLs are not supported/)).toBeTruthy();
+        web.unmount();
+        clearUnifiedPanelState();
+
         applyRuntimeConfigPatch({ panelAddressBarEnabled: false });
         seed(WS, settingsInput);
         renderPanel();

@@ -370,6 +370,9 @@ To-do, Settings or Terminal; it never shows with the file toolbar.
 - Ctrl+L (Cmd+L on macOS) focuses and selects the address while the panel is
   visible and focus is inside it, except in editable fields, Monaco and xterm,
   which keep their own binding.
+- A web tab's address bar (`UnifiedBrowserTab` `onOpenCocAddress`) hands a
+  `coc://` address to the same handler and shows its errors inline, so it never
+  reaches `normalizeBrowserUrl`.
 - The `+` menu (`onOpenCocAddress`) adds a leading "Open coc://…" row for a
   parsed address, or the unselectable `url-error` row for an invalid one; an
   availability error shows inline and keeps the menu open. With the flag off a

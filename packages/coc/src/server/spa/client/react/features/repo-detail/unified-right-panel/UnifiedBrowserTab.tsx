@@ -15,6 +15,7 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { isCocAddressText, parseCocAddress, type CocAddress } from './unifiedPanelAddresses';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 import { setBrowserTabFavicon } from './browserTabFavicons';
@@ -55,6 +56,11 @@ export interface UnifiedBrowserTabProps {
     onNavigate: (id: string, url: string) => void;
     /** Follow the live page: its URL after redirects and its title. */
     onPageState: (id: string, page: { url: string; title: string }) => void;
+    /**
+     * Open a `coc://` address typed here (`features.panelAddressBar`); a string
+     * is an inline error. Without it `coc://` is an unsupported URL.
+     */
+    onOpenCocAddress?: (address: CocAddress) => string | void;
 }
 
 /**
@@ -66,7 +72,7 @@ export interface UnifiedBrowserTabProps {
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled,
+    workspaceId, routingRef, tabId, viewId, sessionKey, chatId, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey, favoritesEnabled, onOpenCocAddress,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [error, setError] = useState<string | null>(null);
@@ -159,6 +165,17 @@ export function UnifiedBrowserTab({
     const failed = Boolean(attachError || startupError || (page?.error && !page?.loading));
 
     const navigateAddress = (address: string) => {
+        // A panel address opens its own tab and never reaches the page.
+        if (onOpenCocAddress && isCocAddressText(address)) {
+            const parsed = parseCocAddress(address);
+            const failure = 'error' in parsed ? parsed.error : onOpenCocAddress(parsed);
+            if (failure) {
+                setError(failure);
+                return;
+            }
+            setError(null);
+            return url ?? '';
+        }
         const result = normalizeBrowserUrl(address);
         if (!result.ok) {
             setError(result.reason);
