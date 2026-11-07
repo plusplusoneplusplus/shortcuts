@@ -377,7 +377,9 @@ To-do all open (or focus) a web tab at the page's address.
 - `UnifiedBrowserTab` keeps an in-memory tab history of `coc://` entries around
   one `web` entry. Back/Forward use the engine's history on the web page first,
   then step across entries; a new web address drops forward entries, and the
-  same `coc://` page again replaces its entry. Reload remounts a `coc://` page.
+  same `coc://` page again replaces its entry. Reload remounts Terminal.
+  Settings and To-do stay mounted: the toolbar reload rebuilds the Settings form
+  and re-reads that workspace's git info, and To-do refreshes its ledger in place.
 - `coc://todo/<itemId>` passes `selectItemRequest` (`{ id, nonce }`, fixed at
   navigation). `UnifiedTodoTab` applies it once its ledger loads (reusing the
   Overture reveal path), shows an "item not found" note for an unknown id
@@ -385,7 +387,8 @@ To-do all open (or focus) a web tab at the page's address.
   `onSelectionChange`, which rewrites the address without a new history step.
 - Settings is one shared form: `WorkspaceSettingsHost` stacks mounted slots and
   shows the form in the newest, handing it back when that one unmounts. A
-  `coc://settings` page mounts its slot only while its tab is active.
+  `coc://settings` page mounts its slot only while its tab is active. Toolbar
+  reload rebuilds the form and re-reads git info; closing or swapping slots does not.
 - Terminal sessions are the workspace's server sessions; leaving the page only
   detaches. The page the tab opened at asks for a session only through the
   panel's `cocOpenRequest`; a later navigation to `coc://terminal` is its own

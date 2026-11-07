@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { SettingsSection } from '../../../../src/server/spa/client/react/types/dashboard';
 
 const mockFetchApi = vi.hoisted(() => vi.fn());
@@ -31,6 +31,7 @@ const mockClient = vi.hoisted(() => ({
         updateMcpConfig: vi.fn(),
         getInstructions: vi.fn(),
         updateInstruction: vi.fn(),
+        gitInfo: vi.fn(),
     },
 }));
 
@@ -423,6 +424,41 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         });
         expect(screen.queryByTestId('settings-header-refresh')).toBeNull();
         expect(screen.queryByTestId('settings-header-copy')).toBeNull();
+    });
+
+    it('reloads plans folder and branch status from the toolbar nonce', async () => {
+        mockClient.preferences.getTaskSettings
+            .mockResolvedValueOnce({ taskRootPath: '/old/plans' })
+            .mockResolvedValue({ taskRootPath: '/new/plans' });
+        mockClient.workspaces.gitInfo.mockResolvedValue({
+            branch: 'main', dirty: false, ahead: 2, behind: 0, isGitRepo: true, remoteUrl: null,
+        });
+        const { RepoSettingsTab } = await import(
+            '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
+        );
+        const { AppProvider } = await import(
+            '../../../../src/server/spa/client/react/contexts/AppContext'
+        );
+        const { WorkspaceSettingsProvider, WorkspaceSettingsSlot } = await import(
+            '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost'
+        );
+        function Harness() {
+            const [nonce, setNonce] = useState(0);
+            return <AppProvider>
+                <button type="button" onClick={() => setNonce(value => value + 1)}>Reload page</button>
+                <WorkspaceSettingsProvider ownerKey="ws-1" renderPage={() => <RepoSettingsTab
+                    workspaceId="ws-1" repo={makeRepo('ws-1') as any} navigation="local" />}>
+                    <WorkspaceSettingsSlot ownerKey="ws-1" reloadNonce={nonce} />
+                </WorkspaceSettingsProvider>
+            </AppProvider>;
+        }
+        await act(async () => { render(<Harness />); });
+        await waitFor(() => expect(screen.getByTestId('info-workspace-card').textContent).toContain('/old/plans'));
+        expect(screen.getByTestId('info-workspace-card').textContent).toContain('synced');
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload page' })); });
+        await waitFor(() => expect(screen.getByTestId('info-workspace-card').textContent).toContain('/new/plans'));
+        expect(screen.getByTestId('info-workspace-card').textContent).toContain('↑ 2 ahead');
+        expect(mockClient.workspaces.gitInfo).toHaveBeenCalledWith('ws-1', { refresh: true });
     });
 
     it('passes workspaceId to McpServersPanel (regression: OAuth "not found in config")', async () => {

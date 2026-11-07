@@ -112,6 +112,8 @@ export interface UnifiedTodoTabProps {
     selectItemRequest?: { id: string; nonce: number } | null;
     /** The item whose detail is open, or null. */
     onSelectionChange?: (itemId: string | null) => void;
+    /** Toolbar reload. A later value refreshes the ledger in place. */
+    reloadNonce?: number;
 }
 
 const TODO_REOPEN_DRAG_MIME = 'application/x-coc-sentinel-todo-reopen';
@@ -384,7 +386,7 @@ export function UnifiedTodoTab(props: UnifiedTodoTabProps) {
     </>;
 }
 
-function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, selectItemRequest = null, onSelectionChange, client, unavailable, onMessage }: UnifiedTodoTabProps & {
+function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, selectItemRequest = null, onSelectionChange, reloadNonce = 0, client, unavailable, onMessage }: UnifiedTodoTabProps & {
     client: CocClient; unavailable: boolean; onMessage?: OpenTodoMessage;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -517,6 +519,14 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, select
         void load();
         void categories.reload();
     };
+    const refreshRef = useRef(refresh);
+    refreshRef.current = refresh;
+    const appliedReload = useRef(reloadNonce);
+    useEffect(() => {
+        if (appliedReload.current === reloadNonce) return;
+        appliedReload.current = reloadNonce;
+        refreshRef.current();
+    }, [reloadNonce]);
 
     useEffect(() => {
         mounted.current = true;

@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useWorkspaceSettingsClient, useWorkspaceSettingsClientResolver, useWorkspaceSettingsRequest, useWorkspaceSettingsRepos } from './workspaceSettingsClient';
+import { useSettingsRefreshNonce } from './WorkspaceSettingsHost';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
@@ -249,12 +250,23 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false, n
 
     // ── Info section state ───────────────────────────────────────────────────
     const color = ws.color || '#848484';
-    const branch = repo.gitInfo?.branch || 'n/a';
-    const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
-    const ahead = repo.gitInfo?.ahead ?? 0;
-    const behind = repo.gitInfo?.behind ?? 0;
+    const refreshNonce = useSettingsRefreshNonce();
+    const [gitOverride, setGitOverride] = useState<{ nonce: number; info: NonNullable<RepoData['gitInfo']> } | null>(null);
+    useEffect(() => {
+        if (refreshNonce === 0) return;
+        let cancelled = false;
+        client.workspaces.gitInfo(workspaceId, { refresh: true })
+            .then(info => { if (!cancelled) setGitOverride({ nonce: refreshNonce, info }); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [refreshNonce, client, workspaceId]);
+    const gitInfo = gitOverride?.nonce === refreshNonce ? gitOverride.info : repo.gitInfo;
+    const branch = gitInfo?.branch || 'n/a';
+    const dirty = gitInfo?.dirty ? ' (dirty)' : '';
+    const ahead = gitInfo?.ahead ?? 0;
+    const behind = gitInfo?.behind ?? 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
-    const remoteUrl = ws.remoteUrl || repo.gitInfo?.remoteUrl || null;
+    const remoteUrl = ws.remoteUrl || gitInfo?.remoteUrl || null;
 
     const [desc, setDesc] = useState(ws.description ?? '');
     const [savingDesc, setSavingDesc] = useState(false);

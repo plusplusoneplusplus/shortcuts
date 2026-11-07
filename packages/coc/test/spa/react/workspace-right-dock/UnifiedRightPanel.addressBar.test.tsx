@@ -7,6 +7,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
@@ -42,12 +43,13 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 }));
 // The To-do view's own selection is pinned in select-request-panel.test.tsx.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab', () => ({
-    UnifiedTodoTab: ({ owner, selectItemRequest, onSelectionChange }: {
+    UnifiedTodoTab: ({ owner, selectItemRequest, onSelectionChange, reloadNonce = 0 }: {
         owner: { ownerWorkspaceId: string };
         selectItemRequest?: { id: string; nonce: number } | null;
         onSelectionChange?: (id: string | null) => void;
+        reloadNonce?: number;
     }) => (
-        <div data-testid="mock-todo" data-owner={owner.ownerWorkspaceId} data-request={selectItemRequest ? `${selectItemRequest.id}:${selectItemRequest.nonce}` : ''}>
+        <div data-testid="mock-todo" data-owner={owner.ownerWorkspaceId} data-reload={reloadNonce} data-request={selectItemRequest ? `${selectItemRequest.id}:${selectItemRequest.nonce}` : ''}>
             <button type="button" onClick={() => onSelectionChange?.(selectItemRequest?.id ?? null)}>apply</button>
             <button type="button" onClick={() => onSelectionChange?.(null)}>clear</button>
         </div>
@@ -229,6 +231,34 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(event.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(address());
         expect(address().selectionEnd).toBe('coc://settings'.length);
+    });
+
+    it('reloads Settings and To-do from the toolbar without a new history step', () => {
+        let mounts = 0;
+        function SettingsPage() {
+            const [mount] = useState(() => ++mounts);
+            return <div data-testid="settings-page">{mount}</div>;
+        }
+        publishSentinelTodoChat(WS, 'chat-1', { ownerWorkspaceId: WS, processId: 'sentinel-1', title: 'Sentinel' });
+        seed(WS, webTab());
+        render(
+            <WorkspaceSettingsProvider ownerKey={WS} renderPage={() => <SettingsPage />}>
+                <UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />
+            </WorkspaceSettingsProvider>,
+        );
+        typeAddress('coc://settings');
+        expect(screen.getByTestId('settings-page').textContent).toBe('1');
+        click('browser-reload');
+        expect(screen.getByTestId('settings-page').textContent).toBe('2');
+        expect(browserTabs()).toHaveLength(1);
+        expect(address().value).toBe('coc://settings');
+
+        typeAddress('coc://todo');
+        expect(screen.getByTestId('mock-todo').dataset.reload).toBe('1');
+        click('browser-reload');
+        expect(screen.getByTestId('mock-todo').dataset.reload).toBe('2');
+        expect(address().value).toBe('coc://todo');
+        expect(browserTabs().filter(tab => tab.browserUrl === 'coc://todo')).toHaveLength(1);
     });
 
     it('shows the shared Settings form in whichever tab is active', () => {

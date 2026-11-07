@@ -263,6 +263,20 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it('refreshes the ledger in place when the toolbar reload nonce changes', async () => {
+        get.mockResolvedValue(ledger([item({ title: 'Ship it' })]));
+        const view = render(<UnifiedTodoTab owner={OWNER} reloadNonce={0} />);
+        await screen.findByText('Ship it');
+        expect(get).toHaveBeenCalledTimes(1);
+        get.mockResolvedValue(ledger([item({ title: 'Ship it' }), item({ id: 'i2', title: 'Next' })]));
+        view.rerender(<UnifiedTodoTab owner={OWNER} reloadNonce={1} />);
+        await screen.findByText('Next');
+        expect(get).toHaveBeenCalledTimes(2);
+        expect(screen.getByText('Ship it')).toBeTruthy();
+        view.rerender(<UnifiedTodoTab owner={OWNER} reloadNonce={1} />);
+        expect(get).toHaveBeenCalledTimes(2);
+    });
+
     it.each(['normal', 'manual'] as const)('persists %s Deferred through compact owner-scoped status controls', async type => {
         registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'srv-deferred', baseUrl: 'https://deferred.example' }]);
         const owner = { ...OWNER, ownerRoutingRef: 'remote:srv-deferred:ws-1' };

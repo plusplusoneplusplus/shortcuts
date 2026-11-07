@@ -497,11 +497,12 @@ export function UnifiedBrowserTab({
             {cocPage ? (
                 <div ref={setCocPageNode} className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="browser-coc-page">
                     <UnifiedCocPage
-                        key={`${tabHistory.index}:${cocReload}`}
+                        key={cocPage.page.kind === 'terminal' ? `${tabHistory.index}:${cocReload}` : String(tabHistory.index)}
                         page={cocPage.page}
                         active={active && visible}
                         terminalOpenRequest={cocPage.initial ? cocOpenRequest ?? 0 : cocPage.nonce}
                         selectItemRequest={cocPage.request}
+                        reloadNonce={cocReload}
                         onTodoSelectionChange={followTodoSelection}
                         onTerminalSessionsChange={reportTerminalSessions}
                     />

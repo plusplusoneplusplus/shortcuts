@@ -1335,7 +1335,8 @@ external, oversized or rendered Markdown). Lines edited in the live buffer show
 Terminal, Settings and To-do exist only as `coc://settings`, `coc://terminal`
 and `coc://todo[/<itemId>]` pages in web tabs, like `chrome://` pages: the same
 toolbar, the existing view in place of the web content, and back/forward across
-web and `coc://` steps. The owner comes from the panel (the text never names
+web and `coc://` steps. Toolbar reload remounts Terminal; Settings rebuilds its
+form and re-reads git info, and To-do refreshes its ledger in place. The owner comes from the panel (the text never names
 one); the `+` menu and outside links open or focus a web tab at the address.
 Web tabs persist only while they show a `coc://` page. `coc://` never reaches
 the engine; see `unified-right-panel/AGENTS.md`.
