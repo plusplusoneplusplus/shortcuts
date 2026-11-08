@@ -115,9 +115,9 @@ the binding on the selected machine. The configuration surface does not launch
 reaction jobs. See [delegation configuration](../admin-config.md#teams-reaction-delegation-configuration).
 `TeamsIc3StatusCard` polls the selected Admin machine's read-only
 `/api/messaging/teams/ic3-own-commands/status` every five seconds for read health,
-timestamps and independent own-command Trouter health. Refresh only reads the
-snapshot. Failures clear stale status; machine changes/unmount abort reads and
-reject late results.
+successful-read and failure timestamps, safe failure stage and optional HTTP status,
+and independent own-command Trouter health. Refresh only reads the snapshot. Request
+failures clear stale status; machine changes/unmount abort reads and reject late results.
 Shared `features.botManagedConversations` stays on Integrations.
 
 `features.teamsAiAnswerRelay` defaults on, including omitted

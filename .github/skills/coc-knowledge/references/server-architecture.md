@@ -791,11 +791,12 @@ work. Restart does not recover pending replies. Further mentions continue the sa
 conversation; interactive questions stay in the dashboard.
 
 Read-only `GET /api/messaging/teams/ic3-own-commands/status` snapshots read health,
-last-check/last-success timestamps and independent `trouter` health. Completed reads
-publish immediately; history failures stay degraded through a scan while successes
-advance last-connected. Outer poll failures are error. Expose only safe codes;
-admission/reply failures do not affect read health. Status reads trigger no I/O
-and prove no write access. `[IC3 commands] timing` info logs correlate hashed request
+last-check/last-success timestamps and independent `trouter` health. Failed checks
+include a safe operation stage, failure timestamp, code and optional HTTP status.
+Completed reads publish immediately; failures stay degraded through a scan while
+successes advance last-success. Outer poll failures are error. Admission/reply
+failures do not affect read health. Status reads trigger no I/O and prove no write
+access. `[IC3 commands] timing` info logs correlate hashed request
 IDs across detection, acknowledgement, admission, completion and reply delivery/failure. Durations
 separate message age at detection, history reads, admission, queue/execution when
 queue timestamps exist, reply-chain wait and delivery. Logs exclude message bodies,
