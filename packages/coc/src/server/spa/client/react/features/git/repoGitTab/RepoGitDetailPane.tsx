@@ -15,7 +15,7 @@ import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
 import type { CommitDetailProps } from '../commits/CommitDetail';
-import type { CommitPickerView } from '../commits/CommitHashPicker';
+import type { CommitPickerOptions, CommitPickerView } from '../commits/CommitHashPicker';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
 import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
@@ -73,6 +73,12 @@ export function RepoGitDetailPane({
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
+    // One switcher for every review header, so a commit, the branch range and
+    // uncommitted changes can always reach each other.
+    const switcher: CommitPickerOptions | undefined = onSelectCommit && {
+        commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,
+        views: pickerViews(branchRangeData, onSelectBranchRange, onSelectWorkingChanges),
+    };
     if (view?.type === 'commit' || view?.type === 'commit-file') {
         const hash = view.type === 'commit' ? view.commit.hash : view.hash;
         return <CommitReviewDetail
@@ -85,10 +91,7 @@ export function RepoGitDetailPane({
             hunkTarget={hunkTarget}
             onNavigateToCommitFile={onNavigateToCommitFile}
             onCommitClassified={onCommitClassified}
-            commitPicker={onSelectCommit && {
-                commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,
-                views: pickerViews(branchRangeData, onSelectBranchRange, onSelectWorkingChanges),
-            }}
+            commitPicker={switcher}
         />;
     }
 
@@ -121,6 +124,7 @@ export function RepoGitDetailPane({
                 onQueueTask={() => { void onBranchAskAI('task'); }}
                 baseMode={baseMode}
                 onBaseModeChange={onBaseModeChange}
+                switcher={switcher}
             />
         );
     }
@@ -157,6 +161,7 @@ export function RepoGitDetailPane({
                 onSaved={onWorkingTreeFileSaved}
                 onFileSelect={onWorkingTreeFileSelect}
                 refreshKey={workingChangesRefreshKey}
+                switcher={switcher}
             />
         );
     }

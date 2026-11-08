@@ -54,7 +54,14 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDeta
     CommitDetail: (props: any) => { lastCommitDetailProps = props; return <Diff {...props} filePath={props.scrollToFilePath} />; },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({ FileDiffPanel: Diff }));
-vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({ BranchRangeOverview: () => null }));
+let lastBranchProps: any = null;
+let lastWorkingProps: any = null;
+vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
+    BranchRangeOverview: (props: any) => { lastBranchProps = props; return null; },
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff', () => ({
+    WorkingTreeAllFilesDiff: (props: any) => { lastWorkingProps = props; return null; },
+}));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeAllComments', () => ({ BranchRangeAllComments: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({ WorkingTreeFileDiff: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllComments', () => ({ WorkingTreeAllComments: () => null }));
@@ -179,5 +186,23 @@ describe('commit switcher views', () => {
         render(<RepoGitDetailPane {...props({ type: 'commit', commit })}
             onSelectCommit={vi.fn()} onSelectBranchRange={vi.fn()} onSelectWorkingChanges={vi.fn()} />);
         expect(lastCommitDetailProps.commitPicker.views.map((view: any) => view.id)).toEqual(['working-changes']);
+    });
+});
+
+describe('one switcher in every review header', () => {
+    const range = { baseRef: 'origin/main', headRef: 'HEAD', commitCount: 1, additions: 1, deletions: 1, mergeBase: 'm', fileCount: 1 };
+    const handlers = () => ({ onSelectCommit: vi.fn(), onSelectBranchRange: vi.fn(), onSelectWorkingChanges: vi.fn() });
+
+    it.each([
+        ['branch range', { type: 'branch-range' } as const, () => lastBranchProps],
+        ['uncommitted changes', { type: 'working-tree-all' } as const, () => lastWorkingProps],
+    ])('hands the %s review the same commit and view choices as a commit', (_name, view, last) => {
+        const on = handlers();
+        render(<RepoGitDetailPane {...props(view)} branchRangeData={range} {...on} />);
+        const switcher = last().switcher;
+        expect(switcher.commits).toEqual([commit]);
+        expect(switcher.views.map((entry: any) => entry.id)).toEqual(['branch-range', 'working-changes']);
+        switcher.onSelect(commit);
+        expect(on.onSelectCommit).toHaveBeenCalledWith(commit);
     });
 });

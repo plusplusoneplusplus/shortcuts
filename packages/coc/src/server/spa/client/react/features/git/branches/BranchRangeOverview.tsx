@@ -16,6 +16,7 @@ import { GitFileReview } from '../diff/GitFileReview';
 import { createBranchRangeDiffSource } from '../diff/diffSource';
 import { CommitDetail } from '../commits/CommitDetail';
 import { BranchSubmitPrButton } from './BranchSubmitPrButton';
+import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
 
 export interface BranchRangeOverviewProps {
     workspaceId: string;
@@ -34,6 +35,8 @@ export interface BranchRangeOverviewProps {
     initialHunkTarget?: 'first' | 'last';
     baseMode?: GitRangeBaseMode;
     onBaseModeChange?: (mode: GitRangeBaseMode) => void;
+    /** The commit/view switcher every Git review header shows; absent in pop-outs. */
+    switcher?: CommitPickerOptions;
 }
 
 export function BranchRangeOverview(props: BranchRangeOverviewProps) {
@@ -50,7 +53,7 @@ export function BranchRangeOverview(props: BranchRangeOverviewProps) {
 }
 function BranchReview({ workspaceId, attachmentDestinationId, range, files = [], onFileSelect, onNavigateToFile,
     onAllCommentsClick, onAskAI, onQueueTask, isPopOut, scrollToFilePath, initialHunkTarget,
-    baseMode = 'default-branch', onBaseModeChange, comparisonKey }: BranchRangeOverviewProps & { comparisonKey: string }) {
+    baseMode = 'default-branch', onBaseModeChange, switcher, comparisonKey }: BranchRangeOverviewProps & { comparisonKey: string }) {
     const [scope, setScope] = useState('');
     const [branchCommentCount, setBranchCommentCount] = useState(0);
     const { markPoppedOut } = useGitReviewPopOut();
@@ -98,8 +101,9 @@ function BranchReview({ workspaceId, attachmentDestinationId, range, files = [],
             {onAllCommentsClick && <button type="button" className="min-h-7 px-1" aria-label="Show all branch comments" onClick={onAllCommentsClick}>Comments{branchCommentCount ? ` · ${branchCommentCount}` : ''}</button>}
             {!isPopOut && <button type="button" className="min-h-7 px-1" aria-label="Open in new window" title="Open in new window" onClick={handlePopOut} data-testid="branch-range-popout-btn">↗</button>}
         </div>
-        {selectedCommit ? <CommitDetail key={selectedCommit.hash} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} hash={selectedCommit.hash} commit={selectedCommit} isPopOut={isPopOut} />
+        {selectedCommit ? <CommitDetail key={selectedCommit.hash} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} hash={selectedCommit.hash} commit={selectedCommit} isPopOut={isPopOut} commitPicker={switcher} />
             : <GitFileReview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} comparisonKey={comparisonKey}
+                header={switcher && { identity: <ReviewViewIdentity title="Branch changes" viewId="branch-range" picker={switcher} /> }}
                 files={files} source={source} selectedPath={scrollToFilePath} initialHunkTarget={initialHunkTarget}
                 onSelect={onNavigateToFile ?? (onFileSelect ? path => onFileSelect(path) : undefined)} />}
     </div>;

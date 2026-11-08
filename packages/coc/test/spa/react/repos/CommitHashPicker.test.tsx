@@ -110,6 +110,25 @@ describe('CommitHashPicker', () => {
         expect(screen.queryByTestId('commit-hash-picker')).toBeNull();
     });
 
+    it('on a non-commit view shows a chevron-only trigger and marks that view current', async () => {
+        const onWorking = vi.fn();
+        const onSelect = vi.fn();
+        render(<CommitHashPicker currentViewId="working-changes" picker={{ commits: [CURRENT, OTHER], onSelect, views: [
+            { id: 'working-changes', label: 'Uncommitted changes', onSelect: onWorking },
+        ] }} />);
+        expect(trigger().getAttribute('aria-label')).toBe('Switch commit or view');
+        expect(trigger().querySelector('.git-review-hash')).toBeNull();
+        await open();
+        const working = screen.getByTestId('commit-hash-picker-view-working-changes');
+        expect(working.getAttribute('aria-current')).toBe('true');
+        expect(screen.getByTestId(`commit-hash-picker-option-${CURRENT.hash}`).getAttribute('aria-current')).toBeNull();
+        await act(async () => { fireEvent.click(working); });
+        expect(onWorking).not.toHaveBeenCalled();
+        await open();
+        await act(async () => { fireEvent.click(screen.getByTestId(`commit-hash-picker-option-${CURRENT.hash}`)); });
+        expect(onSelect).toHaveBeenCalledWith(CURRENT);
+    });
+
     it('closes on outside mousedown', async () => {
         renderPicker();
         await open();
