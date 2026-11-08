@@ -47,6 +47,9 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
         <div data-testid="mock-notes" data-path={initialNotePath ?? ''}>notes:{workspaceId}</div>
     ),
 }));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab', () => ({
+    UnifiedGitTab: () => <div data-testid="mock-git" />,
+}));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCanvasTab', () => ({
     UnifiedCanvasTab: ({ canvasId, chatId }: { canvasId: string; chatId: string }) => (
         <div data-testid="mock-canvas" data-chat={chatId}>{canvasId}</div>
@@ -71,7 +74,8 @@ import { WorkspaceSettingsProvider } from '../../../../src/server/spa/client/rea
 import { _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { EMPTY_UNIFIED_PANEL, openTab, unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { browserOpenInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { browserOpenInput, gitPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { clearSentinelTodoChats, publishSentinelTodoChat } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -212,6 +216,19 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         click('browser-back');
         expect(cocPage()).toBeNull();
         expect(browserTabs()[0].browserUrl).toBeUndefined();
+    });
+
+    // Regression: opening a commit while the Git page already showed the
+    // branch range left `coc://git/branch-range` in the address bar.
+    it('follows a coc://git address changed from outside the page', () => {
+        seed(WS, gitPageInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }, { view: { type: 'branch-range' } }));
+        renderPanel();
+        expect(screen.getByTestId('mock-git')).toBeTruthy();
+        expect(address().value).toBe('coc://git/branch-range');
+        act(() => { openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }, { view: { type: 'commit', hash: 'abc1234' } }); });
+        expect(address().value).toBe('coc://git/abc1234');
+        expect(screen.getByTestId('mock-git')).toBeTruthy();
+        expect(browserTabs()).toHaveLength(1);
     });
 
     it('shows coc://canvas/<id> in the web tab and steps between canvases', () => {

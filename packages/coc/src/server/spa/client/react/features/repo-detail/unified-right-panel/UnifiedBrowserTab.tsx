@@ -204,14 +204,15 @@ export function UnifiedBrowserTab({
             setTabHistory({ entries: [...entries.slice(0, index + 1), WEB_ENTRY], index: index + 1 });
             return;
         }
-        // A Notes open from outside this tab (a link, the menu) moves the deep address.
+        // A Notes or Git address changed from outside this tab (a link, the
+        // menu, the Git detail's own selection) moves the deep address.
         if (!url || !isCocAddressText(url) || url === sentUrl.current) return;
         const entry = cocEntry(url, resolveCocPage);
-        if (typeof entry === 'string' || entry.page.kind !== 'notes') return;
+        if (typeof entry === 'string' || (entry.page.kind !== 'notes' && entry.page.kind !== 'git')) return;
         const { entries, index } = tabHistoryRef.current;
         const here = entries[index];
         sentUrl.current = formatCocAddress(entry.address);
-        if (here?.kind === 'coc' && here.page.kind === 'notes') {
+        if (here?.kind === 'coc' && here.page.kind === entry.page.kind) {
             setTabHistory({
                 entries: entries.map((candidate, at) => at === index ? { ...here, address: entry.address, page: entry.page } : candidate),
                 index,
