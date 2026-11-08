@@ -35,7 +35,6 @@ export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
     switch (kind) {
         case 'work-items':
         case 'pull-requests':
-        case 'git':
             return 'tools';
         case 'file':
         case 'diff':
@@ -53,11 +52,11 @@ export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
     }
 }
 
-/** Strip block for a tab. Canvas pages keep the Canvas block; Notes stays with Tools. */
+/** Strip block for a tab. Canvas pages keep the Canvas block; Notes and Git stay with Tools. */
 export function stripGroupForTab(tab: Pick<UnifiedPanelTab, 'kind' | 'browserUrl'>): UnifiedTabStripGroup {
     const page = cocPageKindOf(tab.browserUrl);
     if (page === 'canvas') return 'canvas';
-    if (page === 'notes') return 'tools';
+    if (page === 'notes' || page === 'git') return 'tools';
     return stripGroupForKind(tab.kind);
 }
 

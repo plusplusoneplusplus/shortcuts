@@ -14,7 +14,8 @@ refresh, and the two layouts. Everything else lives here.
 | `gitContextMenuModel.ts` | `buildGitContextMenuItems` — the right-click menu as a pure function of (target, capabilities, handlers). |
 | `useTransientToast.ts` | The single bottom-right toast surface shared by every action. |
 | `useRepoGitData.ts` | Commits (pagination + search), branch range + base mode, repo state, client-side caches, `lastRefreshedAt`, `refreshAll`, initial load. |
-| `useRepoGitSelection.ts` | Right-panel routing, URL hash + AppContext sync, deep-link hydration, direct SHA lookup. Takes `routeWorkspaceId` (page owner) alongside `workspaceId` (data owner). |
+| `knownCommit.ts` | One-slot hand-off of an already-read commit from an opener (`openPanelGitCommit`) to `restorePersistedView`, keyed by data workspace and exact hash. |
+| `useRepoGitSelection.ts` | Right-panel selection state (view, hunk target, direct SHA lookup) only — no routing. Every `select*` call only touches its own state; `RepoGitTab` reports the resulting view upward through `onViewChange`, and the host turns that into its own addressing (`useSplitGitPanel`'s `coc://git` page). `hydrateFromInitialLoad`/`switchViewScope` apply a host-persisted view back in. |
 | `useGitOperationActions.ts` | Fetch/pull/push/push-to/rebase/reset/amend/reword/drop/cherry-pick/reorder/conflict, plus all four async-job pollers. |
 | `useGitAutoPullController.ts` | The per-repo auto-pull setting (written via the preferences PATCH) and a read of the server-owned schedule. Owns no timer and never pulls. |
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
@@ -64,38 +65,40 @@ refresh, and the two layouts. Everything else lives here.
   owner. Explicit local owners never inherit an active remote endpoint. Repo-group
   hosts derive the member clone key from their server-qualified group selection.
   Never read global clone selection to choose the attachment destination.
-- **Page owner and data owner are separate.** `workspaceId` is the git data
-  (every request, cache, preference, websocket subscription and pop-out) and
-  `routeWorkspaceId` is the page the hash addresses. A repo group passes its own
-  id as `routeWorkspaceId` and the member as `workspaceId`; an ordinary repo
-  passes neither and both default to itself. Never derive the page owner by
-  reading the globally selected repo.
-- **Deep links land in one place.** The mount-time link resolves through
-  `hydrateFromInitialLoad` (called by the data hook's `onInitialLoad`); a later
-  link resolves in the routed-navigation effect. Both go through the single
-  `applyRoute` resolver and fall back to `getCommit` only when `gitCommitLookup`
-  is on and the string is SHA-shaped (`isLookupCandidate`). The `branch-range`
-  and `working-changes` sentinels name non-commit views. Direct SHA lookups
-  select the detail view; the sidebar lists paginated history only.
-  A transient `SET_GIT_ROUTE.knownCommit` can supply a commit already read by
-  another surface, including rail pages beyond the initial history page. Consume
-  it only when page, member, full SHA and `sourceSelectionId` match; this does not
-  enable direct SHA lookup or persist a second history cache. A fresh supplied
-  commit, or a fresh `SET_GIT_ROUTE.openRequest` token, requests selection even
-  for a repeated route whose detail was closed.
-- **A route belongs to exactly one panel.** `state.gitRouteScope` must name both
-  this page owner and this data member before the selection is consumed, and a
-  consumed route is keyed on all four fields (page, member, revision, file) via
-  `gitRouteIdentity`. The effect reacts to store TRANSITIONS, so a route the
-  panel just published is not mistaken for the user navigating away, and a
-  refreshed commit page cannot re-apply a route the panel moved past.
+- **Page owner and data owner are separate; the split lives with the host.**
+  `workspaceId` is the git data (every request, cache, preference, websocket
+  subscription and pop-out); the panel page owner and group member distinction
+  is `PanelGitCommitTarget.routeWorkspaceId` / `SplitGitPanelOptions.memberId`
+  in `unified-right-panel/panelGitCommit.ts` / `useSplitGitPanel.ts`. This
+  family never derives the page owner by reading the globally selected repo.
+- **Persisted views land in one place.** The mount-time view resolves through
+  `hydrateFromInitialLoad` (called by the data hook's `onInitialLoad`); a host
+  switching to another view scope (an external open changed the right panel's
+  `coc://git` address while this tab was already mounted) resolves through
+  `switchViewScope`. Both go through the single `restorePersistedView`
+  resolver: a commit in the loaded page, or the one an opener handed over
+  (`knownCommit.ts`), shows at once; anything else is re-read by exact hash
+  with `getCommit`, whatever `gitCommitLookup` says, and a commit that is gone
+  leaves a `restoreNotFound` notice. The `branch-range` and `working-changes`
+  sentinels belong to the `coc://git` grammar
+  (`unified-right-panel/unifiedPanelAddresses.ts`). Search-box SHA lookups
+  (`lookupCommit`) are the only path gated on `gitCommitLookup` and
+  `isLookupCandidate`; the sidebar lists paginated history only.
+- **A view scope belongs to exactly one host.** The host passes `restoreView`
+  (what to apply) and bumps `viewScopeKey` only on a genuine external change —
+  never on an echo of this hook's own selection — and `switchViewScope` reacts
+  to that key changing, not to the view it already applied. See
+  `unified-right-panel/useSplitGitPanel.ts` for how the key is computed from
+  the panel's own `coc://git` tab address versus what the detail itself just
+  wrote through `onViewChange`.
 - **Late lookups are cancelled.** `openCommitBySha` captures a generation that a
-  member change, a clone re-route or unmount invalidates; a response from an
-  obsolete generation writes neither the view nor the URL.
-- **Navigation writes three things.** Component state, `location.hash`, and the
-  AppContext Git route are updated together by `publishRoute`, which every
-  `select*` callback goes through. The hash is built by `layout/gitRoute.ts`;
-  never concatenate a `#repos/.../git/...` string at a call site.
+  clone re-route or unmount invalidates; a response from an obsolete generation
+  writes neither the view nor anything else.
+- **Navigation writes only local state here.** Every `select*` callback only
+  calls `setView`/`setHunkTarget`; `RepoGitTab` reports the resulting view
+  upward through `onViewChange`, and the host (`useSplitGitPanel`) is the only
+  thing that turns a view into an address. This family never reads or writes
+  the URL hash.
 - **Menu capability rules live in the model.** Push-to/drop require an unpushed
   commit, full-message amend requires HEAD, autosquash requires a fixup target,
   cross-clone cherry-pick is feature-flagged, and touch selection entries are

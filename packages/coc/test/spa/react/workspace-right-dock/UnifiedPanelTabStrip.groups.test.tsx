@@ -171,10 +171,10 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
 
         expect(screen.getByRole('tablist', { name: 'Open resources' })).toHaveAttribute('aria-orientation', 'horizontal');
         expect(screen.getAllByRole('group').map(node => node.getAttribute('aria-label'))).toEqual([
-            'Tools, 3 tabs, 0 hidden', 'Files, 5 tabs, 2 hidden',
+            'Tools, 2 tabs, 0 hidden', 'Files, 5 tabs, 2 hidden',
             'Web, 2 tabs, 0 hidden', 'Canvas, 1 tabs, 0 hidden',
         ]);
-        for (const [name, count] of [['Tools', 3], ['Files', 5], ['Web', 2], ['Canvas', 1]]) {
+        for (const [name, count] of [['Tools', 2], ['Files', 5], ['Web', 2], ['Canvas', 1]]) {
             expect(screen.getByRole('button', { name: `${name}, ${count} tabs` })).toHaveAttribute('aria-expanded', 'true');
         }
         expect(tabNode(tabs.find(entry => entry.kind === 'browser')!)).toHaveAttribute('aria-selected', 'true');

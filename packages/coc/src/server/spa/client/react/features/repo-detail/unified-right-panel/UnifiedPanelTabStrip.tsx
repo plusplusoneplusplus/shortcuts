@@ -155,6 +155,7 @@ const COC_PAGE_ICONS: Readonly<Record<CocAddress['kind'], JSX.Element>> = {
     todo: TODO_ICON,
     canvas: CANVAS_ICON,
     notes: NOTES_ICON,
+    git: GIT_ICON,
 };
 
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
@@ -189,7 +190,6 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="6.2" y1="10" x2="9.8" y2="10" />
         </svg>
     ),
-    git: GIT_ICON,
     'html-page': (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
             <rect x="2" y="3" width="12" height="10" rx="1" />
@@ -1098,7 +1098,7 @@ export function UnifiedPanelTabStrip({
             {contextMenu && (() => {
                 const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);
                 if (!tab) return null;
-                const gitOpen = tab.kind === 'git' ? gitOpenSource?.(tab) ?? null : null;
+                const gitOpen = cocPageKindOf(tab.browserUrl) === 'git' ? gitOpenSource?.(tab) ?? null : null;
                 const items = unifiedPanelTabMenuItems(
                     tab,
                     tabs,

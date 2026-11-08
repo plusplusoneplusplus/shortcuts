@@ -41,8 +41,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
             repoTabState: {},
             repoRouteState: {},
             settingsSection: 'info',
-            selectedGitCommitHash: null,
-            selectedGitFilePath: null,
             selectedNotePath: null,
             selectedWorkflowProcessId: null,
         },
@@ -243,7 +241,6 @@ describe('RepoDetail queue — remote-clone request routing', () => {
             `${expectedBase}/workspaces/${REMOTE_WS}/git-info?refresh=true`,
             `${expectedBase}/workspaces/${REMOTE_WS}/git/changes?refresh=true`,
         ]);
-        expect(mockDispatch.mock.calls.some(([action]) => action.type === 'SET_GIT_ROUTE')).toBe(false);
     });
 
     const queueSeedUrls = (list: string[], wsId: string) =>

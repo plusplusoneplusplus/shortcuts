@@ -123,7 +123,7 @@ shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
 With a host `onRevealGitView`, the Changes preview's "Open working tree" opens
-the repo's pending-change diff in the panel Git tab and keeps the sidebar collapsed;
+the repo's pending-change diff on the panel's `coc://git` page and keeps the sidebar collapsed;
 conflicts and panel-less hosts keep the expanded sidebar working tree.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
 history paging and outgoing prefix, with shared `CommitIdentity` rows and
@@ -137,9 +137,9 @@ branch, upstream and status-read changes discard old history. Missing upstream,
 failed reads and inconsistent counts remain explicit; hover never fetches or
 mutates Git. Outgoing rows use the rail's detail intent to cancel full-sidebar
 peek timers without changing either sidebar collapse flag. Commit navigation
-replaces the owner-qualified hash, records its route suffix and carries the exact
-known commit through `SET_GIT_ROUTE`, retaining paged metadata and group/member scope
-without invoking generic tab navigation.
+opens the owner-qualified commit on the panel's `coc://git` page
+(`openPanelGitCommit`), retaining paged metadata and group/member scope without
+invoking generic tab navigation or touching the URL hash.
 `features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)

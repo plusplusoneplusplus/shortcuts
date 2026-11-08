@@ -10,6 +10,8 @@ import { useRepoRailGit } from '../../../../src/server/spa/client/react/features
 import type { RepoGroupMember } from '../../../../src/server/spa/client/react/repos/repoGroupService';
 
 import { clearExplorerDirty, setExplorerInstanceDirty } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { knownCommitFor, resetKnownCommitForTests } from '../../../../src/server/spa/client/react/features/git/repoGitTab/knownCommit';
 
 const dispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', async importOriginal => ({
@@ -56,6 +58,12 @@ function fakeClient(baseUrl?: string) {
     return client as typeof client & CocClient;
 }
 
+/** The panel scope's one `coc://git` page tab: its address and routing ref. */
+function gitPage(scope: string) {
+    const tab = readUnifiedPanelState(scope).workspaceTabs.find(t => t.resourceId === 'coc-git');
+    return tab && { url: tab.browserUrl, routingRef: tab.ownerRoutingRef ?? null };
+}
+
 function panel(railGit: React.ReactNode, workspaceId = 'ws-alpha') {
     return <SplitWorkspacePanel workspaceId={workspaceId} runningCount={2} queuedCount={1} railGit={railGit}
         chatList={<div>Chats</div>} gitList={<div data-testid="working-tree">Working tree</div>} detail={<div>Detail</div>} />;
@@ -70,6 +78,8 @@ beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
     window.matchMedia = vi.fn().mockReturnValue({ matches: true });
     dispatch.mockClear();
+    clearUnifiedPanelState();
+    resetKnownCommitForTests();
 });
 afterEach(() => cleanup());
 
@@ -152,8 +162,10 @@ describe('collapsed rail Git summary · repository', () => {
         fireEvent.keyDown(rows[1], { key: 'ArrowDown' });
         expect(rows[2]).toHaveFocus();
         fireEvent.click(rows[2]);
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: outgoing[2].hash, filePath: null,
-            knownCommit: { sourceSelectionId: routingRef, commit: outgoing[2] } });
+        expect(gitPage('ws-alpha')).toEqual({ url: `coc://git/${outgoing[2].hash}`, routingRef: baseUrl ? routingRef : null });
+        // The already-read commit rides along, so the detail needs no refetch.
+        expect(knownCommitFor('ws-alpha', outgoing[2].hash)).toBe(outgoing[2]);
+        expect(dispatch).not.toHaveBeenCalled();
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
         expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
         expect(screen.queryByRole('dialog')).toBeNull();
@@ -211,7 +223,7 @@ describe('collapsed rail Git summary · repository', () => {
         localStorage.setItem(splitWorkspaceGitCollapsedStorageKey('ws-alpha'), '1');
         render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={fakeClient()} scopeLabel="Local / Harbor" />));
         fireEvent.click(screen.getByTestId('split-workspace-left-git-branch'));
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: 'branch-range', filePath: null });
+        expect(gitPage('ws-alpha')).toEqual({ url: 'coc://git/branch-range', routingRef: null });
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
         expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey('ws-alpha'))).toBe('0');
         expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
@@ -229,10 +241,8 @@ describe('collapsed rail Git summary · repository', () => {
         await openChangesPreview();
         fireEvent.click(screen.getByRole('button', { name: 'Open working tree' }));
         expect(reveal).toHaveBeenCalledWith({ type: 'working-tree-all' });
-        expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
-            { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: routingRef, suffix: '/git/working-changes' },
-            { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: 'working-changes', filePath: null, openRequest: {} },
-        ]);
+        expect(gitPage('ws-alpha')).toEqual({ url: 'coc://git/working-changes', routingRef: baseUrl ? routingRef : null });
+        expect(dispatch).not.toHaveBeenCalled();
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(screen.getByTestId('split-workspace-left-rail')).toBeInTheDocument();
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
@@ -549,7 +559,7 @@ describe('collapsed rail Git summary · repo group', () => {
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
         expect(action).toHaveFocus();
         fireEvent.click(action);
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-beacon', commitHash: null, filePath: null });
+        expect(gitPage('group-product')).toEqual({ url: 'coc://git/member/ws-beacon', routingRef: baseUrl ? selectionId : null });
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
@@ -570,7 +580,7 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(trigger).toHaveFocus();
         await user.keyboard('{ArrowRight}{ArrowDown}{ArrowDown}{Enter}');
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-beacon', commitHash: null, filePath: null });
+        expect(gitPage('group-product')).toEqual({ url: 'coc://git/member/ws-beacon', routingRef: baseUrl ? selectionId : null });
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('group-product'))).toBe('0');
         expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -593,8 +603,8 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(client.git.listCommits).not.toHaveBeenCalledWith(selectionId, expect.any(Object));
         expect(screen.getByText('No upstream; outgoing commits cannot be compared.')).toBeInTheDocument();
         fireEvent.click(row);
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-harbor', commitHash: outgoing[0].hash, filePath: null,
-            knownCommit: { sourceSelectionId: baseUrl ? 'remote:team:ws-harbor' : 'ws-harbor', commit: outgoing[0] } });
+        expect(gitPage('group-product')).toEqual({ url: `coc://git/member/ws-harbor/${outgoing[0].hash}`, routingRef: baseUrl ? selectionId : null });
+        expect(knownCommitFor('ws-harbor', outgoing[0].hash)).toBe(outgoing[0]);
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
@@ -655,7 +665,7 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(rows[1]).toHaveTextContent('main');
         expect(rows[2]).toHaveTextContent('Unavailable');
         fireEvent.click(within(rows[1]).getByRole('button', { name: 'Open Beacon Git' }));
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:team:group-product', workspaceId: 'ws-beacon', commitHash: null, filePath: null });
+        expect(gitPage('group-product')).toEqual({ url: 'coc://git/member/ws-beacon', routingRef: 'remote:team:group-product' });
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('group-product'))).toBe('0');
     });
 });

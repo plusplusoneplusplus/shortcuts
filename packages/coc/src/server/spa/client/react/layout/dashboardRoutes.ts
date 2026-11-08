@@ -34,7 +34,6 @@ import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plu
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { isRepoGroupWorkspaceId, isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../repos/cloneIdentity';
-import { buildGitRouteSuffix, parseGitRoute } from './gitRoute';
 import { parseDashboardChatReference, type DashboardChatReference } from '../shared/dashboard-discovery/chat-reference';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
@@ -106,20 +105,6 @@ export function parseWorkflowsRunDeepLink(hash: string): { workflowName: string;
         };
     }
     return null;
-}
-
-/**
- * The commit a Git deep-link addresses, group `member/` segments included.
- * Delegates to {@link parseGitRoute} so there is one positional parser.
- */
-export function parseGitCommitDeepLink(hash: string): string | null {
-    return parseGitRoute(hash)?.commitHash ?? null;
-}
-
-export function parseGitFileDeepLink(hash: string): { commitHash: string; filePath: string } | null {
-    const route = parseGitRoute(hash);
-    if (!route?.commitHash || !route.filePath) return null;
-    return { commitHash: route.commitHash, filePath: route.filePath };
 }
 
 /** Build a pop-out URL for git commit review. */
@@ -385,6 +370,13 @@ export function buildNativeCopilotSessionHash(wsId: string, sessionId?: string |
     return sessionId ? base + '/' + encodeSegment(sessionId) : base;
 }
 
+/**
+ * The `/<tab>…` suffix of a repo sub-tab route. Git's detail is panel-owned
+ * (the panel's own `coc://git` page tab carries its member and view) for
+ * every workspace except My Work / My Life, whose Git tab is a page with no
+ * commit/file deep link of its own — so, like every other plain tab, it falls
+ * through to the bare `/git` suffix below.
+ */
 export function buildRepoSubTabSuffix(
     tab: RepoSubTab,
     state: AppContextState,
@@ -392,14 +384,6 @@ export function buildRepoSubTabSuffix(
 ): string {
     if (tab === 'settings') {
         return '/settings/' + encodeSegment(state.settingsSection);
-    }
-    if (tab === 'git') {
-        if (!state.selectedGitCommitHash) return '/git';
-        const hash = encodeSegment(state.selectedGitCommitHash);
-        const file = state.selectedGitFilePath
-            ? '/' + encodeSegment(state.selectedGitFilePath)
-            : '';
-        return '/git/' + hash + file;
     }
     if (tab === 'notes') {
         if (!state.selectedNotePath) return '/notes';
@@ -409,48 +393,6 @@ export function buildRepoSubTabSuffix(
         return '/' + tab + '/' + encodeSegment(selectedTaskId);
     }
     return '/' + tab;
-}
-
-/**
- * `buildRepoSubTabSuffix`, but aware of which workspace the tab belongs to: a
- * repo group's Git route names its selected member.
- *
- * Prefer this over `buildRepoSubTabSuffix` wherever the target workspace id is
- * in hand; this is the form the router records and replays.
- */
-export function buildWorkspaceSubTabSuffix(
-    workspaceId: string,
-    tab: RepoSubTab,
-    state: AppContextState,
-    selectedTaskId?: string | null
-): string {
-    if (tab === 'git' && isRepoGroupWorkspaceId(workspaceId)) {
-        return buildRepoGroupGitSuffix(workspaceId, state);
-    }
-    return buildRepoSubTabSuffix(tab, state, selectedTaskId);
-}
-
-/**
- * The `/git…` suffix for a repo GROUP.
- *
- * A group's Git tab hosts one member, so the hash must name it. The commit/file
- * only travels along when the current Git selection belongs to THIS group and
- * THIS member — otherwise a tab click would hand one group's SHA to another
- * group's repo. With no matching scope the group falls back to its remembered
- * member (history only), or to a bare `/git` entry the host resolves itself.
- */
-function buildRepoGroupGitSuffix(groupId: string, state: AppContextState): string {
-    const scope = state.gitRouteScope;
-    const scoped = !!scope && scope.routeWorkspaceId === groupId && !!scope.workspaceId;
-    const memberId = scoped
-        ? scope!.workspaceId
-        : (state.repoGroupGitMemberState?.[groupId] ?? null);
-    return buildGitRouteSuffix({
-        routeWorkspaceId: groupId,
-        workspaceId: memberId,
-        commitHash: scoped ? state.selectedGitCommitHash : null,
-        filePath: scoped ? state.selectedGitFilePath : null,
-    });
 }
 
 // ── Work-items deep-links ─────────────────────────────────────────────
@@ -633,10 +575,15 @@ export interface RouteResolution {
     chatReference?: DashboardChatReference | null;
 }
 
-/** Route segments that select a Notes/Settings page, which only My Work / My Life have. */
+/**
+ * Route segments that select a page the right panel owns for an ordinary
+ * workspace: Notes/Settings (only My Work / My Life have them as real pages)
+ * and Git, whose detail now lives in the panel's `coc://git` page tab for
+ * every workspace except My Work / My Life, which keep a real Git page.
+ */
 function isWorkspacePanelOnlySegment(segment: string | undefined, next: string | undefined): boolean {
     if (segment === 'settings') return next !== 'display';
-    return segment === 'notes' || segment === 'copilot' || segment === 'info';
+    return segment === 'notes' || segment === 'copilot' || segment === 'info' || segment === 'git';
 }
 
 /**
@@ -706,14 +653,16 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
         effects.push({ kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') } });
     }
     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-        // Git and Explorer routes address the panel while chats stay visible.
-        // Virtual workspaces (My Work, My Life) keep Git as a real page.
+        // Explorer addresses the panel while chats stay visible. (A non-virtual
+        // `git` segment never reaches here: the redirect above already sent it
+        // to the workspace's chat tab, since Git is panel-owned for every
+        // workspace except My Work / My Life, which keep it as a real page.)
         // When the schedules-in-slide flag is ON, schedule routes
         // (#repos/{id}/schedules/...) live in the chat-list "Scheduled" slide +
         // main pane, not the standalone Schedules sub-tab. Keep the chat surface
         // mounted so RepoChatTab can host the schedule detail/editor. Flag OFF ⇒
         // unchanged.
-        if ((parts[2] === 'git' && !isVirtualWorkspaceId(repoId)) || parts[2] === 'explorer' || (parts[2] === 'schedules' && ctx.isSchedulesInSlide())) {
+        if (parts[2] === 'explorer' || (parts[2] === 'schedules' && ctx.isSchedulesInSlide())) {
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab() } });
         } else {
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab } });
@@ -776,25 +725,10 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     } else if (parts[2] === 'tasks') {
         effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: null, repoId } });
     }
-    // Git deep-link handling. One atomic dispatch publishes the page owner, the
-    // data member (null for a group entry the host still has to resolve) and the
-    // selection, so a newly routed member can never briefly show the previous
-    // member's commit.
-    if (parts[2] === 'git') {
-        const gitRoute = parseGitRoute(hash);
-        if (gitRoute) {
-            effects.push({
-                kind: 'app',
-                action: {
-                    type: 'SET_GIT_ROUTE',
-                    routeWorkspaceId: gitRoute.routeWorkspaceId,
-                    workspaceId: gitRoute.workspaceId,
-                    commitHash: gitRoute.commitHash,
-                    filePath: gitRoute.filePath,
-                },
-            });
-        }
-    }
+    // Git for My Work / My Life is a real, page-level tab (`NotesGitTab`); it
+    // has no commit/file deep link of its own, so `SET_REPO_SUB_TAB` above is
+    // the whole story. Every other workspace's Git detail is panel-owned and
+    // addressed by the panel's own `coc://git` page tab, not this hash.
     // Workflow detail deep-link: #repos/{id}/workflow/{processId}
     if (parts[2] === 'workflow' && parts[3]) {
         effects.push({ kind: 'app', action: { type: 'SET_WORKFLOW_PROCESS', processId: decodeSegment(parts[3]) } });

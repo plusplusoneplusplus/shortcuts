@@ -11,8 +11,8 @@
  *
  * Invariants for every value this module returns:
  *  1. **Ownership follows the kind.** Notes and web tabs belong
- *     to the workspace and stay visible across chat switches; file, diff, and
- *     Git tabs belong to the chat that opened them (or to the workspace when
+ *     to the workspace and stay visible across chat switches; file and diff
+ *     tabs belong to the chat that opened them (or to the workspace when
  *     no chat is selected). See `scopeForKind`. A `browser` tab is filed with
  *     the workspace but may name an owning conversation (`browserChatId`); it
  *     is then visible only from that chat, and hidden elsewhere without closing.
@@ -40,7 +40,6 @@
  * tab is a pointer to a resource, never a copy of it.
  */
 
-import type { PersistedGitView } from '../../git/repoGitTab/types';
 import { canvasPageResourceId, cocPageKindOf, formatCocAddress, isCocAddressText } from './unifiedPanelAddresses';
 
 /** The serializable selection owned by a panel-local Notes view. */
@@ -64,30 +63,20 @@ export interface PersistedNotesView {
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
  * duplicated per chat, or ordered among resources.
  *
- * `git` is a chat's single git detail view — the commit, file diff, branch
- * range, or working-tree view the split workspace's git list last selected
- * while that chat was shown. Its `resourceId` is always `GIT_TAB_RESOURCE_ID`,
- * so each chat has one Git tab whose content is replaced rather than a tab per
- * commit, and switching chats never carries one chat's git detail into
- * another. It is opened by git clicks only, never from the "+" menu.
- *
  * `external` is a read-only standard-library or dependency source a language
  * server named as a definition. Its `resourceId` is the opaque capability the
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'work-items' | 'pull-requests' | 'file' | 'note' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
+export type UnifiedTabKind = 'work-items' | 'pull-requests' | 'file' | 'note' | 'diff' | 'external' | 'html-page' | 'browser' | 'paste';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'work-items', 'pull-requests', 'file', 'note', 'diff', 'git', 'html-page', 'browser', 'paste',
+    'work-items', 'pull-requests', 'file', 'note', 'diff', 'html-page', 'browser', 'paste',
 ];
-
-/** The fixed resource id of a workspace's one Git tab. */
-export const GIT_TAB_RESOURCE_ID = 'git';
 
 /**
  * Kinds that are never written to storage. An external source is addressed by a
@@ -115,9 +104,10 @@ export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
  * Ownership rule (AC-02). Notes, note documents and web tabs are
- * workspace-owned; specific files, diffs, and the Git tab follow the chat that
- * opened them. Canvas is a `coc://canvas/<id>` page on a web tab, kept with its
- * chat through `browserChatId`. Files opened with no chat selected fall back to
+ * workspace-owned; specific files and diffs follow the chat that opened them.
+ * Canvas is a `coc://canvas/<id>` page on a web tab, kept with its chat
+ * through `browserChatId`; Git is a `coc://git` page, workspace-owned like
+ * every other `coc://` page. Files opened with no chat selected fall back to
  * the workspace, which `scopeKeyFor` handles.
  */
 export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
@@ -128,14 +118,12 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
 export type UnifiedTabDisplayGroup = 'tools' | 'resources';
 
 /**
- * Display grouping, separate from ownership. Git is chat-owned but renders
- * with the workspace tools (Notes, web tabs) because it is something the user
- * works in, not a repo file; files, diffs, and external sources form the
- * resource group after the strip's divider. Canvas pages are web tabs, so
- * they sit with the other tools.
+ * Display grouping, separate from ownership. Workspace-owned kinds (Notes, web
+ * tabs, including the Git `coc://` page) render with the tools; files, diffs,
+ * and external sources form the resource group after the strip's divider.
  */
 export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
-    return WORKSPACE_KINDS.has(kind) || kind === 'git' ? 'tools' : 'resources';
+    return WORKSPACE_KINDS.has(kind) ? 'tools' : 'resources';
 }
 
 /**
@@ -228,13 +216,6 @@ export interface UnifiedPanelTab {
      * at-most-one-per-section repair all compare on presence.
      */
     preview?: true;
-    /**
-     * A `git` tab's current view, by hash and path only — never commit data or
-     * diff content. It is what a reload refetches to restore the tab.
-     */
-    gitView?: PersistedGitView;
-    /** Data member that owns a group Git tab's view; absent for a standalone repo. */
-    gitMemberId?: string;
     /** A `notes` tab's panel-local selected note. */
     notesView?: PersistedNotesView;
     /** Encoded WI/PR detail suffix; presentation only, independent of tab identity. */
@@ -451,18 +432,12 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.symbolCandidate === b.symbolCandidate
         && a.rawSource === b.rawSource
         && a.preview === b.preview
-        && gitViewKey(a.gitView) === gitViewKey(b.gitView)
-        && a.gitMemberId === b.gitMemberId
         && a.workPath === b.workPath
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
         && a.htmlPageId === b.htmlPageId
         && a.browserUrl === b.browserUrl
         && a.browserEngine === b.browserEngine
         && a.browserChatId === b.browserChatId;
-}
-
-function gitViewKey(view: PersistedGitView | undefined): string {
-    return view === undefined ? '' : JSON.stringify(view);
 }
 
 function notesViewKey(view: PersistedNotesView | undefined): string {
@@ -595,9 +570,6 @@ export interface OpenUnifiedTabInput {
     symbolCandidate?: true;
     /** `file` tabs: show the raw source editor rather than a rendered view. */
     rawSource?: true;
-    /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
-    gitView?: PersistedGitView;
-    gitMemberId?: string;
     htmlPageId?: string;
     /** A `browser` tab's initial URL; absent opens a blank tab. */
     browserUrl?: string;
@@ -687,8 +659,6 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         ...(input.kind === 'file' && input.rawSource ? { rawSource: nextRawSource() } : {}),
-        ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
-        ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
         ...(input.kind === 'browser' && input.browserUrl ? { browserUrl: input.browserUrl } : {}),
         ...(input.kind === 'browser' && input.browserEngine ? { browserEngine: input.browserEngine } : {}),
@@ -711,8 +681,6 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
             ...(opened.rawSource === undefined && existing.rawSource !== undefined ? { rawSource: existing.rawSource } : {}),
-            ...(opened.gitView === undefined && existing.gitView !== undefined && opened.gitMemberId === existing.gitMemberId
-                ? { gitView: existing.gitView } : {}),
             ...(existing.notesView === undefined ? {} : { notesView: existing.notesView }),
             // Reopening the Notes collection keeps the note the address already names.
             ...(existing.browserUrl?.startsWith('coc://notes/') && opened.browserUrl === 'coc://notes'
@@ -1183,8 +1151,6 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
-        ...(kind === 'git' ? gitViewField(value.gitView) : {}),
-        ...(kind === 'git' && isNonEmptyString(value.gitMemberId) ? { gitMemberId: value.gitMemberId } : {}),
         ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
         ...(typeof value.workPath === 'string' ? { workPath: value.workPath } : {}),
         ...(kind === 'html-page' ? { htmlPageId: value.htmlPageId as string } : {}),
@@ -1194,54 +1160,8 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
     return tab;
 }
 
-const GIT_STAGES: readonly string[] = ['staged', 'unstaged', 'untracked'];
-
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value !== '';
-}
-
-/**
- * Validate a persisted git view field by field, rebuilding it so nothing but
- * the known keys survives. An unrecognized shape restores as a Git tab with no
- * view rather than dropping the tab.
- */
-export function parsePersistedGitView(raw: unknown): PersistedGitView | null {
-    if (raw === null || typeof raw !== 'object') return null;
-    const value = raw as Record<string, unknown>;
-    switch (value.type) {
-        case 'commit':
-            return isNonEmptyString(value.hash) ? { type: 'commit', hash: value.hash } : null;
-        case 'commit-file':
-            return isNonEmptyString(value.hash) && isNonEmptyString(value.filePath)
-                ? { type: 'commit-file', hash: value.hash, filePath: value.filePath }
-                : null;
-        case 'branch-range':
-        case 'working-tree-all':
-        case 'working-tree-comments':
-        case 'branch-range-comments':
-            return { type: value.type };
-        case 'branch-file':
-            return isNonEmptyString(value.filePath) ? { type: 'branch-file', filePath: value.filePath } : null;
-        case 'working-tree-file':
-            return isNonEmptyString(value.filePath) && GIT_STAGES.includes(value.stage as string)
-                ? {
-                    type: 'working-tree-file',
-                    filePath: value.filePath,
-                    stage: value.stage as 'staged' | 'unstaged' | 'untracked',
-                }
-                : null;
-        case 'multi-commit':
-            return Array.isArray(value.hashes) && value.hashes.length > 0 && value.hashes.every(isNonEmptyString)
-                ? { type: 'multi-commit', hashes: [...value.hashes] }
-                : null;
-        default:
-            return null;
-    }
-}
-
-function gitViewField(raw: unknown): Pick<UnifiedPanelTab, 'gitView'> {
-    const gitView = parsePersistedGitView(raw);
-    return gitView ? { gitView } : {};
 }
 
 function notesViewField(raw: unknown): Pick<UnifiedPanelTab, 'notesView'> {

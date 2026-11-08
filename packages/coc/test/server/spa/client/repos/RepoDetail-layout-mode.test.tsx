@@ -27,8 +27,6 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
             repoTabState: {},
             repoRouteState: {},
             settingsSection: 'info',
-            selectedGitCommitHash: null,
-            selectedGitFilePath: null,
             selectedNotePath: null,
             selectedWorkflowProcessId: null,
         },
@@ -335,7 +333,7 @@ describe('RepoDetail — panel reordering configuration', () => {
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         if (enabled !== undefined) applyRuntimeConfigPatch({ panelTabReorderingEnabled: enabled });
         mockActiveRepoSubTab = 'activity';
-        const ids = (['notes', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {
+        const ids = (['note', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {
             kind, ownerWorkspaceId: workspaceId, chatId: null, resourceId: kind, label: kind,
         }));
         renderDetail(makeRepo(workspaceId));

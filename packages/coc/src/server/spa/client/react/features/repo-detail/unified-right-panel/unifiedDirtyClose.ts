@@ -34,15 +34,17 @@ import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
  * `coc://canvas` page autosave, so their unsaved window is a pending debounce
  * and their save flushes it (`flushSave` / `saveNow`) and reports whether the
  * write landed.
- * `git` reports through its working-tree diff when that diff is edited (the
- * detail `RepoGitTab` portals into the tab) and saves through the same write.
+ * The `coc://git` page reports through its working-tree diff when that diff is
+ * edited (the detail `RepoGitTab` portals into the tab) and saves through the
+ * same write; `needsDirtyCloseConfirm` checks it by page kind, like canvas,
+ * since it is a `browser` tab rather than its own kind.
  *
  * The remaining kinds hold nothing to save: a diff is reconstructed, a terminal
  * is guarded by `unifiedTerminalClose` instead, and Explorer and Notes are
  * navigators.
  */
 export const DIRTY_CLOSE_KINDS: ReadonlySet<UnifiedTabKind> =
-    new Set<UnifiedTabKind>(['file', 'note', 'git']);
+    new Set<UnifiedTabKind>(['file', 'note']);
 
 /**
  * Whether closing `tab` right now would discard unsaved edits, and therefore
@@ -53,22 +55,23 @@ export function needsDirtyCloseConfirm(
     isDirty: boolean,
 ): boolean {
     if (!tab || !isDirty) return false;
-    return DIRTY_CLOSE_KINDS.has(tab.kind) || cocPageKindOf(tab.browserUrl) === 'canvas';
+    if (DIRTY_CLOSE_KINDS.has(tab.kind)) return true;
+    const page = cocPageKindOf(tab.browserUrl);
+    return page === 'canvas' || page === 'git';
 }
 
 /**
  * What the prompt calls this tab: the resource path without the internal
  * trusted-path marker, prefixed with the owning repo when the tab is attributed
  * to one. Falls back to the label for a descriptor with no usable path.
+ * A `coc://canvas` or `coc://git` page uses its label: the Git address has
+ * no segment for a working-tree file, so it cannot name the edited file.
  */
-export function dirtyCloseLabel(tab: Pick<UnifiedPanelTab, 'resourceId' | 'label' | 'repoLabel' | 'gitView' | 'browserUrl'>): string {
-    // A canvas page's resource id is its address key; the prompt uses the title.
-    if (cocPageKindOf(tab.browserUrl) === 'canvas') {
+export function dirtyCloseLabel(tab: Pick<UnifiedPanelTab, 'resourceId' | 'label' | 'repoLabel' | 'browserUrl'>): string {
+    // A canvas or Git page's resource id is its address key; the prompt uses the title.
+    const page = cocPageKindOf(tab.browserUrl);
+    if (page === 'canvas' || page === 'git') {
         return tab.repoLabel ? `${tab.repoLabel}: ${tab.label}` : tab.label;
-    }
-    // The Git tab's resource is its fixed slot; the edited file is in its view.
-    if (tab.gitView?.type === 'working-tree-file') {
-        return tab.repoLabel ? `${tab.repoLabel}: ${tab.gitView.filePath}` : tab.gitView.filePath;
     }
     const raw = tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)
         ? tab.resourceId.slice(TRUSTED_PATH_PREFIX.length)

@@ -4,7 +4,6 @@ import {
     buildNoteHash,
     parseActivityDeepLink,
     parseForEachRunDeepLink,
-    parseGitCommitDeepLink,
     parseTasksDeepLink,
 } from '../../../../src/server/spa/client/react/layout/Router';
 

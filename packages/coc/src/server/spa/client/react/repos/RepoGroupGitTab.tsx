@@ -9,11 +9,9 @@
  * by a remote CoC server, which route through `useCocClient(workspaceId)`.
  *
  * The GROUP stays the selected page while you browse a member's history: the
- * hosted panel gets the group as `routeWorkspaceId` and the member as
- * `workspaceId`, so its URLs read `#repos/{groupId}/git/member/{memberId}/…`.
- * The member lives in the URL because a group id plus a SHA cannot identify a
- * repository once the remembered member changes — reload, Back/Forward and a
- * shared link all have to agree on which repo the commit came from.
+ * workspace's single `coc://git` page tab carries the member as an explicit
+ * `member/{memberId}` address segment, so a reopen or an external open names
+ * the same repository even after the remembered member changes.
  *
  * A dropdown in the Git toolbar lists every member with its git status, so the
  * user switches repos inside the group without leaving the tab. Stale members
@@ -23,16 +21,15 @@
  *
  * The pick is remembered per group id in the AppContext per-workspace memory
  * (`repoGroupGitMemberState`, persisted to localStorage), so a group entry with
- * no member in the URL — and any older `/git/{sha}` link — lands on the same
- * member. An explicit member in the URL always wins over that preference.
+ * no member named in the page's address lands on the same member. An explicit
+ * member in the page's address always wins over that preference.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppOptional } from '../contexts/AppContext';
 import { RepoGitTab } from '../features/git/RepoGitTab';
-import { buildGitRouteHash, buildGitRouteSuffix } from '../layout/gitRoute';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
-import { useSplitGitPanel } from '../features/repo-detail/unified-right-panel/useSplitGitPanel';
+import { setGitPageMember, useGitPageTabAddress, useSplitGitPanel } from '../features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { RepoGroupMember } from './repoGroupService';
 import { routingRefForPanelOwner } from '../features/repo-detail/unified-right-panel/unifiedPanelOwnerRouting';
 import { useRepoGroupMemberGitInfo } from './useRepoGroupMemberGitInfo';
@@ -113,45 +110,41 @@ export function RepoGroupGitTab({
     headerToolbarContainer,
     active,
 }: RepoGroupGitTabProps) {
-    const app = useAppOptional();
-    const dispatch = app?.dispatch;
-
     // What the user last picked, remembered across reloads. It is a
     // *preference*, not the answer: it only decides a route that never named a
     // member, and a member that goes stale (or leaves the group) falls back to
     // the first healthy one without the user re-picking.
     const [preferredId, setPreferredId] = useRepoGroupGitMemberPreference(selectionId);
 
-    // The Git route the router published, but only while it addresses THIS
-    // group. Anything else (another workspace's git route, or none at all —
-    // pop-out shells and unit tests) leaves the host on preference-only rules.
-    const scope = app?.state.gitRouteScope ?? null;
-    const routeOwnsThisGroup = scope?.routeWorkspaceId === selectionId;
-    const routedMemberId = routeOwnsThisGroup ? (scope?.workspaceId ?? null) : null;
-    const routeCommitHash = routeOwnsThisGroup ? (app?.state.selectedGitCommitHash ?? null) : null;
-    const routeFilePath = routeOwnsThisGroup ? (app?.state.selectedGitFilePath ?? null) : null;
+    // The `coc://git` page's own current address, so an explicit member it
+    // already names wins over the remembered preference — mirrors the old
+    // explicit-URL-wins-over-preference rule, now scoped to one tab's address
+    // instead of a global route. Pop-out shells and unit tests with no panel
+    // simply never see an explicit member here.
+    const explicitAddress = useGitPageTabAddress(workspaceId, rightPanel?.ownerRoutingRef);
+    const explicitMemberId = explicitAddress?.gitMemberId ?? null;
+    const gitPageOpen = explicitAddress !== null;
 
     const healthyIds = useMemo(
         () => healthyRepoGroupMembers(members ?? []).map(member => member.workspaceId),
         [members],
     );
     const membersLoaded = members !== undefined;
-    const routedMemberIsHealthy = !!routedMemberId && healthyIds.includes(routedMemberId);
+    const explicitMemberIsHealthy = !!explicitMemberId && healthyIds.includes(explicitMemberId);
 
     /**
-     * The member to mount. An explicit member in the URL wins outright — it is
-     * either healthy (mount it) or unavailable (mount nothing and say so). With
-     * no member in the URL the remembered preference decides, and the effect
-     * below rewrites the URL into the explicit form.
+     * The member to mount. An explicit member in the page's address wins
+     * outright — it is either healthy (mount it) or unavailable (mount nothing
+     * and say so). With no explicit member, the remembered preference decides,
+     * and the effect below writes it into the page's address.
      */
     const selectedId = useMemo(() => {
-        if (routedMemberId) return routedMemberIsHealthy ? routedMemberId : undefined;
+        if (explicitMemberId) return explicitMemberIsHealthy ? explicitMemberId : undefined;
         return resolveRepoGroupGitMember(members, preferredId);
-    }, [routedMemberId, routedMemberIsHealthy, members, preferredId]);
+    }, [explicitMemberId, explicitMemberIsHealthy, members, preferredId]);
     const splitGitPanel = useSplitGitPanel({
         scopeWorkspaceId: workspaceId,
         ownerRoutingRef: rightPanel?.ownerRoutingRef,
-        chatId: rightPanel?.chatId ?? null,
         memberId: selectedId,
         enabled: !!rightPanel && layout === 'split-workspace' && membersLoaded,
     });
@@ -161,48 +154,35 @@ export function RepoGroupGitTab({
      * group. A group with no healthy member at all is a different story — it
      * keeps its ordinary empty state rather than blaming the link.
      */
-    const unavailableMemberId = membersLoaded && routedMemberId && !routedMemberIsHealthy && healthyIds.length > 0
-        ? routedMemberId
+    const unavailableMemberId = membersLoaded && explicitMemberId && !explicitMemberIsHealthy && healthyIds.length > 0
+        ? explicitMemberId
         : null;
 
-    /** Rewrite the current group Git URL into its explicit-member form, in place. */
+    /**
+     * Write the member into an open Git page's own address, in place — never
+     * opening, focusing or revealing the page just because the group is shown.
+     */
     const canonicalizeToMember = useCallback((memberId: string) => {
-        const descriptor = {
-            routeWorkspaceId: selectionId,
-            workspaceId: memberId,
-            commitHash: routeCommitHash,
-            filePath: routeFilePath,
-        };
-        const hash = buildGitRouteHash(descriptor);
-        // `replaceState` deliberately adds no Back step — and emits no
-        // `hashchange` — so the route effects the router would have produced
-        // are dispatched by hand.
-        if (location.hash !== hash) window.history.replaceState(null, '', hash);
-        dispatch?.({ type: 'SET_GIT_ROUTE', ...descriptor });
-        dispatch?.({
-            type: 'RECORD_REPO_ROUTE_SUFFIX',
-            repoId: selectionId,
-            suffix: buildGitRouteSuffix(descriptor),
-        });
-    }, [dispatch, selectionId, routeCommitHash, routeFilePath]);
+        setGitPageMember(workspaceId, rightPanel?.ownerRoutingRef, memberId);
+    }, [workspaceId, rightPanel?.ownerRoutingRef]);
 
     // Membership is the only thing that can validate a member, so nothing is
     // selected, canonicalized or persisted until it has loaded.
     useEffect(() => {
-        if (!membersLoaded || !routeOwnsThisGroup) return;
-        if (routedMemberId) {
+        if (!membersLoaded || !rightPanel) return;
+        if (explicitMemberId) {
             // A validated explicit member becomes the remembered choice.
-            if (routedMemberIsHealthy && preferredId !== routedMemberId) setPreferredId(routedMemberId);
+            if (explicitMemberIsHealthy && preferredId !== explicitMemberId) setPreferredId(explicitMemberId);
             return;
         }
-        // Group entry, or an older `/git/{sha}` link: resolve the member the
-        // same way the preference always did, then make the URL say so.
+        // No member named yet: resolve one the same way the preference always
+        // did, then make an open page's address say so.
         const resolved = resolveRepoGroupGitMember(members, preferredId);
         if (!resolved) return;
-        canonicalizeToMember(resolved);
+        if (gitPageOpen) canonicalizeToMember(resolved);
         if (preferredId !== resolved) setPreferredId(resolved);
     }, [
-        membersLoaded, routeOwnsThisGroup, routedMemberId, routedMemberIsHealthy,
+        membersLoaded, rightPanel, gitPageOpen, explicitMemberId, explicitMemberIsHealthy,
         members, preferredId, setPreferredId, canonicalizeToMember,
     ]);
 
@@ -210,23 +190,16 @@ export function RepoGroupGitTab({
     const gitInfo = useRepoGroupMemberGitInfo(healthyIds);
 
     /**
-     * Switching member is a NAVIGATION, not a local state change: it routes to
-     * the new member's history, which clears the previous member's commit and
-     * file before the keyed panel mounts.
+     * Switching member is a NAVIGATION, not a local state change: it opens the
+     * new member's plain history, which clears the previous member's commit
+     * and file before the keyed panel mounts.
      */
     const handleSelect = useCallback((memberId: string) => {
         if (memberId === selectedId) return;
         if (!healthyIds.includes(memberId)) return;
         setPreferredId(memberId);
-        if (routeOwnsThisGroup) {
-            location.hash = buildGitRouteHash({
-                routeWorkspaceId: selectionId,
-                workspaceId: memberId,
-                commitHash: null,
-                filePath: null,
-            });
-        }
-    }, [selectedId, healthyIds, setPreferredId, routeOwnsThisGroup, selectionId]);
+        if (rightPanel) canonicalizeToMember(memberId);
+    }, [selectedId, healthyIds, setPreferredId, rightPanel, canonicalizeToMember]);
 
     const selectorRef = useRef<HTMLButtonElement | null>(null);
     const restoreSelectorFocus = useRef(false);
@@ -274,7 +247,6 @@ export function RepoGroupGitTab({
                         key={selectedId}
                         workspaceId={selectedId}
                         sourceSelectionId={routingRefForPanelOwner(selectionId, selectedId) ?? selectedId}
-                        routeWorkspaceId={selectionId}
                         repositorySelector={repositorySelector}
                         layout={layout}
                         detailContainer={rightPanel ? splitGitPanel.detailContainer : detailContainer}

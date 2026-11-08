@@ -32,7 +32,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
-    return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
+    return { buildRepoSubTabSuffix: routes.buildRepoSubTabSuffix };
 });
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => false,

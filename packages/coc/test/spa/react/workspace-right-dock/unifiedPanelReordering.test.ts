@@ -8,7 +8,7 @@ import {
 
 function mixed(chatId: string | null = 'chat-a'): UnifiedPanelState {
     let state = EMPTY_UNIFIED_PANEL;
-    for (const kind of ['work-items', 'file', 'browser', 'git'] as const) {
+    for (const kind of ['work-items', 'file', 'browser', 'diff'] as const) {
         state = openTab(state, {
             kind, ownerWorkspaceId: 'workspace', ownerRoutingRef: 'remote:host-a:workspace',
             chatId, resourceId: kind === 'file' ? 'sample.md' : kind, label: 'Same label',
@@ -33,7 +33,7 @@ describe('mixed panel tab ordering', () => {
         const next = moveVisibleTab(state, 'chat-a', files[1].id, files[0].id);
         const groups = groupStripTabs(visibleTabs(next, 'chat-a'), { folded: new Set(), narrow: false });
         expect(groups.map(group => group.group)).toEqual(['tools', 'files', 'web']);
-        expect(groups.find(group => group.group === 'files')?.tabs).toEqual([files[1], files[0]]);
+        expect(groups.find(group => group.group === 'files')?.tabs.filter(tab => tab.kind === 'file')).toEqual([files[1], files[0]]);
         expect(next.workspaceTabs).toBe(state.workspaceTabs);
         expect(next.chatTabs).toBe(state.chatTabs);
         expect(next.activeByScope).toBe(state.activeByScope);
@@ -55,7 +55,7 @@ describe('mixed panel tab ordering', () => {
         const file = id(original, 'file');
         const selected = activateTab(original, 'chat-a', file);
         const next = moveVisibleTab(selected, 'chat-a', file, id(original, 'browser'));
-        expect(visibleTabs(next, 'chat-a').map(tab => tab.kind)).toEqual(['work-items', 'file', 'browser', 'git']);
+        expect(visibleTabs(next, 'chat-a').map(tab => tab.kind)).toEqual(['work-items', 'file', 'browser', 'diff']);
         expect(next.workspaceTabs).toBe(selected.workspaceTabs);
         expect(next.chatTabs).toBe(selected.chatTabs);
         expect(next.activeByScope).toBe(selected.activeByScope);
@@ -66,7 +66,8 @@ describe('mixed panel tab ordering', () => {
     it('moves to the end and treats self, same position, stale and foreign-chat targets as no-ops', () => {
         let state = mixed();
         const file = id(state, 'file');
-        expect(moveVisibleTab(state, 'chat-a', file, null)).toBe(state);
+        expect(moveVisibleTab(state, 'chat-a', id(state, 'diff'), null)).toBe(state);
+        expect(moveVisibleTab(state, 'chat-a', file, id(state, 'diff'))).toBe(state);
         expect(moveVisibleTab(state, 'chat-a', file, file)).toBe(state);
         expect(moveVisibleTab(state, 'chat-a', 'missing', file)).toBe(state);
         expect(moveVisibleTab(state, 'chat-a', file, 'missing')).toBe(state);
@@ -82,7 +83,7 @@ describe('mixed panel tab ordering', () => {
         expect(visibleTabs(state, 'chat-b').map(tab => tab.kind)).toEqual(['work-items', 'browser']);
         expect(visibleTabs(state, 'chat-a', false)).toEqual(visibleTabs(original, 'chat-a'));
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
-        expect(visibleTabs(restored, 'chat-a').map(tab => tab.kind)).toEqual(['file', 'work-items', 'git']);
+        expect(visibleTabs(restored, 'chat-a').map(tab => tab.kind)).toEqual(['file', 'work-items', 'diff']);
         expect(visibleTabs(restored, 'chat-b').map(tab => tab.kind)).toEqual(['work-items']);
         expect(serializeUnifiedPanelState(state)).not.toContain(id(state, 'browser'));
     });

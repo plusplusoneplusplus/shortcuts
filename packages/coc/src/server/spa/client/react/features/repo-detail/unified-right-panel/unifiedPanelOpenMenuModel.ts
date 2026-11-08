@@ -67,9 +67,9 @@ export interface OpenMenuActionsInput {
      */
     todoAvailable?: boolean;
     /**
-     * The target is one concrete repo whose Git tab this panel can host. Gates
-     * the Git entry, which is omitted rather than disabled: a group's own root
-     * has no repository to show.
+     * This panel can host the target's Git page: a concrete repo (opened on
+     * its branch changes) or a group's own root (opened on its remembered
+     * member). Gates the Git entry, which is omitted rather than disabled.
      */
     gitAvailable?: boolean;
     /** The panel's workspace owns a Settings page (every repo and group dock host does). */

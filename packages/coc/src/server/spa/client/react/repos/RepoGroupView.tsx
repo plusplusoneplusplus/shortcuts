@@ -29,6 +29,7 @@ import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel
 import { GroupRailGitView } from '../features/repo-detail/RailGitSummary';
 import { useGroupRailGit } from '../features/repo-detail/useRailGitSummary';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { useGitPageTabAddress } from '../features/repo-detail/unified-right-panel/useSplitGitPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
 import { openContentSearchMatch } from '../features/repo-detail/content-search/contentSearchOpen';
@@ -310,14 +311,16 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 },
             }))} />
     ), [chatFeed.model, chatFeed.status, chatFeed.refresh, selectionId, groupBaseUrl, chatServerLabel, chatServerKey, chatFilters, groupOwnerAvailable, workspaceId, memberChat.clearSelection, memberChat.selectMember]);
-    const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
-        ? state.gitRouteScope.workspaceId
-        : null;
+    // An external open (a chat commit link, Sync preview, etc.) that lands a
+    // member and a view on this group's `coc://git` page tab should flip
+    // mobile onto the Git pane, the same way a routed commit used to.
+    const gitPageAddress = useGitPageTabAddress(workspaceId, groupRoutingRef);
+    const showingRoutedGitDetail = !!gitPageAddress?.gitMemberId && !!gitPageAddress?.view;
     useEffect(() => {
-        if (isMobile && routedGitMember && state.selectedGitCommitHash) {
+        if (isMobile && showingRoutedGitDetail) {
             setSplitLastClicked('git');
         }
-    }, [isMobile, routedGitMember, state.selectedGitCommitHash, state.selectedGitFilePath]);
+    }, [isMobile, showingRoutedGitDetail]);
     // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
     // below runs against the group workspace id, so that is the key its
     // selection is filed under; the per-repo entry only, never the global

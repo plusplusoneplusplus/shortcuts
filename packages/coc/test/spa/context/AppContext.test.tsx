@@ -40,8 +40,6 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedWorkflowName: null,
         selectedWorkflowRunProcessId: null,
         selectedScheduleId: null,
-        selectedGitCommitHash: null,
-        selectedGitFilePath: null,
         selectedPrId: null,
         selectedWorkflowProcessId: null,
         selectedExplorerPath: null,

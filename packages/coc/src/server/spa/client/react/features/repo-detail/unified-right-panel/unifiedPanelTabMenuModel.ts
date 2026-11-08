@@ -5,6 +5,7 @@ import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolut
 import { parseNoteResourceId } from './unifiedNoteTabs';
 import { isGroupBoundaryMove, stripGroupForTab } from './unifiedPanelTabGroups';
 import { canDuplicateBrowserTab } from './unifiedBrowserTabs';
+import { cocPageKindOf } from './unifiedPanelAddresses';
 
 export type UnifiedPanelBulkCloseAction =
     | 'close-others'
@@ -94,7 +95,7 @@ export function unifiedPanelTabMenuItems(
             { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= permittedIds.length - 1 },
         );
     }
-    if (tab.kind === 'git' && gitOpenAvailable) {
+    if (cocPageKindOf(tab.browserUrl) === 'git' && gitOpenAvailable) {
         items.push({ action: 'open-git', label: 'Open', group: 'git', disabled: false });
     }
     if (tab.preview) {

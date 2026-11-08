@@ -6,8 +6,11 @@
  *
  *  - `notes` — the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
- *    shell renders beside whichever view is active. Terminal, Settings, To-do
- *    and Canvas are `coc://` pages inside web tabs (`UnifiedCocPage`).
+ *    shell renders beside whichever view is active. Terminal, Settings, To-do,
+ *    Canvas and Git are `coc://` pages inside web tabs (`UnifiedCocPage`); Git's
+ *    page is an empty host the split workspace's `RepoGitTab` portals its
+ *    detail pane into (`UnifiedGitTab`), so the commit / file diff / range /
+ *    working-tree views are the same components the middle pane used.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. Trusted absolute paths are
@@ -18,9 +21,6 @@
  *    shows the expired state (`UnifiedDiffTab`) — except a chat's own Changes
  *    tab, which rebuilds itself from the chat, so the scope and the owning chat
  *    go down with it.
- *  - `git` — an empty host the split workspace's `RepoGitTab` portals its
- *    detail pane into (`UnifiedGitTab`), so the commit / file diff / range /
- *    working-tree views are the same components the middle pane used.
  *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
  *    canvas wires a note link, with the resolution decoded from the descriptor
  *    rather than re-run (`UnifiedNoteTab`).
@@ -44,7 +44,6 @@ import type {
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
-import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedWorkResourceTab } from './UnifiedWorkResourceTab';
@@ -271,14 +270,6 @@ export function UnifiedTabView({
                     chatId={tab.chatId}
                     onClose={close}
                     onErrorChange={handleError}
-                />
-            );
-        case 'git':
-            return (
-                <UnifiedGitTab
-                    scopeWorkspaceId={scopeWorkspaceId}
-                    onDirtyChange={handleDirty}
-                    onRegisterSave={handleRegisterSave}
                 />
             );
         default:

@@ -40,9 +40,11 @@ describe('needsDirtyCloseConfirm', () => {
 
     it('only prompts for kinds that can both report and write back edits', () => {
         const prompting = ALL_UNIFIED_TAB_KINDS.filter(kind => needsDirtyCloseConfirm({ kind }, true));
-        expect(prompting).toEqual(['file', 'note', 'git']);
-        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['file', 'git', 'note']);
+        expect(prompting).toEqual(['file', 'note']);
+        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['file', 'note']);
         expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://canvas/plan-1' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://git/member/repo-b/working-changes' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://git' }, false)).toBe(false);
         expect(needsDirtyCloseConfirm({ kind: 'browser', browserUrl: 'coc://settings' }, true)).toBe(false);
     });
 
@@ -74,10 +76,9 @@ describe('dirtyCloseLabel', () => {
         expect(dirtyCloseLabel({ resourceId: '   ', label: 'Untitled' })).toBe('Untitled');
     });
 
-    it("names a Git tab by its edited working-tree file, not its fixed slot", () => {
-        const gitView = { type: 'working-tree-file' as const, filePath: 'src/b.ts', stage: 'unstaged' as const };
-        expect(dirtyCloseLabel({ resourceId: 'git', label: 'Git', gitView })).toBe('src/b.ts');
-        expect(dirtyCloseLabel({ resourceId: 'git', label: 'Git', repoLabel: 'api', gitView })).toBe('api: src/b.ts');
+    it('names the Git page by its label, never its internal resource id', () => {
+        expect(dirtyCloseLabel({ resourceId: 'coc-git', label: 'Git', browserUrl: 'coc://git/working-changes' })).toBe('Git');
+        expect(dirtyCloseLabel({ resourceId: 'coc-git', label: 'Git', repoLabel: 'api', browserUrl: 'coc://git' })).toBe('api: Git');
     });
 });
 

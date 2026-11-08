@@ -3,9 +3,11 @@
 The workspace's one and only right panel: a Chrome-style resource-tabbed column
 holding Work Items, Pull Requests, files, chat diffs, local HTML
 pages and web browser tabs, with a Search/Explorer navigator at its right edge.
-Terminal, Settings, To-do, Canvas and Notes are `coc://` pages inside web tabs;
-there are no dedicated tabs for them. A canvas is `coc://canvas/<canvasId>`.
-Notes is `coc://notes` or `coc://notes/<path>`. The panel mounts at every breakpoint.
+Terminal, Settings, To-do, Canvas, Notes and Git are `coc://` pages inside web
+tabs; there are no dedicated tabs for them. A canvas is `coc://canvas/<canvasId>`.
+Notes is `coc://notes` or `coc://notes/<path>`. Git is `coc://git`, optionally
+deep-linked to a group member and/or a view (`coc://git/member/<id>[/<sha|branch-range|working-changes>[/<filePath>]]`).
+The panel mounts at every breakpoint.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
@@ -34,12 +36,16 @@ Three different workspace ids, kept apart on purpose:
 
 Tabs are scoped by kind: `work-items | pull-requests | note | html-page | browser` are workspace-owned
 (a `browser` tab may also name an owning chat; see "Browser tabs"),
-`file | diff | git | external | paste` belong to the selected chat (`scopeForKind`).
+`file | diff | external | paste` belong to the selected chat (`scopeForKind`).
 A canvas is a `coc://canvas/<canvasId>` web tab kept with its chat (`browserChatId`).
 Notes is one `coc://notes` web tab for the panel workspace (`browserChatId` unset,
 resource id `coc-notes`). Its deep path is the address: `coc://notes/<path>`,
 encoded per segment. A bare reopen keeps a path already on that page; an explicit
 deep address replaces it. Selecting a note rewrites the current history entry.
+Git is one `coc://git` web tab for the panel workspace (resource id `coc-git`),
+shared by every chat exactly like Notes; its member and view live in the
+address, not in a tab field — see "`coc://` pages in web tabs" and
+`useSplitGitPanel.ts`.
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs) and
 the removed `terminal`, `settings`, `todo`, `canvas` and `notes` kinds. A stored
 `canvas` tab is rewritten to a `coc://canvas/<id>` web tab kept with that chat.
@@ -76,8 +82,9 @@ cancel and suppress the trailing click) or Alt+Arrow on the focused pill. Block
 moves only rewrite the order list, so members, activation, folds and keyed hosted
 views are untouched.
 
-With groups off, `displayGroupForKind` puts `canvas` and `git` with
-workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
+With groups off, `displayGroupForKind` puts workspace kinds (including every
+`browser` tab — a web page or any `coc://` page, Git and Canvas included) as
+`tools`, and `file | diff | external | paste` in `resources`.
 Default-on `features.panelTabReordering` uses `moveVisibleTab` and per-chat/draft
 `orderByScope` in the owner-qualified panel scope; disabling it confines moves to
 workspace-tool, chat-tool and resource sections and shows the tools/resources
@@ -150,8 +157,8 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
-| `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`; `unifiedGitTabId` takes the chat id). The "+" menu's **Git** entry (`gitAvailable`: an `appDispatch` host and a concrete target repo, so never a group root) opens it on the target's branch changes through `openPanelGitBranchChanges`. Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
-| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, `openPanelGitWorkingChanges` all pending working changes, and `openPanelGitBranchChanges` the branch range, in that Git tab in place (`replaceState` + `RECORD_REPO_ROUTE_SUFFIX` + atomic `SET_GIT_ROUTE`, no hash navigation), so the chat stays in the middle pane; the rail's outgoing commits and "Open working tree" use them. Working and branch changes carry a fresh `openRequest` token so an unchanged route reapplies; the caller also calls `useSplitGitPanel.revealView`, which focuses the Git tab even when it already shows that view. `chatCommitPanelTarget` derives the route from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). The Git tab Open submenu reuses that target through `gitTabOpenOwners` (the tab's repo, its `gitMemberId`, or — for a group tab naming no member — the dock's live members as an explicit choice) and reads `git.listCommits` through `gitTabOwnerClient`: a matching `WorkspaceOwnerContext`, the registered remote, the group's `baseUrl`, or the page origin only for an explicitly local owner; an unconnected remote returns null and the menu shows it unavailable. Its opens also activate the clicked Git tab. |
+| `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | Only the DOM-host/dirty-bridge seam: `UnifiedGitTab` publishes its mounted node and dirty/save bridge per panel scope; `RepoGitTab`'s detail pane portals into that node. The tab's own identity and address are workspace-scoped `coc://git` page concerns owned by `useSplitGitPanel.ts` (tab identity, `revealView`, `restoreView`, `viewScopeKey`, `useGitPageTabAddress`, `setGitPageMember`) and `unifiedPanelWorkspaceResources.ts` (`panelGitInput`, `openPanelWorkspaceResource('git', ...)`), not this file. The "+" menu's **Git** entry (`gitAvailable`) opens a concrete target repo's branch changes through `openPanelGitBranchChanges` (needs an `appDispatch` host), or, for a group's own root, opens or focuses the group's member-less page, which `RepoGroupGitTab` points at its remembered member in place. Any address change other than the detail's own `onViewChange` write — an opener, `revealView`, a member switch, closing the tab — bumps `viewScopeKey`, which cancels pending lookups and restores that scope's persisted view or clears the selection; the detail's own selection echoing back through the tab's address never does. |
+| `panelGitCommit.ts` | `openPanelGitCommit` opens one commit, `openPanelGitWorkingChanges` all pending working changes, `openPanelGitBranchChanges` the branch range, and `openPanelGitMember` a group member's plain history, on the panel's `coc://git` page (`openPanelWorkspaceResource('git', ...)`, no hash navigation and no `AppContext` dispatch — the `dispatch` parameter is kept only for call-site compatibility); the rail's outgoing commits and "Open working tree" use them. `chatCommitPanelTarget` derives the target from the panel host and the chat's own workspace: a repo panel only hosts its own repo, a group panel routes the chat's member under the group selection id with a server-qualified owner, and a group-level chat gets null (no member guessed). A remote group's `routeWorkspaceId` is its clone key; the openers file that page under the raw group id with the key as routing ref, the same scope `useSplitGitPanel` reads. The Git page's Open submenu reuses that target through `gitTabOpenOwners` (the tab's repo, the member its own `browserUrl` address names, or — for a group tab naming no member — the dock's live members as an explicit choice) and reads `git.listCommits` through `gitTabOwnerClient`: a matching `WorkspaceOwnerContext`, the registered remote, the group's `baseUrl`, or the page origin only for an explicitly local owner; an unconnected remote returns null and the menu shows it unavailable. Its opens also activate the clicked Git tab. |
 | `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do page (see "Sentinel To-do"). |
 | `sentinelTodoExcursion.ts` + `SentinelTodoOriginBar.tsx` | The way back from a chat opened through a To-do link (see "To-do excursions"). |
 | `unifiedChatCanvasActions.ts` + `currentChatSend.ts` | Canvas actions resolve their originating chat by chat id. Git review batch sends and the branch view's **Submit PR** (`BranchSubmitPrButton`: asks the chat to call `create_pull_request` on the exact range with `autoFix: true`) use the selected chat's exact panel, clone, endpoint and hydrated conversation/provider binding. Ask requires explicit Autopilot confirmation; changed bindings revoke it. Mode-locked workflows retain their restrictions and Sentinel stays in its terminal mode. |
@@ -180,7 +187,12 @@ discarding drafts. `workspaceSettingsClient.tsx` pins all settings calls to that
 owner and rejects missing or changed remote routes without falling through locally.
 
 There is no second editor, search backend, terminal manager, or canvas store.
-`git` is filled by `RepoGitTab`'s own `RepoGitDetailPane` through a portal.
+A `coc://git` page renders `UnifiedGitTab`, an empty host that the split
+workspace's own `RepoGitTab` portals its `RepoGitDetailPane` into — so the
+commit / file diff / range / working-tree views are the same components the
+middle pane used, and the list (commit history / branch-range / working-tree
+sidebar) stays permanently mounted as the `gitList` prop of
+`SplitWorkspacePanel`, never inside this panel.
 `file` renders the Explorer's own `PreviewPane` (the same buffer controller the
 Explorer sub-tab uses), a `coc://canvas/<id>` page renders `CanvasPanel` through
 `UnifiedCanvasTab` (the panel is its ONLY host — the chat has no canvas column
@@ -355,10 +367,11 @@ directory API or expose relative-path copy and Explorer reveal actions.
 
 ## `coc://` pages in web tabs
 
-Terminal, Settings, To-do, Canvas and Notes exist only as `coc://` pages in web tabs, like
+Terminal, Settings, To-do, Canvas, Notes and Git exist only as `coc://` pages in web tabs, like
 `chrome://` pages: same toolbar, same address bar, the page's view in place of
 the web content. The `+` menu entries, outside Settings links, Sentinel's
-To-do, every canvas open and Notes all open (or focus) a web tab at the page's address.
+To-do, every canvas open, Notes, and every git click all open (or focus) a web
+tab at the page's address.
 
 | Address | Shows (`UnifiedCocPage`) | Owner (resolved by the panel's `resolveCocPage`) |
 |---|---|---|
@@ -367,6 +380,13 @@ To-do, every canvas open and Notes all open (or focus) a web tab at the page's a
 | `coc://todo[/<itemId>]` | `UnifiedTodoTab` | The selected Sentinel chat, or the origin Sentinel in the pinned excursion tab; "To-do is only available in a Sentinel chat" otherwise. |
 | `coc://canvas/<canvasId>` | `UnifiedCanvasTab` | The web tab's owner workspace. The page stays with the chat that linked it (`browserChatId`). "Open a chat to view a canvas" when there is no chat. |
 | `coc://notes[/<path>]` | `NotesView` | The panel workspace, visible in every chat. One page (`coc-notes`). The path is the address. |
+| `coc://git[/member/<id>][/<sha\|branch-range\|working-changes>[/<filePath>]]` | `UnifiedGitTab` (an empty host `RepoGitTab`'s detail pane portals into — see "Views are reused") | The panel workspace, visible in every chat. One page (`coc-git`). The optional group member and view are the address. |
+
+Git's address grammar (`unifiedPanelAddresses.ts`'s
+`gitRouteSegmentsOf`/`gitViewOfRouteSegments`) cannot represent every
+`PersistedGitView` variant: `working-tree-file`, `working-tree-comments`,
+`branch-range-comments` and `multi-commit` have no address form, so a reload
+while one of those is showing lands back on plain history (accepted).
 
 - `parseCocAddress` is case-insensitive for scheme and host, ignores a trailing
   `/`, rejects query/hash, and reports other hosts as "Not supported yet".
@@ -732,14 +752,17 @@ that target open and continues with later targets. File tabs use only the strip'
   a tombstone-only tab closes with no prompt. Terminate happens **before** the
   close and routes through `getCocClientForWorkspace(owner)`; 404 counts as
   success, anything else rejects and the tab, the view, and the PTYs all stay.
-- **Dirty buffers.** `file`, `note`, `git`, and a `coc://canvas` page report
-  dirtiness (`onDirtyChange`) and hand back a way to write it (`onRegisterSave`),
-  so the Save button always has something behind it. The
+- **Dirty buffers.** `file`, `note`, and a `coc://canvas` or `coc://git` page
+  report dirtiness (`onDirtyChange`) and hand back a way to write it
+  (`onRegisterSave`), so the Save button always has something behind it. The
   prompt is the Explorer's own `explorer/ExplorerCloseTabsDialog`. A rejected or
-  `false` save keeps the tab, the buffer, and the prompt as a retry. The `git`
-  tab's body (`UnifiedGitTab`) publishes its bound callbacks as a dirty bridge in
-  `unifiedGitTabHost`; `useSplitGitPanel` hands `RepoGitTab` forwarders so an
-  edited working-tree diff marks and guards the Git tab, labelled by its file.
+  `false` save keeps the tab, the buffer, and the prompt as a retry. The
+  `coc://git` page's body (`UnifiedGitTab`) publishes its bound callbacks as a
+  dirty bridge in `unifiedGitTabHost`; `useSplitGitPanel` hands `RepoGitTab`
+  forwarders so an edited working-tree diff marks and guards the page. Unlike
+  the old chat-scoped tab, the prompt cannot name the specific dirty file — the
+  `coc://git` address has no segment for a working-tree-file view — so it falls
+  back to the generic "Git" label.
 
 `CanvasPanel` and `NoteEditor` publish exactly the contract `PreviewPane`
 established; `useCanvasRecord.saveNow()` and `NoteEditor`'s flush both return

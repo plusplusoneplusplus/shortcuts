@@ -125,7 +125,7 @@ import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useWorkspaceSettingsOwner } from '../../repo-settings/WorkspaceSettingsHost';
-import { panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
+import { panelGitInput, panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
@@ -443,7 +443,7 @@ export function UnifiedRightPanel({
     // A Git tab's Open submenu reads and opens on the tab's own owner; a group
     // tab without a member offers this panel's live members to choose from.
     const gitOpenSourceFor = useCallback((tab: UnifiedPanelTab): UnifiedPanelGitOpenSource | null => {
-        if (!appDispatch || tab.kind !== 'git') return null;
+        if (!appDispatch || cocPageKindOf(tab.browserUrl) !== 'git') return null;
         const members = tab.ownerWorkspaceId === workspaceId && repoGroup
             ? targetOptions
                 .filter(option => !option.disabled && !option.deprioritized && option.workspaceId !== workspaceId)
@@ -462,12 +462,14 @@ export function UnifiedRightPanel({
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
     );
-    // The "+" menu's Git entry opens the target repo's branch changes; a
-    // group's own root names no repository, so it has no target.
+    // The "+" menu's Git entry opens the target repo's branch changes. A
+    // group's own root names no repository, so it opens the group's Git page,
+    // which shows its remembered member.
     const gitMenuTarget = useMemo(
         () => appDispatch ? chatCommitPanelTarget({ workspaceId, chatId, routingRef }, target) : null,
         [appDispatch, workspaceId, chatId, routingRef, target],
     );
+    const groupRootGitAvailable = isRepoGroupWorkspaceId(workspaceId) && target === workspaceId;
     const rootPathForTab = useCallback(
         (tab: (typeof tabs)[number]) => (
             (tab.ownerRoutingRef ?? null) !== (routingRefForPanelOwner(routingRef, tab.ownerWorkspaceId) ?? null)
@@ -2248,6 +2250,13 @@ export function UnifiedRightPanel({
                 notePath: address.notePath ?? null,
             };
         }
+        if (address.kind === 'git') {
+            return {
+                kind: 'git', ownerWorkspaceId: tab.ownerWorkspaceId, ownerRoutingRef: tab.ownerRoutingRef,
+                ...(address.gitMemberId === undefined ? {} : { gitMemberId: address.gitMemberId }),
+                ...(address.view === undefined ? {} : { view: address.view }),
+            };
+        }
         const owner = tab.id !== undefined && tab.id === pinnedId && excursion ? excursion.origin.owner : todoOwner;
         if (owner === null || chatId === null) return 'To-do is only available in a Sentinel chat';
         return { kind: 'todo', owner, scopeWorkspaceId: workspaceId, chatId };
@@ -2404,7 +2413,7 @@ export function UnifiedRightPanel({
                         <UnifiedPanelOpenMenu
                             settingsAvailable={settingsAvailable}
                             onOpenCocAddress={openCocPage}
-                            gitAvailable={gitMenuTarget !== null}
+                            gitAvailable={gitMenuTarget !== null || groupRootGitAvailable}
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}
@@ -2420,7 +2429,14 @@ export function UnifiedRightPanel({
                                     return;
                                 }
                                 if (kind === 'git') {
-                                    if (appDispatch && gitMenuTarget) openPanelGitBranchChanges(appDispatch, gitMenuTarget);
+                                    if (appDispatch && gitMenuTarget) {
+                                        openPanelGitBranchChanges(appDispatch, gitMenuTarget);
+                                    } else if (groupRootGitAvailable) {
+                                        const input = panelGitInput({ workspaceId, routingRef: routingRef ?? null, chatId });
+                                        const existing = tabs.find(tab => isSameCocPageTab(tab, input));
+                                        if (existing) activate(existing.id);
+                                        else open(input);
+                                    }
                                     return;
                                 }
                                 openWorkspaceResource(kind);

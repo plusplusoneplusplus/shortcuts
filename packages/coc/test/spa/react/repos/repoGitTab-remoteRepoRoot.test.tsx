@@ -48,7 +48,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: { workspaces: localWorkspaces, selectedGitCommitHash: null, selectedGitFilePath: null },
+        state: { workspaces: localWorkspaces },
         dispatch: vi.fn(),
     }),
 }));

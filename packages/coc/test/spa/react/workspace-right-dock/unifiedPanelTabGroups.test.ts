@@ -11,6 +11,7 @@ const tab = (id: string, kind: UnifiedTabKind = 'file'): UnifiedPanelTab => ({
 const canvas = (id: string): UnifiedPanelTab => ({
     ...tab(id, 'browser'), browserUrl: `coc://canvas/${id}`, browserChatId: 'chat', chatId: null,
 });
+const gitPage = (id: string): UnifiedPanelTab => ({ ...tab(id, 'browser'), browserUrl: 'coc://git/abc1234', chatId: null });
 const options: GroupStripTabsOptions = { folded: new Set(), narrow: false };
 const files = ['a', 'b', 'c', 'd', 'e', 'f'].map(id => tab(id));
 const shown = (overrides: Partial<GroupStripTabsOptions> = {}) =>
@@ -19,7 +20,7 @@ const shown = (overrides: Partial<GroupStripTabsOptions> = {}) =>
 describe('stripGroupForKind', () => {
     const mapping: Record<UnifiedTabKind, UnifiedTabStripGroup> = {
         'work-items': 'tools',
-        'pull-requests': 'tools', git: 'tools', file: 'files',
+        'pull-requests': 'tools', file: 'files',
         diff: 'files', note: 'files', paste: 'files', external: 'files',
         browser: 'web', 'html-page': 'web',
     };
@@ -27,8 +28,9 @@ describe('stripGroupForKind', () => {
         expect(stripGroupForKind(kind as UnifiedTabKind)).toBe(group);
     });
 
-    it('keeps a coc://canvas page in the canvas block and Notes with Tools', () => {
+    it('keeps a coc://canvas page in the canvas block and Notes and Git with Tools', () => {
         expect(stripGroupForTab(canvas('plan'))).toBe('canvas');
+        expect(stripGroupForTab(gitPage('git'))).toBe('tools');
         expect(stripGroupForTab({ ...tab('notes', 'browser'), browserUrl: 'coc://notes/Plans/Release.md' })).toBe('tools');
         expect(stripGroupForTab(tab('page', 'browser'))).toBe('web');
     });
@@ -36,7 +38,7 @@ describe('stripGroupForKind', () => {
 
 describe('groupStripTabs', () => {
     it('returns only nonempty groups in fixed order and retains saved order inside each', () => {
-        const input = [canvas('c'), tab('w', 'browser'), tab('f'), tab('t', 'git'), tab('f2')];
+        const input = [canvas('c'), tab('w', 'browser'), tab('f'), gitPage('t'), tab('f2')];
         const result = groupStripTabs(input, options);
         expect(result.map(item => item.group)).toEqual(['tools', 'files', 'web', 'canvas']);
         expect(result[1].tabs.map(item => item.id)).toEqual(['f', 'f2']);
@@ -121,7 +123,7 @@ describe('groupStripTabs', () => {
 });
 
 describe('group block order', () => {
-    const input = [tab('t', 'git'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), canvas('c')];
+    const input = [gitPage('t'), tab('f1'), tab('w1', 'browser'), tab('f2'), tab('w2', 'browser'), canvas('c')];
 
     it('renders blocks in saved order, keeping members, their order and selection intact', () => {
         const result = groupStripTabs(input, { ...options, order: ['web', 'tools', 'files', 'canvas'], activeId: 'w2' });

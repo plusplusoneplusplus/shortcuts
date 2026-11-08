@@ -24,7 +24,7 @@ import { isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 import {
     resolveDashboardRoute,
     applyRouteEffects,
-    buildWorkspaceSubTabSuffix,
+    buildRepoSubTabSuffix,
     resolveChatSubTab,
     type RouteContext,
 } from './dashboardRoutes';
@@ -168,7 +168,7 @@ export function Router() {
                     const panelOwned = tab === 'explorer' || (tab === 'git' && !isVirtualWorkspaceId(state.selectedRepoId));
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab: panelOwned ? resolveChatSubTab() : tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId);
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
                 }
             }
         };
@@ -181,12 +181,6 @@ export function Router() {
         queueState.selectedTaskId,
         queueState.selectedTaskIdByRepo,
         state.activeTab,
-        // The Git suffix a group writes depends on its scope + remembered member,
-        // not just the selection fields.
-        state.gitRouteScope,
-        state.repoGroupGitMemberState,
-        state.selectedGitCommitHash,
-        state.selectedGitFilePath,
         state.selectedNotePath,
         state.selectedRepoId,
         state.settingsSection,

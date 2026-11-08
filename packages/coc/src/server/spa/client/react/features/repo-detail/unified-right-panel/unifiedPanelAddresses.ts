@@ -10,7 +10,6 @@
  */
 
 import { decodePath, encodePath } from '../../../layout/routePath';
-import { GIT_ROUTE_MEMBER_MARKER } from '../../../layout/gitRoute';
 import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
 import type { PersistedGitView } from '../../git/repoGitTab/types';
 
@@ -25,9 +24,11 @@ export type CocAddress =
 /** Canvas ids, matching `canvas://` embeds: 1–128 letters, digits or hyphens. */
 const CANVAS_ID = /^[a-z0-9][a-z0-9-]{0,127}$/i;
 
+/** The structural marker that introduces a group route's member id. */
+const GIT_ROUTE_MEMBER_MARKER = 'member';
+
 /**
- * The sha-or-sentinel vocabulary a `coc://git` path segment may hold, mirroring
- * `useRepoGitSelection.ts`'s `BRANCH_RANGE_DEEP_LINK` / `WORKING_CHANGES_DEEP_LINK`.
+ * The sha-or-sentinel vocabulary a `coc://git` path segment may hold.
  */
 const GIT_BRANCH_RANGE_SENTINEL = 'branch-range';
 const GIT_WORKING_CHANGES_SENTINEL = 'working-changes';

@@ -4,6 +4,7 @@ import { TerminalView, type TerminalSessionSummary } from '../../terminal/Termin
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
+import { UnifiedGitTab } from './UnifiedGitTab';
 import type { CocPage } from './unifiedPanelAddresses';
 
 /**
@@ -66,6 +67,12 @@ export function UnifiedCocPage({ page, active, terminalOpenRequest, selectItemRe
                 onDirtyChange={onDirtyChange}
                 onRegisterSave={onRegisterSave}
                 onTitleChange={onCanvasTitle}
+            />;
+        case 'git':
+            return <UnifiedGitTab
+                scopeWorkspaceId={page.ownerWorkspaceId}
+                onDirtyChange={onDirtyChange}
+                onRegisterSave={onRegisterSave}
             />;
     }
 }

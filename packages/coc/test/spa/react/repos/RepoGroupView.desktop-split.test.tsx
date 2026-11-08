@@ -10,14 +10,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { createPortal } from 'react-dom';
-import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
+import { useGitPageTabAddress, useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 import { UnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab';
-import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { useUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
-import {
-    resolveDashboardRoute,
-    type RouteContext,
-} from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { openPanelGitCommit } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
@@ -49,7 +45,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
-    return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
+    return { buildRepoSubTabSuffix: routes.buildRepoSubTabSuffix };
 });
 vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
     StatusActions: ({ variant }: { variant: string }) => <div data-testid="stub-status-actions" data-variant={variant} />,
@@ -108,17 +104,16 @@ import { RepoGroupView } from '../../../../src/server/spa/client/react/repos/Rep
 
 const GROUP_ID = 'group-ai-repos';
 function StubGitTabSurface({ workspaceId }: { workspaceId: string }) {
-    const tab = useUnifiedGitTab(workspaceId, { ownerWorkspaceId: workspaceId, ownerRoutingRef: null });
-    return tab ? <UnifiedGitTab scopeWorkspaceId={workspaceId} /> : null;
+    return useGitPageTabAddress(workspaceId, null) ? <UnifiedGitTab scopeWorkspaceId={workspaceId} /> : null;
 }
 function StubGroupGitTab({
     workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active, rightPanel,
 }: LeafProps) {
-    const memberId = mockAppState.gitRouteScope?.workspaceId ?? 'r1';
+    const address = useGitPageTabAddress(workspaceId, rightPanel?.ownerRoutingRef);
+    const memberId = address?.gitMemberId ?? 'r1';
     const panel = useSplitGitPanel({
         scopeWorkspaceId: workspaceId,
         ownerRoutingRef: rightPanel?.ownerRoutingRef,
-        chatId: rightPanel?.chatId ?? null,
         memberId,
         enabled: !!rightPanel,
     });
@@ -135,7 +130,7 @@ function StubGroupGitTab({
                 } });
             }}>commit</button>
             {container && (rightPanel ? panel.detailActive : detailActive) && createPortal(
-                <div data-testid="stub-git-detail" data-commit={mockAppState.selectedGitCommitHash ?? 'abc1234'} />,
+                <div data-testid="stub-git-detail" data-commit={panel.restoreView?.type === 'commit' ? panel.restoreView.hash : ''} />,
                 container,
             )}
         </div>
@@ -145,6 +140,7 @@ function StubGroupGitTab({
 beforeEach(() => {
     cleanup();
     localStorage.clear();
+    clearUnifiedPanelState();
     _resetRuntimeConfig();
     location.hash = '';
     mockDispatch.mockReset();
@@ -318,36 +314,15 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(screen.getAllByTestId('stub-group-git-tab')).toHaveLength(1);
     });
 
-    it('routes a member commit deep link to Chats without replacing chat detail', () => {
-        const hash = `#repos/${GROUP_ID}/git/member/r1/abc1234`;
-        location.hash = hash;
-        const ctx: RouteContext = {
-            queueState: { selectedTaskIdByRepo: {} } as RouteContext['queueState'],
-            selectedRepoId: GROUP_ID,
-            repoRouteState: {},
-            repoTabState: {},
-            isSchedulesInSlide: () => false,
-        };
-        const { effects } = resolveDashboardRoute(hash, ctx);
-        for (const effect of effects) {
-            if (effect.kind !== 'app') continue;
-            if (effect.action.type === 'SET_REPO_SUB_TAB') {
-                mockAppState.activeRepoSubTab = effect.action.tab;
-            } else if (effect.action.type === 'SET_GIT_ROUTE') {
-                mockAppState.gitRouteScope = {
-                    routeWorkspaceId: effect.action.routeWorkspaceId,
-                    workspaceId: effect.action.workspaceId,
-                };
-                mockAppState.selectedGitCommitHash = effect.action.commitHash;
-            }
-        }
-        expect(mockAppState.activeRepoSubTab).toBe('activity');
-        expect(mockAppState.gitRouteScope).toEqual({ routeWorkspaceId: GROUP_ID, workspaceId: 'r1' });
+    it('opens a member commit address in the far-right panel without replacing chat detail', () => {
+        openPanelGitCommit(mockDispatch, { routeWorkspaceId: GROUP_ID, workspaceId: 'r1', sourceSelectionId: 'r1' }, 'abc1234');
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
         expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
         expect(screen.getByTestId('stub-chat-tab').parentElement?.style.display).not.toBe('none');
         expect(screen.getByTestId('stub-group-git-tab').dataset.member).toBe('r1');
+        expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')
+            ?.getAttribute('data-commit')).toBe('abc1234');
         expect(screen.getByTestId('split-workspace-detail-host')
             .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         click('stub-chat-row');
@@ -383,8 +358,8 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         expect(host.querySelector('[data-testid="stub-git-detail"]')).toBeNull();
         expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
-        expect(readUnifiedPanelState(GROUP_ID).chatTabs['@workspace']?.find(tab => tab.kind === 'git'))
-            .toMatchObject({ gitMemberId: 'r1', gitView: { type: 'commit', hash: 'abc1234' } });
+        expect(readUnifiedPanelState(GROUP_ID).workspaceTabs.find(tab => tab.resourceId === 'coc-git'))
+            .toMatchObject({ chatId: null, browserUrl: 'coc://git/member/r1/abc1234' });
 
         click('stub-chat-row');
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();

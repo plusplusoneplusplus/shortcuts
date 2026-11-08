@@ -101,7 +101,7 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
-import { openUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
+import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
@@ -430,12 +430,12 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
     });
 
     it('asks before closing the Git tab while its working-tree diff is dirty; Save writes, then closes', async () => {
-        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: CHAT });
         // The detail reports through `useSplitGitPanel`, exactly as `RepoGitTab`
         // forwards its edited working-tree diff's dirty/save seams.
         let detail: ReturnType<typeof useSplitGitPanel> | null = null;
         function GitDetailProbe() {
-            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, enabled: true });
             return null;
         }
         render(<>
@@ -461,10 +461,10 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
     });
 
     it("Don't Save closes a dirty Git tab without writing; a failed save keeps it", async () => {
-        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: CHAT });
         let detail: ReturnType<typeof useSplitGitPanel> | null = null;
         function GitDetailProbe() {
-            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, enabled: true });
             return null;
         }
         render(<>

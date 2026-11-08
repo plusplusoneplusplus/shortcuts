@@ -199,7 +199,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const splitGitPanel = useSplitGitPanel({
         scopeWorkspaceId: ws.id,
         ownerRoutingRef: explorerRoutingRef,
-        chatId: panelChatId,
         enabled: true,
     });
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
