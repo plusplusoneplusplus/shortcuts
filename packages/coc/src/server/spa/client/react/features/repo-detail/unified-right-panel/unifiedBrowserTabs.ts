@@ -25,6 +25,7 @@
 import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
 import { activateTab, openTab, visibleTabs, type OpenUnifiedTabInput, type UnifiedPanelState, type UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { canvasIdOfAddress, canvasPageResourceId, cocAddressLabel, cocPageKindOf, formatCocAddress, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
+import type { PersistedGitView } from '../../git/repoGitTab/types';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -241,6 +242,19 @@ export function notesPageInput(context: BrowserOpenContext, notePath?: string): 
         ...browserOpenInput({ ...context, browserChatId: null }, formatCocAddress(path ? { kind: 'notes', notePath: path } : { kind: 'notes' })),
         resourceId: 'coc-notes',
         label: 'Notes',
+    };
+}
+
+/**
+ * The panel workspace's Git page. `coc://git` opens plain history;
+ * `coc://git/member/<id>` and a commit/branch/working-tree view deep-link into it.
+ * One page per workspace, so a later open focuses it and the address follows the view.
+ */
+export function gitPageInput(context: BrowserOpenContext, address?: { gitMemberId?: string; view?: PersistedGitView }): OpenUnifiedTabInput {
+    return {
+        ...browserOpenInput({ ...context, browserChatId: null }, formatCocAddress({ kind: 'git', ...address })),
+        resourceId: 'coc-git',
+        label: 'Git',
     };
 }
 

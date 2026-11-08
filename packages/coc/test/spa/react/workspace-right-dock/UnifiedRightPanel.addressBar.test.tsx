@@ -244,7 +244,7 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         typeAddress('coc://todo');
         expect(screen.getByTestId('browser-address-error').textContent).toBe('To-do is only available in a Sentinel chat');
         expect(cocPage()).toBeNull();
-        typeAddress('coc://git');
+        typeAddress('coc://calendar');
         expect(screen.getByTestId('browser-address-error').textContent).toBe('Not supported yet');
         expect(browserTabs()[0].browserUrl).toBeUndefined();
     });

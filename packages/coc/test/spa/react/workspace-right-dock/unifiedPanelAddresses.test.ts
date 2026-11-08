@@ -31,11 +31,25 @@ describe('parseCocAddress', () => {
         ['coc://notes', { kind: 'notes' }],
         ['coc://notes/Plans/Release.md', { kind: 'notes', notePath: 'Plans/Release.md' }],
         ['coc://notes/My%20Note.md/', { kind: 'notes', notePath: 'My Note.md' }],
+        ['coc://git', { kind: 'git' }],
+        ['COC://GIT/', { kind: 'git' }],
+        ['coc://git/member/repo-2', { kind: 'git', gitMemberId: 'repo-2' }],
+        ['coc://git/member', { kind: 'git' }],
+        ['coc://git/abc123', { kind: 'git', view: { type: 'commit', hash: 'abc123' } }],
+        ['coc://git/abc123/src%2Findex.ts', { kind: 'git', view: { type: 'commit-file', hash: 'abc123', filePath: 'src/index.ts' } }],
+        ['coc://git/branch-range', { kind: 'git', view: { type: 'branch-range' } }],
+        ['coc://git/branch-range/src%2Findex.ts', { kind: 'git', view: { type: 'branch-file', filePath: 'src/index.ts' } }],
+        ['coc://git/working-changes', { kind: 'git', view: { type: 'working-tree-all' } }],
+        ['coc://git/member/repo-2/abc123', { kind: 'git', gitMemberId: 'repo-2', view: { type: 'commit', hash: 'abc123' } }],
+        [
+            'coc://git/member/repo-2/branch-range/src%2Findex.ts',
+            { kind: 'git', gitMemberId: 'repo-2', view: { type: 'branch-file', filePath: 'src/index.ts' } },
+        ],
     ])('parses %j', (text, expected) => {
         expect(parseCocAddress(text)).toEqual(expected);
     });
 
-    it.each(['coc://git', 'coc://file/a.ts', 'coc://calendar'])('reports unknown host %j as not supported yet', text => {
+    it.each(['coc://file/a.ts', 'coc://calendar'])('reports unknown host %j as not supported yet', text => {
         expect(parseCocAddress(text)).toEqual({ error: COC_ADDRESS_UNSUPPORTED });
     });
 
@@ -44,6 +58,8 @@ describe('parseCocAddress', () => {
         'coc://todo/a/b', 'coc://todo//a', 'coc://todo/%E0%A4%A', 'https://settings', 'settings', 'coc:settings',
         'coc://canvas', 'coc://canvas/', 'coc://canvas/plan/extra', 'coc://canvas/bad id', 'coc://canvas/_no',
         'coc://notes/../secret', 'coc://notes//Plans', 'coc://notes/./here',
+        'coc://git/abc123/path/extra', 'coc://git/member/repo-2/abc123/path/extra',
+        'coc://git/member//abc123', 'coc://git/%E0%A4%A',
     ])('rejects %j', text => {
         expect(parseCocAddress(text)).toEqual({ error: COC_ADDRESS_INVALID });
     });
@@ -55,7 +71,13 @@ describe('parseCocAddress', () => {
     });
 
     it('round-trips through formatCocAddress', () => {
-        for (const text of ['coc://settings', 'coc://terminal', 'coc://todo', 'coc://todo/item-1', 'coc://todo/a%20b', 'coc://canvas/plan-1', 'coc://notes', 'coc://notes/Plans/Release.md', 'coc://notes/My%20Note.md']) {
+        for (const text of [
+            'coc://settings', 'coc://terminal', 'coc://todo', 'coc://todo/item-1', 'coc://todo/a%20b', 'coc://canvas/plan-1',
+            'coc://notes', 'coc://notes/Plans/Release.md', 'coc://notes/My%20Note.md',
+            'coc://git', 'coc://git/member/repo-2', 'coc://git/abc123', 'coc://git/abc123/src%2Findex.ts',
+            'coc://git/branch-range', 'coc://git/branch-range/src%2Findex.ts', 'coc://git/working-changes',
+            'coc://git/member/repo-2/abc123', 'coc://git/member/repo-2/branch-range/src%2Findex.ts',
+        ]) {
             const parsed = parseCocAddress(text);
             expect('error' in parsed).toBe(false);
             if (!('error' in parsed)) expect(formatCocAddress(parsed)).toBe(text);
@@ -73,7 +95,9 @@ describe('coc:// labels', () => {
         expect(cocAddressLabel({ kind: 'notes', notePath: 'Plans/Release.md' })).toBe('Notes');
         expect(browserLabelForUrl('coc://notes/Plans/Release.md')).toBe('Notes');
         expect(browserLabelForUrl('coc://todo/item-1')).toBe('To-do');
-        expect(browserLabelForUrl('coc://git')).toBe('New Tab');
+        expect(cocAddressLabel({ kind: 'git' })).toBe('Git');
+        expect(browserLabelForUrl('coc://git')).toBe('Git');
+        expect(browserLabelForUrl('coc://git/member/repo-2/abc123')).toBe('Git');
         expect(browserLabelForUrl('https://example.com/a')).toBe('example.com');
     });
 });

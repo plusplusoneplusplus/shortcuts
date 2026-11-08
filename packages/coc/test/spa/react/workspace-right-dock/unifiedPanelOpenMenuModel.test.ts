@@ -158,7 +158,7 @@ describe('buildOpenMenuItems', () => {
     });
 
     it('reports an unknown coc:// host inline as an unselectable row', () => {
-        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://git' });
+        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://calendar' });
         expect(items[0]).toEqual({ key: 'url-error', type: 'url-error', reason: 'Not supported yet' });
         expect(isOpenMenuItemEnabled(items[0])).toBe(false);
     });

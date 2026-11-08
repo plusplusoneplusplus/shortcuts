@@ -9,6 +9,7 @@ import {
     browserLabelForUrl,
     browserOpenInput,
     browserSessionKey,
+    gitPageInput,
     hasExplicitUrlScheme,
     normalizeBrowserUrl,
     openCocPageTab,
@@ -165,6 +166,38 @@ describe('browser tab descriptors', () => {
         expect(browserSessionKey({ ownerWorkspaceId: 'ws', ownerRoutingRef: 'clone:h:ws' })).toBe('clone:h:ws');
         expect(browserSessionKey({ ownerWorkspaceId: 'ws', ownerRoutingRef: null })).toBe('ws');
         expect(browserSessionKey({ ownerWorkspaceId: 'ws' })).toBe('ws');
+    });
+});
+
+describe('gitPageInput', () => {
+    const context = { ownerWorkspaceId: 'ws-1', chatId: 'chat-a', browserChatId: null };
+
+    it('opens plain history at a stable workspace-scoped resource id, ignoring the opening chat', () => {
+        const input = gitPageInput(context);
+        expect(input.resourceId).toBe('coc-git');
+        expect(input.label).toBe('Git');
+        expect(input.browserUrl).toBe('coc://git');
+        expect(input.browserChatId).toBeUndefined();
+        expect(gitPageInput({ ...context, chatId: 'chat-b' }).resourceId).toBe('coc-git');
+    });
+
+    it('encodes a member id and a deep-linked view into the address', () => {
+        expect(gitPageInput(context, { gitMemberId: 'repo-2' }).browserUrl).toBe('coc://git/member/repo-2');
+        expect(gitPageInput(context, { view: { type: 'commit', hash: 'abc123' } }).browserUrl).toBe('coc://git/abc123');
+        expect(gitPageInput(context, {
+            gitMemberId: 'repo-2',
+            view: { type: 'commit-file', hash: 'abc123', filePath: 'src/index.ts' },
+        }).browserUrl).toBe('coc://git/member/repo-2/abc123/src%2Findex.ts');
+    });
+
+    it('focuses the one Git page for the workspace instead of stacking another', () => {
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, gitPageInput(context));
+        const id = activeTabId(state, 'chat-a');
+        state = openTab(state, browserOpenInput(context, 'https://example.com/'));
+        state = openCocPageTab(state, gitPageInput(context, { view: { type: 'branch-range' } }));
+        expect(state.workspaceTabs).toHaveLength(2);
+        expect(activeTabId(state, 'chat-a')).toBe(id);
+        expect(state.workspaceTabs.filter(tab => tab.resourceId === 'coc-git')).toHaveLength(1);
     });
 });
 
