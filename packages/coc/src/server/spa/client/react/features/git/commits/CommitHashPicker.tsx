@@ -9,6 +9,14 @@ import type { GitCommitItem } from './commitListTypes';
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 const RECENT_LIMIT = 20;
 
+/** A non-commit view of the same repository the picker can switch to (branch changes, uncommitted changes). */
+export interface CommitPickerView {
+    id: string;
+    label: string;
+    detail?: string;
+    onSelect: () => void;
+}
+
 /** Host-owned commit switching for the review header; every call stays on the owning workspace/server. */
 export interface CommitPickerOptions {
     /** Recently loaded commits of the owning workspace. */
@@ -21,6 +29,8 @@ export interface CommitPickerOptions {
     lookup?: (sha: string) => Promise<GitCommitItem>;
     /** Opens the commit in the same review surface. */
     onSelect: (commit: GitCommitItem) => void;
+    /** Other views of the same repository, listed above the recent commits. */
+    views?: readonly CommitPickerView[];
 }
 
 type LookupState = { status: 'idle' | 'busy' } | { status: 'error'; message: string };
@@ -79,6 +89,10 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
     function choose(commit: GitCommitItem) {
         dismiss(true);
         if (commit.hash !== hash) picker.onSelect(commit);
+    }
+    function chooseView(view: CommitPickerView) {
+        dismiss(true);
+        view.onSelect();
     }
     function submit() {
         const value = sha.trim().toLowerCase();
@@ -146,6 +160,17 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
                 {busy && <p id={`${id}-lookup`} role="status" className="git-review-muted px-1 py-1">Looking up commit…</p>}
                 {lookup.status === 'error' && <p id={`${id}-lookup`} role="alert" className="px-1 py-1 text-red-600 dark:text-red-400"
                     data-testid="commit-hash-picker-error">{lookup.message}</p>}
+                {picker.views && picker.views.length > 0 && <ul aria-label="Other changes" className="git-review-commit-picker-list">
+                    {picker.views.map(view => <li key={view.id}>
+                        <button type="button" data-commit-option disabled={busy} className="git-review-menu-item"
+                            onClick={() => chooseView(view)} title={view.detail ? `${view.label} · ${view.detail}` : view.label}
+                            data-testid={`commit-hash-picker-view-${view.id}`}>
+                            <span className="git-review-commit-picker-check" />
+                            <span className="git-review-commit-picker-subject">{view.label}</span>
+                            {view.detail && <span className="git-review-muted">{view.detail}</span>}
+                        </button>
+                    </li>)}
+                </ul>}
                 {picker.onRefresh && <button type="button" className="git-review-menu-item"
                     onClick={picker.onRefresh} disabled={picker.loading || busy}
                     aria-label="Refresh recent commits" title="Refresh recent commits">

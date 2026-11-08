@@ -88,6 +88,28 @@ describe('CommitHashPicker', () => {
         expect(document.activeElement).toBe(trigger());
     });
 
+    it('lists other views above the recent commits and opens one', async () => {
+        const onBranch = vi.fn();
+        const onWorking = vi.fn();
+        const { onSelect } = renderPicker({ views: [
+            { id: 'branch-range', label: 'Branch changes', detail: '3 commits vs origin/main', onSelect: onBranch },
+            { id: 'working-changes', label: 'Uncommitted changes', onSelect: onWorking },
+        ] });
+        await open();
+        const branch = screen.getByTestId('commit-hash-picker-view-branch-range');
+        expect(branch.textContent).toContain('Branch changes');
+        expect(branch.textContent).toContain('3 commits vs origin/main');
+        await act(async () => { fireEvent.keyDown(input(), { key: 'ArrowDown' }); });
+        expect(document.activeElement).toBe(branch);
+        await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' }); });
+        expect(document.activeElement).toBe(screen.getByTestId('commit-hash-picker-view-working-changes'));
+        await act(async () => { fireEvent.click(screen.getByTestId('commit-hash-picker-view-working-changes')); });
+        expect(onWorking).toHaveBeenCalledTimes(1);
+        expect(onBranch).not.toHaveBeenCalled();
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('commit-hash-picker')).toBeNull();
+    });
+
     it('closes on outside mousedown', async () => {
         renderPicker();
         await open();

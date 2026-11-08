@@ -690,6 +690,8 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
             commitsError={data.refreshError || data.error}
             onRefreshCommits={data.refreshAll}
             onSelectCommit={selection.selectCommit}
+            onSelectBranchRange={selection.selectBranchRange}
+            onSelectWorkingChanges={selection.selectWorkingTreeAll}
             unpushedCount={data.unpushedCount}
             branchRangeData={data.branchRangeData}
             branchRangeFiles={data.branchRangeFiles}

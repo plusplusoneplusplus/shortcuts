@@ -2182,7 +2182,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('commitsError={data.refreshError || data.error}');
             expect(source).toContain('onRefreshCommits={data.refreshAll}');
             const pane = readRepoGitTabModuleSource('RepoGitDetailPane.tsx');
-            expect(pane).toContain('commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit }}');
+            expect(pane).toContain('commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,');
+            // Branch range and uncommitted changes are separate picker entries, never the commit callback.
+            expect(source).toContain('onSelectBranchRange={selection.selectBranchRange}');
+            expect(source).toContain('onSelectWorkingChanges={selection.selectWorkingTreeAll}');
             expect(pane).not.toMatch(/onSelectCommit=\{[^}]*WorkingTree/);
         });
     });

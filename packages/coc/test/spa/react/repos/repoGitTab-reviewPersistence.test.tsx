@@ -49,7 +49,10 @@ function Diff({ reviewChat, filePath }: { reviewChat: UseCommitChatPresentationR
     return <><button onClick={reviewChat.toggleChat}>Toggle chat</button>
         <input aria-label="Diff instance" defaultValue="" /><span>{filePath ?? 'Overview'}</span></>;
 }
-vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({ CommitDetail: (props: any) => <Diff {...props} filePath={props.scrollToFilePath} /> }));
+let lastCommitDetailProps: any = null;
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
+    CommitDetail: (props: any) => { lastCommitDetailProps = props; return <Diff {...props} filePath={props.scrollToFilePath} />; },
+}));
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({ FileDiffPanel: Diff }));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({ BranchRangeOverview: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeAllComments', () => ({ BranchRangeAllComments: () => null }));
@@ -150,5 +153,31 @@ describe('inline commit attachment owner', () => {
         act(() => { expect(attachSelectionToChat(first.attachmentDestinationId, payload)).toBe('new-chat'); });
         act(() => { expect(attachSelectionToChat('remote:two:ws-a', { ...payload, snippet: 'second server' })).toBe('active-chat'); });
         expect(screen.getByTestId('attached-snippet')).toHaveTextContent('second server');
+    });
+});
+
+describe('commit switcher views', () => {
+    const range = { baseRef: 'origin/main', headRef: 'HEAD', commitCount: 3, additions: 1, deletions: 1, mergeBase: 'm', fileCount: 2 };
+
+    it('offers the branch range and uncommitted changes beside recent commits', () => {
+        const onSelectBranchRange = vi.fn();
+        const onSelectWorkingChanges = vi.fn();
+        render(<RepoGitDetailPane {...props({ type: 'commit', commit })} branchRangeData={range}
+            onSelectCommit={vi.fn()} onSelectBranchRange={onSelectBranchRange} onSelectWorkingChanges={onSelectWorkingChanges} />);
+        const views = lastCommitDetailProps.commitPicker.views;
+        expect(views.map((view: any) => [view.id, view.label, view.detail])).toEqual([
+            ['branch-range', 'Branch changes', '3 commits vs origin/main'],
+            ['working-changes', 'Uncommitted changes', undefined],
+        ]);
+        views[0].onSelect();
+        views[1].onSelect();
+        expect(onSelectBranchRange).toHaveBeenCalledTimes(1);
+        expect(onSelectWorkingChanges).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves out the branch range when the branch has none', () => {
+        render(<RepoGitDetailPane {...props({ type: 'commit', commit })}
+            onSelectCommit={vi.fn()} onSelectBranchRange={vi.fn()} onSelectWorkingChanges={vi.fn()} />);
+        expect(lastCommitDetailProps.commitPicker.views.map((view: any) => view.id)).toEqual(['working-changes']);
     });
 });

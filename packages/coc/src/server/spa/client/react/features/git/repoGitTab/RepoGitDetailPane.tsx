@@ -15,6 +15,7 @@ import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
 import type { CommitDetailProps } from '../commits/CommitDetail';
+import type { CommitPickerView } from '../commits/CommitHashPicker';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
 import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
@@ -35,6 +36,10 @@ export interface RepoGitDetailPaneProps {
     commitsError?: string | null;
     /** Opens another commit in the detail; never a working-tree route. */
     onSelectCommit?: (commit: GitCommitItem) => void;
+    /** Opens the branch's outgoing range; offered in the commit switcher while a range exists. */
+    onSelectBranchRange?: () => void;
+    /** Opens all uncommitted (staged, unstaged and untracked) changes from the commit switcher. */
+    onSelectWorkingChanges?: () => void;
     unpushedCount: number;
     branchRangeData: BranchRangeInfo | null;
     branchRangeFiles: any[];
@@ -63,7 +68,7 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, unpushedCount, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
@@ -80,7 +85,10 @@ export function RepoGitDetailPane({
             hunkTarget={hunkTarget}
             onNavigateToCommitFile={onNavigateToCommitFile}
             onCommitClassified={onCommitClassified}
-            commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit }}
+            commitPicker={onSelectCommit && {
+                commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,
+                views: pickerViews(branchRangeData, onSelectBranchRange, onSelectWorkingChanges),
+            }}
         />;
     }
 
@@ -190,6 +198,24 @@ export function RepoGitDetailPane({
             Select a commit to view details
         </div>
     );
+}
+
+/** The branch-range and working-tree entries the commit switcher offers. */
+function pickerViews(
+    branchRangeData: BranchRangeInfo | null,
+    onSelectBranchRange: (() => void) | undefined,
+    onSelectWorkingChanges: (() => void) | undefined,
+): CommitPickerView[] {
+    const views: CommitPickerView[] = [];
+    if (branchRangeData && onSelectBranchRange) {
+        const count = branchRangeData.commitCount;
+        views.push({
+            id: 'branch-range', label: 'Branch changes', onSelect: onSelectBranchRange,
+            detail: `${count} ${count === 1 ? 'commit' : 'commits'} vs ${branchRangeData.baseRef}`,
+        });
+    }
+    if (onSelectWorkingChanges) views.push({ id: 'working-changes', label: 'Uncommitted changes', onSelect: onSelectWorkingChanges });
+    return views;
 }
 
 /** Only workspace/commit changes replace the host and its conversation. */
