@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { BranchRangeOverview } from '../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview';
 const review = vi.hoisted(() => vi.fn());
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({ GitFileReview: (props: any) => { review(props); return <div data-testid="range-files" />; } }));
-vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({ CommitDetail: (props: any) => <div data-testid="commit-scope" data-hash={props.hash} data-owner={props.attachmentDestinationId} /> }));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({ GitFileReview: (props: any) => { review(props); return <div data-testid="range-files">{props.header?.below}</div>; } }));
+const commitDetail = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({ CommitDetail: (props: any) => { commitDetail(props); return <div data-testid="commit-scope" data-hash={props.hash} data-owner={props.attachmentDestinationId} />; } }));
 vi.mock('../../../../src/server/spa/client/react/utils/diffCommentApi', () => ({ listDiffCommentsForRange: () => Promise.resolve([]) }));
 const commit = { hash: 'abc123', shortHash: 'abc123', subject: 'Actual range commit', author: 'Author', date: '2026-01-01', parentHashes: [] };
 const range = { baseRef: 'origin/main', headRef: 'HEAD', mergeBase: 'base123', commitCount: 1, additions: 1, deletions: 0, fileCount: 1, commits: [commit] };
@@ -58,6 +59,28 @@ describe('real branch comparison scope', () => {
     it('keeps missing scope metadata explicit while retaining real file navigation', () => {
         render(<BranchRangeOverview workspaceId="ws" range={{ ...range, commits: undefined }} files={files} />);
         expect((screen.getByRole('option', { name: 'Commit scope unavailable' }) as HTMLOptionElement).disabled).toBe(true);
+        expect(screen.getByTestId('range-files')).toBeTruthy();
+    });
+    it('puts the branch title, the shared switcher and its actions in the shared toolbar row', () => {
+        const switcher = { commits: [], onSelect: vi.fn(), views: [{ id: 'branch-range', label: 'Branch changes', onSelect: vi.fn() }] };
+        render(<BranchRangeOverview workspaceId="ws" range={{ ...range, branchName: 'feature/x' }} files={files}
+            onAskAI={vi.fn()} onQueueTask={vi.fn()} onAllCommentsClick={vi.fn()} switcher={switcher} />);
+        const header = review.mock.calls.at(-1)![0].header;
+        render(<div data-testid="identity">{header.identity}</div>);
+        expect(screen.getByTestId('identity').textContent).toContain('feature/x');
+        expect(screen.getByTestId('commit-hash-picker-trigger').getAttribute('aria-label')).toBe('Switch commit or view');
+        expect(header.actions.map((action: any) => action.label)).toEqual([
+            'Show all branch comments', 'Ask AI about branch changes', 'Queue a task about branch changes', 'Open in new window',
+        ]);
+    });
+    it('returns from a scoped commit to the whole range through the switcher', () => {
+        const toRange = vi.fn();
+        const switcher = { commits: [], onSelect: vi.fn(), views: [{ id: 'branch-range', label: 'Branch changes', onSelect: toRange }] };
+        render(<BranchRangeOverview workspaceId="ws" range={range} files={files} switcher={switcher} />);
+        fireEvent.change(screen.getByLabelText('Commit scope'), { target: { value: 'abc123' } });
+        const picker = commitDetail.mock.calls.at(-1)![0].commitPicker;
+        act(() => { picker.views[0].onSelect(); });
+        expect(toRange).not.toHaveBeenCalled();
         expect(screen.getByTestId('range-files')).toBeTruthy();
     });
 });

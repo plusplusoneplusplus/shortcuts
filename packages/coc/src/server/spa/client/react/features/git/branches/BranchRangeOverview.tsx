@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import type { HTMLAttributes } from 'react';
 import { listDiffCommentsForRange } from '../../../utils/diffCommentApi';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { GitCommitItem } from '../commits/CommitList';
@@ -17,6 +18,8 @@ import { createBranchRangeDiffSource } from '../diff/diffSource';
 import { CommitDetail } from '../commits/CommitDetail';
 import { BranchSubmitPrButton } from './BranchSubmitPrButton';
 import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
+import { CommitDetailIcon } from '../commits/CommitDetailIcon';
+import type { GitReviewToolbarAction } from '../diff/GitReviewToolbar';
 
 export interface BranchRangeOverviewProps {
     workspaceId: string;
@@ -80,31 +83,45 @@ function BranchReview({ workspaceId, attachmentDestinationId, range, files = [],
         const url = buildGitBranchRangePopOutUrl(workspaceId, cloneBaseUrl, baseMode, attachmentDestinationId);
         if (popOutOpened(window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800'))) markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
     }, [workspaceId, attachmentDestinationId, baseMode, markPoppedOut]);
+    const actions: GitReviewToolbarAction[] = [
+        ...(onAllCommentsClick ? [{ id: 'comments', label: 'Show all branch comments', icon: <CommitDetailIcon name="chat" />, onClick: onAllCommentsClick, count: branchCommentCount, testId: 'branch-range-comments-btn' }] : []),
+        ...(onAskAI ? [{ id: 'ask-ai', label: 'Ask AI about branch changes', icon: <CommitDetailIcon name="spark" />, onClick: onAskAI, testId: 'branch-range-ask-ai-btn' }] : []),
+        ...(onQueueTask ? [{ id: 'task', label: 'Queue a task about branch changes', icon: <span aria-hidden="true">Task</span>, onClick: onQueueTask }] : []),
+        ...(!isPopOut ? [{ id: 'popout', label: 'Open in new window', icon: <CommitDetailIcon name="out" />, onClick: handlePopOut, testId: 'branch-range-popout-btn' }] : []),
+    ];
+    // The same title + switcher identity a commit or uncommitted changes show.
+    const identity = <ReviewViewIdentity title={range.branchName || range.headRef} viewId="branch-range" picker={switcher} titleProps={{
+        draggable: !!sessionContextPayload,
+        'data-session-context-source': sessionContextPayload ? 'true' : undefined,
+        'data-session-context-kind': sessionContextPayload ? 'range' : undefined,
+        onDragStart: sessionContextPayload ? event => writePointerContextDragData(event.dataTransfer, sessionContextPayload) : undefined,
+        title: sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : range.headRef,
+    } as HTMLAttributes<HTMLElement>} />;
+    // Comparison details sit under the toolbar, where a commit shows its own details.
+    const details = <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px] text-[#1e1e1e] dark:text-[#cccccc] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="branch-commit-strip-header">
+        {onBaseModeChange ? <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[190px]" aria-label="Comparison base" value={baseMode} onChange={event => onBaseModeChange(event.target.value as GitRangeBaseMode)}>
+            <option value="default-branch">vs {baseMode === 'default-branch' ? range.baseRef : 'default branch'}</option><option value="upstream">Unpushed{baseMode === 'upstream' ? ` · ${range.baseRef}` : ''}</option>
+        </select> : <span className="text-[#848484]">vs {range.baseRef}</span>}
+        <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[260px]" aria-label="Commit scope" value={scope} onChange={event => setScope(event.target.value)}>
+            <option value="">All {range.commitCount} commits</option>{!commits.length && range.commitCount > 0 && <option disabled>Commit scope unavailable</option>}{range.commitCount > commits.length && commits.length > 0 && <option disabled>Showing newest {commits.length} commits</option>}{commits.map(commit => <option key={commit.hash} value={commit.hash}>{commit.shortHash} {commit.subject}</option>)}
+        </select>
+        <span className="text-[#16825d]">+{range.additions}</span><span className="text-[#d32f2f]">−{range.deletions}</span>
+        {range.baseModeFallback && <span className="text-[#848484]" data-testid="branch-range-base-fallback">no upstream — showing vs {range.baseRef}</span>}
+        <span className="flex-1" />
+        {!isPopOut && <BranchSubmitPrButton workspaceId={workspaceId} range={range} />}
+    </div>;
+    // A scoped commit keeps the switcher; its "Branch changes" entry returns to the whole range.
+    const scopedSwitcher = switcher && {
+        ...switcher,
+        views: switcher.views?.map(view => view.id === 'branch-range' ? { ...view, onSelect: () => setScope('') } : view),
+    };
     return <div className="commit-detail flex flex-col h-full min-w-0 overflow-hidden" data-testid="branch-range-review">
-        <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px] text-[#1e1e1e] dark:text-[#cccccc] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-commit-strip-header">
-            <span className="truncate max-w-[180px] font-medium" draggable={!!sessionContextPayload}
-                data-session-context-source={sessionContextPayload ? 'true' : undefined} data-session-context-kind={sessionContextPayload ? 'range' : undefined}
-                onDragStart={sessionContextPayload ? event => writePointerContextDragData(event.dataTransfer, sessionContextPayload) : undefined}
-                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : range.headRef}>{range.branchName || range.headRef}</span>
-            {onBaseModeChange ? <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[190px]" aria-label="Comparison base" value={baseMode} onChange={event => onBaseModeChange(event.target.value as GitRangeBaseMode)}>
-                <option value="default-branch">vs {baseMode === 'default-branch' ? range.baseRef : 'default branch'}</option><option value="upstream">Unpushed{baseMode === 'upstream' ? ` · ${range.baseRef}` : ''}</option>
-            </select> : <span className="text-[#848484]">vs {range.baseRef}</span>}
-            <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[260px]" aria-label="Commit scope" value={scope} onChange={event => setScope(event.target.value)}>
-                <option value="">All {range.commitCount} commits</option>{!commits.length && range.commitCount > 0 && <option disabled>Commit scope unavailable</option>}{range.commitCount > commits.length && commits.length > 0 && <option disabled>Showing newest {commits.length} commits</option>}{commits.map(commit => <option key={commit.hash} value={commit.hash}>{commit.shortHash} {commit.subject}</option>)}
-            </select>
-            <span className="text-[#16825d]">+{range.additions}</span><span className="text-[#d32f2f]">−{range.deletions}</span>
-            {range.baseModeFallback && <span className="text-[#848484]" data-testid="branch-range-base-fallback">no upstream — showing vs {range.baseRef}</span>}
-            <span className="flex-1" />
-            {onAskAI && <button type="button" className="min-h-7 px-1" aria-label="Ask AI about branch changes" onClick={onAskAI} data-testid="branch-range-ask-ai-btn">Ask AI</button>}
-            {onQueueTask && <button type="button" className="min-h-7 px-1" onClick={onQueueTask}>Task</button>}
-            {!isPopOut && <BranchSubmitPrButton workspaceId={workspaceId} range={range} />}
-            {onAllCommentsClick && <button type="button" className="min-h-7 px-1" aria-label="Show all branch comments" onClick={onAllCommentsClick}>Comments{branchCommentCount ? ` · ${branchCommentCount}` : ''}</button>}
-            {!isPopOut && <button type="button" className="min-h-7 px-1" aria-label="Open in new window" title="Open in new window" onClick={handlePopOut} data-testid="branch-range-popout-btn">↗</button>}
-        </div>
-        {selectedCommit ? <CommitDetail key={selectedCommit.hash} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} hash={selectedCommit.hash} commit={selectedCommit} isPopOut={isPopOut} commitPicker={switcher} />
-            : <GitFileReview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} comparisonKey={comparisonKey}
-                header={switcher && { identity: <ReviewViewIdentity title="Branch changes" viewId="branch-range" picker={switcher} /> }}
-                files={files} source={source} selectedPath={scrollToFilePath} initialHunkTarget={initialHunkTarget}
-                onSelect={onNavigateToFile ?? (onFileSelect ? path => onFileSelect(path) : undefined)} />}
+        {selectedCommit ? <>
+            {details}
+            <CommitDetail key={selectedCommit.hash} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} hash={selectedCommit.hash} commit={selectedCommit} isPopOut={isPopOut} commitPicker={scopedSwitcher} />
+        </> : <GitFileReview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} comparisonKey={comparisonKey}
+            header={{ identity, actions, below: details }}
+            files={files} source={source} selectedPath={scrollToFilePath} initialHunkTarget={initialHunkTarget}
+            onSelect={onNavigateToFile ?? (onFileSelect ? path => onFileSelect(path) : undefined)} />}
     </div>;
 }
