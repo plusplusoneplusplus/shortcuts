@@ -105,9 +105,13 @@ skipping routes its own Explorer wrote (`onRouteWrite`) so preview clicks stay p
 
 ### Workspace panel resources
 
-For repos and groups, Work Items, Pull Requests, Notes and Settings open from the
-right-panel add-tab menu. Each WI/PR tab belongs to one concrete local or remote
-owner; member targets keep their group's hosting workspace. `UnifiedWorkResourceTab`
+The add-tab menu opens the selected repository's GitHub Issues/Pull Requests or
+Azure Boards/repository Pull Requests in an owner-bound desktop browser tab, or
+the system browser on web. It reads git-info on the concrete owner, rejects stale
+or unavailable routes, and reports unsupported remotes. Group roots require a
+member target. Separate CoC Work Items and Pull Requests actions open panel tools.
+Each WI/PR tab belongs to one concrete local or remote owner; member targets keep
+their group's hosting workspace. `UnifiedWorkResourceTab`
 reuses `WorkItemsTab` and `PullRequestsTab` under the pinned owner client.
 `workPath` persists list/detail selection in the descriptor. Closed WI/PR views
 stay mounted in the panel to preserve filters, selections and drafts.

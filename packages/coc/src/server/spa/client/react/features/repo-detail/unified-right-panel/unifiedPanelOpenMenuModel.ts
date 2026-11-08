@@ -27,12 +27,77 @@
  */
 
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
+import { normalizeRemoteUrl } from '@plusplusoneplusplus/forge/git/normalize-url';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { canvasPageInput, hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { formatCocAddress, isCocAddressText, parseCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
+export type OpenMenuActionId = 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'coc-work-items' | 'coc-pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
+
+export type WorkResourceKind = 'work-items' | 'pull-requests';
+
+/** Build provider pages only for recognized GitHub and Azure DevOps remotes. */
+export function workResourceWebUrls(remoteUrl: string | null | undefined): Record<WorkResourceKind, string> | null {
+    if (!remoteUrl?.trim()) return null;
+    const raw = remoteUrl.trim().replace(/^git\+ssh:\/\//i, 'ssh://');
+    const scp = /^([^@/:\s]+)@([^/:\s]+):(.+)$/.exec(raw);
+    const rawPath = scp?.[3] ?? /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)?/i.exec(raw)?.[1];
+    if (!rawPath) return null;
+    try {
+        if (rawPath.split('/').some(segment => {
+            const decoded = decodeURIComponent(segment);
+            return decoded === '.' || decoded === '..' || /[\/\\?#\x00-\x1f]/.test(decoded);
+        })) return null;
+    } catch {
+        return null;
+    }
+    let remote: URL;
+    try {
+        remote = new URL(scp ? `ssh://${scp[1]}@${scp[2]}/${scp[3]}` : raw);
+    } catch {
+        return null;
+    }
+    if (!['https:', 'http:', 'ssh:', 'git:'].includes(remote.protocol)
+        || remote.port || remote.search || remote.hash) return null;
+    const host = remote.hostname.toLowerCase();
+    const segments = remote.pathname.split('/').filter(Boolean);
+    const azureHttp = host === 'dev.azure.com'
+        && segments.length === 4 && segments[2].toLowerCase() === '_git';
+    const azureSsh = host === 'ssh.dev.azure.com'
+        && segments.length === 4 && segments[0].toLowerCase() === 'v3';
+    const azureVs = /^[^.]+\.visualstudio\.com$/.test(host)
+        && (segments.length === 3 || (segments.length === 4 && segments[0].toLowerCase() === 'defaultcollection'))
+        && segments[segments.length - 2].toLowerCase() === '_git';
+    if (!(host === 'github.com' && segments.length === 2) && !azureHttp && !azureSsh && !azureVs) return null;
+
+    const path = segments.map((segment, index) => {
+        if ((azureHttp || azureVs) && index === segments.length - 2) return '_git';
+        if (azureSsh && index === 0) return 'v3';
+        if (azureVs && segments.length === 4 && index === 0) return 'DefaultCollection';
+        return segment;
+    }).join('/');
+    const normalized = normalizeRemoteUrl(`${host}/${path}`).split('/');
+    let parts: string[];
+    try {
+        parts = normalized.slice(1).map(segment => {
+            const decoded = decodeURIComponent(segment);
+            if (!decoded || decoded === '.' || decoded === '..' || /[\/\\?#\x00-\x1f]/.test(decoded)) throw new Error('Invalid segment');
+            return encodeURIComponent(decoded);
+        });
+    } catch {
+        return null;
+    }
+    if (normalized[0] === 'github.com' && parts.length === 2) {
+        const base = `https://github.com/${parts[0]}/${parts[1]}`;
+        return { 'work-items': `${base}/issues`, 'pull-requests': `${base}/pulls` };
+    }
+    if (normalized[0] === 'dev.azure.com' && parts.length === 3) {
+        const base = `https://dev.azure.com/${parts[0]}/${parts[1]}`;
+        return { 'work-items': `${base}/_workitems`, 'pull-requests': `${base}/_git/${parts[2]}/pullrequests` };
+    }
+    return null;
+}
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -51,6 +116,8 @@ export interface OpenMenuActionsInput {
     targetUnavailable?: boolean;
     /** Why the target cannot be used, shown on the disabled entries. */
     targetUnavailableReason?: string;
+    /** Why the target's provider pages cannot currently be opened. */
+    webUnavailableReason?: string;
     /** The selected chat, or null when none is. Gates the Canvas action. */
     chatId: string | null;
     /**
@@ -101,9 +168,11 @@ export interface OpenMenuActionsInput {
 export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     const blocked = input.targetUnavailable === true;
     const reason = input.targetUnavailableReason ?? 'This repository is unavailable.';
-    // Terminal and Explorer act on the target repo, so they are the two the
-    // target's availability gates.
+    // Repository-bound actions are gated on the selected target.
     const repoGate = blocked ? { disabled: true, disabledReason: reason } : {};
+    const webReason = blocked ? reason : isRepoGroupWorkspaceId(input.targetWorkspaceId)
+        ? 'Select a repository first.' : input.webUnavailableReason;
+    const webGate = webReason ? { disabled: true, disabledReason: webReason } : {};
 
     const actions: OpenMenuAction[] = [
         { id: 'terminal', label: 'New Terminal', ...repoGate },
@@ -112,8 +181,8 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
     if (input.gitAvailable === true) actions.push({ id: 'git', label: 'Git', ...repoGate });
-    actions.push({ id: 'work-items', label: 'Work Items', ...repoGate });
-    actions.push({ id: 'pull-requests', label: 'Pull Requests', ...repoGate });
+    actions.push({ id: 'work-items', label: 'Work Items', hint: 'Web', ...webGate });
+    actions.push({ id: 'pull-requests', label: 'Pull Requests', hint: 'Web', ...webGate });
     actions.push({ id: 'notes', label: 'Notes' });
     if (input.settingsAvailable) actions.push({ id: 'settings', label: 'Settings' });
     // A blank browser tab. It belongs to the target's concrete workspace (its
@@ -145,6 +214,8 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     if (input.chatId !== null && input.todoAvailable === true) {
         actions.push({ id: 'todo', label: 'To-do' });
     }
+    actions.push({ id: 'coc-work-items', label: 'CoC Work Items', ...repoGate });
+    actions.push({ id: 'coc-pull-requests', label: 'CoC Pull Requests', ...repoGate });
     return actions;
 }
 

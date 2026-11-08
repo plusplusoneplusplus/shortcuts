@@ -16,6 +16,7 @@ import {
     openMenuActions,
     openMenuUrlCandidate,
     resourcePathName,
+    workResourceWebUrls,
     type OpenMenuAction,
     type OpenMenuItem,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
@@ -31,13 +32,13 @@ function ids(actions: readonly OpenMenuAction[]): string[] {
 describe('openMenuActions', () => {
     it('offers terminal, explorer, notes, browser and canvas for a concrete repo with a chat', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'coc-work-items', 'coc-pull-requests']);
         expect(actions.every(action => action.disabled !== true)).toBe(true);
     });
 
     it('lists Git after Explorer only when the panel can host the target repo Git tab', () => {
         expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: null, gitAvailable: true })))
-            .toEqual(['terminal', 'explorer', 'git', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
+            .toEqual(['terminal', 'explorer', 'git', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'coc-work-items', 'coc-pull-requests']);
         expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: null }))).not.toContain('git');
         const blocked = openMenuActions({
             targetWorkspaceId: REPO, chatId: null, gitAvailable: true, targetUnavailable: true, targetUnavailableReason: 'api is offline.',
@@ -47,7 +48,9 @@ describe('openMenuActions', () => {
 
     it('omits Explorer for a repo group root, which has no single file tree', () => {
         const actions = openMenuActions({ targetWorkspaceId: GROUP, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'coc-work-items', 'coc-pull-requests']);
+        expect(actions.find(action => action.id === 'work-items')).toMatchObject({ disabled: true, disabledReason: 'Select a repository first.' });
+        expect(actions.find(action => action.id === 'coc-work-items')?.disabled).toBeUndefined();
     });
 
     it('disables Canvas with a reason when no chat is selected, rather than hiding it', () => {
@@ -75,7 +78,7 @@ describe('openMenuActions', () => {
 
     it('lists Changes right after New Canvas for a chat that changed files', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', chatHasChanges: true });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'changes']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'changes', 'coc-work-items', 'coc-pull-requests']);
         expect(actions.find(action => action.id === 'changes')?.disabled).toBeUndefined();
     });
 
@@ -110,8 +113,52 @@ describe('buildOpenMenuItems', () => {
     it('lists actions and chat canvases and fetches nothing with an empty query', () => {
         const items = buildOpenMenuItems({ actions, files, canvases, query: '' });
         expect(items.map(item => item.key)).toEqual([
-            'action:terminal', 'action:explorer', 'action:work-items', 'action:pull-requests', 'action:notes', 'action:browser', 'action:canvas', 'canvas:c1',
+            'action:terminal', 'action:explorer', 'action:work-items', 'action:pull-requests', 'action:notes', 'action:browser', 'action:canvas', 'action:coc-work-items', 'action:coc-pull-requests', 'canvas:c1',
         ]);
+    });
+
+    describe('workResourceWebUrls', () => {
+        it.each([
+            'https://github.com/Example/Repo.git',
+            'git@github.com:Example/Repo.git',
+            'ssh://git@github.com/Example/Repo.git',
+            'git+ssh://git@github.com/Example/Repo.git',
+        ])('builds GitHub issue and PR lists from %s', remote => {
+            expect(workResourceWebUrls(remote)).toEqual({
+                'work-items': 'https://github.com/Example/Repo/issues',
+                'pull-requests': 'https://github.com/Example/Repo/pulls',
+            });
+        });
+
+        it.each([
+            ['https://dev.azure.com/Example/My%20Project/_git/Repo', 'Example'],
+            ['https://Example.visualstudio.com/My%20Project/_git/Repo', 'example'],
+            ['https://Example.visualstudio.com/DefaultCollection/My%20Project/_git/Repo', 'example'],
+            ['git@ssh.dev.azure.com:v3/Example/My%20Project/Repo', 'Example'],
+            ['ssh://git@ssh.dev.azure.com/v3/Example/My%20Project/Repo', 'Example'],
+        ])('builds Azure Boards and repository PR lists from %s', (remote, org) => {
+            expect(workResourceWebUrls(remote)).toEqual({
+                'work-items': `https://dev.azure.com/${org}/My%20Project/_workitems`,
+                'pull-requests': `https://dev.azure.com/${org}/My%20Project/_git/Repo/pullrequests`,
+            });
+        });
+
+        it.each([
+            null, '', 'not-a-url', 'https://gitlab.com/example/repo',
+            'https://github.com.example.com/example/repo',
+            'https://github.com/example', 'https://github.com/example/repo/extra',
+            'https://github.com/example/repo?token=secret',
+            'https://github.com/example/a%2Fb', 'https://github.com/example/%ZZ',
+            'https://github.com/example/%2e%2e/other/repo',
+            'file://github.com/example/repo', 'https://dev.azure.com/org/project/_git',
+        ])('rejects unsupported or malformed remote %s', remote => {
+            expect(workResourceWebUrls(remote)).toBeNull();
+        });
+
+        it('never includes remote credentials in the destination', () => {
+            expect(workResourceWebUrls('https://user:secret@github.com/Example/Repo.git')?.['work-items'])
+                .toBe('https://github.com/Example/Repo/issues');
+        });
     });
 
     it('puts file results first once a query is typed, so Enter opens the top hit', () => {
@@ -296,4 +343,3 @@ describe('Extensions entry and drill-in', () => {
         expect(isOpenMenuItemEnabled(all[1])).toBe(true);
     });
 });
-

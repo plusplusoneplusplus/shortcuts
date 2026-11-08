@@ -17,6 +17,9 @@ const listCanvases = vi.fn();
 const createCanvas = vi.fn();
 const listExtensions = vi.fn();
 const openExtension = vi.fn();
+const gitInfo = vi.fn();
+const resolveRoute = vi.fn();
+const clientFor = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
@@ -26,14 +29,19 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     subscribeCloneBaseUrl: () => () => {},
     lookupCloneBaseUrl: () => null,
-    getCocClientForWorkspace: () => ({
-        canvases: {
-            list: (...args: unknown[]) => listCanvases(...args),
-            create: (...args: unknown[]) => createCanvas(...args),
-            listCopilotExtensions: (...args: unknown[]) => listExtensions(...args),
-            openCopilotExtensionByKey: (...args: unknown[]) => openExtension(...args),
-        },
-    }),
+    resolveCloneRoute: (...args: unknown[]) => resolveRoute(...args),
+    getCocClientForWorkspace: (...args: unknown[]) => {
+        clientFor(...args);
+        return {
+            canvases: {
+                list: (...args: unknown[]) => listCanvases(...args),
+                create: (...args: unknown[]) => createCanvas(...args),
+                listCopilotExtensions: (...args: unknown[]) => listExtensions(...args),
+                openCopilotExtensionByKey: (...args: unknown[]) => openExtension(...args),
+            },
+            workspaces: { gitInfo: (...args: unknown[]) => gitInfo(...args) },
+        };
+    },
 }));
 
 import { UnifiedPanelOpenMenu } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelOpenMenu';
@@ -83,13 +91,19 @@ beforeEach(() => {
     createCanvas.mockReset();
     listExtensions.mockReset().mockResolvedValue([]);
     openExtension.mockReset();
+    gitInfo.mockReset().mockResolvedValue({ remoteUrl: 'https://github.com/example/repo.git' });
+    resolveRoute.mockReset().mockReturnValue({ kind: 'local' });
+    clientFor.mockReset();
     clearUnifiedChatChanges();
     clearUnifiedDiffSources();
+    delete (window as { cocDesktop?: unknown }).cocDesktop;
 });
 
 afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete (window as { cocDesktop?: unknown }).cocDesktop;
 });
 
 describe('opening costs nothing', () => {
@@ -210,6 +224,160 @@ describe('actions', () => {
     });
 });
 
+describe('provider web pages', () => {
+    it.each([
+        ['work-items', 'https://github.com/example/repo/issues'],
+        ['pull-requests', 'https://github.com/example/repo/pulls'],
+    ] as const)('opens %s in a desktop browser tab for the selected clone', async (kind, url) => {
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: {} };
+        resolveRoute.mockReturnValue({ kind: 'remote', baseUrl: 'https://server.example.test' });
+        const { onOpenResource, onOpenWorkspaceResource, onClose } = renderMenu({
+            target: 'member', targetRoutingRef: 'remote:host:member',
+            targets: [{ workspaceId: 'member', label: 'Member' }],
+        });
+        const row = screen.getByTestId(`unified-panel-open-${kind}`) as HTMLButtonElement;
+        await waitFor(() => expect(row.disabled).toBe(false));
+        expect(clientFor).toHaveBeenCalledWith('remote:host:member');
+        expect(gitInfo).toHaveBeenCalledWith('member');
+        fireEvent.click(row);
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'browser', browserUrl: url, ownerWorkspaceId: 'member',
+            ownerRoutingRef: 'remote:host:member', repoLabel: 'Member', chatId: 'chat-1',
+        }));
+        expect(onOpenWorkspaceResource).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('opens the Azure Boards page in a web dashboard from the user gesture', async () => {
+        gitInfo.mockResolvedValue({ remoteUrl: 'git@ssh.dev.azure.com:v3/org/project/repo' });
+        const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+        const { onOpenResource, onClose } = renderMenu({ targetRoutingRef: null });
+        const row = screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement;
+        await waitFor(() => expect(row.disabled).toBe(false));
+        fireEvent.click(row);
+        expect(open).toHaveBeenCalledWith('https://dev.azure.com/org/project/_workitems', '_blank', 'noopener,noreferrer');
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        expect(clientFor).toHaveBeenCalledWith(null);
+        expect(onOpenResource).not.toHaveBeenCalled();
+    });
+
+    it('opens the web action with the keyboard after filtering', async () => {
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: {} };
+        const { onOpenResource } = renderMenu();
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-pull-requests') as HTMLButtonElement).disabled).toBe(false));
+        await search('pull requests');
+        fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'browser', browserUrl: 'https://github.com/example/repo/pulls',
+        }));
+    });
+
+    it('keeps CoC tools accessible when the selected repo has no supported remote', async () => {
+        gitInfo.mockResolvedValue({ remoteUrl: null });
+        const { onOpenWorkspaceResource } = renderMenu();
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/No supported/));
+        expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByTestId('unified-panel-open-coc-work-items'));
+        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('work-items');
+    });
+
+    it('reports read failures and retries without opening a wrong page', async () => {
+        gitInfo.mockRejectedValueOnce(new Error('offline'));
+        const { onOpenResource } = renderMenu();
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/Could not read/));
+        expect(onOpenResource).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        expect(gitInfo).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not fall back to the local server for an unresolved remote', async () => {
+        resolveRoute.mockReturnValue({ kind: 'unresolved-remote' });
+        renderMenu({ target: 'member', targetRoutingRef: 'remote:missing:member', chatId: null });
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/unavailable/));
+        expect(gitInfo).not.toHaveBeenCalled();
+        expect(clientFor).not.toHaveBeenCalledWith('remote:missing:member');
+    });
+
+    it('disables provider pages for group roots but keeps CoC work items available', async () => {
+        const { onOpenWorkspaceResource } = renderMenu({ target: 'group-acme', chatId: null });
+        expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.getByTestId('unified-panel-open-work-items').textContent).toMatch(/Select a repository/);
+        fireEvent.click(screen.getByTestId('unified-panel-open-coc-work-items'));
+        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('work-items');
+        await act(async () => {});
+        expect(gitInfo).not.toHaveBeenCalled();
+    });
+
+    it('ignores a late response from a different target or clone', async () => {
+        let finish: (value: { remoteUrl: string }) => void = () => {};
+        gitInfo.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const { rerender, onOpenResource } = renderMenu({ target: 'member', targetRoutingRef: 'remote:first:member' });
+        await waitFor(() => expect(gitInfo).toHaveBeenCalledTimes(1));
+        rerender(<UnifiedPanelOpenMenu workspaceId={WS} chatId="chat-1" target="member"
+            targetRoutingRef="remote:second:member" onOpenResource={onOpenResource}
+            onOpenWorkspaceResource={vi.fn()} onOpenCocAddress={vi.fn()} onClose={vi.fn()} />);
+        await waitFor(() => expect(gitInfo).toHaveBeenCalledTimes(2));
+        await act(async () => { finish({ remoteUrl: 'https://github.com/wrong/repo' }); });
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: {} };
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByTestId('unified-panel-open-work-items'));
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            browserUrl: 'https://github.com/example/repo/issues', ownerRoutingRef: 'remote:second:member',
+        }));
+    });
+
+    it('does not reuse an automatic clone result for an explicitly local owner', async () => {
+        resolveRoute.mockImplementation((owner: string | null) => owner === null
+            ? { kind: 'local' } : { kind: 'remote', baseUrl: 'https://remote.example.test' });
+        let finish: (value: { remoteUrl: string }) => void = () => {};
+        gitInfo.mockResolvedValueOnce({ remoteUrl: 'https://github.com/remote/repo' })
+            .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const { rerender, onOpenResource } = renderMenu();
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        rerender(<UnifiedPanelOpenMenu workspaceId={WS} chatId="chat-1" target={WS}
+            targetRoutingRef={null} onOpenResource={onOpenResource}
+            onOpenWorkspaceResource={vi.fn()} onOpenCocAddress={vi.fn()} onClose={vi.fn()} />);
+        expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(true);
+        await waitFor(() => expect(gitInfo).toHaveBeenCalledTimes(2));
+        await act(async () => { finish({ remoteUrl: 'https://github.com/local/repo' }); });
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: {} };
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByTestId('unified-panel-open-work-items'));
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            browserUrl: 'https://github.com/local/repo/issues', ownerRoutingRef: null,
+        }));
+    });
+
+    it('rejects a response if its remote endpoint changes during the read', async () => {
+        resolveRoute.mockReturnValueOnce({ kind: 'remote', baseUrl: 'https://first.example.test' })
+            .mockReturnValueOnce({ kind: 'remote', baseUrl: 'https://second.example.test' });
+        const { onOpenResource } = renderMenu({ targetRoutingRef: 'remote:host:ws-1' });
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/connection changed/));
+        expect(onOpenResource).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the remote endpoint before opening a resolved page', async () => {
+        resolveRoute.mockReturnValue({ kind: 'remote', baseUrl: 'https://first.example.test' });
+        (window as { cocDesktop?: unknown }).cocDesktop = { browser: {} };
+        const { onOpenResource } = renderMenu({ targetRoutingRef: 'remote:host:ws-1' });
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        resolveRoute.mockReturnValue({ kind: 'remote', baseUrl: 'https://second.example.test' });
+        fireEvent.click(screen.getByTestId('unified-panel-open-work-items'));
+        expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/connection changed/);
+        expect(onOpenResource).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed system browser handoff without closing the menu', async () => {
+        vi.spyOn(window, 'open').mockImplementation(() => { throw new Error('blocked'); });
+        const { onClose } = renderMenu();
+        await waitFor(() => expect((screen.getByTestId('unified-panel-open-work-items') as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByTestId('unified-panel-open-work-items'));
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-web-error').textContent).toMatch(/Could not open/));
+        expect(onClose).not.toHaveBeenCalled();
+    });
+});
+
 describe('file search', () => {
     it('opens the selected result as a tab on the searched repo', async () => {
         searchFiles.mockResolvedValue({ results: [{ path: 'src/app.ts', indices: [4, 5] }] });
@@ -327,14 +495,8 @@ describe('keyboard', () => {
     it('never parks the cursor on a disabled action', async () => {
         const { onOpenResource, onOpenCocAddress } = renderMenu({ chatId: null });
         const input = screen.getByTestId('unified-panel-open-menu-search');
-        // terminal, explorer, work-items, pull-requests, notes, browser, [canvas disabled] — arrowing past
-        // Browser must wrap to Terminal rather than land on Canvas.
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
-        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        // The provider rows and Canvas are disabled, so the cursor skips them.
+        for (let i = 0; i < 6; i++) fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'Enter' });
         expect(onOpenCocAddress).toHaveBeenCalledWith({ kind: 'terminal' });
         expect(onOpenResource).not.toHaveBeenCalled();
@@ -469,6 +631,8 @@ describe('the chat\'s Changes entry', () => {
             'unified-panel-open-browser',
             'unified-panel-open-canvas',
             'unified-panel-open-changes',
+            'unified-panel-open-coc-work-items',
+            'unified-panel-open-coc-pull-requests',
         ]);
     });
 
@@ -704,4 +868,3 @@ describe('Extensions drill-in', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 });
-
