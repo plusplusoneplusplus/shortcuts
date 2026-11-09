@@ -86,6 +86,8 @@ vi.mock('../../../../src/server/spa/client/react/tasks/WorkspaceFileNoteEditorIO
     createWorkspaceFileNoteEditorIO: () => ({ tag: 'workspace-file' }),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
+    lookupCloneBaseUrl: () => null,
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
 }));
 // `PreviewPane` opens a language document for every live repo file; this suite
@@ -126,6 +128,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', as
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab, unifiedTabIdFor } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import {
     clearUnifiedDiffSources,
@@ -167,6 +170,12 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
         handleTouchStart: vi.fn(),
         ...overrides,
     };
+}
+
+function openCanvas(canvasId: string, owner = WS, label = 'Plan') {
+    return openUnifiedPanelTab(WS, canvasPageInput({ id: canvasId, title: label }, {
+        ownerWorkspaceId: owner, chatId: CHAT, browserChatId: CHAT,
+    }));
 }
 
 function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPanel>> = {}) {
@@ -224,7 +233,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         await screen.findByTestId('mock-terminal');
@@ -236,7 +245,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabReorderingEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         const terminal = await screen.findByTestId('mock-terminal');
@@ -258,7 +267,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         applyRuntimeConfigPatch({ panelTabReorderingEnabled: true, markdownPanelPreviewEnabled: false, panelTabGroupsEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
         const terminal = await screen.findByTestId('mock-terminal');
@@ -296,7 +305,7 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
     it('shows a hidden tab\'s unsaved edits in the strip, and clears them when it closes', async () => {
         const fileId = openFile({ path: 'src/a.ts' });
         const terminalId = openUnifiedPanelTab(WS, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         renderPanel();
 
@@ -351,18 +360,14 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
 
 describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
     it('routes a canvas tab at the workspace that owns the canvas', () => {
-        openUnifiedPanelTab(WS, {
-            kind: 'canvas', ownerWorkspaceId: MEMBER, chatId: CHAT, resourceId: 'canvas-7', label: 'Plan',
-        });
+        openCanvas('canvas-7', MEMBER);
         renderPanel();
 
         expect(screen.getByTestId('mock-canvas')).toHaveTextContent(`canvas:${MEMBER}:canvas-7`);
     });
 
     it('hands the canvas view the live event for its own clone (AC-06)', () => {
-        openUnifiedPanelTab(WS, {
-            kind: 'canvas', ownerWorkspaceId: MEMBER, chatId: CHAT, resourceId: 'canvas-7', label: 'Plan',
-        });
+        openCanvas('canvas-7', MEMBER);
         renderPanel();
         expect(screen.getByTestId('mock-canvas').getAttribute('data-revision')).toBe('none');
 
@@ -377,10 +382,7 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
     });
 
     it('closes the canvas tab from the canvas panel\'s own close action', () => {
-        openUnifiedPanelTab(WS, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'canvas-7', label: 'Plan',
-        });
-        const tabId = unifiedTabId({ kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'canvas-7' });
+        const tabId = openCanvas('canvas-7');
         renderPanel();
 
         fireEvent.click(screen.getByTestId('mock-canvas-close'));
@@ -390,10 +392,7 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
     it('bulk closes collapsed canvas siblings through the panel tab session', async () => {
         // Canvas compression is the ungrouped overflow; groups use the Canvas group menu.
         applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
-        const ids = Array.from({ length: 5 }, (_, index) => openUnifiedPanelTab(WS, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT,
-            resourceId: `canvas-${index + 1}`, label: `Canvas ${index + 1}`,
-        }));
+        const ids = Array.from({ length: 5 }, (_, index) => openCanvas(`canvas-${index + 1}`, WS, `Canvas ${index + 1}`));
         const activeId = ids[ids.length - 1];
         renderPanel();
 

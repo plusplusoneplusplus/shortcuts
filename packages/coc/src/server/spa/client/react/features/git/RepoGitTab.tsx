@@ -74,12 +74,6 @@ interface RepoGitTabProps {
     workspaceId: string;
     /** Concrete source clone for selection attachments. */
     sourceSelectionId?: string;
-    /**
-     * The workspace that owns the PAGE this panel lives on. A repo group passes
-     * its own `group-<slug>` id here and the member as `workspaceId`, so commit
-     * links keep the group selected. Defaults to `workspaceId`.
-     */
-    routeWorkspaceId?: string;
     /** Repo-group selector hosted beside the branch, including during load/error states. */
     repositorySelector?: ReactNode;
     /**
@@ -156,7 +150,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -211,10 +205,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
 
     const rawSelection = useRepoGitSelection({
         workspaceId,
-        sourceSelectionId,
-        routeWorkspaceId,
         commits: data.commits,
-        loading: data.loading,
     });
     selectionRef.current = rawSelection;
 
@@ -699,6 +690,8 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             commitsError={data.refreshError || data.error}
             onRefreshCommits={data.refreshAll}
             onSelectCommit={selection.selectCommit}
+            onSelectBranchRange={selection.selectBranchRange}
+            onSelectWorkingChanges={selection.selectWorkingTreeAll}
             unpushedCount={data.unpushedCount}
             branchRangeData={data.branchRangeData}
             branchRangeFiles={data.branchRangeFiles}

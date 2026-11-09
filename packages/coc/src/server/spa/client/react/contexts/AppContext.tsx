@@ -4,7 +4,6 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
-import type { GitCommit } from '@plusplusoneplusplus/coc-client';
 import type { DashboardTab, RepoSubTab, SettingsSection, ConversationCacheEntry, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
 import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
@@ -173,24 +172,6 @@ function persistLastCloneByRemote(lastCloneByRemote: Record<string, string>): vo
 
 // ── State ──────────────────────────────────────────────────────────────
 
-/**
- * Which page a Git selection belongs to and which workspace serves its data.
- * They are the same id for an ordinary repo; for a repo group the page is the
- * group and the data is one member.
- */
-export interface GitRouteScope {
-    routeWorkspaceId: string;
-    workspaceId: string | null;
-    /** Owner-qualified commit already read by a navigation surface; never persisted. */
-    knownCommit?: { sourceSelectionId: string; commit: GitCommit };
-    /**
-     * Fresh token from an explicit open on another surface. A new token makes
-     * the owning panel apply the route again even when it is unchanged (its
-     * detail was closed meanwhile); never persisted.
-     */
-    openRequest?: object;
-}
-
 export interface OnboardingProgress {
     hasRunWorkflow: boolean;
     hasUsedChat: boolean;
@@ -230,15 +211,6 @@ export interface AppContextState {
     selectedSkillTemplateId: string | null;
     selectedScriptTemplateId: string | null;
     selectedScheduleId: string | null;
-    selectedGitCommitHash: string | null;
-    selectedGitFilePath: string | null;
-    /**
-     * Which page owns the current Git selection, and which workspace owns its
-     * data. They differ for a repo group: the group is the page, one member is
-     * the data. Transient (never persisted) — `repoRouteState` remembers routes
-     * and `repoGroupGitMemberState` remembers the validated member preference.
-     */
-    gitRouteScope: GitRouteScope | null;
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
     selectedNotePath: string | null;
@@ -306,9 +278,6 @@ const initialState: AppContextState = {
     selectedSkillTemplateId: null,
     selectedScriptTemplateId: null,
     selectedScheduleId: null,
-    selectedGitCommitHash: null,
-    selectedGitFilePath: null,
-    gitRouteScope: null,
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
     selectedNotePath: null,
@@ -375,24 +344,6 @@ export type AppAction =
     | { type: 'SET_SELECTED_SKILL_TEMPLATE'; id: string | null }
     | { type: 'SET_SELECTED_SCRIPT_TEMPLATE'; id: string | null }
     | { type: 'SET_SELECTED_SCHEDULE'; id: string | null }
-    | {
-        /**
-         * Publish a whole Git route at once — page owner, data member, revision
-         * and file. Atomic on purpose: setting the member and the SHA in two
-         * dispatches would briefly point a newly selected member at the previous
-         * member's commit.
-         */
-        type: 'SET_GIT_ROUTE';
-        routeWorkspaceId: string;
-        workspaceId: string | null;
-        commitHash: string | null;
-        filePath: string | null;
-        knownCommit?: GitRouteScope['knownCommit'];
-        openRequest?: object;
-    }
-    | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
-    | { type: 'SET_GIT_FILE_PATH'; filePath: string }
-    | { type: 'CLEAR_GIT_FILE_PATH' }
     | { type: 'SET_WORKFLOW_PROCESS'; processId: string | null }
     | { type: 'SET_WS_STATUS'; status: WsStatus }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
@@ -622,23 +573,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedScriptTemplateId: action.id };
         case 'SET_SELECTED_SCHEDULE':
             return { ...state, selectedScheduleId: action.id };
-        case 'SET_GIT_ROUTE':
-            return {
-                ...state,
-                gitRouteScope: {
-                    routeWorkspaceId: action.routeWorkspaceId, workspaceId: action.workspaceId,
-                    ...(action.knownCommit && action.knownCommit.commit.hash === action.commitHash ? { knownCommit: action.knownCommit } : {}),
-                    ...(action.openRequest ? { openRequest: action.openRequest } : {}),
-                },
-                selectedGitCommitHash: action.commitHash,
-                selectedGitFilePath: action.filePath,
-            };
-        case 'SET_GIT_COMMIT_HASH':
-            return { ...state, selectedGitCommitHash: action.hash };
-        case 'SET_GIT_FILE_PATH':
-            return { ...state, selectedGitFilePath: action.filePath };
-        case 'CLEAR_GIT_FILE_PATH':
-            return { ...state, selectedGitFilePath: null };
         case 'SET_WORKFLOW_PROCESS':
             return { ...state, selectedWorkflowProcessId: action.processId };
         case 'SET_WS_STATUS':

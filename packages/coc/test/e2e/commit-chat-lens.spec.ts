@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures/server-fixture';
-import { createMultiCommitRepo, toggleCommitChat } from './fixtures/git-fixtures';
+import { createMultiCommitRepo, gotoGitCommit, toggleCommitChat } from './fixtures/git-fixtures';
 import { request, seedProcess, seedWorkspace } from './fixtures/seed';
 import { execFileSync } from 'child_process';
 import { writeFileSync } from 'fs';
@@ -217,7 +217,7 @@ test.describe('feature-flagged commit chat lens', () => {
         const commit = latestCommit(repoDir);
         await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Persistence', repoDir);
         await enableCommitChatLensFeature(serverUrl);
-        await page.goto(`${serverUrl}/?workspace=${workspaceId}#repos/${workspaceId}/git/${commit.hash}/${encodeURIComponent('src/index.ts')}`);
+        await gotoGitCommit(page, serverUrl, workspaceId, commit.hash, 'src/index.ts', `?workspace=${workspaceId}`);
         const editor = page.getByTestId('file-diff-editor');
         await expect(editor).toBeVisible();
         await toggleCommitChat(page);
@@ -229,7 +229,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await editor.evaluate(node => node.setAttribute('data-persistence-probe', 'editor'));
 
         await page.getByTestId('commit-file-src/utils.ts').click();
-        await expect(page).toHaveURL(/utils\.ts/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/utils\.ts$/);
         await expect(editor).toBeVisible();
         await expect(editor).toHaveAttribute('data-persistence-probe', 'editor');
         await expect(lens).toHaveAttribute('data-persistence-probe', 'chat');
@@ -252,7 +252,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Lens', repoDir);
         await enableCommitChatLensFeature(serverUrl, 'pill');
 
-        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`);
+        await gotoGitCommit(page, serverUrl, workspaceId, commit.hash, undefined, `?workspace=${encodeURIComponent(workspaceId)}`);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await toggleCommitChat(page);
 
@@ -322,8 +322,8 @@ test.describe('feature-flagged commit chat lens', () => {
             promptPreview: 'Dropped conversation',
         });
 
-        const url = `${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`;
-        await page.goto(url);
+        const query = `?workspace=${encodeURIComponent(workspaceId)}`;
+        await gotoGitCommit(page, serverUrl, workspaceId, commit.hash, undefined, query);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await toggleCommitChat(page);
 
@@ -339,7 +339,8 @@ test.describe('feature-flagged commit chat lens', () => {
         const bindingUrl = `${serverUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings/${encodeURIComponent(commit.hash)}`;
         await expect.poll(async () => JSON.parse((await request(bindingUrl)).body).taskId).toBe(droppedTaskId);
 
-        await gotoFresh(page, url);
+        // The workspace's Git page keeps the commit, so a fresh load restores it.
+        await gotoFresh(page, `${serverUrl}/${query}#repos/${encodeURIComponent(workspaceId)}/git`);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         if (await page.getByTestId('commit-chat-lens').count() === 0) {
             await toggleCommitChat(page);
@@ -371,11 +372,12 @@ for (const surface of ['commit', 'file', 'work-item'] as const) {
         await enableCommitChatLensFeature(serverUrl);
 
         const workspaceRoute = `repos/${encodeURIComponent(workspaceId)}`;
-        const commitRoute = `${workspaceRoute}/git/${encodeURIComponent(commit.hash)}`;
-        const route = surface === 'work-item'
-            ? `${workspaceRoute}/panel/work-items/${encodeURIComponent(workspaceId)}/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`
-            : commitRoute;
-        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#${route}`);
+        const route = `${workspaceRoute}/panel/work-items/${encodeURIComponent(workspaceId)}/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`;
+        if (surface === 'work-item') {
+            await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#${route}`);
+        } else {
+            await gotoGitCommit(page, serverUrl, workspaceId, commit.hash, undefined, `?workspace=${encodeURIComponent(workspaceId)}`);
+        }
         if (surface === 'work-item') {
             await expect(page).toHaveURL(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#${route}`);
             await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'true');
@@ -386,7 +388,7 @@ for (const surface of ['commit', 'file', 'work-item'] as const) {
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         if (surface === 'file') {
             await page.getByTestId(`commit-file-${CHANGED_FILE}`).click();
-            await expect(page).toHaveURL(/index\.ts$/);
+            await expect(page.getByTestId('browser-address')).toHaveValue(/index\.ts$/);
             await expect(page.getByTestId('file-diff-section')).toBeVisible();
         }
 

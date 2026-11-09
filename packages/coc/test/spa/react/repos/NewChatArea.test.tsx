@@ -1877,6 +1877,39 @@ describe('NewChatArea', () => {
             expect(submit).not.toHaveBeenCalled();
         });
 
+        it('submits an exact custom model instead of the tier, and a tier pick clears it', async () => {
+            mockEffortLevelsEnabled.value = true;
+            mockEffortTiers.value = {
+                low: { model: 'gpt-5-mini', reasoningEffort: 'low' },
+                medium: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+            };
+            const submit = vi.fn().mockResolvedValue(null);
+            renderCompactComposer(submit);
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+            fireEvent.click(await screen.findByTestId('effort-tier-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-tier-custom'));
+            // The provider's own catalog feeds the model list.
+            const select = screen.getByTestId('effort-tier-custom-model') as HTMLSelectElement;
+            expect(Array.from(select.options).map(o => o.value)).toEqual(['gpt-5.4', 'claude-sonnet-4.6']);
+            fireEvent.change(select, { target: { value: 'claude-sonnet-4.6' } });
+            fireEvent.click(screen.getByTestId('effort-tier-custom-apply'));
+            expect(screen.getByTestId('effort-tier-label').textContent).toBe('✎ Claude Sonnet 4.6 · Auto');
+
+            fireEvent.change(screen.getByTestId('lens-chat-input'), { target: { value: 'Use the custom model' } });
+            await act(async () => { fireEvent.click(screen.getByTestId('lens-chat-send-btn')); });
+            await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+            const submission = submit.mock.calls[0][0];
+            expect(submission.model).toBe('claude-sonnet-4.6');
+            expect(submission.reasoningEffort).toBeUndefined();
+            expect(submission.config).toEqual({ customModelEffort: true });
+
+            if (!screen.queryByTestId('effort-tier-trigger-btn')) fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+            fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+            fireEvent.click(screen.getByTestId('effort-tier-option-low'));
+            expect(screen.getByTestId('effort-tier-trigger-btn').getAttribute('data-custom')).toBeNull();
+            expect(screen.getByTestId('effort-tier-label').textContent).toContain('Low');
+        });
+
         it('lays out the provider and effort controls in a shared flex row', () => {
             renderCompactComposer();
             fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
@@ -1925,7 +1958,7 @@ describe('NewChatArea', () => {
             expect(editor.getAttribute('data-placement')).toBe('popover');
             expect(editor.className).toContain('overflow-visible');
             expect(editor.className).not.toContain('overflow-y-auto');
-            expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+            expect(screen.getAllByRole('option').map(option => option.firstElementChild?.textContent)).toEqual([
                 'Very Low',
                 'Low',
                 'Medium',

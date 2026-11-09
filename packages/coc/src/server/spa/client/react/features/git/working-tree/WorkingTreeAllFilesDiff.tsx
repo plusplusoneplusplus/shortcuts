@@ -13,6 +13,7 @@ import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSour
 import { useFileCommentComposer } from '../diff/fileCommentComposer';
 import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
 import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
+import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
@@ -21,6 +22,8 @@ export interface WorkingTreeAllFilesDiffProps extends Pick<WorkingTreeFileDiffPr
     'workspaceId' | 'attachmentDestinationId' | 'repoRoot' | 'refreshKey' | 'onFileMissing' |
     'onDirtyChange' | 'onRegisterSave' | 'onSaved' | 'createDiffEditor'> {
     onFileSelect: (filePath: string, stage: Stage) => void;
+    /** The commit/view switcher every Git review header shows. */
+    switcher?: CommitPickerOptions;
 }
 
 /** Paths identify disk documents; stage + repository + path identify comparisons. */
@@ -101,7 +104,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                 if (change) setContentSearchTarget({ ...match, filePath: change.filePath });
             } } : undefined}
             loading={!loaded && !error} error={!loaded ? error : undefined} onRetry={retry}
-            header={{ identity: <strong className="git-review-title">All Working Changes</strong>,
+            header={{ identity: <ReviewViewIdentity title="Uncommitted changes" viewId="working-changes" picker={props.switcher} />,
                 actions: selected ? [{ id: 'open-file', label: 'Open full diff', icon: '↗',
                     onClick: guard.guard(() => onFileSelect(selected.filePath, selected.stage)) }] : [], below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}

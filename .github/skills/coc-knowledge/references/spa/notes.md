@@ -7,10 +7,13 @@ The Notes view, its collection roots, the rich editor, and Notes Chat.
 `NotesView` is shared by My Work / My Life's Notes sub-tab and the unified right
 panel, the only Notes host for repos and groups. Its `navigation` prop defaults to
 `url`, which publishes selection to the app state and the Notes route. The right
-panel passes `local`, so its tree and editor own an
-independent selection while remaining scoped to the panel workspace. The panel stores
-that path in the Notes tab descriptor and restores it per workspace; if the loaded
-tree does not contain the path, the local selection clears without activating the tab.
+panel hosts one workspace-global web tab at `coc://notes`, or `coc://notes/<path>`
+for a selected note (each segment encoded). It passes `local`, so the tree and
+editor own an independent selection scoped to the panel workspace. The path is
+the page address and is restored with the tab; a bare `coc://notes` reopen keeps
+a path already selected. If the loaded tree does not contain the path, the local
+selection clears without activating the tab. Typing another Notes path replaces
+the current history entry.
 
 The `layout` prop defaults to `viewport` (window breakpoints). The right panel passes
 `container`: a `ResizeObserver` on the view root compares its width with

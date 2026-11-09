@@ -35,8 +35,8 @@ describe('getDefaultEffortTiers', () => {
     it('returns the copilot defaults', () => {
         const defaults = getDefaultEffortTiers('copilot');
         expect(defaults).toEqual({
-            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh' },
-            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'xhigh' },
+            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'medium' },
+            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'medium' },
             medium: { model: 'gpt-6.1-sol',   reasoningEffort: 'medium' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
         });
@@ -94,8 +94,8 @@ describe('mergeEffortTiersWithDefaults', () => {
     it('returns all four tiers as defaults when stored config is empty', () => {
         const merged = mergeEffortTiersWithDefaults('copilot', {});
         expect(merged).toEqual({
-            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh', source: 'default' },
-            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'xhigh', source: 'default' },
+            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'medium', source: 'default' },
+            low:    { model: 'gpt-6.1-terra', reasoningEffort: 'medium', source: 'default' },
             medium: { model: 'gpt-6.1-sol',   reasoningEffort: 'medium', source: 'default' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium', source: 'default' },
         });

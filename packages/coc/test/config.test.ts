@@ -1351,6 +1351,18 @@ timeout: 300
             });
         });
 
+        it('ignores a persisted panel address bar flag; coc:// pages are always on', () => {
+            const configPath = path.join(tmpDir, 'stale-panel-address-bar.yaml');
+            const yaml = 'features:\n  panelAddressBar: false\n  fileBlame: true\n';
+            fs.writeFileSync(configPath, yaml);
+
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.features).not.toHaveProperty('panelAddressBar');
+            expect(result.sources).not.toHaveProperty('features.panelAddressBar');
+            expect(result.resolved.features.fileBlame).toBe(true);
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(yaml);
+        });
+
         it.each([false, true])('ignores persisted panel tab categories and preserves groups (%s)', groups => {
             const configPath = path.join(tmpDir, 'stale-panel-categories.yaml');
             const yaml = `features:\n  panelTabCategories: true\n  panelTabGroups: ${groups}\n`;

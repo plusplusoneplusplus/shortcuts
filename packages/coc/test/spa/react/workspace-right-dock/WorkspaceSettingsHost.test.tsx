@@ -63,6 +63,45 @@ describe('panel Settings page', () => {
         expect(within(screen.getByTestId('panel-settings-host')).getByRole('textbox')).toBe(input);
     });
 
+    it('shows the form in the newest of two mounted slots and hands it back when that one unmounts', () => {
+        function Two({ second }: { second: boolean }) {
+            return <WorkspaceSettingsProvider ownerKey="ws-a" renderPage={() => <Form />}>
+                <div data-testid="slot-a"><WorkspaceSettingsSlot ownerKey="ws-a" /></div>
+                {second && <div data-testid="slot-b"><WorkspaceSettingsSlot ownerKey="ws-a" /></div>}
+            </WorkspaceSettingsProvider>;
+        }
+        mount.mockClear();
+        const view = render(<Two second={false} />);
+        const input = within(screen.getByTestId('slot-a')).getByRole('textbox');
+        fireEvent.change(input, { target: { value: 'unsaved' } });
+        view.rerender(<Two second />);
+        expect(within(screen.getByTestId('slot-b')).getByRole('textbox')).toBe(input);
+        expect(within(screen.getByTestId('slot-a')).queryByRole('textbox')).toBeNull();
+        view.rerender(<Two second={false} />);
+        expect(within(screen.getByTestId('slot-a')).getByRole('textbox')).toBe(input);
+        expect(input).toHaveValue('unsaved');
+        expect(mount).toHaveBeenCalledTimes(1);
+    });
+
+    it('rebuilds the form when the slot reload nonce changes and leaves it through a slot swap', () => {
+        function Page({ reloadNonce }: { reloadNonce: number }) {
+            return <WorkspaceSettingsProvider ownerKey="ws-a" renderPage={() => <Form />}>
+                <WorkspaceSettingsSlot ownerKey="ws-a" reloadNonce={reloadNonce} />
+            </WorkspaceSettingsProvider>;
+        }
+        mount.mockClear();
+        const view = render(<Page reloadNonce={0} />);
+        const input = screen.getByRole('textbox');
+        fireEvent.change(input, { target: { value: 'unsaved' } });
+        expect(mount).toHaveBeenCalledTimes(1);
+        view.rerender(<Page reloadNonce={0} />);
+        expect(screen.getByRole('textbox')).toBe(input);
+        view.rerender(<Page reloadNonce={1} />);
+        expect(mount).toHaveBeenCalledTimes(2);
+        expect(screen.getByRole('textbox')).not.toBe(input);
+        expect(screen.getByRole('textbox')).toHaveValue('');
+    });
+
     it('keeps matching local and remote owners separate, and rejects stale tab ownership', () => {
         const view = render(<Page owner="remote:server-a:ws-a" />);
         expect(screen.getByTestId('settings-owner')).toHaveTextContent('remote:server-a:ws-a');

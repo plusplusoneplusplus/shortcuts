@@ -629,7 +629,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
 
         let cancelled = false;
         // selectedTaskId is always a processId; probe /processes/ first, fall back to /queue/
-        const probeProcess = cloneClient.processes.get(selectedTaskId)
+        const probeProcess = cloneClient.processes.get(selectedTaskId, { exclude: 'conversation' })
             .then((data: any) => {
                 if (cancelled) return;
                 if (data?.process) return; // found

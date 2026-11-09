@@ -28,13 +28,12 @@ import {
     EMPTY_UNIFIED_PANEL,
     activateTab,
     closeTab,
-    displayGroupForKind,
     openTab,
     parseUnifiedPanelState,
-    scopeForKind,
     serializeUnifiedPanelState,
     visibleTabs,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { canvasPageInput, notesPageInput, openCocPageTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openMenuActions } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
 import { sentinelTodoRecentPage } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoStatusModel';
 
@@ -294,14 +293,12 @@ describe('job and review labels', () => {
 });
 
 describe('To-do tab descriptor', () => {
-    it('is chat-scoped, grouped with tools, and keyed by owner + chat with the ledger process as resource', () => {
+    it('is a coc://todo web tab owned by the ledger workspace and shown only in its chat', () => {
         const input = sentinelTodoTabInput(OWNER, 'chat-1');
-        expect(input).toMatchObject({ kind: 'todo', ownerWorkspaceId: 'ws-1', chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do' });
-        expect(scopeForKind('todo')).toBe('chat');
-        expect(displayGroupForKind('todo')).toBe('tools');
+        expect(input).toMatchObject({ kind: 'browser', ownerWorkspaceId: 'ws-1', chatId: 'chat-1', browserChatId: 'chat-1', browserUrl: 'coc://todo', label: 'To-do' });
 
-        let state = openTab(EMPTY_UNIFIED_PANEL, input);
-        state = openTab(state, input);
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, input);
+        state = openCocPageTab(state, sentinelTodoTabInput(OWNER, 'chat-1'));
         expect(visibleTabs(state, 'chat-1')).toHaveLength(1);
         expect(visibleTabs(state, 'chat-2')).toHaveLength(0);
     });
@@ -318,7 +315,7 @@ describe('To-do tab descriptor', () => {
         const raw = serializeUnifiedPanelState(state);
         expect(raw).not.toContain('completionCondition');
         const restored = parseUnifiedPanelState(raw);
-        expect(visibleTabs(restored, 'chat-1')).toEqual([expect.objectContaining({ kind: 'todo', resourceId: 'queue_sentinel' })]);
+        expect(visibleTabs(restored, 'chat-1')).toEqual([expect.objectContaining({ kind: 'browser', browserUrl: 'coc://todo', browserChatId: 'chat-1' })]);
     });
 });
 
@@ -342,10 +339,12 @@ describe('shouldAutoOpenSentinelTodoTab', () => {
     });
 
     it('never steals focus from another selected tab, including a workspace tab', () => {
-        const withCanvas = openTab(EMPTY_UNIFIED_PANEL, { kind: 'canvas', ownerWorkspaceId: 'ws-1', chatId: 'chat-1', resourceId: 'c1', label: 'C' });
+        const withCanvas = openTab(EMPTY_UNIFIED_PANEL, canvasPageInput({ id: 'c1', title: 'C' }, {
+            ownerWorkspaceId: 'ws-1', chatId: 'chat-1', browserChatId: 'chat-1',
+        }));
         expect(shouldAutoOpenSentinelTodoTab(withCanvas, 'chat-1', input, first)).toBe(false);
-        const withTerminal = openTab(EMPTY_UNIFIED_PANEL, { kind: 'terminal', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 't', label: 'Terminal' });
-        expect(shouldAutoOpenSentinelTodoTab(withTerminal, 'chat-1', input, first)).toBe(false);
+        const withNotes = openTab(EMPTY_UNIFIED_PANEL, notesPageInput({ ownerWorkspaceId: 'ws-1', chatId: null, browserChatId: null }));
+        expect(shouldAutoOpenSentinelTodoTab(withNotes, 'chat-1', input, first)).toBe(false);
     });
 
     it('does not reopen a closed tab on later updates', () => {

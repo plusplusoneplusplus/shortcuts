@@ -13,7 +13,6 @@ import { cn } from '../../ui';
 import { useApp, type AppAction } from '../../contexts/AppContext';
 import { formatRelativeTime } from '../../utils/format';
 import type { RepoGroupMember } from '../../repos/repoGroupService';
-import { BRANCH_RANGE_DEEP_LINK } from '../git/repoGitTab/useRepoGitSelection';
 import { RailControlsContext, RailHoverPreview, type RailControls, type RailPreviewControl } from './RailHoverPreview';
 import {
     describeGroupMember,
@@ -32,7 +31,7 @@ import {
 import { useGroupRailGit, useRepoRailGit } from './useRailGitSummary';
 import { RailOutgoingCommits } from './RailOutgoingCommits';
 import { routingRefForPanelOwner } from './unified-right-panel/unifiedPanelOwnerRouting';
-import { openPanelGitCommit, openPanelGitWorkingChanges } from './unified-right-panel/panelGitCommit';
+import { openPanelGitBranchChanges, openPanelGitCommit, openPanelGitMember, openPanelGitWorkingChanges } from './unified-right-panel/panelGitCommit';
 import type { PersistedGitView } from '../git/repoGitTab/types';
 
 const TONE_CLASS: Record<RailGitTone, string> = {
@@ -167,7 +166,7 @@ export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, o
         openChanges: () => rail.onOpenGit?.('changes'),
         openSync: () => {
             rail.onOpenGit?.('branch');
-            dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: workspaceId, workspaceId, commitHash: BRANCH_RANGE_DEEP_LINK, filePath: null });
+            openPanelGitBranchChanges(dispatch, { routeWorkspaceId: workspaceId, workspaceId, sourceSelectionId: routingRef });
         },
     };
     const canSwitch = !!input.info.data?.isGitRepo && !(parseRemoteCloneKey(routingRef) && !client.options?.baseUrl);
@@ -273,7 +272,10 @@ export function GroupRailGitView({ selectionId, routingRef, client, scopeLabel, 
             return;
         }
         rail.onOpenGit?.('branch');
-        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: null, filePath: null });
+        openPanelGitMember(dispatch, {
+            routeWorkspaceId: selectionId, workspaceId: memberId,
+            sourceSelectionId: routingRefForPanelOwner(routingRef, memberId) ?? memberId,
+        });
     };
     const body = (dismiss: () => void, syncPreview: boolean) => <GroupPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}`}
         input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh}

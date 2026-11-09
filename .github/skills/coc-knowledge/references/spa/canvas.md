@@ -5,7 +5,7 @@ read-only **source canvas** (`features/chat/source-canvas/`). Chat list and lens
 [chat.md](chat.md); conversation rendering: [chat-conversation.md](chat-conversation.md).
 
 The AI canvas has **no chat-side column**. It lives in the unified right panel as a
-`canvas` tab (`UnifiedCanvasTab`), in the standalone pop-out window, or as an inline
+`coc://canvas/<canvasId>` page inside a web tab (`UnifiedCanvasTab`), in the standalone pop-out window, or as an inline
 embed; the chat itself renders no rail, resize handle, or reserved width for it. An AI
 `canvas-updated` event activates that tab and reveals the panel for non-Kusto kinds.
 Kusto events carry `canvasType: 'kusto'` and only refresh mounted views, preserving

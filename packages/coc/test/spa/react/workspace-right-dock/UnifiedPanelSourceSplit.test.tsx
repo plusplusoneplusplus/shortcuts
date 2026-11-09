@@ -79,6 +79,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
     NotesView: () => <div data-testid="mock-notes" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({}),
     lookupCloneBaseUrl: () => null,
     resolveCloneRoute: () => ({ kind: 'local' }),
@@ -142,7 +143,7 @@ function openFile(path: string, opts: { owner?: string; routingRef?: string | nu
 
 function openTerminal() {
     return openUnifiedPanelTab(WS, {
-        kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+        kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'browser-term', label: 'Terminal', browserUrl: 'coc://terminal',
     });
 }
 

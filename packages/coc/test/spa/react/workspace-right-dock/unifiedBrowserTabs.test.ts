@@ -9,11 +9,14 @@ import {
     browserLabelForUrl,
     browserOpenInput,
     browserSessionKey,
+    gitPageInput,
     hasExplicitUrlScheme,
     normalizeBrowserUrl,
+    openCocPageTab,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import {
     EMPTY_UNIFIED_PANEL,
+    activeTabId,
     openTab,
     parseUnifiedPanelState,
     serializeUnifiedPanelState,
@@ -131,14 +134,14 @@ describe('browser tab descriptors', () => {
 
     it('is never persisted, and neither is its selection', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: 'ws', chatId: null, resourceId: 'terminal', label: 'Terminal',
+            kind: 'work-items', ownerWorkspaceId: 'ws', chatId: null, resourceId: 'work-items', label: 'Terminal',
         });
         state = openTab(state, browserOpenInput(context, 'https://secret.example.com/session'));
         const raw = serializeUnifiedPanelState(state);
         expect(raw).not.toContain('browser');
         expect(raw).not.toContain('secret.example.com');
         const restored = parseUnifiedPanelState(raw);
-        expect(restored.workspaceTabs.map(tab => tab.kind)).toEqual(['terminal']);
+        expect(restored.workspaceTabs.map(tab => tab.kind)).toEqual(['work-items']);
         expect(Object.values(restored.activeByScope).every(id => !String(id).includes('browser'))).toBe(true);
     });
 
@@ -146,7 +149,7 @@ describe('browser tab descriptors', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, browserOpenInput(context));
         const id = state.workspaceTabs[0].id;
         state = openTab(state, {
-            kind: 'terminal', ownerWorkspaceId: 'ws', chatId: null, resourceId: 'terminal', label: 'Terminal',
+            kind: 'work-items', ownerWorkspaceId: 'ws', chatId: null, resourceId: 'work-items', label: 'Terminal',
         });
         const active = state.activeByScope;
         const next = updateBrowserTab(state, id, { url: 'https://a.example/', label: 'A page' });
@@ -163,5 +166,70 @@ describe('browser tab descriptors', () => {
         expect(browserSessionKey({ ownerWorkspaceId: 'ws', ownerRoutingRef: 'clone:h:ws' })).toBe('clone:h:ws');
         expect(browserSessionKey({ ownerWorkspaceId: 'ws', ownerRoutingRef: null })).toBe('ws');
         expect(browserSessionKey({ ownerWorkspaceId: 'ws' })).toBe('ws');
+    });
+});
+
+describe('gitPageInput', () => {
+    const context = { ownerWorkspaceId: 'ws-1', chatId: 'chat-a', browserChatId: null };
+
+    it('opens plain history at a stable workspace-scoped resource id, ignoring the opening chat', () => {
+        const input = gitPageInput(context);
+        expect(input.resourceId).toBe('coc-git');
+        expect(input.label).toBe('Git');
+        expect(input.browserUrl).toBe('coc://git');
+        expect(input.browserChatId).toBeUndefined();
+        expect(gitPageInput({ ...context, chatId: 'chat-b' }).resourceId).toBe('coc-git');
+    });
+
+    it('encodes a member id and a deep-linked view into the address', () => {
+        expect(gitPageInput(context, { gitMemberId: 'repo-2' }).browserUrl).toBe('coc://git/member/repo-2');
+        expect(gitPageInput(context, { view: { type: 'commit', hash: 'abc123' } }).browserUrl).toBe('coc://git/abc123');
+        expect(gitPageInput(context, {
+            gitMemberId: 'repo-2',
+            view: { type: 'commit-file', hash: 'abc123', filePath: 'src/index.ts' },
+        }).browserUrl).toBe('coc://git/member/repo-2/abc123/src%2Findex.ts');
+    });
+
+    it('focuses the one Git page for the workspace instead of stacking another', () => {
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, gitPageInput(context));
+        const id = activeTabId(state, 'chat-a');
+        state = openTab(state, browserOpenInput(context, 'https://example.com/'));
+        state = openCocPageTab(state, gitPageInput(context, { view: { type: 'branch-range' } }));
+        expect(state.workspaceTabs).toHaveLength(2);
+        expect(activeTabId(state, 'chat-a')).toBe(id);
+        expect(state.workspaceTabs.filter(tab => tab.resourceId === 'coc-git')).toHaveLength(1);
+    });
+});
+
+describe('openCocPageTab', () => {
+    const page = (url: string, owner = 'ws', chatId: string | null = 'chat-a') =>
+        browserOpenInput({ ownerWorkspaceId: owner, ownerRoutingRef: null, chatId, browserChatId: null }, url);
+
+    it('focuses the visible tab already showing the page for the same owner', () => {
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, page('coc://terminal'));
+        const id = activeTabId(state, 'chat-a');
+        state = openTab(state, page('https://example.com/'));
+        state = openCocPageTab(state, page('coc://terminal'));
+        expect(state.workspaceTabs).toHaveLength(2);
+        expect(activeTabId(state, 'chat-a')).toBe(id);
+    });
+
+    it('matches a To-do page by page, not by item, and keeps other pages and owners apart', () => {
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, page('coc://todo/item-1'));
+        state = openCocPageTab(state, page('coc://todo'));
+        expect(state.workspaceTabs.map(tab => tab.browserUrl)).toEqual(['coc://todo/item-1']);
+        state = openCocPageTab(state, page('coc://settings'));
+        state = openCocPageTab(state, page('coc://terminal', 'member'));
+        state = openCocPageTab(state, page('coc://terminal'));
+        expect(state.workspaceTabs.map(tab => [tab.browserUrl, tab.ownerWorkspaceId])).toEqual([
+            ['coc://todo/item-1', 'ws'], ['coc://settings', 'ws'], ['coc://terminal', 'member'], ['coc://terminal', 'ws'],
+        ]);
+    });
+
+    it('does not focus a page tab owned by another conversation', () => {
+        const owned = browserOpenInput({ ownerWorkspaceId: 'ws', ownerRoutingRef: null, chatId: 'chat-a', browserChatId: 'chat-a' }, 'coc://todo');
+        let state = openCocPageTab(EMPTY_UNIFIED_PANEL, owned);
+        state = openCocPageTab(state, { ...owned, resourceId: 'browser-b', chatId: 'chat-b', browserChatId: 'chat-b' });
+        expect(state.workspaceTabs).toHaveLength(2);
     });
 });

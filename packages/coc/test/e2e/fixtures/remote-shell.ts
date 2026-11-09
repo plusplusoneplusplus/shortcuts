@@ -32,7 +32,8 @@ export async function openWorkspacePanel(page: Page, kind: 'notes' | 'settings')
     await expect(panel).toHaveAttribute('data-expanded', 'true');
     await panel.getByTestId('unified-panel-open-menu').click();
     await page.getByTestId(`unified-panel-open-${kind}`).click();
-    await expect(panel.locator(`[role="tab"][data-kind="${kind}"]`)).toHaveAttribute('aria-selected', 'true');
+    // Settings and Notes are `coc://` pages of a web tab.
+    await expect(panel.locator('[role="tab"][aria-selected="true"]')).toHaveAttribute('data-kind', 'browser');
     await expect(panel.getByTestId(kind === 'notes' ? 'notes-sidebar' : 'settings-content-panel')).toBeVisible();
 }
 

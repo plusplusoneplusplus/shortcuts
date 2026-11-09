@@ -103,8 +103,11 @@ describe('canvas embed → unified panel canvas tab', () => {
         expect(localStorage.getItem(workspaceDockOpenStorageKey('group-acme'))).toBe('0');
         await act(async () => { screen.getByTestId('canvas-embed-open-in-panel').click(); });
         const opened = readUnifiedPanelState('group-acme');
-        const result = visibleTabs(opened, 'task-A').find(tab => tab.kind === 'canvas')!;
-        expect(result).toMatchObject({ resourceId: 'canvas-9', ownerWorkspaceId: 'ws-member', chatId: 'task-A' });
+        const result = visibleTabs(opened, 'task-A').find(tab => tab.browserUrl === 'coc://canvas/canvas-9')!;
+        expect(result).toMatchObject({
+            kind: 'browser', browserUrl: 'coc://canvas/canvas-9', browserChatId: 'task-A',
+            ownerWorkspaceId: 'ws-member', chatId: null,
+        });
         expect(opened.activeByScope['task-A']).toBe(result.id);
         expect(localStorage.getItem(workspaceDockOpenStorageKey('group-acme'))).toBe('1');
         expect(visibleTabs(opened, 'task-A').find(tab => tab.kind === 'browser')).toEqual(before.workspaceTabs[0]);
@@ -126,9 +129,10 @@ describe('canvas embed → unified panel canvas tab', () => {
         const tabs = visibleTabs(readUnifiedPanelState('ws-1'), 'task-A');
         expect(tabs).toHaveLength(1);
         expect(tabs[0]).toMatchObject({
-            kind: 'canvas',
+            kind: 'browser',
+            browserUrl: 'coc://canvas/canvas-9',
+            browserChatId: 'task-A',
             ownerWorkspaceId: 'ws-1',
-            resourceId: 'canvas-9',
             label: 'Release plan',
         });
     });
@@ -160,7 +164,7 @@ describe('canvas embed → unified panel canvas tab', () => {
         // Stored under the panel's scope, but read from the member clone.
         expect(visibleTabs(readUnifiedPanelState('group-acme'), 'task-A')).toHaveLength(1);
         expect(visibleTabs(readUnifiedPanelState('group-acme'), 'task-A')[0])
-            .toMatchObject({ ownerWorkspaceId: 'ws-member', resourceId: 'canvas-9' });
+            .toMatchObject({ ownerWorkspaceId: 'ws-member', browserUrl: 'coc://canvas/canvas-9' });
         expect(visibleTabs(readUnifiedPanelState('ws-member'), 'task-A')).toHaveLength(0);
     });
 

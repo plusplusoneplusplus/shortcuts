@@ -1,47 +1,26 @@
+// @vitest-environment jsdom
 /**
  * RepoGroupGitTab — the group owns the page, a member owns the git data.
  *
- * Opening a member's commit used to write `#repos/{memberId}/git/{sha}`, which
- * silently swapped the selected workspace from the GROUP to the member. These
- * tests drive the host through the REAL route registry (`resolveDashboardRoute`
- * + `applyRouteEffects`, the exact pair `Router` uses) so the URL contract, the
- * member/preference precedence and the unavailable-member behaviour are all
- * exercised end to end, with the Git panel's presentation stubbed but its
- * commit-selection controller intact.
- *
- * @vitest-environment jsdom
+ * The member a group shows is named by the workspace's one `coc://git` page
+ * tab (`coc://git/member/<id>/…`), with the remembered per-group pick as the
+ * fallback when no page names one. These tests drive the host through the
+ * real panel store, with the Git panel's presentation stubbed, so member
+ * precedence, in-place canonicalization and the unavailable-member behaviour
+ * are exercised end to end — and the hash is never touched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../src/server/spa/client/react/repos/cloneIdentity';
-import { buildGitRouteHash } from '../../../src/server/spa/client/react/layout/gitRoute';
+import type { ReactNode } from 'react';
+import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 
-// Keep the real selection controller so a click exercises the page-owner id
-// passed to the panel, without mounting the rest of the Git UI.
 const panelProps: Record<string, unknown>[] = [];
 vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
-    RepoGitTab: (props: { workspaceId: string; routeWorkspaceId?: string; repositorySelector?: ReactNode }) => {
-        const selection = useRepoGitSelection({
-            workspaceId: props.workspaceId,
-            routeWorkspaceId: props.routeWorkspaceId,
-            commits: [],
-            loading: true,
-        });
+    RepoGitTab: (props: { workspaceId: string; sourceSelectionId?: string; repositorySelector?: ReactNode }) => {
         panelProps.push(props);
         return (
-            <div
-                data-testid="stub-repo-git-tab"
-                data-workspace={props.workspaceId}
-                data-route-workspace={props.routeWorkspaceId ?? ''}
-            >
+            <div data-testid="stub-repo-git-tab" data-workspace={props.workspaceId} data-source={props.sourceSelectionId ?? ''}>
                 {props.repositorySelector}
-                <button type="button" data-testid="select-commit" onClick={() => selection.selectCommit({
-                    hash: 'abc1234', shortHash: 'abc1234', subject: 'Example',
-                    author: 'Example', date: '2026-01-01', parentHashes: [],
-                })}>Select commit</button>
-                <button type="button" data-testid="select-commit-file"
-                    onClick={() => selection.selectCommitFile('abc1234', 'src/a.ts')}>Select file</button>
             </div>
         );
     },
@@ -68,15 +47,13 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { RepoGroupGitTab } from '../../../src/server/spa/client/react/repos/RepoGroupGitTab';
-import { useRepoGitSelection } from '../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitSelection';
-import {
-    applyRouteEffects,
-    resolveDashboardRoute,
-    type RouteContext,
-} from '../../../src/server/spa/client/react/layout/dashboardRoutes';
 import type { RepoGroupMember } from '../../../src/server/spa/client/react/repos/repoGroupService';
+import { gitPageInput } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { EMPTY_UNIFIED_PANEL, activeTabId, openTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import type { PersistedGitView } from '../../../src/server/spa/client/react/features/git/repoGitTab/types';
 
 const GROUP = 'group-frontend';
 const OTHER_GROUP = 'group-backend';
@@ -86,314 +63,187 @@ function member(id: string, overrides: Partial<RepoGroupMember> = {}): RepoGroup
     return { workspaceId: id, name: id, rootPath: `/r/${id}`, ...overrides } as RepoGroupMember;
 }
 
-/**
- * The routing half of `Router`, without its view tree: resolve `location.hash`
- * through the real registry and apply the effects to the real reducer.
- */
-function RouteSync() {
-    const { state, dispatch } = useApp();
-    const stateRef = useRef(state);
-    stateRef.current = state;
-    useLayoutEffect(() => {
-        const handle = () => {
-            const ctx: RouteContext = {
-                queueState: { selectedTaskIdByRepo: {} } as RouteContext['queueState'],
-                selectedRepoId: stateRef.current.selectedRepoId,
-                repoRouteState: stateRef.current.repoRouteState,
-                repoTabState: stateRef.current.repoTabState,
-                isSchedulesInSlide: () => false,
-            };
-            applyRouteEffects(resolveDashboardRoute(location.hash, ctx).effects, {
-                dispatch,
-                queueDispatch: () => {},
-            });
-        };
-        handle();
-        window.addEventListener('hashchange', handle);
-        return () => window.removeEventListener('hashchange', handle);
-    }, [dispatch]);
-    return null;
+/** Put the group's `coc://git` page tab at an address, as an earlier open would have. */
+function openGitPage(address: { gitMemberId?: string; view?: PersistedGitView }, groupId = GROUP, ownerRoutingRef: string | null = null) {
+    writeUnifiedPanelState(groupId, openTab(readUnifiedPanelState(groupId),
+        gitPageInput({ ownerWorkspaceId: groupId, ownerRoutingRef, chatId: null }, address)));
 }
 
-/** Every (member, commit) pairing the app state has ever shown. */
-const routeLog: string[] = [];
-
-/** Everything the router publishes, readable from a test. */
-function RouteProbe() {
-    const { state } = useApp();
-    routeLog.push(`${state.gitRouteScope?.workspaceId ?? ''}|${state.selectedGitCommitHash ?? ''}`);
-    return (
-        <div
-            data-testid="route-probe"
-            data-selected-repo={state.selectedRepoId ?? ''}
-            data-scope-page={state.gitRouteScope?.routeWorkspaceId ?? ''}
-            data-scope-member={state.gitRouteScope?.workspaceId ?? ''}
-            data-commit={state.selectedGitCommitHash ?? ''}
-            data-file={state.selectedGitFilePath ?? ''}
-            data-route-suffix={state.repoRouteState[GROUP] ?? ''}
-        />
-    );
+function gitPageUrl(groupId = GROUP): string | undefined {
+    return readUnifiedPanelState(groupId).workspaceTabs.find(tab => tab.resourceId === 'coc-git')?.browserUrl;
 }
 
-/**
- * `RepoGroupView` mounts the group's Git list beside the chats once the group
- * is selected; Git routes keep the chat sub-tab active. Mirroring that here
- * keeps the host from seeing a render before the route has been resolved.
- */
-function GroupGitHost({ groupId, members }: {
-    groupId: string;
-    members: readonly RepoGroupMember[] | undefined;
-}) {
-    const { state } = useApp();
-    if (state.selectedRepoId !== groupId) return null;
-    return <RepoGroupGitTab workspaceId={getWorkspaceIdFromSelectionId(groupId)} selectionId={groupId} members={members} />;
-}
-
-function tree(groupId: string, members: readonly RepoGroupMember[] | undefined) {
+function tree(groupId: string, members: readonly RepoGroupMember[] | undefined, selectionId = groupId, ownerRoutingRef: string | null = null) {
     return (
         <AppProvider>
-            <RouteSync />
-            <RouteProbe />
-            <GroupGitHost groupId={groupId} members={members} />
+            <RepoGroupGitTab workspaceId={groupId} selectionId={selectionId} members={members}
+                layout="split-workspace" rightPanel={{ chatId: null, ownerRoutingRef }} />
         </AppProvider>
     );
-}
-
-function renderGroup(
-    members: readonly RepoGroupMember[] | undefined,
-    groupId: string = GROUP,
-    initialHash?: string,
-) {
-    if (initialHash !== undefined) location.hash = initialHash;
-    return render(tree(groupId, members));
-}
-
-function probe(attribute: string): string {
-    return screen.getByTestId('route-probe').getAttribute(attribute) ?? '';
 }
 
 function mountedMember(): string | null {
     return screen.queryByTestId('stub-repo-git-tab')?.getAttribute('data-workspace') ?? null;
 }
 
-/** Re-run the route registry the way a real hash change would. */
-async function syncRoute() {
-    await act(async () => { window.dispatchEvent(new HashChangeEvent('hashchange')); });
-}
-
-async function navigate(hash: string) {
-    location.hash = hash;
-    await syncRoute();
+function pickMember(id: string) {
+    fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+    fireEvent.click(screen.getByTestId(`repo-group-git-member-${id}`));
 }
 
 beforeEach(() => {
     localStorage.clear();
+    clearUnifiedPanelState();
     panelProps.length = 0;
-    routeLog.length = 0;
     location.hash = '';
 });
 afterEach(() => cleanup());
 
-describe('group Git routes keep the group as the selected page', () => {
-    it('keeps a remote group selected when opening a member commit and file', async () => {
+describe('the group owns the page, the member owns the data', () => {
+    it('mounts the member the page names, routed on the group server for a remote group', async () => {
         const remoteGroup = buildRemoteCloneKey('box-b', GROUP);
-        const otherGroup = buildRemoteCloneKey('box-a', GROUP);
-        const view = renderGroup([member('repo-a')], remoteGroup);
-        await navigate(buildGitRouteHash({
-            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: null, filePath: null,
-        }));
-
-        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-route-workspace')).toBe(remoteGroup);
-        fireEvent.click(screen.getByTestId('select-commit'));
-        await syncRoute();
-        expect(location.hash).toBe(buildGitRouteHash({
-            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: null,
-        }));
-        expect(probe('data-selected-repo')).toBe(remoteGroup);
-
-        fireEvent.click(screen.getByTestId('select-commit-file'));
-        await syncRoute();
-        expect(location.hash).toBe(buildGitRouteHash({
-            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: 'src/a.ts',
-        }));
-        expect(probe('data-selected-repo')).toBe(remoteGroup);
-        expect(probe('data-file')).toBe('src/a.ts');
-
-        view.rerender(tree(otherGroup, [member('repo-a')]));
-        await navigate(buildGitRouteHash({
-            routeWorkspaceId: otherGroup, workspaceId: 'repo-a', commitHash: null, filePath: null,
-        }));
-        fireEvent.click(screen.getByTestId('select-commit'));
-        await syncRoute();
-        expect(location.hash).toBe(buildGitRouteHash({
-            routeWorkspaceId: otherGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: null,
-        }));
-        expect(probe('data-selected-repo')).toBe(otherGroup);
-    });
-
-    it('hands the group as routeWorkspaceId and the member as workspaceId', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-b/abc1234`);
+        openGitPage({ gitMemberId: 'repo-b' }, GROUP, remoteGroup);
+        render(tree(GROUP, [member('repo-a'), member('repo-b')], remoteGroup, remoteGroup));
+        await act(async () => {});
 
         expect(mountedMember()).toBe('repo-b');
-        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-route-workspace')).toBe(GROUP);
-        expect(probe('data-selected-repo')).toBe(GROUP);
-        expect(probe('data-scope-page')).toBe(GROUP);
-        expect(probe('data-scope-member')).toBe('repo-b');
-        expect(probe('data-commit')).toBe('abc1234');
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-source')).toBe(buildRemoteCloneKey('box-b', 'repo-b'));
+        expect(location.hash).toBe('');
     });
 
-    it('records the full member path against the GROUP, not the member', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-b/abc1234/src%2Fa.ts`);
+    it('never opens, focuses or reveals a Git page just because the group is shown', async () => {
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
+        await act(async () => {});
 
-        expect(probe('data-route-suffix')).toBe('/git/member/repo-b/abc1234/src%2Fa.ts');
-        expect(probe('data-file')).toBe('src/a.ts');
+        expect(mountedMember()).toBe('repo-a');
+        expect(readUnifiedPanelState(GROUP).workspaceTabs).toEqual([]);
+        expect(location.hash).toBe('');
     });
 });
 
 describe('member resolution', () => {
-    it('lets the URL member win over a conflicting remembered preference', async () => {
-        renderGroup([member('repo-a'), member('repo-b')], GROUP, `#repos/${GROUP}/git/member/repo-a`);
+    it('lets the page member win over a conflicting remembered preference', async () => {
+        render(tree(GROUP, [member('repo-a'), member('repo-b'), member('repo-c')]));
         await act(async () => {});
-        await navigate(`#repos/${GROUP}/git/member/repo-b`);
+        pickMember('repo-c');
+        await act(async () => {});
+        expect(JSON.parse(localStorage.getItem(MEMBER_STATE_KEY) ?? '{}')[GROUP]).toBe('repo-c');
+
+        act(() => openGitPage({ gitMemberId: 'repo-b' }));
+        await act(async () => {});
 
         expect(mountedMember()).toBe('repo-b');
         // …and the validated choice becomes the new preference.
         expect(JSON.parse(localStorage.getItem(MEMBER_STATE_KEY) ?? '{}')[GROUP]).toBe('repo-b');
     });
 
-    it('canonicalizes a bare group entry to the remembered member in place', async () => {
-        renderGroup([member('repo-a'), member('repo-b')], GROUP, `#repos/${GROUP}/git/member/repo-b`);
+    it('canonicalizes an open member-less page to the remembered member in place', async () => {
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
         await act(async () => {});
-        const replaceSpy = vi.spyOn(history, 'replaceState');
-        const pushSpy = vi.spyOn(history, 'pushState');
-        await navigate(`#repos/${GROUP}/git`);
+        pickMember('repo-b');
+        await act(async () => {});
 
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-b`);
-        expect(probe('data-scope-member')).toBe('repo-b');
+        act(() => writeUnifiedPanelState(GROUP, openTab(openTab(EMPTY_UNIFIED_PANEL,
+            gitPageInput({ ownerWorkspaceId: GROUP, ownerRoutingRef: null, chatId: null })),
+            { kind: 'terminal', ownerWorkspaceId: GROUP, chatId: null, resourceId: 's1', label: 'bash' })));
+        const activeBefore = activeTabId(readUnifiedPanelState(GROUP), null);
+        await act(async () => {});
+
+        expect(gitPageUrl()).toBe('coc://git/member/repo-b');
         expect(mountedMember()).toBe('repo-b');
-        // `replaceState`, so Back still leaves the Git tab in one step.
-        expect(replaceSpy).toHaveBeenCalledWith(null, '', `#repos/${GROUP}/git/member/repo-b`);
-        // The canonical form is what the group remembers, so re-entry replays it.
-        expect(probe('data-route-suffix')).toBe('/git/member/repo-b');
-        expect(pushSpy).not.toHaveBeenCalled();
-        replaceSpy.mockRestore();
-        pushSpy.mockRestore();
-    });
-
-    it('upgrades an older /git/{sha} group link to the explicit member form', async () => {
-        renderGroup([member('repo-a'), member('repo-b')], GROUP, `#repos/${GROUP}/git/member/repo-b`);
-        await act(async () => {});
-        await navigate(`#repos/${GROUP}/git/abc1234/src%2Fa.ts`);
-
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-b/abc1234/src%2Fa.ts`);
-        expect(probe('data-scope-member')).toBe('repo-b');
-        expect(probe('data-commit')).toBe('abc1234');
-        expect(probe('data-file')).toBe('src/a.ts');
+        // In place: the other tab keeps focus.
+        expect(activeTabId(readUnifiedPanelState(GROUP), null)).toBe(activeBefore);
     });
 
     it('waits for membership before selecting, canonicalizing or persisting', async () => {
-        const { rerender } = renderGroup(undefined);
-        await navigate(`#repos/${GROUP}/git`);
+        openGitPage({});
+        const { rerender } = render(tree(GROUP, undefined));
+        await act(async () => {});
 
         expect(screen.getByTestId('repo-group-git-loading')).toBeTruthy();
-        expect(location.hash).toBe(`#repos/${GROUP}/git`);
+        expect(gitPageUrl()).toBe('coc://git');
         expect(localStorage.getItem(MEMBER_STATE_KEY)).toBeNull();
 
-        rerender(
-            <AppProvider>
-                <RouteSync />
-                <RouteProbe />
-                <RepoGroupGitTab workspaceId={GROUP} members={[member('repo-a')]} />
-            </AppProvider>
-        );
+        rerender(tree(GROUP, [member('repo-a')]));
         await act(async () => {});
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-a`);
+        expect(gitPageUrl()).toBe('coc://git/member/repo-a');
     });
 });
 
 describe('changing member', () => {
-    it('navigates to the new member’s history and drops the old selection', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234/src%2Fa.ts`);
-        expect(probe('data-commit')).toBe('abc1234');
+    it('points the page at the new member’s history and drops the old view', async () => {
+        openGitPage({ gitMemberId: 'repo-a', view: { type: 'commit-file', hash: 'abc1234', filePath: 'src/a.ts' } });
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
+        await act(async () => {});
 
-        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
-        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
-        await syncRoute();
+        pickMember('repo-b');
+        await act(async () => {});
 
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-b`);
+        expect(gitPageUrl()).toBe('coc://git/member/repo-b');
         expect(mountedMember()).toBe('repo-b');
-        expect(probe('data-commit')).toBe('');
-        expect(probe('data-file')).toBe('');
-        expect(probe('data-selected-repo')).toBe(GROUP);
+        expect(JSON.parse(localStorage.getItem(MEMBER_STATE_KEY) ?? '{}')[GROUP]).toBe('repo-b');
     });
 
-    it('never pairs the new member with the previous member’s commit', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234`);
-        expect(routeLog).toContain('repo-a|abc1234');
+    it('switches the remembered member when no Git page is open', async () => {
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
+        await act(async () => {});
 
-        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
-        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
-        await syncRoute();
+        pickMember('repo-b');
+        await act(async () => {});
 
-        // Scope + revision move together, so this pairing never exists.
-        expect(routeLog).not.toContain('repo-b|abc1234');
-        expect(routeLog.at(-1)).toBe('repo-b|');
-        // And the hosted panel is always the group's, never the member's page.
-        for (const props of panelProps) expect(props.routeWorkspaceId).toBe(GROUP);
+        expect(mountedMember()).toBe('repo-b');
+        expect(readUnifiedPanelState(GROUP).workspaceTabs).toEqual([]);
     });
 
     it('is a no-op when the already selected member is chosen again', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234`);
+        openGitPage({ gitMemberId: 'repo-a', view: { type: 'commit', hash: 'abc1234' } });
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
+        await act(async () => {});
 
-        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
-        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-a'));
-        await syncRoute();
+        pickMember('repo-a');
+        await act(async () => {});
 
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-a/abc1234`);
-        expect(probe('data-commit')).toBe('abc1234');
+        expect(gitPageUrl()).toBe('coc://git/member/repo-a/abc1234');
     });
 });
 
 describe('an explicit member the group cannot show', () => {
     it('keeps the group open with a usable picker and mounts no git panel', async () => {
-        renderGroup([member('repo-a'), member('repo-b')], GROUP, `#repos/${GROUP}/git/member/repo-gone/abc1234`);
+        openGitPage({ gitMemberId: 'repo-gone', view: { type: 'commit', hash: 'abc1234' } });
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
         await act(async () => {});
 
         expect(screen.getByTestId('repo-group-git-unavailable-member')).toBeTruthy();
         expect(screen.queryByTestId('stub-repo-git-tab')).toBeNull();
-        expect(probe('data-selected-repo')).toBe(GROUP);
         // No git panel was mounted, so no request can target the wrong repo.
         expect(panelProps).toHaveLength(0);
     });
 
     it('does the same for a member that has gone stale', async () => {
-        renderGroup([member('repo-a'), member('repo-b', { stale: true, staleReason: 'path-missing' })]);
-        await navigate(`#repos/${GROUP}/git/member/repo-b`);
+        openGitPage({ gitMemberId: 'repo-b' });
+        render(tree(GROUP, [member('repo-a'), member('repo-b', { stale: true, staleReason: 'path-missing' })]));
+        await act(async () => {});
 
         expect(screen.getByTestId('repo-group-git-unavailable-member')).toBeTruthy();
         expect(screen.queryByTestId('stub-repo-git-tab')).toBeNull();
     });
 
     it('opens the picked repository’s history when the user recovers', async () => {
-        renderGroup([member('repo-a'), member('repo-b')]);
-        await navigate(`#repos/${GROUP}/git/member/repo-gone/abc1234`);
+        openGitPage({ gitMemberId: 'repo-gone', view: { type: 'commit', hash: 'abc1234' } });
+        render(tree(GROUP, [member('repo-a'), member('repo-b')]));
+        await act(async () => {});
 
-        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
-        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-a'));
-        await syncRoute();
+        pickMember('repo-a');
+        await act(async () => {});
 
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-a`);
+        expect(gitPageUrl()).toBe('coc://git/member/repo-a');
         expect(mountedMember()).toBe('repo-a');
     });
 
     it('keeps the ordinary empty state when the group has no healthy member', async () => {
-        renderGroup([member('gone', { stale: true, staleReason: 'workspace-removed' })]);
-        await navigate(`#repos/${GROUP}/git/member/gone/abc1234`);
+        openGitPage({ gitMemberId: 'gone', view: { type: 'commit', hash: 'abc1234' } });
+        render(tree(GROUP, [member('gone', { stale: true, staleReason: 'workspace-removed' })]));
+        await act(async () => {});
 
         expect(screen.getByTestId('repo-group-git-empty')).toBeTruthy();
         expect(screen.queryByTestId('repo-group-git-unavailable-member')).toBeNull();
@@ -403,30 +253,31 @@ describe('an explicit member the group cannot show', () => {
 describe('groups stay independent', () => {
     it('remembers a different member per group, sharing the same repos', async () => {
         const members = [member('repo-a'), member('repo-b')];
-        // One app, two groups — exactly how a user moves between them.
-        const { rerender } = renderGroup(members, GROUP, `#repos/${GROUP}/git/member/repo-b`);
+        const { rerender } = render(tree(GROUP, members));
+        await act(async () => {});
+        pickMember('repo-b');
         await act(async () => {});
 
         rerender(tree(OTHER_GROUP, members));
-        await navigate(`#repos/${OTHER_GROUP}/git/member/repo-a`);
+        await act(async () => {});
         expect(mountedMember()).toBe('repo-a');
 
-        // Back to the first group with no member in the URL: its own pick returns.
+        // Back to the first group with no page naming a member: its own pick returns.
         rerender(tree(GROUP, members));
-        await navigate(`#repos/${GROUP}/git`);
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-b`);
+        await act(async () => {});
+        expect(mountedMember()).toBe('repo-b');
         expect(JSON.parse(localStorage.getItem(MEMBER_STATE_KEY) ?? '{}')).toEqual({
             [GROUP]: 'repo-b', [OTHER_GROUP]: 'repo-a',
         });
     });
 
-    it('restores the explicit member from the URL even with a conflicting store', async () => {
+    it('reads each group’s own Git page, never another group’s', async () => {
         const members = [member('repo-a'), member('repo-b')];
-        renderGroup(members, GROUP, `#repos/${GROUP}/git/member/repo-a`);
+        openGitPage({ gitMemberId: 'repo-b' }, OTHER_GROUP);
+        render(tree(GROUP, members));
         await act(async () => {});
-        await navigate(`#repos/${GROUP}/git/member/repo-b/abc1234`);
 
-        expect(mountedMember()).toBe('repo-b');
-        expect(probe('data-commit')).toBe('abc1234');
+        expect(mountedMember()).toBe('repo-a');
+        expect(gitPageUrl(OTHER_GROUP)).toBe('coc://git/member/repo-b');
     });
 });

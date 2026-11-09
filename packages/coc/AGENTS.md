@@ -988,6 +988,9 @@ references before editing. Paths are package-relative.
   Provider UI resolves `activeProviderSession` before original task metadata;
   live responses use turn attribution, never a queued or pending composer choice.
   Model: task/turn > repo mode default > repo default > provider/CLI.
+  Non-Copilot reasoning metadata comes from the selected provider's catalog, not
+  Copilot's same-ID cache. Use `coc-agent-sdk/model-reasoning` for SDK capability
+  checks; explicit `reasoningEffort: false` wins over raw provider effort lists.
 - Stopped chats require `resumeSessionId`/`strictSessionResume: true`; failed resume
   marks `metadata.stoppedChatResume` non-resumable, without replacement/fresh fallback.
 - Follow-up delivery/rewind share `src/server/processes/process-operation-admission.ts`.

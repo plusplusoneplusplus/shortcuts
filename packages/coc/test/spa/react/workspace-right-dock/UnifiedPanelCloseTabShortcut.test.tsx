@@ -70,9 +70,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearClosedBrowserTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedClosedBrowserTabs';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
-import { getUnifiedGitTabDirtyBridge, openUnifiedGitTab, useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
+import { getUnifiedGitTabDirtyBridge, useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
+import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 
 const WS = 'ws-1';
 
@@ -155,6 +157,8 @@ describe('unified panel close-tab shortcut', () => {
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        // A closed coc:// tab is a reopenable web tab; never carry one between cases.
+        clearClosedBrowserTabs();
         stubOffsetParent();
     });
     afterEach(() => {
@@ -165,7 +169,7 @@ describe('unified panel close-tab shortcut', () => {
 
     it.each([false, true])('closes Git after clicking portaled diff content (meta=%s)', metaKey => {
         render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
-        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        act(() => { openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }); });
         expect(pressCloseTab({ metaKey }).defaultPrevented).toBe(false);
         fireEvent.mouseDown(screen.getByTestId(`git-line-${WS}`));
         expect(document.activeElement).toBe(screen.getByTestId('unified-git-tab'));
@@ -176,7 +180,7 @@ describe('unified panel close-tab shortcut', () => {
     it('preserves editor and control focus and closes Git before editor key handlers', () => {
         render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
         openResource('notes');
-        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        act(() => { openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }); });
         for (const target of [`git-editor-${WS}`, `git-action-${WS}`]) {
             focusIn(target);
             fireEvent.mouseDown(screen.getByTestId(target));
@@ -190,7 +194,7 @@ describe('unified panel close-tab shortcut', () => {
         act(() => { editor.dispatchEvent(event); });
         expect(event.defaultPrevented).toBe(true);
         expect(editorHandler).not.toHaveBeenCalled();
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('closes only the focused panel and yields when the composer regains focus', () => {
@@ -200,21 +204,21 @@ describe('unified panel close-tab shortcut', () => {
             <UnifiedRightPanel workspaceId="ws-2" dock={dockStub({ target: 'ws-2' })} /><GitDetailPortal scope="ws-2" />
         </>);
         act(() => {
-            for (const scope of [WS, 'ws-2']) openUnifiedGitTab(scope, { ownerWorkspaceId: scope, chatId: null });
+            for (const scope of [WS, 'ws-2']) openPanelWorkspaceResource('git', { workspaceId: scope, routingRef: null, chatId: null });
         });
         fireEvent.mouseDown(screen.getByTestId('git-line-ws-2'));
         focusIn('composer');
         expect(pressCloseTab().defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['git', 'git']);
+        expect(tabKinds()).toEqual(['browser', 'browser']);
         fireEvent.mouseDown(screen.getByTestId('git-line-ws-2'));
         expect(pressCloseTab().defaultPrevented).toBe(true);
-        expect(tabKinds()).toEqual(['git']);
+        expect(tabKinds()).toEqual(['browser']);
         expect(screen.getByTestId(`git-line-${WS}`)).toBeTruthy();
     });
 
     it('uses the dirty Git close guard, preserving Cancel and failed saves', async () => {
         render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
-        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        act(() => { openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }); });
         const save = vi.fn(async () => false);
         act(() => {
             const bridge = getUnifiedGitTabDirtyBridge(WS)!;
@@ -224,12 +228,12 @@ describe('unified panel close-tab shortcut', () => {
         fireEvent.mouseDown(screen.getByTestId(`git-line-${WS}`));
         pressCloseTab();
         fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
-        expect(tabKinds()).toEqual(['git']);
+        expect(tabKinds()).toEqual(['browser']);
         focusIn(`git-editor-${WS}`);
         pressCloseTab({ metaKey: true });
         fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
         await screen.findByTestId('explorer-close-tabs-error');
-        expect(tabKinds()).toEqual(['git']);
+        expect(tabKinds()).toEqual(['browser']);
         fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
         expect(tabKinds()).toEqual([]);
         expect(save).toHaveBeenCalledOnce();
@@ -238,7 +242,7 @@ describe('unified panel close-tab shortcut', () => {
     it('closes the active tab on Ctrl+W with focus inside the panel', () => {
         renderPanel();
         openResource('notes');
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
 
         focusIn('mock-notes-input');
         const event = pressCloseTab();
@@ -260,12 +264,12 @@ describe('unified panel close-tab shortcut', () => {
         renderPanel();
         openResource('terminal');
         openResource('notes');
-        expect(tabKinds()).toEqual(['terminal', 'notes']);
+        expect(tabKinds()).toEqual(['browser', 'browser']);
 
         // Notes was opened last, so it is the active tab.
         focusIn('mock-notes-input');
         pressCloseTab();
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('does nothing when focus is outside the panel', () => {
@@ -278,7 +282,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
         outside.remove();
     });
 
@@ -290,7 +294,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('does nothing while the panel is collapsed', () => {
@@ -302,16 +306,16 @@ describe('unified panel close-tab shortcut', () => {
         openResource('notes');
         cleanup();
         renderPanel({ dock: dockStub({ isOpen: false }) });
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
 
-        const tab = document.querySelector('[role="tab"][data-kind="notes"]') as HTMLElement;
+        const tab = document.querySelector('[role="tab"][data-tab-id$="|coc-notes"]') as HTMLElement;
         act(() => { tab.focus(); });
         expect(document.activeElement).toBe(tab);
         expect(screen.getByTestId('unified-right-panel').offsetParent).toBeNull();
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['notes']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('swallows the key with an empty strip — the browser window never closes', () => {
@@ -337,7 +341,7 @@ describe('unified panel close-tab shortcut', () => {
 
         const event = pressCloseTab();
         expect(event.defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('closes the terminal tab on Cmd+W', () => {
@@ -353,7 +357,7 @@ describe('unified panel close-tab shortcut', () => {
     it('takes Ctrl+W when a terminal is active but the focus is on the tab strip', () => {
         renderPanel();
         openResource('terminal');
-        const tab = document.querySelector('[role="tab"][data-kind="terminal"]') as HTMLElement;
+        const tab = document.querySelector('[role="tab"][data-kind="browser"]') as HTMLElement;
         act(() => { tab.focus(); });
 
         const event = pressCloseTab();
@@ -370,7 +374,7 @@ describe('unified panel close-tab shortcut', () => {
         pressCloseTab({ metaKey: true });
 
         expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
-        expect(tabKinds()).toEqual(['terminal']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('stops propagation, so no bubble-phase owner sees the key', () => {
@@ -400,6 +404,8 @@ describe('unified panel new-browser shortcut', () => {
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        // A closed coc:// tab is a reopenable web tab; never carry one between cases.
+        clearClosedBrowserTabs();
         stubOffsetParent();
     });
     afterEach(() => { cleanup(); nativeMenu.enabled = false; clearUnifiedPanelState(); clearUnifiedTreeState(); });
@@ -489,18 +495,19 @@ describe('unified panel new-browser shortcut', () => {
         editable.remove();
         focusIn('unified-panel-open-menu');
         expect(pressAddTab().defaultPrevented).toBe(true);
-        expect(tabKinds()).toEqual(['notes', 'terminal', 'browser']);
-        expect(document.activeElement).toBe(screen.getByTestId('browser-address'));
+        expect(tabKinds()).toEqual(['browser', 'browser', 'browser']);
+        expect(document.activeElement?.getAttribute('data-testid')).toBe('browser-address');
+        expect((document.activeElement as HTMLInputElement).value).toBe('');
     });
 
     it('preserves Monaco bindings even on non-editable editor chrome', () => {
         render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
-        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        act(() => { openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }); });
         const editor = screen.getByTestId(`git-editor-${WS}`).parentElement!;
         editor.tabIndex = 0;
         editor.focus();
         expect(pressAddTab().defaultPrevented).toBe(false);
-        expect(tabKinds()).toEqual(['git']);
+        expect(tabKinds()).toEqual(['browser']);
     });
 
     it('uses only the focused workspace and declines ambiguous body focus', () => {
@@ -544,7 +551,7 @@ describe('unified panel new-browser shortcut', () => {
         openResource('notes');
         act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
         // Default tab groups show Tools before Web.
-        expect(tabKinds()).toEqual(['notes', 'browser', 'browser']);
+        expect(tabKinds()).toEqual(['browser', 'browser', 'browser']);
         const latest = readUnifiedPanelState(WS).workspaceTabs[1];
         fireEvent.click(screen.getByTestId(`unified-panel-tab-${latest.id}`));
         view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);

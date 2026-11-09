@@ -66,6 +66,7 @@ import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges
 import { browserOpenInput } from './unifiedBrowserTabs';
 import { GIT_ICON, SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { formatCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** Results requested and rendered per query, matching QuickOpen. */
 const RESULT_LIMIT = 50;
@@ -85,16 +86,21 @@ export interface UnifiedPanelOpenMenuProps {
     targets?: readonly DockTarget[];
     /** Open a concrete resource — a searched file or a chat canvas. */
     onOpenResource: (input: OpenUnifiedTabInput) => void;
-    /** The selected Sentinel chat's To-do tab; null hides the entry. */
-    todoInput?: OpenUnifiedTabInput | null;
+    /** The selected chat is a Sentinel chat with a To-do; false hides the entry. */
+    todoAvailable?: boolean;
     /** The panel's workspace owns a Settings page; see `openMenuActions`. */
     settingsAvailable?: boolean;
     /** The panel can host the target repo's Git tab; see `openMenuActions`. */
     gitAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (action: 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
+    onOpenWorkspaceResource: (action: 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
+    /**
+     * Open a `coc://` page — a typed address, or the Terminal, Settings and
+     * To-do entries; a string is an inline error.
+     */
+    onOpenCocAddress: (address: CocAddress) => string | void;
 }
 
 export function UnifiedPanelOpenMenu({
@@ -104,11 +110,12 @@ export function UnifiedPanelOpenMenu({
     targetRoutingRef,
     targets,
     onOpenResource,
-    todoInput = null,
+    todoAvailable = false,
     settingsAvailable = false,
     gitAvailable = false,
     onOpenWorkspaceResource,
     onClose,
+    onOpenCocAddress,
 }: UnifiedPanelOpenMenuProps) {
     const [query, setQuery] = useState('');
     const [files, setFiles] = useState<readonly OpenMenuFileResult[]>([]);
@@ -117,6 +124,8 @@ export function UnifiedPanelOpenMenu({
     const [canvases, setCanvases] = useState<readonly OpenMenuCanvasResult[]>([]);
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [cocError, setCocError] = useState<string | null>(null);
+    useEffect(() => { setCocError(null); }, [query]);
     const [view, setView] = useState<OpenMenuView>('main');
     const [extensions, setExtensions] = useState<readonly OpenMenuExtensionResult[]>([]);
     const [openingExtension, setOpeningExtension] = useState<string | null>(null);
@@ -140,14 +149,14 @@ export function UnifiedPanelOpenMenu({
         targetWorkspaceId: target,
         chatId,
         chatHasChanges: chatChanges !== null,
-        todoAvailable: todoInput !== null,
+        todoAvailable,
         settingsAvailable,
         gitAvailable,
         extensionsAvailable: extensions.length > 0,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoInput, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoAvailable, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
@@ -343,6 +352,12 @@ export function UnifiedPanelOpenMenu({
 
     const selectItem = useCallback((item: OpenMenuItem) => {
         if (item.type === 'url-error') return;
+        if (item.type === 'coc') {
+            const failure = onOpenCocAddress(item.address);
+            if (failure) setCocError(failure);
+            else onClose();
+            return;
+        }
         if (item.type === 'url') {
             onOpenResource(browserOpenInput(browserContext, item.url));
             onClose();
@@ -396,14 +411,16 @@ export function UnifiedPanelOpenMenu({
             onClose();
             return;
         }
-        if (item.action.id === 'todo') {
-            if (todoInput !== null) onOpenResource(todoInput);
-            onClose();
+        const id = item.action.id;
+        if (id === 'terminal' || id === 'settings' || id === 'todo' || id === 'notes') {
+            const failure = onOpenCocAddress({ kind: id });
+            if (failure) setCocError(failure);
+            else onClose();
             return;
         }
-        onOpenWorkspaceResource(item.action.id);
+        onOpenWorkspaceResource(id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, todoInput, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -508,6 +525,22 @@ export function UnifiedPanelOpenMenu({
                                 <span aria-hidden className="opacity-60">{ACTION_ICONS.browser}</span>
                                 <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Open {item.url}</span>
                                 <span className="ml-auto flex-shrink-0 text-[10px] text-[#8a8a8a]">Browser</span>
+                            </button>
+                        );
+                    }
+                    if (item.type === 'coc') {
+                        const text = formatCocAddress(item.address);
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={rowClass}
+                                title={text}
+                                onMouseEnter={() => setCursor(index)}
+                                onClick={() => selectItem(item)}
+                                data-testid="unified-panel-open-menu-coc"
+                            >
+                                <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Open {text}</span>
                             </button>
                         );
                     }
@@ -632,6 +665,11 @@ export function UnifiedPanelOpenMenu({
                 {extensionError && (
                     <div className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-extension-error">
                         {extensionError}
+                    </div>
+                )}
+                {cocError && (
+                    <div role="alert" className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-coc-error">
+                        {cocError}
                     </div>
                 )}
                 {createError && (

@@ -47,7 +47,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { activateTab, openTab, type UnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { browserOpenInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { browserOpenInput, notesPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import type { DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -79,9 +79,7 @@ const selected = () => screen.getByRole('tab', { selected: true }).getAttribute(
 /** Notes (non-page), A's Docs + Report, B's Results and one workspace-global manual page. */
 function seed(): void {
     applyRuntimeConfigPatch({ chatScopedBrowserTabsEnabled: true });
-    let state: UnifiedPanelState = openTab(readUnifiedPanelState(WS), {
-        kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes',
-    });
+    let state: UnifiedPanelState = openTab(readUnifiedPanelState(WS), notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null }));
     const add = (chatId: string | null, label: string) => {
         state = openTab(state, { ...browserOpenInput({ ownerWorkspaceId: WS, chatId }, `https://${label.toLowerCase()}.test/`), label });
     };
@@ -161,7 +159,7 @@ describe('conversation-owned browser tabs in the panel', () => {
         expect(selected()).toBe(`unified-panel-tab-${report.id}`);
         await waitFor(() => expect(guestHost(report.resourceId)?.style.visibility).toBe('visible'));
         expect(guest(report.resourceId)).toBe(reportGuest);
-        expect(browserTabs().map(tab => tab.label)).toEqual(['Docs', 'Report', 'Results', 'Shared']);
+        expect(browserTabs().map(tab => tab.label)).toEqual(['Notes', 'Docs', 'Report', 'Results', 'Shared']);
         expect(bridge.close).not.toHaveBeenCalled();
         expect(bridge.navigate).not.toHaveBeenCalled();
         expect(bridge.nav).not.toHaveBeenCalled();
@@ -219,7 +217,7 @@ describe('conversation-owned browser tabs in the panel', () => {
         await waitFor(() => expect(guest(report.resourceId)).toBeTruthy());
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${report.id}`));
         expect(bridge.close).toHaveBeenCalledExactlyOnceWith(report.resourceId);
-        expect(browserTabs().map(tab => tab.label)).toEqual(['Docs', 'Results', 'Shared', blank.label]);
+        expect(browserTabs().map(tab => tab.label)).toEqual(['Notes', 'Docs', 'Results', 'Shared', blank.label]);
     });
 
     it('shows every page in every chat when the flag is off or turns off live', () => {

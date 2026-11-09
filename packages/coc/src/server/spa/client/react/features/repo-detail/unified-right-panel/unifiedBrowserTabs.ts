@@ -1,8 +1,8 @@
 /**
  * unifiedBrowserTabs — pure rules for the panel's general-purpose `browser` tab.
  *
- * A browser tab is workspace-owned and session-only: it never reaches storage,
- * so restarting CoC starts with none. Each Browser open is a new tab (no dedupe
+ * A browser tab is workspace-owned and a web page is session-only: it never
+ * reaches storage, so restarting CoC starts with none. Each Browser open is a new tab (no dedupe
  * by URL), and the tab carries the concrete owner the dock targeted when it was
  * opened. That identity governs routing; each engine's persistent sign-ins are
  * shared installation-wide. Changing the dock target never retargets a tab.
@@ -12,13 +12,20 @@
  * its view; a tab opened with no conversation stays workspace-global. Copies
  * of a tab (duplicate, popup, reopen) keep the source's owner exactly.
  *
+ * A tab may also show a `coc://` page (Terminal, Settings, To-do, Canvas, Notes).
+ * Such a tab is persisted, and opening a page focuses a visible tab already
+ * showing it for the same owner (`openCocPageTab`). Canvas pages match by
+ * canvas id, so each document keeps its own tab.
+ *
  * URL handling is deliberately narrow: only http(s) is accepted, a bare domain
  * gets `https://` (loopback hosts get `http://`), and arbitrary text is rejected
  * rather than turned into a search query.
  */
 
 import { isChatScopedBrowserTabsEnabled } from '../../../utils/config';
-import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { activateTab, openTab, visibleTabs, type OpenUnifiedTabInput, type UnifiedPanelState, type UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { canvasIdOfAddress, canvasPageResourceId, cocAddressLabel, cocPageKindOf, formatCocAddress, isCocAddressText, parseCocAddress } from './unifiedPanelAddresses';
+import type { PersistedGitView } from '../../git/repoGitTab/types';
 
 export type BrowserUrlResult =
     | { ok: true; url: string }
@@ -118,6 +125,10 @@ export function hasExplicitUrlScheme(input: string): boolean {
 /** The label a tab shows for a URL before its page reports a title. */
 export function browserLabelForUrl(url: string | undefined): string {
     if (!url) return BLANK_BROWSER_LABEL;
+    if (isCocAddressText(url)) {
+        const address = parseCocAddress(url);
+        return 'error' in address ? BLANK_BROWSER_LABEL : cocAddressLabel(address);
+    }
     try {
         return new URL(url).host || BLANK_BROWSER_LABEL;
     } catch {
@@ -201,4 +212,67 @@ export function duplicateBrowserTabInput(tab: UnifiedPanelTab, chatId: string | 
         label: tab.label,
         ...(tab.browserEngine ? { browserEngine: tab.browserEngine } : {}),
     };
+}
+
+/**
+ * The web tab a canvas opens in: `coc://canvas/<id>`, kept with the chat that
+ * linked it. The resource id is stable, so opening that canvas again focuses
+ * this tab instead of stacking another.
+ */
+export function canvasPageInput(
+    canvas: { id: string; title?: string },
+    context: BrowserOpenContext & { repoLabel?: string },
+): OpenUnifiedTabInput {
+    const title = canvas.title?.trim() ?? '';
+    return {
+        ...browserOpenInput(context, formatCocAddress({ kind: 'canvas', canvasId: canvas.id })),
+        resourceId: canvasPageResourceId(context.browserChatId !== undefined ? context.browserChatId : context.chatId, canvas.id),
+        label: title === '' ? 'Untitled canvas' : title,
+    };
+}
+
+/**
+ * The panel workspace's Notes page. `coc://notes` opens the collection;
+ * `coc://notes/<path>` selects that note. One page per workspace, so a later
+ * open focuses it and the address follows the path.
+ */
+export function notesPageInput(context: BrowserOpenContext, notePath?: string): OpenUnifiedTabInput {
+    const path = notePath?.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    return {
+        ...browserOpenInput({ ...context, browserChatId: null }, formatCocAddress(path ? { kind: 'notes', notePath: path } : { kind: 'notes' })),
+        resourceId: 'coc-notes',
+        label: 'Notes',
+    };
+}
+
+/**
+ * The panel workspace's Git page. `coc://git` opens plain history;
+ * `coc://git/member/<id>` and a commit/branch/working-tree view deep-link into it.
+ * One page per workspace, so a later open focuses it and the address follows the view.
+ */
+export function gitPageInput(context: BrowserOpenContext, address?: { gitMemberId?: string; view?: PersistedGitView }): OpenUnifiedTabInput {
+    return {
+        ...browserOpenInput({ ...context, browserChatId: null }, formatCocAddress({ kind: 'git', ...address })),
+        resourceId: 'coc-git',
+        label: 'Git',
+    };
+}
+
+/** Whether `tab` is a web tab showing `input`'s `coc://` page for the same owner. */
+export function isSameCocPageTab(tab: UnifiedPanelTab, input: OpenUnifiedTabInput): boolean {
+    const kind = cocPageKindOf(input.browserUrl);
+    if (kind === null || tab.kind !== 'browser' || cocPageKindOf(tab.browserUrl) !== kind) return false;
+    if (tab.ownerWorkspaceId !== input.ownerWorkspaceId) return false;
+    if ((tab.ownerRoutingRef ?? null) !== (input.ownerRoutingRef ?? null)) return false;
+    if (kind === 'canvas') return canvasIdOfAddress(tab.browserUrl) === canvasIdOfAddress(input.browserUrl);
+    return true;
+}
+
+/**
+ * Open a `coc://` page tab, or focus the visible tab already showing that page
+ * for the same owner. `input` is a `browserOpenInput` at the page's address.
+ */
+export function openCocPageTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): UnifiedPanelState {
+    const existing = visibleTabs(state, input.chatId, false).find(tab => isSameCocPageTab(tab, input));
+    return existing ? activateTab(state, input.chatId, existing.id) : openTab(state, input);
 }

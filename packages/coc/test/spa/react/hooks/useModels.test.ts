@@ -213,6 +213,20 @@ describe('useModels', () => {
         expect(result.current.models[0].defaultReasoningEffort).toBe('medium');
     });
 
+    it.each(['copilot', 'claude', 'codex'])('hides unsupported efforts even when %s metadata lists raw levels', async provider => {
+        mocks.agentProviders.listModels.mockResolvedValue({ models: [{
+            id: 'non-configurable-model',
+            capabilities: { supports: { reasoningEffort: false, reasoning_effort: ['low', 'medium', 'high'] } },
+            supportedReasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+        }] });
+        const { result } = renderHook(() => useModels(provider));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].capabilities?.supports.reasoningEffort).toBe(false);
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual([]);
+        expect(result.current.models[0].defaultReasoningEffort).toBeUndefined();
+    });
+
     it('canonicalizes reasoning effort order, dedupes, and ignores unknown values', async () => {
         mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'noisy-model',
@@ -238,7 +252,6 @@ describe('useModels', () => {
             capabilities: {
                 supports: {
                     vision: false,
-                    reasoningEffort: false,
                     reasoning_effort: ['low', 'high'],
                 },
                 limits: { max_context_window_tokens: 128000 },

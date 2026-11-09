@@ -6,7 +6,8 @@
  * per-tab detail) from the hash. It builds the suffix through
  * `buildRepoSubTabSuffix` — mirroring useShellNavigation.navigate — so returning
  * to Notes preserves the already-mounted view (no reset/reopen), returning to
- * Activity reselects the last chat, and returning to Git reopens the last commit.
+ * Activity reselects the last chat, and Git (a page with no commit deep link of
+ * its own here) lands on its bare route.
  *
  * @vitest-environment jsdom
  */
@@ -27,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 // without dragging in Router's heavy view tree.
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
-    return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
+    return { buildRepoSubTabSuffix: routes.buildRepoSubTabSuffix };
 });
 vi.mock(
     '../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled',
@@ -58,8 +59,6 @@ beforeEach(() => {
         selectedNotePath: null,
         notePathState: {},
         settingsSection: 'general',
-        selectedGitCommitHash: null,
-        selectedGitFilePath: null,
     };
     mockQueueState = { selectedTaskIdByRepo: {} };
 });
@@ -99,13 +98,12 @@ describe('useVirtualWorkspaceHeader.switchTab — per-tab detail preservation', 
         expect(location.hash).toBe('#repos/my_life/notes/projects/plan.md');
     });
 
-    it('reopens the last commit when returning to Git (AC-02)', () => {
-        mockState.selectedGitCommitHash = 'abc123';
-        mockState.selectedGitFilePath = 'src/file.ts';
+    it('lands on the bare Git page when switching to Git', () => {
         const { result } = renderHook(() => useVirtualWorkspaceHeader(config));
 
         act(() => result.current.switchTab('git'));
 
-        expect(location.hash).toBe('#repos/my_life/git/abc123/src%2Ffile.ts');
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+        expect(location.hash).toBe('#repos/my_life/git');
     });
 });

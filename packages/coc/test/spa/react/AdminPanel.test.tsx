@@ -1262,6 +1262,31 @@ describe('AdminPanel', () => {
             }
         });
 
+        it.each([false, true])('shows a single read-only Sentinel intro above its controls when enabled is %s', async enabled => {
+            window.location.hash = '#admin/settings/sentinel';
+            mockFullConfig({ sentinel: { enabled } });
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+
+            const copy = 'Sentinel is your work coordinator. It tracks tasks, delegates work to the right workspace, and reports results safely.';
+            const intro = await screen.findByText(copy);
+            const card = screen.getByTestId('settings-tab-features-sentinel');
+            expect(screen.getAllByText(copy)).toHaveLength(1);
+            expect(intro.tagName).toBe('P');
+            expect(intro.classList.contains('ar-page-desc')).toBe(true);
+            expect(intro.nextElementSibling).toBe(card);
+            expect(card.contains(intro)).toBe(false);
+            expect(screen.getByTestId('toggle-sentinel-enabled')).toHaveProperty('checked', enabled);
+            expect(screen.getByTestId('settings-tab-features-sentinel-save')).toHaveProperty('disabled', true);
+            expect(writes).toHaveLength(0);
+
+            await gotoSettingsSubTab('chat');
+            expect(screen.queryByText(copy)).toBeNull();
+            await gotoSettingsSubTab('sentinel');
+            expect(screen.getAllByText(copy)).toHaveLength(1);
+            expect(writes).toHaveLength(0);
+        });
+
         it('groups Appearance into jump-navigable sections', async () => {
             window.location.hash = '#admin/settings/appearance';
             mockFullConfig();

@@ -210,7 +210,7 @@ async function expectFocusedPatch(page: Page, filePath: string, content: string)
 test.describe('BranchRangeOverview — file list', () => {
     test('shows range scope and grouped files with one focused patch', async ({ page, serverUrl }) => {
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-fl-1');
-        await expect(page.getByTestId('branch-commit-strip-header')).toContainText('feature/test-branch');
+        await expect(page.getByTestId('git-review-toolbar')).toContainText('feature/test-branch');
         const scope = page.getByRole('combobox', { name: 'Commit scope', exact: true });
         await expect(scope).toHaveValue('');
         await expect(scope).toContainText('All 2 commits');
@@ -263,7 +263,7 @@ test.describe('BranchRangeOverview — focused file review', () => {
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
         await expect(page.getByTestId('file-diff-content')).not.toContainText('return "utility";');
         await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeDisabled();
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Ffeature\.ts$/);
         await review.getByRole('button', { name: 'Previous file', exact: true }).click();
         await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
         await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeEnabled();
@@ -288,13 +288,13 @@ test.describe('BranchRangeOverview — focused file review', () => {
 });
 
 test.describe('BranchRangeOverview — open file in diff panel', () => {
-    test('selecting an overview file opens its patch and survives a deep-link reload', async ({ page, serverUrl }) => {
+    test('selecting an overview file opens its patch and survives a reload', async ({ page, serverUrl }) => {
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-op-1');
         const review = page.getByTestId('git-file-review');
         await review.getByRole('button', { name: 'Overview', exact: true }).click();
         await review.locator('.git-review-overview [data-file-path="src/feature.ts"]').click();
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Ffeature\.ts$/);
         await page.reload();
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
         await openFileNavigator(page);
@@ -320,10 +320,21 @@ test.describe('BranchRangeOverview — empty state', () => {
     });
 });
 
+/** Narrow panes move toolbar actions into the "More review actions" menu, as commits do. */
+async function openBranchComments(page: Page): Promise<void> {
+    const button = page.getByTestId('branch-range-comments-btn');
+    if (await button.isVisible()) {
+        await button.click();
+        return;
+    }
+    await page.getByTestId('git-review-more').click();
+    await page.getByTestId('branch-range-comments-btn-menu-item').click();
+}
+
 test.describe('BranchRangeOverview — all comments panel', () => {
     test('the comments action replaces file review with the empty all-comments panel', async ({ page, serverUrl }) => {
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-1');
-        await page.getByRole('button', { name: 'Show all branch comments', exact: true }).click();
+        await openBranchComments(page);
         await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('branch-range-all-comments').getByTestId('empty-comments'))
             .toHaveText('No comments yet. Comments you add in any file of this review appear here.');
@@ -332,7 +343,7 @@ test.describe('BranchRangeOverview — all comments panel', () => {
 
     test('the all-comments header identifies the branch', async ({ page, serverUrl }) => {
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-2');
-        await page.getByRole('button', { name: 'Show all branch comments', exact: true }).click();
+        await openBranchComments(page);
         await expect(page.getByTestId('branch-range-all-comments'))
             .toContainText('Branch Changes: feature/test-branch — All Comments', { timeout: 10_000 });
     });
@@ -354,9 +365,8 @@ test.describe('BranchRangeOverview — all comments panel', () => {
             updatedAt: '2026-10-01T12:00:00.000Z',
         };
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-3', { comments: [mockComment] });
-        const commentsButton = page.getByRole('button', { name: 'Show all branch comments', exact: true });
-        await expect(commentsButton).toContainText('Comments · 1', { timeout: 5_000 });
-        await commentsButton.click();
+        await expect(page.getByTestId('branch-range-comments-btn')).toContainText('1', { timeout: 5_000 });
+        await openBranchComments(page);
         const panel = page.getByTestId('branch-range-all-comments');
         await expect(panel).toContainText('feature.ts', { timeout: 10_000 });
         await expect(panel).toContainText('Needs review.');
@@ -435,7 +445,7 @@ test.describe('BranchRangeOverview — base mode toggle', () => {
         await expect(baseSelect.locator('option:checked')).toHaveText('Unpushed · origin/feature/test-branch', { timeout: 10_000 });
         expect(requestedBases).toContain('upstream');
         await expectFocusedPatch(page, 'src/unpushed.ts', 'return "not pushed yet";');
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Funpushed\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Funpushed\.ts$/);
         await openFileNavigator(page);
         await expect(page.locator('.git-review-nav [data-file-path="src/unpushed.ts"]')).toBeVisible();
         await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(1);

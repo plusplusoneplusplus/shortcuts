@@ -52,11 +52,12 @@ import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTa
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import type { UnifiedPanelGitOpenSource } from './panelGitCommit';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
-import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
+import { groupStripTabs, isGroupBoundaryMove, stripGroupForTab, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
 import { unifiedTabRepoLabel } from './unifiedTabLabels';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import { useBrowserTabFavicon } from './browserTabFavicons';
+import { cocPageKindOf, type CocAddress } from './unifiedPanelAddresses';
 import {
     unifiedPanelTabMenuItems,
     unifiedTabFilePathLabel,
@@ -122,25 +123,45 @@ export const GIT_ICON = (
     </svg>
 );
 
+const TERMINAL_ICON = (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="3,4 6,8 3,12" />
+        <line x1="8" y1="12" x2="13" y2="12" />
+    </svg>
+);
+
+/** A web tab showing a `coc://` page wears that page's icon instead of a site's. */
+const CANVAS_ICON = (
+    // A painter's palette, matching the 🎨 the "+" menu shows for canvases.
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true" data-icon="canvas-palette">
+        <path d="M8 2.2C4.5 2.2 2 4.6 2 7.7c0 3.2 2.6 6.1 5.4 6.1 1 0 1.4-.6 1.1-1.4-.3-.9.1-1.7 1.1-1.7h1.5c1.8 0 2.9-1.2 2.9-2.9 0-3.2-2.7-5.6-6-5.6z" />
+        <circle cx="5.2" cy="7.6" r="0.8" fill="currentColor" stroke="none" />
+        <circle cx="7" cy="5" r="0.8" fill="currentColor" stroke="none" />
+        <circle cx="10.2" cy="5.4" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+);
+
+const NOTES_ICON = (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-icon="notes">
+        <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
+        <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
+        <line x1="6" y1="8.2" x2="10.5" y2="8.2" />
+    </svg>
+);
+
+const COC_PAGE_ICONS: Readonly<Record<CocAddress['kind'], JSX.Element>> = {
+    settings: SETTINGS_ICON,
+    terminal: TERMINAL_ICON,
+    todo: TODO_ICON,
+    canvas: CANVAS_ICON,
+    notes: NOTES_ICON,
+    git: GIT_ICON,
+};
+
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
     'work-items': TODO_ICON,
     'pull-requests': PULL_REQUESTS_ICON,
     external: <span aria-hidden="true">↗</span>,
-    settings: SETTINGS_ICON,
-    todo: TODO_ICON,
-    terminal: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="3,4 6,8 3,12" />
-            <line x1="8" y1="12" x2="13" y2="12" />
-        </svg>
-    ),
-    notes: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
-            <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
-            <line x1="6" y1="8.2" x2="10.5" y2="8.2" />
-        </svg>
-    ),
     note: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
@@ -161,15 +182,6 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
         </svg>
     ),
-    canvas: (
-        // A painter's palette, matching the 🎨 the "+" menu shows for canvases.
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true" data-icon="canvas-palette">
-            <path d="M8 2.2C4.5 2.2 2 4.6 2 7.7c0 3.2 2.6 6.1 5.4 6.1 1 0 1.4-.6 1.1-1.4-.3-.9.1-1.7 1.1-1.7h1.5c1.8 0 2.9-1.2 2.9-2.9 0-3.2-2.7-5.6-6-5.6z" />
-            <circle cx="5.2" cy="7.6" r="0.8" fill="currentColor" stroke="none" />
-            <circle cx="7" cy="5" r="0.8" fill="currentColor" stroke="none" />
-            <circle cx="10.2" cy="5.4" r="0.8" fill="currentColor" stroke="none" />
-        </svg>
-    ),
     diff: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
             <line x1="4" y1="3" x2="4" y2="13" />
@@ -178,7 +190,6 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="6.2" y1="10" x2="9.8" y2="10" />
         </svg>
     ),
-    git: GIT_ICON,
     'html-page': (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
             <rect x="2" y="3" width="12" height="10" rx="1" />
@@ -222,7 +233,10 @@ function UnifiedTabIcon({ tab, testIds = true }: { tab: UnifiedPanelTab; testIds
     if (tab.kind === 'file') {
         return <FileNameIcon fileName={tab.label} showTitle={false} testId={testIds ? `unified-panel-tab-file-icon-${tab.id}` : undefined} />;
     }
-    if (tab.kind === 'browser') return <BrowserTabIcon tabId={tab.id} testId={testIds} />;
+    if (tab.kind === 'browser') {
+        const page = cocPageKindOf(tab.browserUrl);
+        return page ? COC_PAGE_ICONS[page] : <BrowserTabIcon tabId={tab.id} testId={testIds} />;
+    }
     return KIND_ICONS[tab.kind];
 }
 
@@ -453,7 +467,7 @@ export function UnifiedPanelTabStrip({
 
     /** The contiguous run of tabs sharing `tab`'s scope and display group — its own section. */
     const sectionOf = (tab: UnifiedPanelTab) => {
-        if (groupsEnabled) return tabs.filter(entry => entry.id !== pinnedId && stripGroupForKind(entry.kind) === stripGroupForKind(tab.kind));
+        if (groupsEnabled) return tabs.filter(entry => entry.id !== pinnedId && stripGroupForTab(entry) === stripGroupForTab(tab));
         if (reorderEnabled) return tabs.filter(entry => entry.id !== pinnedId);
         const scope = scopeForKind(tab.kind);
         const group = displayGroupForKind(tab.kind);
@@ -466,7 +480,7 @@ export function UnifiedPanelTabStrip({
         queueMicrotask(() => {
             const tab = tabs.find(entry => entry.id === id);
             const groupNode = groupsEnabled && tab
-                ? listRef.current?.querySelector<HTMLElement>(`[data-strip-group="${stripGroupForKind(tab.kind)}"]`)
+                ? listRef.current?.querySelector<HTMLElement>(`[data-strip-group="${stripGroupForTab(tab)}"]`)
                 : null;
             // Reordering a non-active tab can move it beyond the visible cap.
             const node = tabRefs.current.get(id)
@@ -862,7 +876,7 @@ export function UnifiedPanelTabStrip({
                                 tab.kind === 'browser' ? BROWSER_TAB_SIZE : DEFAULT_TAB_SIZE,
                                 'items-center gap-1.5 whitespace-nowrap px-2.5 text-xs',
                                 'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
-                                stackedCanvasTabs.length > 0 && tab.kind === 'canvas' && 'min-w-[160px] max-w-[260px]',
+                                stackedCanvasTabs.length > 0 && cocPageKindOf(tab.browserUrl) === 'canvas' && 'min-w-[160px] max-w-[260px]',
                                 draggedId === tab.id && 'opacity-50',
                             )}
                         >
@@ -1084,7 +1098,7 @@ export function UnifiedPanelTabStrip({
             {contextMenu && (() => {
                 const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);
                 if (!tab) return null;
-                const gitOpen = tab.kind === 'git' ? gitOpenSource?.(tab) ?? null : null;
+                const gitOpen = cocPageKindOf(tab.browserUrl) === 'git' ? gitOpenSource?.(tab) ?? null : null;
                 const items = unifiedPanelTabMenuItems(
                     tab,
                     tabs,

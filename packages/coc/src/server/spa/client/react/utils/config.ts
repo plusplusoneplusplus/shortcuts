@@ -143,6 +143,7 @@ interface DashboardConfig {
     binaryFileRevealEnabled?: boolean;
     fileHistoryEnabled?: boolean;
     fileBlameEnabled?: boolean;
+    /** Whether right-panel web tabs show `coc://` To-do, Settings and Terminal pages. Default false. */
     /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
     browserTabShortcutsEnabled?: boolean;
     /** Whether right-panel web pages belong to the conversation that opened them. Default false. */

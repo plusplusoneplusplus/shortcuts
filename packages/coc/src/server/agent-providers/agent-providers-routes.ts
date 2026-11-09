@@ -19,6 +19,7 @@ import type { Route } from '../types';
 import { sendJson, send400, send500, setStaticConfigCacheHeaders } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { AgentProviderStatus, AgentProvidersResponse } from '@plusplusoneplusplus/coc-client';
+import { getSupportedReasoningEfforts } from '@plusplusoneplusplus/coc-agent-sdk/model-reasoning';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
 import { getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
 import { getResolvedInstallState } from '../providers/provider-install-routes';
@@ -562,9 +563,9 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                                 return;
                             }
                             if (entry.reasoningEffort != null) {
-                                const supported = modelInfo.supportedReasoningEfforts;
-                                if (Array.isArray(supported) && supported.length > 0 && !supported.includes(entry.reasoningEffort)) {
-                                    send400(res, `Reasoning effort "${entry.reasoningEffort}" is not supported by model "${entry.model}" for tier "${tier}". Supported: ${supported.join(', ')}`);
+                                const supported = getSupportedReasoningEfforts(modelInfo);
+                                if (supported !== undefined && !supported.some(e => e === entry.reasoningEffort)) {
+                                    send400(res, `Reasoning effort "${entry.reasoningEffort}" is not supported by model "${entry.model}" for tier "${tier}". Supported: ${supported.join(', ') || 'none'}`);
                                     return;
                                 }
                             }

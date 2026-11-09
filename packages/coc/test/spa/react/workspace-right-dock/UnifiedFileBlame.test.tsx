@@ -66,7 +66,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
     async () => await import('../language-servers/inertTransportMock'));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState, writeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { EMPTY_UNIFIED_PANEL, openTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -96,6 +96,9 @@ async function showFile(resourceId: string, routingRef?: string) {
     await act(async () => { await Promise.resolve(); });
     return view;
 }
+
+/** The workspace's `coc://git` page tab, once a blame click opened it. */
+const gitPageTab = () => readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.resourceId === 'coc-git');
 
 const toggle = () => screen.queryByRole('button', { name: 'Blame' });
 const findToggle = () => screen.findByRole('button', { name: 'Blame' });
@@ -163,10 +166,11 @@ describe('file blame in the right panel', () => {
         await waitFor(() => expect(attachFileBlameDecorations).toHaveBeenCalled());
         const onOpenCommit = attachFileBlameDecorations.mock.calls[0][2] as (hash: string) => void;
         act(() => onOpenCommit(HASH));
-        expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: WS, workspaceId: WS, commitHash: HASH,
+        expect(gitPageTab()).toEqual(expect.objectContaining({
+            ownerWorkspaceId: WS, browserUrl: `coc://git/${HASH}`,
         }));
-        expect(dispatch).toHaveBeenCalledWith({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: WS, suffix: expect.any(String) });
+        expect(gitPageTab()?.ownerRoutingRef ?? null).toBeNull();
+        expect(dispatch).not.toHaveBeenCalled();
     });
 
     it('reads and navigates through the remote clone owner, never the page origin', async () => {
@@ -177,8 +181,9 @@ describe('file blame in the right panel', () => {
         expect(getFileBlame).toHaveBeenCalledWith(WS, 'src/app.ts');
         const onOpenCommit = attachFileBlameDecorations.mock.calls[0][2] as (hash: string) => void;
         act(() => onOpenCommit(HASH));
-        expect(dispatch).toHaveBeenCalledWith({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: REMOTE, suffix: expect.any(String) });
-        expect(window.location.hash).toContain(encodeURIComponent(REMOTE));
+        expect(gitPageTab()).toEqual(expect.objectContaining({
+            ownerWorkspaceId: WS, ownerRoutingRef: REMOTE, browserUrl: `coc://git/${HASH}`,
+        }));
     });
 
     it('shows a failure with Retry', async () => {

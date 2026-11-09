@@ -1,46 +1,32 @@
 /**
- * useRepoGitSelection — right-panel routing for the Git tab.
+ * useRepoGitSelection — right-panel selection for the Git tab.
  *
  * Owns which detail surface is showing (`RightPanelView`), the hunk a file
  * navigation should land on, and the "opened by SHA" commit that direct lookup
- * produces. Every navigation goes through one of the `select*` callbacks, so
- * the three things a selection must keep in sync — component state, the URL
- * hash, and the AppContext deep-link fields — can never drift apart the way
- * they did when each call site wrote all three by hand.
+ * produces. Every navigation goes through one of the `select*` callbacks,
+ * which only ever touch this component's own state — addressing lives
+ * entirely with the host: `RepoGitTab` reports each resulting view upward
+ * through its own `onViewChange` prop (see its "Report what the detail
+ * shows" effect), and a host that owns a `coc://git` page
+ * (`useSplitGitPanel`) turns that into the page's own address.
  *
- * TWO workspace ids, on purpose. `routeWorkspaceId` owns the PAGE (a repo
- * group, when the tab is hosted by one) and is what the hash addresses;
- * `workspaceId` owns the git DATA and is what every request, cache and
- * preference targets. They are equal for an ordinary repo. Without the split, a
- * group member's commit click would write the MEMBER's hash and quietly leave
- * the group.
- *
- * Deep links arrive two ways and both land here: `hydrateFromInitialLoad` for
- * the link the tab mounted with, and an effect watching the routed Git
- * selection for links clicked later (e.g. from the activity tab, or Back /
- * Forward). A route is only consumed when its page owner AND data member match
- * this panel, so a retained-but-hidden panel can never swallow another scope's
- * selection. A SHA that isn't in the loaded page falls back to a direct
- * `getCommit` lookup when the `gitCommitLookup` flag is on.
+ * A host restores a previously addressed view by passing `restore` to
+ * `hydrateFromInitialLoad` (mount time) or by bumping `viewScopeKey` and
+ * calling `switchViewScope` (an external open while already mounted — see
+ * `RepoGitTab`'s `viewScopeKey` effect). A commit outside the loaded page
+ * falls back to a direct `getCommit` lookup.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
-import { useApp } from '../../../contexts/AppContext';
-import { buildGitRouteHash } from '../../../layout/gitRoute';
 import { isGitCommitLookupEnabled } from '../../../utils/config';
 import type { GitCommitItem } from '../commits/CommitList';
+import { knownCommitFor } from './knownCommit';
 import { selectedHashesOf } from './selectionModel';
 import type { HunkTarget, PersistedGitView, RightPanelView } from './types';
 
 /** A 7–40 char hex string is the only thing worth sending to `getCommit`. */
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
-
-/** The sentinel `selectedGitCommitHash` uses for "the branch range", not a SHA. */
-export const BRANCH_RANGE_DEEP_LINK = 'branch-range';
-
-/** The sentinel `selectedGitCommitHash` uses for "all working changes", not a SHA. */
-export const WORKING_CHANGES_DEEP_LINK = 'working-changes';
 
 export function isLookupCandidate(sha: string): boolean {
     return SHA_PATTERN.test(sha);
@@ -72,35 +58,11 @@ export function toCommitItem(result: CommitLookupResult): GitCommitItem {
     };
 }
 
-/**
- * Identity of one routed selection: page owner, data member, revision and file.
- * Two routes that differ in ANY of the four are different navigations, so a
- * same-SHA file change and a member switch both re-hydrate the detail.
- */
-export function gitRouteIdentity(
-    routeWorkspaceId: string,
-    workspaceId: string,
-    commitHash: string | null,
-    filePath: string | null,
-): string {
-    return [routeWorkspaceId, workspaceId, commitHash ?? '', filePath ?? ''].join('\u0000');
-}
-
 export interface UseRepoGitSelectionOptions {
     /** The workspace whose git data this panel shows. */
     workspaceId: string;
-    /** Concrete clone owner of supplied, already-read route commits. */
-    sourceSelectionId?: string;
-    /**
-     * The workspace that owns the PAGE — a `group-<slug>` id when a repo group
-     * hosts this panel. Defaults to `workspaceId` (an ordinary repo is its own
-     * page), so single-repo call sites need no change.
-     */
-    routeWorkspaceId?: string;
     /** The loaded commit page — searched before falling back to direct lookup. */
     commits: GitCommitItem[];
-    /** Suppresses late deep-link handling while the initial load is in flight. */
-    loading: boolean;
 }
 
 export interface UseRepoGitSelectionReturn {
@@ -132,68 +94,37 @@ export interface UseRepoGitSelectionReturn {
     commitLookupError: string | null;
     clearCommitLookupError: () => void;
     lookupCommit: (sha: string) => Promise<void>;
-    /** Deep link the tab mounted with — drives CommitList's initial expansion. */
+    /** Truthy for a commit-ish view — drives CommitList's initial expansion. */
     initialCommitHash: string | null;
     /**
-     * Resolve the mount-time deep link once the first commit page has landed.
-     * With no deep link, `restore` — a view a host persisted — is refetched
-     * instead: commits by hash, everything else re-read from current state.
+     * Resolve the view the tab mounted with, once the first commit page has
+     * landed: `restore` — a view a host persisted (e.g. the right panel's
+     * Git page address) — is refetched; commits by hash, everything else
+     * re-read from current state. With no `restore`, plain history shows.
      */
     hydrateFromInitialLoad: (loaded: GitCommitItem[], restore?: PersistedGitView | null) => void;
     /** Set when a restored view's commit no longer exists; cleared by any selection. */
     restoreNotFound: string | null;
     /**
-     * The host switched to another view scope (e.g. the right panel now shows
-     * another chat): drop the current view and every pending lookup, then
-     * refetch `restore` — that scope's persisted view — or show nothing.
+     * The host's view scope changed — e.g. an external open changed the right
+     * panel's Git page address while this tab was already mounted: drop the
+     * current view and every pending lookup, then refetch `restore` or show
+     * nothing.
      */
     switchViewScope: (restore: PersistedGitView | null) => void;
 }
 
 export function useRepoGitSelection({
-    workspaceId, sourceSelectionId, routeWorkspaceId, commits, loading,
+    workspaceId, commits,
 }: UseRepoGitSelectionOptions): UseRepoGitSelectionReturn {
     // AC-07: direct commit lookup targets the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
-    const { state, dispatch } = useApp();
-
-    // The page owner. Equal to the data member unless a group hosts this panel.
-    const pageWorkspaceId = routeWorkspaceId ?? workspaceId;
-
-    // A route published by the router only belongs to this panel when BOTH ids
-    // agree. A null scope means nobody claimed one (pop-out shells, unit tests),
-    // in which case the selection fields are taken at face value as before.
-    const scope = state.gitRouteScope;
-    const routeIsOurs = !scope
-        || (scope.routeWorkspaceId === pageWorkspaceId && scope.workspaceId === workspaceId);
-    const routeCommitHash = routeIsOurs ? state.selectedGitCommitHash : null;
-    const routeFilePath = routeIsOurs ? state.selectedGitFilePath : null;
-    const knownCommitRef = useRef<GitCommitItem | null>(null);
-    knownCommitRef.current = routeIsOurs
-        && scope?.knownCommit?.sourceSelectionId === (sourceSelectionId ?? workspaceId)
-        && scope.knownCommit.commit.hash === routeCommitHash
-        ? scope.knownCommit.commit : null;
 
     const [view, setView] = useState<RightPanelView | null>(null);
     const [hunkTarget, setHunkTarget] = useState<HunkTarget>();
     const [commitLookupLoading, setCommitLookupLoading] = useState(false);
     const [commitLookupError, setCommitLookupError] = useState<string | null>(null);
     const [restoreNotFound, setRestoreNotFound] = useState<string | null>(null);
-
-    // Seeded with the mount-time route so the "late deep link" effect doesn't
-    // immediately re-handle the link the initial load is about to consume.
-    const consumedRouteRef = useRef<string>(
-        gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath),
-    );
-    // The last routed selection actually seen in the store. The effect below
-    // reacts to store TRANSITIONS, not to divergence: a locally published route
-    // the store has not caught up with yet is not "the user navigated away".
-    const storeRouteRef = useRef(consumedRouteRef.current);
-    const consumedKnownCommitRef = useRef(scope?.knownCommit);
-    const consumedOpenRequestRef = useRef(scope?.openRequest);
-    // The current route, readable from callbacks without re-memoizing them.
-    const routeRef = useRef({ commitHash: routeCommitHash, filePath: routeFilePath });
-    routeRef.current = { commitHash: routeCommitHash, filePath: routeFilePath };
 
     // `refreshAll` and other async callers need the view as of *now*, not as of
     // whenever their callback was memoized.
@@ -204,32 +135,12 @@ export function useRepoGitSelection({
     const commitsRef = useRef(commits);
     commitsRef.current = commits;
 
-    /**
-     * Write one navigation to the URL and to AppContext at once, and mark it as
-     * already applied: the router echoes it straight back, and re-applying it
-     * would reset the hunk this navigation is scrolling to.
-     */
-    const publishRoute = useCallback((commitHash: string | null, filePath: string | null) => {
-        consumedRouteRef.current = gitRouteIdentity(pageWorkspaceId, workspaceId, commitHash, filePath);
-        location.hash = buildGitRouteHash({
-            routeWorkspaceId: pageWorkspaceId, workspaceId, commitHash, filePath,
-        });
-        dispatch({
-            type: 'SET_GIT_ROUTE',
-            routeWorkspaceId: pageWorkspaceId,
-            workspaceId,
-            commitHash,
-            filePath,
-        });
-    }, [pageWorkspaceId, workspaceId, dispatch]);
-
     // ── Navigation ────────────────────────────────────────────────────────────
 
     const selectCommit = useCallback((commit: GitCommitItem) => {
         setHunkTarget(undefined);
         setView({ type: 'commit', commit });
-        publishRoute(commit.hash, null);
-    }, [publishRoute]);
+    }, []);
 
     const selectCommits = useCallback((selectedCommits: GitCommitItem[]) => {
         if (selectedCommits.length === 0) {
@@ -246,32 +157,27 @@ export function useRepoGitSelection({
     const selectCommitFile = useCallback((hash: string, filePath: string) => {
         setHunkTarget(undefined);
         setView({ type: 'commit-file', hash, filePath });
-        publishRoute(hash, filePath);
-    }, [publishRoute]);
+    }, []);
 
     const navigateToCommitFile = useCallback((hash: string, filePath: string, target: 'first' | 'last') => {
         setHunkTarget(target);
         setView({ type: 'commit-file', hash, filePath });
-        publishRoute(hash, filePath);
-    }, [publishRoute]);
+    }, []);
 
     const selectBranchRange = useCallback(() => {
         setHunkTarget(undefined);
         setView({ type: 'branch-range' });
-        publishRoute(BRANCH_RANGE_DEEP_LINK, null);
-    }, [publishRoute]);
+    }, []);
 
     const selectBranchFile = useCallback((filePath: string) => {
         setHunkTarget(undefined);
         setView({ type: 'branch-file', filePath });
-        publishRoute(BRANCH_RANGE_DEEP_LINK, filePath);
-    }, [publishRoute]);
+    }, []);
 
     const navigateToBranchFile = useCallback((filePath: string, target: 'first' | 'last') => {
         setHunkTarget(target);
         setView({ type: 'branch-file', filePath });
-        publishRoute(BRANCH_RANGE_DEEP_LINK, filePath);
-    }, [publishRoute]);
+    }, []);
 
     const selectWorkingTreeFile = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
         setHunkTarget(undefined);
@@ -289,8 +195,7 @@ export function useRepoGitSelection({
     const selectWorkingTreeAll = useCallback(() => {
         setHunkTarget(undefined);
         setView({ type: 'working-tree-all' });
-        publishRoute(WORKING_CHANGES_DEEP_LINK, null);
-    }, [publishRoute]);
+    }, []);
 
     const selectWorkingTreeComments = useCallback(() => setView({ type: 'working-tree-comments' }), []);
     const selectBranchRangeComments = useCallback(() => setView({ type: 'branch-range-comments' }), []);
@@ -303,20 +208,20 @@ export function useRepoGitSelection({
     // ── Direct SHA lookup ─────────────────────────────────────────────────────
 
     /**
-     * Monotonic request generation. Switching member, re-routing the clone
-     * client, or unmounting all bump it, so a slow `getCommit` that lands
-     * afterwards cannot overwrite the new detail or write an obsolete URL.
+     * Monotonic request generation. Re-routing the clone client, or
+     * unmounting, bumps it, so a slow `getCommit` that lands afterwards
+     * cannot overwrite the new detail.
      */
     const lookupGenerationRef = useRef(0);
-    useEffect(() => () => { lookupGenerationRef.current += 1; }, [workspaceId, pageWorkspaceId, cloneClient]);
+    useEffect(() => () => { lookupGenerationRef.current += 1; }, [workspaceId, cloneClient]);
 
     /**
      * Fetch a commit that isn't in the loaded page and pin the panel to it.
-     * Failure leaves the current view (and URL) untouched.
+     * Failure leaves the current view untouched.
      */
     const openCommitBySha = useCallback((
         sha: string,
-        options?: { updateUrl?: boolean; filePath?: string | null },
+        options?: { filePath?: string | null },
     ) => {
         const generation = lookupGenerationRef.current += 1;
         const isCurrent = () => lookupGenerationRef.current === generation;
@@ -330,14 +235,13 @@ export function useRepoGitSelection({
                 setView(options?.filePath
                     ? { type: 'commit-file', hash: commit.hash, filePath: options.filePath }
                     : { type: 'commit', commit });
-                if (options?.updateUrl) publishRoute(commit.hash, null);
             })
             .catch(() => {
                 if (!isCurrent()) return;
-                setCommitLookupError(options?.updateUrl ? 'Commit not found or ambiguous SHA' : 'Commit not found');
+                setCommitLookupError('Commit not found or ambiguous SHA');
             })
             .finally(() => { if (isCurrent()) setCommitLookupLoading(false); });
-    }, [cloneClient, workspaceId, publishRoute]);
+    }, [cloneClient, workspaceId]);
 
     /** Direct commit SHA lookup — used by search-input Enter and deep-link misses. */
     const lookupCommit = useCallback(async (sha: string) => {
@@ -354,62 +258,19 @@ export function useRepoGitSelection({
             return;
         }
 
-        await openCommitBySha(normalizedSha, { updateUrl: true });
+        await openCommitBySha(normalizedSha);
     }, [selectCommit, openCommitBySha]);
 
-    // ── Deep links ────────────────────────────────────────────────────────────
-
-    /**
-     * Turn one routed selection into a detail view. Shared by mount-time
-     * hydration and later navigation so both understand the same cases:
-     * history (no selection), the branch range and its files, all working
-     * changes, a loaded commit
-     * and its files, and a SHA that needs a direct lookup.
-     */
-    const applyRoute = useCallback((
-        commitHash: string | null,
-        filePath: string | null,
-        loaded: GitCommitItem[],
-    ) => {
-        if (!commitHash) {
-            // Back to plain history: drop the detail and any lookup state with it.
-            setView(null);
-            setCommitLookupError(null);
-            return;
-        }
-        if (commitHash === BRANCH_RANGE_DEEP_LINK) {
-            setView(filePath ? { type: 'branch-file', filePath } : { type: 'branch-range' });
-            return;
-        }
-        if (commitHash === WORKING_CHANGES_DEEP_LINK) {
-            setView({ type: 'working-tree-all' });
-            return;
-        }
-        const target = loaded.find(c => c.hash.startsWith(commitHash))
-            ?? (knownCommitRef.current?.hash === commitHash ? knownCommitRef.current : null);
-        if (target) {
-            setView(filePath
-                ? { type: 'commit-file', hash: target.hash, filePath }
-                : { type: 'commit', commit: target });
-            return;
-        }
-        // Deep-link SHA not in the loaded list — direct lookup if enabled.
-        if (isGitCommitLookupEnabled() && isLookupCandidate(commitHash)) {
-            void openCommitBySha(commitHash, { filePath });
-            return;
-        }
-        // Default to empty right panel; user must click to open something.
-        setView(null);
-    }, [openCommitBySha]);
+    // ── Restoring a persisted view ────────────────────────────────────────────
 
     /**
      * Refetch a persisted view. A commit outside the loaded page is looked up
      * by hash; one that no longer exists leaves no view and a not-found notice
-     * rather than a blank detail. The URL is left alone — restoring is not a
-     * navigation.
+     * rather than a blank detail.
      */
     const restorePersistedView = useCallback((persisted: PersistedGitView, loaded: GitCommitItem[]) => {
-        const loadedCommit = (hash: string) => loaded.find(c => c.hash === hash);
+        // A commit the opener already read counts as loaded.
+        const loadedCommit = (hash: string) => loaded.find(c => c.hash === hash) ?? knownCommitFor(workspaceId, hash) ?? undefined;
         const withCommit = (hash: string, show: (commit: GitCommitItem) => RightPanelView) => {
             const found = loadedCommit(hash);
             if (found) {
@@ -446,21 +307,21 @@ export function useRepoGitSelection({
         }
     }, [cloneClient, workspaceId]);
 
-    /** Resolve the deep link the tab mounted with, once the first page landed. */
+    /**
+     * Resolve the view the tab mounted with: a host-persisted `restore` (e.g.
+     * the right panel's Git page address), or plain history with none.
+     */
     const hydrateFromInitialLoad = useCallback((loaded: GitCommitItem[], restore?: PersistedGitView | null) => {
-        const { commitHash, filePath } = routeRef.current;
-        const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, commitHash, filePath);
-        consumedRouteRef.current = identity;
-        storeRouteRef.current = identity;
-        consumedKnownCommitRef.current = scope?.knownCommit;
-        consumedOpenRequestRef.current = scope?.openRequest;
-        if (!commitHash && restore) {
-            restorePersistedView(restore, loaded);
-            return;
-        }
-        applyRoute(commitHash, filePath, loaded);
-    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId, scope?.knownCommit, scope?.openRequest]);
+        if (restore) restorePersistedView(restore, loaded);
+    }, [restorePersistedView]);
 
+    /**
+     * The host switched to another view scope — e.g. an external open changed
+     * the right panel's Git page address while this tab was already mounted
+     * (see `useSplitGitPanel`'s `viewScopeKey`, and `RepoGitTab`'s effect that
+     * calls this on a change): drop the current view and every pending
+     * lookup, then refetch `restore` or show nothing.
+     */
     const switchViewScope = useCallback((restore: PersistedGitView | null) => {
         // A lookup still in flight belongs to the scope being left.
         lookupGenerationRef.current += 1;
@@ -477,35 +338,6 @@ export function useRepoGitSelection({
         if (view) setRestoreNotFound(null);
     }, [view]);
 
-    // Routed navigation after mount: Back/Forward, an activity-tab commit link,
-    // a member switch, or a same-SHA file change. Every field of the route takes
-    // part in the identity, so none of those look like "the same link" twice.
-    useEffect(() => {
-        if (loading || !routeIsOurs) return;
-        const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath);
-        // A fresh owner-verified supplied commit, or a fresh open request, is an
-        // explicit selection, even when the same route's detail has since been closed.
-        const suppliedSelection = (!!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current)
-            || (!!scope?.openRequest && scope.openRequest !== consumedOpenRequestRef.current);
-        consumedKnownCommitRef.current = scope?.knownCommit;
-        consumedOpenRequestRef.current = scope?.openRequest;
-        if (identity === storeRouteRef.current && !suppliedSelection) return;
-        storeRouteRef.current = identity;
-        // Our own selection echoing back through the router: already applied,
-        // and re-applying it would reset the hunk it is scrolling to.
-        if (identity === consumedRouteRef.current && !suppliedSelection) return;
-        consumedRouteRef.current = identity;
-        setHunkTarget(undefined);
-        // The loaded page is read through a ref: a fresh `commits` array must
-        // not re-run this, or a route the panel has already moved past would be
-        // re-applied on every list refresh.
-        applyRoute(routeCommitHash, routeFilePath, commitsRef.current);
-    }, [
-        routeIsOurs, routeCommitHash, routeFilePath, pageWorkspaceId, workspaceId,
-        loading, applyRoute,
-        scope?.knownCommit, scope?.openRequest,
-    ]);
-
     // ── Derived ───────────────────────────────────────────────────────────────
 
     const selectedHashes = useMemo(() => selectedHashesOf(view), [view]);
@@ -516,6 +348,14 @@ export function useRepoGitSelection({
         return null;
     }, [view, commits]);
 
+    // Truthy exactly for a view with a commit-ish identity (not a working-tree
+    // file or a transient comments/multi-commit view) — drives CommitList's
+    // initial ancestor expansion the same way a deep-linked hash used to.
+    const initialCommitHash = view?.type === 'commit' ? view.commit.hash
+        : view?.type === 'commit-file' ? view.hash
+        : view?.type === 'branch-range' || view?.type === 'branch-file' || view?.type === 'working-tree-all' ? view.type
+        : null;
+
     return {
         view, setView, getView, hunkTarget, selectedHashes, selectedCommit,
         selectCommit, selectCommits, selectCommitFile, navigateToCommitFile,
@@ -523,7 +363,7 @@ export function useRepoGitSelection({
         selectWorkingTreeFile, navigateToWorkingTreeFile, selectWorkingTreeAll,
         selectWorkingTreeComments, selectBranchRangeComments, clearSelection,
         commitLookupLoading, commitLookupError, clearCommitLookupError,
-        lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad, restoreNotFound,
+        lookupCommit, initialCommitHash, hydrateFromInitialLoad, restoreNotFound,
         switchViewScope,
     };
 }

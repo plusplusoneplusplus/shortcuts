@@ -213,3 +213,41 @@ export async function navigateToGitTab(
 
     await expect(page.locator('[data-testid="git-split-workspace-list"]')).toBeVisible();
 }
+
+/**
+ * Open a `coc://` address in the workspace's right panel — the "+" menu's
+ * address entry. Git commit, file and range views live at `coc://git/...`
+ * (the old `#repos/<id>/git/<sha>` hash links redirect to the workspace).
+ */
+export async function openCocAddress(page: Page, address: string): Promise<void> {
+    const panel = page.getByTestId('unified-right-panel');
+    if (await panel.getAttribute('data-open') !== 'true') {
+        await page.getByTestId('workspace-dock-toggle').first().click();
+    }
+    await expect(panel).toHaveAttribute('data-open', 'true');
+    await panel.getByTestId('unified-panel-open-menu').click();
+    await page.getByTestId('unified-panel-open-menu-search').fill(address);
+    await page.getByTestId('unified-panel-open-menu-coc').click();
+}
+
+/** The `coc://git` address of a commit, or of one file inside it. */
+export function gitCommitAddress(hash: string, filePath?: string): string {
+    return `coc://git/${encodeURIComponent(hash)}${filePath ? `/${encodeURIComponent(filePath)}` : ''}`;
+}
+
+/**
+ * Load a workspace's Git tab and open a commit (or one file in it) on the Git
+ * page — what a `#repos/<id>/git/<sha>/<file>` deep link used to do.
+ */
+export async function gotoGitCommit(
+    page: Page,
+    serverUrl: string,
+    wsId: string,
+    hash: string,
+    filePath?: string,
+    query = '',
+): Promise<void> {
+    await page.goto(`${serverUrl}/${query}#repos/${encodeURIComponent(wsId)}/git`);
+    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
+    await openCocAddress(page, gitCommitAddress(hash, filePath));
+}

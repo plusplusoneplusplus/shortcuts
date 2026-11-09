@@ -28,7 +28,8 @@
 
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
-import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { canvasPageInput, hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { formatCocAddress, isCocAddressText, parseCocAddress, type CocAddress } from './unifiedPanelAddresses';
 
 /** The non-search entries the menu offers. */
 export type OpenMenuActionId = 'terminal' | 'git' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'extensions' | 'changes' | 'todo';
@@ -66,9 +67,9 @@ export interface OpenMenuActionsInput {
      */
     todoAvailable?: boolean;
     /**
-     * The target is one concrete repo whose Git tab this panel can host. Gates
-     * the Git entry, which is omitted rather than disabled: a group's own root
-     * has no repository to show.
+     * This panel can host the target's Git page: a concrete repo (opened on
+     * its branch changes) or a group's own root (opened on its remembered
+     * member). Gates the Git entry, which is omitted rather than disabled.
      */
     gitAvailable?: boolean;
     /** The panel's workspace owns a Settings page (every repo and group dock host does). */
@@ -179,6 +180,7 @@ export type OpenMenuItem =
     | { key: string; type: 'action'; action: OpenMenuAction }
     | { key: string; type: 'url'; url: string }
     | { key: string; type: 'url-error'; reason: string }
+    | { key: string; type: 'coc'; address: CocAddress }
     | { key: string; type: 'file'; file: OpenMenuFileResult }
     | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult }
     | { key: string; type: 'extension'; extension: OpenMenuExtensionResult }
@@ -243,6 +245,14 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
     // A pasted URL with its scheme is unambiguous, so its row leads and Enter
     // opens it. A bare domain (`notes.md` is one too) follows the file hits so
     // file search keeps the top slot.
+    // A `coc://` query is a panel address, never a web address.
+    if (isCocAddressText(input.query)) {
+        const address = parseCocAddress(input.query);
+        const cocItem: OpenMenuItem = 'error' in address
+            ? { key: 'url-error', type: 'url-error', reason: address.error }
+            : { key: `coc:${formatCocAddress(address)}`, type: 'coc', address };
+        return [cocItem, ...fileItems, ...actionItems, ...canvasItems, ...extensionItems];
+    }
     const candidate = openMenuUrlCandidate(input.query);
     const urlItems: OpenMenuItem[] = candidate === null ? []
         : 'url' in candidate
@@ -331,18 +341,19 @@ export function fileOpenInput(path: string, context: OpenMenuTargetContext): Ope
 }
 
 /**
- * The tab a chat-linked canvas opens. A canvas is owned by the chat it is
- * linked to, so this is only ever called with a chat selected.
+ * The web tab a chat-linked canvas opens: `coc://canvas/<id>` inside the
+ * browser chrome. A canvas stays with the chat it is linked to, so this is
+ * only ever called with a chat selected. The same canvas in that chat focuses
+ * the existing page.
  */
 export function canvasOpenInput(canvas: OpenMenuCanvasResult, context: OpenMenuTargetContext): OpenUnifiedTabInput {
-    return {
-        kind: 'canvas',
+    const repoLabel = repoLabelFor(context)?.repoLabel;
+    return canvasPageInput(canvas, {
         ownerWorkspaceId: context.ownerWorkspaceId,
         chatId: context.chatId,
-        resourceId: canvas.id,
-        label: canvas.title.trim() === '' ? 'Untitled canvas' : canvas.title,
-        ...(repoLabelFor(context) ?? {}),
-    };
+        ...(context.chatId ? { browserChatId: context.chatId } : {}),
+        ...(repoLabel ? { repoLabel } : {}),
+    });
 }
 
 function repoLabelFor(context: OpenMenuTargetContext): { repoLabel: string } | null {

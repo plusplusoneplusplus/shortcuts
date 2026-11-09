@@ -1,6 +1,7 @@
 /**
  * unifiedPanelWorkspaceResources — the one way to open or focus a workspace's
- * resource tools. Notes/Settings belong to the panel workspace; WI/PR tabs
+ * resource tools. Notes and Settings belong to the panel workspace and are
+ * `coc://notes[/<path>]` and `coc://settings` pages. WI/PR tabs
  * carry a concrete repo or group-member owner. The add-tab menu and
  * every link outside the panel build the same descriptor and land on the same
  * tab instead of switching a page-level view.
@@ -10,12 +11,15 @@ import { useCallback } from 'react';
 import { useAppOptional } from '../../../contexts/AppContext';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import type { SettingsSection } from '../../../types/dashboard';
+import type { PersistedGitView } from '../../git/repoGitTab/types';
 import { openWorkspaceDock } from '../WorkspaceDockToggle';
 import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { useUnifiedPanelHost } from './unifiedPanelHost';
-import { openTab, unifiedTabId, updateNotesView, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { activeTabId, openTab, unifiedTabId, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { browserOpenInput, gitPageInput, notesPageInput, openCocPageTab } from './unifiedBrowserTabs';
 
-export type PanelWorkspaceResourceKind = 'notes' | 'settings' | 'work-items' | 'pull-requests';
+export type PanelWorkspaceResourceKind = 'notes' | 'settings' | 'git' | 'work-items' | 'pull-requests';
+type PanelTabResourceKind = Exclude<PanelWorkspaceResourceKind, 'settings' | 'notes' | 'git'>;
 
 export interface PanelWorkspaceResourceOwner {
     /** The panel's scope and the resource owner: a raw repo or group workspace id. */
@@ -34,34 +38,87 @@ export function panelOwnerForSelection(selectionId: string, chatId: string | nul
 
 /** One workspace-owned tool descriptor, shared by the menu and external links. */
 export function panelWorkspaceResourceInput(
-    kind: PanelWorkspaceResourceKind,
+    kind: PanelTabResourceKind,
     owner: PanelWorkspaceResourceOwner,
 ): OpenUnifiedTabInput {
     return {
         kind,
         ownerWorkspaceId: owner.workspaceId,
-        ...(kind !== 'notes' ? { ownerRoutingRef: owner.routingRef } : {}),
+        ownerRoutingRef: owner.routingRef,
         chatId: owner.chatId,
         resourceId: kind,
-        label: kind === 'settings' ? 'Settings' : kind === 'notes' ? 'Notes' : kind === 'work-items' ? 'Work Items' : 'Pull Requests',
+        label: kind === 'work-items' ? 'Work Items' : 'Pull Requests',
     };
 }
 
+/** The panel workspace's `coc://notes` page, optionally opened on a note. */
+export function panelNotesInput(owner: PanelWorkspaceResourceOwner, notePath?: string): OpenUnifiedTabInput {
+    return notesPageInput({
+        ownerWorkspaceId: owner.workspaceId,
+        ownerRoutingRef: owner.routingRef,
+        chatId: owner.chatId,
+        browserChatId: null,
+    }, notePath);
+}
+
+/** The panel workspace's `coc://settings` web tab. */
+export function panelSettingsInput(owner: PanelWorkspaceResourceOwner): OpenUnifiedTabInput {
+    return browserOpenInput({ ownerWorkspaceId: owner.workspaceId, ownerRoutingRef: owner.routingRef, chatId: owner.chatId }, 'coc://settings');
+}
+
+/** The panel workspace's `coc://git` page, optionally deep-linked to a member and/or view. */
+export function panelGitInput(
+    owner: PanelWorkspaceResourceOwner,
+    address?: { gitMemberId?: string; view?: PersistedGitView },
+): OpenUnifiedTabInput {
+    return gitPageInput({
+        ownerWorkspaceId: owner.workspaceId,
+        ownerRoutingRef: owner.routingRef,
+        chatId: owner.chatId,
+    }, address);
+}
+
 /**
- * Open (or focus) `owner`'s resource tab and reveal its panel. A
- * `notePath` selects that note in the Notes tab, mounted or not.
+ * Open (or focus) `owner`'s resource tab and reveal its panel; returns the
+ * tab id. A `notePath` selects that note in the Notes tab, mounted or not. A
+ * `gitMemberId`/`view` deep-links the Git page, mounted or not.
  */
 export function openPanelWorkspaceResource(
     kind: PanelWorkspaceResourceKind,
     owner: PanelWorkspaceResourceOwner,
-    options: { notePath?: string } = {},
+    options: { notePath?: string; gitMemberId?: string; view?: PersistedGitView } = {},
 ): string {
-    const input = panelWorkspaceResourceInput(kind, owner);
-    const id = unifiedTabId(input);
-    updateUnifiedPanelState(owner.workspaceId, prev => {
-        const opened = openTab(prev, input);
-        return kind === 'notes' && options.notePath ? updateNotesView(opened, id, options.notePath) : opened;
-    });
+    let id = '';
+    if (kind === 'settings') {
+        const input = panelSettingsInput(owner);
+        updateUnifiedPanelState(owner.workspaceId, prev => {
+            const opened = openCocPageTab(prev, input);
+            id = activeTabId(opened, owner.chatId) ?? '';
+            return opened;
+        });
+    } else if (kind === 'notes') {
+        const input = panelNotesInput(owner, options.notePath);
+        updateUnifiedPanelState(owner.workspaceId, prev => {
+            const opened = openTab(prev, input);
+            id = activeTabId(opened, owner.chatId) ?? unifiedTabId(input);
+            return opened;
+        });
+    } else if (kind === 'git') {
+        // Like Notes (and unlike the focus-only `openCocPageTab`), every open
+        // must land its address on the tab even when one is already open —
+        // switching commit, member or view while the page is already showing
+        // is the common case, not just the first open.
+        const input = panelGitInput(owner, { gitMemberId: options.gitMemberId, view: options.view });
+        updateUnifiedPanelState(owner.workspaceId, prev => {
+            const opened = openTab(prev, input);
+            id = activeTabId(opened, owner.chatId) ?? unifiedTabId(input);
+            return opened;
+        });
+    } else {
+        const input = panelWorkspaceResourceInput(kind, owner);
+        id = unifiedTabId(input);
+        updateUnifiedPanelState(owner.workspaceId, prev => openTab(prev, input));
+    }
     openWorkspaceDock(owner.workspaceId);
     return id;
 }

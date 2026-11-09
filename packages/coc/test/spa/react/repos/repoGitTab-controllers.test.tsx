@@ -68,7 +68,7 @@ const appDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: appState, dispatch: appDispatch }),
 }));
-let appState: any = { workspaces: [], selectedGitCommitHash: null, selectedGitFilePath: null };
+let appState: any = { workspaces: [] };
 
 const queueDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
@@ -92,6 +92,7 @@ import { clearCommitsCache, getCommitsCache } from '../../../../src/server/spa/c
 import { clearBranchRangeCache } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 import type { RightPanelView } from '../../../../src/server/spa/client/react/features/git/repoGitTab/types';
+import { rememberKnownCommit, resetKnownCommitForTests } from '../../../../src/server/spa/client/react/features/git/repoGitTab/knownCommit';
 
 function commit(hash: string): GitCommitItem {
     return {
@@ -117,8 +118,9 @@ beforeEach(() => {
     clients.clear();
     appDispatch.mockClear();
     queueDispatch.mockClear();
-    appState = { workspaces: [], selectedGitCommitHash: null, selectedGitFilePath: null };
+    appState = { workspaces: [] };
     lookupEnabled = true;
+    resetKnownCommitForTests();
     localStorage.clear();
     clearCommitsCache(WS); clearCommitsCache(OTHER_WS);
     clearBranchRangeCache(WS); clearBranchRangeCache(OTHER_WS);
@@ -455,41 +457,35 @@ describe('useRepoGitData + useGitAutoRefresh (timed refresh)', () => {
 });
 
 describe('useRepoGitSelection', () => {
-    function setup(commits: GitCommitItem[] = [], loading = false) {
-        return renderHook(() => useRepoGitSelection({ workspaceId: WS, commits, loading }));
+    function setup(commits: GitCommitItem[] = []) {
+        return renderHook(() => useRepoGitSelection({ workspaceId: WS, commits }));
     }
 
-    it('writes the URL hash and the AppContext fields when a commit is selected', () => {
+    it('selects a commit as local view state only — the host owns the address', () => {
         const a = commit('aaaaaaaaaaaa');
         const { result } = setup([a]);
         act(() => result.current.selectCommit(a));
 
         expect(result.current.view).toEqual({ type: 'commit', commit: a });
-        expect(location.hash).toBe(`#repos/${WS}/git/${a.hash}`);
-        expect(appDispatch).toHaveBeenCalledWith({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: WS, workspaceId: WS,
-            commitHash: a.hash, filePath: null,
-        });
+        expect(result.current.selectedCommit).toBe(a);
+        expect(location.hash).toBe('');
+        expect(appDispatch).not.toHaveBeenCalled();
     });
 
-    it('encodes the file path in branch-range and commit file links', () => {
+    it('selects branch-range and commit files', () => {
         const { result } = setup();
         act(() => result.current.selectBranchFile('src/a b.ts'));
-        expect(location.hash).toBe(`#repos/${WS}/git/branch-range/${encodeURIComponent('src/a b.ts')}`);
+        expect(result.current.view).toEqual({ type: 'branch-file', filePath: 'src/a b.ts' });
 
         act(() => result.current.selectCommitFile('aaaaaaaaaaaa', 'src/a b.ts'));
-        expect(location.hash).toBe(`#repos/${WS}/git/aaaaaaaaaaaa/${encodeURIComponent('src/a b.ts')}`);
+        expect(result.current.view).toEqual({ type: 'commit-file', hash: 'aaaaaaaaaaaa', filePath: 'src/a b.ts' });
     });
 
-    it('opens all working changes and writes the working-changes link', () => {
+    it('opens all working changes', () => {
         const { result } = setup();
         act(() => result.current.selectWorkingTreeAll());
         expect(result.current.view).toEqual({ type: 'working-tree-all' });
-        expect(location.hash).toBe(`#repos/${WS}/git/working-changes`);
-        expect(appDispatch).toHaveBeenCalledWith({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: WS, workspaceId: WS,
-            commitHash: 'working-changes', filePath: null,
-        });
+        expect(appDispatch).not.toHaveBeenCalled();
     });
 
     it('collapses a one-commit multi-select to a normal commit selection', () => {
@@ -513,71 +509,176 @@ describe('useRepoGitSelection', () => {
         expect(result.current.hunkTarget).toBe('last');
     });
 
-    describe('deep links', () => {
-        it('opens the branch range for the branch-range sentinel', () => {
-            appState = { ...appState, selectedGitCommitHash: 'branch-range' };
+    describe('restoring the host-persisted view on mount', () => {
+        it('shows plain history with nothing to restore', () => {
             const { result } = setup();
             act(() => result.current.hydrateFromInitialLoad([]));
+            expect(result.current.view).toBeNull();
+            expect(result.current.initialCommitHash).toBeNull();
+        });
+
+        it.each([
+            [{ type: 'branch-range' }, { type: 'branch-range' }],
+            [{ type: 'working-tree-all' }, { type: 'working-tree-all' }],
+            [{ type: 'branch-file', filePath: 'src/a.ts' }, { type: 'branch-file', filePath: 'src/a.ts' }],
+        ] as const)('restores %j', (restore, expected) => {
+            const { result } = setup();
+            act(() => result.current.hydrateFromInitialLoad([], restore));
+            expect(result.current.view).toEqual(expected);
+        });
+
+        it('restores a loaded commit without a lookup', () => {
+            const a = commit('aaaaaaaaaaaa');
+            const { result } = setup([a]);
+            act(() => result.current.hydrateFromInitialLoad([a], { type: 'commit', hash: a.hash }));
+            expect(result.current.view).toEqual({ type: 'commit', commit: a });
+            expect(result.current.initialCommitHash).toBe(a.hash);
+            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+        });
+
+        it('fetches a commit outside the loaded page, even with search lookup off', async () => {
+            lookupEnabled = false;
+            const remote = commit('ffffffffffff');
+            clientFor(WS).git.getCommit.mockResolvedValue(remote);
+            const { result } = setup();
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit', hash: remote.hash }));
+            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit', commit: remote }));
+            expect(clientFor(WS).git.getCommit).toHaveBeenCalledWith(WS, remote.hash);
+        });
+
+        it('keeps the file when a commit file needs a lookup', async () => {
+            const remote = commit('ffffffffffff');
+            clientFor(WS).git.getCommit.mockResolvedValue(remote);
+            const { result } = setup();
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
+            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
+        });
+
+        it('says so when a restored commit no longer exists, and any selection clears the notice', async () => {
+            clientFor(WS).git.getCommit.mockRejectedValue(new Error('gone'));
+            const { result } = setup();
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit', hash: 'ffffffffffff' }));
+            await waitFor(() => expect(result.current.restoreNotFound).toMatch(/Commit fffffff was not found/));
+            expect(result.current.view).toBeNull();
+            act(() => result.current.selectBranchRange());
+            expect(result.current.restoreNotFound).toBeNull();
+        });
+
+        it('restores a multi-commit selection from the loaded page', () => {
+            const a = commit('aaaaaaaaaaaa');
+            const b = commit('bbbbbbbbbbbb');
+            const { result } = setup([a, b]);
+            act(() => result.current.hydrateFromInitialLoad([a, b], { type: 'multi-commit', hashes: [a.hash, b.hash] }));
+            expect(result.current.view).toEqual({ type: 'multi-commit', commits: [a, b] });
+        });
+
+        it('discards a restore lookup that lands after the member has changed', async () => {
+            const remote = commit('ffffffffffff');
+            let settle: (value: unknown) => void = () => {};
+            clientFor(WS).git.getCommit.mockReturnValue(new Promise(resolve => { settle = resolve; }));
+            const { result, rerender } = renderHook(
+                ({ id }: { id: string }) => useRepoGitSelection({ workspaceId: id, commits: [] }),
+                { initialProps: { id: WS } },
+            );
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit', hash: remote.hash }));
+
+            // The user switches member before the request comes back.
+            act(() => rerender({ id: OTHER_WS }));
+            await act(async () => { settle(remote); });
+
+            expect(result.current.view).toBeNull();
+        });
+    });
+
+    describe('an already-read commit handed over by the opener', () => {
+        const a = commit('aaaaaaaaaaaa');
+
+        it.each(['ws-alpha', 'remote:owner:ws-alpha'])('opens an outgoing commit outside the history page without a lookup (%s)', () => {
+            lookupEnabled = false;
+            const outgoing = commit('ffffffffffff');
+            rememberKnownCommit(WS, outgoing);
+            const { result } = setup([a]);
+            act(() => result.current.hydrateFromInitialLoad([a], { type: 'commit', hash: outgoing.hash }));
+            expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+            expect(result.current.selectedCommit).toEqual(outgoing);
+            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+        });
+
+        it('reopens it through an external open after the detail was closed', () => {
+            const outgoing = commit('ffffffffffff');
+            rememberKnownCommit(WS, outgoing);
+            const { result } = setup();
+            act(() => result.current.switchViewScope({ type: 'commit', hash: outgoing.hash }));
+            expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+            act(() => result.current.clearSelection());
+            expect(result.current.view).toBeNull();
+            act(() => result.current.switchViewScope({ type: 'commit', hash: outgoing.hash }));
+            expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+        });
+
+        it.each(['workspace', 'hash'])('is ignored for a mismatched %s', mismatch => {
+            const outgoing = commit('ffffffffffff');
+            clientFor(WS).git.getCommit.mockReturnValue(new Promise(() => {}));
+            rememberKnownCommit(mismatch === 'workspace' ? OTHER_WS : WS, outgoing);
+            const { result } = setup();
+            const hash = mismatch === 'hash' ? 'eeeeeeeeeeee' : outgoing.hash;
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit', hash }));
+            expect(result.current.view).toBeNull();
+            expect(clientFor(WS).git.getCommit).toHaveBeenCalledWith(WS, hash);
+        });
+    });
+
+    describe('an external open while mounted (switchViewScope)', () => {
+        const a = commit('aaaaaaaaaaaa');
+
+        function mounted(restore: Parameters<ReturnType<typeof useRepoGitSelection>['hydrateFromInitialLoad']>[1]) {
+            const view = setup([a]);
+            act(() => view.result.current.hydrateFromInitialLoad([a], restore));
+            return view;
+        }
+
+        it('follows a same-SHA file change', () => {
+            const { result } = mounted({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
+
+            act(() => result.current.switchViewScope({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' }));
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' });
+        });
+
+        it('follows commit → branch range → branch file', () => {
+            const { result } = mounted({ type: 'commit', hash: a.hash });
+            act(() => result.current.switchViewScope({ type: 'branch-range' }));
             expect(result.current.view).toEqual({ type: 'branch-range' });
-        });
 
-        it('opens all working changes for the working-changes sentinel', () => {
-            appState = { ...appState, selectedGitCommitHash: 'working-changes' };
-            const { result } = setup();
-            act(() => result.current.hydrateFromInitialLoad([]));
-            expect(result.current.view).toEqual({ type: 'working-tree-all' });
-        });
-
-        it('opens a branch-range file when the link carries a path', () => {
-            appState = { ...appState, selectedGitCommitHash: 'branch-range', selectedGitFilePath: 'src/a.ts' };
-            const { result } = setup();
-            act(() => result.current.hydrateFromInitialLoad([]));
+            act(() => result.current.switchViewScope({ type: 'branch-file', filePath: 'src/a.ts' }));
             expect(result.current.view).toEqual({ type: 'branch-file', filePath: 'src/a.ts' });
         });
 
-        it('opens a loaded commit by hash prefix', () => {
-            const a = commit('aaaaaaaaaaaa');
-            appState = { ...appState, selectedGitCommitHash: 'aaaaaaa' };
-            const { result } = setup([a]);
-            act(() => result.current.hydrateFromInitialLoad([a]));
-            expect(result.current.view).toEqual({ type: 'commit', commit: a });
-        });
+        it('clears the detail and the lookup state on the way back to history', async () => {
+            clientFor(WS).git.getCommit.mockRejectedValue(new Error('nope'));
+            const { result } = setup();
+            await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
+            expect(result.current.commitLookupError).toBe('Commit not found or ambiguous SHA');
 
-        it('falls back to a direct lookup when the SHA is not in the loaded page', async () => {
-            const remote = commit('ffffffffffff');
-            clientFor(WS).git.getCommit.mockResolvedValue(remote);
-            appState = { ...appState, selectedGitCommitHash: 'ffffffffffff' };
-            const { result } = setup([]);
-
-            act(() => result.current.hydrateFromInitialLoad([]));
-            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit', commit: remote }));
-            expect(clientFor(WS).git.getCommit).toHaveBeenCalledWith(WS, 'ffffffffffff');
-        });
-
-        it('reports a lookup miss instead of changing the view', async () => {
-            clientFor(WS).git.getCommit.mockRejectedValue(new Error('not found'));
-            appState = { ...appState, selectedGitCommitHash: 'ffffffffffff' };
-            const { result } = setup([]);
-
-            act(() => result.current.hydrateFromInitialLoad([]));
-            await waitFor(() => expect(result.current.commitLookupError).toBe('Commit not found'));
+            act(() => result.current.switchViewScope(null));
             expect(result.current.view).toBeNull();
+            expect(result.current.commitLookupError).toBeNull();
         });
 
-        it('does not look up a non-SHA deep link', () => {
-            appState = { ...appState, selectedGitCommitHash: 'not-a-sha' };
-            const { result } = setup([]);
-            act(() => result.current.hydrateFromInitialLoad([]));
-            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
-            expect(result.current.view).toBeNull();
-        });
+        it('drops a search lookup still in flight from the scope being left', async () => {
+            let settle: (value: unknown) => void = () => {};
+            clientFor(WS).git.getCommit.mockReturnValue(new Promise(resolve => { settle = resolve; }));
+            const { result } = setup();
+            let pending!: Promise<void>;
+            act(() => { pending = result.current.lookupCommit('ffffffffffff'); });
+            expect(result.current.commitLookupLoading).toBe(true);
 
-        it('does not look up when the feature flag is off', () => {
-            lookupEnabled = false;
-            appState = { ...appState, selectedGitCommitHash: 'ffffffffffff' };
-            const { result } = setup([]);
-            act(() => result.current.hydrateFromInitialLoad([]));
-            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+            act(() => result.current.switchViewScope({ type: 'branch-range' }));
+            await act(async () => { settle(commit('ffffffffffff')); await pending; });
+
+            expect(result.current.view).toEqual({ type: 'branch-range' });
+            expect(result.current.commitLookupLoading).toBe(false);
         });
     });
 
@@ -590,21 +691,20 @@ describe('useRepoGitSelection', () => {
             expect(result.current.view).toEqual({ type: 'commit', commit: a });
         });
 
-        it('fetches an unloaded commit and updates the URL on success', async () => {
+        it('fetches an unloaded commit and selects it on success', async () => {
             const remote = commit('ffffffffffff');
             clientFor(WS).git.getCommit.mockResolvedValue(remote);
             const { result } = setup([]);
             await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
             expect(result.current.view).toEqual({ type: 'commit', commit: remote });
-            expect(location.hash).toBe(`#repos/${WS}/git/${remote.hash}`);
         });
 
-        it('leaves the URL untouched when the lookup fails', async () => {
+        it('leaves the view untouched when the lookup fails', async () => {
             clientFor(WS).git.getCommit.mockRejectedValue(new Error('ambiguous'));
             const { result } = setup([]);
             await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
             expect(result.current.commitLookupError).toBe('Commit not found or ambiguous SHA');
-            expect(location.hash).toBe('');
+            expect(result.current.view).toBeNull();
         });
 
         it('ignores a query that is not SHA-shaped', async () => {
@@ -612,242 +712,22 @@ describe('useRepoGitSelection', () => {
             await act(async () => { await result.current.lookupCommit('fix typo'); });
             expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
         });
-    });
-});
 
-/**
- * A repo GROUP hosts one member's git panel. The group owns the PAGE (so it
- * stays selected) and the member owns the DATA (so every request still targets
- * the right clone). These pin that split at the controller level.
- */
-describe('useRepoGitSelection — hosted by a repo group', () => {
-    const GROUP = 'group-frontend';
-    const MEMBER = 'repo-b';
-
-    function setupGroup(commits: GitCommitItem[] = [], loading = false) {
-        return renderHook(() => useRepoGitSelection({
-            workspaceId: MEMBER, routeWorkspaceId: GROUP, commits, loading,
-        }));
-    }
-
-    function lastRouteDispatch() {
-        const calls = appDispatch.mock.calls.filter(c => c[0]?.type === 'SET_GIT_ROUTE');
-        return calls.at(-1)?.[0];
-    }
-
-    it('keeps the group in the URL and names the member when a commit is selected', () => {
-        const a = commit('aaaaaaaaaaaa');
-        const { result } = setupGroup([a]);
-        act(() => result.current.selectCommit(a));
-
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/${MEMBER}/${a.hash}`);
-        expect(lastRouteDispatch()).toEqual({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: GROUP, workspaceId: MEMBER,
-            commitHash: a.hash, filePath: null,
+        it('does not look up when the feature flag is off', async () => {
+            lookupEnabled = false;
+            const { result } = setup([]);
+            await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
+            expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
         });
-    });
 
-    it('keeps the group scope on every other URL-writing path', () => {
-        const { result } = setupGroup();
-        const base = `#repos/${GROUP}/git/member/${MEMBER}`;
-
-        act(() => result.current.selectCommitFile('aaaaaaaaaaaa', 'src/a b.ts'));
-        expect(location.hash).toBe(`${base}/aaaaaaaaaaaa/${encodeURIComponent('src/a b.ts')}`);
-
-        act(() => result.current.navigateToCommitFile('aaaaaaaaaaaa', 'src/a.ts', 'last'));
-        expect(location.hash).toBe(`${base}/aaaaaaaaaaaa/${encodeURIComponent('src/a.ts')}`);
-        expect(result.current.hunkTarget).toBe('last');
-
-        act(() => result.current.selectBranchRange());
-        expect(location.hash).toBe(`${base}/branch-range`);
-
-        act(() => result.current.selectBranchFile('src/a.ts'));
-        expect(location.hash).toBe(`${base}/branch-range/${encodeURIComponent('src/a.ts')}`);
-
-        act(() => result.current.navigateToBranchFile('src/a.ts', 'first'));
-        expect(location.hash).toBe(`${base}/branch-range/${encodeURIComponent('src/a.ts')}`);
-
-        act(() => result.current.selectWorkingTreeAll());
-        expect(location.hash).toBe(`${base}/working-changes`);
-    });
-
-    it('routes the SHA lookup to the member client and never to the group', async () => {
-        const remote = commit('ffffffffffff');
-        clientFor(MEMBER).git.getCommit.mockResolvedValue(remote);
-        const { result } = setupGroup([]);
-
-        await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
-
-        expect(clientFor(MEMBER).git.getCommit).toHaveBeenCalledWith(MEMBER, 'ffffffffffff');
-        expect(clients.has(GROUP)).toBe(false);
-        expect(location.hash).toBe(`#repos/${GROUP}/git/member/${MEMBER}/${remote.hash}`);
-    });
-
-    it('ignores a routed selection that belongs to another page or member', () => {
-        const a = commit('aaaaaaaaaaaa');
-        appState = {
-            ...appState,
-            gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-a' },
-            selectedGitCommitHash: a.hash,
-        };
-        const { result } = setupGroup([a]);
-        act(() => result.current.hydrateFromInitialLoad([a]));
-
-        expect(result.current.view).toBeNull();
-        expect(result.current.initialCommitHash).toBeNull();
-    });
-
-    it('consumes a routed selection scoped to this exact group and member', () => {
-        const a = commit('aaaaaaaaaaaa');
-        appState = {
-            ...appState,
-            gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: MEMBER },
-            selectedGitCommitHash: a.hash,
-        };
-        const { result } = setupGroup([a]);
-        act(() => result.current.hydrateFromInitialLoad([a]));
-
-        expect(result.current.view).toEqual({ type: 'commit', commit: a });
-    });
-});
-
-describe('useRepoGitSelection — routed navigation', () => {
-    const a = commit('aaaaaaaaaaaa');
-
-    it.each([
-        ['ws-alpha', WS],
-        ['remote:owner:ws-alpha', WS],
-        ['remote:owner:ws-alpha', 'remote:owner:group-product'],
-    ])('opens an already-read outgoing commit outside the history page on %s / %s with lookup off', (sourceSelectionId, page) => {
-        lookupEnabled = false;
-        const outgoing = commit('ffffffffffff');
-        const { result, rerender } = renderHook(() => useRepoGitSelection({
-            workspaceId: WS, routeWorkspaceId: page, sourceSelectionId, commits: [a], loading: false,
-        }));
-        act(() => result.current.hydrateFromInitialLoad([a]));
-        appState = {
-            ...appState, selectedGitCommitHash: outgoing.hash,
-            gitRouteScope: { routeWorkspaceId: page, workspaceId: WS, knownCommit: { sourceSelectionId, commit: outgoing } },
-        };
-        act(() => rerender());
-        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
-        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
-        expect(result.current.selectedCommit).toEqual(outgoing);
-    });
-
-    it('hydrates an already-read outgoing commit on initial expansion without lookup', () => {
-        lookupEnabled = false;
-        const outgoing = commit('ffffffffffff');
-        appState = {
-            ...appState, selectedGitCommitHash: outgoing.hash,
-            gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS, knownCommit: { sourceSelectionId: WS, commit: outgoing } },
-        };
-        const { result } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [a], loading: true }));
-        act(() => result.current.hydrateFromInitialLoad([a]));
-        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
-        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
-    });
-
-    it('reopens the same explicit outgoing selection after its detail was closed', () => {
-        lookupEnabled = false;
-        const outgoing = commit('ffffffffffff');
-        const { result, rerender } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [], loading: false }));
-        act(() => result.current.hydrateFromInitialLoad([]));
-        const select = () => {
-            appState = { ...appState, selectedGitCommitHash: outgoing.hash,
-                gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS, knownCommit: { sourceSelectionId: WS, commit: outgoing } } };
-            act(() => rerender());
-        };
-        select();
-        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
-        act(() => result.current.clearSelection());
-        expect(result.current.view).toBeNull();
-        select();
-        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
-        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
-    });
-
-    it.each(['owner', 'member', 'page', 'hash'])('rejects a supplied outgoing commit with a mismatched %s', mismatch => {
-        lookupEnabled = false;
-        const outgoing = commit('ffffffffffff');
-        appState = {
-            ...appState, selectedGitCommitHash: mismatch === 'hash' ? a.hash : outgoing.hash,
-            gitRouteScope: {
-                routeWorkspaceId: mismatch === 'page' ? 'group-other' : WS,
-                workspaceId: mismatch === 'member' ? OTHER_WS : WS,
-                knownCommit: { sourceSelectionId: mismatch === 'owner' ? 'remote:other:ws-alpha' : WS, commit: outgoing },
-            },
-        };
-        const { result } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [], loading: false }));
-        act(() => result.current.hydrateFromInitialLoad([]));
-        expect(result.current.view).toBeNull();
-        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
-    });
-
-    function setupRouted(initial: Record<string, unknown>) {
-        appState = { ...appState, gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS }, ...initial };
-        const view = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [a], loading: false }));
-        act(() => view.result.current.hydrateFromInitialLoad([a]));
-        return view;
-    }
-
-    function routeTo(rerender: () => void, patch: Record<string, unknown>) {
-        appState = { ...appState, ...patch };
-        act(() => rerender());
-    }
-
-    it('follows a same-SHA file change', () => {
-        const { result, rerender } = setupRouted({ selectedGitCommitHash: a.hash, selectedGitFilePath: 'src/a.ts' });
-        expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
-
-        routeTo(rerender, { selectedGitFilePath: 'src/b.ts' });
-        expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' });
-    });
-
-    it('follows commit → branch range → branch file', () => {
-        const { result, rerender } = setupRouted({ selectedGitCommitHash: a.hash, selectedGitFilePath: null });
-        routeTo(rerender, { selectedGitCommitHash: 'branch-range', selectedGitFilePath: null });
-        expect(result.current.view).toEqual({ type: 'branch-range' });
-
-        routeTo(rerender, { selectedGitCommitHash: 'branch-range', selectedGitFilePath: 'src/a.ts' });
-        expect(result.current.view).toEqual({ type: 'branch-file', filePath: 'src/a.ts' });
-    });
-
-    it('clears the detail and the lookup state on the way back to history', async () => {
-        clientFor(WS).git.getCommit.mockRejectedValue(new Error('nope'));
-        const { result, rerender } = setupRouted({ selectedGitCommitHash: 'ffffffffffff', selectedGitFilePath: null });
-        await waitFor(() => expect(result.current.commitLookupError).toBe('Commit not found'));
-
-        routeTo(rerender, { selectedGitCommitHash: null, selectedGitFilePath: null });
-        expect(result.current.view).toBeNull();
-        expect(result.current.commitLookupError).toBeNull();
-    });
-
-    it('keeps the file when a deep-linked commit file needs a direct lookup', async () => {
-        const remote = commit('ffffffffffff');
-        clientFor(WS).git.getCommit.mockResolvedValue(remote);
-        const { result } = setupRouted({ selectedGitCommitHash: remote.hash, selectedGitFilePath: 'src/a.ts' });
-
-        await waitFor(() => expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
-    });
-
-    it('discards a lookup that lands after the member has changed', async () => {
-        const remote = commit('ffffffffffff');
-        let settle: (value: unknown) => void = () => {};
-        clientFor(WS).git.getCommit.mockReturnValue(new Promise(resolve => { settle = resolve; }));
-        appState = { ...appState, gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS }, selectedGitCommitHash: remote.hash };
-
-        const { result, rerender } = renderHook(
-            ({ id }: { id: string }) => useRepoGitSelection({ workspaceId: id, commits: [], loading: false }),
-            { initialProps: { id: WS } },
-        );
-        act(() => result.current.hydrateFromInitialLoad([]));
-
-        // The user switches member before the request comes back.
-        act(() => rerender({ id: OTHER_WS }));
-        await act(async () => { settle(remote); });
-
-        expect(result.current.view).toBeNull();
+        it('routes a group member lookup to the member client and never to the group', async () => {
+            const remote = commit('ffffffffffff');
+            clientFor('repo-b').git.getCommit.mockResolvedValue(remote);
+            const { result } = renderHook(() => useRepoGitSelection({ workspaceId: 'repo-b', commits: [] }));
+            await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
+            expect(clientFor('repo-b').git.getCommit).toHaveBeenCalledWith('repo-b', 'ffffffffffff');
+            expect(clients.has('group-frontend')).toBe(false);
+        });
     });
 });
 

@@ -45,6 +45,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 
 const deleteTerminal = vi.fn(async (_ws: string, _id: string) => undefined);
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({
         canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) },
         workspaces: { deleteTerminal: (ws: string, id: string) => deleteTerminal(ws, id) },
@@ -53,14 +54,15 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 }));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
-const TERMINAL_TAB_ID = unifiedTabId({
-    kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal',
-});
+/** The web tab showing `coc://terminal`; its id is minted when it opens and kept after it closes. */
+let lastTerminalTabId = '';
+const terminalTabId = () => (lastTerminalTabId =
+    readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.browserUrl === 'coc://terminal')?.id ?? lastTerminalTabId);
 
 function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDockController {
     return {
@@ -85,7 +87,7 @@ function openTerminalTab() {
     render(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
     fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
     fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
-    return screen.getByTestId(`unified-panel-tab-close-${TERMINAL_TAB_ID}`);
+    return screen.getByTestId(`unified-panel-tab-close-${terminalTabId()}`);
 }
 
 function report(sessions: readonly TerminalSessionSummary[]) {
@@ -115,7 +117,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
         expect(screen.getByTestId('unified-panel-close-confirm-message').textContent)
             .toContain('its running terminal session');
         // Nothing has happened yet: the tab is there and no kill was issued.
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         expect(deleteTerminal).not.toHaveBeenCalled();
     });
 
@@ -124,13 +126,13 @@ describe('UnifiedRightPanel terminal close guard', () => {
         report([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
 
         fireEvent(
-            screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`),
+            screen.getByTestId(`unified-panel-tab-${terminalTabId()}`),
             new MouseEvent('auxclick', { bubbles: true, button: 1 }),
         );
 
         expect(screen.getByTestId('unified-panel-close-confirm-message').textContent)
             .toContain('its running terminal session');
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         expect(deleteTerminal).not.toHaveBeenCalled();
     });
 
@@ -142,7 +144,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
 
         expect(screen.queryByTestId('unified-panel-close-confirm')).toBeNull();
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
         expect(deleteTerminal).not.toHaveBeenCalled();
     });
@@ -161,7 +163,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
 
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-confirm'));
 
-        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeNull());
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeNull());
         expect(deleteTerminal.mock.calls).toEqual([[WS, 's-1'], [WS, 's-2']]);
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
@@ -176,12 +178,12 @@ describe('UnifiedRightPanel terminal close guard', () => {
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-confirm'));
 
         await screen.findByTestId('unified-panel-close-confirm-error');
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
 
         // The failed confirm becomes a retry rather than a dead dialog.
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-confirm'));
-        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeNull());
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeNull());
         expect(deleteTerminal).toHaveBeenCalledTimes(2);
     });
 
@@ -192,7 +194,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
         fireEvent.click(closeButton);
 
         expect(screen.queryByTestId('unified-panel-close-confirm')).toBeNull();
-        expect(screen.queryByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeNull();
+        expect(screen.queryByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeNull();
         expect(deleteTerminal).not.toHaveBeenCalled();
     });
 
@@ -201,7 +203,7 @@ describe('UnifiedRightPanel terminal close guard', () => {
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByTestId('unified-panel-open-notes'));
         const notesTabId = unifiedTabId({
-            kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'coc-notes',
         });
 
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${notesTabId}`));
@@ -220,9 +222,9 @@ describe('UnifiedRightPanel terminal close guard', () => {
         // prompt was up), and a second close now needs no confirmation.
         report([{ id: 't1', serverSessionId: 's-1', status: 'exited' }]);
         fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${TERMINAL_TAB_ID}`));
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${terminalTabId()}`));
 
         expect(screen.queryByTestId('unified-panel-close-confirm')).toBeNull();
-        expect(screen.queryByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeNull();
+        expect(screen.queryByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeNull();
     });
 });

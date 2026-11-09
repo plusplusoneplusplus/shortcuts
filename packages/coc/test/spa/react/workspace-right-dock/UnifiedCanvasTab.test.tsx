@@ -221,10 +221,10 @@ describe('routing and chrome', () => {
         act(() => { fireEvent.click(screen.getByTestId('fire-created')); });
 
         const tabs = visibleTabs(readUnifiedPanelState(SCOPE), CHAT);
-        expect(tabs.map(t => t.resourceId)).toEqual(['canvas-new']);
+        expect(tabs.map(t => t.browserUrl)).toEqual(['coc://canvas/canvas-new']);
         const tab = tabs[0]!;
-        expect(tab.kind).toBe('canvas');
-        expect(tab.chatId).toBe(CHAT);
+        expect(tab.kind).toBe('browser');
+        expect(tab.browserChatId).toBe(CHAT);
         // The query belongs to the clone that served the canvas it came from.
         expect(tab.ownerWorkspaceId).toBe(OWNER);
         // The originating tab is untouched — its draft survives.

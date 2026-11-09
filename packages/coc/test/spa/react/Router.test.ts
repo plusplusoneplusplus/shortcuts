@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, parseProcessDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, VIRTUAL_WORKSPACE_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, parseProcessDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, VIRTUAL_WORKSPACE_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import type { AppContextState, AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
 
@@ -244,8 +244,6 @@ describe('buildRepoSubTabSuffix', () => {
     function stateWith(overrides: Partial<AppContextState> = {}): AppContextState {
         return {
             settingsSection: 'info',
-            selectedGitCommitHash: null,
-            selectedGitFilePath: null,
             selectedNotePath: null,
             ...overrides,
         } as AppContextState;
@@ -254,13 +252,6 @@ describe('buildRepoSubTabSuffix', () => {
     it('preserves settings section state', () => {
         expect(buildRepoSubTabSuffix('settings', stateWith({ settingsSection: 'llm-tools' })))
             .toBe('/settings/llm-tools');
-    });
-
-    it('preserves git commit and file state', () => {
-        expect(buildRepoSubTabSuffix('git', stateWith({
-            selectedGitCommitHash: 'abc 123',
-            selectedGitFilePath: 'src/server/file name.ts',
-        }))).toBe('/git/abc%20123/src%2Fserver%2Ffile%20name.ts');
     });
 
     it('builds the git tab path when no commit is selected', () => {
@@ -283,80 +274,6 @@ describe('buildRepoSubTabSuffix', () => {
 
     it('falls back to the plain tab path for tabs without nested state', () => {
         expect(buildRepoSubTabSuffix('workflows', stateWith(), 'queue_1')).toBe('/workflows');
-    });
-});
-
-describe('buildWorkspaceSubTabSuffix', () => {
-    function stateWith(overrides: Partial<AppContextState> = {}): AppContextState {
-        return {
-            settingsSection: 'info',
-            selectedGitCommitHash: null,
-            selectedGitFilePath: null,
-            selectedNotePath: null,
-            ...overrides,
-        } as AppContextState;
-    }
-
-    it('keeps the settings section for My Work / My Life', () => {
-        expect(buildWorkspaceSubTabSuffix('my_work', 'settings', stateWith({ settingsSection: 'mcp' })))
-            .toBe('/settings/mcp');
-    });
-
-    it('delegates every non-settings tab to buildRepoSubTabSuffix, group or not', () => {
-        const state = stateWith({ selectedNotePath: 'Notebook/Page.md' });
-        expect(buildWorkspaceSubTabSuffix('group-frontend', 'notes', state)).toBe('/notes/Notebook/Page.md');
-        expect(buildWorkspaceSubTabSuffix('group-frontend', 'chats', state, 'queue_1')).toBe('/chats/queue_1');
-    });
-
-    describe('the Git tab of a repo group', () => {
-        const GROUP = 'group-frontend';
-        const OTHER_GROUP = 'group-backend';
-
-        function gitState(overrides: Partial<AppContextState> = {}): AppContextState {
-            return stateWith({
-                repoGroupGitMemberState: {},
-                gitRouteScope: null,
-                ...overrides,
-            });
-        }
-
-        it('carries the member and the detail when the selection is this group’s', () => {
-            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
-                gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-b' },
-                selectedGitCommitHash: 'abc123',
-                selectedGitFilePath: 'src/a b.ts',
-            }))).toBe('/git/member/repo-b/abc123/src%2Fa%20b.ts');
-        });
-
-        it('drops a detail that belongs to another group', () => {
-            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
-                repoGroupGitMemberState: { [GROUP]: 'repo-a' },
-                gitRouteScope: { routeWorkspaceId: OTHER_GROUP, workspaceId: 'repo-b' },
-                selectedGitCommitHash: 'abc123',
-            }))).toBe('/git/member/repo-a');
-        });
-
-        it('drops a detail that belongs to a plain repo', () => {
-            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
-                repoGroupGitMemberState: { [GROUP]: 'repo-a' },
-                gitRouteScope: { routeWorkspaceId: 'repo-x', workspaceId: 'repo-x' },
-                selectedGitCommitHash: 'abc123',
-                selectedGitFilePath: 'src/a.ts',
-            }))).toBe('/git/member/repo-a');
-        });
-
-        it('falls back to a bare group entry when no member is known yet', () => {
-            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState())).toBe('/git');
-        });
-
-        it('leaves a plain repo’s Git suffix exactly as it was', () => {
-            const state = gitState({
-                gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-b' },
-                selectedGitCommitHash: 'abc123',
-                selectedGitFilePath: 'src/a.ts',
-            });
-            expect(buildWorkspaceSubTabSuffix('repo-1', 'git', state)).toBe('/git/abc123/src%2Fa.ts');
-        });
     });
 });
 
@@ -939,245 +856,6 @@ describe('repo sub-tab deep-link parsing — activity', () => {
     });
 });
 
-// ─── parseGitCommitDeepLink ─────────────────────────────────────
-
-describe('parseGitCommitDeepLink', () => {
-    it('parses #repos/my-repo/git/abc1234', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/git/abc1234')).toBe('abc1234');
-    });
-
-    it('URL-decodes the commit hash', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/git/abc%2F1')).toBe('abc/1');
-    });
-
-    it('returns null when commit hash is missing', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/git')).toBeNull();
-    });
-
-    it('returns null for non-git sub-tab', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/templates')).toBeNull();
-    });
-
-    it('returns null for non-repo hash', () => {
-        expect(parseGitCommitDeepLink('#wiki/something')).toBeNull();
-    });
-
-    it('returns null for empty hash', () => {
-        expect(parseGitCommitDeepLink('#')).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-        expect(parseGitCommitDeepLink('')).toBeNull();
-    });
-
-    it('handles URL-encoded repo ID', () => {
-        expect(parseGitCommitDeepLink('#repos/my%20repo/git/abc1234')).toBe('abc1234');
-    });
-
-    it('returns null from bare #repos', () => {
-        expect(parseGitCommitDeepLink('#repos')).toBeNull();
-    });
-
-    it('handles full 40-char SHA', () => {
-        const fullSha = 'a'.repeat(40);
-        expect(parseGitCommitDeepLink(`#repos/r1/git/${fullSha}`)).toBe(fullSha);
-    });
-});
-
-// ─── git deep-link integration ──────────────────────────────────
-
-describe('git deep-link integration', () => {
-    it('tabFromHash returns "repos" for #repos/ws-abc/git/abc1234', () => {
-        expect(tabFromHash('#repos/ws-abc/git/abc1234')).toBe('repos');
-    });
-
-    it('parseGitCommitDeepLink and tabFromHash compose correctly for a git deep link', () => {
-        const hash = '#repos/ws-abc/git/abc1234';
-        expect(tabFromHash(hash)).toBe('repos');
-        expect(parseGitCommitDeepLink(hash)).toBe('abc1234');
-    });
-});
-
-// ─── parseGitFileDeepLink ────────────────────────────────────────
-
-describe('parseGitFileDeepLink', () => {
-    it('parses commit hash and file path', () => {
-        const result = parseGitFileDeepLink('#repos/my-repo/git/abc1234/src%2Findex.ts');
-        expect(result).toEqual({ commitHash: 'abc1234', filePath: 'src/index.ts' });
-    });
-
-    it('URL-decodes the file path', () => {
-        const result = parseGitFileDeepLink('#repos/r1/git/abc/path%2Fto%2Ffile.ts');
-        expect(result).toEqual({ commitHash: 'abc', filePath: 'path/to/file.ts' });
-    });
-
-    it('handles simple file name without subdirectory', () => {
-        const result = parseGitFileDeepLink('#repos/r1/git/abc1234/README.md');
-        expect(result).toEqual({ commitHash: 'abc1234', filePath: 'README.md' });
-    });
-
-    it('returns null when file path segment is missing', () => {
-        expect(parseGitFileDeepLink('#repos/my-repo/git/abc1234')).toBeNull();
-    });
-
-    it('returns null when commit hash is missing', () => {
-        expect(parseGitFileDeepLink('#repos/my-repo/git')).toBeNull();
-    });
-
-    it('returns null for non-git sub-tab', () => {
-        expect(parseGitFileDeepLink('#repos/my-repo/templates/abc/file.ts')).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-        expect(parseGitFileDeepLink('')).toBeNull();
-    });
-
-    it('returns null for bare #repos', () => {
-        expect(parseGitFileDeepLink('#repos')).toBeNull();
-    });
-
-    it('URL-decodes the repo ID but still parses correctly', () => {
-        const result = parseGitFileDeepLink('#repos/my%20repo/git/abc/src%2Fmain.ts');
-        expect(result).toEqual({ commitHash: 'abc', filePath: 'src/main.ts' });
-    });
-
-    it('handles deeply nested file path', () => {
-        const encoded = encodeURIComponent('a/b/c/deep.ts');
-        const result = parseGitFileDeepLink(`#repos/r1/git/sha123/${encoded}`);
-        expect(result).toEqual({ commitHash: 'sha123', filePath: 'a/b/c/deep.ts' });
-    });
-});
-
-// ─── handleHash git dispatch simulation ─────────────────────────
-
-describe('handleHash git dispatch simulation', () => {
-    function simulateGitHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
-        const dispatches: Array<{ type: string; [key: string]: any }> = [];
-        const hash = rawHash.replace(/^#/, '');
-        const tab = tabFromHash('#' + hash);
-        if (tab === 'repos') {
-            const parts = hash.split('/');
-            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
-                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
-                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
-                }
-                // Git commit deep-link handling (mirrors Router.tsx)
-                if (parts[2] === 'git' && parts[3]) {
-                    dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: decodeURIComponent(parts[3]) });
-                    if (parts[4]) {
-                        dispatches.push({ type: 'SET_GIT_FILE_PATH', filePath: decodeURIComponent(parts[4]) });
-                    } else {
-                        dispatches.push({ type: 'CLEAR_GIT_FILE_PATH' });
-                    }
-                } else if (parts[2] === 'git') {
-                    dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: null });
-                    dispatches.push({ type: 'CLEAR_GIT_FILE_PATH' });
-                }
-            }
-        }
-        return dispatches;
-    }
-
-    it('dispatches SET_GIT_COMMIT_HASH with commit hash for #repos/r1/git/abc1234', () => {
-        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
-    });
-
-    it('dispatches SET_GIT_COMMIT_HASH with null for #repos/r1/git (no hash)', () => {
-        const dispatches = simulateGitHash('#repos/r1/git');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: null });
-    });
-
-    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1/workflows', () => {
-        const dispatches = simulateGitHash('#repos/r1/workflows');
-        expect(dispatches.find(d => d.type === 'SET_GIT_COMMIT_HASH')).toBeUndefined();
-    });
-
-    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1 (no sub-tab)', () => {
-        const dispatches = simulateGitHash('#repos/r1');
-        expect(dispatches.find(d => d.type === 'SET_GIT_COMMIT_HASH')).toBeUndefined();
-    });
-
-    it('URL-decodes the commit hash in dispatch', () => {
-        const dispatches = simulateGitHash('#repos/r1/git/abc%2Fone');
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc/one' });
-    });
-
-    it('dispatches SET_SELECTED_REPO alongside git commit selection', () => {
-        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
-    });
-
-    it('dispatches CLEAR_GIT_FILE_PATH when only commit hash (no file segment)', () => {
-        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
-        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
-    });
-
-    it('dispatches SET_GIT_FILE_PATH when file segment is present', () => {
-        const encoded = encodeURIComponent('src/index.ts');
-        const dispatches = simulateGitHash(`#repos/r1/git/abc1234/${encoded}`);
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'src/index.ts' });
-    });
-
-    it('does not dispatch CLEAR_GIT_FILE_PATH when file segment is present', () => {
-        const encoded = encodeURIComponent('src/main.ts');
-        const dispatches = simulateGitHash(`#repos/r1/git/abc/${encoded}`);
-        expect(dispatches.find(d => d.type === 'CLEAR_GIT_FILE_PATH')).toBeUndefined();
-    });
-
-    it('URL-decodes the file path in SET_GIT_FILE_PATH dispatch', () => {
-        const encoded = encodeURIComponent('packages/core/src/utils.ts');
-        const dispatches = simulateGitHash(`#repos/r1/git/sha/${encoded}`);
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'packages/core/src/utils.ts' });
-    });
-
-    it('dispatches CLEAR_GIT_FILE_PATH when #repos/r1/git (no hash)', () => {
-        const dispatches = simulateGitHash('#repos/r1/git');
-        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
-    });
-
-    it('dispatches SET_GIT_COMMIT_HASH with "branch-range" for #repos/r1/git/branch-range', () => {
-        const dispatches = simulateGitHash('#repos/r1/git/branch-range');
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
-        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
-    });
-
-    it('dispatches SET_GIT_FILE_PATH for #repos/r1/git/branch-range/<filePath>', () => {
-        const encoded = encodeURIComponent('src/utils.ts');
-        const dispatches = simulateGitHash(`#repos/r1/git/branch-range/${encoded}`);
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
-        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'src/utils.ts' });
-    });
-});
-
-// ─── branch-range deep links ────────────────────────────────────
-
-describe('branch-range deep links', () => {
-    it('parseGitCommitDeepLink returns "branch-range" for branch-range URL', () => {
-        expect(parseGitCommitDeepLink('#repos/r1/git/branch-range')).toBe('branch-range');
-    });
-
-    it('parseGitFileDeepLink parses branch-range file URL', () => {
-        const encoded = encodeURIComponent('src/index.ts');
-        const result = parseGitFileDeepLink(`#repos/r1/git/branch-range/${encoded}`);
-        expect(result).toEqual({ commitHash: 'branch-range', filePath: 'src/index.ts' });
-    });
-
-    it('tabFromHash returns "repos" for branch-range URL', () => {
-        expect(tabFromHash('#repos/r1/git/branch-range')).toBe('repos');
-    });
-
-    it('tabFromHash returns "repos" for branch-range file URL', () => {
-        const encoded = encodeURIComponent('src/main.ts');
-        expect(tabFromHash(`#repos/r1/git/branch-range/${encoded}`)).toBe('repos');
-    });
-});
-
 describe('Bare W key dispatches no navigation', () => {
     type MockEvent = {
         key: string;
@@ -1727,7 +1405,7 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
     });
 
     it('uses the shared repo sub-tab suffix builder for shortcut navigation', () => {
-        expect(ROUTER_SOURCE).toContain('buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId)');
+        expect(ROUTER_SOURCE).toContain('buildRepoSubTabSuffix(tab, state, selectedTaskId)');
     });
 
     it('activity route is in VALID_REPO_SUB_TABS', () => {

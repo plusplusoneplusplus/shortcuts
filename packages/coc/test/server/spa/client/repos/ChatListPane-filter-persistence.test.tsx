@@ -39,8 +39,6 @@ describe('appReducer – myWorkExcludedTypes', () => {
         selectedSkillTemplateId: null,
         selectedScriptTemplateId: null,
         selectedScheduleId: null,
-        selectedGitCommitHash: null,
-        selectedGitFilePath: null,
         selectedPrId: null,
         selectedPrDetailTab: null,
         selectedWorkflowProcessId: null,

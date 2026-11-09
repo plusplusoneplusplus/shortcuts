@@ -984,6 +984,12 @@ describe('Features card UI metadata', () => {
         })).fileBlameEnabled).toBe(true);
     });
 
+    it('has no panel address bar setting or runtime flag; coc:// pages are always on', () => {
+        expect(getAdminSettingDefinition('features.panelAddressBar')).toBeUndefined();
+        expect(DEFAULT_CONFIG.features).not.toHaveProperty('panelAddressBar');
+        expect(buildRuntimeFeatureFlags({})).not.toHaveProperty('panelAddressBarEnabled');
+    });
+
     it.each(['features.chatHistoryPaging', 'features.canvasToolScripts'])('defaults experimental %s on and keeps explicit false', key => {
         const def = getAdminSettingDefinition(key)!;
         const name = key.slice('features.'.length);

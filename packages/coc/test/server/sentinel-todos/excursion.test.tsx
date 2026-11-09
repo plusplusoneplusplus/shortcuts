@@ -131,8 +131,9 @@ describe('excursion path rules', () => {
         expect(withPinnedSentinelTodo(state, null, 'ws-1', 'a')).toBe(state);
         const view = withPinnedSentinelTodo(state, onPath, 'ws-1', 'a');
         const [tab] = visibleTabs(view, 'a');
-        expect(tab).toMatchObject({ kind: 'todo', chatId: 'a', resourceId: OWNER.processId, label: 'To-do · Release coordination' });
+        expect(tab).toMatchObject({ kind: 'browser', browserUrl: 'coc://todo', browserChatId: 'a', ownerWorkspaceId: OWNER.ownerWorkspaceId, label: 'To-do · Release coordination' });
         expect(tab.id).toBe(pinnedSentinelTodoTabId(onPath, 'ws-1', 'a'));
+        expect(visibleTabs(withPinnedSentinelTodo(state, onPath, 'ws-1', 'a'), 'a')[0].id).toBe(tab.id);
         expect(view.activeByScope).toBe(state.activeByScope);
         expect(pinnedSentinelTodoTabId(onPath, 'ws-1', 'chat-s')).toBeNull();
     });
@@ -239,14 +240,14 @@ describe('pinned To-do in the visited chat panel', () => {
         rerender({ chatId: ORIGIN.chatId });
         expect(result.current.pinnedId).toBeNull();
         expect(result.current.activeId).toBe(activeTabId(originState, ORIGIN.chatId));
-        expect(result.current.active).toMatchObject({ kind: 'todo', resourceId: OWNER.processId, chatId: ORIGIN.chatId });
+        expect(result.current.active).toMatchObject({ kind: 'browser', browserUrl: 'coc://todo', browserChatId: ORIGIN.chatId });
     });
 
     it('adds the pinned ledger without runtime feature configuration', () => {
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
         act(() => { startSentinelTodoExcursion(ORIGIN); visitSentinelTodoExcursionChat(stop('chat-a')); });
         expect(result.current.pinnedId).not.toBeNull();
-        expect(result.current.tabs).toEqual([expect.objectContaining({ kind: 'todo', resourceId: OWNER.processId })]);
+        expect(result.current.tabs).toEqual([expect.objectContaining({ kind: 'browser', browserUrl: 'coc://todo', browserChatId: 'chat-a' })]);
     });
 });
 

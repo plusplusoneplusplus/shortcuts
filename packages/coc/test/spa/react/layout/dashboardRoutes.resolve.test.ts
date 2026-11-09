@@ -63,24 +63,29 @@ describe('Explorer routes keep the chat workspace visible', () => {
     });
 });
 
-describe('Git routes keep the chat workspace visible', () => {
-    it.each(['ws1', 'remote:server-a:ws1'])('restores %s commit details without selecting a hidden Git page', id => {
-        let state = { selectedRepoId: null, activeRepoSubTab: 'chats', repoRouteState: {},
-            repoTabState: {}, notePathState: {} } as unknown as AppContextState;
-        const visit = (hash: string) => {
-            const resolution = resolveDashboardRoute(hash, makeCtx({ selectedRepoId: state.selectedRepoId,
-                repoRouteState: state.repoRouteState, repoTabState: state.repoTabState }));
-            for (const action of appActions(resolution)) state = appReducer(state, action);
-            expect(queueActions(resolution)).toEqual([]);
-        };
-        visit('#repos/' + encodeURIComponent(id) + '/git/abc123/src.ts');
-        expect(state.activeRepoSubTab).toBe('activity');
-        visit('#repos/other/git/def456');
-        visit('#repos/' + encodeURIComponent(id));
-        expect(state.activeRepoSubTab).toBe('activity');
-        expect(state.selectedGitCommitHash).toBe('abc123');
-        expect(state.selectedGitFilePath).toBe('src.ts');
-        expect(state.repoRouteState[id]).toBe('/git/abc123/src.ts');
+describe('Git routes are panel-only for repos and groups', () => {
+    it.each(['ws1', 'remote:server-a:ws1', 'group-frontend'])(
+        'redirects %s commit/file deep links to the workspace, never a hidden Git page',
+        id => {
+            const encoded = encodeURIComponent(id);
+            const r = resolveDashboardRoute('#repos/' + encoded + '/git/abc123/src.ts', makeCtx());
+            expect(r.effects).toEqual([
+                { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
+                { kind: 'app', action: { type: 'SET_SELECTED_REPO', id } },
+                { kind: 'navigate', hash: '#repos/' + encoded + '/activity', mode: 'replace' },
+            ]);
+        },
+    );
+
+    it('redirects a group member Git deep link the same way, without selecting the member', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/git/member/repo-b/abc123/src.ts', makeCtx());
+        expect(navigations(r)).toContainEqual({ kind: 'navigate', hash: '#repos/group-frontend/activity', mode: 'replace' });
+        expect(appActions(r)).not.toContainEqual({ type: 'SET_SELECTED_REPO', id: 'repo-b' });
+    });
+
+    it('does not replay a remembered Git suffix as a page', () => {
+        const r = resolveDashboardRoute('#repos/ws1', makeCtx({ repoRouteState: { ws1: '/git/abc123' } }));
+        expect(navigations(r).at(-1)).toEqual({ kind: 'navigate', hash: '#repos/ws1/activity', mode: 'replace' });
     });
 
     it.each(['my_work', 'my_life'])('keeps the Git page for virtual workspace %s', id => {
@@ -182,75 +187,18 @@ describe('resolveDashboardRoute — Notes/Settings are panel-only for repos and 
 
 
 describe('resolveDashboardRoute — repo sub-routes', () => {
-    it('#repos/ws1/git clears git selection and records the suffix (full effect list)', () => {
-        const r = resolveDashboardRoute('#repos/ws1/git', makeCtx());
-        expect(r.effects).toEqual([
-            { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
-            { kind: 'app', action: { type: 'SET_SELECTED_REPO', id: 'ws1' } },
-            { kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'ws1', suffix: '/git' } },
-            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'activity' } },
-            { kind: 'app', action: { type: 'SET_SELECTED_WORKFLOW', name: null } },
-            { kind: 'app', action: { type: 'SET_WORKFLOW_RUN_PROCESS', processId: null } },
-            { kind: 'app', action: { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1', commitHash: null, filePath: null } },
-        ]);
-    });
-
-    it('#repos/ws1/git/{commit}/{file} selects commit + file in one dispatch', () => {
-        const r = resolveDashboardRoute('#repos/ws1/git/abc123/src.ts', makeCtx());
-        expect(appActions({ effects: r.effects })).toEqual(
-            expect.arrayContaining([
-                {
-                    type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1',
-                    commitHash: 'abc123', filePath: 'src.ts',
-                },
-            ]),
-        );
-    });
-
-    it('a group Git route keeps the GROUP as the page and names the member', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend/git/member/repo-b/abc123/src.ts', makeCtx());
-        expect(appActions({ effects: r.effects })).toEqual(
-            expect.arrayContaining([
-                { type: 'SET_SELECTED_REPO', id: 'group-frontend' },
-                {
-                    type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'group-frontend',
-                    suffix: '/git/member/repo-b/abc123/src.ts',
-                },
-                {
-                    type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
-                    commitHash: 'abc123', filePath: 'src.ts',
-                },
-            ]),
-        );
-        // The member never leaks into the selected repo — the group owns the page.
-        expect(appActions({ effects: r.effects })).not.toContainEqual({ type: 'SET_SELECTED_REPO', id: 'repo-b' });
-    });
-
-    it('a bare group Git entry leaves the member unresolved for the host', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend/git', makeCtx());
-        expect(appActions({ effects: r.effects })).toContainEqual({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: null,
-            commitHash: null, filePath: null,
-        });
-    });
-
-    it('an older group commit link carries the SHA with no member', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend/git/abc123', makeCtx());
-        expect(appActions({ effects: r.effects })).toContainEqual({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: null,
-            commitHash: 'abc123', filePath: null,
-        });
-    });
+    // Git deep-links (commit/file/member) are covered by "Git routes are
+    // panel-only for repos and groups" above.
 
     it('bare #repos/ws1 expands to the remembered suffix and canonicalizes (replaceState)', () => {
-        const ctx = makeCtx({ repoRouteState: { ws1: '/git' } });
+        const ctx = makeCtx({ repoRouteState: { ws1: '/tasks' } });
         const r = resolveDashboardRoute('#repos/ws1', ctx);
-        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/ws1/git', mode: 'replaceState' }]);
-        // and it continues parsing the expansion (selects the repo + git tab)
+        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/ws1/tasks', mode: 'replaceState' }]);
+        // and it continues parsing the expansion (selects the repo + the tab)
         expect(appActions(r)).toEqual(
             expect.arrayContaining([
                 { type: 'SET_SELECTED_REPO', id: 'ws1' },
-                { type: 'SET_REPO_SUB_TAB', tab: 'activity' },
+                { type: 'SET_REPO_SUB_TAB', tab: 'tasks' },
             ]),
         );
     });

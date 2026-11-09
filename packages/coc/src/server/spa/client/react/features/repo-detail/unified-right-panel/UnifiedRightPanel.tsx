@@ -119,17 +119,18 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { moveTabGroup, toggleGroupFolded, useUnifiedTabGroupOrder, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
+import { canvasIdOfAddress, cocPageKindOf, formatCocAddress, type CocAddress, type CocPage } from './unifiedPanelAddresses';
 import { UnifiedFileHistory } from './UnifiedFileHistory';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useWorkspaceSettingsOwner } from '../../repo-settings/WorkspaceSettingsHost';
-import { panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
+import { openPanelWorkspaceResource, panelGitInput, panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
 import {
-    browserLabelForUrl, browserOpenInput, browserSessionKey, duplicateBrowserTabInput, normalizeBrowserUrl,
+    browserLabelForUrl, browserOpenInput, browserSessionKey, canvasPageInput, duplicateBrowserTabInput, isSameCocPageTab, normalizeBrowserUrl,
 } from './unifiedBrowserTabs';
 import {
     closedBrowserTabScopeKey,
@@ -150,6 +151,7 @@ import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import { useSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { sentinelTodoTabInput, shouldAutoOpenSentinelTodoTab, type SentinelTodoOwner } from './sentinelTodoPanelModel';
+import { useSentinelTodoExcursion } from './sentinelTodoExcursion';
 import type {
     EditorModelMountContext,
     EditorNavigationController,
@@ -306,7 +308,6 @@ export function UnifiedRightPanel({
     }, []);
     const {
         state, tabs, activeId, active, pinnedId, open, openBeside, openPreview, previewToReplace, promote, activate, close, move,
-        updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
     // With `features.chatScopedBrowserTabs` off, every page shows in every chat again.
@@ -442,7 +443,7 @@ export function UnifiedRightPanel({
     // A Git tab's Open submenu reads and opens on the tab's own owner; a group
     // tab without a member offers this panel's live members to choose from.
     const gitOpenSourceFor = useCallback((tab: UnifiedPanelTab): UnifiedPanelGitOpenSource | null => {
-        if (!appDispatch || tab.kind !== 'git') return null;
+        if (!appDispatch || cocPageKindOf(tab.browserUrl) !== 'git') return null;
         const members = tab.ownerWorkspaceId === workspaceId && repoGroup
             ? targetOptions
                 .filter(option => !option.disabled && !option.deprioritized && option.workspaceId !== workspaceId)
@@ -461,12 +462,14 @@ export function UnifiedRightPanel({
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
     );
-    // The "+" menu's Git entry opens the target repo's branch changes; a
-    // group's own root names no repository, so it has no target.
+    // The "+" menu's Git entry opens the target repo's branch changes. A
+    // group's own root names no repository, so it opens the group's Git page,
+    // which shows its remembered member.
     const gitMenuTarget = useMemo(
         () => appDispatch ? chatCommitPanelTarget({ workspaceId, chatId, routingRef }, target) : null,
         [appDispatch, workspaceId, chatId, routingRef, target],
     );
+    const groupRootGitAvailable = isRepoGroupWorkspaceId(workspaceId) && target === workspaceId;
     const rootPathForTab = useCallback(
         (tab: (typeof tabs)[number]) => (
             (tab.ownerRoutingRef ?? null) !== (routingRefForPanelOwner(routingRef, tab.ownerWorkspaceId) ?? null)
@@ -488,38 +491,15 @@ export function UnifiedRightPanel({
             : undefined
     ), [repoGroup, targetOptions, routingRef]);
 
-    // New workspace resources open against the dock's current target, and carry
-    // a repo label when that is not the panel's own workspace (a group member or
-    // a remote clone) so two same-named tabs stay tellable apart.
-    // Explicit menu intent is ephemeral; restored descriptors never create PTYs.
-    const [terminalOpenRequests, setTerminalOpenRequests] = useState<Record<string, number>>({});
-    useEffect(() => {
-        setTerminalOpenRequests(prev => {
-            const retained = Object.fromEntries(Object.entries(prev).filter(([id]) => state.tabs.some(tab => tab.id === id)));
-            return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
-        });
-    }, [state.tabs]);
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes' | 'settings' | 'work-items' | 'pull-requests') => {
-        if (kind === 'work-items' || kind === 'pull-requests') {
-            open({ ...panelWorkspaceResourceInput(kind, { workspaceId: target, routingRef: targetRoutingRef ?? null, chatId }), ...(target !== workspaceId ? { repoLabel: targetLabel } : {}) });
+    // Work Items and Pull Requests open against the dock's current target, and
+    // carry a repo label when that is not the panel's own workspace (a group
+    // member or a remote clone) so two same-named tabs stay tellable apart.
+    const openWorkspaceResource = useCallback((kind: 'notes' | 'work-items' | 'pull-requests') => {
+        if (kind === 'notes') {
+            open(panelNotesInput({ workspaceId, routingRef: routingRef ?? null, chatId }));
             return;
         }
-        if (kind !== 'terminal') {
-            open(panelWorkspaceResourceInput(kind, { workspaceId, routingRef: routingRef ?? null, chatId }));
-            return;
-        }
-        const input: OpenUnifiedTabInput = {
-            kind,
-            ownerWorkspaceId: target,
-            ownerRoutingRef: targetRoutingRef,
-            chatId,
-            resourceId: kind,
-            label: 'Terminal',
-            ...(target === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
-        };
-        open(input);
-        const id = unifiedTabId(input);
-        setTerminalOpenRequests(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+        open({ ...panelWorkspaceResourceInput(kind, { workspaceId: target, routingRef: targetRoutingRef ?? null, chatId }), ...(target !== workspaceId ? { repoLabel: targetLabel } : {}) });
     }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef, routingRef]);
 
     // ------------------------------------------------------------------
@@ -804,7 +784,7 @@ export function UnifiedRightPanel({
 
     const activateWithNavigation = useCallback((tabId: string) => {
         const target = tabsRef.current.find(tab => tab.id === tabId);
-        if (target?.kind === 'todo' && mode === 'explorer') tree.setOpen(false);
+        if (cocPageKindOf(target?.browserUrl) === 'todo' && mode === 'explorer') tree.setOpen(false);
         if (tabId === activeIdRef.current) return;
         if (target?.kind === 'file') prepareFileNavigation(tabId, 'navigation');
         else captureActiveFileLocation('navigation');
@@ -934,8 +914,16 @@ export function UnifiedRightPanel({
             return { ...prev, [id]: control };
         });
     }, []);
+    const workspaceTabsRef = useRef(state.workspaceTabs);
+    workspaceTabsRef.current = state.workspaceTabs;
     const navigateBrowser = useCallback(
-        (id: string, url: string) => updateBrowser(id, { url, label: browserLabelForUrl(url) }),
+        (id: string, url: string) => {
+            const current = workspaceTabsRef.current.find(tab => tab.id === id);
+            const canvasId = canvasIdOfAddress(url);
+            // Staying on the same canvas keeps its title; a new page takes the address label.
+            const keepLabel = canvasId !== null && canvasId === canvasIdOfAddress(current?.browserUrl);
+            updateBrowser(id, keepLabel ? { url } : { url, label: browserLabelForUrl(url) });
+        },
         [updateBrowser],
     );
     const followBrowserPage = useCallback(
@@ -949,8 +937,6 @@ export function UnifiedRightPanel({
     // target moved since. An opener hidden in another conversation still counts.
     // A page an AI turn drives unseen opens its tab unseen too: no selection change,
     // and the guest is created here because the tab does not mount.
-    const workspaceTabsRef = useRef(state.workspaceTabs);
-    workspaceTabsRef.current = state.workspaceTabs;
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
@@ -1022,8 +1008,8 @@ export function UnifiedRightPanel({
     // Close guard (AC-05)
     // ------------------------------------------------------------------
 
-    // What each terminal tab currently has running. The terminal view reports
-    // it because the tab's ✕ lives in the strip, outside that view — without
+    // What each tab's `coc://terminal` page currently has running. The terminal
+    // view reports it because the tab's ✕ lives in the strip, outside that view — without
     // this the panel would either kill PTYs silently or prompt about a tab that
     // holds nothing but tombstones.
     const [terminalSessions, setTerminalSessions] = useState<Record<string, readonly UnifiedTerminalSession[]>>({});
@@ -1139,20 +1125,18 @@ export function UnifiedRightPanel({
     }, [closeTab]);
 
     // The strip's ✕ and the views' own close buttons both come through here. A
-    // terminal tab with nothing running still closes immediately: an exited
+    // terminal page with nothing running still closes immediately: an exited
     // session is a tombstone, and prompting to kill a process that already ended
     // is noise.
     const beginProtectedClose = useCallback((id: string): 'closed' | 'prompted' | 'missing' => {
         const tab = tabsRef.current.find(candidate => candidate.id === id);
         if (!tab) return 'missing';
-        if (tab?.kind === 'terminal') {
-            const sessionIds = liveTerminalSessionIds(terminalSessionsRef.current[id]);
-            if (sessionIds.length > 0) {
-                setPendingClose({ tabId: id, workspaceId: tab.ownerWorkspaceId, sessionIds });
-                setCloseError(null);
-                setCloseBusy(false);
-                return 'prompted';
-            }
+        const sessionIds = liveTerminalSessionIds(terminalSessionsRef.current[id]);
+        if (sessionIds.length > 0) {
+            setPendingClose({ tabId: id, workspaceId: tab.ownerWorkspaceId, sessionIds });
+            setCloseError(null);
+            setCloseBusy(false);
+            return 'prompted';
         }
         if (needsDirtyCloseConfirm(tab, dirtyIdsRef.current.has(id))) {
             setPendingDirty({ tabId: id, label: dirtyCloseLabel(tab) });
@@ -1660,7 +1644,7 @@ export function UnifiedRightPanel({
 
     const panelRootRef = useRef<HTMLDivElement | null>(null);
     const navigatorRef = useRef<HTMLDivElement | null>(null);
-    const todoViewKey = active?.kind === 'todo' ? JSON.stringify([workspaceId, chatId, activeId]) : null;
+    const todoViewKey = cocPageKindOf(active?.browserUrl) === 'todo' ? JSON.stringify([workspaceId, chatId, activeId]) : null;
     const focusedTodo = useRef<string | null>(null);
     const todoInteractions = useRef(new WeakSet<Event>());
     const navigatorMode = useRef(mode);
@@ -1815,7 +1799,8 @@ export function UnifiedRightPanel({
             const outcome = closeTabOutcome({
                 panelOpen: isOpen,
                 panelHasFocus,
-                focusInActiveTerminal: active?.kind === 'terminal' && focusedViewId === activeId,
+                focusInActiveTerminal: cocPageKindOf(active?.browserUrl) === 'terminal' && focusedViewId === activeId
+                    && !!focused?.closest('[data-testid="browser-coc-page"]'),
                 metaKey: event.metaKey,
                 hasActiveTab: activeId !== null,
             });
@@ -2045,9 +2030,10 @@ export function UnifiedRightPanel({
         if (!root.contains(focused)) { return false; }
         const inBrowser = active?.kind === 'browser'
             && focused.closest('[data-testid^="unified-panel-view-"]')?.getAttribute('data-testid')
-                === `unified-panel-view-${active.id}`;
+                === `unified-panel-view-${active.id}`
+            && !focused.closest('[data-testid="browser-coc-page"]');
         // Browser address editing uses browser shortcuts; other editors and
-        // terminal inputs retain their own bindings.
+        // terminal inputs, including those on a `coc://` page, retain their own bindings.
         return inBrowser || !!menuRef.current?.contains(focused) || !(isEditableTarget(focused)
             || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'));
     }, [isOpen, active]);
@@ -2223,20 +2209,116 @@ export function UnifiedRightPanel({
             ownerRoutingRef: routingRefForPanelOwner(routingRef, sentinelChat.ownerWorkspaceId),
         };
     }, [sentinelChat, workspaceId, routingRef]);
-    const todoInput = useMemo(
-        () => (todoOwner !== null && chatId !== null ? sentinelTodoTabInput(todoOwner, chatId) : null),
-        [todoOwner, chatId],
-    );
     // First tracking use opens To-do only when the chat shows no tab at all, so
     // it never steals focus or reopens a tab the user closed.
     const panelStateRef = useRef(state);
     panelStateRef.current = state;
     useSentinelTodoEvents(todoOwner, event => {
-        if (todoInput === null || chatId === null) return;
-        if (!shouldAutoOpenSentinelTodoTab(panelStateRef.current, chatId, todoInput, event)) return;
-        open(todoInput);
+        if (todoOwner === null || chatId === null) return;
+        const input = sentinelTodoTabInput(todoOwner, chatId);
+        if (!shouldAutoOpenSentinelTodoTab(panelStateRef.current, chatId, input, event)) return;
+        open(input);
         setWorkspaceDockOpen(workspaceId, true);
     });
+
+    // Terminal, Settings, To-do and Canvas are `coc://` pages in web tabs. The
+    // text never names an owner: Settings uses the panel scope, Terminal and
+    // Canvas the web tab's own owner, To-do the selected Sentinel chat — or,
+    // in the pinned excursion tab, the origin Sentinel's ledger. A canvas page
+    // stays with the chat stored on the tab.
+    const excursion = useSentinelTodoExcursion();
+    const settingsAvailable = settingsOwner === (routingRef ?? workspaceId);
+    const resolveCocPage = useCallback((address: CocAddress, tab: { id?: string; ownerWorkspaceId: string; ownerRoutingRef?: string | null; browserChatId?: string; repoLabel?: string }): CocPage | string => {
+        if (address.kind === 'settings') {
+            return settingsAvailable ? { kind: 'settings', ownerKey: routingRef ?? workspaceId } : 'Settings is not available for this workspace';
+        }
+        if (address.kind === 'terminal') {
+            return { kind: 'terminal', ownerWorkspaceId: tab.ownerWorkspaceId, ownerRoutingRef: tab.ownerRoutingRef };
+        }
+        if (address.kind === 'canvas') {
+            const pageChat = tab.browserChatId ?? chatId;
+            if (!pageChat) return 'Open a chat to view a canvas';
+            return {
+                kind: 'canvas', canvasId: address.canvasId, ownerWorkspaceId: tab.ownerWorkspaceId,
+                ownerRoutingRef: tab.ownerRoutingRef, scopeWorkspaceId: workspaceId, chatId: pageChat,
+                ...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {}),
+            };
+        }
+        if (address.kind === 'notes') {
+            return {
+                kind: 'notes', ownerWorkspaceId: workspaceId, ownerRoutingRef: routingRef ?? null,
+                notePath: address.notePath ?? null,
+            };
+        }
+        if (address.kind === 'git') {
+            return {
+                kind: 'git', ownerWorkspaceId: tab.ownerWorkspaceId, ownerRoutingRef: tab.ownerRoutingRef,
+                ...(address.gitMemberId === undefined ? {} : { gitMemberId: address.gitMemberId }),
+                ...(address.view === undefined ? {} : { view: address.view }),
+            };
+        }
+        const owner = tab.id !== undefined && tab.id === pinnedId && excursion ? excursion.origin.owner : todoOwner;
+        if (owner === null || chatId === null) return 'To-do is only available in a Sentinel chat';
+        return { kind: 'todo', owner, scopeWorkspaceId: workspaceId, chatId };
+    }, [settingsAvailable, routingRef, workspaceId, todoOwner, chatId, pinnedId, excursion]);
+    // The "+" menu and outside links open a page in a web tab, or focus the
+    // visible tab already showing it. A To-do item address always opens anew.
+    // Explicit Terminal opens are ephemeral requests; restored tabs never
+    // create PTYs.
+    const [cocOpenRequests, setCocOpenRequests] = useState<Record<string, number>>({});
+    useEffect(() => {
+        setCocOpenRequests(prev => {
+            const retained = Object.fromEntries(Object.entries(prev).filter(([id]) => state.workspaceTabs.some(tab => tab.id === id)));
+            return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
+        });
+    }, [state.workspaceTabs]);
+    const openCocPage = useCallback((address: CocAddress): string | void => {
+        if (address.kind === 'notes') {
+            setMenuOpen(false);
+            open(panelNotesInput({ workspaceId, routingRef: routingRef ?? null, chatId }, address.notePath));
+            return;
+        }
+        if (address.kind === 'git') {
+            // The workspace's one Git page, so its detail follows the address:
+            // a plain web tab at this address would show no commit.
+            setMenuOpen(false);
+            openPanelWorkspaceResource('git', { workspaceId, routingRef: routingRef ?? null, chatId: null },
+                { gitMemberId: address.gitMemberId, view: address.view });
+            return;
+        }
+        if (address.kind === 'canvas') {
+            if (chatId === null) return 'Open a chat to view a canvas';
+            setMenuOpen(false);
+            const input = canvasPageInput({ id: address.canvasId }, {
+                ownerWorkspaceId: workspaceId,
+                ...(routingRef === undefined ? {} : { ownerRoutingRef: routingRef }),
+                chatId,
+                browserChatId: chatId,
+            });
+            const existing = tabs.find(tab => isSameCocPageTab(tab, input));
+            if (existing) activate(existing.id);
+            else open(input);
+            return;
+        }
+        const owner = address.kind === 'settings' ? { ownerWorkspaceId: workspaceId, ownerRoutingRef: routingRef ?? null }
+            : address.kind === 'todo' && todoOwner ? todoOwner
+                : { ownerWorkspaceId: target, ownerRoutingRef: targetRoutingRef };
+        const page = resolveCocPage(address, owner);
+        if (typeof page === 'string') return page;
+        setMenuOpen(false);
+        const input = page.kind === 'todo' ? { ...sentinelTodoTabInput(page.owner, page.chatId), browserUrl: formatCocAddress(address) }
+            : browserOpenInput({
+                ...owner,
+                chatId,
+                ...(page.kind === 'terminal' && target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
+            }, formatCocAddress(address));
+        const existing = address.kind === 'todo' && address.itemId ? undefined : tabs.find(tab => isSameCocPageTab(tab, input));
+        if (existing) activate(existing.id);
+        else open(input);
+        if (page.kind !== 'terminal') return;
+        const id = existing?.id ?? unifiedTabId(input);
+        setCocOpenRequests(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+    }, [workspaceId, routingRef, todoOwner, target, targetRoutingRef, targetLabel, chatId, resolveCocPage, tabs, open, activate]);
 
     // The strip's repo picker. A switch closes the "+" menu: its search results
     // are scoped to the repo that was current when they were fetched, so keeping
@@ -2337,15 +2419,16 @@ export function UnifiedRightPanel({
                 {menuOpen && (
                     <div ref={menuRef} className="contents">
                         <UnifiedPanelOpenMenu
-                            settingsAvailable={settingsOwner === (routingRef ?? workspaceId)}
-                            gitAvailable={gitMenuTarget !== null}
+                            settingsAvailable={settingsAvailable}
+                            onOpenCocAddress={openCocPage}
+                            gitAvailable={gitMenuTarget !== null || groupRootGitAvailable}
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}
                             targetRoutingRef={targetRoutingRef}
                             targets={targetOptions}
                             onOpenResource={openResource}
-                            todoInput={todoInput}
+                            todoAvailable={todoOwner !== null && chatId !== null}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);
                                 // Explorer is a panel mode, not a resource tab.
@@ -2354,7 +2437,14 @@ export function UnifiedRightPanel({
                                     return;
                                 }
                                 if (kind === 'git') {
-                                    if (appDispatch && gitMenuTarget) openPanelGitBranchChanges(appDispatch, gitMenuTarget);
+                                    if (appDispatch && gitMenuTarget) {
+                                        openPanelGitBranchChanges(appDispatch, gitMenuTarget);
+                                    } else if (groupRootGitAvailable) {
+                                        const input = panelGitInput({ workspaceId, routingRef: routingRef ?? null, chatId });
+                                        const existing = tabs.find(tab => isSameCocPageTab(tab, input));
+                                        if (existing) activate(existing.id);
+                                        else open(input);
+                                    }
                                     return;
                                 }
                                 openWorkspaceResource(kind);
@@ -2478,9 +2568,9 @@ export function UnifiedRightPanel({
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
                                 data-split-pane={pane ?? undefined}
-                                onPointerDownCapture={visible && tab.kind === 'todo' ? focusTodoView : undefined}
+                                onPointerDownCapture={visible && cocPageKindOf(tab.browserUrl) === 'todo' ? focusTodoView : undefined}
                                 onMouseDownCapture={pane === null ? undefined : () => focusSourcePane(pane)}
-                                onFocusCapture={visible && tab.kind === 'todo' ? focusTodoView
+                                onFocusCapture={visible && cocPageKindOf(tab.browserUrl) === 'todo' ? focusTodoView
                                     : pane === null ? undefined : () => focusSourcePane(pane)}
                             >
                                 {tab.kind === 'html-page' && tab.htmlPageId ? (
@@ -2510,9 +2600,28 @@ export function UnifiedRightPanel({
                                         nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onOpenHistoryUrl={openBrowserFromShortcut}
                                         favoritesEnabled={browserFavoritesEnabled}
+                                        resolveCocPage={address => resolveCocPage(address, tab)}
+                                        onTerminalSessionsChange={handleTerminalSessions}
+                                        cocOpenRequest={cocOpenRequests[tab.id]}
                                         historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}
+                                        onClose={() => requestClose(tab.id)}
+                                        onDirtyChange={isDirty => handleDirtyChange(tab.id, isDirty)}
+                                        onRegisterSave={save => handleRegisterSave(tab.id, save)}
+                                        onCanvasTitle={title => updateBrowser(tab.id, { label: title })}
+                                        canvasSwitcher={tab.id === activeId && cocPageKindOf(tab.browserUrl) === 'canvas' && stackedCanvasTabs.some(item => item.id === tab.id) ? (
+                                            <UnifiedPanelCanvasStack
+                                                tabs={stackedCanvasTabs}
+                                                activeId={activeId}
+                                                dirtyIds={dirtyIds}
+                                                errorIds={errorIds}
+                                                onActivate={activateWithNavigation}
+                                                onClose={requestClose}
+                                                onCloseMany={requestBulkClose}
+                                                className="h-[22px]"
+                                            />
+                                        ) : undefined}
                                     />
                                 ) : <UnifiedTabView
                                     tab={tab}
@@ -2522,9 +2631,6 @@ export function UnifiedRightPanel({
                                     onDirtyChange={handleDirtyChange}
                                     onErrorChange={handleErrorChange}
                                     onRegisterSave={handleRegisterSave}
-                                    onTerminalSessionsChange={handleTerminalSessions}
-                                    terminalOpenRequest={terminalOpenRequests[tab.id]}
-                                    isActive={isOpen && tab.id === activeId}
                                     onOpenFile={openNavigationFile}
                                     onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}
@@ -2534,19 +2640,6 @@ export function UnifiedRightPanel({
                                     blameShown={fileBlameEnabled && blameShownIds.has(tab.id)}
                                     onBlameSupportChange={fileBlameEnabled ? handleBlameSupport : undefined}
                                     onOpenBlameCommit={openBlameCommit}
-                                    onNotesSelectionChange={updateNotesSelection}
-                                    canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
-                                        <UnifiedPanelCanvasStack
-                                            tabs={stackedCanvasTabs}
-                                            activeId={activeId}
-                                            dirtyIds={dirtyIds}
-                                            errorIds={errorIds}
-                                            onActivate={activateWithNavigation}
-                                            onClose={requestClose}
-                                            onCloseMany={requestBulkClose}
-                                            className="h-[22px]"
-                                        />
-                                    ) : undefined}
                                 />}
                             </div>
                             );

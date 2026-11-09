@@ -25,7 +25,9 @@ test.beforeAll(async () => {
             for (const [kind, label] of [['terminal', 'Shell'], ['notes', 'Notes'],
                 ['file', 'a.ts'], ['file', 'b.ts'], ['file', 'c.ts'], ['file', 'active.ts'],
                 ['browser', 'Documentation'], ['canvas', 'Design']]) {
-                initial = openTab(initial, { kind, label, resourceId: label, ownerWorkspaceId: 'ws', chatId: 'chat' });
+                initial = openTab(initial, kind === 'canvas'
+                    ? { kind: 'browser', label, resourceId: 'coc-canvas:chat:design', ownerWorkspaceId: 'ws', chatId: 'chat', browserChatId: 'chat', browserUrl: 'coc://canvas/design' }
+                    : { kind, label, resourceId: label, ownerWorkspaceId: 'ws', chatId: 'chat' });
             }
             const initialTabs = visibleTabs(initial, 'chat');
             function Fixture() {

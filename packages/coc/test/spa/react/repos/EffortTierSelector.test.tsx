@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EffortTierSelector } from '../../../../src/server/spa/client/react/features/chat/EffortTierSelector';
 import type { LocalEffortTiersMap } from '../../../../src/server/spa/client/react/hooks/useProviderEffortTiers';
+import type { ModelInfo } from '../../../../src/server/spa/client/react/hooks/useModels';
 
 import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
@@ -74,7 +75,7 @@ describe('EffortTierSelector', () => {
 
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
 
-        expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+        expect(screen.getAllByRole('option').map(option => option.firstElementChild?.textContent)).toEqual([
             'Very Low',
             'Low',
             'Medium',
@@ -86,6 +87,34 @@ describe('EffortTierSelector', () => {
         expect(onChange).toHaveBeenCalledWith('very-low');
         rerender(<EffortTierSelector tiers={tiers} selectedTier="very-low" onChange={onChange} />);
         expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
+    });
+
+    // Regression: the taller tier list was clipped by the Notes chat lens, a
+    // transformed overflow-hidden host. The menu must render outside its host,
+    // except inside a modal dialog, whose focus trap must keep containing it.
+    it('portals the menu out of a clipped host, but keeps it inside a dialog', () => {
+        const onChange = vi.fn();
+        const { unmount } = render(
+            <div data-testid="clipped-host" style={{ overflow: 'hidden', transform: 'translate(0, 0)' }}>
+                <EffortTierSelector tiers={tiers} selectedTier="medium" onChange={onChange} />
+            </div>,
+        );
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        const menu = screen.getByTestId('effort-tier-menu');
+        expect(screen.getByTestId('clipped-host').contains(menu)).toBe(false);
+        expect(menu.style.position).toBe('fixed');
+        fireEvent.mouseDown(screen.getByTestId('effort-tier-option-very-low'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-very-low'));
+        expect(onChange).toHaveBeenCalledWith('very-low');
+        unmount();
+
+        render(
+            <div role="dialog" aria-modal="true" data-testid="dialog-host">
+                <EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} />
+            </div>,
+        );
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        expect(screen.getByTestId('dialog-host').contains(screen.getByTestId('effort-tier-menu'))).toBe(true);
     });
 
     // AC-03 — container-narrow: drop the "Effort:" prefix, show value only.
@@ -170,5 +199,94 @@ describe('Configure tiers action', () => {
         view.rerender(<EffortTierSelector {...props} configurationUnavailable />);
         fireEvent.click(screen.getByTestId('effort-tier-configure'));
         expect(window.location.hash).toBe('');
+    });
+});
+
+describe('EffortTierSelector custom model & effort', () => {
+    const models: ModelInfo[] = [
+        { id: 'gpt-5', name: 'GPT-5', tokenLimit: 1, enabled: true, supportedReasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' },
+        { id: 'gpt-5-pro', tokenLimit: 1, enabled: true, supportedReasoningEfforts: ['high', 'xhigh'] },
+        { id: 'gpt-4.1', tokenLimit: 1, enabled: true, supportedReasoningEfforts: [] },
+    ];
+
+    it('shows tier model hints and hides the Custom row unless onCustomChange is set', () => {
+        render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} models={models} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+
+        expect(screen.getByTestId('effort-tier-hint-medium').textContent).toBe('GPT-5 · auto');
+        expect(screen.getByTestId('effort-tier-hint-high').textContent).toBe('gpt-5-pro · high');
+        expect(screen.queryByTestId('effort-tier-custom')).toBeNull();
+    });
+
+    it('starts from the selected tier and applies the chosen model and effort', () => {
+        const onCustomChange = vi.fn();
+        render(<EffortTierSelector tiers={tiers} selectedTier="high" onChange={() => {}} models={models} onCustomChange={onCustomChange} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom'));
+
+        const select = screen.getByTestId('effort-tier-custom-model') as HTMLSelectElement;
+        expect(select.value).toBe('gpt-5-pro');
+        expect(Array.from(select.options).map(o => o.value)).toEqual(['gpt-5', 'gpt-5-pro', 'gpt-4.1']);
+        // Only the model's own efforts (plus Auto) are offered.
+        expect(screen.getAllByRole('radio').map(r => r.textContent)).toEqual(['Auto', 'High', 'Xhigh']);
+        expect(screen.getByTestId('effort-tier-custom-effort-high').getAttribute('aria-checked')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('effort-tier-custom-effort-xhigh'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom-apply'));
+
+        expect(onCustomChange).toHaveBeenCalledWith({ model: 'gpt-5-pro', reasoningEffort: 'xhigh' });
+        expect(screen.queryByTestId('effort-tier-menu')).toBeNull();
+    });
+
+    it('drops an unsupported effort when switching models', () => {
+        const onCustomChange = vi.fn();
+        render(<EffortTierSelector tiers={tiers} selectedTier="high" onChange={() => {}} models={models} onCustomChange={onCustomChange} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom'));
+
+        fireEvent.change(screen.getByTestId('effort-tier-custom-model'), { target: { value: 'gpt-4.1' } });
+        expect(screen.getByTestId('effort-tier-custom-no-efforts')).toBeTruthy();
+        fireEvent.change(screen.getByTestId('effort-tier-custom-model'), { target: { value: 'gpt-5' } });
+        // Falls back to the model's default effort.
+        expect(screen.getByTestId('effort-tier-custom-effort-medium').getAttribute('aria-checked')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('effort-tier-custom-apply'));
+        expect(onCustomChange).toHaveBeenCalledWith({ model: 'gpt-5', reasoningEffort: 'medium' });
+    });
+
+    it('shows the custom pick in the chip and lets the user reset to the tier', () => {
+        const onCustomChange = vi.fn();
+        render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} models={models}
+            custom={{ model: 'gpt-5', reasoningEffort: 'high' }} onCustomChange={onCustomChange} />);
+
+        const trigger = screen.getByTestId('effort-tier-trigger-btn');
+        expect(trigger.getAttribute('data-custom')).toBe('true');
+        expect(screen.getByTestId('effort-tier-label').textContent).toBe('✎ GPT-5 · High');
+        expect(trigger.getAttribute('title')).toContain('Model: gpt-5');
+
+        fireEvent.click(trigger);
+        // No tier is checked while custom is active.
+        expect(screen.getAllByRole('option').every(o => o.getAttribute('aria-selected') === 'false')).toBe(true);
+        fireEvent.click(screen.getByTestId('effort-tier-custom'));
+        expect(screen.getByTestId('effort-tier-custom-effort-high').getAttribute('aria-checked')).toBe('true');
+        fireEvent.click(screen.getByTestId('effort-tier-custom-reset'));
+        expect(onCustomChange).toHaveBeenCalledWith(null);
+    });
+
+    it('disables Custom in Auto provider mode and ignores a stale custom pick', () => {
+        render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} models={models} autoProviderMode
+            custom={{ model: 'gpt-5', reasoningEffort: 'high' }} onCustomChange={() => {}} />);
+
+        expect(screen.getByTestId('effort-tier-label').textContent).toContain('Medium');
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        expect((screen.getByTestId('effort-tier-custom') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('returns to the tier list from the custom panel', () => {
+        render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} models={models} onCustomChange={() => {}} />);
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom-back'));
+        expect(screen.getAllByRole('option')).toHaveLength(4);
     });
 });

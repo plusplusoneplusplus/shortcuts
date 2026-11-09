@@ -249,8 +249,11 @@ describe('unified panel reopen-closed-tab shortcut', () => {
                 label: 'page.html', htmlPageId: 'page-1',
             }));
         });
-        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-        fireEvent.click(screen.getByTestId('unified-panel-open-notes'));
+        act(() => {
+            writeUnifiedPanelState(WS, openTab(readUnifiedPanelState(WS), {
+                kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts', label: 'a.ts',
+            }));
+        });
         closeActive();
         closeActive();
         expect(readUnifiedPanelState(WS).workspaceTabs).toEqual([]);

@@ -34,7 +34,8 @@ import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/s
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { clearUnifiedChatCanvasActions, getUnifiedChatCanvasActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
-import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
+import { UnifiedCocPage } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCocPage';
+import { canvasPageResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelAddresses';
 import { clearUnifiedChatChanges, getUnifiedChatChanges, getUnifiedChatChangesEntry } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import { activeTabId, closeTab, openTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
@@ -579,13 +580,17 @@ describe('ChatDetail — no chat-owned AI canvas column', () => {
             mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A', title: 'Plan', revision: 1, editor: 'ai' });
         });
 
-        // The editor is REACHABLE, not merely the rail absent: the tab the update
-        // filed renders CanvasPanel for that canvas.
+        // The editor is REACHABLE, not merely the rail absent: the update files a
+        // coc://canvas web tab, and that page renders CanvasPanel for the canvas.
         await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
         const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        expect(tab).toMatchObject({ kind: 'browser', browserUrl: 'coc://canvas/canvas-A', browserChatId: 'task-A' });
         render(
             <Wrap>
-                <UnifiedTabView tab={tab} scopeWorkspaceId={WS_ID} onClose={vi.fn()} />
+                <UnifiedCocPage
+                    page={{ kind: 'canvas', canvasId: 'canvas-A', ownerWorkspaceId: tab.ownerWorkspaceId, ownerRoutingRef: tab.ownerRoutingRef, scopeWorkspaceId: WS_ID, chatId: 'task-A' }}
+                    active terminalOpenRequest={0} selectItemRequest={null} onTodoSelectionChange={vi.fn()}
+                />
             </Wrap>,
         );
         const panels = await screen.findAllByTestId('canvas-panel-mock');
@@ -1095,11 +1100,11 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
 
         await waitFor(() => {
             const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
-            expect(tabs.map(t => t.resourceId)).toEqual(['canvas-A2']);
+            expect(tabs.map(t => t.resourceId)).toEqual([canvasPageResourceId('task-A', 'canvas-A2')]);
         });
         const state = readUnifiedPanelState(WS_ID);
         const tab = visibleTabs(state, 'task-A')[0]!;
-        expect(tab.chatId).toBe('task-A');
+        expect(tab.browserChatId).toBe('task-A');
         expect(tab.ownerWorkspaceId).toBe(WS_ID);
         // Active, not merely present — the goal asks for activation on every
         // create and update.
@@ -1135,11 +1140,11 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
 
         await waitFor(() => {
             const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
-            expect(tabs.map(t => t.resourceId)).toEqual(['canvas-A1', 'canvas-A2']);
+            expect(tabs.map(t => t.resourceId)).toEqual([canvasPageResourceId('task-A', 'canvas-A1'), canvasPageResourceId('task-A', 'canvas-A2')]);
         });
         const first = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
         act(() => { updateUnifiedPanelState(WS_ID, prev => closeTab(prev, first.id)); });
-        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A').map(t => t.resourceId)).toEqual(['canvas-A2']);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A').map(t => t.resourceId)).toEqual([canvasPageResourceId('task-A', 'canvas-A2')]);
     });
 
     it('leaves the visible panel alone for a chat it is not showing', async () => {

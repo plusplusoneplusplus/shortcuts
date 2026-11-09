@@ -33,10 +33,10 @@ Forge imports directly from this package.
 | `model-registry.ts` | Single source of truth for supported (user-selectable) AI models |
 | `provider-model-resolver.ts` | `resolveModelForProvider` — provider-aware override validation/coercion |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
-| `model-reasoning.ts` | Metadata-aware model/reasoning resolver |
+| `model-reasoning.ts` | Shared SDK-aware reasoning capability and selection helpers; browser-safe `./model-reasoning` subpath |
 | `model-context-tier.ts` | `getCopilotContextTierForModel` / `getCopilotLongContextPromptLimit` |
 | `claude-model-catalog.ts` | `findClaudeCatalogModel` — maps configured Claude ids (CLI aliases, dotted, dashed, provider-default sentinels) to CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
-| `effort-tier-defaults.ts` | Per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) + stored-config merge. Copilot and Codex Medium use `gpt-6.1-sol`; High uses `gpt-6-astra`; both tiers use `medium` reasoning. Low uses `gpt-6.1-terra` with `xhigh` reasoning for Copilot and `medium` for Codex. Claude uses CLI aliases `haiku`/`sonnet`/`opus`/`fable` (`high` → `fable`), with no pinned effort for Haiku. |
+| `effort-tier-defaults.ts` | Per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) + stored-config merge. Copilot uses `medium` reasoning for all tiers (`gpt-6-luna`, `gpt-6.1-terra`, `gpt-6.1-sol`, `gpt-6-astra`). Codex Medium uses `gpt-6.1-sol`; High uses `gpt-6-astra`; Low uses `gpt-6.1-terra` with `medium` reasoning; Very-Low uses `gpt-5.6-luna` with `xhigh` reasoning. Claude uses CLI aliases `haiku`/`sonnet`/`opus`/`fable` (`high` → `fable`), with no pinned effort for Haiku. |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
 | `image-converter.ts` | Image detection + data-URL/base64 conversion |
@@ -339,6 +339,10 @@ All `sendMessage()` implementations return `effectiveModel?: string` in `IInvoca
 
 Variant models with a `capabilities.family` base are sent to the SDK as base model + resolved reasoning effort (`model-reasoning.ts`).
 
+### Reasoning capability and selection
+
+`getSupportedReasoningEfforts` treats explicit `capabilities.supports.reasoningEffort: false` as an SDK opt-out, even when raw provider `reasoning_effort` lists levels. Otherwise raw levels precede `supportedReasoningEfforts`. The pure `coc-agent-sdk/model-reasoning` subpath shares this rule across execution, effort-tier validation and dashboard catalogs. Auto omits effort for unsupported models; explicit unsupported first-turn preferences fail before dispatch. Follow-ups warn and omit unsupported per-turn overrides. Model-ID suffix inference cannot override an explicit opt-out.
+
 ### Claude reasoning effort
 
 `ClaudeSDKService` forwards `SendMessageOptions.reasoningEffort` to the query's `effort` option (`normalizeClaudeEffort`). CoC's `ReasoningEffort` (`low`/`medium`/`high`/`xhigh`) is a subset of the SDK's `EffortLevel`, so recognized values pass through case-insensitively and the SDK silently downgrades unsupported levels. Unrecognized or absent values — including `max`, which CoC does not surface — omit `effort` so Claude's adaptive thinking decides.
@@ -347,7 +351,7 @@ Variant models with a `capabilities.family` base are sent to the SDK as base mod
 
 Discovery spawns the Claude Code CLI in `stream-json` protocol mode, sends one `control_request` initialize message, and maps `response.response.models` into `IModelInfo`. The CLI advertises short alias ids (`default`, `opus`, `haiku`). `supportedEffortLevels` is filtered to CoC's vocabulary (`low`/`medium`/`high`/`xhigh`; `max` dropped) and surfaced as `IModelInfo.supportedReasoningEfforts`, driving the admin catalog REASONING column and effort-tier dropdowns; a model with no advertised levels (e.g. Haiku) omits the field. The CLI `description` maps to `IModelInfo.description` so `findClaudeCatalogModel` can family-match non-exact ids. The resolver prefers the native binary bundled beside `@anthropic-ai/claude-agent-sdk`, else `claude` on `PATH`, and passes `--setting-sources=` and `--tools ''` to skip user/project/local settings and tools. Malformed output, spawn errors, timeouts, or protocol changes fall back to the curated model list, whose Sonnet/Opus entries advertise conservative `supportedReasoningEfforts` so effort-tier validation resolves offline.
 
-Executor-side validation (`chat-base-executor.getModelMetadataForReasoning`) resolves non-Copilot model metadata from the provider's own `listModels()` catalog (cached per provider). For Claude it matches via `findClaudeCatalogModel`, so tier models (`haiku`/`sonnet`/`opus`), dashed/dotted ids, and provider-default turns (no model → the catalog's `default` entry) all resolve supported efforts instead of failing with `Unsupported reasoning effort … Supported efforts: unknown`.
+Executor-side validation (`chat-base-executor.getModelMetadataForReasoning`) resolves non-Copilot metadata exclusively from that provider's `listModels()` catalog (cached per provider), even when Copilot lists the same model ID. For Claude, `findClaudeCatalogModel` matches tier aliases, dashed/dotted IDs and provider-default turns against the CLI catalog. Claude effort uses query `effort`; Codex uses thread `modelReasoningEffort`; Copilot uses session `reasoningEffort`.
 
 ### Claude model ID normalization
 

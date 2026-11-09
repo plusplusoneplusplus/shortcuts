@@ -39,6 +39,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [] } }),
     lookupCloneBaseUrl: () => null,
+    subscribeCloneBaseUrl: () => () => {},
 }));
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
     async () => await import('../language-servers/inertTransportMock'));
@@ -49,6 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/fileI
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { notesPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { useWorkspaceDock } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -72,7 +74,7 @@ function Host({ workspaceId = WS, routingRef }: { workspaceId?: string; routingR
 function renderPanel() {
     const view = render(<Host />);
     act(() => {
-        openUnifiedPanelTab(WS, { kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes' });
+        openUnifiedPanelTab(WS, notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null }));
     });
     return view;
 }
@@ -196,7 +198,7 @@ describe('Unified panel header cycle', () => {
     it('Escape restores docked width while leaving editor Escape alone', () => {
         renderPanel();
         fireEvent.click(toggle());
-        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        fireEvent.keyDown(screen.getByRole('textbox', { name: 'Note draft' }), { key: 'Escape' });
         expect(panel().dataset.expanded).toBe('true');
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(panel().dataset.expanded).toBe('false');

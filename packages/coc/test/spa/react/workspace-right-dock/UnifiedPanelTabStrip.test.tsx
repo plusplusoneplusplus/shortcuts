@@ -15,6 +15,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { UnifiedPanelTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
 import { POINTER_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { CANVAS_TAB_COMPRESSION_THRESHOLD, UnifiedPanelCanvasStack } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelCanvasStack';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { cocPageKindOf } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelAddresses';
 import {
     ALL_UNIFIED_TAB_KINDS,
     openTab,
@@ -24,13 +26,29 @@ import {
     type UnifiedPanelTab,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
+function openCanvas(
+    state: ReturnType<typeof visibleTabs> extends never ? never : Parameters<typeof openTab>[0],
+    id: string,
+    label: string,
+    extra: { ownerWorkspaceId?: string; repoLabel?: string } = {},
+) {
+    return openTab(state, canvasPageInput({ id, title: label }, {
+        ownerWorkspaceId: extra.ownerWorkspaceId ?? WS,
+        chatId: CHAT,
+        browserChatId: CHAT,
+        ...(extra.repoLabel ? { repoLabel: extra.repoLabel } : {}),
+    }));
+}
+
+const isCanvasTab = (tab: UnifiedPanelTab) => cocPageKindOf(tab.browserUrl) === 'canvas';
+
 const WS = 'ws-1';
 const CHAT = 'chat-1';
 
 /** Build the visible strip for a workspace terminal plus two chat files. */
 function sampleTabs(): readonly UnifiedPanelTab[] {
     let state = EMPTY_UNIFIED_PANEL;
-    state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+    state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/b.ts', label: 'b.ts' });
     return visibleTabs(state, CHAT);
@@ -52,13 +70,10 @@ function tabsOfEveryKind(): readonly UnifiedPanelTab[] {
 
 function manyCanvasTabs(count = CANVAS_TAB_COMPRESSION_THRESHOLD): readonly UnifiedPanelTab[] {
     let state = EMPTY_UNIFIED_PANEL;
-    state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+    state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     for (let index = 1; index <= count; index++) {
-        state = openTab(state, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT,
-            resourceId: `canvas-${index}`, label: `Canvas ${index}`,
-        });
+        state = openCanvas(state, `canvas-${index}`, `Canvas ${index}`);
     }
     return visibleTabs(state, CHAT);
 }
@@ -81,7 +96,7 @@ function renderStrip(overrides: Partial<React.ComponentProps<typeof UnifiedPanel
 /** Render the switcher chip the way the canvas header hosts it. */
 function renderStack(tabs: readonly UnifiedPanelTab[], activeId: string) {
     const props = {
-        tabs: tabs.filter(tab => tab.kind === 'canvas'),
+        tabs: tabs.filter(tab => isCanvasTab(tab)),
         activeId,
         dirtyIds: new Set<string>(),
         errorIds: new Set<string>(),
@@ -111,7 +126,7 @@ describe('UnifiedPanelTabStrip', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
-            .toEqual(['terminal', 'file', 'file']);
+            .toEqual(['work-items', 'file', 'file']);
         // The boundary is derived from the kinds, not passed in: exactly one tab
         // opens the chat section and the divider remains outside both tabs.
         const starts = screen.getAllByRole('tab').filter(el => el.getAttribute('data-section-start') === 'true');
@@ -124,24 +139,27 @@ describe('UnifiedPanelTabStrip', () => {
 
     it('puts chat canvases on the tools side of the divider, before files', () => {
         let state = EMPTY_UNIFIED_PANEL;
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
         state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
-        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        state = openCanvas(state, 'c1', 'Plan');
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
-            .toEqual(['terminal', 'canvas', 'file']);
+            .toEqual(['work-items', 'browser', 'file']);
         const divider = screen.getByTestId('unified-panel-tab-section-divider');
-        expect(divider.previousElementSibling?.getAttribute('data-kind')).toBe('canvas');
+        expect(divider.previousElementSibling?.getAttribute('data-kind')).toBe('browser');
+        expect(divider.previousElementSibling?.querySelector('[data-icon="canvas-palette"]')).toBeTruthy();
         expect(divider.nextElementSibling?.getAttribute('data-kind')).toBe('file');
-        // The canvas keeps its chat ownership even on the tools side.
-        expect(screen.getAllByRole('tab')[1].getAttribute('data-scope')).toBe('chat');
+        // The page is a workspace web tab kept with the chat that opened it.
+        expect(screen.getAllByRole('tab')[1].getAttribute('data-scope')).toBe('workspace');
+        expect(tabs[1].browserUrl).toBe('coc://canvas/c1');
+        expect(tabs[1].browserChatId).toBe(CHAT);
     });
 
     it('draws no divider while only tools (including canvases) are open', () => {
         let state = EMPTY_UNIFIED_PANEL;
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
-        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openCanvas(state, 'c1', 'Plan');
         renderStrip({ tabs: visibleTabs(state, CHAT) });
         expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
     });
@@ -149,7 +167,7 @@ describe('UnifiedPanelTabStrip', () => {
     describe('canvas tab compression', () => {
         it('keeps small canvas sets as ordinary tabs', () => {
             const tabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD - 1);
-            renderStrip({ tabs, activeId: tabs.find(tab => tab.kind === 'canvas')!.id });
+            renderStrip({ tabs, activeId: tabs.find(tab => isCanvasTab(tab))!.id });
 
             expect(screen.queryByTestId('unified-panel-canvas-stack')).toBeNull();
             expect(screen.getAllByRole('tab')).toHaveLength(tabs.length);
@@ -157,7 +175,7 @@ describe('UnifiedPanelTabStrip', () => {
 
         it('keeps the active canvas readable and leaves the count chip to the canvas header', () => {
             const tabs = manyCanvasTabs();
-            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const canvases = tabs.filter(tab => isCanvasTab(tab));
             const active = canvases[2];
             renderStrip({ tabs, activeId: active.id });
 
@@ -175,12 +193,12 @@ describe('UnifiedPanelTabStrip', () => {
 
             expect(screen.getByTestId('unified-panel-canvas-stack').textContent).toContain('Canvases 4');
             expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind')))
-                .toEqual(['terminal', 'file']);
+                .toEqual(['work-items', 'file']);
         });
 
         it('searches and activates a collapsed canvas with the keyboard', () => {
             const tabs = manyCanvasTabs(6);
-            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const canvases = tabs.filter(tab => isCanvasTab(tab));
             const props = renderStack(tabs, canvases[0].id);
 
             fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
@@ -196,7 +214,7 @@ describe('UnifiedPanelTabStrip', () => {
 
         it('closes one canvas or bulk closes every canvas except the active one', () => {
             const tabs = manyCanvasTabs(5);
-            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const canvases = tabs.filter(tab => isCanvasTab(tab));
             const props = renderStack(tabs, canvases[1].id);
 
             fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
@@ -209,7 +227,7 @@ describe('UnifiedPanelTabStrip', () => {
 
         it('moves keyboard focus across rendered tabs without targeting collapsed canvases', () => {
             const tabs = manyCanvasTabs();
-            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const canvases = tabs.filter(tab => isCanvasTab(tab));
             const file = tabs.find(tab => tab.kind === 'file')!;
             const props = renderStrip({ tabs, activeId: canvases[0].id });
 
@@ -221,7 +239,7 @@ describe('UnifiedPanelTabStrip', () => {
     it('stops Alt+Arrow at the divider between canvases and files', () => {
         let state = EMPTY_UNIFIED_PANEL;
         state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
-        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        state = openCanvas(state, 'c1', 'Plan');
         const tabs = visibleTabs(state, CHAT);
         const props = renderStrip({ tabs });
         // tabs = [canvas, file]: neither may step across into the other group.
@@ -231,7 +249,7 @@ describe('UnifiedPanelTabStrip', () => {
     });
 
     it('draws canvas tabs with the palette icon', () => {
-        const state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const state = openCanvas(EMPTY_UNIFIED_PANEL, 'c1', 'Plan');
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs });
         expect(tabNode(tabs[0]).querySelector('svg[data-icon="canvas-palette"]')).toBeTruthy();
@@ -576,7 +594,7 @@ describe('UnifiedPanelTabStrip', () => {
 
         it('dismisses when canvas compression hides the menu origin', () => {
             const initialTabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD - 1);
-            const origin = initialTabs.find(tab => tab.kind === 'canvas')!;
+            const origin = initialTabs.find(tab => isCanvasTab(tab))!;
             const baseProps: React.ComponentProps<typeof UnifiedPanelTabStrip> = {
                 tabs: initialTabs,
                 activeId: initialTabs[0].id,
@@ -592,7 +610,7 @@ describe('UnifiedPanelTabStrip', () => {
             expect(screen.getByTestId('unified-panel-tab-menu')).toBeTruthy();
 
             const compressedTabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD);
-            const activeCanvas = compressedTabs.filter(tab => tab.kind === 'canvas').at(-1)!;
+            const activeCanvas = compressedTabs.filter(tab => isCanvasTab(tab)).at(-1)!;
             rerender(
                 <UnifiedPanelTabStrip
                     {...baseProps}
@@ -906,7 +924,7 @@ describe('UnifiedPanelTabStrip', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts',
         });
-        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        state = openCanvas(state, 'c1', 'Plan');
         const tabs = visibleTabs(state, CHAT);
         renderStrip({
             tabs,
@@ -972,9 +990,7 @@ describe('UnifiedPanelTabStrip', () => {
             state = openTab(state, {
                 kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, label: 'util.ts', resourceId: 'src/lib/util.ts',
             });
-            state = openTab(state, {
-                kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, label: 'Plan', resourceId: 'cv-1', repoLabel: 'api',
-            });
+            state = openCanvas(state, 'cv-1', 'Plan', { repoLabel: 'api' });
             return visibleTabs(state, CHAT);
         }
         const byKind = (tabs: readonly UnifiedPanelTab[], kind: UnifiedPanelTab['kind']) => tabs.find(tab => tab.kind === kind)!;
@@ -986,7 +1002,7 @@ describe('UnifiedPanelTabStrip', () => {
             expect(tabNode(byKind(tabs, 'note')).getAttribute('title'))
                 .toBe('unify-review-chat-tabs.md — api: docs/plans/unify-review-chat-tabs.md');
             expect(tabNode(byKind(tabs, 'html-page')).getAttribute('title')).toBe('index.html — /w/pages/index.html');
-            expect(tabNode(byKind(tabs, 'canvas')).getAttribute('title')).toBe('Plan — api');
+            expect(tabNode(tabs.find(tab => tab.label === 'Plan')!).getAttribute('title')).toBe('Plan — api');
         });
 
         it('strips the workspace preview marker from a file path', () => {
@@ -1029,7 +1045,7 @@ describe('UnifiedPanelTabStrip', () => {
             fireEvent.pointerDown(tabNode(note));
             fireEvent.focus(tabNode(note));
             expect(pathTip()).toBeNull();
-            fireEvent.focus(tabNode(byKind(tabs, 'canvas')));
+            fireEvent.focus(tabNode(tabs.find(tab => tab.label === 'Plan')!));
             expect(pathTip()).toBeNull();
             const close = tabNode(note).querySelector('button');
             if (close) {
@@ -1072,10 +1088,7 @@ describe('UnifiedPanelTabStrip', () => {
     });
 
     it('keeps the repo badge on non-source tabs', () => {
-        const state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'canvas', ownerWorkspaceId: 'member-2', chatId: CHAT, resourceId: 'cv-1',
-            label: 'Plan', repoLabel: 'api',
-        });
+        const state = openCanvas(EMPTY_UNIFIED_PANEL, 'cv-1', 'Plan', { ownerWorkspaceId: 'member-2', repoLabel: 'api' });
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs, activeId: tabs[0].id });
         expect(screen.getByTestId(`unified-panel-tab-repo-${tabs[0].id}`).textContent).toBe('api');
@@ -1084,7 +1097,7 @@ describe('UnifiedPanelTabStrip', () => {
     });
 
     it.each([false, true])('hides only browser repo labels in repo groups (grouped tabs: %s)', groupsEnabled => {
-        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'terminal', 'canvas', 'file', 'note'].includes(tab.kind))
+        const tabs = tabsOfEveryKind().filter(tab => ['browser', 'work-items', 'file', 'note'].includes(tab.kind))
             .map(tab => ({ ...tab, repoLabel: 'Target repo' }));
         renderStrip({ tabs, hideBrowserRepoLabels: true, groupsEnabled });
         for (const tab of tabs) {
@@ -1120,7 +1133,7 @@ describe('UnifiedPanelTabStrip', () => {
         for (const label of ['Google', 'Search - Microsoft Bing with a very long page title', 'YouTube', 'A']) {
             state = openTab(state, { kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: label, label });
         }
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs, activeId: tabs[0].id });
         const browserTabs = tabs.filter(tab => tab.kind === 'browser');
@@ -1132,7 +1145,7 @@ describe('UnifiedPanelTabStrip', () => {
             expect(screen.getByTestId(`unified-panel-tab-label-${tab.id}`).className).toMatch(/\btruncate\b.*\bflex-1\b/);
         }
         // Other kinds keep their content-sized, non-shrinking tabs.
-        expect(sizing(tabs.find(tab => tab.kind === 'terminal')!)).toBe('flex-shrink-0 max-w-[180px] min-w-0');
+        expect(sizing(tabs.find(tab => tab.kind === 'work-items')!)).toBe('flex-shrink-0 max-w-[180px] min-w-0');
     });
 
     it('keeps the "+" outside the scrolling tab row', () => {

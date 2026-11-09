@@ -92,6 +92,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     getMonacoLanguage: () => 'plaintext',
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({
         canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) },
         workspaces: {
@@ -120,9 +121,10 @@ const WS = 'ws-1';
 const OTHER_WS = 'ws-2';
 const CHAT_A = 'chat-a';
 const CHAT_B = 'chat-b';
-const TERMINAL_TAB_ID = unifiedTabId({
-    kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal',
-});
+/** The web tab showing `coc://terminal`; its id is minted when it opens and kept after it closes. */
+let lastTerminalTabId = '';
+const terminalTabId = () => (lastTerminalTabId =
+    readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.browserUrl === 'coc://terminal')?.id ?? lastTerminalTabId);
 
 function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDockController {
     return {
@@ -185,7 +187,7 @@ describe('UnifiedRightPanel terminal session lifecycle', () => {
         const view = screen.getByTestId('mock-terminal');
 
         openViaMenu('unified-panel-open-notes');
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`));
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`));
         openViaMenu('unified-panel-open-explorer');
 
         // Same DOM node throughout: the view was hidden, never remounted, so it
@@ -218,7 +220,7 @@ describe('UnifiedRightPanel terminal session lifecycle', () => {
         // Chat B shows none of chat A's resources, while the workspace-owned
         // terminal stays visible AND stays mounted.
         expect(screen.queryByTestId(`unified-panel-tab-${fileTabId}`)).toBeNull();
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         expect(screen.getByTestId('mock-terminal')).toBe(view);
 
         rerender(<UnifiedRightPanel workspaceId={WS} chatId={CHAT_A} dock={dockStub()} />);
@@ -259,7 +261,7 @@ describe('UnifiedRightPanel terminal session lifecycle', () => {
         // Back: the persisted descriptor restores as a tab and the view attaches
         // to the PTY that was left running.
         rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
-        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId()}`)).toBeTruthy();
         await waitFor(() =>
             expect(screen.getByTestId('mock-terminal').getAttribute('data-sessions')).toBe('s-1'));
         expect(terminalMounts).toEqual([WS, WS]);

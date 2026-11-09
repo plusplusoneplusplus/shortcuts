@@ -1,5 +1,5 @@
 /**
- * UnifiedCanvasTab — the body of a `canvas` tab in the unified right panel.
+ * UnifiedCanvasTab — the body of a `coc://canvas/<id>` page in a web tab.
  *
  * `CanvasPanel` does all the editing work; this component is the wiring that
  * makes a canvas usable outside the chat it belongs to. It resolves three
@@ -44,6 +44,10 @@ export interface UnifiedCanvasTabProps {
     repoLabel?: string;
     /** Shown right after the canvas title — the panel's canvas switcher. */
     titleAccessory?: ReactNode;
+    /** Toolbar reload. Re-reads the canvas unless a local draft is unsaved. */
+    reloadNonce?: number;
+    /** The loaded canvas title, so the web tab can show it. */
+    onTitleChange?: (title: string) => void;
     onClose: () => void;
     onDirtyChange?: (isDirty: boolean) => void;
     onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
@@ -51,7 +55,7 @@ export interface UnifiedCanvasTabProps {
 
 export function UnifiedCanvasTab({
     workspaceId, routingRef, scopeWorkspaceId, canvasId, chatId, repoLabel, titleAccessory,
-    onClose, onDirtyChange, onRegisterSave,
+    reloadNonce, onTitleChange, onClose, onDirtyChange, onRegisterSave,
 }: UnifiedCanvasTabProps) {
     const liveEvent = useUnifiedCanvasEvent(workspaceId, canvasId);
     // The chat that OWNS this canvas, never the selected one, so a late send
@@ -91,6 +95,8 @@ export function UnifiedCanvasTab({
             onPopOut={handlePopOut}
             onCanvasCreated={handleCanvasCreated}
             titleAccessory={titleAccessory}
+            reloadNonce={reloadNonce}
+            onTitleChange={onTitleChange}
             {...(chatActions ? {
                 onAskAi: chatActions.askAi,
                 onAttachToChat: chatActions.insertDraft,

@@ -21,26 +21,34 @@ selects the server's unpushed prefix in history order; `CommitIdentity` shares
 SHA/subject formatting with expanded Git. Status changes revoke prior reads,
 and missing comparisons or inconsistent history remain explicit. Outgoing row
 activation uses `RailControls.onOpenGit`'s detail intent: it cancels sidebar peek
-timers and preserves both collapse flags. It replaces the owner-qualified hash
-and records the route suffix without generic tab navigation, supplying exact
-`SET_GIT_ROUTE.knownCommit` metadata for the matching page/member/SHA/clone owner.
-Paged commits open without enabling SHA lookup. The repository Changes preview's
-"Open working tree" works the same way when its host supplies `onRevealGitView`
-(`RepoDetail` passes `useSplitGitPanel.revealView`): it focuses the chat's panel
-Git tab on `working-tree-all` and publishes the owner-qualified `working-changes`
-route with a fresh `SET_GIT_ROUTE.openRequest`, so the staged, unstaged and
-untracked diff opens beside the chat and reopens after its tab was closed.
-"Open conflicts", the tile click and hosts without a panel keep the expanded
-sidebar working tree.
+timers and preserves both collapse flags. It opens the owner-qualified commit on
+the panel's `coc://git` page (`openPanelGitCommit`, `unified-right-panel/panelGitCommit.ts`)
+without generic tab navigation or a URL hash write. The already-read commit
+rides along through a one-slot hand-off (`repoGitTab/knownCommit.ts`, matched
+by data workspace and exact hash), so a commit outside the loaded history page
+shows at once with no `getCommit` and without enabling SHA lookup.
+The repository Changes preview's "Open working tree" works the same way when
+its host supplies `onRevealGitView` (`RepoDetail` passes
+`useSplitGitPanel.revealView`, which counts as an external open): it opens the
+panel's `coc://git` page on `working-tree-all` (`openPanelGitWorkingChanges`),
+so the staged, unstaged and untracked diff opens beside the chat and reopens
+after its tab was closed; reopening the same page refocuses it. "Open
+conflicts", the tile click and hosts without a panel keep the expanded sidebar
+working tree.
 
 ### Git tab Open submenu
 
-Right-clicking the panel's Git tab offers Open → Workspace or one of five recent
-commits through the same `openPanelGitWorkingChanges` / `openPanelGitCommit`
-routes, so the chat stays visible. Reads and routes use the Git tab's own owner
+Right-clicking the panel's `coc://git` page tab offers Open → Workspace or one
+of five recent commits through the same `openPanelGitWorkingChanges` /
+`openPanelGitCommit` openers, so the chat stays visible. Reads and opens use
+the tab's own owner and the member its own `browserUrl` address names
 (`gitTabOpenOwners`, `gitTabOwnerClient` in `panelGitCommit.ts`); a group tab
 without a member asks for one, and an unconnected remote owner is never read
-from the page origin.
+from the page origin. A remote group's `routeWorkspaceId` is its clone key, so
+the openers file the page under the raw group id with that key as its routing
+ref. The "+" menu's Git entry opens a concrete repo's branch range, or a group
+root's page (focusing it when already open), which then shows the group's
+remembered member.
 
 Group previews read member repositories, never a group range; their
 compact cards skip history reads and empty subsections only when a successful,
@@ -54,7 +62,7 @@ explicit empty-history state.
 | Controller | Owns |
 |---|---|
 | `useRepoGitData` | Commits, branch range, repo state, caches, `refreshAll` |
-| `useRepoGitSelection` | Right-panel routing, URL hash + AppContext sync, deep links, direct SHA lookup into the detail view; sidebar history stays paginated |
+| `useRepoGitSelection` | Right-panel selection state only (no routing of its own) — `RepoGitTab` reports every resulting view upward through `onViewChange` for the host to address; `hydrateFromInitialLoad`/`switchViewScope` apply a host-persisted view back in; direct SHA lookup into the detail view; sidebar history stays paginated |
 | `useGitOperationActions` | Every mutation plus all four job pollers |
 | `useGitAutoPullController` | Automatic pull scheduling |
 | `useGitAutoRefresh` | Timed `refreshAll` every 5 min while the tab is `active` and the page visible |
@@ -71,9 +79,15 @@ banner. `useGitAutoRefresh` only calls the existing `refreshAll` (local reads, n
 fetch/pull) and relies on its in-progress guard; hosts that keep the tab mounted behind
 `display: none` (`RepoDetail`, `RepoGroupView` → `RepoGroupGitTab`) pass `active` so the
 timer pauses while hidden and restarts when shown. `RepoGroupGitTab` gives
-`RepoGitTab` the raw member id as its data `workspaceId` and the group's
-server-qualified `selectionId` as `routeWorkspaceId`, keeping commit and file
-navigation on the owning group even when another server has the same group id.
+`RepoGitTab` the raw member id as its data `workspaceId` and its concrete clone
+route as `sourceSelectionId`; the page-owner/member split that keeps commit and
+file navigation on the owning group (even when another server has the same
+group id) lives in the host — `useSplitGitPanel`'s `memberId` and
+`panelGitCommit.ts`'s `PanelGitCommitTarget.routeWorkspaceId` — so `RepoGitTab`
+takes no page-owner prop. The member comes from the page's `member/<id>`
+address, else the remembered per-group pick; `RepoGroupGitTab` writes that pick
+into an already open page in place (`setGitPageMember`) and never opens,
+focuses or reveals the page just because the group is shown.
 
 ### Commit review lifetime
 
@@ -388,8 +402,11 @@ forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGu
 which asks Save / Don't Save / Cancel (`ExplorerCloseTabsDialog`) while the diff is
 dirty; a failed save keeps the prompt and the buffer. It also forwards the same
 reports to `useSplitGitPanel`'s `onDetailDirtyChange` / `onDetailRegisterSave`, which
-reach the panel's Git tab through the dirty bridge in `unifiedGitTabHost`, so the Git
-tab shows a dirty dot and closing it prompts (`DIRTY_CLOSE_KINDS` includes `git`).
+reach the panel's `coc://git` page through the dirty bridge in `unifiedGitTabHost`,
+so the tab shows a dirty dot and closing it prompts (`needsDirtyCloseConfirm`
+checks the page kind, like canvas, since Git is a `browser` tab rather than its
+own kind; the prompt's label is the generic "Git", since the address has no
+segment for a working-tree-file view).
 `RepoGitDetailPane` passes `workingChangesRefreshKey` as `refreshKey`; each bump
 re-reads the diff and both sides quietly. A clean view reloads; unsaved edits are
 never replaced — when the disk text changed, a "File changed on disk" banner offers

@@ -4,7 +4,7 @@ The chat-linked canvas editor: an AI-and-user co-edited document that also
 renders as code, an SVG, an Excalidraw scene, a sandboxed extension UI, a
 desktop Copilot extension guest, or a live Kusto query.
 
-`CanvasPanel` is hosted by a `canvas` tab in the unified right panel
+`CanvasPanel` is hosted by a `coc://canvas/<canvasId>` page in a web tab
 (`UnifiedCanvasTab`) or the standalone pop-out (`layout/PopOutCanvasShell.tsx`).
 Inline embeds render read-only document source through `shared/CanvasEmbed.tsx`.
 The chat detail view owns no canvas column, rail, or width. Chat-directed props

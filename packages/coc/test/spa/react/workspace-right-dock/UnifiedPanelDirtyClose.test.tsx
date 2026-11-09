@@ -87,6 +87,7 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
@@ -97,10 +98,10 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { canvasPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
-import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { openUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
+import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
@@ -136,13 +137,9 @@ function openFile(opts: { path: string; chatId?: string | null } = { path: 'src/
 }
 
 function openCanvas(canvasId = 'canvas-1') {
-    return openUnifiedPanelTab(WS, {
-        kind: 'canvas',
-        ownerWorkspaceId: WS,
-        chatId: CHAT,
-        resourceId: canvasId,
-        label: 'Plan canvas',
-    });
+    return openUnifiedPanelTab(WS, canvasPageInput({ id: canvasId, title: 'Plan canvas' }, {
+        ownerWorkspaceId: WS, chatId: CHAT, browserChatId: CHAT,
+    }));
 }
 
 /** Open a dirty file tab and hand back its id and its ✕. */
@@ -232,9 +229,7 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         await screen.findByTestId(`unified-panel-tab-${cleanTabId}`);
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
-        const terminalTabId = unifiedTabId({
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal',
-        });
+        const terminalTabId = readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.browserUrl === 'coc://terminal')!.id;
         act(() => {
             reportTerminalSessions([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
         });
@@ -435,12 +430,12 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
     });
 
     it('asks before closing the Git tab while its working-tree diff is dirty; Save writes, then closes', async () => {
-        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: CHAT });
         // The detail reports through `useSplitGitPanel`, exactly as `RepoGitTab`
         // forwards its edited working-tree diff's dirty/save seams.
         let detail: ReturnType<typeof useSplitGitPanel> | null = null;
         function GitDetailProbe() {
-            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, enabled: true });
             return null;
         }
         render(<>
@@ -466,10 +461,10 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
     });
 
     it("Don't Save closes a dirty Git tab without writing; a failed save keeps it", async () => {
-        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: CHAT });
         let detail: ReturnType<typeof useSplitGitPanel> | null = null;
         function GitDetailProbe() {
-            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, enabled: true });
             return null;
         }
         render(<>

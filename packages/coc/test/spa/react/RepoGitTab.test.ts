@@ -634,7 +634,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain("function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps)");
+            expect(source).toContain("function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps)");
         });
 
         it('passes the working-tree refresh key to the detail pane (editable diff refresh)', () => {
@@ -979,14 +979,6 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { useApp } from '../../contexts/AppContext'");
         });
 
-        it('reads selectedGitCommitHash from context state', () => {
-            expect(source).toContain('state.selectedGitCommitHash');
-        });
-
-        it('uses startsWith to match the routed commit hash against loaded commits', () => {
-            expect(source).toContain('loaded.find(c => c.hash.startsWith(commitHash))');
-        });
-
         it('shows empty right panel when deep-link hash not found (user must click to select)', () => {
             // No auto-selection on initial load — right panel starts empty
             expect(source).toContain('setView(null)');
@@ -995,129 +987,38 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain('const first = loaded.length > 0 ? loaded[0] : null');
         });
 
-        it('builds every selection URL through the shared group-aware route builder', () => {
-            expect(source).toContain('location.hash = buildGitRouteHash({');
-            expect(source).toContain('routeWorkspaceId: pageWorkspaceId, workspaceId, commitHash, filePath,');
-            // No hand-rolled `#repos/<id>/git/...` concatenation is left behind.
-            expect(source).not.toContain("'#repos/' + encodeURIComponent(workspaceId) + '/git/'");
-        });
-
-        it('handleSelect publishes the commit route with no file', () => {
-            expect(source).toContain('publishRoute(commit.hash, null)');
-        });
-
-        it('publishes the page owner, member, revision and file in ONE dispatch', () => {
-            expect(source).toContain("type: 'SET_GIT_ROUTE',");
-            expect(source).toContain('routeWorkspaceId: pageWorkspaceId,');
-        });
-
-        it('handleSelect depends only on the route publisher', () => {
-            expect(source).toContain('}, [publishRoute]);');
-        });
-
-        it('reads selectedGitFilePath from context state', () => {
-            expect(source).toContain('state.selectedGitFilePath');
-        });
-
-        it('restores commit-file view when the route carries both a hash and a file', () => {
-            expect(source).toContain("{ type: 'commit-file', hash: target.hash, filePath }");
-        });
-
-        it('handleCommitFileSelect publishes the hash and the file together', () => {
-            const handleBlock = source.match(/const selectCommitFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
-            expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('publishRoute(hash, filePath)');
-        });
-
-        it('handleCommitFileSelect depends on the route publisher', () => {
-            const handleBlock = source.match(/const selectCommit = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
-            expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('publishRoute');
-        });
-
         it('defines handleBranchRangeSelect callback', () => {
             expect(source).toContain('const selectBranchRange = useCallback');
-        });
-
-        it('handleBranchRangeSelect publishes the branch-range sentinel with no file', () => {
-            const block = source.match(/const selectBranchRange = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain('publishRoute(BRANCH_RANGE_DEEP_LINK, null)');
-        });
-
-        it('handleFileSelect publishes the branch-range sentinel with the file', () => {
-            const block = source.match(/const selectBranchFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain('publishRoute(BRANCH_RANGE_DEEP_LINK, filePath)');
-        });
-
-        it('restores branch-range view for the branch-range sentinel', () => {
-            expect(source).toContain('commitHash === BRANCH_RANGE_DEEP_LINK');
-            expect(source).toContain("setView(filePath ? { type: 'branch-file', filePath } : { type: 'branch-range' })");
         });
 
         it('uses handleBranchRangeSelect for onBranchRangeSelect prop', () => {
             expect(source).toContain('onBranchRangeSelect={props.onBranchRangeSelect}');
         });
 
-        describe('post-mount routed navigation', () => {
-            const effect = () => {
-                const match = source.match(/Routed navigation after mount[\s\S]*?\}, \[[\s\S]*?\]\);/);
-                expect(match).toBeTruthy();
-                return match![0];
-            };
+        it('restores a commit-file view when a persisted view carries both a hash and a file', () => {
+            // The new equivalent of the old route-restore path: `withCommit`
+            // (in `useRepoGitSelection.ts`'s `restorePersistedView`) resolves
+            // a `commit-file` persisted view by hash, keeping the file.
+            expect(source).toContain("withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath }))");
+        });
 
-            it('seeds the consumed-route ref with the mount-time route', () => {
-                expect(source).toContain('const consumedRouteRef = useRef<string>(');
-                expect(source).toContain('gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath),');
+        describe('view-scope restore and switching', () => {
+            it('hydrates from the initial commit page using the host-supplied restoreView', () => {
+                expect(source).toContain('const hydrateRef = useRef<(loaded: GitCommitItem[]) => void>(() => {});');
+                expect(source).toContain('hydrateRef.current = loaded => selection.hydrateFromInitialLoad(loaded, restoreViewRef.current);');
             });
 
-            it('keys the consumed route on page owner, member, revision AND file', () => {
-                expect(source).toContain("[routeWorkspaceId, workspaceId, commitHash ?? '', filePath ?? ''].join(");
+            it('tracks restoreView in a ref so later prop changes do not re-trigger the initial hydrate', () => {
+                expect(source).toContain('const restoreViewRef = useRef(restoreView);');
+                expect(source).toContain('restoreViewRef.current = restoreView;');
             });
 
-            it('skips a route that belongs to another page or member', () => {
-                expect(effect()).toContain('if (loading || !routeIsOurs) return;');
-                expect(source).toContain("|| (scope.routeWorkspaceId === pageWorkspaceId && scope.workspaceId === workspaceId)");
-            });
-
-            it('skips a route it has already consumed (no infinite loop)', () => {
-                expect(effect()).toContain('if (identity === consumedRouteRef.current && !suppliedSelection) return;');
-            });
-
-            it('reacts to store transitions, not to a store that has not caught up', () => {
-                expect(effect()).toContain('if (identity === storeRouteRef.current && !suppliedSelection) return;');
-                expect(effect()).toContain('storeRouteRef.current = identity;');
-            });
-
-            it('treats a fresh owner-verified known commit as an explicit selection request', () => {
-                expect(effect()).toContain('!!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current');
-                expect(effect()).toContain('consumedKnownCommitRef.current = scope?.knownCommit;');
-            });
-
-            it('records the route it consumes', () => {
-                expect(effect()).toContain('consumedRouteRef.current = identity;');
-            });
-
-            it('re-uses one resolver for both hydration and later navigation', () => {
-                expect(effect()).toContain('applyRoute(routeCommitHash, routeFilePath, commitsRef.current);');
-                expect(source).toContain('applyRoute(commitHash, filePath, loaded);');
-            });
-
-            it('depends on loading and the whole route, but not the commit array', () => {
-                const deps = source.match(/Routed navigation after mount[\s\S]*?\}, \[([\s\S]*?)\]\);/)![1];
-                expect(deps).toContain('loading');
-                expect(deps).toContain('routeCommitHash');
-                expect(deps).toContain('routeFilePath');
-                expect(deps).toContain('workspaceId');
-                // A refreshed commit page must not re-apply a consumed route.
-                expect(deps).not.toContain('commits,');
-                expect(effect()).toContain('commitsRef.current');
-            });
-
-            it('does not write the route back while consuming it', () => {
-                expect(effect()).not.toContain('publishRoute(');
-                expect(effect()).not.toContain('location.hash =');
+            it('calls switchViewScope only when viewScopeKey changes after mount (seeded, not fired, on mount)', () => {
+                const block = source.match(/const viewScopeKeyRef = useRef\(viewScopeKey\);[\s\S]*?\}, \[viewScopeKey, switchViewScope\]\);/);
+                expect(block).toBeTruthy();
+                expect(block![0]).toContain('if (viewScopeKeyRef.current === viewScopeKey) return;');
+                expect(block![0]).toContain('viewScopeKeyRef.current = viewScopeKey;');
+                expect(block![0]).toContain('switchViewScope(restoreViewRef.current ?? null);');
             });
         });
     });
@@ -2197,12 +2098,19 @@ describe('RepoGitTab', () => {
             expect(listSource).toContain('{commitListPanel}');
         });
 
-        it('a routed commit that is not in the loaded page falls back to getCommit', () => {
-            const effectBlock = source.match(/Turn one routed selection into a detail view[\s\S]*?\}, \[openCommitBySha\]\);/);
-            expect(effectBlock).toBeTruthy();
-            expect(effectBlock![0]).toContain('isGitCommitLookupEnabled()');
-            expect(effectBlock![0]).toContain('openCommitBySha(commitHash, { filePath })');
-            expect(source).toContain('getCommit(workspaceId');
+        it('a persisted view whose commit is not in the loaded page falls back to getCommit', () => {
+            // Replaces the deleted route-driven effect (anchored on the
+            // now-gone "Turn one routed selection into a detail view"
+            // comment, which called `openCommitBySha`): the new equivalent
+            // path is `withCommit` inside `restorePersistedView`, used by
+            // both `hydrateFromInitialLoad` (mount) and `switchViewScope`
+            // (a later external open) to resolve a persisted commit hash
+            // that isn't in the loaded page.
+            const block = source.match(/const withCommit = \(hash: string[\s\S]*?\};/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('loadedCommit(hash)');
+            expect(block![0]).toContain('cloneClient.git.getCommit(workspaceId, hash)');
+            expect(block![0]).toContain('setRestoreNotFound(');
         });
 
         it('deep-link lookup opens commit or file details on success', () => {
@@ -2274,7 +2182,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('commitsError={data.refreshError || data.error}');
             expect(source).toContain('onRefreshCommits={data.refreshAll}');
             const pane = readRepoGitTabModuleSource('RepoGitDetailPane.tsx');
-            expect(pane).toContain('commitPicker={onSelectCommit && { commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit }}');
+            expect(pane).toContain('commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,');
+            // Branch range and uncommitted changes are separate picker entries, never the commit callback.
+            expect(source).toContain('onSelectBranchRange={selection.selectBranchRange}');
+            expect(source).toContain('onSelectWorkingChanges={selection.selectWorkingTreeAll}');
             expect(pane).not.toMatch(/onSelectCommit=\{[^}]*WorkingTree/);
         });
     });

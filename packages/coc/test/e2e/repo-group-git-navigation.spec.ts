@@ -2,15 +2,15 @@
  * A repo group's Git tab, end to end in a real browser against a real server.
  *
  * The regression this guards: clicking a commit inside a group's Git tab used
- * to write `#repos/<memberId>/git/<sha>`, which navigated the whole dashboard
- * out of the group and into the member repository. The group is the page; the
- * member is only the git data source, so the URL has to name both:
+ * to navigate the whole dashboard out of the group and into the member
+ * repository. The group is the page; the member is only the git data source,
+ * so the group's Git page address has to name both:
  *
- *   #repos/<groupId>/git/member/<memberId>[/<sha>[/<file>]]
+ *   coc://git/member/<memberId>[/<sha>[/<file>]]
  *
- * Everything here goes through the real rendered commit row, RepoGitTab,
- * AppContext and Router — nothing is stubbed — so the click, the URL it writes
- * and the view it leaves behind are all exercised together.
+ * Everything here goes through the real rendered commit row, RepoGitTab and
+ * the right panel's Git page — nothing is stubbed — so the click, the address
+ * it writes and the view it leaves behind are all exercised together.
  */
 
 import * as fs from 'fs';
@@ -19,7 +19,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { createMultiCommitRepo } from './fixtures/git-fixtures';
+import { createMultiCommitRepo, openCocAddress } from './fixtures/git-fixtures';
 import { seedWorkspace, request } from './fixtures/seed';
 import { repoHashUrl } from './fixtures/remote-shell';
 import type { Page } from '@playwright/test';
@@ -68,11 +68,21 @@ async function seedGroupWithTwoRepos(serverUrl: string, tmpDir: string) {
 }
 
 /** Open the group's Git tab and wait for a member's commit list to render. */
-async function openGroupGit(page: Page, serverUrl: string, groupId: string, suffix = ''): Promise<void> {
-    await page.goto(repoHashUrl(serverUrl, groupId, `git${suffix}`));
+async function openGroupGit(page: Page, serverUrl: string, groupId: string): Promise<void> {
+    await page.goto(repoHashUrl(serverUrl, groupId, 'git'));
     await expect(page.getByTestId('repo-group-git-tab')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('git-tab-loading')).toBeHidden({ timeout: 20_000 });
     await expect(page.locator('[data-testid^="commit-row-"]').first()).toBeVisible({ timeout: 20_000 });
+}
+
+/** The Git page's address bar. */
+function gitAddress(page: Page) {
+    return page.getByTestId('browser-address');
+}
+
+/** The Git page's own Back / Forward buttons. */
+function pageNavButton(page: Page, name: 'Back' | 'Forward') {
+    return page.getByRole('group', { name: 'Page navigation' }).getByRole('button', { name, exact: true });
 }
 
 /** The member the hosted panel is currently showing. */
@@ -96,40 +106,36 @@ async function openNewestCommit(page: Page): Promise<string> {
     const shortHash = (await firstRow.getAttribute('data-testid'))!.replace('commit-row-', '');
     await firstRow.click();
     await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
-    // Review automatically selects a file, adding a route after the commit overview.
-    await expect(page).toHaveURL(new RegExp(`/${shortHash}[^/]*/[^/]+$`));
+    // Review automatically selects a file, adding a step after the commit overview.
+    await expect(gitAddress(page)).toHaveValue(new RegExp(`/${shortHash}[^/]*/[^/]+$`));
     await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 20_000 });
     return shortHash;
 }
 
 test.describe('Repo group Git navigation', () => {
     test.describe.configure({ timeout: 60_000 });
-    test('opening a member commit keeps the group selected and names the member in the URL', async ({ page, serverUrl }) => {
+    test('opening a member commit keeps the group selected and names the member in the address', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-group-git-'));
         try {
-            const { groupId, memberA, memberB } = await seedGroupWithTwoRepos(serverUrl, tmpDir);
+            const { groupId, memberB } = await seedGroupWithTwoRepos(serverUrl, tmpDir);
             await openGroupGit(page, serverUrl, groupId);
-
-            // A bare group entry canonicalizes to an explicit member route.
-            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/(${memberA}|${memberB})$`));
-
             await pickMember(page, memberB);
-            await expect(page).toHaveURL(`${serverUrl}/#repos/${groupId}/git/member/${memberB}`);
 
             const shortHash = await openNewestCommit(page);
 
             // THE REGRESSION: the group is still the page…
+            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/`));
             await expect(page.getByTestId('repo-group-view')).toBeVisible();
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
             await expect(hostedMember(page)).toHaveAttribute('data-member', memberB);
-            // …and the URL carries the group, the member AND the commit.
-            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${memberB}/${shortHash}`));
+            // …and the Git page address carries the member AND the commit.
+            await expect(gitAddress(page)).toHaveValue(new RegExp(`^coc://git/member/${memberB}/${shortHash}`));
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('a commit file keeps the group, the member and the file in the URL', async ({ page, serverUrl }) => {
+    test('a commit file keeps the group, the member and the file in the address', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-group-git-file-'));
         try {
             const { groupId, memberB } = await seedGroupWithTwoRepos(serverUrl, tmpDir);
@@ -143,8 +149,8 @@ test.describe('Repo group Git navigation', () => {
 
             await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
-            await expect(page).toHaveURL(
-                new RegExp(`#repos/${groupId}/git/member/${memberB}/${shortHash}[^/]*/[^/]+$`),
+            await expect(gitAddress(page)).toHaveValue(
+                new RegExp(`^coc://git/member/${memberB}/${shortHash}[^/]*/[^/]+$`),
             );
         } finally {
             safeRmSync(tmpDir);
@@ -159,47 +165,48 @@ test.describe('Repo group Git navigation', () => {
 
             await pickMember(page, memberA);
             const hashA = await openNewestCommit(page);
-            const fileUrlA = page.url();
+            const fileAddressA = await gitAddress(page).inputValue();
+            expect(fileAddressA).toContain(`coc://git/member/${memberA}/${hashA}`);
 
             await pickMember(page, memberB);
             const hashB = await openNewestCommit(page);
 
             // Back through B's file, commit overview and history, then A's file.
-            await page.goBack();
-            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${memberB}/${hashB}[0-9a-f]*$`));
-            await page.goBack();
-            await expect(page).toHaveURL(`${serverUrl}/#repos/${groupId}/git/member/${memberB}`);
-            await page.goBack();
-            await expect(page).toHaveURL(fileUrlA);
-            expect(fileUrlA).toContain(`/git/member/${memberA}/${hashA}`);
+            await pageNavButton(page, 'Back').click();
+            await expect(gitAddress(page)).toHaveValue(new RegExp(`^coc://git/member/${memberB}/${hashB}[0-9a-f]*$`));
+            await pageNavButton(page, 'Back').click();
+            await expect(gitAddress(page)).toHaveValue(`coc://git/member/${memberB}`);
+            await pageNavButton(page, 'Back').click();
+            await expect(gitAddress(page)).toHaveValue(fileAddressA);
             await expect(hostedMember(page)).toHaveAttribute('data-member', memberA, { timeout: 20_000 });
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
 
-            await page.goForward();
-            await expect(page).toHaveURL(`${serverUrl}/#repos/${groupId}/git/member/${memberB}`);
+            await pageNavButton(page, 'Forward').click();
+            await expect(gitAddress(page)).toHaveValue(`coc://git/member/${memberB}`);
             await expect(hostedMember(page)).toHaveAttribute('data-member', memberB, { timeout: 20_000 });
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('a fresh context restores the member and commit straight from the URL', async ({ page, serverUrl }) => {
+    test('a typed address opens the member and commit, and a reload restores them', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-group-git-fresh-'));
         try {
             const { groupId, memberB, memberBHash } = await seedGroupWithTwoRepos(serverUrl, tmpDir);
 
-            // Start with the real fixture SHA, without opening the commit first:
-            // a deep link must resolve from a cold page with no cached client state.
-            await openGroupGit(page, serverUrl, groupId, `/member/${memberB}/${memberBHash}`);
+            // Use the real fixture SHA, without opening the commit first: the
+            // address must resolve with no cached commit on the client.
+            await openGroupGit(page, serverUrl, groupId);
+            await openCocAddress(page, `coc://git/member/${encodeURIComponent(memberB)}/${memberBHash}`);
 
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
             await expect(hostedMember(page)).toHaveAttribute('data-member', memberB, { timeout: 20_000 });
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('commit-info-subject')).toHaveText(MEMBER_B_SUBJECT);
             await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'true');
-            await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${memberB}/${memberBHash}`));
+            await expect(gitAddress(page)).toHaveValue(new RegExp(`^coc://git/member/${memberB}/${memberBHash}`));
             await page.reload();
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
             await expect(page.getByTestId('commit-info-subject')).toHaveText(MEMBER_B_SUBJECT);

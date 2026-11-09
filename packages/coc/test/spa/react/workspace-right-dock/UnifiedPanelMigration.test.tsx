@@ -41,6 +41,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/P
     PreviewPane: ({ filePath }: { filePath: string }) => <div data-testid={`mock-preview-${filePath}`} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    subscribeCloneBaseUrl: () => () => {},
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
@@ -84,16 +85,16 @@ function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPane
     return render(<UnifiedRightPanel workspaceId={WS} dock={props.dock ?? dockStub()} {...props} />);
 }
 
-const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'sess-1' });
+const notesId = unifiedTabId({ kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes' });
 const legacyExplorerId = ['explorer', WORKSPACE_SCOPE_KEY, WS, 'explorer'].join('|');
 
-/** A v1 payload: a terminal, then an Explorer tab, then a file. */
+/** A v1 payload: Notes, then an Explorer tab, then a file. */
 function seedLegacyState(): void {
     const fileId = unifiedTabId({ kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts' });
     localStorage.setItem(unifiedPanelStorageKey(WS), JSON.stringify({
         version: 1,
         workspaceTabs: [
-            { id: terminalId, kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'sess-1', label: 'bash' },
+            { id: notesId, kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes' },
             { id: legacyExplorerId, kind: 'explorer', ownerWorkspaceId: WS, chatId: null, resourceId: 'explorer', label: 'Explorer' },
         ],
         chatTabs: {
@@ -136,7 +137,7 @@ describe('unified panel — codec v2 migration', () => {
         seedLegacyState();
         renderPanel();
 
-        expect(tabLabels()).toEqual(['sess-1', 'src/a.ts']);
+        expect(tabLabels()).toEqual(['coc-notes', 'src/a.ts']);
         expect(screen.queryByTestId(`unified-panel-tab-${legacyExplorerId}`)).toBeNull();
         // The Explorer's replacement is the column, which is now open.
         await waitFor(() => expect(readUnifiedTreeState(WS).open).toBe(true));
@@ -149,14 +150,14 @@ describe('unified panel — codec v2 migration', () => {
 
         await waitFor(() => expect(storedPayload().version).toBe(UNIFIED_PANEL_STATE_VERSION));
         const kinds = (storedPayload().workspaceTabs as { kind: string }[]).map(tab => tab.kind);
-        expect(kinds).toEqual(['terminal']);
+        expect(kinds).toEqual(['browser']);
     });
 
     it('leaves a tree the user already closed alone when nothing needs migrating', async () => {
         writeUnifiedTreeState(WS, { open: false, width: 260 });
         localStorage.setItem(unifiedPanelStorageKey(WS), JSON.stringify({
             version: UNIFIED_PANEL_STATE_VERSION,
-            workspaceTabs: [{ id: terminalId, kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'sess-1', label: 'bash' }],
+            workspaceTabs: [{ id: notesId, kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes' }],
             chatTabs: {},
             activeByScope: {},
         }));
@@ -166,16 +167,23 @@ describe('unified panel — codec v2 migration', () => {
         expect(readUnifiedTreeState(WS)).toEqual({ open: false, width: 260 });
     });
 
-    it('restores a terminal descriptor without spawning a session before it is activated', async () => {
-        seedLegacyState();
+    it('restores a coc://terminal web tab without mounting a terminal before it is activated', async () => {
+        const fileId = unifiedTabId({ kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts' });
+        const pageId = unifiedTabId({ kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-1' });
+        localStorage.setItem(unifiedPanelStorageKey(WS), JSON.stringify({
+            version: UNIFIED_PANEL_STATE_VERSION,
+            workspaceTabs: [{ id: pageId, kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-1', label: 'Terminal', browserUrl: 'coc://terminal' }],
+            chatTabs: { [WORKSPACE_SCOPE_KEY]: [{ id: fileId, kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts', label: 'a.ts' }] },
+            activeByScope: { [WORKSPACE_SCOPE_KEY]: fileId },
+        }));
         renderPanel();
 
-        // The file tab is the restored selection; the terminal stays a
+        // The file tab is the restored selection; the terminal page stays a
         // descriptor until the user selects it.
         await waitFor(() => expect(screen.getByTestId('mock-preview-src/a.ts')).toBeInTheDocument());
         expect(terminalSpy).not.toHaveBeenCalled();
 
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-${terminalId}`));
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${pageId}`));
         await waitFor(() => expect(terminalSpy).toHaveBeenCalledWith(WS));
     });
 

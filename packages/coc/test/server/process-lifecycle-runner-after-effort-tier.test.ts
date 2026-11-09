@@ -81,4 +81,33 @@ describe('ProcessLifecycleRunner persisted metadata.afterEffortTier', () => {
         const process = await store.getProcess('queue_chat-bad');
         expect(process?.metadata?.afterEffortTier).toBeUndefined();
     });
+
+    it('seeds metadata.afterCustomModelEffort when the chat launched with a custom model', async () => {
+        const task = makeChatTask('chat-custom', { customModelEffort: true, model: 'claude-opus-5-5', reasoningEffort: 'high' });
+
+        const { result, store } = await runTask(task);
+
+        expect(result.success).toBe(true);
+        const process = await store.getProcess('queue_chat-custom');
+        expect(process?.metadata?.afterCustomModelEffort).toEqual({ model: 'claude-opus-5-5', reasoningEffort: 'high' });
+        expect(process?.metadata?.afterEffortTier).toBeUndefined();
+    });
+
+    it('records a null effort for a custom model launched on Auto effort', async () => {
+        const task = makeChatTask('chat-custom-auto', { customModelEffort: true, model: 'claude-opus-5-5' });
+
+        const { store } = await runTask(task);
+
+        const process = await store.getProcess('queue_chat-custom-auto');
+        expect(process?.metadata?.afterCustomModelEffort).toEqual({ model: 'claude-opus-5-5', reasoningEffort: null });
+    });
+
+    it('does not seed afterCustomModelEffort without the custom marker', async () => {
+        const task = makeChatTask('chat-model-only', { model: 'claude-opus-5-5' });
+
+        const { store } = await runTask(task);
+
+        const process = await store.getProcess('queue_chat-model-only');
+        expect(process?.metadata?.afterCustomModelEffort).toBeUndefined();
+    });
 });

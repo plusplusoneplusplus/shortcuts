@@ -12,7 +12,6 @@ import type { ReactNode } from 'react';
 import {
     openPanelWorkspaceResource,
     panelOwnerForSelection,
-    panelWorkspaceResourceInput,
     usePanelWorkspaceResourceOpener,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
@@ -20,7 +19,7 @@ import {
     clearUnifiedPanelState,
     readUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { closeTab, unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { closeTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
@@ -37,7 +36,9 @@ describe('openPanelWorkspaceResource', () => {
     it('opens a workspace-owned Notes tab, activates it for the current chat and reveals the dock', () => {
         const id = openPanelWorkspaceResource('notes', { workspaceId: 'ws-a', routingRef: null, chatId: 'chat-1' });
         const state = readUnifiedPanelState('ws-a');
-        expect(state.workspaceTabs).toEqual([expect.objectContaining({ id, kind: 'notes', ownerWorkspaceId: 'ws-a', chatId: null, label: 'Notes' })]);
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({
+            id, kind: 'browser', browserUrl: 'coc://notes', ownerWorkspaceId: 'ws-a', chatId: null, label: 'Notes',
+        })]);
         expect(state.activeByScope['chat-1']).toBe(id);
         expect(localStorage.getItem(workspaceDockOpenStorageKey('ws-a'))).toBe('1');
     });
@@ -49,25 +50,28 @@ describe('openPanelWorkspaceResource', () => {
         const state = readUnifiedPanelState('ws-a');
         expect(second).toBe(first);
         expect(state.workspaceTabs).toHaveLength(1);
-        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'dir/b.md' });
+        expect(state.workspaceTabs[0].browserUrl).toBe('coc://notes/dir/b.md');
     });
 
-    it('reopens a closed Settings tab with the same identity', () => {
+    it('opens Settings as a coc://settings web tab, focuses it again, and reopens it after a close', () => {
         const owner = { workspaceId: 'ws-a', routingRef: null, chatId: null };
         const id = openPanelWorkspaceResource('settings', owner);
+        expect(readUnifiedPanelState('ws-a').workspaceTabs).toMatchObject([{ id, kind: 'browser', browserUrl: 'coc://settings', label: 'Settings' }]);
+        expect(openPanelWorkspaceResource('settings', owner)).toBe(id);
+        expect(readUnifiedPanelState('ws-a').workspaceTabs).toHaveLength(1);
         updateUnifiedPanelState('ws-a', prev => closeTab(prev, id));
         expect(readUnifiedPanelState('ws-a').workspaceTabs).toHaveLength(0);
-        expect(openPanelWorkspaceResource('settings', owner)).toBe(id);
-        expect(readUnifiedPanelState('ws-a').workspaceTabs.map(tab => tab.kind)).toEqual(['settings']);
+        openPanelWorkspaceResource('settings', owner);
+        expect(readUnifiedPanelState('ws-a').workspaceTabs.map(tab => tab.browserUrl)).toEqual(['coc://settings']);
     });
 
-    it('keeps local and remote Settings owners distinct and matches the add-tab menu descriptor', () => {
+    it('keeps local and remote Settings owners distinct', () => {
         const local = openPanelWorkspaceResource('settings', { workspaceId: 'ws-a', routingRef: null, chatId: null });
         const remote = openPanelWorkspaceResource('settings', panelOwnerForSelection(REMOTE, null));
         expect(remote).not.toBe(local);
         const tabs = readUnifiedPanelState('ws-a').workspaceTabs;
         expect(tabs.map(tab => tab.ownerRoutingRef)).toEqual([null, REMOTE]);
-        expect(remote).toBe(unifiedTabId(panelWorkspaceResourceInput('settings', { workspaceId: 'ws-a', routingRef: REMOTE, chatId: 'any' })));
+        expect(tabs.map(tab => tab.browserUrl)).toEqual(['coc://settings', 'coc://settings']);
     });
 
     it('derives a group owner from its selection id', () => {
@@ -91,7 +95,7 @@ describe('usePanelWorkspaceResourceOpener', () => {
         act(() => result.current.open!('settings', { settingsSection: 'preferences' }));
         expect(result.current.app.state.settingsSection).toBe('preferences');
         const [tab] = readUnifiedPanelState('ws-a').workspaceTabs;
-        expect(tab).toMatchObject({ kind: 'settings', ownerWorkspaceId: 'ws-a', ownerRoutingRef: REMOTE });
+        expect(tab).toMatchObject({ kind: 'browser', browserUrl: 'coc://settings', ownerWorkspaceId: 'ws-a', ownerRoutingRef: REMOTE });
         expect(readUnifiedPanelState('ws-a').activeByScope['chat-1']).toBe(tab.id);
     });
 

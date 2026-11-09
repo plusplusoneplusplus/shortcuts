@@ -36,7 +36,7 @@ test.describe('Notes page — status dock (remote-first shell)', () => {
             await expect(sidebar).toBeVisible({ timeout: 15_000 });
             await expect(page.locator('[data-testid="notes-content"]')).toBeVisible({ timeout: 5_000 });
 
-            await page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="notes"]').focus();
+            await page.getByTestId('unified-right-panel').getByRole('tab', { name: /Notes/ }).focus();
             await page.keyboard.press('Escape');
             await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-expanded', 'false');
             await expect(page.getByTestId('global-status-dock')).toHaveCount(0);

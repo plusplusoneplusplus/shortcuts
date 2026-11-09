@@ -5,6 +5,8 @@
  *
  * The real-editor half is covered by noteFontMark.test.ts.
  */
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { describe, it, expect } from 'vitest';
 import {
     markdownToHtml,
@@ -159,5 +161,20 @@ describe('noteMarkdown — font family (AC-02)', () => {
             const md = `before <span style="font-family:${MONO}">mono</span> after`;
             expect(roundTrip(md)).toBe(md);
         });
+    });
+});
+
+// Regression: a raw `À-ɏ` range read as Latin-1 (a page served without a UTF-8
+// charset, like the desktop live-test fixtures) became an out-of-order range,
+// and the SyntaxError killed the whole SPA bundle. Keep the source ASCII.
+describe('fontFamilies source encoding', () => {
+    it('writes every character outside ASCII as an escape', () => {
+        const source = readFileSync(
+            resolve(__dirname, '../../../../src/server/spa/client/react/features/notes/editor/fontFamilies.ts'),
+            'utf8',
+        );
+        const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+        expect(code).not.toMatch(/[^\x00-\x7F]/);
+        expect(normalizeFontStack('Ünïcödé Sans')).not.toBeNull();
     });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { HTMLAttributes, KeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { CommitDetailIcon } from './CommitDetailIcon';
@@ -8,6 +8,14 @@ import type { GitCommitItem } from './commitListTypes';
 /** Abbreviated (7+) or full hex SHA, matching the Git tab's direct lookup. */
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 const RECENT_LIMIT = 20;
+
+/** A non-commit view of the same repository the picker can switch to (branch changes, uncommitted changes). */
+export interface CommitPickerView {
+    id: string;
+    label: string;
+    detail?: string;
+    onSelect: () => void;
+}
 
 /** Host-owned commit switching for the review header; every call stays on the owning workspace/server. */
 export interface CommitPickerOptions {
@@ -21,12 +29,17 @@ export interface CommitPickerOptions {
     lookup?: (sha: string) => Promise<GitCommitItem>;
     /** Opens the commit in the same review surface. */
     onSelect: (commit: GitCommitItem) => void;
+    /** Other views of the same repository, listed above the recent commits. */
+    views?: readonly CommitPickerView[];
 }
 
 type LookupState = { status: 'idle' | 'busy' } | { status: 'error'; message: string };
 
-/** Short-hash trigger with a recent-commit list and a SHA field; the copy action stays a separate control. */
-export function CommitHashPicker({ hash, picker }: { hash: string; picker: CommitPickerOptions }) {
+/**
+ * Short-hash trigger with a recent-commit list and a SHA field; the copy action stays a separate control.
+ * On a non-commit view (`currentViewId`, no `hash`) the trigger is chevron-only and that view is marked current.
+ */
+export function CommitHashPicker({ hash = '', currentViewId, picker }: { hash?: string; currentViewId?: string; picker: CommitPickerOptions }) {
     const [open, setOpen] = useState(false);
     const [sha, setSha] = useState('');
     const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
@@ -80,6 +93,10 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
         dismiss(true);
         if (commit.hash !== hash) picker.onSelect(commit);
     }
+    function chooseView(view: CommitPickerView) {
+        dismiss(true);
+        if (view.id !== currentViewId) view.onSelect();
+    }
     function submit() {
         const value = sha.trim().toLowerCase();
         if (!SHA_PATTERN.test(value)) {
@@ -127,9 +144,10 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
     return <>
         <button type="button" ref={triggerRef} className="git-review-hash-trigger" onClick={() => open ? dismiss(false) : setOpen(true)}
             aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-            aria-label={`Commit ${short}: switch commit`} title={`Switch commit · ${hash}`} data-testid="commit-hash-picker-trigger">
+            aria-label={hash ? `Commit ${short}: switch commit` : 'Switch commit or view'}
+            title={hash ? `Switch commit · ${hash}` : 'Switch commit or view'} data-testid="commit-hash-picker-trigger">
             {/* Narrow panes keep a chevron-only trigger; the hash stays in its accessible name. */}
-            <span className="git-review-hash git-review-md">{short}</span>
+            {hash && <span className="git-review-hash git-review-md">{short}</span>}
             <CommitDetailIcon name={open ? 'up' : 'down'} />
         </button>
         {open && createPortal(<div className="git-file-review git-review-menu-layer" style={{ width: position.width }}>
@@ -146,6 +164,18 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
                 {busy && <p id={`${id}-lookup`} role="status" className="git-review-muted px-1 py-1">Looking up commit…</p>}
                 {lookup.status === 'error' && <p id={`${id}-lookup`} role="alert" className="px-1 py-1 text-red-600 dark:text-red-400"
                     data-testid="commit-hash-picker-error">{lookup.message}</p>}
+                {picker.views && picker.views.length > 0 && <ul aria-label="Other changes" className="git-review-commit-picker-list">
+                    {picker.views.map(view => <li key={view.id}>
+                        <button type="button" data-commit-option disabled={busy} className="git-review-menu-item"
+                            aria-current={view.id === currentViewId ? 'true' : undefined}
+                            onClick={() => chooseView(view)} title={view.detail ? `${view.label} · ${view.detail}` : view.label}
+                            data-testid={`commit-hash-picker-view-${view.id}`}>
+                            <span className="git-review-commit-picker-check">{view.id === currentViewId && <CommitDetailIcon name="check" />}</span>
+                            <span className="git-review-commit-picker-subject">{view.label}</span>
+                            {view.detail && <span className="git-review-muted">{view.detail}</span>}
+                        </button>
+                    </li>)}
+                </ul>}
                 {picker.onRefresh && <button type="button" className="git-review-menu-item"
                     onClick={picker.onRefresh} disabled={picker.loading || busy}
                     aria-label="Refresh recent commits" title="Refresh recent commits">
@@ -168,5 +198,18 @@ export function CommitHashPicker({ hash, picker }: { hash: string; picker: Commi
                 </ul>}
             </div>
         </div>, document.body)}
+    </>;
+}
+
+/** Toolbar identity for a non-commit review (branch or uncommitted changes): its title, then the same switcher a commit shows. */
+export function ReviewViewIdentity({ title, viewId, picker, titleProps }: {
+    title: ReactNode;
+    viewId: string;
+    picker?: CommitPickerOptions;
+    titleProps?: HTMLAttributes<HTMLElement>;
+}) {
+    return <>
+        <strong className="git-review-title" {...titleProps}>{title}</strong>
+        {picker && <CommitHashPicker currentViewId={viewId} picker={picker} />}
     </>;
 }

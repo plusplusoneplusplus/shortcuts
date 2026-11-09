@@ -49,7 +49,7 @@ import { activateTab, EMPTY_UNIFIED_PANEL, openTab, unifiedTabId } from '../../.
 import { clearUnifiedTreeState, readUnifiedTreeState, writeUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { sentinelTodoTabInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { clearSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
-import { clearSentinelTodoChats } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
+import { clearSentinelTodoChats, publishSentinelTodoChat } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { useWorkspaceDock, type WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import { workspaceDockModeStorageKey, workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
@@ -106,6 +106,8 @@ beforeEach(() => {
     clearUnifiedTreeState();
     clearSentinelTodoExcursion();
     clearSentinelTodoChats();
+    // The selected chat is the Sentinel whose ledger the coc://todo page shows.
+    publishSentinelTodoChat(WS, CHAT, { ownerWorkspaceId: 'member', processId: CHAT, title: 'Sentinel' });
     events.clear();
     client.sentinelTodos.get.mockReset().mockImplementation(async () => ({ revision: 2, items: [item('one'), item('two')] }));
     applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false,
@@ -297,7 +299,8 @@ describe('To-do activation and Explorer presentation', () => {
         await loaded();
         expect(explorerOpen()).toBe(false);
         expect(explorerOpen('other-workspace')).toBe(true);
-        expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toHaveLength(2);
+        expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toHaveLength(1);
+        expect(readUnifiedPanelState(WS).workspaceTabs).toEqual([expect.objectContaining({ browserUrl: 'coc://todo', browserChatId: CHAT })]);
     });
 });
 

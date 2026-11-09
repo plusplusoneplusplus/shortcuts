@@ -18,6 +18,9 @@ import type {
     GitTabOpenOwner, UnifiedPanelGitOpenSource,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
 
+import { gitPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
+import { cocPageKindOf } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelAddresses';
+
 const WS = 'ws-1';
 const CHAT = 'chat-1';
 
@@ -25,10 +28,12 @@ afterEach(() => cleanup());
 
 function gitTabs(): readonly UnifiedPanelTab[] {
     let state = EMPTY_UNIFIED_PANEL;
-    state = openTab(state, { kind: 'git', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'git', label: 'Git' });
+    state = openTab(state, gitPageInput({ ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: CHAT }));
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     return visibleTabs(state, CHAT);
 }
+
+const isGitPage = (tab: UnifiedPanelTab) => cocPageKindOf(tab.browserUrl) === 'git';
 
 function owner(workspaceId: string, label = workspaceId): GitTabOpenOwner {
     return { workspaceId, label, target: { routeWorkspaceId: WS, workspaceId, sourceSelectionId: workspaceId } };
@@ -58,13 +63,13 @@ function source(overrides: Partial<UnifiedPanelGitOpenSource> = {}): UnifiedPane
 
 function renderStrip(gitOpen: UnifiedPanelGitOpenSource | null) {
     const tabs = gitTabs();
-    const gitOpenSource = vi.fn((tab: UnifiedPanelTab) => (tab.kind === 'git' ? gitOpen : null));
+    const gitOpenSource = vi.fn((tab: UnifiedPanelTab) => (isGitPage(tab) ? gitOpen : null));
     const props = {
         tabs, activeId: tabs[0].id, onActivate: vi.fn(), onClose: vi.fn(), onCloseMany: vi.fn(),
         onMove: vi.fn(), onMenuAction: vi.fn(), gitOpenSource,
     };
     render(<UnifiedPanelTabStrip {...props} />);
-    const git = tabs.find(tab => tab.kind === 'git')!;
+    const git = tabs.find(isGitPage)!;
     const file = tabs.find(tab => tab.kind === 'file')!;
     return { props, gitNode: screen.getByTestId(`unified-panel-tab-${git.id}`), fileNode: screen.getByTestId(`unified-panel-tab-${file.id}`) };
 }
@@ -82,7 +87,7 @@ describe('Git tab Open submenu', () => {
 
         fireEvent.contextMenu(gitNode, { clientX: 20, clientY: 30 });
         const menu = screen.getByRole('menu', { name: 'Tab actions' });
-        expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Open▶', 'Close', 'Close Other▶']);
+        expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Open▶', 'Duplicate', 'Close', 'Close Other▶']);
         expect(openRow().getAttribute('aria-haspopup')).toBe('menu');
         expect(screen.getByTestId('unified-panel-tab-menu-open-git-chevron')).toBeTruthy();
         cleanup();

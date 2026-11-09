@@ -104,6 +104,7 @@ import {
     readUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { canvasPageInput, notesPageInput } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import {
     EMPTY_UNIFIED_PANEL,
     activateTab,
@@ -123,6 +124,9 @@ import {
 import { publishSentinelTodoChat, clearSentinelTodoChats } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 
 const WS = 'ws-1';
+/** The web tab showing `coc://terminal` for `owner`; its id is minted when it opens. */
+const terminalTabId = (owner = WS) => readUnifiedPanelState(WS).workspaceTabs
+    .find(tab => tab.browserUrl === 'coc://terminal' && tab.ownerWorkspaceId === owner)!.id;
 
 /**
  * A dock controller stub. The real one is exercised by
@@ -288,17 +292,14 @@ describe('UnifiedRightPanel', () => {
         });
 
         function seedCanvasBurst() {
-            let state = openTab(EMPTY_UNIFIED_PANEL, {
-                kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'shell', label: 'Shell',
-            });
+            let state = openTab(EMPTY_UNIFIED_PANEL, notesPageInput({ ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: null }));
             state = openTab(state, {
                 kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
             });
             for (let index = 1; index <= 5; index++) {
-                state = openTab(state, {
-                    kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a',
-                    resourceId: `canvas-${index}`, label: `Canvas ${index}`,
-                });
+                state = openTab(state, canvasPageInput({ id: `canvas-${index}`, title: `Canvas ${index}` }, {
+                    ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: 'chat-a',
+                }));
             }
             writeUnifiedPanelState(WS, state);
             return state;
@@ -328,7 +329,7 @@ describe('UnifiedRightPanel', () => {
             const tabIds = () => screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'));
             const renderedIds = tabIds();
             expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'file')).toHaveLength(2);
-            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(groups ? 3 : 1);
+            expect(screen.getAllByRole('tab').filter(node => node.querySelector('[data-icon="canvas-palette"]'))).toHaveLength(groups ? 3 : 1);
             expect(screen.queryByTestId('unified-panel-category-canvas')).toBeNull();
             if (groups) {
                 expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toBeTruthy();
@@ -441,7 +442,7 @@ describe('UnifiedRightPanel', () => {
             act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: true }); });
             expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toHaveAttribute('aria-expanded', 'false');
             expect(screen.queryByTestId('unified-panel-group-overflow-canvas')).toBeNull();
-            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(1);
+            expect(screen.getAllByRole('tab').filter(node => node.querySelector('[data-icon="canvas-palette"]'))).toHaveLength(1);
         });
 
         it.each(['Alt+ArrowRight', 'Move right menu'] as const)(
@@ -530,7 +531,7 @@ describe('UnifiedRightPanel', () => {
         const input = screen.getByRole('textbox', { name: 'Settings draft' });
         fireEvent.change(input, { target: { value: 'pending' } });
         const first = readUnifiedPanelState(WS).workspaceTabs[0];
-        expect(first).toMatchObject({ kind: 'settings', ownerWorkspaceId: WS, ownerRoutingRef: routingRef, chatId: null });
+        expect(first).toMatchObject({ kind: 'browser', browserUrl: 'coc://settings', ownerWorkspaceId: WS, ownerRoutingRef: routingRef, chatId: null });
         rendered.rerender(view('member-b', 'chat-2'));
         await openViaMenu('unified-panel-open-settings');
         expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
@@ -564,13 +565,13 @@ describe('UnifiedRightPanel', () => {
         fireEvent.change(input, { target: { value: 'pending' } });
         expect(screen.getByTestId('panel-settings-host')).toContainElement(input);
         await openViaMenu('unified-panel-open-notes');
-        const settingsId = readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.kind === 'settings')!.id;
+        const settingsId = readUnifiedPanelState(WS).workspaceTabs.find(tab => tab.browserUrl === 'coc://settings')!.id;
         expect(readUnifiedPanelState(WS).activeByScope['chat-1']).not.toBe(settingsId);
         act(() => { openPanelWorkspaceResource('settings', { workspaceId: WS, routingRef: null, chatId: 'chat-1' }); });
         expect(readUnifiedPanelState(WS).activeByScope['chat-1']).toBe(settingsId);
         expect(screen.getByRole('textbox', { name: 'Shared settings' })).toBe(input);
         expect(input).toHaveValue('pending');
-        expect(readUnifiedPanelState(WS).workspaceTabs.filter(tab => tab.kind === 'settings')).toHaveLength(1);
+        expect(readUnifiedPanelState(WS).workspaceTabs.filter(tab => tab.browserUrl === 'coc://settings')).toHaveLength(1);
     });
 
     describe('desktop HTML page tabs', () => {
@@ -989,7 +990,8 @@ describe('UnifiedRightPanel', () => {
             const browserId = viewIdOf();
             await openViaMenu('unified-panel-open-terminal');
             act(() => onCloseRequested?.({ viewId: browserId }));
-            expect(browserTabs()).toHaveLength(1);
+            // The web page and the coc://terminal tab both stay.
+            expect(browserTabs()).toHaveLength(2);
             expect(bridge.close).not.toHaveBeenCalled();
             expect(screen.getByTestId('mock-terminal')).toBeTruthy();
         });
@@ -1234,9 +1236,9 @@ describe('UnifiedRightPanel', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
         });
-        state = openTab(state, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1', label: 'Canvas',
-        });
+        state = openTab(state, canvasPageInput({ id: 'canvas-1', title: 'Canvas' }, {
+            ownerWorkspaceId: WS, chatId: 'chat-a', browserChatId: 'chat-a',
+        }));
         writeUnifiedPanelState(WS, state);
         const rememberedState = readUnifiedPanelState(WS);
 
@@ -1250,15 +1252,13 @@ describe('UnifiedRightPanel', () => {
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-a" dock={dockStub({ isOpen: false })} />);
         expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
         expect(readUnifiedPanelState(WS)).toEqual(rememberedState);
-        const canvasId = unifiedTabId({
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1',
-        });
+        const canvasId = rememberedState.workspaceTabs.find(tab => tab.browserUrl === 'coc://canvas/canvas-1')!.id;
         expect(screen.getByTestId(`unified-panel-tab-${canvasId}`).getAttribute('aria-selected')).toBe('true');
     });
 
     it('counts workspace-owned tabs as visible in every selected chat', () => {
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal',
         }));
         localStorage.setItem(workspaceDockOpenStorageKey(WS), '0');
 
@@ -1285,8 +1285,8 @@ describe('UnifiedRightPanel', () => {
         await openViaMenu('unified-panel-open-notes');
 
         expect(screen.getAllByTestId('unified-right-panel')).toHaveLength(1);
-        const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal' });
-        const notesId = unifiedTabId({ kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes' });
+        const terminalId = terminalTabId();
+        const notesId = unifiedTabId({ kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'coc-notes' });
         // Opening activates the new tab; the terminal stays mounted but hidden.
         expect(screen.getByTestId(`unified-panel-view-${notesId}`).getAttribute('data-active')).toBe('true');
         expect(screen.getByTestId(`unified-panel-view-${terminalId}`).getAttribute('data-active')).toBe('false');
@@ -1317,11 +1317,9 @@ describe('UnifiedRightPanel', () => {
     it('mounts a restored tab only once it is shown, and never a background one', () => {
         // A reload with two terminals persisted: only the active one attaches.
         let state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal',
         });
-        state = openTab(state, {
-            kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes',
-        });
+            state = openTab(state, notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null }));
         writeUnifiedPanelState(WS, state);
 
         renderPanel();
@@ -1334,7 +1332,7 @@ describe('UnifiedRightPanel', () => {
 
     it('does not mount anything while collapsed', () => {
         const state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         writeUnifiedPanelState(WS, state);
 
@@ -1345,7 +1343,7 @@ describe('UnifiedRightPanel', () => {
     it('hides the panel when the last tab is closed, without touching the others', async () => {
         renderPanel();
         await openViaMenu('unified-panel-open-terminal');
-        const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal' });
+        const terminalId = terminalTabId();
 
         await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${terminalId}`)); });
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
@@ -1427,9 +1425,7 @@ describe('UnifiedRightPanel', () => {
         // off the tab, not the document: the strip's repo picker shows the same
         // label for the dock target.
         await openViaMenu('unified-panel-open-terminal');
-        const terminalId = unifiedTabId({
-            kind: 'terminal', ownerWorkspaceId: member, chatId: null, resourceId: 'terminal',
-        });
+        const terminalId = terminalTabId(member);
         expect(screen.getByTestId(`unified-panel-tab-repo-${terminalId}`).textContent).toBe('api');
         // Notes stays with the panel's own workspace scope.
         await openViaMenu('unified-panel-open-notes');
@@ -1463,7 +1459,7 @@ describe('UnifiedRightPanel', () => {
         await openViaMenu('unified-panel-open-terminal');
         writeUnifiedPanelState(WS, openTab(
             // A chat-owned file, as AC-04's entry points will open it.
-            openTab(EMPTY_UNIFIED_PANEL, { kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'terminal', label: 'Terminal' }),
+            openTab(EMPTY_UNIFIED_PANEL, { kind: 'browser', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal' }),
             { kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/a.ts', label: 'a.ts' },
         ));
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
@@ -1472,25 +1468,25 @@ describe('UnifiedRightPanel', () => {
         // Switching chats drops the chat-owned tab and keeps the workspace one.
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
         const labels = screen.getAllByRole('tab').map(node => node.getAttribute('data-kind'));
-        expect(labels).toEqual(['terminal']);
+        expect(labels).toEqual(['browser']);
     });
 
     it('keeps the draft strip and active body visible when the draft becomes a chat', async () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null, resourceId: 'browser-terminal', label: 'Terminal', browserUrl: 'coc://terminal',
         });
         state = openTab(state, {
             kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts', label: 'a.ts',
         });
         writeUnifiedPanelState(WS, state);
         const { rerender } = renderPanel({ chatId: null });
-        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['terminal', 'file']);
+        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['file', 'browser']);
         expect(await screen.findByTestId('mock-monaco')).toBeTruthy();
 
         inheritDraftPanelTabs(WS, 'chat-1');
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
 
-        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['terminal', 'file']);
+        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['file', 'browser']);
         expect(await screen.findByTestId('mock-monaco')).toBeTruthy();
     });
 

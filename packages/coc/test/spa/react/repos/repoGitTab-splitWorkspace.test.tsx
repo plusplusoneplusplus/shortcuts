@@ -47,7 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: { workspaces: [{ id: 'ws-1', rootPath: '/repo' }], selectedGitCommitHash: null, selectedGitFilePath: null },
+        state: { workspaces: [{ id: 'ws-1', rootPath: '/repo' }] },
         dispatch: vi.fn(),
     }),
 }));

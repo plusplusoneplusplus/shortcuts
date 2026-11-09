@@ -1,4 +1,5 @@
 import { moveRepoTabOrderToIndex } from '../../../repos/repoOrder';
+import { cocPageKindOf } from './unifiedPanelAddresses';
 import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
 
 export type UnifiedTabStripGroup = 'tools' | 'files' | 'web' | 'canvas';
@@ -32,13 +33,8 @@ export function moveGroupInOrder(
 
 export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
     switch (kind) {
-        case 'terminal':
-        case 'notes':
-        case 'settings':
         case 'work-items':
         case 'pull-requests':
-        case 'todo':
-        case 'git':
             return 'tools';
         case 'file':
         case 'diff':
@@ -49,13 +45,19 @@ export function stripGroupForKind(kind: UnifiedTabKind): UnifiedTabStripGroup {
         case 'browser':
         case 'html-page':
             return 'web';
-        case 'canvas':
-            return 'canvas';
         default: {
             const exhaustive: never = kind;
             return exhaustive;
         }
     }
+}
+
+/** Strip block for a tab. Canvas pages keep the Canvas block; Notes and Git stay with Tools. */
+export function stripGroupForTab(tab: Pick<UnifiedPanelTab, 'kind' | 'browserUrl'>): UnifiedTabStripGroup {
+    const page = cocPageKindOf(tab.browserUrl);
+    if (page === 'canvas') return 'canvas';
+    if (page === 'notes' || page === 'git') return 'tools';
+    return stripGroupForKind(tab.kind);
 }
 
 export interface GroupStripTabsOptions {
@@ -88,7 +90,7 @@ export function groupStripTabs(
     const { activeId, previewId, pinnedId, folded, narrow, dirtyIds, errorIds } = options;
     const cap = Number.isFinite(options.cap) ? Math.max(0, Math.floor(options.cap!)) : 3;
     return normalizeGroupOrder(options.order).flatMap(group => {
-        const members = tabs.filter(tab => stripGroupForKind(tab.kind) === group);
+        const members = tabs.filter(tab => stripGroupForTab(tab) === group);
         if (!members.length) return [];
         const hasActive = members.some(tab => tab.id === activeId);
         const selected = new Set<string>();
@@ -124,5 +126,5 @@ export function groupStripTabs(
 export function isGroupBoundaryMove(tabs: readonly UnifiedPanelTab[], fromId: string, toId: string): boolean {
     const from = tabs.find(tab => tab.id === fromId);
     const to = tabs.find(tab => tab.id === toId);
-    return !from || !to || stripGroupForKind(from.kind) !== stripGroupForKind(to.kind);
+    return !from || !to || stripGroupForTab(from) !== stripGroupForTab(to);
 }

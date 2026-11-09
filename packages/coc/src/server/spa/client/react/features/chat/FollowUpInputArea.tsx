@@ -25,6 +25,7 @@ import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
 import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
 import { EffortTierSelector } from './EffortTierSelector';
+import type { CustomModelEffort } from './EffortTierSelector';
 import { ChatStyleSelector } from './ChatStyleSelector';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
@@ -249,6 +250,12 @@ export interface FollowUpInputAreaProps {
     selectedEffortTier?: EffortTierKey;
     /** Called when the user picks a tier. Used when `useEffortTierMode` is true. */
     onEffortTierChange?: (tier: EffortTierKey) => void;
+    /** Exact model + effort used instead of a tier for this conversation. */
+    customModelEffort?: CustomModelEffort | null;
+    /** Enables the selector's "Custom model & effort…" panel. */
+    onCustomModelEffortChange?: (custom: CustomModelEffort | null) => void;
+    /** The composer provider's model catalog for the custom panel. */
+    customModels?: readonly ModelInfo[];
     /**
      * Response style for this conversation. Rendered as a Style chip beside
      * Effort only when both this and `onChatStyleChange` are set — the owner
@@ -348,6 +355,9 @@ export function FollowUpInputArea({
     effortTierMap,
     selectedEffortTier,
     onEffortTierChange,
+    customModelEffort,
+    onCustomModelEffortChange,
+    customModels,
     chatStyle,
     onChatStyleChange,
     ralphMultiAgentGrillEnabled = false,
@@ -1410,6 +1420,9 @@ export function FollowUpInputArea({
                                     tiers={effortTierMap}
                                     selectedTier={selectedEffortTier}
                                     onChange={onEffortTierChange}
+                                    custom={customModelEffort}
+                                    onCustomChange={onCustomModelEffortChange}
+                                    models={customModels}
                                     data-testid="follow-up-effort-tier-selector"
                                     mobileTapTarget={true}
                                     compact={isToolbarNarrow}

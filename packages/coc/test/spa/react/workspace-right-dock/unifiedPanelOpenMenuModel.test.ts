@@ -148,6 +148,21 @@ describe('buildOpenMenuItems', () => {
         expect(firstOpenMenuIndex(items)).toBe(-1);
     });
 
+    it('leads with an Open coc:// row for a panel address', () => {
+        const items = buildOpenMenuItems({ actions, files, canvases, query: ' COC://Settings/ ' });
+        expect(items[0]).toEqual({ key: 'coc:coc://settings', type: 'coc', address: { kind: 'settings' } });
+        expect(firstOpenMenuIndex(items)).toBe(0);
+        expect(items.some(item => item.type === 'url' || item.type === 'url-error')).toBe(false);
+        expect(buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://todo/item-1' })[0])
+            .toMatchObject({ type: 'coc', address: { kind: 'todo', itemId: 'item-1' } });
+    });
+
+    it('reports an unknown coc:// host inline as an unselectable row', () => {
+        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'coc://calendar' });
+        expect(items[0]).toEqual({ key: 'url-error', type: 'url-error', reason: 'Not supported yet' });
+        expect(isOpenMenuItemEnabled(items[0])).toBe(false);
+    });
+
     it('leaves plain text to file search, never a web search', () => {
         const items = buildOpenMenuItems({ actions, files, canvases, query: 'app' });
         expect(items.some(item => item.type === 'url' || item.type === 'url-error')).toBe(false);
@@ -233,8 +248,9 @@ describe('selection descriptors', () => {
 
     it('labels an untitled canvas rather than opening a blank tab', () => {
         expect(canvasOpenInput({ id: 'c1', title: '  ' }, context)).toMatchObject({
-            kind: 'canvas',
-            resourceId: 'c1',
+            kind: 'browser',
+            browserUrl: 'coc://canvas/c1',
+            browserChatId: 'chat-1',
             label: 'Untitled canvas',
             chatId: 'chat-1',
         });

@@ -110,6 +110,7 @@ import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
+import type { CustomModelEffort } from './EffortTierSelector';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel, type RalphLaunchedSession } from './RalphStartPanel';
@@ -350,6 +351,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
+    // Exact model + effort picked instead of a tier, kept per conversation in
+    // `metadata.afterCustomModelEffort`; a tier pick or provider switch clears it.
+    const [followUpCustomModelEffort, setFollowUpCustomModelEffort] = useState<CustomModelEffort | null>(null);
     const [pendingProvider, setPendingProvider] = useState<ConcreteChatProvider | null>(null);
     // Style belongs to THIS conversation, not to the workspace. `null` means the
     // user has not touched the selector here, so the value follows whatever the
@@ -570,6 +574,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         };
         const restored = providerComposerSettingsRef.current[provider];
         setPendingProvider(provider === conversationProvider ? null : provider);
+        setFollowUpCustomModelEffort(null);
         modelCommand.setModelOverride(restored?.model ?? null);
         setEffortOverride(restored?.effort ?? null);
         if (restored?.tier) setSelectedFollowUpEffortTier(restored.tier);
@@ -1201,6 +1206,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         goalPatchedRef.current = false;
         effortInitializedRef.current = false;
         afterTierInitializedRef.current = false;
+        setFollowUpCustomModelEffort(null);
         setChatStyleOverride(null);
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
@@ -1264,7 +1270,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         ? getCocClientForWorkspace(run.targetWorkspaceId)
                         : client;
                     try {
-                        const data = await runClient.processes.get(run.processId);
+                        const data = await runClient.processes.get(run.processId, { exclude: 'conversation' });
                         return parseImplementationPrAnnotation(data?.process?.metadata?.implementationPr);
                     } catch (error) {
                         console.warn(`Failed to read implementation PR state for ${run.processId}:`, error);
@@ -1279,7 +1285,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 }));
                 if (Object.keys(byProcessId).length === 0) return;
 
-                const source = await client.processes.get(processId);
+                const source = await client.processes.get(processId, { exclude: 'conversation' });
                 const current = Array.isArray(source?.process?.metadata?.implementations)
                     ? source.process.metadata.implementations as ImplementationRecord[]
                     : rawImplementations;
@@ -1346,7 +1352,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     ? getCocClientForWorkspace(run.targetWorkspaceId)
                     : client;
                 try {
-                    const data = await runClient.processes.get(run.processId);
+                    const data = await runClient.processes.get(run.processId, { exclude: 'conversation' });
                     return { processId: run.processId, status: data?.process?.status as RunLiveStatus ?? 'unknown' };
                 } catch {
                     return { processId: run.processId, status: 'unknown' as RunLiveStatus };
@@ -1513,6 +1519,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // record loads, so a later PATCH (AC-03) or an in-flight pick is not reverted.
     useEffect(() => {
         if (afterTierInitializedRef.current) return;
+        const seededCustom = (processDetails as any)?.metadata?.afterCustomModelEffort;
+        if (seededCustom && typeof seededCustom.model === 'string' && seededCustom.model) {
+            setFollowUpCustomModelEffort({
+                model: seededCustom.model,
+                reasoningEffort: typeof seededCustom.reasoningEffort === 'string' ? seededCustom.reasoningEffort : null,
+            });
+        }
         const seeded = (processDetails as any)?.metadata?.afterEffortTier;
         if (seeded === 'very-low' || seeded === 'low' || seeded === 'medium' || seeded === 'high') {
             afterTierInitializedRef.current = true;
@@ -1548,9 +1561,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // init can't overwrite it if the process record loads afterwards.
     function handleFollowUpEffortTierChange(tier: EffortTierKey) {
         afterTierInitializedRef.current = true;
+        const hadCustom = followUpCustomModelEffort !== null;
+        setFollowUpCustomModelEffort(null);
         setSelectedFollowUpEffortTier(tier);
         if (!processId) return;
-        client.processes.patchMetadata(processId, { set: { afterEffortTier: tier } })
+        client.processes.patchMetadata(processId, { set: { afterEffortTier: tier }, ...(hadCustom ? { unset: ['afterCustomModelEffort'] } : {}) })
             .then((data: any) => {
                 if (data?.process) {
                     setProcessDetails((prev: any) => (prev ? { ...prev, metadata: data.process.metadata } : prev));
@@ -1558,6 +1573,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             })
             .catch((err: unknown) => {
                 console.warn('[coc-after-effort-tier] failed to persist tier', err);
+            });
+    }
+
+    function handleFollowUpCustomModelEffortChange(custom: CustomModelEffort | null) {
+        afterTierInitializedRef.current = true;
+        setFollowUpCustomModelEffort(custom);
+        if (!processId) return;
+        client.processes.patchMetadata(processId, custom ? { set: { afterCustomModelEffort: { ...custom } } } : { unset: ['afterCustomModelEffort'] })
+            .then((data: any) => {
+                if (data?.process) {
+                    setProcessDetails((prev: any) => (prev ? { ...prev, metadata: data.process.metadata } : prev));
+                }
+            })
+            .catch((err: unknown) => {
+                console.warn('[coc-after-custom-model-effort] failed to persist custom model', err);
             });
     }
 
@@ -1767,9 +1797,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [task?.status, processId, refreshConversation]);
 
     // Resolve effective model + effort for follow-up sends: tier mode takes priority over legacy controls.
-    const followUpTierPayload = useFollowUpEffortTierMode
-        ? resolveEffortTier(selectedFollowUpEffortTier, followUpEffortTierMap)
-        : null;
+    const activeFollowUpCustom = useFollowUpEffortTierMode ? followUpCustomModelEffort : null;
+    const followUpTierPayload = activeFollowUpCustom
+        ? { model: activeFollowUpCustom.model, reasoningEffort: activeFollowUpCustom.reasoningEffort }
+        : useFollowUpEffortTierMode
+            ? resolveEffortTier(selectedFollowUpEffortTier, followUpEffortTierMap)
+            : null;
     const effectiveFollowUpModelOverride = followUpTierPayload?.model ?? modelCommand.modelOverride ?? null;
     const effectiveFollowUpEffort = (followUpTierPayload !== null
         ? followUpTierPayload.reasoningEffort as EffortLevel | null
@@ -3449,6 +3482,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             effortTierMap={followUpEffortTierMap}
                             selectedEffortTier={selectedFollowUpEffortTier}
                             onEffortTierChange={handleFollowUpEffortTierChange}
+                            customModelEffort={activeFollowUpCustom}
+                            onCustomModelEffortChange={handleFollowUpCustomModelEffortChange}
+                            customModels={pickableModels}
                             chatStyle={chatStyleSelectorEnabled ? followUpChatStyle : undefined}
                             onChatStyleChange={chatStyleSelectorEnabled ? handleFollowUpChatStyleChange : undefined}
                             ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
@@ -3609,6 +3645,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     effortTierMap={followUpEffortTierMap}
                     selectedEffortTier={selectedFollowUpEffortTier}
                     onEffortTierChange={handleFollowUpEffortTierChange}
+                    customModelEffort={activeFollowUpCustom}
+                    onCustomModelEffortChange={handleFollowUpCustomModelEffortChange}
+                    customModels={pickableModels}
                     chatStyle={chatStyleSelectorEnabled ? followUpChatStyle : undefined}
                     onChatStyleChange={chatStyleSelectorEnabled ? handleFollowUpChatStyleChange : undefined}
                     ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}

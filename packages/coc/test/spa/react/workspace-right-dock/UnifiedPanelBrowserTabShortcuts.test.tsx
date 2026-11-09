@@ -193,20 +193,23 @@ describe('browser tab shortcuts', () => {
         const c = openBrowser('c.test');
         act(() => { applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true }); });
         expect(native.setTabShortcuts).toHaveBeenLastCalledWith(true);
-        // Only web tabs are numbered; the notes tab between them is skipped.
-        expect(screen.getByTestId(`unified-panel-tab-${a.id}`).getAttribute('aria-keyshortcuts')).toBe('Control+1');
-        expect(screen.getByTestId(`unified-panel-tab-${c.id}`).getAttribute('aria-keyshortcuts')).toBe('Control+3');
-        expect(document.querySelector('[data-kind="notes"]')!.hasAttribute('aria-keyshortcuts')).toBe(false);
+        // Notes is a web tab in Tools, so it is numbered ahead of the Web group.
+        const notesId = `browser|@workspace|${WS}|coc-notes`;
+        expect(screen.getByTestId(`unified-panel-tab-${notesId}`).getAttribute('aria-keyshortcuts')).toBe('Control+1');
+        expect(screen.getByTestId(`unified-panel-tab-${a.id}`).getAttribute('aria-keyshortcuts')).toBe('Control+2');
+        expect(screen.getByTestId(`unified-panel-tab-${c.id}`).getAttribute('aria-keyshortcuts')).toBe('Control+4');
 
         focusChrome();
         expect(digit(1).defaultPrevented).toBe(true);
-        expect(activeId()).toBe(a.id);
-        expect(document.activeElement).toBe(screen.getByTestId(`unified-panel-tab-${a.id}`));
+        expect(activeId()).toBe(notesId);
+        expect(document.activeElement).toBe(screen.getByTestId(`unified-panel-tab-${notesId}`));
         expect(digit(2).defaultPrevented).toBe(true);
+        expect(activeId()).toBe(a.id);
+        expect(digit(3).defaultPrevented).toBe(true);
         expect(activeId()).toBe(b.id);
         expect(digit(9).defaultPrevented).toBe(true);
         expect(activeId()).toBe(c.id);
-        // No fourth tab: nothing moves. Repeats, Shift, Alt and Numpad never switch.
+        // Digit 4 is the last page, already selected. Repeats, Shift, Alt and Numpad never switch.
         digit(4);
         expect(activeId()).toBe(c.id);
         digit(1, { repeat: true });

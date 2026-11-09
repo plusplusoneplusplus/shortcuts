@@ -62,7 +62,7 @@ describe('UnifiedPanelTabOverflowMenu', () => {
                 resourceId: 'page', label: 'Same page', repoLabel: `Repo ${owner}`,
             });
         }
-        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: 'one', resourceId: 'terminal', label: 'Shell', repoLabel: 'Repo one' });
+        state = openTab(state, { kind: 'work-items', ownerWorkspaceId: 'one', resourceId: 'work-items', label: 'Shell', repoLabel: 'Repo one' });
         const tabs = visibleTabs(state, 'chat');
         const browsers = tabs.filter(tab => tab.kind === 'browser');
         const { props } = renderMenu({ tabs, activeId: null, dirtyIds: new Set(), errorIds: new Set(), hideBrowserRepoLabels: true });

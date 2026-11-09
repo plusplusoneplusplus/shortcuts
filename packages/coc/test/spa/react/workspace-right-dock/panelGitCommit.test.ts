@@ -8,12 +8,22 @@ import {
     gitTabOwnerClient,
     openPanelGitCommit,
     openPanelGitBranchChanges,
+    openPanelGitMember,
     openPanelGitWorkingChanges,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/panelGitCommit';
 import { getCocClientFor, getSpaCocClient } from '../../../../src/server/spa/client/react/api/cocClient';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import {
+    clearUnifiedPanelState,
+    readUnifiedPanelState,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 
 const SHA = '713723222abcdef0123456789abcdef012345678';
+
+beforeEach(() => {
+    localStorage.clear();
+    clearUnifiedPanelState();
+});
 
 describe('chatCommitPanelTarget', () => {
     it('targets a local repo panel with its own chat', () => {
@@ -48,106 +58,80 @@ describe('chatCommitPanelTarget', () => {
 });
 
 describe('openPanelGitCommit', () => {
-    let originalHash: string;
-    beforeEach(() => {
-        originalHash = location.hash;
-        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
-    });
-    afterEach(() => {
-        window.history.replaceState(null, '', originalHash || '#');
-    });
-
-    it('publishes the exact commit in place without a hash navigation', () => {
+    it('opens the exact commit on the panel\'s coc://git page, not a hash navigation', () => {
         const dispatch = vi.fn();
-        const onHashChange = vi.fn();
-        window.addEventListener('hashchange', onHashChange);
+        const originalHash = location.hash;
+        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
         try {
             openPanelGitCommit(dispatch, { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'remote:srv:ws-a' }, SHA);
+            expect(location.hash).toBe('#repos/ws-a/chats/c1');
+            expect(dispatch).not.toHaveBeenCalled();
+            const state = readUnifiedPanelState('ws-a');
+            expect(state.workspaceTabs).toEqual([expect.objectContaining({
+                kind: 'browser', browserUrl: `coc://git/${SHA}`, resourceId: 'coc-git', label: 'Git',
+            })]);
         } finally {
-            window.removeEventListener('hashchange', onHashChange);
+            window.history.replaceState(null, '', originalHash || '#');
         }
-        expect(location.hash).toBe(`#repos/${encodeURIComponent('remote:srv:ws-a')}/git/${SHA}`);
-        expect(onHashChange).not.toHaveBeenCalled();
-        // Only the route: no sub-tab switch or chat deselection.
-        expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
-            { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'remote:srv:ws-a', suffix: `/git/${SHA}` },
-            { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', commitHash: SHA, filePath: null },
-        ]);
     });
 
-    it('names the group member in a group route', () => {
+    it('names the group member in the group\'s Git page address', () => {
         const dispatch = vi.fn();
         openPanelGitCommit(dispatch, { routeWorkspaceId: 'group-g1', workspaceId: 'member-1', sourceSelectionId: 'member-1' }, SHA);
-        expect(location.hash).toBe(`#repos/group-g1/git/member/member-1/${SHA}`);
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-g1', workspaceId: 'member-1', commitHash: SHA, filePath: null,
-        });
+        const state = readUnifiedPanelState('group-g1');
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({
+            browserUrl: `coc://git/member/member-1/${SHA}`,
+        })]);
+    });
+});
+
+describe('openPanelGitMember', () => {
+    it('opens the member\'s plain history, with no view in the address', () => {
+        const dispatch = vi.fn();
+        openPanelGitMember(dispatch, { routeWorkspaceId: 'group-g1', workspaceId: 'member-1', sourceSelectionId: 'member-1' });
+        const state = readUnifiedPanelState('group-g1');
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({ browserUrl: 'coc://git/member/member-1' })]);
+    });
+
+    it('replaces an existing member\'s view when switching members', () => {
+        const dispatch = vi.fn();
+        openPanelGitCommit(dispatch, { routeWorkspaceId: 'group-g1', workspaceId: 'member-1', sourceSelectionId: 'member-1' }, SHA);
+        openPanelGitMember(dispatch, { routeWorkspaceId: 'group-g1', workspaceId: 'member-2', sourceSelectionId: 'member-2' });
+        const state = readUnifiedPanelState('group-g1');
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({ browserUrl: 'coc://git/member/member-2' })]);
     });
 });
 
 describe('openPanelGitWorkingChanges', () => {
-    let originalHash: string;
-    beforeEach(() => {
-        originalHash = location.hash;
-        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
-    });
-    afterEach(() => {
-        window.history.replaceState(null, '', originalHash || '#');
-    });
-
     it.each([
         { owner: 'local repo', target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'ws-a' },
-            hash: '#repos/ws-a/git/working-changes', repoId: 'ws-a', suffix: '/git/working-changes' },
+            workspaceId: 'ws-a', routingRef: null, url: 'coc://git/working-changes' },
         { owner: 'remote repo', target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'remote:srv:ws-a' },
-            hash: `#repos/${encodeURIComponent('remote:srv:ws-a')}/git/working-changes`, repoId: 'remote:srv:ws-a', suffix: '/git/working-changes' },
+            workspaceId: 'ws-a', routingRef: 'remote:srv:ws-a', url: 'coc://git/working-changes' },
         { owner: 'remote group member', target: { routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1', sourceSelectionId: 'remote:srv:member-1' },
-            hash: `#repos/${encodeURIComponent('remote:srv:group-g1')}/git/member/member-1/working-changes`, repoId: 'remote:srv:group-g1', suffix: '/git/member/member-1/working-changes' },
-    ])('publishes the $owner working changes in place with a fresh open request', ({ target, hash, repoId, suffix }) => {
+            workspaceId: 'group-g1', routingRef: 'remote:srv:group-g1', url: 'coc://git/member/member-1/working-changes' },
+    ])('opens the $owner working changes on the panel\'s Git page, reusing the same tab on reopen', ({ target, workspaceId, routingRef, url }) => {
         const dispatch = vi.fn();
-        const onHashChange = vi.fn();
-        window.addEventListener('hashchange', onHashChange);
-        try {
-            openPanelGitWorkingChanges(dispatch, target);
-            openPanelGitWorkingChanges(dispatch, target);
-        } finally {
-            window.removeEventListener('hashchange', onHashChange);
-        }
-        expect(location.hash).toBe(hash);
-        expect(onHashChange).not.toHaveBeenCalled();
-        const actions = dispatch.mock.calls.map(([action]) => action);
-        expect(actions[0]).toEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix });
-        expect(actions[1]).toEqual({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: target.routeWorkspaceId, workspaceId: target.workspaceId,
-            commitHash: 'working-changes', filePath: null, openRequest: {},
-        });
-        // Each open is its own request, so an unchanged route still reapplies.
-        expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
+        openPanelGitWorkingChanges(dispatch, target);
+        openPanelGitWorkingChanges(dispatch, target);
+        const state = readUnifiedPanelState(workspaceId);
+        expect(state.workspaceTabs).toHaveLength(1);
+        expect(state.workspaceTabs[0].browserUrl).toBe(url);
+        // A remote owner's clone key is the tab's routing ref, never its panel scope.
+        expect(state.workspaceTabs[0].ownerRoutingRef ?? null).toBe(routingRef);
+        expect(dispatch).not.toHaveBeenCalled();
     });
 });
 
 describe('openPanelGitBranchChanges', () => {
-    let originalHash: string;
-    beforeEach(() => {
-        originalHash = location.hash;
-        window.history.replaceState(null, '', '#repos/ws-a/chats/c1');
-    });
-    afterEach(() => {
-        window.history.replaceState(null, '', originalHash || '#');
-    });
-
-    it('publishes the branch range in place with a fresh open request each time', () => {
+    it('opens the branch range on the panel\'s Git page and keeps reusing that one tab', () => {
         const dispatch = vi.fn();
         const target = { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'ws-a' };
         openPanelGitBranchChanges(dispatch, target);
         openPanelGitBranchChanges(dispatch, target);
-        expect(location.hash).toBe('#repos/ws-a/git/branch-range');
-        const actions = dispatch.mock.calls.map(([action]) => action);
-        expect(actions[0]).toEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'ws-a', suffix: '/git/branch-range' });
-        expect(actions[1]).toEqual({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-a', workspaceId: 'ws-a',
-            commitHash: 'branch-range', filePath: null, openRequest: {},
-        });
-        expect(actions[3].openRequest).not.toBe(actions[1].openRequest);
+        const state = readUnifiedPanelState('ws-a');
+        expect(state.workspaceTabs).toEqual([expect.objectContaining({ browserUrl: 'coc://git/branch-range' })]);
+        expect(dispatch).not.toHaveBeenCalled();
     });
 });
 
@@ -155,7 +139,7 @@ describe('Git tab Open owners', () => {
     const members = [{ workspaceId: 'member-1', label: 'One' }, { workspaceId: 'member-2', label: 'Two' }];
 
     it('targets a repo tab at its own repo and server', () => {
-        expect(gitTabOpenOwners({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a' }, members)).toEqual({
+        expect(gitTabOpenOwners({ ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a', browserUrl: 'coc://git' }, members)).toEqual({
             owner: {
                 workspaceId: 'ws-a', label: 'ws-a',
                 target: { routeWorkspaceId: 'ws-a', workspaceId: 'ws-a', sourceSelectionId: 'remote:srv:ws-a' },
@@ -164,9 +148,10 @@ describe('Git tab Open owners', () => {
         });
     });
 
-    it('targets a group tab at its named member through the group server', () => {
+    it('targets a group tab at the member its own address names, through the group server', () => {
         expect(gitTabOpenOwners(
-            { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', gitMemberId: 'member-2' }, members,
+            { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', browserUrl: 'coc://git/member/member-2' },
+            members,
         ).owner).toEqual({
             workspaceId: 'member-2', label: 'Two',
             target: { routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-2', sourceSelectionId: 'remote:srv:member-2' },
@@ -174,7 +159,7 @@ describe('Git tab Open owners', () => {
     });
 
     it('never guesses a member for a group tab without one, even with a single member', () => {
-        const owners = gitTabOpenOwners({ ownerWorkspaceId: 'group-g1', ownerRoutingRef: null }, members.slice(0, 1));
+        const owners = gitTabOpenOwners({ ownerWorkspaceId: 'group-g1', ownerRoutingRef: null, browserUrl: 'coc://git' }, members.slice(0, 1));
         expect(owners.owner).toBeNull();
         expect(owners.choices).toEqual([{
             workspaceId: 'member-1', label: 'One',
@@ -213,16 +198,7 @@ describe('gitTabOwnerClient', () => {
 });
 
 describe('gitTabOpenSource', () => {
-    let originalHash: string;
-    beforeEach(() => {
-        originalHash = location.hash;
-        window.history.replaceState(null, '', '#repos/group-g1/chats/c1');
-    });
-    afterEach(() => {
-        window.history.replaceState(null, '', originalHash || '#');
-    });
-
-    const tab = { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', gitMemberId: 'member-1' };
+    const tab = { ownerWorkspaceId: 'group-g1', ownerRoutingRef: 'remote:srv:group-g1', browserUrl: 'coc://git/member/member-1' };
 
     it('reads the owner member recent commits from the given client', async () => {
         const commits = Array.from({ length: 7 }, (_, index) => ({ hash: `h${index}` }));
@@ -240,20 +216,21 @@ describe('gitTabOpenSource', () => {
         await expect(source.loadRecent(source.owner!)).rejects.toThrow(/not connected/);
     });
 
-    it('opens the working tree or a commit on the member route without switching surfaces', () => {
+    it('opens the working tree or a commit on the member\'s Git page without a dispatch', () => {
         const dispatch = vi.fn();
         const source = gitTabOpenSource(tab, [], dispatch, null);
         source.open(source.owner!, null);
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1',
-            commitHash: 'working-changes', filePath: null, openRequest: {},
-        });
+        expect(readUnifiedPanelState('group-g1').workspaceTabs).toEqual([expect.objectContaining({
+            ownerWorkspaceId: 'group-g1',
+            ownerRoutingRef: 'remote:srv:group-g1',
+            browserUrl: 'coc://git/member/member-1/working-changes',
+        })]);
+        expect(readUnifiedPanelState('remote:srv:group-g1').workspaceTabs).toEqual([]);
         const commit = { hash: SHA, shortHash: SHA.slice(0, 7), subject: 's', author: 'a', date: '', parentHashes: [] };
         source.open(source.owner!, commit);
-        expect(dispatch).toHaveBeenLastCalledWith({
-            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:srv:group-g1', workspaceId: 'member-1',
-            commitHash: SHA, filePath: null, knownCommit: { sourceSelectionId: 'remote:srv:member-1', commit },
-        });
-        expect(dispatch.mock.calls.map(([action]) => action.type)).not.toContain('SET_REPO_SUB_TAB');
+        expect(readUnifiedPanelState('group-g1').workspaceTabs).toEqual([expect.objectContaining({
+            browserUrl: `coc://git/member/member-1/${SHA}`,
+        })]);
+        expect(dispatch).not.toHaveBeenCalled();
     });
 });

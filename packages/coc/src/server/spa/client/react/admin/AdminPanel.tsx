@@ -673,7 +673,14 @@ export function AdminPanel() {
                                                 </>
                                             )}
 
-                                            {settingsSubTab === 'sentinel' && renderTabFeatures('sentinel')}
+                                            {settingsSubTab === 'sentinel' && (
+                                                <>
+                                                    <p className="ar-page-desc">
+                                                        Sentinel is your work coordinator. It tracks tasks, delegates work to the right workspace, and reports results safely.
+                                                    </p>
+                                                    {renderTabFeatures('sentinel')}
+                                                </>
+                                            )}
 
                                             {/* ── Appearance & Navigation ── every UI preference and
                                                 UI-only feature toggle, grouped; the two cards keep their

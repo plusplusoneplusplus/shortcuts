@@ -11,7 +11,6 @@ import {
     tabFromHash,
     parseProcessDeepLink,
     parseWorkflowsDeepLink,
-    parseGitCommitDeepLink,
     parseSettingsSection,
     VALID_REPO_SUB_TABS,
     VALID_SETTINGS_SECTIONS,
@@ -126,18 +125,6 @@ describe('parseWorkflowsDeepLink', () => {
 
     it('returns null when not a workflow deep link', () => {
         expect(parseWorkflowsDeepLink('#repos/r1/info')).toBe(null);
-    });
-});
-
-// ── parseGitCommitDeepLink ────────────────────────────────────────────────────
-
-describe('parseGitCommitDeepLink', () => {
-    it('returns commit hash for #repos/r1/git/abc123', () => {
-        expect(parseGitCommitDeepLink('#repos/r1/git/abc123')).toBe('abc123');
-    });
-
-    it('returns null for non-git deep link', () => {
-        expect(parseGitCommitDeepLink('#repos/r1/info')).toBe(null);
     });
 });
 

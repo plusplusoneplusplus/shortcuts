@@ -1,8 +1,11 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 interface SettingsHost {
     ownerKey: string;
+    /** Bumped by an explicit page reload. Close and reopen do not change it. */
+    refreshNonce: number;
+    refresh: () => void;
     attach: (node: HTMLDivElement) => void;
     detach: (node: HTMLDivElement) => void;
 }
@@ -24,7 +27,10 @@ export function WorkspaceSettingsProvider(props: {
 }
 
 function SettingsOwner({ ownerKey, renderPage, children }: Parameters<typeof WorkspaceSettingsProvider>[0]) {
-    const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
+    // Every mounted slot, newest last: a web tab's `coc://settings` page and
+    // the Settings tab can both be mounted, and the form follows the newest.
+    const [slots, setSlots] = useState<readonly HTMLDivElement[]>([]);
+    const panelHost = slots[slots.length - 1] ?? null;
     const [parkingHost, setParkingHost] = useState<HTMLDivElement | null>(null);
     const [container] = useState(() => {
         const node = document.createElement('div');
@@ -32,32 +38,49 @@ function SettingsOwner({ ownerKey, renderPage, children }: Parameters<typeof Wor
         return node;
     });
     const [visited, setVisited] = useState(false);
+    const [refreshNonce, setRefreshNonce] = useState(0);
+    const refresh = useCallback(() => setRefreshNonce(value => value + 1), []);
     const destination = panelHost ?? parkingHost;
     useLayoutEffect(() => {
         if (panelHost) setVisited(true);
         // Keep the portal target stable: changing a portal's target remounts the
         // form and destroys pending edits, validation errors and save state.
+        // An explicit reload remounts the children instead, through refreshNonce.
         destination?.appendChild(container);
         return () => { container.remove(); };
     }, [container, destination, panelHost]);
-    const attach = useCallback((node: HTMLDivElement) => setPanelHost(node), []);
-    // A slot that unmounts after its replacement attached must not clear it.
-    const detach = useCallback((node: HTMLDivElement) => setPanelHost(current => (current === node ? null : current)), []);
-    const context = useMemo(() => ({ ownerKey, attach, detach }), [ownerKey, attach, detach]);
+    const attach = useCallback((node: HTMLDivElement) => setSlots(current => [...current.filter(slot => slot !== node), node]), []);
+    // A slot that unmounts hands the form back to the previous one, if any.
+    const detach = useCallback((node: HTMLDivElement) => setSlots(current => current.filter(slot => slot !== node)), []);
+    const context = useMemo(
+        () => ({ ownerKey, refreshNonce, refresh, attach, detach }),
+        [ownerKey, refreshNonce, refresh, attach, detach],
+    );
     return (
         <SettingsHostContext.Provider value={context}>
             {children}
             <div hidden ref={setParkingHost} />
-            {visited && createPortal(renderPage(), container)}
+            {visited && createPortal(<Fragment key={refreshNonce}>{renderPage()}</Fragment>, container)}
         </SettingsHostContext.Provider>
     );
 }
 
 /** The right-panel Settings tab body for the owner named by the tab descriptor. */
-export function WorkspaceSettingsSlot({ ownerKey }: { ownerKey: string }) {
+export function WorkspaceSettingsSlot({ ownerKey, reloadNonce = 0 }: { ownerKey: string; reloadNonce?: number }) {
     const host = useContext(SettingsHostContext);
     const matches = host !== null && ownerKey === host.ownerKey;
     const [node, setNode] = useState<HTMLDivElement | null>(null);
+    const appliedReload = useRef<number | null>(null);
+    useEffect(() => {
+        if (!host || !matches) return;
+        // The first value is the page that just opened. A later one is Reload.
+        if (appliedReload.current === null || appliedReload.current === reloadNonce) {
+            appliedReload.current = reloadNonce;
+            return;
+        }
+        appliedReload.current = reloadNonce;
+        host.refresh();
+    }, [host, matches, reloadNonce]);
     useLayoutEffect(() => {
         if (!host || !matches || !node) return;
         host.attach(node);
@@ -70,4 +93,9 @@ export function WorkspaceSettingsSlot({ ownerKey }: { ownerKey: string }) {
 /** The workspace whose Settings page this panel can show, if any. */
 export function useWorkspaceSettingsOwner(): string | undefined {
     return useContext(SettingsHostContext)?.ownerKey;
+}
+
+/** How many times this Settings page has been explicitly reloaded. */
+export function useSettingsRefreshNonce(): number {
+    return useContext(SettingsHostContext)?.refreshNonce ?? 0;
 }

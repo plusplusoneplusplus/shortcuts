@@ -71,6 +71,7 @@ const { mockState } = vi.hoisted(() => ({
         // Default off / empty so existing tests keep the legacy model+effort UI.
         effortLevelsEnabled: false,
         effortTiers: {} as Record<string, { model: string; reasoningEffort: string }>,
+        models: [] as Array<Record<string, unknown>>,
         // Per-test toggle for the follow-up Style chip. Off by default so existing
         // tests keep the pre-experiment toolbar.
         chatStyleSelectorEnabled: false,
@@ -218,7 +219,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: (...args: unknown[]) => {
         mockState.modelLookups(...args);
-        return { models: [], loading: false, error: null, reload: vi.fn() };
+        return { models: mockState.models, loading: false, error: null, reload: vi.fn() };
     },
 }));
 
@@ -576,6 +577,7 @@ beforeEach(() => {
     mockState.richTextSetValueCalls = [];
     mockState.effortLevelsEnabled = false;
     mockState.effortTiers = {};
+    mockState.models = [];
     localStorage.clear();
     // JSDOM polyfills
     Element.prototype.scrollIntoView = vi.fn();
@@ -4291,6 +4293,54 @@ describe('ChatDetail — per-conversation after effort tier', () => {
         // The workspace-global key is NOT written from ChatDetail anymore — the
         // change must not leak into other chats in the workspace.
         expect(localStorage.getItem('coc:effort-tier:ws-1')).toBeNull();
+    });
+
+    function findPatchBodies(): any[] {
+        return fetchMock.mock.calls
+            .filter(([url, init]: any) => typeof url === 'string' && url.includes('/processes/proc-1') && init?.method === 'PATCH')
+            .map(([, init]: any) => JSON.parse(init.body));
+    }
+
+    it('restores a custom model from metadata.afterCustomModelEffort and shows it in the chip', async () => {
+        enableTierMode();
+        mockState.models = [{ id: 'model-x', name: 'Model X', tokenLimit: 1, enabled: true, supportedReasoningEfforts: ['low', 'high'] }];
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterCustomModelEffort: { model: 'model-x', reasoningEffort: 'high' } } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('effort-tier-label').textContent).toBe('✎ Model X · High'));
+    });
+
+    it('persists a custom pick per conversation and clears it when a tier is picked', async () => {
+        enableTierMode();
+        mockState.models = [{ id: 'model-x', name: 'Model X', tokenLimit: 1, enabled: true, supportedReasoningEfforts: ['low', 'high'] }];
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterEffortTier: 'high' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(selectorTier()).toBe('high'));
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom-effort-low'));
+        fireEvent.click(screen.getByTestId('effort-tier-custom-apply'));
+
+        expect(screen.getByTestId('effort-tier-label').textContent).toBe('✎ Model X · Low');
+        await waitFor(() => expect(findPatchBodies().some(b =>
+            b.metadataPatch?.set?.afterCustomModelEffort?.model === 'model-x'
+            && b.metadataPatch.set.afterCustomModelEffort.reasoningEffort === 'low')).toBe(true));
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-medium'));
+
+        await waitFor(() => expect(selectorTier()).toBe('medium'));
+        expect(screen.getByTestId('effort-tier-trigger-btn').getAttribute('data-custom')).toBeNull();
+        await waitFor(() => expect(findPatchBodies().some(b =>
+            b.metadataPatch?.set?.afterEffortTier === 'medium'
+            && b.metadataPatch.unset?.includes('afterCustomModelEffort'))).toBe(true));
     });
 });
 

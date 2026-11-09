@@ -184,7 +184,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: () => <button data-testid="mock-notes">notes</button>,
 }));
-vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>(),
     getCocClientForWorkspace: () => ({
         canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) },
     }),

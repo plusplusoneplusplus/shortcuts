@@ -105,6 +105,15 @@ export interface UnifiedTodoTabProps {
     scopeWorkspaceId?: string;
     chatId?: string | null;
     onErrorChange?: (hasError: boolean) => void;
+    /**
+     * Select this item and open its detail (a `coc://todo/<itemId>` address).
+     * A new nonce repeats a request for the same item. Never persisted.
+     */
+    selectItemRequest?: { id: string; nonce: number } | null;
+    /** The item whose detail is open, or null. */
+    onSelectionChange?: (itemId: string | null) => void;
+    /** Toolbar reload. A later value refreshes the ledger in place. */
+    reloadNonce?: number;
 }
 
 const TODO_REOPEN_DRAG_MIME = 'application/x-coc-sentinel-todo-reopen';
@@ -377,7 +386,7 @@ export function UnifiedTodoTab(props: UnifiedTodoTabProps) {
     </>;
 }
 
-function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client, unavailable, onMessage }: UnifiedTodoTabProps & {
+function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, selectItemRequest = null, onSelectionChange, reloadNonce = 0, client, unavailable, onMessage }: UnifiedTodoTabProps & {
     client: CocClient; unavailable: boolean; onMessage?: OpenTodoMessage;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -510,6 +519,14 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         void load();
         void categories.reload();
     };
+    const refreshRef = useRef(refresh);
+    refreshRef.current = refresh;
+    const appliedReload = useRef(reloadNonce);
+    useEffect(() => {
+        if (appliedReload.current === reloadNonce) return;
+        appliedReload.current = reloadNonce;
+        refreshRef.current();
+    }, [reloadNonce]);
 
     useEffect(() => {
         mounted.current = true;
@@ -659,6 +676,27 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-overture-highlight'), 2500);
         }, 0);
     };
+    // An address request waits for the ledger; an unknown id leaves the selection alone.
+    const [missingItemId, setMissingItemId] = useState<string | null>(null);
+    const handledRequest = useRef<number | null>(null);
+    useEffect(() => {
+        if (!selectItemRequest || !ledger || handledRequest.current === selectItemRequest.nonce) return;
+        handledRequest.current = selectItemRequest.nonce;
+        if (!ledger.items.some(item => item.id === selectItemRequest.id)) {
+            setMissingItemId(selectItemRequest.id);
+            return;
+        }
+        setMissingItemId(null);
+        setHistoryJobId(null);
+        followTriggerItem(selectItemRequest.id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectItemRequest, ledger]);
+    const shownItemId = detailOpen ? selectedId : null;
+    useEffect(() => {
+        if (shownItemId) setMissingItemId(null);
+        onSelectionChange?.(shownItemId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shownItemId]);
     const scrollTop = useRef(restored.scrollTop ?? 0);
     const expandedRef = useRef(expanded);
     expandedRef.current = expanded;
@@ -1061,6 +1099,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </Notice>
             )}
             {reopenError && <Notice tone="error" testId="sentinel-todo-reopen-error">{reopenError}</Notice>}
+            {missingItemId && <Notice tone="info" testId="sentinel-todo-item-not-found">To-do item "{missingItemId}" not found.</Notice>}
             {reopeningId && <Notice tone="info" testId="sentinel-todo-reopening">Reopening as To do…</Notice>}
             <div className="flex min-h-[160px] flex-1 gap-2">
             <div ref={scrollRef}

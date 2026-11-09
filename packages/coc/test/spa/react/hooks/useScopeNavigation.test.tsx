@@ -22,7 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
-    buildWorkspaceSubTabSuffix: (_id: string, tab: string, state: any) =>
+    buildRepoSubTabSuffix: (tab: string, state: any) =>
         tab === 'notes' && state?.selectedNotePath ? '/notes/' + state.selectedNotePath : '/' + tab,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkTodayViewEnabled', () => ({

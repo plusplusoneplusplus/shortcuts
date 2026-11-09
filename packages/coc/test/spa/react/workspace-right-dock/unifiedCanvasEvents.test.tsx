@@ -80,7 +80,8 @@ describe('canvasEventTabInput', () => {
             const tabId = routeUnifiedCanvasUpdate(args({ event: { ...event(), canvasType: 'copilot-extension' } }));
             expect(tabId).toBeTruthy();
             expect(visibleTabs(readUnifiedPanelState(WS), CHAT).find(tab => tab.id === tabId)).toMatchObject({
-                kind: 'canvas', resourceId: 'canvas-1', chatId: CHAT, ownerWorkspaceId: WS,
+                kind: 'browser', browserUrl: 'coc://canvas/canvas-1', browserChatId: CHAT,
+                resourceId: 'coc-canvas:chat-a:canvas-1', ownerWorkspaceId: WS,
             });
         } finally {
             delete (window as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__;
@@ -90,10 +91,12 @@ describe('canvasEventTabInput', () => {
     it('files the canvas against the chat that received the event', () => {
         const input = canvasEventTabInput(args())!;
         expect(input).toMatchObject({
-            kind: 'canvas',
+            kind: 'browser',
+            browserUrl: 'coc://canvas/canvas-1',
             ownerWorkspaceId: WS,
             chatId: CHAT,
-            resourceId: 'canvas-1',
+            browserChatId: CHAT,
+            resourceId: 'coc-canvas:chat-a:canvas-1',
             label: 'Plan',
         });
         // A canvas has a write path of its own; a live event is not a reason to
@@ -234,7 +237,7 @@ describe('routeUnifiedCanvasUpdate', () => {
         const tabId = routeUnifiedCanvasUpdate(args());
 
         const state = readUnifiedPanelState(WS);
-        expect(visibleTabs(state, CHAT).map(t => t.resourceId)).toEqual(['canvas-1']);
+        expect(visibleTabs(state, CHAT).map(t => t.browserUrl)).toEqual(['coc://canvas/canvas-1']);
         expect(state.activeByScope[CHAT]).toBe(tabId);
         expect(isDockOpen(WS)).toBe(true);
     });

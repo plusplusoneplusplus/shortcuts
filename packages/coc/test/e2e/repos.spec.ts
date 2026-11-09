@@ -313,7 +313,7 @@ test.describe('Sub-tab Navigation', () => {
 
         await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
         await openWorkspacePanel(page, 'settings');
-        const settingsTab = page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="settings"]');
+        const settingsTab = page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="browser"]');
         await settingsTab.getByRole('button', { name: /Close/ }).click();
         await expect(page.getByTestId('settings-content-panel')).toBeHidden();
         await openWorkspacePanel(page, 'settings');
@@ -333,7 +333,7 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page).toHaveURL(`${serverUrl}/#repos/ws-panel-routes/activity`);
         await openWorkspacePanel(page, 'notes');
         await openWorkspacePanel(page, 'settings');
-        await expect(page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="notes"]')).toHaveCount(1);
+        await expect(page.getByTestId('unified-right-panel').getByRole('tab', { name: /Notes/ })).toHaveCount(1);
     });
 
     test('switch to Workflows tab', async ({ page, serverUrl }) => {

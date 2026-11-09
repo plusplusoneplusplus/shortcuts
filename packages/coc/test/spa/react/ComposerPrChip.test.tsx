@@ -462,7 +462,7 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(button.textContent).toContain('Auto-archive settings');
         fireEvent.click(button);
         const [tab] = readUnifiedPanelState('ws1').workspaceTabs;
-        expect(tab).toMatchObject({ kind: 'settings', ownerWorkspaceId: 'ws1', ownerRoutingRef: null });
+        expect(tab).toMatchObject({ kind: 'browser', browserUrl: 'coc://settings', ownerWorkspaceId: 'ws1', ownerRoutingRef: null });
         expect(readUnifiedPanelState('ws1').activeByScope['chat-1']).toBe(tab.id);
         expect(queryByTestId(`composer-pr-chip-archive-settings-${KEY}`)).toBeNull();
     });

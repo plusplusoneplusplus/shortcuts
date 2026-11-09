@@ -73,7 +73,7 @@ describe('RepoGroupMemberList', () => {
         // The writer group's Settings opens as a tab in that group's own panel.
         fireEvent.click(row.querySelector('a')!);
         expect(readUnifiedPanelState('group-owner').workspaceTabs).toEqual([expect.objectContaining({
-            kind: 'settings', ownerWorkspaceId: 'group-owner', ownerRoutingRef: 'remote:owner:group-owner',
+            kind: 'browser', browserUrl: 'coc://settings', ownerWorkspaceId: 'group-owner', ownerRoutingRef: 'remote:owner:group-owner',
         })]);
         expect(mockUpdateRepoGroup).toHaveBeenCalledWith(GROUP_ID, { readOnly: { r2: false } }, 'http://remote:3000');
     });

@@ -66,7 +66,7 @@ describe('EffortTierSelector', () => {
     it('renders all four tier options in lowest-to-highest order', () => {
         renderSelector();
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+        expect(screen.getAllByRole('option').map(option => option.firstElementChild?.textContent)).toEqual([
             'Very Low',
             'Low',
             'Medium',

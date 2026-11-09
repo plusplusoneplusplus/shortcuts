@@ -4,7 +4,7 @@
  * The ledger lives on the server that owns the Sentinel chat; this module
  * decides only how a fetched ledger is presented (sections and order), how a
  * job's execution state reads next to an item's fulfillment status, which tab
- * descriptor a chat's To-do opens as, and when the first tracking use may open
+ * `coc://todo` web tab a chat's To-do opens as, and when the first tracking use may open
  * that tab on its own.
  */
 
@@ -14,9 +14,10 @@ import type {
     SentinelTodoStatus,
     SentinelTodoItem,
 } from '@plusplusoneplusplus/coc-client';
+import { browserOpenInput, isSameCocPageTab } from './unifiedBrowserTabs';
 import {
     activeTabId,
-    unifiedTabId,
+    visibleTabs,
     type OpenUnifiedTabInput,
     type UnifiedPanelState,
     type UnifiedPanelTab,
@@ -136,16 +137,18 @@ export function sentinelTodoReviewLabel(job: SentinelTodoJobLink): string | null
     }
 }
 
-/** The tab a Sentinel chat's ledger opens as: one per concrete owner and chat. */
+/**
+ * The web tab a Sentinel chat's ledger opens in: `coc://todo`, owned by the
+ * ledger's workspace and shown only in that chat. Opening it again focuses
+ * the chat's existing To-do page (`openCocPageTab`).
+ */
 export function sentinelTodoTabInput(owner: SentinelTodoOwner, chatId: string): OpenUnifiedTabInput {
-    return {
-        kind: 'todo',
+    return browserOpenInput({
         ownerWorkspaceId: owner.ownerWorkspaceId,
         ...(owner.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: owner.ownerRoutingRef }),
         chatId,
-        resourceId: owner.processId,
-        label: 'To-do',
-    };
+        browserChatId: chatId,
+    }, 'coc://todo');
 }
 
 export interface SentinelTodoChangeEvent {
@@ -176,8 +179,7 @@ export function shouldAutoOpenSentinelTodoTab(
     event: SentinelTodoChangeEvent,
 ): boolean {
     if (event.ledgerRevision !== 1) return false;
-    const id = unifiedTabId(input);
-    if ((state.chatTabs[chatId] ?? []).some(tab => tab.id === id)) return false;
+    if (visibleTabs(state, chatId, false).some(tab => isSameCocPageTab(tab, input))) return false;
     return activeTabId(state, chatId) === null;
 }
 

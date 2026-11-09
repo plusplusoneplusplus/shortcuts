@@ -34,7 +34,7 @@ function browserTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
 /** Three browser tabs plus a terminal, opened in order. */
 function threeBrowsers(): { state: UnifiedPanelState; ids: string[] } {
     let state = openTab(EMPTY_UNIFIED_PANEL, {
-        kind: 'terminal', ownerWorkspaceId: 'member', chatId: CHAT, resourceId: 'term', label: 'Terminal',
+        kind: 'work-items', ownerWorkspaceId: 'member', chatId: CHAT, resourceId: 'term', label: 'Terminal',
     });
     const ids: string[] = [];
     for (const url of ['https://a.test/', 'https://b.test/', 'https://c.test/']) {
@@ -74,7 +74,7 @@ describe('duplicateBrowserTabInput', () => {
     });
 
     it('rejects non-browser tabs and non-http(s) pages', () => {
-        for (const kind of ['html-page', 'file', 'terminal', 'canvas'] as const) {
+        for (const kind of ['html-page', 'file', 'work-items'] as const) {
             const tab = browserTab({ kind, htmlPageId: 'page-1' });
             expect(canDuplicateBrowserTab(tab)).toBe(false);
             expect(duplicateBrowserTabInput(tab, CHAT)).toBeNull();
@@ -91,7 +91,7 @@ describe('Duplicate menu item', () => {
         const source = browserTab();
         expect(unifiedPanelTabMenuItems(source, [source], new Set())
             .find(item => item.action === 'duplicate')).toEqual({ action: 'duplicate', label: 'Duplicate', group: 'browser', disabled: false });
-        for (const kind of ['html-page', 'file', 'terminal', 'notes', 'canvas'] as const) {
+        for (const kind of ['html-page', 'file', 'work-items', 'notes', 'diff'] as const) {
             const other = browserTab({ kind });
             expect(unifiedPanelTabMenuItems(other, [other], new Set()).some(item => item.action === 'duplicate')).toBe(false);
         }

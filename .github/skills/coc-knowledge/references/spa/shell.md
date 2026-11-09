@@ -122,14 +122,17 @@ hiding the panel restores the selected list segment.
 WI/PR list/detail layouts respond to the panel width with their single-pane back
 navigation and restore the split when widened.
 
-`unifiedPanelWorkspaceResources.ts` builds Notes/Settings descriptors for the menu
-and outside links. Those resources belong to the panel workspace; WI/PR tools use
-the current dock target. Group dock controls resolve clone selections to raw
+`unifiedPanelWorkspaceResources.ts` builds the panel workspace's `coc://notes`
+page (`panelNotesInput` / `notesPageInput`, one `coc-notes` tab; a deep path is
+`coc://notes/<path>`) and the `coc://settings` web tab (`panelSettingsInput`,
+focused again through `openCocPageTab`) for the menu and outside links. Those
+resources belong to the panel workspace; WI/PR tools use the current dock target.
+Group dock controls resolve clone selections to raw
 workspace ids while descriptors retain concrete server routes.
 
 `features/repo-settings/WorkspaceSettingsHost.tsx` mounts one `RepoSettingsTab`
 or `RepoGroupSettingsTab` on first panel open and keeps it in a stable portal
-container. The tab belongs to the panel workspace and concrete server,
+container. The `coc://settings` page belongs to the panel workspace and concrete server,
 independently of its dock target or selected chat. Section navigation stays
 local; closing parks the form in a hidden node and preserves drafts.
 
@@ -1085,9 +1088,11 @@ Source and row previews highlight the exact server-provided UTF-16 column span,
 including regex and multiline pieces, with malformed offsets clamped by the
 shared Explorer match-text splitter.
 
-The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs.
-The add-menu Terminal action activates the dock-target-owned tab and passes an
-ephemeral request to `TerminalView`. Successful session hydration precedes empty-tab
+The panel holds files, notes, canvases, chat diffs and web tabs as tabs.
+Terminal, Settings, To-do, Canvas and Notes have no tab kind: they are `coc://`
+pages in web tabs. Notes is `coc://notes` or `coc://notes/<path>` and stays in
+the Tools group. The add-menu Terminal action opens or focuses the dock-target-owned
+`coc://terminal` tab and passes an ephemeral request to `TerminalView`. Successful session hydration precedes empty-tab
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
@@ -1143,10 +1148,10 @@ when their last referencing tab closes; inherited draft/chat tabs share them.
 Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
 panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
 copy action and no save or dirty-state registration. Every
-hosted Sentinel chat gets one chat-owned `todo`
-tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
+hosted Sentinel chat gets a `coc://todo` web tab kept with that chat
+(`UnifiedTodoTab`, owned by the ledger workspace) reading its
 ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
-only the descriptor persists. To-do activation hides Explorer through the existing
+only the tab persists. To-do activation hides Explorer through the existing
 panel-scope navigator open bit, preserving Search mode, resource buffers and routing. Explicit reopen survives
 item interactions and ledger refreshes; tab reactivation or returning from another
 focused content view hides Explorer again. Panel chrome and To-do portals retain
@@ -1213,8 +1218,8 @@ editing in details (see the unified-right-panel AGENTS.md). Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
-bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is
-never persisted. The return route selects the ledger owner's workspace/process on its
+bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned `coc://todo` tab,
+resolved to the origin's ledger, that is never persisted. The return route selects the ledger owner's workspace/process on its
 concrete server, preserving matching group routes and reapplying an unchanged hash.
 Back restores the list's scroll, selection, drafts and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
@@ -1329,6 +1334,15 @@ With `features.fileBlame` enabled, a Blame toggle beside History shows per-line
 `HEAD` attribution in the editor gutter of repo-relative text files (not binary,
 external, oversized or rendered Markdown). Lines edited in the live buffer show
 `Not committed yet`; a click opens the owner-routed Git commit detail.
+
+Terminal, Settings, To-do and Canvas exist only as `coc://settings`, `coc://terminal`,
+`coc://todo[/<itemId>]` and `coc://canvas/<canvasId>` pages in web tabs, like `chrome://` pages: the same
+toolbar, the existing view in place of the web content, and back/forward across
+web and `coc://` steps. Toolbar reload remounts Terminal; Settings rebuilds its
+form and re-reads git info, To-do refreshes its ledger, and Canvas re-reads its record. The owner comes from the panel (the text never names
+one); the `+` menu and outside links open or focus a web tab at the address.
+Web tabs persist only while they show a `coc://` page. `coc://` never reaches
+the engine; see `unified-right-panel/AGENTS.md`.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative
