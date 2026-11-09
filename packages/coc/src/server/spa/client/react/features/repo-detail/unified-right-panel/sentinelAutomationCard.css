@@ -159,22 +159,55 @@
 .sentinel-refrain-detail-header button { min-width: 32px; justify-content: center; }
 .sentinel-refrain-run-detail > a {
     display: inline-flex;
+    align-self: flex-start;
     align-items: center;
     padding: 6px 4px;
     min-height: 32px;
 }
 .sentinel-refrain-run-detail > a:focus-visible { outline: 2px solid #0078d4; outline-offset: -2px; }
-.sentinel-refrain-run-detail dl > div { display: flex; flex-wrap: wrap; column-gap: 8px; }
-.sentinel-refrain-run-detail dt { min-width: 52px; color: #616161; }
+.sentinel-refrain-run-detail:not([hidden]) { display: flex; flex-direction: column; gap: 6px; }
+/* Hosted, the To-do detail column is the scroller, so the pane uses its full height. */
+.sentinel-refrain-run-detail[data-hosted="true"] { max-height: none; overflow: visible; }
+.sentinel-refrain-detail-top {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fff;
+}
+.dark .sentinel-refrain-detail-top { border-color: #3c3c3c; background: #1e1e1e; }
+.sentinel-refrain-detail-top .sentinel-automation-toolbar { margin-bottom: 0; }
+.sentinel-refrain-detail-header h4 { font-size: 13px; overflow-wrap: anywhere; }
+.sentinel-refrain-run-detail .sentinel-refrain-delete { margin-left: auto; color: #c72e2e; }
+.sentinel-refrain-run-detail .sentinel-refrain-delete:hover:not(:disabled) { background: rgb(199 46 46 / 10%); }
+.dark .sentinel-refrain-run-detail .sentinel-refrain-delete { color: #f48771; }
+.sentinel-refrain-run-detail h5 { margin-top: 6px; }
+.sentinel-refrain-run-detail dl {
+    display: grid;
+    grid-template-columns: minmax(64px, max-content) minmax(0, 1fr);
+    gap: 2px 12px;
+}
+.sentinel-refrain-run-detail dl > div { display: contents; }
+.sentinel-refrain-run-detail dt { color: #616161; }
 .dark .sentinel-refrain-run-detail dt { color: #9d9d9d; }
 .sentinel-refrain-run-detail pre {
     max-height: 160px;
     overflow: auto;
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: rgb(0 0 0 / 3%);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font: inherit;
     user-select: text;
 }
+.dark .sentinel-refrain-run-detail pre { background: rgb(255 255 255 / 4%); }
+.sentinel-refrain-run-detail[data-hosted="true"] pre { max-height: 50vh; }
 @media (max-width: 767px), (pointer: coarse) {
     .sentinel-refrain-run-detail > a { min-height: 44px; }
     .sentinel-refrain-detail-header button { min-width: 44px; }

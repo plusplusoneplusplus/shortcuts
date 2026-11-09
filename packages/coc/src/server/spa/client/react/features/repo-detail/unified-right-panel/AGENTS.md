@@ -1335,10 +1335,16 @@ portaled details. Cards contain identity/status and accessible selection only; c
 New refrain stays in the list header. Each Refrain has a copy-drag grip carrying
 only its ID and exact workspace/Sentinel/server owner. Its owning Sentinel composer
 reads saved instructions into the existing draft; dropping never runs or changes
-the refrain. The selected detail title has a wrapping action group:
-Refrain run/pause/cancel and More (edit/delete), gate actions, and history all use the
-existing owner-bound callbacks. Coda's run, schedule, selection, proposal, recovery and history
-controls share this detail-column placement. Forms, errors and run details stay in that column.
+the refrain. The selected detail has a sticky top block (`.sentinel-refrain-detail-top`:
+Back, title/close, status and a wrapping action group) over its scrolling content.
+Refrain actions are inline: Run now (primary), Cancel while active, Pause/Resume, Edit,
+then Delete pushed right in danger text; Edit/Delete stay disabled during an active run
+and Delete still confirms. Gate actions and history use the existing owner-bound callbacks.
+Coda's run, schedule, selection, proposal, recovery and history controls share this
+placement, with its secondary actions behind More. Hosted details (`data-hosted`) drop the
+inline 320px cap and fill the To-do detail column, which scrolls them; standalone details
+stay bounded. Run times render localized with the ISO value in `dateTime`/`title`.
+Forms, errors and run details stay in that column.
 Selected cards show `data-selected` hover/selected styling. Refrain details show
 the definition, schedule and the current (else latest) run from the live job list, with a
 never-run hint; `SentinelCodaDetails` shows Coda's schedule plus its active run or the latest run's
