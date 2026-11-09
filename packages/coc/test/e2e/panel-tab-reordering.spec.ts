@@ -18,7 +18,7 @@ test.beforeAll(async () => {
             const scope = 'fixture-workspace', chat = 'fixture-chat';
             if (!localStorage.getItem(unifiedPanelStorageKey(scope))) {
                 let state = EMPTY_UNIFIED_PANEL;
-                for (const kind of ['work-items', 'file', 'browser', 'git']) {
+                for (const kind of ['work-items', 'file', 'browser', 'pull-requests']) {
                     state = openTab(state, { kind, ownerWorkspaceId: scope, chatId: chat,
                         resourceId: kind === 'file' ? 'sample.md' : kind, label: kind === 'file' ? 'sample.md' : kind });
                 }
@@ -70,8 +70,8 @@ for (const dark of [false, true]) {
         const tabs = page.getByRole('tab');
         const kinds = () => tabs.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-kind')));
         await expect(tabs).toHaveCount(4);
-        expect(await kinds()).toEqual(['work-items', 'browser', 'git', 'file']);
-        for (const kind of ['work-items', 'browser', 'git', 'file']) {
+        expect(await kinds()).toEqual(['work-items', 'browser', 'pull-requests', 'file']);
+        for (const kind of ['work-items', 'browser', 'pull-requests', 'file']) {
             await page.locator('[data-content-kind="' + kind + '"]').fill('retained ' + kind);
         }
         await page.evaluate(() => {
@@ -98,11 +98,11 @@ for (const dark of [false, true]) {
         await page.keyboard.press('Escape');
         await page.mouse.up();
         await expect(page.getByTestId('unified-panel-tab-drop-indicator')).toHaveCount(0);
-        expect(await kinds()).toEqual(['work-items', 'browser', 'git', 'file']);
+        expect(await kinds()).toEqual(['work-items', 'browser', 'pull-requests', 'file']);
         await file.dragTo(terminal, { targetPosition: { x: 4, y: 15 } });
-        await expect.poll(kinds).toEqual(['file', 'work-items', 'browser', 'git']);
+        await expect.poll(kinds).toEqual(['file', 'work-items', 'browser', 'pull-requests']);
         await expect(file).toBeFocused();
-        for (const kind of ['work-items', 'browser', 'git', 'file']) {
+        for (const kind of ['work-items', 'browser', 'pull-requests', 'file']) {
             await expect(page.locator('[data-content-kind="' + kind + '"]')).toHaveValue('retained ' + kind);
         }
         expect(await page.evaluate(() => {
@@ -119,10 +119,10 @@ for (const dark of [false, true]) {
         })).toEqual({ sameNodes: true, sameActive: true, mounts: [1, 1, 1, 1], unmounts: [], activates: 0, closes: 0 });
 
         await file.press('Alt+ArrowRight');
-        await expect.poll(kinds).toEqual(['work-items', 'file', 'browser', 'git']);
+        await expect.poll(kinds).toEqual(['work-items', 'file', 'browser', 'pull-requests']);
         await file.press('Shift+F10');
         await page.getByRole('menuitem', { name: 'Move right', exact: true }).click();
-        await expect.poll(kinds).toEqual(['work-items', 'browser', 'file', 'git']);
+        await expect.poll(kinds).toEqual(['work-items', 'browser', 'file', 'pull-requests']);
         await expect(file).toBeFocused();
         await page.getByRole('button', { name: 'Narrow strip' }).click();
         const list = page.getByTestId('unified-panel-tab-list');
@@ -132,8 +132,8 @@ for (const dark of [false, true]) {
         await page.addStyleTag({ content: css });
         await page.addScriptTag({ content: script });
         await expect(tabs).toHaveCount(3);
-        expect(await kinds()).toEqual(['work-items', 'file', 'git']);
-        await expect(page.locator('[role="tab"][data-kind="git"]')).toHaveAttribute('aria-selected', 'true');
+        expect(await kinds()).toEqual(['work-items', 'file', 'pull-requests']);
+        await expect(page.locator('[role="tab"][data-kind="pull-requests"]')).toHaveAttribute('aria-selected', 'true');
         expect(errors).toEqual([]);
     });
 }
