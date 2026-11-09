@@ -444,6 +444,10 @@ references before editing. Paths are package-relative.
   for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after
   wiring and HTTP listening, respecting auto-start policy; never substitute a delay.
+  Queued provider edits require the exact workspace and an independent first-turn
+  chat. Recheck queued membership after provider validation; update synchronously
+  through queue events so persistence and execution share the selected provider.
+  Preserve effort-tier intent while clearing the old provider's model and routing.
 - Late-bound capabilities belong only in
   `src/server/executors/executor-runtime-contracts.ts`. The queue bridge extends the
   runtime once, then forwards by identity through registry/chat layers.

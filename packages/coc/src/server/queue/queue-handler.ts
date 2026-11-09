@@ -11,6 +11,7 @@ import { registerQueueEnqueueRoutes } from '../routes/queue-enqueue';
 import { registerQueueStatsRoutes } from '../routes/queue-stats';
 import { registerQueueControlRoutes } from '../routes/queue-control';
 import { registerQueueFollowUpRoutes } from '../routes/queue-follow-up';
+import { registerQueueProviderRoutes } from '../routes/queue-provider';
 import { registerQueueImagesRoutes } from '../routes/queue-images';
 import type { ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
@@ -72,4 +73,5 @@ export function registerQueueRoutes(
     registerQueueControlRoutes(routes, ctx);
     registerQueueFollowUpRoutes(routes, ctx);
     registerQueueImagesRoutes(routes, ctx);
+    registerQueueProviderRoutes(routes, ctx);
 }
