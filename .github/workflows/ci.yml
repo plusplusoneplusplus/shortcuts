@@ -844,6 +844,21 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      # Electron's package install does not guarantee the runtime binary is present.
+      # Run its pinned installer on cache hits as well as fresh dependency installs.
+      - name: Install Electron binary
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+          exit 1
+
       - name: Download native desktop capability
         uses: actions/download-artifact@v4
         with:
