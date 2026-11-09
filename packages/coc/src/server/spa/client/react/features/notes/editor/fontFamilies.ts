@@ -63,9 +63,10 @@ export const DEFAULT_FONT_OPTION = FONT_FAMILY_OPTIONS[0];
  * makes the whole stack unpersistable, which is what keeps a pasted `style`
  * attribute from turning the note format into a general HTML-styling escape
  * hatch. Latin-1/Latin-Extended letters are allowed so non-English family names
- * survive.
+ * survive. The range is escaped so the bundle stays valid when a page loads it
+ * without a UTF-8 charset (a Latin-1 read turns it into an out-of-order range).
  */
-const FONT_STACK_ALLOWED = /^[A-Za-z0-9 _,'"À-ɏ-]+$/;
+const FONT_STACK_ALLOWED = /^[A-Za-z0-9 _,'"\u00C0-\u024F-]+$/;
 
 /**
  * Canonicalize a CSS font stack, or return `null` if it is not a form we
