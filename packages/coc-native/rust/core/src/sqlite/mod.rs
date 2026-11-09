@@ -386,7 +386,7 @@ impl Statement {
         self.database.with_writer(|connection| {
             let mut statement = connection.prepare_cached(&self.sql)?;
             let column_names: Vec<String> =
-                statement.column_names().iter().map(ToString::to_string).collect();
+                statement.column_names().map(ToString::to_string).collect();
             bind(&mut statement, parameters)?;
             let mut cursor = statement.raw_query();
             cursor.next()?.map(|row| read_row(row, &column_names)).transpose()
@@ -455,8 +455,7 @@ fn query_statement(
     statement: &mut SqliteStatement<'_>,
     parameters: &Parameters,
 ) -> Result<Vec<Row>> {
-    let column_names: Vec<String> =
-        statement.column_names().iter().map(ToString::to_string).collect();
+    let column_names: Vec<String> = statement.column_names().map(ToString::to_string).collect();
     bind(statement, parameters)?;
     let mut cursor = statement.raw_query();
     let mut result = Vec::new();

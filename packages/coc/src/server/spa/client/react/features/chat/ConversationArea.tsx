@@ -380,7 +380,7 @@ export function ConversationArea({
                 </>
             )}
                 {isPending ? (
-                    <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
+                    <PendingTaskInfoPanel key={`${sourceSelectionId}:${sourceBaseUrl}:${workspaceId}:${taskId}`} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
                 ) : loading ? (
                     <div className="flex items-center gap-2 text-[#848484] text-sm">
                         <Spinner size="sm" /> Loading conversation...

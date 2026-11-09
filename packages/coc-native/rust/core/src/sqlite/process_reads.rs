@@ -231,9 +231,8 @@ fn json_row_id(row: &SqliteRow<'_>, column: &str) -> Result<String> {
 fn json_columns(statement: &rusqlite::Statement<'_>) -> Vec<(usize, String)> {
     let mut columns: Vec<(usize, String)> = statement
         .column_names()
-        .iter()
         .enumerate()
-        .map(|(index, name)| (index, (*name).to_owned()))
+        .map(|(index, name)| (index, name.to_owned()))
         .collect();
     columns.sort_unstable_by(|left, right| left.1.cmp(&right.1));
     for (_, name) in &mut columns {

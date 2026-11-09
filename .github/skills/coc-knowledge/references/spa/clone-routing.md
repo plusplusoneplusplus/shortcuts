@@ -227,12 +227,21 @@ The Ralph workflow pane routes its whole data flow to the clone: the journal rea
 (`RalphWorkflowPaneContainer` / `RalphWorkflowPane`) via `useCocClient(workspaceId)`.
 The bare local singleton 404s a remote-only session as "Ralph session not found".
 
-### Chat list and chat folders
+### Chat lists, queued details, and chat folders
 
 `queue/hooks/pinArchiveApi` (pin/unpin, archive/unarchive, and their batch forms) takes a
 `workspaceId` and routes through `getCocClientForWorkspace(workspaceId)`.
 
-All four chat-folder hooks do the same: `useChatFolders` (the list fetch),
+`PendingTaskInfoPanel` routes resolved prompts and `QueuedTaskProvider` through
+`useQueueDetailsOwner`: subtree owner, explicit source, then registry. Explicit local
+owners stay local; unresolved remotes fail closed. `GET/PATCH /api/queue/:id/provider`
+requires raw `workspace`; GET returns available providers plus enabled Auto. PATCH
+changes independent queued Ask/Autopilot first turns, rechecking membership after
+validation. Queue events persist and broadcast provider/config changes; tiers remap
+through the selected provider, while Auto resolves at execution. Owner changes discard
+pending UI results.
+
+Chat-folder hooks route through `getCocClientForWorkspace(workspaceId)`: `useChatFolders` (the list fetch),
 `useChatFolderMembership` (the `processId -> folderId` read, a workspace-scoped
 `processes.summaries` fetch), `useChatFolderMutations` (create / rename / recolor /
 reorder / delete / undo), and `useChatFolderAssignment` (`setProcessFolder`,

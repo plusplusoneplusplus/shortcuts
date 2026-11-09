@@ -1,17 +1,24 @@
 import { useEffect, useState } from 'react';
-import { getSpaCocClient } from '../api/cocClient';
 import { Button, Spinner } from '../ui';
 import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload';
 import { useQueue } from '../contexts/QueueContext';
+import { QueuedTaskProvider, useQueueDetailsOwner } from './QueuedTaskProvider';
 import { ProviderBadge, getTaskProviderBadgeProvider } from '../features/chat/ProviderBadge';
 
 export interface PendingTaskInfoPanelProps {
     task: any;
+    workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     onCancel: () => void;
     onMoveToTop: () => void;
 }
 
-export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTaskInfoPanelProps) {
+export function PendingTaskInfoPanel({ task: sourceTask, workspaceId, sourceSelectionId, sourceBaseUrl, onCancel, onMoveToTop }: PendingTaskInfoPanelProps) {
+    const [updatedTask, setUpdatedTask] = useState<any>(null);
+    useEffect(() => { setUpdatedTask(null); }, [sourceTask]);
+    const task = updatedTask ?? sourceTask;
+    const { client } = useQueueDetailsOwner({ workspaceId: workspaceId ?? task?.repoId, sourceSelectionId, sourceBaseUrl });
     const [resolvedPrompt, setResolvedPrompt] = useState<any>(null);
     const { state: queueState } = useQueue();
 
@@ -21,11 +28,14 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
     const queueTotal = queueState.queued.length;
 
     useEffect(() => {
-        if (!task?.id) return;
-        getSpaCocClient().queue.resolvedPrompt(task.id)
-            .then((data: any) => { if (data) setResolvedPrompt(data); })
+        setResolvedPrompt(null);
+        if (!task?.id || !client) return;
+        let cancelled = false;
+        client.queue.resolvedPrompt(task.id)
+            .then((data: any) => { if (!cancelled && data) setResolvedPrompt(data); })
             .catch(() => { /* non-fatal */ });
-    }, [task?.id]);
+        return () => { cancelled = true; };
+    }, [task?.id, client]);
 
     if (!task) {
         return (
@@ -68,10 +78,14 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                 {created && <MetaRow label="Created" value={created} />}
                 {model && <MetaRow label="Model" value={model} />}
                 {effortTier && <MetaRow label="Effort Tier" value={effortTier} />}
-                {providerBadgeProvider && (
+                {(providerBadgeProvider || (task.status === 'queued' && task.type === 'chat')) && (
                     <>
                         <span className="text-[#848484]">Provider</span>
-                        <span><ProviderBadge provider={providerBadgeProvider} /></span>
+                        <span>{task.status === 'queued' && task.type === 'chat' && !task.payload?.processId && !task.payload?.resumedFrom
+                            ? <QueuedTaskProvider task={task} workspaceId={workspaceId ?? task.repoId}
+                                sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl}
+                                provider={providerBadgeProvider} onUpdated={setUpdatedTask} />
+                            : providerBadgeProvider && <ProviderBadge provider={providerBadgeProvider} />}</span>
                     </>
                 )}
                 {workingDir && <FilePathValue label="Working Directory" value={workingDir} />}
