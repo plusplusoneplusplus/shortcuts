@@ -231,6 +231,33 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(browserTabs()).toHaveLength(1);
     });
 
+    it('steps back and forward through Git commits and files without remounting the page', () => {
+        const openGit = (view: Parameters<typeof openPanelWorkspaceResource>[2]['view']) => act(() => {
+            openPanelWorkspaceResource('git', { workspaceId: WS, routingRef: null, chatId: null }, { view });
+        });
+        seed(WS, gitPageInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }, { view: { type: 'commit', hash: 'aaa1111' } }));
+        renderPanel();
+        const page = screen.getByTestId('mock-git');
+        openGit({ type: 'commit', hash: 'bbb2222' });
+        openGit({ type: 'commit-file', hash: 'bbb2222', filePath: 'src/a.ts' });
+        // Re-opening the address already shown adds no step.
+        openGit({ type: 'commit-file', hash: 'bbb2222', filePath: 'src/a.ts' });
+        expect(address().value).toBe('coc://git/bbb2222/src%2Fa.ts');
+        click('browser-back');
+        expect(address().value).toBe('coc://git/bbb2222');
+        expect(browserTabs()[0].browserUrl).toBe('coc://git/bbb2222');
+        click('browser-back');
+        expect(address().value).toBe('coc://git/aaa1111');
+        expect(browserTabs()[0].browserUrl).toBe('coc://git/aaa1111');
+        expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(true);
+        click('browser-forward');
+        click('browser-forward');
+        expect(address().value).toBe('coc://git/bbb2222/src%2Fa.ts');
+        expect(browserTabs()[0].browserUrl).toBe('coc://git/bbb2222/src%2Fa.ts');
+        expect(screen.getByTestId('mock-git')).toBe(page);
+        expect(browserTabs()).toHaveLength(1);
+    });
+
     it('shows coc://canvas/<id> in the web tab and steps between canvases', () => {
         seed(WS, webTab());
         renderPanel();

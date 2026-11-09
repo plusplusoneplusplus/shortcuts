@@ -205,14 +205,17 @@ export function UnifiedBrowserTab({
             return;
         }
         // A Notes or Git address changed from outside this tab (a link, the
-        // menu, the Git detail's own selection) moves the deep address.
+        // menu, the Git detail's own selection) moves the deep address. Notes
+        // follows it in place; each Git commit, view or file is its own
+        // back/forward step.
         if (!url || !isCocAddressText(url) || url === sentUrl.current) return;
         const entry = cocEntry(url, resolveCocPage);
         if (typeof entry === 'string' || (entry.page.kind !== 'notes' && entry.page.kind !== 'git')) return;
         const { entries, index } = tabHistoryRef.current;
         const here = entries[index];
         sentUrl.current = formatCocAddress(entry.address);
-        if (here?.kind === 'coc' && here.page.kind === entry.page.kind) {
+        if (here?.kind === 'coc' && formatCocAddress(here.address) === sentUrl.current) return;
+        if (here?.kind === 'coc' && here.page.kind === entry.page.kind && entry.page.kind !== 'git') {
             setTabHistory({
                 entries: entries.map((candidate, at) => at === index ? { ...here, address: entry.address, page: entry.page } : candidate),
                 index,
@@ -537,6 +540,8 @@ export function UnifiedBrowserTab({
                     <UnifiedCocPage
                         key={cocPage.page.kind === 'terminal' ? `${tabHistory.index}:${cocReload}`
                             : cocPage.page.kind === 'canvas' ? `${tabHistory.index}:${cocPage.page.canvasId}`
+                            // Git steps share one mount; the page follows the tab's address.
+                            : cocPage.page.kind === 'git' ? 'git'
                             : String(tabHistory.index)}
                         page={cocPage.page}
                         active={active && visible}
