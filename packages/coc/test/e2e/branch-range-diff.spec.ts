@@ -263,7 +263,7 @@ test.describe('BranchRangeOverview — focused file review', () => {
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
         await expect(page.getByTestId('file-diff-content')).not.toContainText('return "utility";');
         await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeDisabled();
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Ffeature\.ts$/);
         await review.getByRole('button', { name: 'Previous file', exact: true }).click();
         await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
         await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeEnabled();
@@ -288,13 +288,13 @@ test.describe('BranchRangeOverview — focused file review', () => {
 });
 
 test.describe('BranchRangeOverview — open file in diff panel', () => {
-    test('selecting an overview file opens its patch and survives a deep-link reload', async ({ page, serverUrl }) => {
+    test('selecting an overview file opens its patch and survives a reload', async ({ page, serverUrl }) => {
         await openBranchRangeOverview(page, serverUrl, 'ws-bro-op-1');
         const review = page.getByTestId('git-file-review');
         await review.getByRole('button', { name: 'Overview', exact: true }).click();
         await review.locator('.git-review-overview [data-file-path="src/feature.ts"]').click();
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Ffeature\.ts$/);
         await page.reload();
         await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
         await openFileNavigator(page);
@@ -445,7 +445,7 @@ test.describe('BranchRangeOverview — base mode toggle', () => {
         await expect(baseSelect.locator('option:checked')).toHaveText('Unpushed · origin/feature/test-branch', { timeout: 10_000 });
         expect(requestedBases).toContain('upstream');
         await expectFocusedPatch(page, 'src/unpushed.ts', 'return "not pushed yet";');
-        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Funpushed\.ts$/);
+        await expect(page.getByTestId('browser-address')).toHaveValue(/^coc:\/\/git\/branch-range\/src%2Funpushed\.ts$/);
         await openFileNavigator(page);
         await expect(page.locator('.git-review-nav [data-file-path="src/unpushed.ts"]')).toBeVisible();
         await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(1);

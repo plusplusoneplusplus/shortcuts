@@ -4,7 +4,7 @@
  *   WorkingTreeFileDiff — diff when clicking a working-tree file
  *   CommitDetail     — commit info header (full-commit view)
  *   GitPanelHeader   — refresh button triggers reload
- *   Deep link        — per-file diff restored on page load from URL hash
+ *   Deep link        — per-file diff opened from a coc://git address, restored on reload
  *   Copy hash        — feedback when copying commit hash
  */
 
@@ -18,6 +18,8 @@ import {
     createDirtyWorkingTreeRepo,
     createFeatureBranchRepo,
     navigateToGitTab,
+    openCocAddress,
+    gitCommitAddress,
 } from './fixtures/git-fixtures';
 import { seedWorkspace } from './fixtures/seed';
 
@@ -249,26 +251,28 @@ test.describe('Git right-panel — Copy hash feedback', () => {
 // ================================================================
 
 test.describe('Git right-panel — Deep link', () => {
-    test('deep link URL resolves to per-file CommitDetail on page load', async ({ page, serverUrl }) => {
+    test('coc://git address resolves to per-file CommitDetail and survives a reload', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-dl-'));
         try {
             const repoDir = createMultiCommitRepo(tmpDir);
             const wsId = 'ws-dl-1';
-            await seedWorkspace(serverUrl, wsId, 'dl-repo', repoDir);
+            await navigateToGitTab(page, serverUrl, wsId, 'dl-repo', repoDir);
 
             // Get the latest commit hash
             const { execSync } = require('child_process');
             const hash = execSync('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf-8' }).trim();
             const filePath = 'src/index.ts';
 
-            // Navigate directly to deep link URL
-            await page.goto(
-                `${serverUrl}/#repos/${wsId}/git/${hash}/${encodeURIComponent(filePath)}`,
-            );
+            await openCocAddress(page, gitCommitAddress(hash, filePath));
 
             // Per-file diff view should load directly (via FileDiffPanel)
             await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 15_000 });
             await expect(page.getByTestId('file-diff-section')).toBeVisible();
+            await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
+
+            // The Git page keeps its address, so a reload restores the same file.
+            await page.reload();
+            await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 15_000 });
             await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
         } finally {
             safeRmSync(tmpDir);

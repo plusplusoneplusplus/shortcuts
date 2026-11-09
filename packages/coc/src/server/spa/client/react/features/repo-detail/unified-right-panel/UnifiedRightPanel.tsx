@@ -125,7 +125,7 @@ import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useWorkspaceSettingsOwner } from '../../repo-settings/WorkspaceSettingsHost';
-import { panelGitInput, panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
+import { openPanelWorkspaceResource, panelGitInput, panelNotesInput, panelWorkspaceResourceInput } from './unifiedPanelWorkspaceResources';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { attachBrowserWebview, removeBrowserWebview } from './browserWebviewLayerStore';
@@ -2276,6 +2276,14 @@ export function UnifiedRightPanel({
         if (address.kind === 'notes') {
             setMenuOpen(false);
             open(panelNotesInput({ workspaceId, routingRef: routingRef ?? null, chatId }, address.notePath));
+            return;
+        }
+        if (address.kind === 'git') {
+            // The workspace's one Git page, so its detail follows the address:
+            // a plain web tab at this address would show no commit.
+            setMenuOpen(false);
+            openPanelWorkspaceResource('git', { workspaceId, routingRef: routingRef ?? null, chatId: null },
+                { gitMemberId: address.gitMemberId, view: address.view });
             return;
         }
         if (address.kind === 'canvas') {

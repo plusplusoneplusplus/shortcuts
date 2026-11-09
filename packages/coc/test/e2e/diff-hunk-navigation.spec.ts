@@ -20,6 +20,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
+import { gotoGitCommit } from './fixtures/git-fixtures';
 
 const COMMIT_HASH = 'aabbccdd11223344556677889900aabbccdd1122';
 const FILE_PATH = 'src/index.ts';
@@ -27,9 +28,8 @@ const FILE_PATH = 'src/index.ts';
 /**
  * Create a real git-initialized workspace directory. The Git sub-tab in
  * RepoDetail is gated on `repo.gitInfo?.isGitRepo` (line ~90 of RepoDetail);
- * a non-git workspace has the Git tab filtered out and any deep link to
- * `/git/<sha>` falls back to the Activity tab, so the per-file diff panel
- * never mounts.
+ * a non-git workspace has the Git tab filtered out, so the per-file diff
+ * panel never mounts.
  */
 function makeGitWorkspaceDir(prefix: string): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), `e2e-hunk-${prefix}-`));
@@ -169,10 +169,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo', repoDir);
         await setupMocks(page, wsId, COMMIT_HASH);
 
-        // Navigate directly to the per-file diff via deep link
-        await page.goto(
-            `${serverUrl}/#repos/${wsId}/git/${COMMIT_HASH}/${encodeURIComponent(FILE_PATH)}`,
-        );
+        // Open the per-file diff on the workspace's Git page
+        await gotoGitCommit(page, serverUrl, wsId, COMMIT_HASH, FILE_PATH);
 
         // Per-file header and diff content must appear (via FileDiffPanel)
         await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 10_000 });
@@ -216,9 +214,7 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo', repoDir);
         await setupMocks(page, wsId, COMMIT_HASH);
 
-        await page.goto(
-            `${serverUrl}/#repos/${wsId}/git/${COMMIT_HASH}/${encodeURIComponent(FILE_PATH)}`,
-        );
+        await gotoGitCommit(page, serverUrl, wsId, COMMIT_HASH, FILE_PATH);
 
         await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
@@ -227,6 +223,10 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
 
         // file-diff-section is the actual scrollable container (overflow-auto)
         const scrollContainer = page.getByTestId('file-diff-section');
+        // Wait for the shorter viewport to make the diff scroll; a click before
+        // that has nowhere to scroll to.
+        await expect.poll(() => scrollContainer.evaluate((el: HTMLElement) => el.scrollHeight > el.clientHeight))
+            .toBe(true);
 
         // Focused review starts on hunk 1.
         await page.getByTestId('next-hunk-btn').click();

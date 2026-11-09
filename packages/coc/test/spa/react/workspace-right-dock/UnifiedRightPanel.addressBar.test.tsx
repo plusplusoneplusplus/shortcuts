@@ -394,6 +394,25 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(screen.queryByTestId('unified-panel-open-menu-search')).toBeNull();
     });
 
+    // Regression: a typed coc://git address opened a plain web tab, so the Git
+    // detail (which follows only the workspace's Git page) showed no commit.
+    it('opens a coc://git address typed in the "+" menu on the workspace Git page', async () => {
+        const gitTabId = unifiedTabId(gitPageInput({ ownerWorkspaceId: WS, ownerRoutingRef: null, chatId: null }));
+        const typeInMenu = async (value: string) => {
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+            await act(async () => { fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value } }); });
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu-coc')); });
+        };
+        renderPanel();
+        await typeInMenu('coc://git/abc1234/src%2Fa.ts');
+        expect(browserTabs()).toEqual([expect.objectContaining({ id: gitTabId, browserUrl: 'coc://git/abc1234/src%2Fa.ts' })]);
+        expect(screen.queryByTestId('unified-panel-open-menu-search')).toBeNull();
+
+        // A second address moves the same page instead of stacking a tab.
+        await typeInMenu('coc://git/def5678');
+        expect(browserTabs()).toEqual([expect.objectContaining({ id: gitTabId, browserUrl: 'coc://git/def5678' })]);
+    });
+
     it('keeps the menu open with an inline error for an unavailable address', async () => {
         renderPanel();
         await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
