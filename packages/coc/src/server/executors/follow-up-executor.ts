@@ -757,6 +757,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
                             return;
                         }
+                        this.noteTurnSession(processId, turnAbort, sessionId);
                         const next = advanceActiveProviderSession(activeBinding, {
                             provider: sessionProvider,
                             sessionId,

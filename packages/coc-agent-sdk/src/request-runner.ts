@@ -675,7 +675,8 @@ export class RequestRunner {
         // throttle is created per turn and disposed with it, so no timer or
         // buffered value survives into the next turn.
         const usageThrottle = createMidTurnUsageThrottle(onTokenUsage);
-        return new StreamingSession().run(session as Parameters<StreamingSession['run']>[0], {
+        const streaming = new StreamingSession();
+        const run = streaming.run(session as Parameters<StreamingSession['run']>[0], {
             prompt,
             timeoutMs,
             onStreamingChunk,
@@ -688,7 +689,12 @@ export class RequestRunner {
             deliveryMode,
             callerSessionId,
             toolResultInterceptors,
-        }).finally(() => usageThrottle.dispose());
+        });
+        const detachSteer = this.sessionManager.attachSteerTarget(session.sessionId, streaming);
+        return run.finally(() => {
+            detachSteer();
+            usageThrottle.dispose();
+        });
     }
 
     /**

@@ -3575,3 +3575,40 @@ describe('CopilotSDKService - listModels()', () => {
         await expect(service.listModels()).rejects.toThrow('CopilotSDKService has been disposed');
     });
 });
+
+describe('CopilotSDKService - steerSession', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('sends mode immediate into the active run and returns true', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession('active');
+        const promise = (service as any).requestRunner.sendWithStreaming(session, 'first', 10000);
+        await expect(service.steerSession('active', 'steer')).resolves.toBe(true);
+        expect(session.send).toHaveBeenLastCalledWith({ prompt: 'steer', mode: 'immediate' });
+        dispatchEvent({ type: 'user.message', id: 'u1' });
+        dispatchEvent({ type: 'user.message', id: 'u2' });
+        dispatchEvent({ type: 'session.idle' });
+        await promise;
+    });
+
+    it('returns false without sending once the run has settled or is untracked', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession('settled');
+        const promise = (service as any).requestRunner.sendWithStreaming(session, 'first', 10000);
+        dispatchEvent({ type: 'session.idle' });
+        await promise;
+        session.send.mockClear();
+        await expect(service.steerSession('settled', 'late')).resolves.toBe(false);
+        await expect(service.steerSession('unknown', 'late')).resolves.toBe(false);
+        expect(session.send).not.toHaveBeenCalled();
+    });
+});

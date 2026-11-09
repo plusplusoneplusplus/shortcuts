@@ -579,6 +579,19 @@ describe('FollowUpExecutor', () => {
         expect(store.processes.get('proc-1')?.conversationTurns?.at(-1)).toMatchObject({ provider: 'copilot', segmentId: 'current' });
     });
 
+    it('records the live session on the in-flight follow-up turn for steering', async () => {
+        await store.addProcess(makeProcess({ id: 'proc-live' }));
+        const inFlightTurns = new Map<string, { provider: any; controller: AbortController; sessionId?: string }>();
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onSessionCreated('live-session');
+            expect(inFlightTurns.get('proc-live')?.sessionId).toBe('live-session');
+            return { success: true, response: 'ok', sessionId: 'live-session' };
+        });
+        await makeExecutor(store, { inFlightTurns } as FlatExecutorOptions).executeFollowUp('proc-live', 'msg');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        expect(inFlightTurns.size).toBe(0);
+    });
+
     it('announces a switched provider session for the new assistant without altering original metadata or turns', async () => {
         const proc = makeProcess({
             metadata: { provider: 'codex' },

@@ -2013,6 +2013,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ))}
                         </div>
                     )}
+                    {isUser && turn.steered && (
+                        <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border bg-[#f3f4f6] dark:bg-[#2a2a2c] text-[#57606a] dark:text-[#a0a0a0] border-[#d0d7de] dark:border-[#444]"
+                            title="Sent into the running turn"
+                            data-testid="steered-label"
+                        >
+                            <span aria-hidden="true">⚡</span>
+                            <span>steered</span>
+                        </span>
+                    )}
                     {isUser && turn.turnSource && (
                         <span
                             className={cn(

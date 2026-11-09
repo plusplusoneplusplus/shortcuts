@@ -259,7 +259,14 @@ export interface ProcessMessageRequest {
   [key: string]: unknown;
 }
 
-export interface ProcessMessageResponse extends JsonObject {}
+export interface ProcessMessageResponse extends JsonObject {
+  /**
+   * What happened to the message. `steered`: it joined the running turn.
+   * `queued`: it runs as its own turn (buffered, enqueued or started now).
+   * Older servers omit it.
+   */
+  delivery?: 'steered' | 'queued';
+}
 
 export type RalphGrillDepth = 'light' | 'standard' | 'deep';
 export type RalphGrillAgentRole =

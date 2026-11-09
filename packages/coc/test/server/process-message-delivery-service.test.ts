@@ -469,7 +469,9 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(result.events.map(e => e.kind)).toEqual(['message-queued', 'message-steering']);
     });
 
-    it.each(['human', 'default'] as const)('buffers a style switch to %s instead of steering in-flight output', async chatStyle => {
+    // Regression: a non-default or changed chat style used to turn every steer
+    // into a queued message.
+    it.each(['human', 'default', 'direct'] as const)('steers with chat style %s while a turn is running', async chatStyle => {
         const store = makeStore();
         const bridge = {
             enqueue: vi.fn(),
@@ -478,10 +480,37 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         };
         const proc = makeProc({ status: 'running', metadata: { chatStyle: 'direct' } });
         const result = await makeService(store, bridge).deliver(proc, makeInput({ deliveryMode: 'immediate', chatStyle }));
-        expect(result.path).toBe('buffered');
+        expect(result.path).toBe('steered');
+        expect(bridge.steerProcess).toHaveBeenCalledWith('proc-1', 'hello');
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+    });
+
+    it('queues instead of steering when the task is only queued or the message is not immediate', async () => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'queued' }),
+            steerProcess: vi.fn().mockResolvedValue(true),
+        };
+        const service = makeService(store, bridge);
+        expect((await service.deliver(makeProc({ status: 'running' }), makeInput({ deliveryMode: 'immediate' }))).path).toBe('buffered');
+        bridge.findTaskByProcessId.mockReturnValue({ id: 't1', type: 'chat', status: 'running' });
+        expect((await service.deliver(makeProc({ status: 'running' }), makeInput({ deliveryMode: 'enqueue' }))).path).toBe('buffered');
         expect(bridge.steerProcess).not.toHaveBeenCalled();
-        expect(store.pending[0].chatStyle).toBe(chatStyle);
-        expect(store.pending[0].content).toBe('hello');
+    });
+
+    it('buffers without a steering event when the live turn refuses the steer', async () => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn().mockResolvedValue(false),
+        };
+        const result = await makeService(store, bridge).deliver(makeProc({ status: 'running' }), makeInput({ deliveryMode: 'immediate' }));
+        expect(result.path).toBe('buffered');
+        expect(store.pending).toHaveLength(1);
+        expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        expect(result.events.map(e => e.kind)).toEqual(['pending-message-added', 'message-queued']);
     });
 
     it('keeps stable style steering while carrying the selection on queued and direct turns', async () => {

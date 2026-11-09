@@ -335,6 +335,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         return controller;
     }
 
+    /** Record the live session of this turn so a steer can reach it before the id is persisted. */
+    protected noteTurnSession(processId: string, controller: AbortController, sessionId: string): void {
+        const turn = this.runtime.inFlightTurns?.get(processId);
+        if (turn?.controller === controller) turn.sessionId = sessionId;
+    }
+
     /** Remove this turn unless a newer turn has already replaced it. */
     protected releaseTurnAbortController(processId: string, controller: AbortController): void {
         if (this.runtime.inFlightTurns?.get(processId)?.controller === controller) {
@@ -1546,6 +1552,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     approvePermissions: this.approvePermissions,
                     ...(dangerousCommandGuard ? { dangerousCommandGuard } : {}),
                     onSessionCreated: (sessionId: string) => {
+                        this.noteTurnSession(processId, turnAbort, sessionId);
                         // One store write binds provider and session id
                         // together, so the pair can never be split by a crash
                         // between two separate updates.

@@ -20,8 +20,8 @@ Forge imports directly from this package.
 | `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); `./testing` subpath export |
 | `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring and [host-token routing](mcp-settings.md#teams-mcp-in-copilot-sessions), permissions, streaming |
 | `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` |
-| `session-manager.ts` | Active session tracking and cancellation |
-| `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) |
+| `session-manager.ts` | Active session tracking, cancellation, and steer targets (`attachSteerTarget`/`steer`): only the running streaming turn of a session accepts a steer; `CopilotSDKService.steerSession` goes through it |
+| `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`). `steer()` sends `mode: 'immediate'` and returns false once settling; while a steered `user.message` is outstanding, `session.idle` defers settle (turn-end grace timer is the fallback), so an accepted steer is answered in the same run |
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
 | `session-timer-manager.ts` | Copilot session timers: delegates overall + idle to `IdleWatchdog`, owns the turn-end grace timer |
 | `idle-watchdog.ts` | `IdleWatchdog` — shared idle + wall-clock timers used by every provider; `idleTimeoutErrorMessage()` is the single error text |

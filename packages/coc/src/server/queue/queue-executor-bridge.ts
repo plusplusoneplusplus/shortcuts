@@ -871,12 +871,17 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running') return false;
             if (this.queueManager?.getAll().some(task => task.processId === processId
                 && task.payload.kind === 'compact' && ['queued', 'running'].includes(task.status))) return false;
-            const binding = readActiveProviderSession(proc);
-            if (!binding.sessionId) return false;
             // SDK steering targets the already-running session; it cannot change
-            // that live session's custom tool registry. Steering stays
-            // same-provider, so the binding is the right pair to use.
-            return await this.getAiServiceForProvider(resolveRecordedProvider(proc)).steerSession(binding.sessionId, proc.metadata?.mode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(message) : message);
+            // that live session's custom tool registry. The live turn wins: it
+            // knows its session before the id is persisted, and during a
+            // provider switch the persisted binding names the other provider.
+            const inFlight = this.inFlightTurns.get(processId);
+            const binding = readActiveProviderSession(proc);
+            const sessionId = inFlight?.sessionId
+                ?? (!inFlight || inFlight.provider === binding.provider ? binding.sessionId : undefined);
+            if (!sessionId) return false;
+            const provider = inFlight?.provider ?? resolveRecordedProvider(proc);
+            return await this.getAiServiceForProvider(provider).steerSession(sessionId, proc.metadata?.mode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(message) : message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;

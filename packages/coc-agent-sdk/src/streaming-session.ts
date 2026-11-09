@@ -16,6 +16,10 @@
  *   • wall-clock timeout fires concurrently with session.idle:
  *     first settle()/settleError() wins; state is already terminal
  *     for the second call, so it is silently ignored.
+ *   • a steer is accepted just before session.idle:
+ *     idle does not settle while the steered `user.message` is still
+ *     outstanding, so the steered reply lands in this run. If that event
+ *     never arrives, the turn-end grace timer settles the run.
  */
 
 import { createSessionLogger } from './logger';
@@ -185,6 +189,14 @@ export class StreamingSession {
      */
     private userMessageEventId?: string;
 
+    // ── Steering ─────────────────────────────────────────────────────────────
+    /** Steers sent into this run; each one adds a `user.message` event. */
+    private steersAccepted = 0;
+    /** `user.message` events seen; the first one is this run's own prompt. */
+    private userMessagesSeen = 0;
+    /** session.idle arrived while a steer was outstanding; settle is deferred. */
+    private idleDeferred = false;
+
     // ── Misc ─────────────────────────────────────────────────────────────────
     private streamingStartTime = 0;
     private sessionLog!: ReturnType<typeof createSessionLogger>;
@@ -211,6 +223,30 @@ export class StreamingSession {
             this.subscribeToEvents();
             this.sendMessage();
         });
+    }
+
+    /**
+     * Send `prompt` into this live run (`mode: 'immediate'`). Returns false
+     * once the run has started to settle, so the caller can queue instead —
+     * an accepted steer is always answered inside this run.
+     */
+    async steer(prompt: string): Promise<boolean> {
+        if (!this.stateMachine.isStreaming || !this.session.send) { return false; }
+        this.steersAccepted++;
+        try {
+            await this.session.send({ prompt, mode: 'immediate' });
+            return true;
+        } catch (error) {
+            this.steersAccepted--;
+            this.sessionLog.debug({ err: error }, 'Steer send failed');
+            if (this.idleDeferred && !this.steerPending) { this.settleWithResult(); }
+            return false;
+        }
+    }
+
+    /** True while an accepted steer has not shown up as a `user.message` yet. */
+    private get steerPending(): boolean {
+        return this.steersAccepted > Math.max(0, this.userMessagesSeen - 1);
     }
 
     // ── Accessors for tests (backward compat with existing test assertions) ─
@@ -268,6 +304,15 @@ export class StreamingSession {
                     this.settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
                 },
                 onTurnEndGrace: () => {
+                    if (this.idleDeferred) {
+                        this.sessionLog.debug('Steered message never arrived after idle — settling');
+                        this.settleWithResult();
+                        return;
+                    }
+                    if (this.steerPending) {
+                        this.sessionLog.debug('Turn-end grace fired but a steer is outstanding — skipping');
+                        return;
+                    }
                     if (this.waitingForBackgroundTasks) {
                         this.sessionLog.debug('Turn-end grace fired but background tasks still active — skipping');
                         return;
@@ -395,6 +440,12 @@ export class StreamingSession {
      * ignored, leaving the turn non-rewindable.
      */
     private handleUserMessage(event: ISessionEvent): void {
+        this.userMessagesSeen++;
+        if (this.idleDeferred && !this.steerPending) {
+            // The steered message is running now; its own idle settles the run.
+            this.idleDeferred = false;
+            this.timers.cancelTurnEndGrace();
+        }
         if (this.userMessageEventId || !event.id) { return; }
         this.userMessageEventId = event.id;
         this.sessionLog.debug({ userMessageEventId: event.id }, 'Captured user.message event id');
@@ -461,6 +512,12 @@ export class StreamingSession {
     private handleSessionIdle(): void {
         this.sessionLog.debug({ turns: this.telemetry.turnCount }, 'Session idle');
         this.waitingForBackgroundTasks = false;
+        if (this.steerPending) {
+            this.idleDeferred = true;
+            this.timers.startTurnEndGrace();
+            this.sessionLog.debug('Session idle with a steer outstanding — deferring settle');
+            return;
+        }
         this.settleWithResult();
     }
 

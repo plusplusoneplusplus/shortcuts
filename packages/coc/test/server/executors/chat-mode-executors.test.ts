@@ -298,6 +298,22 @@ describe('ChatBaseExecutor provider routing', () => {
         expect(result).toMatchObject({ response: 'partial', provider: 'copilot' });
     });
 
+    it('records the live session on the in-flight turn so an early steer can reach it', async () => {
+        const inFlightTurns = new Map<string, InFlightTurn>();
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'copilot', inFlightTurns,
+            resolveAiServiceForProvider: () => sdkMocks.service as any,
+        }));
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            expect(inFlightTurns.get('queue_early-steer')?.sessionId).toBeUndefined();
+            options.onSessionCreated('live-session');
+            expect(inFlightTurns.get('queue_early-steer')?.sessionId).toBe('live-session');
+            return { success: true, response: 'ok', sessionId: 'live-session', toolCalls: [] };
+        });
+        await executor.execute(makeChatTask('ask', 'early-steer'), 'Hello');
+        expect(inFlightTurns.size).toBe(0);
+    });
+
     it('rejects an image turn before OpenCode can execute the caption alone', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             provider: 'opencode',

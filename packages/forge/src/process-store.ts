@@ -154,6 +154,8 @@ export interface ProcessOutputEvent {
     sessionConversationTokens?: number;
     /** Resolved delivery mode (for 'message-queued' events). */
     deliveryMode?: 'immediate' | 'enqueue';
+    /** Real outcome of the message (for 'message-queued' events): joined the running turn, or its own turn. */
+    delivered?: 'steered' | 'queued';
     /** 1-based queue position; 0 for immediate mode (for 'message-queued' events). */
     queuePosition?: number;
     /** Client-provided optimistic ID echoed back for reconciliation (for 'message-queued' / 'message-steering' events). */

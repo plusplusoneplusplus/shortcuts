@@ -713,6 +713,32 @@ describe('RequestRunner.send() — streaming path', () => {
     });
 });
 
+describe('RequestRunner.send() — steering the running turn', () => {
+    it('steers through SessionManager only while the turn runs, and answers it in the same turn', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession('steer-session');
+        const mockClient = { createSession: vi.fn().mockResolvedValue(session), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner, sessionManager } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await expect(sessionManager.steer('steer-session', 'too early')).resolves.toBe(false);
+        const resultPromise = runner.send({ prompt: 'first', timeoutMs: 200_000, loadDefaultMcpConfig: false });
+        await vi.waitFor(() => expect(session.on).toHaveBeenCalled(), { timeout: 1000 });
+
+        dispatchEvent({ type: 'user.message', id: 'u1' });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'part one' } });
+        await expect(sessionManager.steer('steer-session', 'steered')).resolves.toBe(true);
+        expect(session.send).toHaveBeenLastCalledWith({ prompt: 'steered', mode: 'immediate' });
+        // Idle before the steered message shows up must not end the turn.
+        dispatchEvent({ type: 'session.idle', data: {} });
+        dispatchEvent({ type: 'user.message', id: 'u2' });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'steered reply' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.response).toBe('part one\n\nsteered reply');
+        await expect(sessionManager.steer('steer-session', 'after')).resolves.toBe(false);
+    });
+});
+
 // ============================================================================
 // send() — error handling
 // ============================================================================

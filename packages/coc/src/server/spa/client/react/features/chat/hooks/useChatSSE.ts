@@ -405,10 +405,14 @@ export function useChatSSE({
             // arrive via the 'pending-message-added' event instead.
         });
 
-        es.addEventListener('message-steering', (_event: Event) => {
-            // Acknowledged — steering succeeded. The message content is being
-            // injected into the live session. No queue item to update since
-            // immediate-steer messages don't create local pending entries.
+        es.addEventListener('message-steering', (event: Event) => {
+            // The message joined the running turn: label the matching user turn.
+            try {
+                const { optimisticId, turnIndex } = JSON.parse((event as MessageEvent).data);
+                setTurnsAndRef(prev => prev.map(t => t.role === 'user'
+                    && ((optimisticId && t.optimisticId === optimisticId) || t.turnIndex === turnIndex)
+                    ? { ...t, steered: true } : t));
+            } catch { /* ignore */ }
         });
 
         es.addEventListener('pending-message-added', (event: Event) => {

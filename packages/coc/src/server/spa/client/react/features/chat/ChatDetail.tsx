@@ -1865,6 +1865,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         messageClient: historyOwnerAvailable ? client : undefined,
         compactDisabled: !historyOwnerAvailable || readOnly || isCompacting || compactionQueued || conversationProvider === 'opencode',
         notifyCompact: addToast,
+        notify: addToast,
         // Drive the synthetic in-progress compaction bubble + duplicate-send
         // block from the compaction lifecycle (AC-02).
         setCompacting: handleCompactingChange,

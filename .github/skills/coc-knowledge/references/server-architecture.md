@@ -374,6 +374,9 @@ Each `CLITaskExecutor` bridge extends it once with bridge-owned `inFlightTurns` 
 `getDreamRunExecutor`, then forwards that resulting object **by identity** through
 `ExecutorRegistryOptions.runtime` and `ChatModeExecutorOptions.runtime`.
 Capabilities are not re-declared on layer option types or forwarded field by field.
+An `InFlightTurn` records its live `sessionId` from `onSessionCreated`; `steerProcess`
+uses it before the persisted binding, so a steer reaches a turn whose session id is not
+saved yet, and keeps the compaction guard and same-provider rule.
 
 The contract is checked by `packages/coc/test/server/executors/executor-runtime-wiring.test.ts`.
 Live queue settings use the separate typed `QueueRuntimeConfig` port from the

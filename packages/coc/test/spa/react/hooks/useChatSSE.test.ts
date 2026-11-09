@@ -1047,6 +1047,21 @@ describe('useChatSSE', () => {
             expect(setPendingQueue).not.toHaveBeenCalled();
         });
 
+        it('SSE2b: message-steering labels the matching user turn as steered', () => {
+            let turns: any[] = [
+                { role: 'user', content: 'first', turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: '', turnIndex: 1, streaming: true, timeline: [] },
+                { role: 'user', content: 'steer', turnIndex: 2, optimisticId: 'opt-1', timeline: [] },
+            ];
+            renderHook(() => useChatSSE(makeOptions({
+                setTurnsAndRef: (next: any) => { turns = typeof next === 'function' ? next(turns) : next; },
+            })));
+            act(() => {
+                MockEventSource.last._emit('message-steering', { turnIndex: 5, optimisticId: 'opt-1' });
+            });
+            expect(turns.map(t => !!t.steered)).toEqual([false, false, true]);
+        });
+
         it('SSE3: pending-message-added adds a server-confirmed queued item', () => {
             const setPendingQueue = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
