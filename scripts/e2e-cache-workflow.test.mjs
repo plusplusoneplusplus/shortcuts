@@ -121,6 +121,70 @@ test("container jobs run apt-get update before their first apt-get install", () 
     }
 });
 
+test("desktop CI installs the pinned Electron binary even when node_modules is cached", () => {
+    const job = parseJobs().find((job) => job.name === "coc-desktop-test");
+    assert.ok(job, "expected the desktop CI job");
+    const steps = parseSteps(job);
+    const dependencies = steps.findIndex((step) => /run: npm ci/.test(step));
+    const install = steps.findIndex((step) => /node node_modules\/electron\/install\.js/.test(step));
+    assert.notEqual(install, -1, "desktop CI must install the binary from its pinned Electron package");
+    assert.ok(dependencies >= 0 && dependencies < install, "install Electron after restoring/installing dependencies");
+    assert.doesNotMatch(steps[install], /^\s+if:|^\s+working-directory:/m,
+        "install from the repository root on every platform, including cache hits");
+    for (const [index, step] of steps.entries()) {
+        if (/run:.*npm run test:run/.test(step)) {
+            assert.ok(install < index, "install Electron before any desktop tests");
+        }
+    }
+});
+
+function runElectronSetup(failures) {
+    const job = parseJobs().find((job) => job.name === "coc-desktop-test");
+    const step = parseSteps(job).find((step) => /name: Install Electron binary/.test(step));
+    const script = step.split("        run: |\n")[1].replace(/^ {10}/gm, "");
+    const dir = mkdtempSync(join(tmpdir(), "desktop-electron-"));
+    try {
+        const stateFile = join(dir, "state.json");
+        const logFile = join(dir, "calls.jsonl");
+        writeFileSync(stateFile, JSON.stringify({ failures }));
+        writeFileSync(logFile, "");
+        writeFileSync(join(dir, "node"), `#!${process.execPath}
+const fs = require('node:fs');
+fs.appendFileSync(process.env.LOG_FILE, JSON.stringify(['node', ...process.argv.slice(2)]) + '\\n');
+const state = JSON.parse(fs.readFileSync(process.env.STATE_FILE, 'utf8'));
+const failed = state.failures-- > 0;
+fs.writeFileSync(process.env.STATE_FILE, JSON.stringify(state));
+process.exit(failed ? 1 : 0);
+`);
+        writeFileSync(join(dir, "sleep"), `#!${process.execPath}
+require('node:fs').appendFileSync(process.env.LOG_FILE, JSON.stringify(['sleep', ...process.argv.slice(2)]) + '\\n');
+`);
+        chmodSync(join(dir, "node"), 0o755);
+        chmodSync(join(dir, "sleep"), 0o755);
+        const result = spawnSync("bash", ["-e", "-c", script], {
+            env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}`, STATE_FILE: stateFile, LOG_FILE: logFile },
+            encoding: "utf8", timeout: 5000,
+        });
+        assert.ifError(result.error);
+        return { status: result.status, calls: readFileSync(logFile, "utf8").trim().split("\n").map(JSON.parse) };
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+for (const failures of [0, 1, 2, 3]) {
+    test(`Electron setup handles ${failures} download failures`, {
+        skip: process.platform === "win32" ? "POSIX executable stubs require Unix" : false,
+    }, () => {
+        const { status, calls } = runElectronSetup(failures);
+        assert.equal(status, failures < 3 ? 0 : 1);
+        assert.deepEqual(calls.filter(([command]) => command === "node"),
+            Array.from({ length: Math.min(failures + 1, 3) }, () => ["node", "node_modules/electron/install.js"]));
+        assert.deepEqual(calls.filter(([command]) => command === "sleep"),
+            Array.from({ length: Math.min(failures, 2) }, (_, index) => ["sleep", String((index + 1) * 10)]));
+    });
+}
+
 function runZstdSetup(updateFailures = 0, installFailures = 0) {
     const job = containerJobs.find((job) => job.name === "e2e");
     const step = parseSteps(job).find((step) => /name: Install zstd for cache archive compatibility/.test(step));
