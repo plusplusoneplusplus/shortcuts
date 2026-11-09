@@ -208,7 +208,7 @@ describe('RalphGrillSetupPanel', () => {
             target: { value: 'claude' },
         });
         fireEvent.click(within(uxRow).getByTestId('effort-tier-trigger-btn'));
-        fireEvent.click(within(uxRow).getByTestId('effort-tier-option-high'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-high'));
 
         await waitFor(() => {
             const latest = onChange.mock.calls.at(-1)![0] as RalphGrillSetup;

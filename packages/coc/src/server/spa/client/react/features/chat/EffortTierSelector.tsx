@@ -15,11 +15,13 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCloneBaseUrl } from '../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { openConfiguration, effortTierSettingsHash } from '../../admin/openConfiguration';
 import { cn } from '../../ui/cn';
+import { useAnchoredPanelPosition } from '../../shared/useAnchoredPanelPosition';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import type { ModelInfo } from '../../hooks/useModels';
 
@@ -128,8 +130,15 @@ export function EffortTierSelector({
     const [view, setView] = useState<'tiers' | 'custom'>('tiers');
     const [draft, setDraft] = useState<CustomModelEffort>({ model: '', reasoningEffort: null });
     const triggerRef = useRef<HTMLButtonElement>(null);
-    const [menuLeft, setMenuLeft] = useState(0);
+    const menuRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    // Portaled and fixed to the viewport, so a clipped or transformed host (the
+    // Notes chat lens) cannot cut off the tier list. Inside a modal dialog it stays
+    // there so the focus trap keeps working.
+    const menuPosition = useAnchoredPanelPosition({
+        open: open && !disabled, placement: 'up', align: 'left', constrainHeight: true,
+        triggerRef, panelRef: menuRef, anchorKey: view,
+    });
 
     useEffect(() => {
         if (!open) setView('tiers');
@@ -137,13 +146,11 @@ export function EffortTierSelector({
 
     useEffect(() => {
         if (!open) return;
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) setMenuLeft(Math.max(8 - rect.left, Math.min(0, window.innerWidth - rect.left - 180)));
-        const selected = containerRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]:not(:disabled)');
-        const first = containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled), [data-testid="effort-tier-configure"]:not(:disabled)');
+        const selected = menuRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]:not(:disabled)');
+        const first = menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled), [data-testid="effort-tier-configure"]:not(:disabled)');
         (selected ?? first)?.focus();
         function handleClick(e: MouseEvent) {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) {
                 setOpen(false);
             }
         }
@@ -271,7 +278,7 @@ export function EffortTierSelector({
                     event.preventDefault();
                     event.stopPropagation();
                     if (!open) { setOpen(true); return; }
-                    const buttons = Array.from(containerRef.current?.querySelectorAll<HTMLButtonElement>('[data-testid="effort-tier-menu"] button:not(:disabled)') ?? []);
+                    const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
                     const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
                     const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
                         : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
@@ -328,15 +335,16 @@ export function EffortTierSelector({
                 </svg>
             </button>
 
-            {open && !disabled && (
+            {open && !disabled && createPortal(
                 <div
                     className={cn(
-                        'absolute bottom-full mb-1 left-0 z-[10000]',
+                        'z-[10000] overflow-y-auto',
                         view === 'custom' ? 'w-[300px]' : autoProviderMode ? 'min-w-[160px]' : 'min-w-[240px]',
                         'max-w-[calc(100vw-16px)] py-0.5 rounded-md shadow-lg',
                         'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
                     )}
-                    style={{ left: menuLeft }}
+                    ref={menuRef}
+                    style={{ position: 'fixed', ...menuPosition }}
                     role="group"
                     aria-label="Effort tier settings"
                     data-testid="effort-tier-menu"
@@ -443,7 +451,8 @@ export function EffortTierSelector({
                         <span className="leading-tight">Configure tiers…</span>
                     </button>
                     </>}
-                </div>
+                </div>,
+                containerRef.current?.closest('[aria-modal="true"]') ?? document.body,
             )}
         </div>
     );

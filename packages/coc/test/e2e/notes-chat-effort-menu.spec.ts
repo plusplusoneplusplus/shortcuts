@@ -111,13 +111,15 @@ test('Notes Chat shows every effort tier outside the anchored settings popover',
         await expect(settingsEditor).toHaveAttribute('data-placement', 'popover');
         await settingsEditor.getByTestId('effort-tier-trigger-btn').click();
 
-        const menu = noteChat.getByTestId('effort-tier-menu');
+        // The menu is portaled to the page so the chat lens cannot clip it.
+        const menu = page.getByTestId('effort-tier-menu');
         await expect(menu).toBeVisible();
+        // Each option also shows its model and effort under the tier name.
         await expect(menu.getByRole('option')).toHaveText([
-            'Very Low',
-            'Low',
-            'Medium',
-            'High',
+            /^Very Low/,
+            /^Low/,
+            /^Medium/,
+            /^High/,
         ]);
 
         const veryLow = menu.getByTestId('effort-tier-option-very-low');

@@ -89,6 +89,34 @@ describe('EffortTierSelector', () => {
         expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
     });
 
+    // Regression: the taller tier list was clipped by the Notes chat lens, a
+    // transformed overflow-hidden host. The menu must render outside its host,
+    // except inside a modal dialog, whose focus trap must keep containing it.
+    it('portals the menu out of a clipped host, but keeps it inside a dialog', () => {
+        const onChange = vi.fn();
+        const { unmount } = render(
+            <div data-testid="clipped-host" style={{ overflow: 'hidden', transform: 'translate(0, 0)' }}>
+                <EffortTierSelector tiers={tiers} selectedTier="medium" onChange={onChange} />
+            </div>,
+        );
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        const menu = screen.getByTestId('effort-tier-menu');
+        expect(screen.getByTestId('clipped-host').contains(menu)).toBe(false);
+        expect(menu.style.position).toBe('fixed');
+        fireEvent.mouseDown(screen.getByTestId('effort-tier-option-very-low'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-very-low'));
+        expect(onChange).toHaveBeenCalledWith('very-low');
+        unmount();
+
+        render(
+            <div role="dialog" aria-modal="true" data-testid="dialog-host">
+                <EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} />
+            </div>,
+        );
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        expect(screen.getByTestId('dialog-host').contains(screen.getByTestId('effort-tier-menu'))).toBe(true);
+    });
+
     // AC-03 — container-narrow: drop the "Effort:" prefix, show value only.
     describe('compact (container-narrow)', () => {
         it('renders the value without the "Effort:" prefix when compact', () => {
