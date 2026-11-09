@@ -1,7 +1,13 @@
 import { useState, useCallback } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 
-export type NoteDialogAction = 'create-page' | 'create-section' | 'create-notebook' | 'create-page-ai' | 'rename' | 'delete';
+export type NoteDialogAction = 'create-page' | 'create-section' | 'create-notebook' | 'create-page-ai' | 'rename' | 'delete' | 'delete-selected';
+
+/** Paths a bulk delete will send, plus protected rows it leaves alone. */
+export interface NoteBulkDelete {
+    paths: string[];
+    skipped: string[];
+}
 
 export interface NoteCtxMenu {
     node: NoteTreeNode;
@@ -13,6 +19,8 @@ export interface NoteDialog {
     action: NoteDialogAction;
     node: NoteTreeNode;
     submitting: boolean;
+    /** Set for `delete-selected`. */
+    bulk?: NoteBulkDelete;
 }
 
 export interface UseNotesContextMenuResult {
@@ -20,7 +28,7 @@ export interface UseNotesContextMenuResult {
     dialog: NoteDialog | null;
     openContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
     closeContextMenu: () => void;
-    openDialog: (action: NoteDialogAction, node: NoteTreeNode) => void;
+    openDialog: (action: NoteDialogAction, node: NoteTreeNode, bulk?: NoteBulkDelete) => void;
     closeDialog: () => void;
     setSubmitting: (submitting: boolean) => void;
 }
@@ -37,9 +45,9 @@ export function useNotesContextMenu(): UseNotesContextMenuResult {
         setCtxMenu(null);
     }, []);
 
-    const openDialog = useCallback((action: NoteDialogAction, node: NoteTreeNode) => {
+    const openDialog = useCallback((action: NoteDialogAction, node: NoteTreeNode, bulk?: NoteBulkDelete) => {
         setCtxMenu(null);
-        setDialog({ action, node, submitting: false });
+        setDialog({ action, node, submitting: false, ...(bulk ? { bulk } : {}) });
     }, []);
 
     const closeDialog = useCallback(() => {

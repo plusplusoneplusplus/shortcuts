@@ -38,6 +38,25 @@ function getAncestorPaths(notePath: string): string[] {
     return ancestors;
 }
 
+/**
+ * Split a multi-selection into the paths a bulk delete should send. Protected
+ * rows (system folders) are skipped, and so are rows inside another selected
+ * folder: deleting the folder already removes them, and sending them after it
+ * would only fail with "not found".
+ */
+export function planBulkDelete(
+    selected: Iterable<string>,
+    isProtected: (path: string) => boolean,
+): { paths: string[]; skipped: string[] } {
+    const all = [...selected].filter(p => p !== '');
+    const skipped = all.filter(isProtected);
+    const candidates = all.filter(p => !isProtected(p));
+    const paths = candidates.filter(
+        p => !candidates.some(other => other !== p && p.startsWith(other + '/')),
+    );
+    return { paths, skipped };
+}
+
 /** Find a node anywhere in the tree by its path (null when absent). */
 function findNodeByPath(nodes: NoteTreeNode[], path: string): NoteTreeNode | null {
     for (const n of nodes) {
@@ -851,7 +870,11 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 { label: 'Copy Links', onClick: () => copySelectionPaths('link') },
                 { label: 'Copy Absolute Paths', onClick: () => copySelectionPaths('absolute') },
                 { separator: true, label: '', onClick: () => {} },
-                { label: `Delete Selected (${multiSelectedPaths.size})`, onClick: () => void handleBulkDelete() },
+                {
+                    label: `Delete Selected (${bulkDelete.paths.length})`,
+                    disabled: bulkDelete.paths.length === 0,
+                    onClick: () => openDialog('delete-selected', node, bulkDelete),
+                },
             );
             return items;
         }
@@ -1051,16 +1074,40 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         onSelectPage(path);
     }, [clearSelection, onSelectPage]);
 
-    /** Bulk delete all multi-selected pages. */
-    const handleBulkDelete = useCallback(async () => {
-        const paths = [...multiSelectedPaths];
-        closeContextMenu();
+    /** What "Delete Selected" will send — protected system folders stay put. */
+    const bulkDelete = useMemo(() => planBulkDelete(multiSelectedPaths, (path) => {
+        const node = tree ? findNodeByPath(tree, path) : null;
+        return node !== null && isSysFolderItem(node);
+    }), [multiSelectedPaths, tree, isSysFolderItem]);
+
+    /**
+     * Run a confirmed bulk delete against the root that owns the selection.
+     * One failure must not stop the rest, and every failure is reported.
+     */
+    const handleBulkDelete = useCallback(async (paths: string[]) => {
+        const rootId = activeRootIdRef.current;
+        const failures: string[] = [];
         for (const p of paths) {
-            await deleteNode(p);
-            onNoteDeleted?.(p);
+            try {
+                await notesApi.deleteNode(workspaceId, p, notesRootParam(rootId));
+                onNoteDeleted?.(p);
+            } catch (err) {
+                failures.push(`${p}: ${err instanceof Error && err.message ? err.message : 'delete failed'}`);
+            }
         }
         clearSelection();
-    }, [multiSelectedPaths, closeContextMenu, deleteNode, onNoteDeleted, clearSelection]);
+        await refreshRoot(rootId);
+        if (failures.length > 0) {
+            const shown = failures.slice(0, 3).join('; ');
+            const more = failures.length > 3 ? ` (+${failures.length - 3} more)` : '';
+            addToast(
+                `Deleted ${paths.length - failures.length} of ${paths.length}. Failed — ${shown}${more}`,
+                'error',
+            );
+        } else {
+            addToast(`Deleted ${paths.length} item${paths.length === 1 ? '' : 's'}`, 'success');
+        }
+    }, [workspaceId, onNoteDeleted, clearSelection, refreshRoot, addToast]);
 
     return (
         <div className="flex flex-col h-full bg-[#f6f8fa] dark:bg-[#252526]" data-testid="notes-sidebar">
@@ -1406,6 +1453,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 onCreateNode={handleCreateNode}
                 onRenameNode={handleRenameNode}
                 onDeleteNode={handleDeleteNode}
+                onDeleteNodes={handleBulkDelete}
                 onAICreateNote={handleAICreateNote}
                 setSubmitting={setSubmitting}
             />
