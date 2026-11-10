@@ -292,9 +292,13 @@ describe('workspace consumers', () => {
             const addon = buildKustoToolsAddon(directory, undefined, workspaceId, undefined, { enabled: true, runtime: f.runtime });
             const result = await addon.tools[0].handler!(params);
             expect(result).toMatchObject({ success: true });
+            const before = store.listCanvases(workspaceId);
+            const execution = addon.tools.find(tool => tool.name === 'execute_kusto_query')!;
+            expect(await execution.handler!(params)).toMatchObject({ success: true, rows: [[1]] });
+            expect(store.listCanvases(workspaceId)).toEqual(before);
         }
         expect(f.createProvider).toHaveBeenCalledTimes(1);
-        expect(f.providers[0].getToken).toHaveBeenCalledTimes(4);
+        expect(f.providers[0].getToken).toHaveBeenCalledTimes(6);
         expect(store.listCanvases('workspace-a')).toHaveLength(2);
         expect(store.listCanvases('workspace-b')).toHaveLength(2);
     });

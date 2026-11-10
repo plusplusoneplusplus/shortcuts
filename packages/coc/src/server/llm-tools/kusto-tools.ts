@@ -1,18 +1,7 @@
 /**
- * Kusto LLM tool — `kusto_query` (AC-03).
- *
- * A single tool the AI calls to run a Kusto query for the user. It executes the
- * query server-side through the same {@link runKustoCanvas} path used by the
- * AC-02 Run endpoint (official `azure-kusto-data` SDK + host-selected credential),
- * persists the result into a new or existing Kusto canvas, and returns to the
- * model a compact view — column schema, a capped row sample, the total row
- * count — plus a `canvas://<id>` embed link so the canvas renders inline in
- * chat and opens in the side panel.
- *
- * The AI no longer shells out to a Kusto CLI: query execution, truncation, and
- * persistence all funnel through the shared Kusto service.
- *
- * Gated by the `kusto.enabled` feature flag (AC-08) at the addon level.
+ * Kusto tools share the host-owned query runtime. `execute_kusto_query` returns
+ * bounded structured results; `kusto_query` also persists an interactive canvas.
+ * Both are gated by `kusto.enabled` during tool assembly.
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -25,7 +14,7 @@ import {
 } from '../canvas/kusto-state';
 import type { KustoChartConfig, KustoChartType } from '@plusplusoneplusplus/coc-client';
 import { runKustoCanvas } from '../kusto/kusto-service';
-import type { KustoClientFactory } from '../kusto/kusto-exec';
+import { executeKustoQuery, type KustoClientFactory } from '../kusto/kusto-exec';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
 // ============================================================================
@@ -43,6 +32,8 @@ export interface KustoToolsDeps {
     canvasStore?: CanvasStore;
     /** Injectable Kusto SDK client factory (mocked in tests). */
     clientFactory?: KustoClientFactory;
+    /** Live host enablement, checked before standalone execution (including mocks). */
+    getEnabled?: () => boolean;
     /** Injectable clock for deterministic tests. */
     now?: () => string;
 }
@@ -80,7 +71,7 @@ function normalizeChartConfig(raw: KustoChartConfig | undefined): KustoChartConf
 // Tool Factory
 // ============================================================================
 
-export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unknown> } {
+export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unknown>; executeKustoQuery: Tool<unknown> } {
     const store = deps.canvasStore ?? new CanvasStore(deps.dataDir);
 
     const emitUpdate = (canvasId: string, title: string, revision: number): void => {
@@ -88,6 +79,38 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             emitCanvasUpdated(deps.processStore, deps.processId, { canvasId, title, revision, editor: 'ai', canvasType: 'kusto' });
         }
     };
+
+    const executeQuery = defineTool<Pick<KustoQueryArgs, 'query' | 'clusterUrl' | 'database'>>('execute_kusto_query', {
+        description:
+            'Execute a read-only KQL query against Azure Data Explorer using the owning server\'s selected '
+            + 'account. Returns JSON-safe columns, rows, rowCount before truncation, and truncated, bounded '
+            + 'to 10,000 rows and 8 MiB. Does not create or update a canvas. Management commands are rejected.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Read-only KQL query text.' },
+                clusterUrl: { type: 'string', description: 'Cluster URL, e.g. "https://help.kusto.windows.net".' },
+                database: { type: 'string', description: 'Database name.' },
+            },
+            required: ['query', 'clusterUrl', 'database'],
+            additionalProperties: false,
+        },
+        handler: async (args) => {
+            const query = typeof args?.query === 'string' ? args.query : '';
+            const clusterUrl = typeof args?.clusterUrl === 'string' ? args.clusterUrl : '';
+            const database = typeof args?.database === 'string' ? args.database : '';
+            if (!query.trim()) return { success: false, error: 'query is required' };
+            if (!clusterUrl.trim()) return { success: false, error: 'clusterUrl is required' };
+            if (!database.trim()) return { success: false, error: 'database is required' };
+            try {
+                if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
+                const result = await executeKustoQuery({ query, clusterUrl, database }, { clientFactory: deps.clientFactory });
+                return { success: true, ...result };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+    });
 
     const kustoQuery = defineTool<KustoQueryArgs>('kusto_query', {
         description:
@@ -212,5 +235,5 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
         },
     });
 
-    return { kustoQuery: kustoQuery as Tool<unknown> };
+    return { kustoQuery: kustoQuery as Tool<unknown>, executeKustoQuery: executeQuery as Tool<unknown> };
 }

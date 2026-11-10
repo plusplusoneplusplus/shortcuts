@@ -247,8 +247,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, three installed-extension tools, Kusto, System One, browser, run_tool_script, mcp_call and query_pull_request are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 13);
+        // Wakeup, three canvas tools, three installed-extension tools, two Kusto tools, System One, browser, run_tool_script, mcp_call and query_pull_request are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 14);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {
@@ -278,18 +278,21 @@ describe('getEffectiveLlmToolRegistry', () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
         const names = getEffectiveLlmToolRegistry({ kustoEnabled: false }).map(t => t.name);
         expect(names).not.toContain('kusto_query');
+        expect(names).not.toContain('execute_kusto_query');
     });
 
     it('filters out kusto_query when kustoEnabled is omitted (default off)', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
         const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true }).map(t => t.name);
         expect(names).not.toContain('kusto_query');
+        expect(names).not.toContain('execute_kusto_query');
     });
 
     it('includes kusto_query when kustoEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
         const names = getEffectiveLlmToolRegistry({ kustoEnabled: true }).map(t => t.name);
         expect(names).toContain('kusto_query');
+        expect(names).toContain('execute_kusto_query');
     });
 
     it('hides system_one unless llmToolSystemOneEnabled is true', async () => {

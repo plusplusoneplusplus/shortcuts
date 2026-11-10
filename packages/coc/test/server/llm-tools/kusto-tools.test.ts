@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { runScriptWithOwnerTools } from '../../../src/server/executors/owner-script-runner';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { CONFIG_FILE_NAME } from '../../../src/config';
+import { isCanvasScriptTool, validateCanvasManifestTools } from '../../../src/server/canvas/canvas-script-bridge';
+import { summarizeToolParameters } from '../../../src/server/llm-tools/llm-tool-parameters';
+import { LLM_TOOL_PARAMETER_SCHEMAS } from '../../../src/server/llm-tools/llm-tool-parameter-schemas';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -188,4 +194,122 @@ describe('kusto_query tool', () => {
         expect(res.success).toBe(false);
         expect(res.error).toMatch(/not a Kusto canvas/);
     });
+
+    describe('execute_kusto_query', () => {
+        const args = { query: 'T | take 2', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
+        const executionTool = (clientFactory = mockFactory([[1], [2]]), getEnabled = () => true) => createKustoTools({
+            dataDir, workspaceId: WS, canvasStore: store, clientFactory, getEnabled,
+        }).executeKustoQuery;
+
+        it('returns structured results without creating or editing canvases or emitting updates', async () => {
+            const seed = store.createCanvas({ workspaceId: WS, title: 'Existing', content: 'unchanged', type: 'markdown' });
+            const emitProcessEvent = vi.fn();
+            const clientFactory = vi.fn(mockFactory([[1], [2]]));
+            const tool = createKustoTools({
+                dataDir, workspaceId: WS, canvasStore: store, clientFactory,
+                processId: 'owner', processStore: { emitProcessEvent } as unknown as ProcessStore,
+            }).executeKustoQuery;
+            // Even direct callers supplying canvas/command/owner fields cannot change the operation.
+            expect(await tool.handler!({ ...args, canvasId: seed.id, command: '.drop table T', workspaceId: 'other' })).toEqual({
+                success: true, columns: [{ name: 'n', type: 'long' }], rows: [[1], [2]], rowCount: 2, truncated: false,
+            });
+            expect(clientFactory).toHaveBeenCalledExactlyOnceWith(args);
+            expect(store.listCanvases(WS)).toHaveLength(1);
+            expect(store.getCanvas(WS, seed.id)).toEqual(seed);
+            expect(store.listCanvases('other')).toEqual([]);
+            expect(emitProcessEvent).not.toHaveBeenCalled();
+        });
+
+        it('returns more than the canvas row sample and enforces the execution row cap', async () => {
+            const result = await executionTool(mockFactory(Array.from({ length: 10_002 }, (_, i) => [i]))).handler!(args);
+            expect(result).toMatchObject({ success: true, rowCount: 10_002, truncated: true });
+            expect((result as any).rows).toHaveLength(10_000);
+            expect(store.listCanvases(WS)).toEqual([]);
+        });
+
+        it('enforces the byte cap and returns valid JSON', async () => {
+            const tool = executionTool(mockFactory([['a'.repeat(5 * 1024 * 1024)], ['b'.repeat(5 * 1024 * 1024)]]));
+            const result = await tool.handler!(args);
+            expect(result).toMatchObject({ success: true, rowCount: 2, truncated: true });
+            expect((result as any).rows).toHaveLength(1);
+            expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(8 * 1024 * 1024);
+            expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+        });
+
+        it.each(['query', 'clusterUrl', 'database'] as const)('rejects missing or invalid %s before execution', async field => {
+            const clientFactory = vi.fn(mockFactory([[1]]));
+            const tool = executionTool(clientFactory);
+            for (const value of ['', '  ', null, 42]) {
+                expect(await tool.handler!({ ...args, [field]: value })).toEqual({ success: false, error: `${field} is required` });
+            }
+            expect(clientFactory).not.toHaveBeenCalled();
+            expect(store.listCanvases(WS)).toEqual([]);
+        });
+
+        it('rejects management commands before constructing an SDK client', async () => {
+            const clientFactory = vi.fn(mockFactory([[1]]));
+            expect(await executionTool(clientFactory).handler!({ ...args, query: '  .show tables' }))
+                .toMatchObject({ success: false, error: expect.stringMatching(/management commands require explicit approval/) });
+            expect(clientFactory).not.toHaveBeenCalled();
+            expect(isCanvasScriptTool('execute_kusto_query')).toBe(true);
+            expect(isCanvasScriptTool('kusto_query')).toBe(false);
+            expect(validateCanvasManifestTools(['execute_kusto_query'])).toEqual({ ok: true, tools: ['execute_kusto_query'] });
+        });
+
+        it('rechecks live disablement before real or mock execution', async () => {
+            let enabled = true;
+            const clientFactory = vi.fn(mockFactory([[1]]));
+            const tool = executionTool(clientFactory, () => enabled);
+            enabled = false;
+            for (const query of [args.query, 'mock:big: 2']) {
+                expect(await tool.handler!({ ...args, query })).toEqual({ success: false, error: 'Kusto is disabled on the server host.' });
+            }
+            expect(clientFactory).not.toHaveBeenCalled();
+        });
+
+        it('surfaces query and redacted host auth failures without persisting an error canvas or retrying', async () => {
+            for (const message of ['Semantic error: bad query', 'Kusto Rust auth: AccountMismatch']) {
+                const executeQuery = vi.fn(async () => { throw new Error(message); });
+                expect(await executionTool(() => ({ executeQuery })).handler!(args)).toEqual({ success: false, error: message });
+                expect(executeQuery).toHaveBeenCalledOnce();
+                expect(store.listCanvases(WS)).toEqual([]);
+            }
+        });
+
+        it.each(['allowed', 'disabled', 'approval-required'] as const)('uses owner script permissions (%s)', async mode => {
+            writeRepoPreferences(dataDir, WS, {
+                disabledLlmTools: mode === 'disabled' ? ['execute_kusto_query'] : [],
+                approvalRequiredLlmTools: mode === 'approval-required' ? ['execute_kusto_query'] : [],
+            });
+            fs.writeFileSync(path.join(dataDir, CONFIG_FILE_NAME),
+                'features:\n  canvasHostApis: false\n  toolScripting: false\n  canvasToolScripts: false\n');
+            const clientFactory = vi.fn(mockFactory([[1], [2]]));
+            const emitProcessEvent = vi.fn();
+            const result = await runScriptWithOwnerTools({
+                ownerTools: {
+                    dataDir, workspaceId: WS, processId: 'owner',
+                    store: { emitProcessEvent } as unknown as ProcessStore,
+                    includeMemoryV2: false,
+                    kustoRuntime: { getEnabled: () => true, clientFactory },
+                },
+                allowTools: ['execute_kusto_query'],
+                code: `return await tools.execute_kusto_query(${JSON.stringify(args)});`,
+            });
+            if (mode === 'allowed') {
+                expect(result).toMatchObject({ ok: true, callCount: 1, result: { success: true, rows: [[1], [2]] } });
+                expect(clientFactory).toHaveBeenCalledOnce();
+            } else {
+                expect(result.ok).toBe(false);
+                expect(clientFactory).not.toHaveBeenCalled();
+            }
+            expect(store.listCanvases(WS)).toEqual([]);
+            expect(emitProcessEvent).not.toHaveBeenCalled();
+        });
+
+        it('keeps settings parameter metadata aligned with the execution tool schema', () => {
+            expect(summarizeToolParameters(executionTool().parameters))
+                .toEqual(summarizeToolParameters(LLM_TOOL_PARAMETER_SCHEMAS.execute_kusto_query));
+        });
+    });
+
 });

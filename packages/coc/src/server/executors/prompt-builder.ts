@@ -721,16 +721,17 @@ export function buildKustoToolsAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { kustoQuery } = createKustoTools({
+    const { kustoQuery, executeKustoQuery } = createKustoTools({
         dataDir,
         workspaceId,
         processId,
         processStore: store,
         clientFactory: opts?.runtime?.clientFactory,
+        getEnabled: opts?.runtime?.getEnabled,
     });
 
     // No prose suffix — the tool description carries its own guidance.
-    return { tools: [kustoQuery], suffix: '' };
+    return { tools: [kustoQuery, executeKustoQuery], suffix: '' };
 }
 
 // ============================================================================
