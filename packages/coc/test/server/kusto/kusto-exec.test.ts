@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     coerceCellValue,
+    MAX_KUSTO_RESULT_BYTES,
     executeKustoQuery,
     type KustoClientFactory,
     type KustoClientLike,
@@ -50,6 +51,13 @@ describe('coerceCellValue', () => {
         expect(coerceCellValue([1, 2])).toBe('[1,2]');
     });
 
+    it('keeps unusual values JSON-safe', () => {
+        expect(coerceCellValue(Symbol('x'))).toBe('Symbol(x)');
+        expect(coerceCellValue(() => 1)).toEqual(expect.any(String));
+        expect(coerceCellValue(new Date(NaN))).toBe('Invalid Date');
+        expect(coerceCellValue({ toJSON: () => undefined })).toEqual(expect.any(String));
+    });
+
     it('keeps safe bigints as numbers and unsafe ones as strings', () => {
         expect(coerceCellValue(10n)).toBe(10);
         expect(coerceCellValue(9007199254740993n)).toBe('9007199254740993');
@@ -87,6 +95,62 @@ describe('executeKustoQuery', () => {
         expect(result.rows).toHaveLength(3);
         expect(result.rowCount).toBe(5);
         expect(result.truncated).toBe(true);
+    });
+
+    it('bounds UTF-8 JSON bytes and retains a prefix with the full count', async () => {
+        const text = '你好'.repeat(10) + JSON.stringify('line\n');
+        const response = mockResponse([{ name: 'text', type: 'string' }], [
+            [text], ['large'.repeat(100)], ['small'],
+        ]);
+        const result = await executeKustoQuery(params, {
+            clientFactory: factoryReturning(response), maxBytes: 256,
+        });
+        expect(result.rows).toEqual([[text]]);
+        expect(result.rowCount).toBe(3);
+        expect(result.truncated).toBe(true);
+        expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(256);
+    });
+
+    it('applies the default byte ceiling to a single oversized row', async () => {
+        const response = mockResponse([{ name: 'text', type: 'string' }], [
+            ['x'.repeat(MAX_KUSTO_RESULT_BYTES)],
+        ]);
+        const result = await executeKustoQuery(params, { clientFactory: factoryReturning(response) });
+        expect(result).toMatchObject({ rows: [], rowCount: 1, truncated: true });
+        expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(MAX_KUSTO_RESULT_BYTES);
+    });
+
+    it('does not convert rows discarded by row or byte limits', async () => {
+        const read = vi.fn(() => { throw new Error('discarded cells must not be read'); });
+        const response = { primaryResults: [{
+            columns: [{ name: 'x', type: 'string' }],
+            rows: () => [{ getValueAt: () => 'x'.repeat(300) }, { getValueAt: read }],
+        }] };
+        for (const limits of [{ cap: 0 }, { cap: 1 }, { maxBytes: 128 }]) {
+            const result = await executeKustoQuery(params, {
+                clientFactory: factoryReturning(response), ...limits,
+            });
+            expect(result.rowCount).toBe(2);
+            expect(result.truncated).toBe(true);
+        }
+        expect(read).not.toHaveBeenCalled();
+    });
+
+    it('rejects oversized column metadata without returning partial JSON', async () => {
+        const response = mockResponse([{ name: 'x'.repeat(300), type: 'string' }], []);
+        await expect(executeKustoQuery(params, {
+            clientFactory: factoryReturning(response), maxBytes: 128,
+        })).rejects.toThrow('column metadata exceeds the byte limit');
+    });
+
+    it.each([
+        { cap: -1 }, { cap: 1.5 }, { cap: NaN }, { cap: Infinity }, { cap: MAX_KUSTO_ROWS + 1 },
+        { maxBytes: 0 }, { maxBytes: 1.5 }, { maxBytes: NaN }, { maxBytes: Infinity },
+        { maxBytes: MAX_KUSTO_RESULT_BYTES + 1 },
+    ])('rejects invalid bounds before creating a client: %j', async limits => {
+        const factory = vi.fn();
+        await expect(executeKustoQuery(params, { clientFactory: factory, ...limits })).rejects.toThrow('cap must be');
+        expect(factory).not.toHaveBeenCalled();
     });
 
     it('propagates a query error from execute()', async () => {
