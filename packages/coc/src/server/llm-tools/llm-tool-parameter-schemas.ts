@@ -228,6 +228,15 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['query', 'clusterUrl', 'database'],
     },
+    execute_kusto_command: {
+        type: 'object',
+        properties: {
+            command: { type: 'string' },
+            clusterUrl: { type: 'string' },
+            database: { type: 'string' },
+        },
+        required: ['command', 'clusterUrl', 'database'],
+    },
     kusto_query: {
         type: 'object',
         properties: {

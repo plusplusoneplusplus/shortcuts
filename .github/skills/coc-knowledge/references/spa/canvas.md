@@ -336,18 +336,20 @@ Unknown auth payloads are sanitized without fallback or replay.
 Real standalone execution requires a host client factory;
 unwired callers fail rather than constructing an alternative credential.
 
-Each query owns an SDK client because SDK cancellation is client-wide. Request
+Each query or command owns an SDK client because SDK cancellation is client-wide. Request
 abort closes that client and its connection pools, rejects late results and leaves
-shared credentials and concurrent queries intact. Closing the host adapter aborts
-all its requests. The standalone tool forwards its invocation signal through the
+shared credentials and concurrent requests intact. Closing the host adapter aborts
+all its requests. Both standalone tools forward their invocation signals through the
 executor and runtime. Cancellation during shared client construction stops waiting
 without disposing shared state.
 
-`kusto-exec.ts` rejects direct management commands before client construction.
-The host adapter exposes only `executeQuery`, targeting `/v2/rest/query` with
-`request_readonly: true`; query text cannot override that service request option.
-Results are JSON-safe and capped at 10,000 rows and 8 MiB of
-serialized UTF-8 JSON, including column metadata. Lower per-call limits are
+`kusto-exec.ts` rejects direct management commands on the query path before client
+construction. The query contract exposes `executeQuery`, targeting `/v2/rest/query`
+with `request_readonly: true`; query text cannot override that service request
+option. The separate command factory exposes `executeMgmt` through `/v1/rest/mgmt`,
+sharing host credentials and ownership checks. Tool approval policy lives in
+[LLM Tools](../llm-tools.md#kusto-tools). Both result paths are JSON-safe and capped
+at 10,000 rows and 8 MiB of serialized UTF-8 JSON, including column metadata. Lower per-call limits are
 validated before execution. Results retain a row prefix and count every returned
 row without converting discarded cells; oversized column metadata fails explicitly.
 

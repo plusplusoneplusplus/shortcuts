@@ -251,7 +251,7 @@ describe('actual Kusto SDK credential interface without network', () => {
         expect(management).not.toHaveBeenCalled();
     });
 
-    it('cancels only the owning SDK request and keeps concurrent and later queries usable', async () => {
+    it.each(['executeQuery', 'executeMgmt'] as const)('cancels only the owning SDK %s request and keeps concurrent and later queries usable', async method => {
         const { CloudSettings } = await import('azure-kusto-data');
         vi.spyOn(CloudSettings, 'getCloudInfoForCluster').mockResolvedValue(CloudSettings.defaultCloudInfo);
         const requests: Array<{ token: import('axios').CancelToken; destroy: ReturnType<typeof vi.spyOn>; finish: () => void }> = [];
@@ -264,7 +264,7 @@ describe('actual Kusto SDK credential interface without network', () => {
         const client = await buildKustoClient(clusterUrl, { getToken });
         owners.push({ dispose: () => client.close?.() });
         const controller = new AbortController();
-        const first = client.executeQuery('DB', 'print x=1', controller.signal);
+        const first = client[method]('DB', method === 'executeMgmt' ? '.show tables' : 'print x=1', controller.signal);
         const second = client.executeQuery('DB', 'print x=2');
         await vi.waitFor(() => expect(requests).toHaveLength(2));
         controller.abort(new Error('query cancelled'));
@@ -288,7 +288,7 @@ describe('actual Kusto SDK credential interface without network', () => {
         expect(post).toHaveBeenCalledTimes(3);
     });
 
-    it('host disposal rejects pending authentication without cancelling the shared credential', async () => {
+    it.each(['executeQuery', 'executeMgmt'] as const)('host disposal rejects pending %s authentication without cancelling the shared credential', async method => {
         const { CloudSettings, Client } = await import('azure-kusto-data');
         vi.spyOn(CloudSettings, 'getCloudInfoForCluster').mockResolvedValue(CloudSettings.defaultCloudInfo);
         let started!: () => void;
@@ -299,7 +299,7 @@ describe('actual Kusto SDK credential interface without network', () => {
         });
         const close = vi.spyOn(Client.prototype, 'close');
         const client = await buildKustoClient(clusterUrl, { getToken });
-        const run = client.executeQuery('DB', 'print x=1');
+        const run = client[method]('DB', method === 'executeMgmt' ? '.show tables' : 'print x=1');
         await ready;
         client.close?.();
         await expect(run).rejects.toThrow('owner is closed');

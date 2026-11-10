@@ -1,5 +1,5 @@
 /**
- * Server-side Kusto query execution for Kusto canvases (AC-02).
+ * Server-side Kusto execution, independent of canvas persistence.
  *
  * Executes a KQL query against a cluster/database with the official
  * `azure-kusto-data` SDK, authenticated with the machine's existing `az login`
@@ -70,6 +70,19 @@ interface KustoResponseLike {
     primaryResults: KustoResultTableLike[];
 }
 
+export interface KustoCommandParams {
+    clusterUrl: string;
+    database: string;
+    command: string;
+}
+
+/** Separate command contract; callers must enforce foreground approval. */
+export interface KustoCommandClientLike {
+    executeMgmt(db: string, command: string, signal?: AbortSignal): Promise<KustoResponseLike>;
+}
+
+export type KustoCommandClientFactory = (params: KustoCommandParams) => KustoCommandClientLike | Promise<KustoCommandClientLike>;
+
 /** Query-only SDK adapter; never expose the SDK's command-dispatching execute(). */
 export interface KustoClientLike {
     executeQuery(db: string, query: string, signal?: AbortSignal): Promise<KustoResponseLike>;
@@ -96,33 +109,36 @@ export interface KustoExecOptions {
 export async function buildKustoClient(
     clusterUrl: string,
     credential: import('@azure/identity').TokenCredential,
-): Promise<KustoClientLike> {
+): Promise<KustoClientLike & KustoCommandClientLike> {
     const { Client, KustoConnectionStringBuilder, ClientRequestProperties } = await import('azure-kusto-data');
     if (!credential) throw new Error('Kusto SDK client requires the host Rust credential.');
     const kcsb = KustoConnectionStringBuilder.withTokenCredential(clusterUrl, credential);
     // The installed SDK exposes client-wide cancellation only. Each request owns
     // its SDK client; the host retains the selected credential and this adapter.
     const lifetime = new AbortController();
+    async function execute(database: string, text: string, command: boolean, signal?: AbortSignal): Promise<KustoResponseLike> {
+        signal?.throwIfAborted();
+        lifetime.signal.throwIfAborted();
+        const requestSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
+        const client = new Client(kcsb);
+        try {
+            const properties = new ClientRequestProperties();
+            // Query text cannot override this service-side read-only boundary.
+            if (!command) properties.setOption('request_readonly', true);
+            const pending = command
+                ? client.executeMgmt(database, text, properties)
+                : client.executeQuery(database, text, properties);
+            return await awaitKustoRequest(pending, requestSignal, () => client.close());
+        } finally {
+            client.close();
+            // SDK close leaves its request-owned keep-alive pools open.
+            client.axiosInstance.defaults.httpAgent?.destroy();
+            client.axiosInstance.defaults.httpsAgent?.destroy();
+        }
+    }
     return {
-        executeQuery: async (database, query, signal) => {
-            signal?.throwIfAborted();
-            lifetime.signal.throwIfAborted();
-            const requestSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
-            const client = new Client(kcsb);
-            try {
-                // Always use /v2/rest/query, including disguised commands. KQL
-                // cannot override request_readonly at the service boundary.
-                const properties = new ClientRequestProperties();
-                properties.setOption('request_readonly', true);
-                return await awaitKustoRequest(client.executeQuery(database, query, properties), requestSignal, () => client.close());
-            } finally {
-                client.close();
-                // SDK close cancels requests but leaves its private keep-alive
-                // pools open. These agents belong only to this request.
-                client.axiosInstance.defaults.httpAgent?.destroy();
-                client.axiosInstance.defaults.httpsAgent?.destroy();
-            }
-        },
+        executeQuery: (database, query, signal) => execute(database, query, false, signal),
+        executeMgmt: (database, command, signal) => execute(database, command, true, signal),
         close: () => lifetime.abort(new Error('Kusto client owner is closed.')),
     };
 }
@@ -247,14 +263,7 @@ export async function executeKustoQuery(
     opts: KustoExecOptions = {},
 ): Promise<KustoQueryResult> {
     opts.signal?.throwIfAborted();
-    const cap = opts.cap ?? MAX_KUSTO_ROWS;
-    const maxBytes = opts.maxBytes ?? MAX_KUSTO_RESULT_BYTES;
-    if (!Number.isSafeInteger(cap) || cap < 0 || cap > MAX_KUSTO_ROWS) {
-        throw new Error(`Kusto row cap must be an integer between 0 and ${MAX_KUSTO_ROWS}.`);
-    }
-    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_KUSTO_RESULT_BYTES) {
-        throw new Error(`Kusto byte cap must be an integer between 1 and ${MAX_KUSTO_RESULT_BYTES}.`);
-    }
+    validateResultLimits(opts);
 
     if (params.query.trimStart().startsWith('.')) {
         throw new Error('Kusto management commands require explicit approval; use the foreground command tool.');
@@ -271,6 +280,40 @@ export async function executeKustoQuery(
     }
 
     opts.signal?.throwIfAborted();
+    return convertKustoResult(response, opts);
+}
+
+/** Execute a command only through an approval-gated server caller; never mock or retry. */
+export async function executeKustoCommand(
+    params: KustoCommandParams,
+    opts: Omit<KustoExecOptions, 'clientFactory'> & { clientFactory?: KustoCommandClientFactory } = {},
+): Promise<KustoQueryResult> {
+    opts.signal?.throwIfAborted();
+    validateResultLimits(opts);
+    if (!params.command.trimStart().startsWith('.')) throw new Error('Kusto management command must start with a dot.');
+    if (!opts.clientFactory) throw new Error('Kusto command execution requires a host-owned Rust client factory.');
+    const client = await awaitKustoRequest(Promise.resolve(opts.clientFactory(params)), opts.signal);
+    opts.signal?.throwIfAborted();
+    const response = await awaitKustoRequest(client.executeMgmt(params.database, params.command,
+        ...(opts.signal ? [opts.signal] : [])), opts.signal);
+    opts.signal?.throwIfAborted();
+    return convertKustoResult(response, opts);
+}
+
+function validateResultLimits(opts: Pick<KustoExecOptions, 'cap' | 'maxBytes'>): void {
+    const cap = opts.cap ?? MAX_KUSTO_ROWS;
+    const maxBytes = opts.maxBytes ?? MAX_KUSTO_RESULT_BYTES;
+    if (!Number.isSafeInteger(cap) || cap < 0 || cap > MAX_KUSTO_ROWS) {
+        throw new Error(`Kusto row cap must be an integer between 0 and ${MAX_KUSTO_ROWS}.`);
+    }
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_KUSTO_RESULT_BYTES) {
+        throw new Error(`Kusto byte cap must be an integer between 1 and ${MAX_KUSTO_RESULT_BYTES}.`);
+    }
+}
+
+function convertKustoResult(response: KustoResponseLike, opts: Pick<KustoExecOptions, 'cap' | 'maxBytes'>): KustoQueryResult {
+    const cap = opts.cap ?? MAX_KUSTO_ROWS;
+    const maxBytes = opts.maxBytes ?? MAX_KUSTO_RESULT_BYTES;
     const table = response?.primaryResults?.[0];
     const columns: KustoColumn[] = (table?.columns ?? []).map((col, i) => ({
         name: col.name ?? `Column${i + 1}`,

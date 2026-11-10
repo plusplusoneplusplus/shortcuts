@@ -253,6 +253,7 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).toContain('kusto_query');
         expect(result.tools.map(t => t.name)).toContain('execute_kusto_query');
+        expect(result.tools.map(t => t.name)).toContain('execute_kusto_command');
     });
 
     it('takes Kusto enablement from the owning host runtime, not a conflicting data-directory config', () => {
@@ -269,9 +270,11 @@ describe('buildChatToolBundle', () => {
         });
         expect(build().tools.map(tool => tool.name)).toContain('kusto_query');
         expect(build().tools.map(tool => tool.name)).toContain('execute_kusto_query');
+        expect(build().tools.map(tool => tool.name)).toContain('execute_kusto_command');
         enabled = false;
         expect(build().tools.map(tool => tool.name)).not.toContain('kusto_query');
         expect(build().tools.map(tool => tool.name)).not.toContain('execute_kusto_query');
+        expect(build().tools.map(tool => tool.name)).not.toContain('execute_kusto_command');
     });
 
     it('suppresses kusto_query when kustoToolsEnabled is false', () => {
@@ -288,6 +291,7 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
         expect(result.tools.map(t => t.name)).not.toContain('execute_kusto_query');
+        expect(result.tools.map(t => t.name)).not.toContain('execute_kusto_command');
     });
 
     it('suppresses kusto_query when includeKustoTools is false even if enabled', () => {
@@ -305,9 +309,10 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
         expect(result.tools.map(t => t.name)).not.toContain('execute_kusto_query');
+        expect(result.tools.map(t => t.name)).not.toContain('execute_kusto_command');
     });
 
-    it.each(['kusto_query', 'execute_kusto_query'])('drops %s when disabled by repo preferences even if enabled', toolName => {
+    it.each(['kusto_query', 'execute_kusto_query', 'execute_kusto_command'])('drops %s when disabled by repo preferences even if enabled', toolName => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [toolName] });
 
         const result = buildChatToolBundle({

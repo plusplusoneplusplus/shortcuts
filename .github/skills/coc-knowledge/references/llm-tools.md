@@ -72,7 +72,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `canvas-extension-tools.ts` | `list_canvas_capabilities`, `manage_canvas` (`action: "open" \| "close"`), `invoke_canvas_action` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
-| `kusto-tools.ts` | `kusto_query`, `execute_kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
+| `kusto-tools.ts` | `kusto_query`, `execute_kusto_query`, `execute_kusto_command` | Kusto/KQL against Azure Data Explorer — see below. |
 | `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
@@ -781,12 +781,20 @@ client factory and the query-only contract and result limits described in
 queries. The registry marks this tool read-only and scriptable; owner scripts
 retain per-workspace enablement and unattended approval denial.
 
+`execute_kusto_command` takes `clusterUrl`, `database`, and dotted `command`
+text. Its separate host-owned `executeMgmt` contract returns the same bounded
+result without canvas writes. The shared approval gate requires fresh foreground
+approval; unattended scripts and calls without an approval channel are denied
+before SDK dispatch. The tool is outside the read-only canvas script allowlist.
+Invocation cancellation, live disablement and credential/configuration checks
+apply to both execution tools. Commands have no mock path or automatic retry.
+
 `kusto_query` runs the same query executor through `runKustoCanvas`, persisting
 an interactive `type: 'kusto'` canvas. Omit `canvasId` to create (default title
 `Kusto Query`), or pass an existing Kusto canvas to update. Returns column schema,
 a capped row sample (`KUSTO_QUERY_ROW_SAMPLE`), total row count, truncation state,
 and a `canvas://<id>` embed link. The Run route shares this persistence service.
-Both tools are gated by `kusto.enabled`, independently of optional canvas host
+All three tools are gated by `kusto.enabled`, independently of optional canvas host
 and tool-script flags. Only `execute_kusto_query` is allowed in read-only canvas
 script manifests.
 
