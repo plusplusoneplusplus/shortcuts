@@ -921,8 +921,12 @@ ask-user construction and sets the approval gate's `denyApprovals` policy. Gated
 handlers return a denied result before consulting interactive wiring or saved
 session approvals. The script engine turns
 that result into `ToolCallError`, including for gated tools called by nested scripts.
-Ungated tools and workspace preferences retain their normal behavior. Ordinary
-bundles retain their existing interactive and noninteractive approval policies.
+Ungated tools and workspace preferences retain their normal behavior. The gate
+always wraps `execute_kusto_command` independently of approval preferences. It
+denies without an interactive approval channel and ignores saved session grants.
+Each command uses a snapshot of the arguments shown in its approval prompt;
+session approval authorizes only that call. Cancellation before dispatch prevents
+execution. Other tools retain their preference-based approval policies.
 
 Sentinel job gates route through `MultiRepoQueueRouter.runRefrainGate`, the owning
 `CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runRefrainGate`.
