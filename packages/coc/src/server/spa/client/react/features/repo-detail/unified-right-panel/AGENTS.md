@@ -354,9 +354,11 @@ the panel keeps per-tab in-memory supported/shown sets, default off and never
 persisted. `useFileBlame` reads `git/file-blame` (HEAD) through the tab's owner
 and `ownerRoutingRef`, dropping stale answers. `fileBlameModel` diffs HEAD lines
 against the live buffer so changed or unmappable lines show `Not committed yet`;
-`fileBlameDecorations` renders Monaco gutter labels with full-subject hovers, and
-a click opens `openPanelGitCommit` only when the tab's route matches the panel
-owner's.
+`fileBlameDecorations` renders Monaco labels as empty-range injected text (which
+needs `showIfCollapsed`) with full-subject hovers. Clicking a label, or the
+hover's short hash (a `command:` link to a per-editor Monaco command, the only
+command that hover trusts), opens `openPanelGitCommit` only when the tab's route
+matches the panel owner's.
 
 The Search and Explorer controls sit at the row's right edge. When the file
 toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each

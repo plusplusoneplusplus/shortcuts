@@ -2,11 +2,13 @@
  * Blame decorations (`features.fileBlame`): every buffer line gets an aligned
  * label, the first line of a run names its commit, edited lines turn "Not
  * committed yet" live, hovers carry subject/author/date, and clicking an
- * attributed label opens that commit.
+ * attributed label or the hover's hash link opens that commit.
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { GitFileBlameResponse } from '@plusplusoneplusplus/coc-client';
+import type { IMarkdownString } from 'monaco-editor';
 import {
+    FILE_BLAME_OPEN_COMMIT_COMMAND,
     FILE_BLAME_LABEL_WIDTH,
     FILE_BLAME_UNCOMMITTED_CLASS,
     attachFileBlameDecorations,
@@ -95,6 +97,7 @@ function fakeEditor(initial: string) {
     let value = initial;
     let changeListener: (() => void) | null = null;
     let mouseListener: ((event: unknown) => void) | null = null;
+    const commands = new Map<string, (accessor: unknown, ...args: unknown[]) => void>();
     const collection = { set: vi.fn(), clear: vi.fn() };
     const editor = {
         createDecorationsCollection: vi.fn(() => collection),
@@ -110,7 +113,16 @@ function fakeEditor(initial: string) {
             return { dispose: () => { changeListener = null; } };
         }),
     };
-    const monaco = { editor: { MouseTargetType: { CONTENT_TEXT }, InjectedTextCursorStops: { None: CURSOR_STOPS_NONE } } };
+    const monaco = {
+        editor: {
+            MouseTargetType: { CONTENT_TEXT },
+            InjectedTextCursorStops: { None: CURSOR_STOPS_NONE },
+            registerCommand: vi.fn((id: string, handler: (accessor: unknown, ...args: unknown[]) => void) => {
+                commands.set(id, handler);
+                return { dispose: () => { commands.delete(id); } };
+            }),
+        },
+    };
     return {
         context: { editor, model, monaco } as never,
         collection,
@@ -119,7 +131,20 @@ function fakeEditor(initial: string) {
         click(type: number, attachedData: unknown) {
             mouseListener?.({ target: { type, detail: { injectedText: { options: { attachedData } } } } });
         },
-        get listening() { return changeListener !== null || mouseListener !== null; },
+        hovers() {
+            const decorations = editor.createDecorationsCollection.mock.calls[0][0] as { options: { hoverMessage: IMarkdownString } }[];
+            return decorations.map(d => d.options.hoverMessage);
+        },
+        /** Runs a hover's `command:` link the way Monaco's trusted-markdown opener does. */
+        runLink(hover: IMarkdownString) {
+            const match = /\]\(command:([^?]+)\?(\S+)/.exec(hover.value);
+            if (!match) return false;
+            const trusted = typeof hover.isTrusted === 'object' ? hover.isTrusted.enabledCommands : [];
+            if (!trusted.includes(match[1])) return false;
+            commands.get(match[1])?.(undefined, ...JSON.parse(decodeURIComponent(match[2])));
+            return true;
+        },
+        get listening() { return changeListener !== null || mouseListener !== null || commands.size > 0; },
     };
 }
 
@@ -149,6 +174,33 @@ describe('attachFileBlameDecorations', () => {
         fake.click(CONTENT_TEXT, 'c'.repeat(40));
         fake.click(2, COMMIT_A.hash);
         expect(onOpenCommit).not.toHaveBeenCalled();
+    });
+
+    it('links the hover hash to a trusted per-editor command that opens the commit', () => {
+        const fake = fakeEditor('one\ntwo\nthree\nnew');
+        const onOpenCommit = vi.fn();
+        attachFileBlameDecorations(fake.context, BLAME, onOpenCommit);
+        const hovers = fake.hovers();
+        expect(hovers[0].value).toContain(`[\`${COMMIT_A.shortHash}\`](command:${FILE_BLAME_OPEN_COMMIT_COMMAND}.`);
+        expect(hovers[0].isTrusted).toEqual({ enabledCommands: [expect.stringMatching(new RegExp(`^${FILE_BLAME_OPEN_COMMIT_COMMAND.replace(/\./g, '\\.')}\\.\\d+$`))] });
+        expect(hovers[3].value).not.toContain('command:');
+        expect(hovers[3].isTrusted).toBeUndefined();
+
+        expect(fake.runLink(hovers[2])).toBe(true);
+        expect(onOpenCommit).toHaveBeenCalledWith(COMMIT_B.hash);
+
+        // A second editor gets its own command, so links never cross editors.
+        const other = fakeEditor('one');
+        const otherOpen = vi.fn();
+        attachFileBlameDecorations(other.context, BLAME, otherOpen);
+        expect(other.hovers()[0].isTrusted).not.toEqual(hovers[0].isTrusted);
+    });
+
+    it('keeps the plain hash and trusts nothing without an open command', () => {
+        const hover = formatBlameHover(COMMIT_A);
+        expect(hover.value).toContain(`\`${COMMIT_A.shortHash}\``);
+        expect(hover.value).not.toContain('command:');
+        expect(hover.isTrusted).toBeUndefined();
     });
 
     it('cleans up listeners and decorations', () => {
