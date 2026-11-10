@@ -159,6 +159,7 @@ export function CanvasBodyRenderer({
     if (kind.isKusto && canvas) {
         return (
             <KustoView
+                routingRef={routingRef}
                 workspaceId={workspaceId}
                 canvas={viewingVersion
                     ? { ...canvas, content: displayedContent, revision: viewingVersion.revision }

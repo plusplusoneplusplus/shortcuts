@@ -322,7 +322,10 @@ status pill, and the Ask AI toggle, then a Results card whose header carries the
 summary, the Table/Chart segmented switch, and CSV download. Chart controls are one toolbar:
 icon buttons for the chart type (`kusto-chart-type-<type>`), an X select, numeric Y
 columns as toggle chips (`aria-pressed`, swatch matches the plotted series), and a
-Split-by select. Run executes server-side via `client.canvases.run(...)` with no AI turn;
+Split-by select. The panel passes its explicit `routingRef` into `KustoView`;
+Run, chart saves and Ask AI resolve through that owner route (`null` means page
+origin), while request payloads retain raw workspace IDs. Inline views without
+an explicit route use workspace ownership. Run executes server-side via `client.canvases.run(...)` with no AI turn;
 Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a chat (and
 not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
 naming `kusto_query`.

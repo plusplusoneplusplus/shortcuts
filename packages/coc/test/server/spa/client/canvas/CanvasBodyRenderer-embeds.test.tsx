@@ -95,6 +95,20 @@ it('uses the explicit remote owner even when the same workspace exists locally',
     expect(mocks.remote.canvases.get).toHaveBeenCalledExactlyOnceWith('ws-owner', 'chart-1');
     expect(mocks.local.canvases.get).not.toHaveBeenCalled();
     expect(mocks.remote.canvases.run).not.toHaveBeenCalled();
+    mocks.remote.canvases.run.mockResolvedValue({ ...chart, revision: 2, content: JSON.stringify({
+        ...JSON.parse(chart.content), query: 'print Count=42', rows: [['Updated', 42]],
+    }) });
+    fireEvent.change(screen.getByTestId('kusto-query'), { target: { value: 'print Count=42' } });
+    // Compact inline views portal connection inputs into the embed header.
+    fireEvent.change(screen.getByTestId('kusto-database'), { target: { value: 'Other' } });
+    fireEvent.click(screen.getByTestId('kusto-run'));
+    await waitFor(() => expect(mocks.remote.canvases.run).toHaveBeenCalledExactlyOnceWith('ws-owner', 'chart-1', {
+        query: 'print Count=42', clusterUrl: 'https://help.kusto.windows.net', database: 'Other',
+    }));
+    fireEvent.click(screen.getByTestId('kusto-view-table'));
+    await screen.findByText('Updated');
+    expect(mocks.local.canvases.run).not.toHaveBeenCalled();
+    expect(mocks.remote.canvases.save).not.toHaveBeenCalled();
 });
 
 it('shows an unavailable ID without retrying or running a query', async () => {

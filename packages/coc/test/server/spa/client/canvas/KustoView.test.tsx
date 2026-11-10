@@ -264,6 +264,57 @@ describe('KustoView run', () => {
         await waitFor(() => expect(screen.getByTestId('kusto-run-error')).toHaveTextContent('Network down'));
     });
 
+    it.each([
+        'Kusto is disabled',
+        'Tool execute_kusto_query is not allowed',
+        'Management commands require explicit approval',
+        'Tool script timed out',
+        'Canvas revision conflict: reload before running again',
+        'The owning conversation is unavailable',
+    ])('shows %s without retrying or starting a conversation turn', async message => {
+        mocks.run.mockRejectedValue(new Error(message));
+        const onCanvasSaved = vi.fn();
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} onCanvasSaved={onCanvasSaved} />);
+        fireEvent.click(screen.getByTestId('kusto-run'));
+        await waitFor(() => expect(screen.getByTestId('kusto-run-error')).toHaveTextContent(message));
+        expect(screen.getByTestId('kusto-run')).toBeEnabled();
+        expect(screen.getByText('Texas')).toBeInTheDocument();
+        expect(mocks.run).toHaveBeenCalledTimes(1);
+        expect(onCanvasSaved).not.toHaveBeenCalled();
+        expect(mocks.save).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('displays a persisted script/query failure returned by Run', async () => {
+        const saved = makeCanvas({ lastRun: { timestamp: '', status: 'error', error: 'Semantic error: bad query' } }, { revision: 2 });
+        mocks.run.mockResolvedValue(saved);
+        const onCanvasSaved = vi.fn();
+        const { rerender } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas({})} onCanvasSaved={onCanvasSaved} />);
+        fireEvent.click(screen.getByTestId('kusto-run'));
+        await waitFor(() => expect(onCanvasSaved).toHaveBeenCalledWith(saved));
+        rerender(<KustoView workspaceId="ws-1" canvas={saved} onCanvasSaved={onCanvasSaved} />);
+        expect(screen.getByTestId('kusto-error')).toHaveTextContent('Semantic error: bad query');
+        expect(mocks.run).toHaveBeenCalledTimes(1);
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['shiftKey', 'ctrlKey', 'metaKey'])('does not repeat a pending Run through %s+Enter', async modifier => {
+        let resolve!: (canvas: ReturnType<typeof makeCanvas>) => void;
+        mocks.run.mockImplementation(() => new Promise(done => { resolve = done; }));
+        const saved = makeCanvas(SUCCESS_STATE, { revision: 2 });
+        const onCanvasSaved = vi.fn();
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({})} onCanvasSaved={onCanvasSaved} />);
+        fireEvent.keyDown(screen.getByTestId('kusto-query'), { key: 'Enter', [modifier]: true });
+        expect(screen.getByTestId('kusto-run')).toBeDisabled();
+        fireEvent.keyDown(screen.getByTestId('kusto-query'), { key: 'Enter', [modifier]: true });
+        fireEvent.click(screen.getByTestId('kusto-run'));
+        expect(mocks.run).toHaveBeenCalledTimes(1);
+        resolve(saved);
+        await waitFor(() => expect(onCanvasSaved).toHaveBeenCalledWith(saved));
+        expect(screen.getByTestId('kusto-run')).toBeEnabled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
     it('disables Run when the query is empty', () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas({ query: '' })} />);
         expect(screen.getByTestId('kusto-run')).toBeDisabled();

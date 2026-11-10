@@ -43,7 +43,11 @@ component; do not grow `CanvasPanel.tsx` back.
 ## Rules that must not regress
 
 - **Clone routing (AC-07).** `useCocClient(workspaceId)` is resolved only in
-  `CanvasPanel` and passed down. A kernel that imports `getSpaCocClient` itself
+  `CanvasPanel` and passed down to its hooks. `KustoView` receives the panel's
+  explicit `routingRef` (including `null` for page origin); Run, chart saves and
+  Ask AI resolve through that same owner route, keeping raw workspace IDs on
+  the wire. Standalone/inline views without an explicit route resolve by workspace.
+  A kernel that imports `getSpaCocClient` itself
   would break remote workspaces while every same-origin test still passed —
   `CanvasPanel-remote-workspace.test.tsx` exists to catch exactly that.
 - **Never clobber a dirty draft.** A newer live AI revision while dirty sets

@@ -28,6 +28,8 @@ import { KustoChart, numericColumnNames, seriesColor } from './KustoChart';
 
 export interface KustoViewProps {
     workspaceId: string;
+    /** Preserve the host route when a raw workspace ID has multiple server owners. */
+    routingRef?: string | null;
     canvas: Canvas;
     /** Called with the updated canvas after a successful run so the host can refresh. */
     onCanvasSaved?: (canvas: Canvas) => void;
@@ -172,8 +174,8 @@ export function isRunShortcut(e: { key: string; shiftKey: boolean; ctrlKey: bool
     return e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey);
 }
 
-export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false, readOnly = false, connectionInHeader = false, connectionSlot = null }: KustoViewProps) {
-    const client = useCocClient(workspaceId);
+export function KustoView({ workspaceId, routingRef, canvas, onCanvasSaved, compact = false, readOnly = false, connectionInHeader = false, connectionSlot = null }: KustoViewProps) {
+    const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
     const parsed = useMemo(() => parseKustoContent(canvas.content), [canvas.content]);
 
     const [query, setQuery] = useState(parsed.query);

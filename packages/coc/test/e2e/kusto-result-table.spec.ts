@@ -115,6 +115,61 @@ async function px(page: Page, selector: string, prop: string, nth = 0): Promise<
 }
 
 test.describe('Kusto result table (real browser)', () => {
+    test('Run and shortcuts use the canvas transport and retain explicit failures without retries', async ({ page, serverUrl, dataDir }, testInfo) => {
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+        await seedWorkspace(serverUrl, WS_ID, 'kusto-table-repo');
+        seedKustoCanvas(dataDir);
+        // This is a browser transport test. Real owner-script execution and
+        // permission/timeout/conflict persistence are covered by route tests.
+        const calls: unknown[] = [];
+        let failure: string | undefined;
+        let revision = 1;
+        await page.route(`**/api/workspaces/${WS_ID}/canvases/${CANVAS_ID}/run`, async route => {
+            calls.push(route.request().postDataJSON());
+            if (failure) {
+                await route.fulfill({ status: 409, json: { error: failure } });
+                return;
+            }
+            await route.fulfill({ json: { canvas: {
+                id: CANVAS_ID, workspaceId: WS_ID, title: 'Latency percentiles', type: 'kusto',
+                revision: ++revision, createdAt: '', updatedAt: '', lastEditor: 'user',
+                content: JSON.stringify({
+                    ...JSON.parse(kustoContent()), query: 'print Count=42',
+                    columns: [{ name: 'Count', type: 'long' }], rows: [[42]],
+                    lastRun: { timestamp: '', status: 'success', rowCount: 1 },
+                }),
+            } } });
+        });
+        const conversationWrites: string[] = [];
+        page.on('request', req => {
+            if (req.method() === 'POST' && /\/(?:chat|messages|follow-up)(?:[/?]|$)/.test(req.url())) {
+                conversationWrites.push(req.url());
+            }
+        });
+        await openTable(page, serverUrl);
+        await page.getByTestId('kusto-query').fill('print Count=42');
+        await page.getByTestId('kusto-run').click();
+        await expect(page.locator('.interactive-md-table tbody tr').first()).toHaveText('42');
+        expect(calls).toEqual([{
+            query: 'print Count=42', clusterUrl: 'https://help.kusto.windows.net', database: 'Samples',
+        }]);
+        for (const [index, message] of [
+            'Kusto is disabled', 'Tool execute_kusto_query is not allowed',
+            'Tool script timed out', 'Canvas revision conflict', 'Semantic error: bad query',
+        ].entries()) {
+            failure = message;
+            await page.getByTestId('kusto-query').press(['Shift+Enter', 'Control+Enter', 'Meta+Enter'][index % 3]);
+            await expect(page.getByTestId('kusto-run-error')).toContainText(message);
+            await expect(page.getByTestId('kusto-run')).toBeEnabled();
+            expect(calls).toHaveLength(index + 2);
+            await expect(page.locator('.interactive-md-table tbody tr').first()).toHaveText('42');
+        }
+        await page.screenshot({ path: testInfo.outputPath('kusto-run-status.png') });
+        expect(conversationWrites).toEqual([]);
+        expect(pageErrors).toEqual([]);
+    });
+
     test('156 columns stay readable and scroll inside the results pane', async ({ page, serverUrl, dataDir }) => {
         const pageErrors: string[] = [];
         page.on('pageerror', error => pageErrors.push(error.message));
