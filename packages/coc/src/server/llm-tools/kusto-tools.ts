@@ -95,7 +95,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             required: ['query', 'clusterUrl', 'database'],
             additionalProperties: false,
         },
-        handler: async (args) => {
+        handler: async (args, invocation) => {
             const query = typeof args?.query === 'string' ? args.query : '';
             const clusterUrl = typeof args?.clusterUrl === 'string' ? args.clusterUrl : '';
             const database = typeof args?.database === 'string' ? args.database : '';
@@ -104,7 +104,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             if (!database.trim()) return { success: false, error: 'database is required' };
             try {
                 if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
-                const result = await executeKustoQuery({ query, clusterUrl, database }, { clientFactory: deps.clientFactory });
+                const result = await executeKustoQuery({ query, clusterUrl, database }, { clientFactory: deps.clientFactory, signal: invocation?.signal });
                 return { success: true, ...result };
             } catch (error) {
                 return { success: false, error: error instanceof Error ? error.message : String(error) };

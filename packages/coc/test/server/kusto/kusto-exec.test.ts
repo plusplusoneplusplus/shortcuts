@@ -67,6 +67,51 @@ describe('coerceCellValue', () => {
 describe('executeKustoQuery', () => {
     const params = { clusterUrl: 'https://c.kusto.windows.net', database: 'DB', query: 'T | take 1' };
 
+    it('rejects pre-aborted real and mock calls without constructing a client', async () => {
+        const signal = AbortSignal.abort(new Error('cancelled'));
+        const factory = vi.fn();
+        for (const query of [params.query, 'mock:big']) {
+            await expect(executeKustoQuery({ ...params, query }, { signal, clientFactory: factory }))
+                .rejects.toThrow('cancelled');
+        }
+        expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('cancels waiting for shared construction without closing the client or executing late', async () => {
+        const controller = new AbortController();
+        let finish!: (client: KustoClientLike) => void;
+        const pending = new Promise<KustoClientLike>(resolve => { finish = resolve; });
+        const client = { executeQuery: vi.fn(), close: vi.fn() };
+        const run = executeKustoQuery(params, { signal: controller.signal, clientFactory: () => pending });
+        controller.abort(new Error('cancelled'));
+        await expect(run).rejects.toThrow('cancelled');
+        finish(client);
+        await Promise.resolve();
+        expect(client.executeQuery).not.toHaveBeenCalled();
+        expect(client.close).not.toHaveBeenCalled();
+    });
+
+    it('forwards the signal and rejects late results from an uncooperative query', async () => {
+        const controller = new AbortController();
+        let finish!: (response: ReturnType<typeof mockResponse>) => void;
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => { started = resolve; });
+        const executeQuery = vi.fn(() => {
+            started();
+            return new Promise<ReturnType<typeof mockResponse>>(resolve => { finish = resolve; });
+        });
+        const close = vi.fn();
+        const run = executeKustoQuery(params, {
+            signal: controller.signal, clientFactory: () => ({ executeQuery, close }),
+        });
+        await ready;
+        controller.abort(new Error('cancelled'));
+        await expect(run).rejects.toThrow('cancelled');
+        finish(mockResponse([], []));
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query, controller.signal);
+        expect(close).not.toHaveBeenCalled();
+    });
+
     it.each([
         '.show tables',
         ' \n\t.set-or-append T <| print x=1',
@@ -87,6 +132,26 @@ describe('executeKustoQuery', () => {
         expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query);
         expect(execute).not.toHaveBeenCalled();
         expect(executeMgmt).not.toHaveBeenCalled();
+    });
+
+    it('removes abort listeners after success and query failure', async () => {
+        for (const fail of [false, true]) {
+            const controller = new AbortController();
+            const add = vi.spyOn(controller.signal, 'addEventListener');
+            const remove = vi.spyOn(controller.signal, 'removeEventListener');
+            const run = executeKustoQuery(params, { signal: controller.signal, clientFactory: () => ({
+                executeQuery: async () => {
+                    if (fail) throw new Error('query failed');
+                    return mockResponse([], []);
+                },
+            }) });
+            if (fail) await expect(run).rejects.toThrow('query failed');
+            else await expect(run).resolves.toMatchObject({ rowCount: 0 });
+            expect(add).toHaveBeenCalledTimes(2);
+            for (const [type, listener] of add.mock.calls) {
+                expect(remove).toHaveBeenCalledWith(type, listener);
+            }
+        }
     });
 
     it('returns typed columns and coerced rows on success', async () => {

@@ -328,13 +328,21 @@ mode; partial settings fail. Rust resolves and pins active identity on first tok
 use, checks it before cached returns, and rejects changes with `AccountMismatch`.
 A new provider lifecycle is required to select another identity. File edits require
 host refresh or the next manual start. The SDK resolves
-cloud/MFA audiences into the credential's scopes. Clients invalidate on host
+cloud/MFA audiences into the credential's scopes. Host adapters invalidate on host
 identity/flag changes and close on shutdown. Native auth owns token validation,
 expiry, caching and renewal; the adapter maps access token/expiry to the SDK
 credential shape and passes redacted `AuthError` through the SDK error envelope.
 Unknown auth payloads are sanitized without fallback or replay.
 Real standalone execution requires a host client factory;
 unwired callers fail rather than constructing an alternative credential.
+
+Each query owns an SDK client because SDK cancellation is client-wide. Request
+abort closes that client and its connection pools, rejects late results and leaves
+shared credentials and concurrent queries intact. Closing the host adapter aborts
+all its requests. The standalone tool forwards its invocation signal through the
+executor and runtime. Cancellation during shared client construction stops waiting
+without disposing shared state.
+
 `kusto-exec.ts` rejects direct management commands before client construction.
 The host adapter exposes only `executeQuery`, targeting `/v2/rest/query` with
 `request_readonly: true`; query text cannot override that service request option.

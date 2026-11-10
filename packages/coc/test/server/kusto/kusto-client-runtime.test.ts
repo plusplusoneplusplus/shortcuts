@@ -74,6 +74,33 @@ function fixture(enabled = true) {
 }
 
 describe('host-owned Kusto credential/cache rollout', () => {
+    it('passes tool invocation cancellation through the host without closing shared runtime state', async () => {
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => { started = resolve; });
+        const executeQuery = vi.fn(async (_db: string, _query: string, signal?: AbortSignal) => {
+            started();
+            return new Promise<typeof response>((_resolve, reject) => {
+                signal!.addEventListener('abort', () => reject(signal!.reason), { once: true });
+            });
+        });
+        const close = vi.fn();
+        const runtime = createKustoClientRuntime(() => ({ enabled: true }), {
+            buildClient: async () => ({ executeQuery, close }), diagnostic: vi.fn(),
+        });
+        owners.push(runtime);
+        const dataDir = mkdtempSync(path.join(tmpdir(), 'kusto-cancel-'));
+        directories.push(dataDir);
+        const tool = createKustoTools({ dataDir, workspaceId: 'owner', clientFactory: runtime.clientFactory }).executeKustoQuery;
+        const controller = new AbortController();
+        const run = tool.handler!(params, { sessionId: 'owner', toolName: 'execute_kusto_query', arguments: params, toolCallId: 'cancel-test', signal: controller.signal });
+        await ready;
+        controller.abort(new Error('query cancelled'));
+        await expect(run).resolves.toMatchObject({ success: false, error: 'query cancelled' });
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query, controller.signal);
+        expect(close).not.toHaveBeenCalled();
+        expect(runtime.getEnabled()).toBe(true);
+    });
+
     it('Kusto without an auth switch always constructs the Rust credential', async () => {
         const f = fixture();
         await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
