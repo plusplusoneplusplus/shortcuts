@@ -230,7 +230,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             const outcome = await runKustoCanvas(store, deps.workspaceId, canvasId, {
                 editor: 'ai',
                 overrides: { query, clusterUrl, database },
-                ...(deps.clientFactory ? { clientFactory: deps.clientFactory } : {}),
+                executeQuery: params => executeKustoQuery(params, { clientFactory: deps.clientFactory }),
                 ...(deps.now ? { now: deps.now } : {}),
             });
 

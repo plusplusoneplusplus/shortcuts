@@ -25,7 +25,7 @@ import type { CapabilityCompleteFn, RunCanvasCapabilityOptions } from './canvas-
 import type { CanvasRunScriptFactory } from './canvas-script-bridge';
 import { queueCanvasCapabilityRun } from './canvas-capability-queue';
 import { runKustoCanvas } from '../kusto/kusto-service';
-import type { KustoClientFactory } from '../kusto/kusto-exec';
+import { executeKustoQuery, type KustoClientFactory } from '../kusto/kusto-exec';
 
 /** Who `host.complete` bills a capability's model call to. */
 export interface CapabilityAttribution {
@@ -245,7 +245,7 @@ export class CanvasMutationService {
         const outcome = await runKustoCanvas(this.store, workspaceId, canvasId, {
             overrides,
             editor: 'user',
-            ...(this.deps.kustoClientFactory ? { clientFactory: this.deps.kustoClientFactory } : {}),
+            executeQuery: params => executeKustoQuery(params, { clientFactory: this.deps.kustoClientFactory }),
         });
 
         if (!outcome.ok) {

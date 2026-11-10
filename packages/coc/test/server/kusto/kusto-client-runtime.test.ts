@@ -349,7 +349,9 @@ describe('workspace consumers', () => {
                 workspaceId, title: 'Auth fixture', type: 'kusto',
                 content: serializeKustoState(createEmptyKustoState(params)),
             });
-            const outcome = await runKustoCanvas(store, workspaceId, canvas.id, { clientFactory: f.runtime.clientFactory });
+            const outcome = await runKustoCanvas(store, workspaceId, canvas.id, {
+                executeQuery: params => executeKustoQuery(params, { clientFactory: f.runtime.clientFactory }),
+            });
             expect(outcome.ok).toBe(true);
             expect(parseKustoState(store.getCanvas(workspaceId, canvas.id)!.content).lastRun?.status).toBe('success');
             expect(store.getCanvas(workspaceId === 'workspace-a' ? 'workspace-b' : 'workspace-a', canvas.id)).toBeNull();

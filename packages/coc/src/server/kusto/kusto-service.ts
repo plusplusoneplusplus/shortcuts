@@ -1,15 +1,15 @@
 /**
- * Run-and-persist orchestration for Kusto canvases (AC-02).
+ * Revision-safe persistence for a Kusto canvas run.
  *
  * Loads a Kusto canvas, applies optional query/cluster/database overrides,
- * executes the query server-side ({@link executeKustoQuery}), writes the typed
+ * invokes the caller's query executor, writes the typed
  * columns + rows and a `lastRun` outcome back into the canvas content, and
  * returns the persisted record. Query/auth failures are captured as the
  * canvas's error state rather than thrown, so the panel and the AI tool both
  * see a stored error.
  *
- * Shared by the AC-02 Run endpoint and the AC-03 `kusto_query` tool so both
- * paths agree on execution, truncation, and persistence.
+ * The Run endpoint and `kusto_query` share persistence without selecting an
+ * execution transport or constructing SDK clients here.
  */
 
 import type { CanvasStore, CanvasRecord, CanvasEditor } from '../canvas/canvas-store';
@@ -18,7 +18,7 @@ import {
     serializeKustoState,
     type KustoCanvasState,
 } from '../canvas/kusto-state';
-import { executeKustoQuery, type KustoClientFactory } from './kusto-exec';
+import type { KustoQueryParams, KustoQueryResult } from './kusto-exec';
 
 /** Per-run overrides for the Kusto canvas's stored query/cluster/database. */
 export interface RunKustoCanvasOverrides {
@@ -28,13 +28,13 @@ export interface RunKustoCanvasOverrides {
 }
 
 export interface RunKustoCanvasOptions {
+    /** Execute with the exact persisted snapshot, including its owning conversation. */
+    executeQuery: (params: KustoQueryParams, canvas: CanvasRecord) => Promise<KustoQueryResult>;
     overrides?: RunKustoCanvasOverrides;
     /** Who the persisted edit is attributed to. Defaults to 'user'. */
     editor?: CanvasEditor;
     /** Injectable clock for deterministic tests. */
     now?: () => string;
-    /** Injectable SDK client factory (mocked in tests). */
-    clientFactory?: KustoClientFactory;
 }
 
 export type RunKustoCanvasOutcome =
@@ -53,7 +53,7 @@ export async function runKustoCanvas(
     store: CanvasStore,
     workspaceId: string,
     canvasId: string,
-    opts: RunKustoCanvasOptions = {},
+    opts: RunKustoCanvasOptions,
 ): Promise<RunKustoCanvasOutcome> {
     const record = store.getCanvas(workspaceId, canvasId);
     if (!record) {
@@ -91,10 +91,7 @@ export async function runKustoCanvas(
         };
     } else {
         try {
-            const result = await executeKustoQuery(
-                { clusterUrl, database, query },
-                opts.clientFactory ? { clientFactory: opts.clientFactory } : {},
-            );
+            const result = await opts.executeQuery({ clusterUrl, database, query }, record);
             next = {
                 ...base,
                 columns: result.columns,
