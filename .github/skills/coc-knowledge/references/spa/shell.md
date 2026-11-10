@@ -1337,7 +1337,8 @@ the tab's owner and concrete clone route; see `unified-right-panel/AGENTS.md`.
 With `features.fileBlame` enabled, a Blame toggle beside History shows per-line
 `HEAD` attribution in the editor gutter of repo-relative text files (not binary,
 external, oversized or rendered Markdown). Lines edited in the live buffer show
-`Not committed yet`; a click opens the owner-routed Git commit detail.
+`Not committed yet`; clicking a label or the hover's short hash opens the
+owner-routed Git commit detail.
 
 Terminal, Settings, To-do and Canvas exist only as `coc://settings`, `coc://terminal`,
 `coc://todo[/<itemId>]` and `coc://canvas/<canvasId>` pages in web tabs, like `chrome://` pages: the same

@@ -21,7 +21,6 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
-import { buildChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
 import {
     ProcessOperationAdmission,
@@ -288,7 +287,7 @@ export type DeliveryPath = 'steered' | 'buffered' | 'enqueued' | 'direct-execute
  */
 export type DeliveryEvent =
     | { kind: 'pending-message-added'; pendingMessage: PendingMessage }
-    | { kind: 'message-queued'; turnIndex: number; deliveryMode: 'immediate' | 'enqueue'; queuePosition: number; optimisticId?: string }
+    | { kind: 'message-queued'; turnIndex: number; deliveryMode: 'immediate' | 'enqueue'; delivered: 'steered' | 'queued'; queuePosition: number; optimisticId?: string }
     | { kind: 'message-steering'; turnIndex: number; optimisticId?: string };
 
 export interface DeliveryResult {
@@ -682,9 +681,6 @@ export class ProcessMessageDeliveryService {
         let pendingMessageId: string | undefined;
         let taskId: string | undefined;
         let steerSucceeded = false;
-        const styleNeedsTurn = input.chatStyle !== undefined
-            && (input.chatStyle !== recordedChatStyle(proc.metadata)
-                || shouldInjectChatStyle(input.chatStyle, buildChatStyleBlock(input.chatStyle), proc, !!activeBinding.sessionId));
 
         // Buffer a follow-up as a pending message for server-side drain. The user
         // turn is NOT appended here — it is deferred until drainPendingMessages
@@ -736,10 +732,14 @@ export class ProcessMessageDeliveryService {
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
                 if (compactionPending) {
                     await bufferAsPendingMessage();
-                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && !styleNeedsTurn && !input.browserDemo && this.bridge.steerProcess) {
+                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && !input.browserDemo && this.bridge.steerProcess) {
+                    // A steer joins the running turn and carries no style block;
+                    // the selection rides metadataUpdate, so the next real turn
+                    // applies it.
                     const steered = await this.bridge.steerProcess(id, input.content);
                     if (!steered) {
-                        // Steering failed (no active SDK session); buffer for server-side drain.
+                        // No live turn accepted it (ended, settling, or provider
+                        // cannot steer); buffer for server-side drain.
                         await bufferAsPendingMessage();
                     } else {
                         steerSucceeded = true;
@@ -870,6 +870,7 @@ export class ProcessMessageDeliveryService {
             kind: 'message-queued',
             turnIndex,
             deliveryMode: input.deliveryMode,
+            delivered: steerSucceeded ? 'steered' : 'queued',
             queuePosition: input.deliveryMode === 'immediate' ? 0 : 1,
             ...(input.optimisticId !== undefined ? { optimisticId: input.optimisticId } : {}),
         });

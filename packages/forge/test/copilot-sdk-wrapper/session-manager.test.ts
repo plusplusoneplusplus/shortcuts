@@ -296,28 +296,40 @@ describe('SessionManager', () => {
         expect(manager.count()).toBe(0);
     });
 
-    // ── getSession ─────────────────────────────────────────────────────────
+    // ── steer ──────────────────────────────────────────────────────────────
 
-    it('getSession returns undefined for unknown ID', () => {
-        expect(manager.getSession('ghost')).toBeUndefined();
+    it('steer returns false when no turn is attached', async () => {
+        expect(await manager.steer('ghost', 'hi')).toBe(false);
     });
 
-    it('getSession returns undefined for a session without send()', () => {
-        const s = makeSession('no-send');
-        manager.track(s);
-        expect(manager.getSession('no-send')).toBeUndefined();
+    it('steer returns false for a tracked session without a running turn', async () => {
+        manager.track(makeSession('idle'));
+        expect(await manager.steer('idle', 'hi')).toBe(false);
     });
 
-    it('getSession returns the session when it has a send() method', () => {
-        const s = {
-            sessionId: 'streamable',
-            disconnect: vi.fn().mockResolvedValue(undefined),
-            send: vi.fn().mockResolvedValue(undefined),
-        };
-        manager.track(s);
-        const result = manager.getSession('streamable');
-        expect(result).toBeDefined();
-        expect(result!.sessionId).toBe('streamable');
-        expect(result!.send).toBe(s.send);
+    it('steer forwards the prompt to the attached turn', async () => {
+        const target = { steer: vi.fn().mockResolvedValue(true) };
+        manager.attachSteerTarget('s1', target);
+        expect(await manager.steer('s1', 'go left')).toBe(true);
+        expect(target.steer).toHaveBeenCalledWith('go left');
+    });
+
+    it('steer returns false after the turn detaches', async () => {
+        const target = { steer: vi.fn().mockResolvedValue(true) };
+        const detach = manager.attachSteerTarget('s1', target);
+        detach();
+        expect(await manager.steer('s1', 'hi')).toBe(false);
+        expect(target.steer).not.toHaveBeenCalled();
+    });
+
+    it('a stale detach does not remove a newer turn', async () => {
+        const older = { steer: vi.fn().mockResolvedValue(true) };
+        const newer = { steer: vi.fn().mockResolvedValue(true) };
+        const detachOlder = manager.attachSteerTarget('s1', older);
+        manager.attachSteerTarget('s1', newer);
+        detachOlder();
+        expect(await manager.steer('s1', 'hi')).toBe(true);
+        expect(newer.steer).toHaveBeenCalledWith('hi');
+        expect(older.steer).not.toHaveBeenCalled();
     });
 });

@@ -57,7 +57,7 @@ vi.mock('../../../src/server/spa/client/react/contexts/ToastContext', () => ({
 }));
 
 // Import component after mocks
-import { NotesSidebar } from '../../../src/server/spa/client/react/features/notes/editor/NotesSidebar';
+import { NotesSidebar, planBulkDelete } from '../../../src/server/spa/client/react/features/notes/editor/NotesSidebar';
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 
@@ -1222,6 +1222,122 @@ describe('NotesSidebar', () => {
         });
 
         expect(mockRenameNode).not.toHaveBeenCalled();
+    });
+
+    // ── Bulk delete ("Delete Selected (N)") ─────────────────────────────
+
+    /** The managed root's protected `Plans` folder holding many plan folders. */
+    const PLAN_NAMES = Array.from({ length: 41 }, (_, i) => `plan-${String(i).padStart(2, '0')}`);
+    const PLANS_TREE: NoteTreeNode[] = [
+        {
+            name: 'Plans',
+            path: 'Plans',
+            type: 'notebook',
+            children: PLAN_NAMES.map(name => ({
+                name,
+                path: `Plans/${name}`,
+                type: 'notebook' as const,
+                children: [{ name: 'plan.md', path: `Plans/${name}/plan.md`, type: 'page' as const }],
+            })),
+        },
+        { name: 'Mine', path: 'Mine', type: 'notebook', children: [] },
+    ];
+
+    function openBulkDeleteMenu(row: HTMLElement): HTMLElement {
+        fireEvent.contextMenu(row, { clientX: 5, clientY: 5 });
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        return Array.from(menu.querySelectorAll('[role="menuitem"]'))
+            .find(i => i.textContent?.startsWith('Delete Selected')) as HTMLElement;
+    }
+
+    it('regression: Delete Selected skips the protected Plans folder and deletes every selected plan folder', async () => {
+        mockGetTree.mockResolvedValue({ tree: PLANS_TREE, notesRoot: '/mock/notes', systemFolders: ['Plans'] } as any);
+        const onNoteDeleted = vi.fn();
+        const { findByTestId } = renderSidebar(null, vi.fn(), { onNoteDeleted });
+
+        // Plain-click Plans (expands it and anchors the selection on Plans
+        // itself), then shift-click the last plan: 42 rows, Plans included.
+        fireEvent.click(await findByTestId('notes-tree-item-Plans'));
+        fireEvent.click(await findByTestId('notes-tree-item-plan-40'), { shiftKey: true });
+        expect((await findByTestId('notes-selection-badge')).textContent).toContain('42 selected');
+
+        const item = openBulkDeleteMenu(await findByTestId('notes-tree-item-plan-10'));
+        expect(item.textContent).toBe('Delete Selected (41)');
+        fireEvent.click(item);
+
+        // Confirmation first — nothing is deleted before the user confirms.
+        await waitFor(() => expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeTruthy());
+        expect(document.querySelector('[data-testid="dialog-overlay"]')!.textContent).toContain('41 selected items');
+        expect((await findByTestId('notes-dialog-note')).textContent).toContain('Plans');
+        expect(mockDeleteNode).not.toHaveBeenCalled();
+
+        await act(async () => {
+            fireEvent.click(document.querySelector('[data-testid="notes-dialog-confirm"]') as HTMLElement);
+        });
+
+        await waitFor(() => expect(mockDeleteNode).toHaveBeenCalledTimes(41));
+        expect(mockDeleteNode).not.toHaveBeenCalledWith('ws1', 'Plans', undefined);
+        for (const name of PLAN_NAMES) {
+            expect(mockDeleteNode).toHaveBeenCalledWith('ws1', `Plans/${name}`, undefined);
+            expect(onNoteDeleted).toHaveBeenCalledWith(`Plans/${name}`);
+        }
+        await waitFor(() => expect(mockAddToast).toHaveBeenCalledWith('Deleted 41 items', 'success'));
+        expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeNull();
+    });
+
+    it('Delete Selected skips rows inside a selected folder and keeps going past a failure', async () => {
+        mockGetTree.mockResolvedValue({ tree: PLANS_TREE, notesRoot: '/mock/notes', systemFolders: ['Plans'] } as any);
+        mockDeleteNode.mockImplementation(async (_ws: string, path: string) => {
+            if (path === 'Plans/plan-01') throw new Error('Permission denied');
+        });
+        const { findByTestId } = renderSidebar();
+
+        // Expand Plans and plan-00 so plan-00/plan.md is a visible row, then
+        // range-select plan-00 .. plan-02 (which spans the expanded child).
+        fireEvent.click(await findByTestId('notes-tree-item-Plans'));
+        fireEvent.click(await findByTestId('notes-tree-item-plan-00'));
+        fireEvent.click(await findByTestId('notes-tree-item-plan-02'), { shiftKey: true });
+        expect((await findByTestId('notes-selection-badge')).textContent).toContain('4 selected');
+
+        const item = openBulkDeleteMenu(await findByTestId('notes-tree-item-plan-01'));
+        expect(item.textContent).toBe('Delete Selected (3)');
+        fireEvent.click(item);
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-dialog-confirm"]')).toBeTruthy());
+        expect(document.querySelector('[data-testid="notes-dialog-note"]')).toBeNull();
+        await act(async () => {
+            fireEvent.click(document.querySelector('[data-testid="notes-dialog-confirm"]') as HTMLElement);
+        });
+
+        await waitFor(() => expect(mockDeleteNode).toHaveBeenCalledTimes(3));
+        expect(mockDeleteNode.mock.calls.map(c => c[1])).toEqual(['Plans/plan-00', 'Plans/plan-01', 'Plans/plan-02']);
+        await waitFor(() => expect(mockAddToast).toHaveBeenCalledWith(
+            'Deleted 2 of 3. Failed — Plans/plan-01: Permission denied',
+            'error',
+        ));
+    });
+
+    it('cancelling the Delete Selected confirmation deletes nothing', async () => {
+        mockGetTree.mockResolvedValue({ tree: PLANS_TREE, notesRoot: '/mock/notes', systemFolders: ['Plans'] } as any);
+        const { findByTestId, getByText } = renderSidebar();
+
+        fireEvent.click(await findByTestId('notes-tree-item-Plans'));
+        fireEvent.click(await findByTestId('notes-tree-item-plan-00'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-tree-item-plan-01'), { ctrlKey: true });
+        fireEvent.click(openBulkDeleteMenu(await findByTestId('notes-tree-item-plan-00')));
+        await waitFor(() => expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeTruthy());
+
+        fireEvent.click(getByText('Cancel'));
+        await waitFor(() => expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeNull());
+        expect(mockDeleteNode).not.toHaveBeenCalled();
+    });
+
+    it('planBulkDelete drops protected rows, the root and rows under another selected folder', () => {
+        const isProtected = (p: string) => p === 'Plans';
+        expect(planBulkDelete(['Plans', 'Plans/a', 'Plans/a/x.md', 'Plans/ab', '', 'Mine/p.md'], isProtected)).toEqual({
+            paths: ['Plans/a', 'Plans/ab', 'Mine/p.md'],
+            skipped: ['Plans'],
+        });
+        expect(planBulkDelete(['Plans'], isProtected)).toEqual({ paths: [], skipped: ['Plans'] });
     });
 
     // ── Redesigned header / meta / search ─────────────────────────────────

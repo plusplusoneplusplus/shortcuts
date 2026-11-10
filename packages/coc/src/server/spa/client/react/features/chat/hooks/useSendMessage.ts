@@ -141,6 +141,8 @@ export interface UseSendMessageOptions {
      * transcript is NOT rewritten, so this is the only user-visible signal.
      */
     notifyCompact?: (message: string, type: 'success' | 'error') => void;
+    /** Short info notice, e.g. when a steer could not join the running turn. */
+    notify?: (message: string, type: 'info') => void;
     /**
      * Marks the conversation as compacting (AC-02) so the chat can render a
      * synthetic in-progress bubble from process state and block duplicate sends.
@@ -203,6 +205,7 @@ export function useSendMessage({
     messageClient: hydratedMessageClient,
     compactDisabled,
     notifyCompact,
+    notify,
     setCompacting,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode, options?: SendFollowUpOptions) => Promise<void>;
@@ -603,18 +606,19 @@ export function useSendMessage({
 
         // ── While AI is running: route through /message, let server decide ──
         if (isActiveGeneration) {
-            if (deliveryMode === 'immediate') {
-                // Immediate steer: add optimistic user turn so it appears in
-                // the conversation right away. The server will attempt to inject
-                // into the live session; if steering fails, the message is
-                // buffered as a pending message and the SSE event will surface it
-                // in the queued section.
+            // Immediate steer: add an optimistic user turn so it appears right
+            // away. The response says what really happened: `queued` means the
+            // server buffered it, so the queued entry shows it instead.
+            const optimisticId = deliveryMode === 'immediate' ? `steer-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined;
+            const dropOptimisticTurn = () => setTurnsAndRef(prev => prev.filter(t => t.optimisticId !== optimisticId));
+            if (optimisticId) {
+                messageRequest = { ...messageRequest, optimisticId };
                 const timestamp = new Date().toISOString();
                 setTurnsAndRef(prev => {
                     const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
                     return [
                         ...prev,
-                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, ...(modelOverride ? { model: modelOverride } : {}) },
+                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, optimisticId, ...(modelOverride ? { model: modelOverride } : {}) },
                     ];
                 });
             }
@@ -623,12 +627,19 @@ export function useSendMessage({
             // pending queue entry — the server is the source of truth.
             // Routed to the chat's clone (AC-07).
             try {
-                await messageClient.processes.sendMessage(
+                const response = await messageClient.processes.sendMessage(
                     processId,
                     messageRequest,
                     ownerQuery,
                 );
+                if (optimisticId && response?.delivery === 'queued') {
+                    dropOptimisticTurn();
+                    notify?.("Couldn't steer — queued for after this turn.", 'info');
+                } else if (optimisticId && response?.delivery === 'steered') {
+                    setTurnsAndRef(prev => prev.map(t => t.optimisticId === optimisticId ? { ...t, steered: true } : t));
+                }
             } catch (error) {
+                if (optimisticId) dropOptimisticTurn();
                 setError(getSpaCocClientErrorMessage(error, 'Failed to send follow-up message.'));
                 lastFailedMessageRef.current = rawContent;
                 if (includeComposerContext) setFollowUpInput(userText);

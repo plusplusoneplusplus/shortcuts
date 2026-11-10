@@ -3217,7 +3217,7 @@ describe('ClaudeSDKService session operations', () => {
     // slash command — its success / capability-absent / no-op behavior is
     // covered by the dedicated 'ClaudeSDKService.compactSession' block below.
 
-    it('steerSession returns false (unsupported, not silent success)', async () => {
+    it('steerSession returns false when no turn is running for the session', async () => {
         const result = await svc.steerSession('any-id', 'steer prompt');
         expect(result).toBe(false);
     });

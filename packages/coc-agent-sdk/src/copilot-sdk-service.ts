@@ -561,14 +561,12 @@ export class CopilotSDKService implements ISDKService {
     }
 
     /**
-     * Steer a running session by injecting an immediate message.
-     * Returns true if the session was found and the message was sent.
+     * Steer a running turn by injecting an immediate message.
+     * Returns true only when the turn accepted it; false when no turn is
+     * running or the turn is already settling, so the caller can queue.
      */
     public async steerSession(sessionId: string, prompt: string): Promise<boolean> {
-        const session = this.sessionManager.getSession(sessionId);
-        if (!session?.send) return false;
-        await session.send({ prompt, mode: 'immediate' });
-        return true;
+        return this.sessionManager.steer(sessionId, prompt);
     }
 
     public hasActiveSession(sessionId: string): boolean { return this.sessionManager.has(sessionId); }

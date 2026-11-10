@@ -129,6 +129,10 @@ export interface ClientConversationTurn {
     displayOnly?: boolean;
     /** Server-assigned correlation for automated result delivery. */
     relayRequestId?: string;
+    /** Client id of an optimistic user turn, echoed by the server for reconciliation. */
+    optimisticId?: string;
+    /** True when this user message was steered into the running turn. */
+    steered?: boolean;
     /** Full provider-generated summary for a `/compact` result turn, revealed behind a disclosure. */
     compactionSummary?: string;
     /** Verbatim repo-group member listing injected into this user turn's prompt, revealed behind a disclosure. */

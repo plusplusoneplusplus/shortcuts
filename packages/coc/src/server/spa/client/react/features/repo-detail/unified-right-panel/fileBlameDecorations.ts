@@ -8,6 +8,7 @@
  * shows the full subject, author and date. Clicking an attributed label hands
  * its commit hash to the host. The mapping is recomputed on every buffer edit,
  * so changed lines turn "Not committed yet" instead of keeping a stale commit.
+ * The hover's short hash links to the same commit.
  */
 
 import type { editor as monacoEditor, IMarkdownString } from 'monaco-editor';
@@ -19,6 +20,10 @@ import { NOT_COMMITTED_LABEL, blameRuns, mapBlameToBuffer, splitBufferLines } fr
 export const FILE_BLAME_LABEL_CLASS = 'file-blame-label';
 /** Extra class on labels of lines that are not committed yet. */
 export const FILE_BLAME_UNCOMMITTED_CLASS = 'file-blame-uncommitted';
+/** Prefix of the per-attachment Monaco command the hover's hash link runs. */
+export const FILE_BLAME_OPEN_COMMIT_COMMAND = 'coc.fileBlame.openCommit';
+
+let nextAttachmentId = 0;
 
 const AUTHOR_WIDTH = 12;
 /** Characters every injected label occupies, separator included. */
@@ -43,17 +48,22 @@ function escapeMarkdown(text: string): string {
     return text.replace(/[\\`*_{}[\]()#+\-.!<>|~]/g, '\\$&');
 }
 
-/** The hover shown for every line of a run. */
-export function formatBlameHover(commit: GitFileBlameCommit | null): IMarkdownString {
+/**
+ * The hover shown for every line of a run. With `openCommand`, the short hash
+ * links to that Monaco command (the only command the hover trusts).
+ */
+export function formatBlameHover(commit: GitFileBlameCommit | null, openCommand?: string): IMarkdownString {
     if (!commit) return { value: escapeMarkdown(NOT_COMMITTED_LABEL) };
     const date = new Date(commit.date);
     const when = Number.isNaN(date.getTime()) ? commit.date : date.toLocaleString();
+    const hash = `\`${commit.shortHash}\``;
     return {
         value: [
             `**${escapeMarkdown(commit.subject)}**`,
             `${escapeMarkdown(commit.author)} · ${escapeMarkdown(when)}`,
-            `\`${commit.shortHash}\``,
+            openCommand ? `[${hash}](command:${openCommand}?${encodeURIComponent(JSON.stringify([commit.hash]))} "Open commit")` : hash,
         ].join('\n\n'),
+        ...(openCommand ? { isTrusted: { enabledCommands: [openCommand] } } : {}),
     };
 }
 
@@ -62,18 +72,21 @@ export function buildBlameDecorations(
     blame: GitFileBlameResponse,
     text: string,
     cursorStopsNone: monacoEditor.InjectedTextCursorStops,
+    openCommand?: string,
 ): monacoEditor.IModelDeltaDecoration[] {
     const blank = ' '.repeat(FILE_BLAME_LABEL_WIDTH);
     const decorations: monacoEditor.IModelDeltaDecoration[] = [];
     for (const run of blameRuns(mapBlameToBuffer(blame.lines, splitBufferLines(text)))) {
         const commit = run.hash ? blame.commits[run.hash] ?? null : null;
-        const hoverMessage = formatBlameHover(commit);
+        const hoverMessage = formatBlameHover(commit, openCommand);
         const inlineClassName = commit ? FILE_BLAME_LABEL_CLASS : `${FILE_BLAME_LABEL_CLASS} ${FILE_BLAME_UNCOMMITTED_CLASS}`;
         for (let line = run.startLine; line <= run.endLine; line++) {
             decorations.push({
                 range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
                 options: {
                     description: 'file-blame',
+                    // Monaco drops injected text on an empty range without this.
+                    showIfCollapsed: true,
                     hoverMessage,
                     before: {
                         content: line === run.startLine ? formatBlameLabel(commit) : blank,
@@ -90,7 +103,7 @@ export function buildBlameDecorations(
 
 /**
  * Attaches blame decorations to a mounted editor and returns their cleanup.
- * `onOpenCommit` receives the hash of a clicked attributed label.
+ * `onOpenCommit` receives the hash of a clicked attributed label or hover link.
  */
 export function attachFileBlameDecorations(
     { editor, monaco, model }: Pick<EditorModelMountContext, 'editor' | 'monaco' | 'model'>,
@@ -98,10 +111,14 @@ export function attachFileBlameDecorations(
     onOpenCommit: (hash: string) => void,
 ): () => void {
     const cursorStopsNone = monaco.editor.InjectedTextCursorStops.None;
-    const collection = editor.createDecorationsCollection(buildBlameDecorations(blame, model.getValue(), cursorStopsNone));
-    const change = model.onDidChangeContent(() => {
-        collection.set(buildBlameDecorations(blame, model.getValue(), cursorStopsNone));
+    // Monaco commands are global, so each attachment links to its own command.
+    const openCommand = `${FILE_BLAME_OPEN_COMMIT_COMMAND}.${++nextAttachmentId}`;
+    const command = monaco.editor.registerCommand(openCommand, (_accessor: unknown, hash: unknown) => {
+        if (typeof hash === 'string' && blame.commits[hash]) onOpenCommit(hash);
     });
+    const build = () => buildBlameDecorations(blame, model.getValue(), cursorStopsNone, openCommand);
+    const collection = editor.createDecorationsCollection(build());
+    const change = model.onDidChangeContent(() => collection.set(build()));
     const click = editor.onMouseDown(event => {
         if (event.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) return;
         const hash = event.target.detail?.injectedText?.options.attachedData;
@@ -109,6 +126,7 @@ export function attachFileBlameDecorations(
     });
     return () => {
         click.dispose();
+        command.dispose();
         change.dispose();
         collection.clear();
     };

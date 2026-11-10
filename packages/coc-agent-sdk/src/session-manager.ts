@@ -7,7 +7,6 @@
  */
 
 import { createSessionLogger } from './logger';
-import type { IStreamableSession } from './streaming-session';
 
 /**
  * Minimal interface for a session that can be tracked and aborted.
@@ -19,11 +18,17 @@ export interface IAbortableSession {
     disconnect(): Promise<void>;
 }
 
+/** A running turn that can accept a steered message. */
+export interface SteerTarget {
+    steer(prompt: string): Promise<boolean>;
+}
+
 /**
  * Tracks in-flight sessions and provides abort / inspection helpers.
  */
 export class SessionManager {
     private readonly activeSessions = new Map<string, IAbortableSession>();
+    private readonly steerTargets = new Map<string, SteerTarget>();
 
     /**
      * Register an active session for potential cancellation.
@@ -40,18 +45,25 @@ export class SessionManager {
     }
 
     /**
-     * Retrieve a tracked session by ID, narrowed to IStreamableSession
-     * (which is a superset of IAbortableSession). Returns undefined if
-     * the session is not tracked or does not have a `send` method.
+     * Register the running turn that owns `sessionId` as the steer target.
+     * Lives only as long as that turn: call the returned function when the
+     * turn ends. A newer turn on the same session replaces the target, and a
+     * stale release never removes the newer one.
      */
-    getSession(sessionId: string): IStreamableSession | undefined {
-        const session = this.activeSessions.get(sessionId);
-        if (!session) return undefined;
-        // Only return if it looks like a streamable session (has send)
-        if ('send' in session && typeof (session as any).send === 'function') {
-            return session as unknown as IStreamableSession;
-        }
-        return undefined;
+    attachSteerTarget(sessionId: string, target: SteerTarget): () => void {
+        this.steerTargets.set(sessionId, target);
+        return () => {
+            if (this.steerTargets.get(sessionId) === target) this.steerTargets.delete(sessionId);
+        };
+    }
+
+    /**
+     * Send `prompt` into the running turn of `sessionId`. Returns false when no
+     * turn is running or the turn is already settling — the caller queues.
+     */
+    async steer(sessionId: string, prompt: string): Promise<boolean> {
+        const target = this.steerTargets.get(sessionId);
+        return target ? target.steer(prompt) : false;
     }
 
     /**

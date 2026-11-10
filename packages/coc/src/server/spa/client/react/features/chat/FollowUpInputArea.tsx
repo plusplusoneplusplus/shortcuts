@@ -1120,6 +1120,28 @@ export function FollowUpInputArea({
         </button>
     );
 
+    // While a turn runs the Send button is replaced by Stop, so this pill
+    // shows what Enter will do: queue by default, steer while Ctrl/Cmd is held.
+    const deliveryModeHint = (
+        <span
+            role="status"
+            className={cn(
+                'shrink-0 inline-flex items-center gap-1 rounded-md h-[22px] px-1.5 mr-1 self-center text-[10px] font-medium border',
+                modHeld
+                    ? 'bg-[#e8912d] text-white border-transparent'
+                    : 'text-[#5a5a5a] dark:text-[#999999] border-[#d0d0d0] dark:border-[#3c3c3c]',
+            )}
+            data-testid="follow-up-delivery-mode-hint"
+            data-mode={modHeld ? 'steer' : 'queue'}
+            title={modHeld
+                ? 'Enter steers the running turn · release Ctrl/Cmd to queue'
+                : 'Enter queues for after this turn · hold Ctrl/Cmd to steer'}
+        >
+            <span aria-hidden="true">{modHeld ? '⚡' : '↵'}</span>
+            <span className={isToolbarMinimal ? 'sr-only' : undefined}>{modHeld ? 'Steer' : 'Queue'}</span>
+        </span>
+    );
+
     const stackedPlaceholder = inputDisabled && !isActiveGeneration
         ? (disabledPlaceholder ?? 'Session expired.')
         : 'Reply to CoC, or type / for commands...';
@@ -1664,6 +1686,7 @@ export function FollowUpInputArea({
                             </>}
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             <WarmIndicatorDot status={warmStatus} className="mr-1 self-center" />
+                            {isActiveGeneration && deliveryModeHint}
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending || pendingContextReads > 0}

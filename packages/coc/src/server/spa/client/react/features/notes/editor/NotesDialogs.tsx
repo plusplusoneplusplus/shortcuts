@@ -15,6 +15,8 @@ export interface NotesDialogsProps {
     onCreateNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<void>;
     onRenameNode: (oldPath: string, newPath: string) => Promise<void>;
     onDeleteNode: (path: string) => Promise<void>;
+    /** Runs a confirmed bulk delete; reports its own failures. */
+    onDeleteNodes: (paths: string[]) => Promise<void>;
     onAICreateNote?: (prompt: string) => Promise<void>;
     setSubmitting: (submitting: boolean) => void;
 }
@@ -25,6 +27,7 @@ export function NotesDialogs({
     onCreateNode,
     onRenameNode,
     onDeleteNode,
+    onDeleteNodes,
     onAICreateNote,
     setSubmitting,
 }: NotesDialogsProps) {
@@ -63,6 +66,28 @@ export function NotesDialogs({
                         onClose();
                     } catch {
                         setSubmitting(false);
+                    }
+                }}
+            />
+        );
+    }
+
+    if (action === 'delete-selected' && dialog.bulk) {
+        const { paths, skipped } = dialog.bulk;
+        return (
+            <DeleteDialog
+                nodeName={`${paths.length} selected item${paths.length === 1 ? '' : 's'}`}
+                note={skipped.length > 0
+                    ? `Protected folders are skipped: ${skipped.join(', ')}.`
+                    : undefined}
+                submitting={dialog.submitting}
+                onClose={onClose}
+                onConfirm={async () => {
+                    setSubmitting(true);
+                    try {
+                        await onDeleteNodes(paths);
+                    } finally {
+                        onClose();
                     }
                 }}
             />
@@ -220,12 +245,13 @@ function InputDialog({
 
 interface DeleteDialogProps {
     nodeName: string;
+    note?: string;
     submitting: boolean;
     onClose: () => void;
     onConfirm: () => void;
 }
 
-function DeleteDialog({ nodeName, submitting, onClose, onConfirm }: DeleteDialogProps) {
+function DeleteDialog({ nodeName, note, submitting, onClose, onConfirm }: DeleteDialogProps) {
     return (
         <Dialog
             open
@@ -246,6 +272,7 @@ function DeleteDialog({ nodeName, submitting, onClose, onConfirm }: DeleteDialog
             }
         >
             Are you sure you want to delete <strong>{nodeName}</strong>? This cannot be undone.
+            {note && <p className="mt-2" data-testid="notes-dialog-note">{note}</p>}
         </Dialog>
     );
 }

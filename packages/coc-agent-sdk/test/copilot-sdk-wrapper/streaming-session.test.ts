@@ -999,3 +999,120 @@ describe('StreamingSession — onBackgroundTasksChanged callback', () => {
         await promise;
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Steering
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StreamingSession — steer', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('sends an accepted steer with mode immediate', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        await expect(ss.steer('also do this')).resolves.toBe(true);
+        expect(session.send).toHaveBeenLastCalledWith({ prompt: 'also do this', mode: 'immediate' });
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'user.message', id: 'u2' });
+        emit({ type: 'session.idle' });
+        await promise;
+    });
+
+    it('does not settle on an idle that arrives before the steered user.message', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'assistant.message', data: { content: 'part one' } });
+        await ss.steer('steered');
+        emit({ type: 'session.idle' });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        emit({ type: 'user.message', id: 'u2' });
+        await vi.advanceTimersByTimeAsync(3000);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        emit({ type: 'assistant.message', data: { content: 'steered reply' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.response).toBe('part one\n\nsteered reply');
+        expect(result.userMessageEventId).toBe('u1');
+    });
+
+    it('settles on the first idle when nothing was steered', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'assistant.message', data: { content: 'done' } });
+        emit({ type: 'session.idle' });
+        expect((await promise).response).toBe('done');
+    });
+
+    it('settles after the grace period when the steered user.message never arrives', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'assistant.message', data: { content: 'answer' } });
+        await ss.steer('late');
+        emit({ type: 'session.idle' });
+        await vi.advanceTimersByTimeAsync(2000);
+        expect((await promise).response).toBe('answer');
+    });
+
+    it('turn-end grace does not settle while a steer is outstanding', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'assistant.message', data: { content: 'one' } });
+        await ss.steer('steered');
+        emit({ type: 'assistant.turn_end' });
+        await vi.advanceTimersByTimeAsync(2000);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        emit({ type: 'user.message', id: 'u2' });
+        emit({ type: 'session.idle' });
+        await promise;
+    });
+
+    it('wall-clock timeout still settles with a steer outstanding', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 1000 }));
+        const rejection = expect(promise).rejects.toThrow('timed out');
+        emit({ type: 'user.message', id: 'u1' });
+        await ss.steer('steered');
+        await vi.advanceTimersByTimeAsync(1000);
+        await rejection;
+    });
+
+    it('refuses a steer once the run has settled', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'session.idle' });
+        await promise;
+        (session.send as any).mockClear();
+        await expect(ss.steer('too late')).resolves.toBe(false);
+        expect(session.send).not.toHaveBeenCalled();
+    });
+
+    it('returns false and settles a deferred idle when the steer send fails', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+        emit({ type: 'user.message', id: 'u1' });
+        emit({ type: 'assistant.message', data: { content: 'answer' } });
+        let rejectSend!: (err: Error) => void;
+        (session.send as any).mockImplementationOnce(() => new Promise((_, reject) => { rejectSend = reject; }));
+        const steered = ss.steer('fails');
+        emit({ type: 'session.idle' });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        rejectSend(new Error('send failed'));
+        await expect(steered).resolves.toBe(false);
+        expect((await promise).response).toBe('answer');
+    });
+});

@@ -63,12 +63,10 @@ async function selectDetails(name = 'Daily review') {
     return screen.getByRole('region', { name: `Refrain details for ${name}` });
 }
 async function openActions() {
-    if (!screen.queryAllByLabelText(/^More actions for/).length) {
+    if (!screen.queryAllByRole('group', { name: /^Actions for/ }).length) {
         fireEvent.click((await screen.findAllByRole('button', { name: /^Show details for/ }))[0]);
     }
-    for (const summary of await screen.findAllByLabelText(/^More actions for/)) {
-        if (!(summary.parentElement as HTMLDetailsElement).open) fireEvent.click(summary);
-    }
+    await screen.findAllByRole('group', { name: /^Actions for/ });
 }
 beforeEach(() => {
     vi.clearAllMocks();
@@ -126,7 +124,7 @@ describe('Sentinel Refrains', () => {
         }
     });
 
-    it('keeps secondary actions and history collapsed and exposes the complete error', async () => {
+    it('shows every refrain action inline with Delete last, keeps history collapsed and exposes the complete error', async () => {
         const error = 'Unsupported reasoning effort. ' + 'long-diagnostic/'.repeat(40) + '\nEnd of diagnostic';
         mock.list.mockResolvedValue({ jobs: [job({ enabled: false, runs: [run({ status: 'failed', error })] })] });
         view();
@@ -138,14 +136,12 @@ describe('Sentinel Refrains', () => {
         await selectDetails();
         expect(screen.getByRole('button', { name: 'Run now' })).toBeVisible();
         expect(screen.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
-        expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
-        const summary = screen.getByLabelText('More actions for Daily review');
-        fireEvent.click(summary);
         expect(screen.getByRole('button', { name: 'Edit' })).toBeVisible();
+        expect(screen.queryByLabelText('More actions for Daily review')).toBeNull();
+        const toolbar = screen.getByRole('group', { name: 'Actions for Daily review' });
+        expect(within(toolbar).getAllByRole('button').map(button => button.textContent)).toEqual(['Run now', 'Resume', 'Edit', 'Delete']);
+        expect(within(toolbar).getByRole('button', { name: 'Delete' })).toHaveClass('sentinel-refrain-delete');
         expect(screen.getByText('History (1)').parentElement).not.toHaveAttribute('open');
-        fireEvent.keyDown(screen.getByRole('button', { name: 'Edit' }), { key: 'Escape' });
-        expect(summary).toHaveFocus();
-        expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
         const full = screen.getByRole('region', { name: 'Error for run #1' });
         expect(full).toBeVisible();
         expect(full.textContent).toBe(error);
@@ -443,6 +439,7 @@ describe('Sentinel Refrains', () => {
         await openActions();
         expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('title', 'Wait for the active run to finish');
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         await waitFor(() => expect(mock.cancel).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', 'r1'));
     });
@@ -531,7 +528,9 @@ describe('Sentinel Refrains', () => {
         const failed = within(list).getByLabelText('Select run #3: failed (manual)');
         fireEvent.click(failed);
         const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
-        for (const timestamp of [createdAt, startedAt, finishedAt]) expect(within(detail).getByText(timestamp)).toBeVisible();
+        for (const timestamp of [createdAt, startedAt, finishedAt]) {
+            expect(within(detail).getByTitle(timestamp)).toHaveTextContent(new Date(timestamp).toLocaleString());
+        }
         const error = within(detail).getByRole('region', { name: 'Error for run #3' });
         expect(error.textContent).toBe(diagnostic);
         expect(error).toHaveAttribute('tabindex', '0');
@@ -564,19 +563,19 @@ describe('Sentinel Refrains', () => {
             expect(within(list).getByLabelText(`Created: ${new Date(createdAt).toLocaleString()}`)).toBeVisible();
             fireEvent.click(within(list).getByLabelText(`Select run #1: ${status} (manual)`));
             const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
-            expect(within(detail).getByText(createdAt)).toBeVisible();
+            expect(within(detail).getByTitle(createdAt)).toBeVisible();
             expect(within(detail).queryByRole('link', { name: 'Job turn' })).toBeNull();
             expect(within(detail).queryByText('Started')).toBeNull();
             expect(within(detail).queryByText('Duration')).toBeNull();
         },
     );
-    it('keeps active status visible alongside history and an empty history accessible without More', async () => {
+    it('keeps active status visible alongside history and an empty history accessible', async () => {
         mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ status: 'queued' }) })] });
         view();
         await selectDetails();
         const history = await screen.findByText('History (0)');
         expect(history).toBeVisible();
-        expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
+        expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
         fireEvent.click(history);
         expect(screen.getByText('No runs yet.')).toBeVisible();
         expect(screen.getByText('Run #1 queued')).toBeVisible();
@@ -1148,13 +1147,43 @@ describe('Refrain detail layout under the automation stylesheet', () => {
         expect(getComputedStyle(detail).display).toBe('none');
     });
 
+    it('fills the hosted column with a pinned header and actions instead of a capped inline box', async () => {
+        const calls: string[][] = [];
+        mock.width = 800;
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: 'Step.\n'.repeat(200), runs: [run({ status: 'completed' })] })] });
+        render(<DetailHost calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const detail = await selectDetails();
+        expect(detail).toHaveAttribute('data-hosted', 'true');
+        expect(getComputedStyle(detail).maxHeight).toBe('none');
+        expect(getComputedStyle(detail).overflow).toBe('visible');
+        expect(getComputedStyle(detail).display).toBe('flex');
+        const top = detail.querySelector('.sentinel-refrain-detail-top')!;
+        expect(getComputedStyle(top).position).toBe('sticky');
+        expect(within(top as HTMLElement).getByRole('heading', { name: 'Daily review' })).toBeVisible();
+        expect(within(top as HTMLElement).getByText('Enabled · Ask')).toBeVisible();
+        const toolbar = within(top as HTMLElement).getByRole('group', { name: 'Actions for Daily review' });
+        expect(getComputedStyle(within(toolbar).getByRole('button', { name: 'Delete' })).marginLeft).toBe('auto');
+        expect(getComputedStyle(within(detail).getByRole('region', { name: 'Instructions for Daily review' })).maxHeight).toBe('50vh');
+        fireEvent.click(within(toolbar).getByRole('button', { name: 'Delete' }));
+        expect(screen.getByRole('dialog', { name: 'Delete refrain' })).toBeVisible();
+        expect(mock.delete).not.toHaveBeenCalled();
+    });
+
+    it('keeps the inline standalone detail bounded', async () => {
+        view();
+        const detail = await selectDetails();
+        expect(detail).toHaveAttribute('data-hosted', 'false');
+        expect(getComputedStyle(detail).maxHeight).toBe('320px');
+    });
+
     it('gives portaled detail buttons and disclosure summaries narrow touch targets and keyboard focus outlines', async () => {
         const calls: string[][] = [];
         render(<DetailHost wide={false} calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
         const detail = await selectDetails();
         const controls = [
             within(detail).getByRole('button', { name: 'Run now' }),
-            within(detail).getByLabelText('More actions for Daily review'),
+            within(detail).getByRole('button', { name: 'Edit' }),
+            within(detail).getByRole('button', { name: 'Delete' }),
             within(detail).getByText('History (1)'),
         ];
         const rules = Array.from(style.sheet!.cssRules);
@@ -1348,7 +1377,7 @@ describe('Refrain card details', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Show details for Daily review' }));
         const detail = screen.getByRole('region', { name: 'Refrain details for Daily review' });
         expect(within(detail).getByRole('heading', { name: heading })).toBeVisible();
-        if (state === 'running') expect(within(detail).getByText('2026-11-01T14:00:01Z')).toBeVisible();
+        if (state === 'running') expect(within(detail).getByTitle('2026-11-01T14:00:01Z')).toHaveTextContent(new Date('2026-11-01T14:00:01Z').toLocaleString());
         if (state === 'completed') expect(within(detail).getByText('2.0s')).toBeVisible();
         if (state === 'failed') expect(within(detail).getByRole('region', { name: 'Error for run #2' })).toHaveTextContent('Boom');
         noMutations();
@@ -1364,14 +1393,13 @@ describe('Refrain card details', () => {
         await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-a', processId: 'queue_sentinel' }));
         await screen.findByRole('heading', { name: 'Latest run #8: completed' });
         expect(screen.getByRole('button', { name: 'Show details for Daily review' })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getByText('2026-11-01T14:05:00Z')).toBeVisible();
+        expect(screen.getByTitle('2026-11-01T14:05:00Z')).toBeVisible();
     });
     it('selects from blank card space but not from controls, disclosures or text selection', async () => {
         mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'completed' })] })] });
         view();
         const card = await screen.findByRole('article', { name: 'Daily review' });
         await selectDetails();
-        fireEvent.click(screen.getByLabelText('More actions for Daily review'));
         fireEvent.click(screen.getByText('History (1)'));
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
         await waitFor(() => expect(mock.update).toHaveBeenCalledTimes(1));

@@ -13,7 +13,7 @@ import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
 import { SentinelRefrainDialog } from './SentinelRefrainDialog';
 import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
-import { AutomationActions, AutomationError, AutomationTitleButton, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
+import { AutomationError, AutomationTitleButton, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
@@ -242,14 +242,14 @@ function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, o
         host?.select(job.id);
     };
     const selection: RefrainSelection = { selectedId, setSelectedId, overview, setOverview, detailOpen, setDetailOpen, titleRef, detailId };
+    // The detail pane has room for every action: run controls first, then definition edits, with Delete set apart.
+    const runBlocked = job.activeRun ? 'Wait for the active run to finish' : undefined;
     const actions = <div role="group" aria-label={`Actions for ${job.name}`} className="sentinel-automation-toolbar">
-        <Button size="sm" disabled={disabled || !!job.activeRun} onClick={onRun}>Run now</Button>
+        <Button size="sm" disabled={disabled || !!job.activeRun} title={runBlocked} onClick={onRun}>Run now</Button>
         {job.activeRun && <Button size="sm" variant="secondary" disabled={disabled} onClick={onCancel}>Cancel</Button>}
         <Button size="sm" variant="secondary" disabled={disabled} onClick={onToggle}>{job.enabled ? 'Pause' : 'Resume'}</Button>
-        <AutomationActions name={job.name}>
-            <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onEdit}>Edit</Button>
-            <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onDelete}>Delete</Button>
-        </AutomationActions>
+        <Button size="sm" variant="secondary" disabled={disabled || !!job.activeRun} title={runBlocked} onClick={onEdit}>Edit</Button>
+        <Button size="sm" variant="ghost" className="sentinel-refrain-delete" disabled={disabled || !!job.activeRun} title={runBlocked} onClick={onDelete}>Delete</Button>
     </div>;
     return <><article ref={cardRef} aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}
         data-selected={cardSelected} onClick={event => selectCardOnClick(event, selectOverview)}>
@@ -378,7 +378,7 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection, 
             </ol>
         </div>
     </details>;
-    const details = <section ref={detailRef} id={detailId} hidden={!wide && (!showingDetail || !shown)}
+    const details = <section ref={detailRef} id={detailId} hidden={!wide && (!showingDetail || !shown)} data-hosted={!!host}
                 aria-label={overview ? `Refrain details for ${job.name}` : `Run details for ${job.name}`} className="sentinel-refrain-run-detail"
                 onKeyDown={event => {
                     if (event.key !== 'Escape') return;
@@ -386,25 +386,19 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection, 
                     event.stopPropagation();
                     leaveDetails(true);
                 }}>
-                <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leaveDetails(false)}>{overview ? 'Back to list' : 'Back to runs'}</Button></div>
-                {overview ? <>
+                {/* Navigation, identity, status and actions stay pinned while long content scrolls. */}
+                <div className="sentinel-refrain-detail-top">
+                    <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leaveDetails(false)}>{overview ? 'Back to list' : 'Back to runs'}</Button></div>
                     <div className="sentinel-refrain-detail-header">
-                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">{job.name}</h4>
-                        <Button size="sm" variant="ghost" aria-label="Close refrain details" onClick={() => leaveDetails(true)}>×</Button>
+                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">
+                            {overview ? job.name : selected ? `Run #${selected.runNumber}: ${selected.status}` : 'Run no longer available'}</h4>
+                        <Button size="sm" variant="ghost" aria-label={overview ? 'Close refrain details' : 'Close run details'} onClick={() => leaveDetails(true)}>×</Button>
                     </div>
-                </> : !selected ? <>
-                    <div className="sentinel-refrain-detail-header">
-                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">Run no longer available</h4>
-                        <Button size="sm" variant="ghost" aria-label="Close run details" onClick={() => leaveDetails(true)}>×</Button>
-                    </div>
-                    <p role="status" className={MUTED}>This run is no longer in retained history. Select another run.</p>
-                </> : <>
-                    <div className="sentinel-refrain-detail-header">
-                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">Run #{selected.runNumber}: {selected.status}</h4>
-                        <Button size="sm" variant="ghost" aria-label="Close run details" onClick={() => leaveDetails(true)}>×</Button>
-                    </div>
-                </>}
-                {actions}
+                    <p className={job.gatePaused ? ERROR : MUTED}>{job.enabled ? 'Enabled' : 'Paused'} · {job.mode === 'autopilot' ? 'Autopilot' : 'Ask'}
+                        {job.gateScript && (job.gatePaused ? ' · Gate paused' : ' · Gated')}</p>
+                    {actions}
+                </div>
+                {!overview && !selected && <p role="status" className={MUTED}>This run is no longer in retained history. Select another run.</p>}
                 {children}
                 {history}
                 {overview ? <RefrainOverview job={job} owner={owner} onFollowLink={onFollowLink} />
@@ -424,8 +418,6 @@ function RefrainOverview({ job, owner, onFollowLink }: { job: SentinelRefrain; o
     const newest = [...job.runs].sort((a, b) => b.runNumber - a.runNumber)[0];
     const current = job.activeRun ?? job.latestRun ?? newest;
     return <>
-        <p className={job.gatePaused ? ERROR : MUTED}>{job.enabled ? 'Enabled' : 'Paused'} · {job.mode === 'autopilot' ? 'Autopilot' : 'Ask'}
-            {job.gateScript && (job.gatePaused ? ' · Gate paused' : ' · Gated')}</p>
         <dl>
             <div><dt>Schedule</dt><dd>{scheduleLabel(job)}{job.cron && <> (<code>{job.cron}</code>)</>}</dd></div>
             {job.enabled && <RunTime label="Next run" value={job.nextRunAt} />}
@@ -513,7 +505,7 @@ function preview(json: string) {
     return json.length > 160 ? `${json.slice(0, 160)}\u2026` : json;
 }
 function RunTime({ label, value }: { label: string; value?: string }) {
-    return value ? <div><dt>{label}</dt><dd><time dateTime={value}>{value}</time></dd></div> : null;
+    return value ? <div><dt>{label}</dt><dd><time dateTime={value} title={value}>{new Date(value).toLocaleString()}</time></dd></div> : null;
 }
 function JobChatLink({ owner, processId, href, children, onFollowLink }: {
     owner: SentinelTodoOwner; processId: string; href?: string; children: ReactNode; onFollowLink: JobsProps['onFollowLink'];

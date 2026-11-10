@@ -167,6 +167,18 @@ skips unconfigured tiers; `EffortPillSelector` cycles Auto plus selectable effor
 disabled/unavailable ones and persisting through the repo-scoped `lastChatProvider`
 preference. These are absent from labels, tooltips, and ARIA copy.
 
+### Steer and queue while a turn runs
+
+`Enter` queues: the server buffers the message and `pending-message-added` shows it in the
+queued section until the turn ends. `Ctrl/Cmd+Enter` steers (Copilot and Claude; other providers fall back to queue): `useSendMessage` adds an
+optimistic user turn tagged with an `optimisticId` sent in the request. The response
+`delivery` decides its fate — `steered` labels it `⚡ steered` (also set by the
+`message-steering` SSE event), `queued` removes it and toasts "Couldn't steer — queued for
+after this turn." so the queued entry is the only copy. A failed send also removes it.
+While a turn runs, Stop replaces the Send button, so a `follow-up-delivery-mode-hint` pill
+next to Stop shows the Enter action: `↵ Queue` by default, orange `⚡ Steer` while Ctrl/Cmd
+is held in the composer.
+
 ### Slash commands
 
 `slash-command-parser.ts` owns built-in recognition, while `useSlashCommands`

@@ -19,6 +19,7 @@ describe('emitMessageQueued', () => {
         emitMessageQueued(store as any, 'proc-1', {
             turnIndex: 3,
             deliveryMode: 'enqueue',
+            delivered: 'queued',
             queuePosition: 2,
         });
 
@@ -27,6 +28,7 @@ describe('emitMessageQueued', () => {
             type: 'message-queued',
             turnIndex: 3,
             deliveryMode: 'enqueue',
+            delivered: 'queued',
             queuePosition: 2,
         });
     });
@@ -36,6 +38,7 @@ describe('emitMessageQueued', () => {
         emitMessageQueued(store as any, 'proc-2', {
             turnIndex: 0,
             deliveryMode: 'immediate',
+            delivered: 'steered',
             queuePosition: 0,
         });
 
@@ -43,6 +46,7 @@ describe('emitMessageQueued', () => {
             type: 'message-queued',
             turnIndex: 0,
             deliveryMode: 'immediate',
+            delivered: 'steered',
             queuePosition: 0,
         });
     });
@@ -52,6 +56,7 @@ describe('emitMessageQueued', () => {
         emitMessageQueued(store as any, 'proc-4', {
             turnIndex: 1,
             deliveryMode: 'enqueue',
+            delivered: 'queued',
             queuePosition: 1,
             optimisticId: 'opt-abc-123',
         });
@@ -60,6 +65,7 @@ describe('emitMessageQueued', () => {
             type: 'message-queued',
             turnIndex: 1,
             deliveryMode: 'enqueue',
+            delivered: 'queued',
             queuePosition: 1,
             optimisticId: 'opt-abc-123',
         });
@@ -70,6 +76,7 @@ describe('emitMessageQueued', () => {
         emitMessageQueued(store as any, 'proc-5', {
             turnIndex: 2,
             deliveryMode: 'enqueue',
+            delivered: 'queued',
             queuePosition: 1,
         });
 

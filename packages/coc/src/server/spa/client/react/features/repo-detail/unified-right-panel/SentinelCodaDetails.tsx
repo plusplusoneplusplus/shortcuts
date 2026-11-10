@@ -43,19 +43,21 @@ export function SentinelCodaDetails({ id, name, client, owner, items, data, titl
     const config = data?.config;
     const active = data?.activeRun;
     const latest = data?.runs[0];
-    const details = <section id={id} hidden={!wide && !showing} aria-label={`Details for ${name}`}
+    const details = <section id={id} hidden={!wide && !showing} data-hosted={!!host} aria-label={`Details for ${name}`}
         className="sentinel-refrain-run-detail sentinel-coda-details" data-testid="sentinel-coda-details" onKeyDown={event => {
             if (event.key !== 'Escape') return;
             event.preventDefault();
             event.stopPropagation();
             leave(true);
         }}>
-        <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leave(false)}>Back to list</Button></div>
-        <div className="sentinel-refrain-detail-header">
-            <h4 ref={headingRef} tabIndex={-1} className="font-semibold">{name}</h4>
-            <Button size="sm" variant="ghost" aria-label="Close Coda details" onClick={() => leave(true)}>×</Button>
+        <div className="sentinel-refrain-detail-top">
+            <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leave(false)}>Back to list</Button></div>
+            <div className="sentinel-refrain-detail-header">
+                <h4 ref={headingRef} tabIndex={-1} className="font-semibold">{name}</h4>
+                <Button size="sm" variant="ghost" aria-label="Close Coda details" onClick={() => leave(true)}>×</Button>
+            </div>
+            {actions}
         </div>
-        {actions}
         {children}
         {!config ? <p role="status" className={MUTED}>Loading Coda…</p> : <>
             <p className={config.paused ? 'text-[#b5650f] dark:text-[#cca700]' : MUTED}>{config.enabled

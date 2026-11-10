@@ -95,3 +95,17 @@ describe('ConversationTurnBubble turnSource badge', () => {
         expect(container.querySelector('[data-testid="turn-source-badge"]')).toBeNull();
     });
 });
+
+describe('ConversationTurnBubble steered label', () => {
+    it('labels a user turn that was steered into the running turn', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ steered: true })} />);
+        const label = container.querySelector('[data-testid="steered-label"]');
+        expect(label?.textContent).toContain('steered');
+        expect(label?.getAttribute('title')).toBe('Sent into the running turn');
+    });
+
+    it('shows no label on a normal user turn', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn()} />);
+        expect(container.querySelector('[data-testid="steered-label"]')).toBeNull();
+    });
+});

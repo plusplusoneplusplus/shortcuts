@@ -1496,6 +1496,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             sendJSON(res, 202, {
                 processId: id,
                 turnIndex: result.turnIndex,
+                delivery: result.path === 'steered' ? 'steered' : 'queued',
                 ...(result.pasteExternalized ? { pasteExternalized: true } : {}),
             });
         },

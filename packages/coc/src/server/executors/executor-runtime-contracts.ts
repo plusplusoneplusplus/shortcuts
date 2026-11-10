@@ -114,6 +114,8 @@ export interface InFlightTurn {
     readonly provider: ChatProvider;
     /** Aborts the in-flight `sendMessage`, session id or not. */
     readonly controller: AbortController;
+    /** Session this turn runs in, set as soon as the provider reports it. */
+    sessionId?: string;
 }
 
 export interface ExecutorRuntimeCapabilities {

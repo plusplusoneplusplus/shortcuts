@@ -138,6 +138,7 @@ describe('POST /api/processes/:id/message — steer running task', () => {
         });
 
         expect(resp.status).toBe(202);
+        expect(resp.json().delivery).toBe('steered');
         expect(steerProcessMock).toHaveBeenCalledWith('proc-running', 'steer this');
         expect(enqueueMock).not.toHaveBeenCalled();
     });
@@ -152,6 +153,7 @@ describe('POST /api/processes/:id/message — steer running task', () => {
         });
 
         expect(resp.status).toBe(202);
+        expect(resp.json().delivery).toBe('queued');
         expect(steerProcessMock).toHaveBeenCalledOnce();
         // Steering failure now buffers as pending message instead of enqueueing
         expect(enqueueMock).not.toHaveBeenCalled();
@@ -220,5 +222,21 @@ describe('POST /api/processes/:id/message — steer running task', () => {
         expect(mqEvent).toBeDefined();
         expect((mqEvent![1] as any).deliveryMode).toBe('immediate');
         expect((mqEvent![1] as any).queuePosition).toBe(0);
+        expect((mqEvent![1] as any).delivered).toBe('steered');
+    });
+
+    it('reports a refused steer as queued on the message-queued SSE event', async () => {
+        findTaskMock.mockReturnValue({ id: 'task-1', type: 'chat', status: 'running' });
+        steerProcessMock.mockResolvedValue(false);
+
+        await request(`${baseUrl}/api/processes/proc-running/message`, {
+            method: 'POST',
+            body: JSON.stringify({ content: 'steer msg', deliveryMode: 'immediate' }),
+        });
+
+        const types = vi.mocked(store.emitProcessEvent).mock.calls.map(([, evt]) => (evt as any).type);
+        expect(types).not.toContain('message-steering');
+        const mqEvent = vi.mocked(store.emitProcessEvent).mock.calls.find(([, evt]) => (evt as any).type === 'message-queued');
+        expect((mqEvent![1] as any).delivered).toBe('queued');
     });
 });

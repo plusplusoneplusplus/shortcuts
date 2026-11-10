@@ -45,7 +45,15 @@ opening one is a normal read/write collection switch.
 
 The managed root auto-creates the protected `Plans` folder and reports
 it in the tree response's `systemFolders`. Repo-folder and task-derived roots neither
-create nor report system folders.
+create nor report system folders. The server refuses to delete a system folder (403)
+but allows deleting anything inside it.
+
+The tree's "Delete Selected (N)" uses `planBulkDelete`: N counts only rows that will
+be sent. That means no system folders and no rows inside another selected folder.
+A range that starts on `Plans` therefore still deletes its children. The action
+asks for confirmation and names any skipped folders. It deletes against the
+selection's root, continues past failures, refreshes once, and reports
+`Deleted X of Y` with the failing paths.
 
 Refresh reloads both the selected tree and the derived collection list, so task
 directories appear and disappear without persisted Notes configuration. If the active

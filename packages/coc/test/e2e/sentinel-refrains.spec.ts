@@ -163,7 +163,6 @@ for (const dark of [false, true]) {
             await expect(details.getByText('Paused · Autopilot')).toBeVisible();
             expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
             await page.screenshot({ path: info.outputPath('sentinel-jobs.png'), fullPage: true });
-            await details.getByLabel('More actions for Browser audit').click();
             await details.getByRole('button', { name: 'Delete', exact: true }).click();
             await page.getByRole('dialog', { name: 'Delete refrain' }).getByRole('button', { name: 'Delete refrain', exact: true }).click();
             await expect(jobs.getByText(/No refrains yet/)).toBeVisible();
@@ -272,19 +271,15 @@ for (const dark of [false, true]) {
             await job.getByRole('button', { name: 'Show details for Implement feature or bug fix' }).click();
             const details = page.getByRole('region', { name: 'Refrain details for Implement feature or bug fix' });
             await expect(details).toBeVisible();
-            const more = details.getByLabel('More actions for Implement feature or bug fix');
-            for (const control of [details.getByRole('button', { name: 'Run now' }), details.getByRole('button', { name: 'Resume', exact: true }), more]) {
+            // Every refrain action is inline in the details, Delete last, each a full touch target.
+            const toolbar = details.getByRole('group', { name: 'Actions for Implement feature or bug fix' });
+            await expect(toolbar.getByRole('button')).toHaveText(['Run now', 'Resume', 'Edit', 'Delete']);
+            for (const control of await toolbar.getByRole('button').all()) {
                 expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
             }
-            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
-            await more.focus();
-            await page.keyboard.press('Enter');
-            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+            await toolbar.getByRole('button', { name: 'Resume', exact: true }).focus();
             await page.keyboard.press('Tab');
-            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
-            await page.keyboard.press('Escape');
-            await expect(more).toBeFocused();
-            await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+            await expect(toolbar.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
             await expect(details).toBeVisible();
             const history = details.getByText('History (1)', { exact: true });
             await expect(history.locator('..')).not.toHaveAttribute('open', '');
@@ -396,7 +391,8 @@ for (const dark of [false, true]) {
             }
             const error = detail.getByRole('region', { name: 'Error for run #7', exact: true });
             await expect(error).toContainText('Full error ending');
-            for (const timestamp of ['2026-10-28T08:47:01.123Z', '2026-10-28T08:47:02.456Z', '2026-10-28T08:48:53.789Z']) await expect(detail.getByText(timestamp)).toBeVisible();
+            // Run times show localized; the exact ISO stays in the title.
+            for (const timestamp of ['2026-10-28T08:47:01.123Z', '2026-10-28T08:47:02.456Z', '2026-10-28T08:48:53.789Z']) await expect(detail.getByTitle(timestamp, { exact: true })).toBeVisible();
             const close = detail.getByRole('button', { name: 'Close run details' });
             const link = detail.getByRole('link', { name: 'Job turn' });
             await link.focus();

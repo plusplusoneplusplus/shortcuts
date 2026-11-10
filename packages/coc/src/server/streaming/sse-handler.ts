@@ -27,6 +27,8 @@ export interface MessageQueuedPayload {
     turnIndex: number;
     /** The resolved delivery mode (after defaulting). */
     deliveryMode: 'immediate' | 'enqueue';
+    /** What really happened: joined the running turn, or runs as its own turn. */
+    delivered: 'steered' | 'queued';
     /** Position in the follow-up queue (1-based). 0 when deliveryMode === 'immediate'. */
     queuePosition: number;
     /** Client-provided optimistic ID echoed back for reconciliation. */
@@ -87,6 +89,7 @@ export function emitMessageQueued(store: ProcessStore, processId: string, payloa
         type: 'message-queued',
         turnIndex: payload.turnIndex,
         deliveryMode: payload.deliveryMode,
+        delivered: payload.delivered,
         queuePosition: payload.queuePosition,
         ...(payload.optimisticId !== undefined ? { optimisticId: payload.optimisticId } : {}),
     } as ProcessOutputEvent);

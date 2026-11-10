@@ -48,6 +48,7 @@ export function viewIdentity(view: RightPanelView | null): string {
 export function persistGitView(view: RightPanelView): PersistedGitView {
     switch (view.type) {
         case 'commit': return { type: 'commit', hash: view.commit.hash };
+        case 'commit-file': return { type: 'commit-file', hash: view.hash, filePath: view.filePath };
         case 'multi-commit': return { type: 'multi-commit', hashes: view.commits.map(c => c.hash) };
         default: return view;
     }

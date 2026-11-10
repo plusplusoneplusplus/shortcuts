@@ -911,7 +911,8 @@ describe('RepoGitTab', () => {
         });
 
         it('handleCommitFileSelect sets right panel to commit-file view', () => {
-            expect(source).toContain("setView({ type: 'commit-file', hash, filePath })");
+            expect(source).toContain("return { type: 'commit-file', hash, filePath, ...(commit?.hash === hash ? { commit } : {}) };");
+            expect(source).toContain('setView(commitFileView(hash, filePath));');
         });
 
         it('handleFileSelect sets right panel to branch-file view', () => {
@@ -999,7 +1000,7 @@ describe('RepoGitTab', () => {
             // The new equivalent of the old route-restore path: `withCommit`
             // (in `useRepoGitSelection.ts`'s `restorePersistedView`) resolves
             // a `commit-file` persisted view by hash, keeping the file.
-            expect(source).toContain("withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath }))");
+            expect(source).toContain("withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath, commit }))");
         });
 
         describe('view-scope restore and switching', () => {
@@ -2118,7 +2119,7 @@ describe('RepoGitTab', () => {
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setView(options?.filePath');
             expect(block![0]).toContain("{ type: 'commit', commit }");
-            expect(block![0]).toContain("{ type: 'commit-file', hash: commit.hash, filePath: options.filePath }");
+            expect(block![0]).toContain("{ type: 'commit-file', hash: commit.hash, filePath: options.filePath, commit }");
         });
 
         it('feature flag check uses isGitCommitLookupEnabled function', () => {

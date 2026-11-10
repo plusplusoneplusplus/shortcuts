@@ -110,6 +110,40 @@ describe('CLITaskExecutor.steerProcess()', () => {
         expect(sdkMocks.mockSteerSession).toHaveBeenCalledWith('sess-2', 'msg');
     });
 
+    it('steers the live turn session before its id is persisted', async () => {
+        store.processes.set('proc-early', createProcessFixture({ id: 'proc-early', status: 'running' }));
+        sdkMocks.mockSteerSession.mockResolvedValue(true);
+        (executor as any).inFlightTurns.set('proc-early', {
+            provider: 'copilot', controller: new AbortController(), sessionId: 'live-sess',
+        });
+
+        expect(await executor.steerProcess!('proc-early', 'early steer')).toBe(true);
+        expect(sdkMocks.mockSteerSession).toHaveBeenCalledWith('live-sess', 'early steer');
+    });
+
+    it('prefers the live turn session over the persisted binding', async () => {
+        store.processes.set('proc-4', createCompletedProcessWithSession('proc-4', 'old-sess'));
+        sdkMocks.mockSteerSession.mockResolvedValue(true);
+        (executor as any).inFlightTurns.set('proc-4', {
+            provider: 'copilot', controller: new AbortController(), sessionId: 'new-sess',
+        });
+
+        await executor.steerProcess!('proc-4', 'msg');
+        expect(sdkMocks.mockSteerSession).toHaveBeenCalledWith('new-sess', 'msg');
+    });
+
+    it('does not steer while compaction is running, even with a live turn', async () => {
+        const proc = createCompletedProcessWithSession('proc-5', 'sess-5');
+        proc.metadata = { ...proc.metadata, compaction: { state: 'running' } as any };
+        store.processes.set('proc-5', proc);
+        (executor as any).inFlightTurns.set('proc-5', {
+            provider: 'copilot', controller: new AbortController(), sessionId: 'sess-5',
+        });
+
+        expect(await executor.steerProcess!('proc-5', 'msg')).toBe(false);
+        expect(sdkMocks.mockSteerSession).not.toHaveBeenCalled();
+    });
+
     it('returns false when steerSession throws', async () => {
         store.processes.set('proc-3', createCompletedProcessWithSession('proc-3', 'sess-3'));
         sdkMocks.mockSteerSession.mockRejectedValue(new Error('boom'));
