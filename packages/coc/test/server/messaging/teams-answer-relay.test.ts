@@ -181,6 +181,42 @@ describe('TeamsAnswerRelay new topics', () => {
         }
     });
 
+    it('restores a channel-root selection and ignores its replay after the thread changes topics', async () => {
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const router = new TeamsCommandRouter({
+            store, dataDir, sendReply: ack, enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+            isAnswerRelayEnabled: () => enabled,
+            selectThreadTarget: (msg, ws, proc) => relay.selectThreadTarget(msg, ws, proc, true),
+            hasThreadCommand: msg => relay.hasCommand(msg),
+        });
+        const root = { ...message('selection-root'), text: '/select repo B' };
+        const reply = { ...message('next-message'), replyToMessageId: root.messageId };
+        await router.handle(root);
+        expect(await relay.resolveThread(reply)).toEqual({ workspaceId: 'workspace-b' });
+        processes.set('selected-topic', {
+            id: 'selected-topic', status: 'completed', metadata: { workspaceId: 'workspace-a' },
+        });
+        await relay.selectThreadTarget(reply, 'workspace-a', 'selected-topic');
+        await router.handle(root);
+        expect(ack).toHaveBeenCalledOnce();
+        expect((await relay.resolveThread(reply))?.process?.id).toBe('selected-topic');
+
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(restored.hasCommand({ ...root, replyToMessageId: root.messageId })).toBe(true);
+            expect(await restored.resolveThread(reply)).toEqual({
+                workspaceId: 'workspace-a', process: processes.get('selected-topic'),
+            });
+        } finally {
+            restored.dispose();
+            router.stop();
+        }
+    });
+
     it('deduplicates selected thread commands without changing other roots', async () => {
         const command = { ...message('command-id'), replyToMessageId: 'root-one' };
         await relay.selectThreadTarget(command, 'workspace-a', null);

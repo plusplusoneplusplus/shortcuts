@@ -1255,8 +1255,11 @@ references before editing. Paths are package-relative.
   selection is not persisted). `select repo` (including re-selecting the current repo or
   Global) clears the selected topic (Teams also `lastActiveTopic`) so the next plain
   message starts a new chat; quote/thread replies, `select topic` and `[chatid]` still
-  target their chat. WhatsApp `state.json` keeps its per-repo `topics` map. `compact` targets the quoted/bound-thread answer's
-  chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
+  target their chat. With Teams answer relay enabled, successful channel-root repo/topic
+  selections also persist that root's thread target and command ID; thread replies use
+  that binding independently of later user selections. WhatsApp `state.json` keeps its
+  per-repo `topics` map. `compact` targets the quoted/bound-thread answer's chat,
+  else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
   to fixed replies. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit mode; plain text keeps
   the chat's mode (new chats run in `sentinel`, the dispatcher, whatever `sentinel.enabled` says)

@@ -410,6 +410,11 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
+                if (this.deps.isAnswerRelayEnabled?.() === true
+                    && (command.type === 'select-repo' || command.type === 'select-topic' || command.type === 'create-topic')
+                    && this.deps.hasThreadCommand?.({ ...msg, replyToMessageId: msg.messageId })) {
+                    return;
+                }
                 await this.sendControlReply(command, command.type === 'list-todos' ? await this.selectedTodosReply(userKey)
                     : await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
             }
@@ -448,12 +453,17 @@ export class TeamsCommandRouter {
     }
 
     /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
-    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
+    private async handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
         const discard = () => {
             if (msg?.senderAadId) this.pendingImages.discard(this.imageContext(msg));
             if (msg) this.imageRoots.delete(this.latestImageRootKey(msg));
         };
-        return handleMessagingCommand(command, {
+        const threadRoot = msg && !msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true
+            && this.deps.selectThreadTarget
+            && (command.type === 'select-repo' || command.type === 'select-topic' || command.type === 'create-topic')
+            ? { ...msg, replyToMessageId: msg.messageId } : undefined;
+        const threadTarget: { value?: { workspaceId: string; processId: string | null } } = {};
+        const reply = await handleMessagingCommand(command, {
             store: this.deps.store,
             dataDir: this.deps.dataDir,
             readGitStatus: this.deps.readGitStatus,
@@ -476,11 +486,26 @@ export class TeamsCommandRouter {
                 repoId: () => this.userState.get(userKey).selectedRepo,
                 selectRepo: workspaceId => { discard(); this.userState.update(userKey, { selectedRepo: workspaceId }); },
                 topicId: () => this.userState.get(userKey).selectedTopic,
-                selectTopic: (_workspaceId, processId) => { discard(); this.userState.update(userKey, processId
-                    ? { selectedTopic: processId }
-                    : { selectedTopic: null, lastActiveTopic: null }); },
+                selectTopic: (workspaceId, processId) => {
+                    discard();
+                    this.userState.update(userKey, processId
+                        ? { selectedTopic: processId }
+                        : { selectedTopic: null, lastActiveTopic: null });
+                    if (threadRoot) {
+                        threadTarget.value = { workspaceId, processId };
+                    }
+                },
             },
         });
+        if (threadRoot && threadTarget.value) {
+            try {
+                await this.deps.selectThreadTarget!(threadRoot, threadTarget.value.workspaceId, threadTarget.value.processId);
+            } catch (error) {
+                console.error('[teams-messaging] Thread selection could not be saved');
+                throw Object.assign(new Error('Teams thread selection is unavailable'), { cause: error });
+            }
+        }
+        return reply;
     }
 
     /** Top-level `list todos` reads the sender's selected topic in the selected repo only. */

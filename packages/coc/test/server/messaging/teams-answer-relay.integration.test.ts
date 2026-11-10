@@ -49,18 +49,23 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         }
 
         const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+        let selectionThread = false;
         vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
             const graphRoots = `https://graph.microsoft.com/beta/teams/${teamId}/channels/${channelId}/messages`;
             if (channelReadBackend === 'graph' && new URL(url).origin === 'https://graph.microsoft.com') {
                 expect(init?.method).toBe('GET');
                 if (new URL(url).pathname === new URL(graphRoots).pathname) {
                     return new Response(JSON.stringify({ value: [
-                        { id: 'root-b', body: { content: 'beta prompt' }, createdDateTime: '2026-01-01T00:00:00Z' },
+                        selectionThread
+                            ? { id: 'selection-root', body: { content: '/select repo 1' },
+                                createdDateTime: '2026-01-01T00:00:00Z', from: { user: { id: 'synthetic-user' } } }
+                            : { id: 'root-b', body: { content: 'beta prompt' }, createdDateTime: '2026-01-01T00:00:00Z' },
                     ] }));
                 }
-                expect(new URL(url).pathname).toBe(new URL(`${graphRoots}/root-b/replies`).pathname);
+                expect(new URL(url).pathname).toBe(new URL(`${graphRoots}/${selectionThread ? 'selection-root' : 'root-b'}/replies`).pathname);
                 return new Response(JSON.stringify({ value: [
-                    { id: 'thread-follow', body: { content: 'thread follow-up' },
+                    { id: selectionThread ? 'thread-first' : 'thread-follow',
+                        body: { content: selectionThread ? 'first thread question' : 'thread follow-up' },
                         createdDateTime: '2026-01-01T00:00:01Z', from: { user: { id: 'synthetic-user' } } },
                 ] }));
             }
@@ -79,12 +84,15 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 result = { content: [{ text: JSON.stringify({ id: `sent-${calls.length}` }) }] };
             } else if (body.method === 'tools/call' && body.params?.name === 'ListChannelMessages') {
                 result = { content: [{ text: JSON.stringify([
-                    { id: 'root-b', body: { content: 'beta prompt' } },
+                    selectionThread
+                        ? { id: 'selection-root', body: { content: '/select repo 1' }, from: { user: { id: 'synthetic-user' } } }
+                        : { id: 'root-b', body: { content: 'beta prompt' } },
                 ]) }] };
             } else if (body.method === 'tools/call' && body.params?.name === 'ListChannelMessageReplies') {
-                if (body.params.arguments.messageId !== 'root-b') throw new Error('Unexpected thread root');
+                if (body.params.arguments.messageId !== (selectionThread ? 'selection-root' : 'root-b')) throw new Error('Unexpected thread root');
                 result = { content: [{ text: JSON.stringify([
-                    { id: 'thread-follow', body: { content: 'thread follow-up' },
+                    { id: selectionThread ? 'thread-first' : 'thread-follow',
+                        body: { content: selectionThread ? 'first thread question' : 'thread follow-up' },
                         from: { user: { id: 'synthetic-user' } } },
                 ]) }] };
             } else if (body.method !== 'notifications/initialized') {
@@ -314,6 +322,48 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('thread-a-3')).toHaveLength(0);
         expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
             ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('another turn after the answer');
+
+        // A selection posted as a channel root also selects the target for its thread.
+        selectionThread = true;
+        const selectionPoll = await transport.poll(channelId);
+        expect(selectionPoll.messages).toEqual([
+            expect.objectContaining({ messageId: 'selection-root', text: '/select repo 1', replyToMessageId: undefined }),
+            expect.objectContaining({ messageId: 'thread-first', replyToMessageId: 'selection-root' }),
+        ]);
+        for (const msg of selectionPoll.messages) await handle(msg);
+        await until(() => entered.includes('first thread question'));
+        const threadTask = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()
+            .find(task => task.payload?.kind === 'chat' && task.payload.prompt === 'first thread question')!;
+        expect(threadTask.repoId).toBe('ws-a');
+        expect(repliesFor('selection-root').at(-1)).toContain('New chat started');
+        await handle(inbound('thread-pending', 'pending thread question', 'selection-root'));
+        expect(repliesFor('thread-pending')).toHaveLength(0);
+        gates.get('first thread question')!.resolve();
+        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for first thread question')));
+        await until(() => entered.includes('pending thread question'));
+        gates.get('pending thread question')!.resolve();
+        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for pending thread question')));
+
+        // Later user selections do not move an established thread to another workspace.
+        await handle(inbound('selection-elsewhere', '/select repo Beta'));
+        await handle(inbound('thread-second', 'second thread question', 'selection-root'));
+        await until(() => entered.includes('second thread question'));
+        gates.get('second thread question')!.resolve();
+        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for second thread question')));
+        expect((await store.getProcess(toQueueProcessId(threadTask.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').map(turn => turn.content))
+            .toEqual([expect.stringMatching(/first thread question$/), 'pending thread question', 'second thread question']);
+        expect(repliesFor('thread-first')).toHaveLength(0);
+        expect(repliesFor('thread-second')).toHaveLength(0);
+
+        await handle(inbound('topic-selection-root', `/select topic ws-b/${toQueueProcessId(taskB.id)}`));
+        await handle(inbound('topic-thread-follow', 'selected topic thread question', 'topic-selection-root'));
+        await until(() => entered.includes('selected topic thread question'));
+        gates.get('selected topic thread question')!.resolve();
+        await until(() => repliesFor('topic-selection-root').some(reply => reply.includes('Answer for selected topic thread question')));
+        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('selected topic thread question');
+        expect(repliesFor('topic-thread-follow')).toHaveLength(0);
 
         expect(calls.every(call => call.name === 'ReplyToChannelMessage'
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);

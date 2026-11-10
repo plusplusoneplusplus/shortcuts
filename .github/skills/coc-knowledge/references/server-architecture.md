@@ -466,6 +466,9 @@ registered members supply execution roots and access policy.
 `messaging/` owns independent Teams and WhatsApp managers over `coc-connector`.
 Account/connection settings are server-global; accepted requests and answer receipts
 are workspace-scoped. Explicit repo/topic bindings determine chat routing.
+With answer relay enabled, successful Teams channel-root repo/topic selections also
+persist a thread target and command ID; replies use that root's selection independently
+of later user selections. Unknown thread roots do not inherit a sender's current state.
 Relays deliver the captured conversation's final answer to its original destination despite selection changes.
 Receipts preserve progress; uncertain sends require reconciliation rather than automatic replay.
 Accepted Teams channel-thread follow-ups acknowledge durable admission directly
