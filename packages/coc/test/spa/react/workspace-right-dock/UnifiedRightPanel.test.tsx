@@ -74,7 +74,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     getMonacoLanguage: () => 'plaintext',
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
-    getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
+    getCocClientForWorkspace: () => ({
+        canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) },
+        workspaces: { gitInfo: async () => ({ remoteUrl: 'https://github.com/example/repo.git' }) },
+    }),
+    resolveCloneRoute: () => ({ kind: 'local' }),
     lookupCloneBaseUrl: () => null,
     subscribeCloneBaseUrl: () => () => {},
 }));
@@ -483,11 +487,11 @@ describe('UnifiedRightPanel', () => {
 
     it('keeps closed work-resource drafts inside their hosting panel scope', async () => {
         const rendered = renderPanel({ dock: dockStub({ target: 'member-a' }) });
-        await openViaMenu('unified-panel-open-work-items');
+        await openViaMenu('unified-panel-open-coc-work-items');
         const first = screen.getByRole('textbox', { name: 'work-items draft' });
         fireEvent.change(first, { target: { value: 'scope one' } });
         rendered.rerender(<UnifiedRightPanel workspaceId="another-group" dock={dockStub({ target: 'member-a' })} />);
-        await openViaMenu('unified-panel-open-work-items');
+        await openViaMenu('unified-panel-open-coc-work-items');
         const second = screen.getByRole('textbox', { name: 'work-items draft' });
         expect(second).not.toBe(first);
         expect(second).toHaveValue('');
@@ -497,22 +501,22 @@ describe('UnifiedRightPanel', () => {
         const view = (target: string, chatId: string) => <UnifiedRightPanel workspaceId={WS}
             routingRef="remote:server-a:ws-1" chatId={chatId} dock={dockStub({ target })} />;
         const rendered = render(view('member-a', 'chat-1'));
-        await openViaMenu(`unified-panel-open-${kind}`);
+        await openViaMenu(`unified-panel-open-coc-${kind}`);
         const input = screen.getByRole('textbox', { name: `${kind} draft` });
         expect(input).toHaveAttribute('data-owner', 'remote:server-a:member-a');
         fireEvent.change(input, { target: { value: 'pending' } });
         const first = readUnifiedPanelState(WS).workspaceTabs[0];
-        await openViaMenu(`unified-panel-open-${kind}`);
+        await openViaMenu(`unified-panel-open-coc-${kind}`);
         expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
         rendered.rerender(view('member-b', 'chat-2'));
-        await openViaMenu(`unified-panel-open-${kind}`);
+        await openViaMenu(`unified-panel-open-coc-${kind}`);
         expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2);
         fireEvent.click(screen.getByTestId(`unified-panel-tab-${first.id}`));
         expect(screen.getByRole('textbox', { name: `${kind} draft` })).toBe(input);
         expect(input).toHaveValue('pending');
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${first.id}`));
         rendered.rerender(view('member-a', 'chat-2'));
-        await openViaMenu(`unified-panel-open-${kind}`);
+        await openViaMenu(`unified-panel-open-coc-${kind}`);
         expect(screen.getByRole('textbox', { name: `${kind} draft` })).toBe(input);
         expect(input).toHaveValue('pending');
     });
@@ -853,6 +857,24 @@ describe('UnifiedRightPanel', () => {
                 return () => { onCloseRequested = undefined; };
             });
             Object.defineProperty(window, 'cocDesktop', { value: { browser: bridge }, configurable: true });
+        });
+
+        it.each([
+            ['work-items', 'https://github.com/example/repo/issues'],
+            ['pull-requests', 'https://github.com/example/repo/pulls'],
+        ] as const)('opens the %s provider page in a member-owned browser tab', async (kind, url) => {
+            renderPanel({ chatId: 'chat-1', routingRef: 'remote:server-a:ws-1', dock: dockStub({ target: 'member-a' }) });
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+            const row = screen.getByTestId(`unified-panel-open-${kind}`) as HTMLButtonElement;
+            await waitFor(() => expect(row.disabled).toBe(false));
+            await act(async () => { fireEvent.click(row); });
+            const tab = readUnifiedPanelState(WS).workspaceTabs[0];
+            expect(tab).toMatchObject({
+                kind: 'browser', ownerWorkspaceId: 'member-a', ownerRoutingRef: 'remote:server-a:member-a', browserUrl: url,
+            });
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(
+                tab.resourceId, url, 'remote:server-a:member-a', undefined,
+            ));
         });
 
         it.each([null, 'remote:server-a:group'])('opens history in a fresh tab using the current dock owner and default engine (%s)', async routingRef => {

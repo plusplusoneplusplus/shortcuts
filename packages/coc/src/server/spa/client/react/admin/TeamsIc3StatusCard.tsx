@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
-import type { TeamsIc3ConnectivityStatus } from '../../../../messaging/teams-ic3-own-commands-runtime';
+import type { TeamsIc3ConnectivityStatus, TeamsIc3FailureStage } from '../../../../messaging/teams-ic3-own-commands-runtime';
 import type { TeamsOutboundComplianceFailure } from '../../../../messaging/teams-outbound-compliance';
 import { SettingsCard } from './SettingsCard';
 import { useAdminServer } from './adminTarget';
 
 const LABELS = {
     disabled: 'Disabled', connecting: 'Connecting', connected: 'Connected',
-    degraded: 'Degraded', error: 'Connection failed', stopped: 'Stopped',
+    degraded: 'Degraded', error: 'Check failed', stopped: 'Stopped',
+};
+
+const FAILURE_STAGES: Record<TeamsIc3FailureStage, string> = {
+    setup: 'Workspace or region setup',
+    connect: 'IC3 session setup',
+    notifications: 'Notification setup',
+    selfRead: 'Self-chat read',
+    chatRead: 'Chat read',
+    discovery: 'Chat discovery',
+    messageProcessing: 'Command processing',
 };
 
 function validComplianceFailure(value: unknown): value is TeamsOutboundComplianceFailure | undefined {
@@ -16,6 +26,17 @@ function validComplianceFailure(value: unknown): value is TeamsOutboundComplianc
     return (failure.state === 'blocked' || failure.state === 'failed')
         && typeof failure.reason === 'string' && !!failure.reason.trim()
         && typeof failure.checkedAt === 'string' && Number.isFinite(Date.parse(failure.checkedAt));
+}
+
+function failureGuidance(status: TeamsIc3ConnectivityStatus): string {
+    if (status.error === 'Authentication') {
+        return status.errorHttpStatus === 401
+            ? 'IC3 rejected the request. Check Azure CLI sign-in and the account on the configured machine.'
+            : 'Check Azure CLI sign-in and the account on the configured machine. IC3 access may also have been rejected.';
+    }
+    if (status.error === 'RateLimited') return 'IC3 rate limited the check. Background reads retry after the cooldown.';
+    if (status.errorStage === 'setup') return 'Check the saved workspace and IC3 region on the configured machine.';
+    return 'Check the saved workspace, region and Azure CLI sign-in on the configured machine.';
 }
 
 export function TeamsIc3StatusCard() {
@@ -39,13 +60,16 @@ export function TeamsIc3StatusCard() {
                 });
                 if (!response.ok) throw new Error('IC3 status unavailable');
                 const next: TeamsIc3ConnectivityStatus = await response.json();
-                if (!next || !Object.hasOwn(LABELS, next.state)
+                if (!next || !Object.prototype.hasOwnProperty.call(LABELS, next.state)
                     || !validComplianceFailure(next.outboundCompliance)
                     || (next.error !== undefined && typeof next.error !== 'string')
+                    || (next.errorStage !== undefined && !Object.prototype.hasOwnProperty.call(FAILURE_STAGES, next.errorStage))
+                    || (next.errorHttpStatus !== undefined && (!Number.isInteger(next.errorHttpStatus)
+                        || next.errorHttpStatus < 400 || next.errorHttpStatus > 599))
                     || (next.trouter !== undefined && (!next.trouter
                         || !['disabled', 'connecting', 'registered', 'retrying', 'stopped'].includes(next.trouter.state)
                         || (next.trouter.error !== null && (!next.trouter.error || typeof next.trouter.error.code !== 'string'))))
-                    || [next.lastCheckedAt, next.lastConnectedAt].some(value =>
+                    || [next.lastCheckedAt, next.lastConnectedAt, next.errorAt].some(value =>
                         value !== undefined && (typeof value !== 'string' || !Number.isFinite(Date.parse(value))))) {
                     throw new Error('Invalid IC3 status');
                 }
@@ -67,7 +91,7 @@ export function TeamsIc3StatusCard() {
                 });
                 if (!response.ok) throw new Error('Reaction status unavailable');
                 const next = await response.json();
-                if (!next || !Object.hasOwn(LABELS, next.state) || !validComplianceFailure(next.outboundCompliance)) {
+                if (!next || !Object.prototype.hasOwnProperty.call(LABELS, next.state) || !validComplianceFailure(next.outboundCompliance)) {
                     throw new Error('Invalid reaction status');
                 }
                 if (!controller.signal.aborted) {
@@ -104,10 +128,14 @@ export function TeamsIc3StatusCard() {
                     </button>
                 </div>
                 {status?.state === 'disabled' && <p className="ar-hint">Enable IC3 own commands and save a workspace and region below to connect.</p>}
-                {status?.lastCheckedAt && <p className="ar-hint">Last check: {new Date(status.lastCheckedAt).toLocaleString()}</p>}
-                {status?.lastConnectedAt && <p className="ar-hint">Last connected: {new Date(status.lastConnectedAt).toLocaleString()}</p>}
+                {status?.lastCheckedAt && <p className="ar-hint">Latest check: {new Date(status.lastCheckedAt).toLocaleString()}</p>}
+                {status?.lastConnectedAt && <p className="ar-hint">Last successful read: {new Date(status.lastConnectedAt).toLocaleString()}</p>}
                 {status?.error && <p className="ar-teams-error" role="alert">
-                    IC3 check failed ({status.error}). Check the saved workspace, region and Azure CLI sign-in on the configured machine.
+                    IC3 check failed: {status.error}{status.errorHttpStatus ? ` (HTTP ${status.errorHttpStatus})` : ''}.
+                    {status.errorStage && <><br />Operation: {FAILURE_STAGES[status.errorStage]}.</>}
+                    {status.errorAt && <><br />Failure time: {new Date(status.errorAt).toLocaleString()}.</>}
+                    {status.state === 'degraded' && <><br />Other reads may still succeed. This warning can remain until a later background check succeeds.</>}
+                    <br />{failureGuidance(status)}
                 </p>}
                 {error && <p className="ar-teams-error" role="alert">Unable to read IC3 status from the configured machine. Refresh to retry.</p>}
                 <p className="ar-hint" data-testid="ic3-own-command-trouter-status">

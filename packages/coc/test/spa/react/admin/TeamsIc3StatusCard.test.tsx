@@ -24,7 +24,7 @@ describe('Teams IC3 connectivity card', () => {
 
     it.each([
         ['disabled', 'Disabled'], ['connecting', 'Connecting'], ['connected', 'Connected'],
-        ['degraded', 'Degraded'], ['error', 'Connection failed'], ['stopped', 'Stopped'],
+        ['degraded', 'Degraded'], ['error', 'Check failed'], ['stopped', 'Stopped'],
     ])('renders %s distinctly from the channel bridge', async (state, label) => {
         mocks.fetch.mockResolvedValue(respond({ state }));
         render(<TeamsIc3StatusCard />);
@@ -50,15 +50,69 @@ describe('Teams IC3 connectivity card', () => {
         expect(screen.getByRole('alert').textContent).toContain('socket');
         expect(screen.getByRole('alert').textContent).toContain('Background scans remain active');
     });
-    it('shows last check, last connection and safe diagnostic guidance', async () => {
-        mocks.fetch.mockResolvedValue(respond({ state: 'degraded', error: 'Permission',
-            lastCheckedAt: '2026-01-01T00:00:00Z', lastConnectedAt: '2025-12-31T23:59:00Z' }));
+    it('distinguishes an earlier failed read from later successful reads', async () => {
+        mocks.fetch.mockResolvedValue(respond({ state: 'degraded', error: 'Authentication',
+            errorStage: 'chatRead', errorAt: '2025-12-31T23:58:00Z', errorHttpStatus: 401,
+            lastCheckedAt: '2026-01-01T00:00:00Z', lastConnectedAt: '2026-01-01T00:00:00Z' }));
         render(<TeamsIc3StatusCard />);
         await flush();
-        expect(screen.getByText(/Last check:/)).toBeDefined();
-        expect(screen.getByText(/Last connected:/)).toBeDefined();
-        expect(screen.getByRole('alert').textContent).toContain('Permission');
+        expect(screen.getByText(/Latest check:/)).toBeDefined();
+        expect(screen.getByText(/Last successful read:/)).toBeDefined();
+        const alert = screen.getByRole('alert').textContent;
+        expect(alert).toContain('Authentication (HTTP 401)');
+        expect(alert).toContain('Operation: Chat read');
+        expect(alert).toContain(`Failure time: ${new Date('2025-12-31T23:58:00Z').toLocaleString()}`);
+        expect(alert).toContain('Other reads may still succeed');
+        expect(alert).toContain('later background check');
+        expect(alert).toContain('IC3 rejected the request');
+        expect(alert).toContain('Azure CLI sign-in');
         expect(screen.getByText(/does not test write access/)).toBeDefined();
+    });
+
+    it('shows setup guidance without presenting a credential or HTTP diagnosis', async () => {
+        mocks.fetch.mockResolvedValue(respond({ state: 'error', error: 'ConfigurationOrConnection',
+            errorStage: 'setup', errorAt: '2026-01-01T00:00:00Z' }));
+        render(<TeamsIc3StatusCard />);
+        await flush();
+        const alert = screen.getByRole('alert').textContent;
+        expect(alert).toContain('Operation: Workspace or region setup');
+        expect(alert).toContain('saved workspace and IC3 region');
+        expect(alert).not.toContain('HTTP');
+        expect(alert).not.toContain('Other reads may still succeed');
+    });
+
+    it('supports an authentication failure without claiming an HTTP response', async () => {
+        mocks.fetch.mockResolvedValue(respond({ state: 'error', error: 'Authentication',
+            errorStage: 'connect', errorAt: '2026-01-01T00:00:00Z' }));
+        render(<TeamsIc3StatusCard />);
+        await flush();
+        const alert = screen.getByRole('alert').textContent;
+        expect(alert).toContain('Operation: IC3 session setup');
+        expect(alert).toContain('IC3 access may also have been rejected');
+        expect(alert).not.toContain('HTTP');
+    });
+
+    it('explains a rate limit without suggesting an authentication problem', async () => {
+        mocks.fetch.mockResolvedValue(respond({ state: 'error', error: 'RateLimited',
+            errorStage: 'chatRead', errorAt: '2026-01-01T00:00:00Z', errorHttpStatus: 429 }));
+        render(<TeamsIc3StatusCard />);
+        await flush();
+        const alert = screen.getByRole('alert').textContent;
+        expect(alert).toContain('RateLimited (HTTP 429)');
+        expect(alert).toContain('retry after the cooldown');
+        expect(alert).not.toContain('Azure CLI');
+    });
+
+    it.each([
+        { errorStage: 'unexpected' },
+        { errorAt: 'invalid' },
+        { errorHttpStatus: 200 },
+        { errorHttpStatus: '401' },
+    ])('rejects invalid failure metadata: %j', async metadata => {
+        mocks.fetch.mockResolvedValue(respond({ state: 'degraded', error: 'Authentication', ...metadata }));
+        render(<TeamsIc3StatusCard />);
+        await flush();
+        expect(screen.getByRole('status').textContent).toBe('Status unavailable');
     });
 
     it('drops stale connected status on failure and recovers through explicit refresh', async () => {

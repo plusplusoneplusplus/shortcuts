@@ -5972,7 +5972,7 @@ describe('AI service injection', () => {
 
 describe('createQueueExecutorBridge', () => {
     describe('AI service injection', () => {
-        it('should pass aiService through createQueueExecutorBridge factory', async () => {
+        it.each([0, 250])('should pass aiService through createQueueExecutorBridge factory with %i ms startup', async startupDelay => {
             const queueManager = new TaskQueueManager();
             const store = createMockProcessStore();
 
@@ -5983,8 +5983,12 @@ describe('createQueueExecutorBridge', () => {
                     sessionId: 'bridge-session-999',
                 },
             });
+            bridgeMock.mockIsAvailable.mockImplementation(async () => {
+                await delay(startupDelay);
+                return { available: true };
+            });
 
-            const { executor, bridge } = createQueueExecutorBridge(queueManager, store, {
+            const { executor } = createQueueExecutorBridge(queueManager, store, {
                 maxConcurrency: 1,
                 autoStart: false,
                 aiService: bridgeMock.service as any,
@@ -5999,24 +6003,22 @@ describe('createQueueExecutorBridge', () => {
             });
 
             executor.start();
-            await delay(100);
+            try {
+                await waitForCondition(() => queueManager.getHistory().length === 1, 5000);
+                expect(bridgeMock.mockIsAvailable).toHaveBeenCalledTimes(1);
+                expect(bridgeMock.mockSendMessage).toHaveBeenCalledTimes(1);
+                expect(bridgeMock.mockSendMessage).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        prompt: expect.stringContaining('Bridge integration test'),
+                    })
+                );
 
-            // Verify the injected service was used
-            expect(bridgeMock.mockIsAvailable).toHaveBeenCalledTimes(1);
-            expect(bridgeMock.mockSendMessage).toHaveBeenCalledTimes(1);
-            expect(bridgeMock.mockSendMessage).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    prompt: expect.stringContaining('Bridge integration test'),
-                })
-            );
-
-            // Verify task completed successfully
-            await delay(100);
-            const history = queueManager.getHistory();
-            expect(history).toHaveLength(1);
-            expect(history[0].status).toBe('completed');
-
-            executor.dispose();
+                const history = queueManager.getHistory();
+                expect(history).toHaveLength(1);
+                expect(history[0].status).toBe('completed');
+            } finally {
+                executor.dispose();
+            }
         });
     });
 

@@ -44,7 +44,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
+import { desktopBrowserBridge, openUrlInSystemBrowser } from '../../../shared/file-path/browser-bridge';
 import { explorerApi } from '../explorer/explorerApi';
 import { highlightMatches, splitIndices } from '../explorer/QuickOpen';
 import type { DockTarget } from '../WorkspaceDockToggle';
@@ -55,12 +57,14 @@ import {
     firstOpenMenuIndex,
     nextOpenMenuIndex,
     openMenuActions,
+    workResourceWebUrls,
     type OpenMenuActionId,
     type OpenMenuCanvasResult,
     type OpenMenuExtensionResult,
     type OpenMenuFileResult,
     type OpenMenuItem,
     type OpenMenuView,
+    type WorkResourceKind,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
@@ -131,6 +135,14 @@ export function UnifiedPanelOpenMenu({
     const [openingExtension, setOpeningExtension] = useState<string | null>(null);
     const [extensionError, setExtensionError] = useState<string | null>(null);
     const [cursor, setCursor] = useState(0);
+    const [webLookup, setWebLookup] = useState<{
+        key: string;
+        urls: Record<WorkResourceKind, string> | null;
+        error?: string;
+        routeKey?: string;
+    } | null>(null);
+    const [webAttempt, setWebAttempt] = useState(0);
+    const [webOpenError, setWebOpenError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -139,6 +151,40 @@ export function UnifiedPanelOpenMenu({
     const targetOptions = targets ?? [];
     const targetOption = targetOptions.find(option => option.workspaceId === target);
     const targetUnavailable = targetOption?.disabled === true;
+    const webKey = JSON.stringify([target, targetRoutingRef === undefined ? ['automatic'] : targetRoutingRef]);
+    const webEligible = !targetUnavailable && !isRepoGroupWorkspaceId(target);
+    const webResult = webLookup?.key === webKey ? webLookup : null;
+
+    useEffect(() => {
+        if (!webEligible) {
+            setWebLookup(null);
+            return;
+        }
+        let cancelled = false;
+        setWebOpenError(null);
+        const owner = targetRoutingRef === undefined ? target : targetRoutingRef;
+        void Promise.resolve().then(async () => {
+            if (cancelled) return;
+            const route = resolveCloneRoute(owner);
+            if (route.kind === 'unresolved-remote') {
+                if (!cancelled) setWebLookup({ key: webKey, urls: null, error: 'The owning remote server is unavailable.' });
+                return;
+            }
+            const info = await getCocClientForWorkspace(owner).workspaces.gitInfo(target);
+            if (cancelled) return;
+            const current = resolveCloneRoute(owner);
+            if (current.kind !== route.kind
+                || (current.kind === 'remote' && route.kind === 'remote' && current.baseUrl !== route.baseUrl)) {
+                setWebLookup({ key: webKey, urls: null, error: 'Repository connection changed. Try again.' });
+                return;
+            }
+            const urls = workResourceWebUrls(info.remoteUrl);
+            setWebLookup({ key: webKey, urls, routeKey: JSON.stringify(route), ...(urls ? {} : { error: 'No supported GitHub or Azure DevOps remote found.' }) });
+        }).catch(() => {
+            if (!cancelled) setWebLookup({ key: webKey, urls: null, error: 'Could not read the repository remote. Try again.' });
+        });
+        return () => { cancelled = true; };
+    }, [target, targetRoutingRef, webEligible, webKey, webAttempt]);
 
     // The selected chat's own recorded edits, published by its transcript. Read
     // live rather than fetched: the entry has to appear the moment the first
@@ -153,10 +199,11 @@ export function UnifiedPanelOpenMenu({
         settingsAvailable,
         gitAvailable,
         extensionsAvailable: extensions.length > 0,
+        ...(webEligible ? { webUnavailableReason: webResult?.error ?? (webResult ? undefined : 'Loading repository…') } : {}),
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoAvailable, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoAvailable, settingsAvailable, gitAvailable, extensions.length, targetUnavailable, targetOption?.label, webEligible, webResult]);
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
@@ -382,6 +429,31 @@ export function UnifiedPanelOpenMenu({
             return;
         }
         if (item.action.disabled === true) return;
+        if (item.action.id === 'work-items' || item.action.id === 'pull-requests') {
+            const url = webResult?.urls?.[item.action.id];
+            if (!url) return;
+            const route = resolveCloneRoute(targetRoutingRef === undefined ? target : targetRoutingRef);
+            if (JSON.stringify(route) !== webResult?.routeKey) {
+                setWebLookup({ key: webKey, urls: null, error: 'Repository connection changed. Try again.' });
+                return;
+            }
+            setWebOpenError(null);
+            if (desktopBrowserBridge()) {
+                onOpenResource(browserOpenInput(browserContext, url));
+                onClose();
+            } else {
+                void openUrlInSystemBrowser(url).then(opened => {
+                    if (opened) onClose();
+                    else setWebOpenError('Could not open the provider page. Try again.');
+                });
+            }
+            return;
+        }
+        if (item.action.id === 'coc-work-items' || item.action.id === 'coc-pull-requests') {
+            onOpenWorkspaceResource(item.action.id === 'coc-work-items' ? 'work-items' : 'pull-requests');
+            onClose();
+            return;
+        }
         if (item.action.id === 'extensions') {
             enterView('extensions');
             return;
@@ -420,7 +492,7 @@ export function UnifiedPanelOpenMenu({
         }
         onOpenWorkspaceResource(id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, targetOption?.label, webResult, target, targetRoutingRef, webKey]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -627,6 +699,9 @@ export function UnifiedPanelOpenMenu({
                             {disabled && item.action.disabledReason && (
                                 <span className="ml-auto truncate text-[10px] text-[#8a8a8a]">{item.action.disabledReason}</span>
                             )}
+                            {!disabled && item.action.hint && (
+                                <span className="ml-auto text-[10px] text-[#8a8a8a]">{item.action.hint}</span>
+                            )}
                             {!disabled && item.action.id === 'extensions' && (
                                 <span aria-hidden className="ml-auto text-[#8a8a8a]">›</span>
                             )}
@@ -677,6 +752,15 @@ export function UnifiedPanelOpenMenu({
                         {createError}
                     </div>
                 )}
+                {(webResult?.error || webOpenError) && (
+                    <div role="alert" className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-web-error">
+                        <span>{webOpenError ?? webResult?.error}</span>
+                        {webResult?.error && <button type="button" className="underline" onClick={() => {
+                            setWebLookup(null);
+                            setWebAttempt(value => value + 1);
+                        }}>Retry</button>}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -686,6 +770,8 @@ export function UnifiedPanelOpenMenu({
 const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
     'work-items': TODO_ICON,
     'pull-requests': PULL_REQUESTS_ICON,
+    'coc-work-items': TODO_ICON,
+    'coc-pull-requests': PULL_REQUESTS_ICON,
     settings: SETTINGS_ICON,
     terminal: '▶',
     git: GIT_ICON,

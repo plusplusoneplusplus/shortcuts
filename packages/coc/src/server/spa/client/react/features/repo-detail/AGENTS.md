@@ -77,10 +77,10 @@ group; both mount it at every breakpoint and wrap their subtree in
 `UnifiedPanelHostProvider`. Mobile opens a full-width presentation, keeping the
 workspace mounted. Git detail hosts own navigation through `onViewChange` without
 pushing the chat detail pane; hiding the panel preserves the selected list segment.
-Work Items and Pull Requests use owner-qualified panel tabs
-from the add menu; their page-level routes and header taxonomy are absent. There is no
-second panel and no flag to switch between panels. The panel's own contract —
-tab identity, entry-point seams, keep-alive, the close guards — is in
+The add menu opens provider Work Items and Pull Requests pages and offers
+separate owner-qualified CoC panel tools; their page-level routes and header
+taxonomy are absent. There is no second panel or panel-switching flag. The panel's
+tab identity, entry-point seams, keep-alive and close guards are in
 `unified-right-panel/AGENTS.md`.
 
 `useWorkspaceDock.ts` holds the state around the panel rather than inside it:

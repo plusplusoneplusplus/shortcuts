@@ -148,7 +148,10 @@ describe('basic IC3 own-command launcher', () => {
         start();
         await vi.advanceTimersByTimeAsync(0);
         expect(createSession).not.toHaveBeenCalled();
-        expect(service.getStatus().state).toBe('error');
+        expect(service.getStatus()).toMatchObject({
+            state: 'error', error: 'ConfigurationOrConnection', errorStage: 'setup',
+            errorAt: '2026-01-01T00:00:00.000Z',
+        });
     });
 
     it('restarts on shared region changes and stops when the region is cleared', async () => {
@@ -235,7 +238,7 @@ describe('basic IC3 own-command launcher', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(launch).not.toHaveBeenCalled();
         expect(sendReply).not.toHaveBeenCalled();
-        expect(service.getStatus().state).toBe('degraded');
+        expect(service.getStatus()).toMatchObject({ state: 'degraded', errorStage: 'messageProcessing' });
     });
 
     it('passes the thread root to an ambiguous mention and refreshes context for the next request', async () => {
@@ -415,6 +418,8 @@ describe('basic IC3 own-command launcher', () => {
         reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('RateLimited', 'NotAttempted', 429, 90_000));
         listener.onWake({ cause: 'message', conversationId: notifiedChat });
         await vi.advanceTimersByTimeAsync(0);
+        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'RateLimited',
+            errorStage: 'chatRead', errorHttpStatus: 429 });
         listener.onWake({ cause: 'message', conversationId: notifiedChat });
         await vi.advanceTimersByTimeAsync(89_999);
         expect(reader.readHistory).toHaveBeenCalledTimes(reads + 1);
@@ -635,25 +640,92 @@ describe('basic IC3 own-command launcher', () => {
 
     it('publishes partial failures immediately and keeps them visible during later successful reads', async () => {
         let finish!: (page: Awaited<ReturnType<typeof reader.readHistory>>) => void;
-        reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Authentication'))
+        reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Authentication', 'NotAttempted', 401))
             .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
         start();
         await vi.advanceTimersByTimeAsync(0);
         expect(service.getStatus()).toMatchObject({ state: 'degraded', error: 'Authentication',
+            errorAt: '2026-01-01T00:00:00.000Z', errorStage: 'selfRead', errorHttpStatus: 401,
             lastCheckedAt: '2026-01-01T00:00:00.000Z' });
+        await vi.advanceTimersByTimeAsync(1000);
         finish({ items: [], rawCount: 0 });
         await vi.advanceTimersByTimeAsync(0);
-        expect(service.getStatus()).toMatchObject({ state: 'degraded', error: 'Authentication' });
+        expect(service.getStatus()).toMatchObject({ state: 'degraded', error: 'Authentication',
+            errorAt: '2026-01-01T00:00:00.000Z', errorStage: 'selfRead', errorHttpStatus: 401,
+            lastCheckedAt: '2026-01-01T00:00:01.000Z', lastConnectedAt: '2026-01-01T00:00:01.000Z' });
+        expect(getLogger().warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('stage: selfRead, HTTP 401'));
         await vi.advanceTimersByTimeAsync(60_000);
         expect(service.getStatus().state).toBe('connected');
         expect(service.getStatus().error).toBeUndefined();
+        expect(service.getStatus().errorAt).toBeUndefined();
+        expect(service.getStatus().errorStage).toBeUndefined();
+        expect(service.getStatus().errorHttpStatus).toBeUndefined();
+    });
+
+    it('reports the chat-read stage without exposing chat identities', async () => {
+        reader.readHistory.mockResolvedValueOnce({ items: [], rawCount: 0 })
+            .mockRejectedValueOnce(new NativeTeamsError('Authentication', 'NotAttempted', 401));
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        const status = service.getStatus();
+        expect(status).toMatchObject({ state: 'degraded', error: 'Authentication',
+            errorAt: '2026-01-01T00:00:00.000Z', errorStage: 'chatRead', errorHttpStatus: 401 });
+        expect(JSON.stringify(status)).not.toContain('direct');
+        expect(JSON.stringify(vi.mocked(getLogger().warn).mock.calls)).not.toContain('direct');
+        const req = new IncomingMessage(new Socket());
+        const res = new ServerResponse(req);
+        const end = vi.spyOn(res, 'end').mockReturnValue(res);
+        await routes.find(route => route.pattern === '/api/messaging/teams/ic3-own-commands/status')!.handler(req, res);
+        expect(JSON.parse(String(end.mock.calls[0][0]))).toEqual(status);
+    });
+
+    it('does not expose invalid HTTP status values', async () => {
+        reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Authentication', 'NotAttempted', 200));
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(service.getStatus()).toMatchObject({ state: 'degraded', error: 'Authentication', errorStage: 'selfRead' });
+        expect(service.getStatus().errorHttpStatus).toBeUndefined();
+        expect(JSON.stringify(vi.mocked(getLogger().warn).mock.calls)).not.toContain('HTTP 200');
+    });
+
+    it('reports notification setup failures without exposing provider errors', async () => {
+        createTrouter.mockImplementationOnce(() => { throw new Error('private provider details'); });
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'ConfigurationOrConnection',
+            errorStage: 'notifications', errorAt: '2026-01-01T00:00:00.000Z' });
+        expect(JSON.stringify(service.getStatus())).not.toContain('private provider details');
+        expect(JSON.stringify(vi.mocked(getLogger().warn).mock.calls)).not.toContain('private provider details');
+    });
+
+    it('reports repeated discovery cursors at the discovery stage', async () => {
+        const next = {} as NonNullable<TeamsIc3Page<TeamsIc3Chat>['next']>;
+        reader.readChats.mockResolvedValueOnce({ items: [], rawCount: 0, next })
+            .mockResolvedValueOnce({ items: [{ chatId: 'direct', kind: 'oneOnOne' }], rawCount: 1, next });
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'ConfigurationOrConnection',
+            errorStage: 'discovery', errorAt: '2026-01-01T00:00:00.000Z' });
+    });
+
+    it('replaces stale HTTP failure details when a later discovery fails without an HTTP status', async () => {
+        reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Authentication', 'NotAttempted', 401));
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(service.getStatus().errorHttpStatus).toBe(401);
+        reader.readChats.mockRejectedValueOnce(new NativeTeamsError('Authentication'));
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'Authentication',
+            errorAt: '2026-01-01T00:01:00.000Z', errorStage: 'discovery' });
+        expect(service.getStatus().errorHttpStatus).toBeUndefined();
     });
 
     it('reports authentication failure without claiming a connected session and clears stale errors on disable', async () => {
         reader.connect.mockRejectedValueOnce(new NativeTeamsError('Authentication'));
         start();
         await vi.advanceTimersByTimeAsync(0);
-        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'Authentication' });
+        expect(service.getStatus()).toMatchObject({ state: 'error', error: 'Authentication',
+            errorAt: '2026-01-01T00:00:00.000Z', errorStage: 'connect' });
         await update({ features: { teamsIc3OwnCommands: false } });
         expect(service.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
         await service.dispose();

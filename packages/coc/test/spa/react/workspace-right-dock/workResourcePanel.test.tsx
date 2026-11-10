@@ -17,7 +17,7 @@ afterEach(cleanup);
 const context = { queueState: { selectedTaskIdByRepo: { 'remote:host:group-a': 'chat-a' } } as any, selectedRepoId: 'remote:host:group-a', repoRouteState: {}, repoTabState: {}, isSchedulesInSlide: () => false };
 
 describe('WI/PR panel destinations', () => {
-    it.each(['work-items', 'pull-requests'] as const)('menu and deep link focus one concrete-owner %s tab, preserving selected chat', kind => {
+    it.each(['work-items', 'pull-requests'] as const)('CoC menu and deep link focus one concrete-owner %s tab, preserving selected chat', kind => {
         const scopeId = 'remote:host:group-a';
         const ownerId = 'remote:host:repo-a';
         const route = parseWorkResourceRoute(buildWorkResourceHash(scopeId, kind, ownerId, '42'))!;
@@ -66,9 +66,9 @@ describe('WI/PR panel destinations', () => {
         expect(parseWorkResourceRoute(location.hash)).toMatchObject({ scopeId, ownerId, path: '2/commit/abc/a%20b.ts' });
         expect(readUnifiedPanelState('group-a').workspaceTabs[0].workPath).toBe('2/commit/abc/a%20b.ts');
     });
-    it('offers searchable, keyboard-reachable tools without a chat, including group roots', () => {
+    it('offers searchable CoC tools without a chat on group roots', () => {
         const actions = openMenuActions({ targetWorkspaceId: 'group-a', chatId: null, settingsAvailable: true });
-        for (const label of ['Work Items', 'Pull Requests']) {
+        for (const label of ['CoC Work Items', 'CoC Pull Requests']) {
             const items = buildOpenMenuItems({ actions, query: label, files: [], canvases: [] });
             expect(items).toHaveLength(1);
             expect(nextOpenMenuIndex(items, -1, 1)).toBe(0);

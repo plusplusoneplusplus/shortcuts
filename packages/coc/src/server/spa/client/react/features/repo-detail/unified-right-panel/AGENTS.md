@@ -166,11 +166,20 @@ model. A dock target change keeps explicit member opens valid within that panel.
 
 ## Views are reused, never re-implemented
 
-Work Items, Pull Requests, Notes and Settings exist for repos and groups as
-panel tools. The add-tab menu always offers them. WI/PR tools follow the dock
-target and carry its concrete owner route; Notes and the `coc://settings` page
-belong to the panel workspace. `UnifiedWorkResourceTab` reuses the existing list/detail screens under
-the pinned owner client. Their descriptor `workPath` owns detail selection;
+The add-tab menu opens GitHub Issues/Pull Requests or Azure Boards/repository
+Pull Requests for the concrete dock target. `UnifiedPanelOpenMenu` reads git-info
+through that target's exact owner, discards stale results, and refuses missing or
+changed remote routes without local fallback. `workResourceWebUrls` recognizes
+github.com and Azure DevOps HTTPS and SSH remotes, strips credentials and rejects
+malformed or unsupported destinations. Desktop opens an owner-bound browser tab;
+web dashboards open the system browser. Group roots require a member target.
+Loading and lookup failures are visible and retryable.
+
+Separate CoC Work Items and CoC Pull Requests actions open panel tools for repos
+and groups. WI/PR tools follow the dock target and carry its concrete owner route;
+Notes and the `coc://settings` page belong to the panel workspace.
+`UnifiedWorkResourceTab` reuses
+the list/detail screens under the pinned owner client. Their descriptor `workPath` owns detail selection;
 `workResourceNavigation.tsx` preserves hosting scope and selected chat through
 canonical `/panel/<kind>/<owner>/...` routes. WI/PR views remain mounted when
 closed to preserve filters and drafts. Container width selects their compact

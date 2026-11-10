@@ -21,14 +21,22 @@ function isCommandChat(chatId: string): boolean {
     return chatId === '48:notes' || /^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(chatId);
 }
 
+export type TeamsIc3FailureStage = 'setup' | 'connect' | 'notifications' | 'selfRead' | 'chatRead' | 'discovery' | 'messageProcessing';
+
 export interface TeamsIc3ConnectivityStatus {
     state: 'disabled' | 'connecting' | 'connected' | 'degraded' | 'error' | 'stopped';
     lastCheckedAt?: string;
     lastConnectedAt?: string;
     error?: string;
+    errorAt?: string;
+    errorStage?: TeamsIc3FailureStage;
+    errorHttpStatus?: number;
     outboundCompliance?: TeamsOutboundComplianceFailure;
     trouter: TrouterStatus;
 }
+
+type FailureDetails = Required<Pick<TeamsIc3ConnectivityStatus, 'error' | 'errorAt' | 'errorStage'>>
+    & Pick<TeamsIc3ConnectivityStatus, 'errorHttpStatus'>;
 
 interface Options {
     teams: Pick<TeamsMessagingManager, 'getIc3Region' | 'onIc3RegionChange'>;
@@ -85,8 +93,15 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         }
     }
 
-    function failure(error: unknown): string {
-        return error instanceof NativeTeamsError ? error.code : 'ConfigurationOrConnection';
+    function failure(error: unknown, stage: TeamsIc3FailureStage): FailureDetails {
+        const status = error instanceof NativeTeamsError ? error.status : undefined;
+        return {
+            error: error instanceof NativeTeamsError ? error.code : 'ConfigurationOrConnection',
+            errorAt: new Date().toISOString(),
+            errorStage: stage,
+            ...(status !== undefined && Number.isInteger(status) && status >= 400 && status <= 599
+                ? { errorHttpStatus: status } : {}),
+        };
     }
 
     function timing(requestId: string, stage: string, measurements: Record<string, number>) {
@@ -217,14 +232,15 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
             const fullScan = reconcile || Date.now() >= nextFallbackAt;
             reconcile = false;
             let delay = 60_000;
-            let readError: string | undefined;
-            function checked(error?: string) {
+            let readError: FailureDetails | undefined;
+            let stage: TeamsIc3FailureStage = 'setup';
+            function checked(error?: FailureDetails) {
                 if (signal.aborted) return;
                 if (error) readError = error;
                 const now = new Date().toISOString();
                 status = { state: readError ? 'degraded' : 'connected', lastCheckedAt: now,
                     lastConnectedAt: error ? status.lastConnectedAt : now,
-                    ...(readError ? { error: readError } : {}) };
+                    ...readError };
             }
             try {
                 const workspaces = await options.store.getWorkspaces();
@@ -238,6 +254,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 const region = configuredRegion;
                 const { rootPath: workingDirectory } = workspace;
                 if (!session || !account) {
+                    stage = 'connect';
                     session?.dispose();
                     session = options.createSession?.(region) ?? new TeamsIc3Session({ region });
                     account = await session.connect(signal);
@@ -246,6 +263,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 const reader = session;
                 const owner = account;
                 if (!trouter) {
+                    stage = 'notifications';
                     const notificationOptions: ConstructorParameters<typeof TrouterClient>[0] = {
                         expectedAccount: { tenantId: owner.tenantId, objectId: owner.userId },
                         target: () => signal.aborted ? null : isCommandChat,
@@ -259,10 +277,12 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 }
                 async function readChat(chat: { chatId: string; kind: string }, notification = false) {
                     try {
+                        stage = chat.chatId === '48:notes' ? 'selfRead' : 'chatRead';
                         const readStartedAt = Date.now();
                         const page = await reader.readHistory(chat.chatId, { signal });
                         signal.throwIfAborted();
                         checked();
+                        stage = 'messageProcessing';
                         for (const message of page.items.slice(0, 30).reverse()) {
                             if (Date.parse(message.createdAt) <= cutoff) continue;
                             const kind = chat.chatId === '48:notes' ? 'self' : message.chatKind;
@@ -340,8 +360,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                             return true;
                         }
                         if (error instanceof NativeTeamsError && error.code === 'RateLimited') throw error;
-                        checked(failure(error));
-                        report(error);
+                        checked(failure(error, stage));
+                        report(error, stage);
                         return false;
                     }
                     return true;
@@ -371,6 +391,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 let cursor: TeamsIc3Cursor | undefined;
                 const cursors = new Set<TeamsIc3Cursor>();
                 do {
+                    stage = 'discovery';
                     const page = await reader.readChats({ cursor, signal });
                     signal.throwIfAborted();
                     checked();
@@ -383,6 +404,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                         }
                     }
                     cursor = page.next;
+                    stage = 'discovery';
                     if (cursor && cursors.has(cursor)) throw new Error('Repeated IC3 discovery cursor.');
                     if (cursor) cursors.add(cursor);
                 } while (cursor);
@@ -390,10 +412,12 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
             } catch (error) {
                 if (!signal.aborted) {
                     reconcile ||= fullScan;
-                    status = { ...status, state: 'error', lastCheckedAt: new Date().toISOString(), error: failure(error) };
+                    const details = failure(error, stage);
+                    status = { state: 'error', lastCheckedAt: details.errorAt,
+                        lastConnectedAt: status.lastConnectedAt, ...details };
                     if (error instanceof NativeTeamsError) delay = Math.max(delay, error.retryAfterMs ?? 0);
                     retryAt = Date.now() + delay;
-                    report(error);
+                    report(error, stage);
                 }
             } finally {
                 polling = false;
@@ -406,9 +430,13 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         running = running.then(poll);
     }
 
-    function report(error: unknown) {
+    function report(error: unknown, stage?: TeamsIc3FailureStage) {
+        const httpStatus = error instanceof NativeTeamsError ? error.status : undefined;
         getLogger().warn(LogCategory.AI, `[IC3 commands] Poll, chat launch or reply failed (${error instanceof NativeTeamsError
-            ? error.code : error instanceof TeamsOperationError ? `${error.code}/${error.outcome}` : 'configuration-or-admission'}). Check the configured workspace and native Azure CLI access. `
+            ? error.code : error instanceof TeamsOperationError ? `${error.code}/${error.outcome}` : 'configuration-or-admission'}`
+            + `${stage ? `, stage: ${stage}` : ''}${httpStatus !== undefined && Number.isInteger(httpStatus)
+                && httpStatus >= 400 && httpStatus <= 599 ? `, HTTP ${httpStatus}` : ''}). `
+            + 'Check the configured workspace and native Azure CLI access. '
             + 'Replies use IC3 with bounded safe retries. Permanent failures and uncertain sends are not retried.');
     }
 

@@ -1329,8 +1329,9 @@ references before editing. Paths are package-relative.
   authoritative native reads; native `Unsupported` rejects non-self notification
   targets without retries or read-health changes. Fallback scans, admission and IC3-only source replies
   share cancellation; an enqueue past the final caller check may finish. Never replay
-  uncertain admissions or sends. Keep read, reply and notification health separate;
-  route Admin reads through `useAdminServer`.
+  uncertain admissions or sends. Failed checks expose a safe failure stage, timestamp
+  and optional HTTP status; successful reads remain independently timed.
+  Keep read, reply and notification health separate; route Admin reads through `useAdminServer`.
   See the [IC3 runtime contract](../../.github/skills/coc-knowledge/references/server-architecture.md#ic3-own-command-launcher)
   for read windows, deduplication, reply deadlines and safe-retry rules.
 - Teams reaction delegation defaults off (`features.teamsReactionDelegation`).
