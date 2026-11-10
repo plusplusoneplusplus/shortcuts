@@ -158,7 +158,8 @@ the content hash covers only `extension.mjs` and `package.json`.
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
 conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's
 Node-mode environment when needed. The packaged `coc-sdk-resolver.mjs` resolves SDK
-root/subpath imports from CoC, overriding extension-local installations.
+root/subpath imports from CoC, overriding extension-local installations, and maps
+`@coc/canvas-extension-tools` to the packaged CoC adapter.
 
 The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It captures
 `session.resume` declarations and dispatches canvas open/action/close requests.
@@ -168,6 +169,24 @@ key. Unsupported methods return MethodNotFound and log once per extension/method
 Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
 terminate the child; idempotent disposal waits for exit with forced termination
 after two seconds.
+
+The CoC-owned `coc.toolScripts.v1` RPC uses `register { sessionId, tools }`,
+`run { sessionId, requestId, code, state? }` and `cancel { sessionId, requestId }`.
+Extensions call `createToolScriptBridge(session, { tools })` from
+`@coc/canvas-extension-tools`, then `runScript(code, { state?, signal? })`.
+This adapter uses the SDK connection without changing its API or pin. The host
+accepts one declaration of up to 16 registered, scriptable, read-only tools;
+extra payload fields cannot supply ownership or tool grants.
+
+The registry binds workspace/conversation/extension, rechecks owner and live extension
+availability, and invokes `canvas/owner-tool-script-service.ts` through the queue's
+owner runner. Tools intersect owner permissions; nested scripts and the optional MCP
+pair are excluded. Scripts call handlers without provider turns or transcript writes,
+independently of optional canvas host/script flags. Each run has a 30s budget and a
+16 MiB ceiling covering result, logs and envelope; failures return whole JSON outcomes.
+The host accepts four pending runs and 256 KiB of source per run. Request cancellation,
+instance close, owner removal/archive, disablement and host disposal abort pending work.
+Close cancels before waiting on the action queue; other owners retain their work.
 
 `host-registry.ts` owns lazy runtimes by workspace/conversation/extension key.
 Calls serialize per runtime; crash recovery reopens all known instances with their

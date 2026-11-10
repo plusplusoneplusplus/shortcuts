@@ -15,7 +15,7 @@ function fakeHost() {
     const host = {
         running: true, declarations: [{ id: 'counter' }],
         open: vi.fn(async () => ({ title: 'Counter', url: 'http://127.0.0.1:1234/' })),
-        invoke: vi.fn(async () => 6), close: vi.fn(async () => {}),
+        cancelScripts: vi.fn(), invoke: vi.fn(async () => 6), close: vi.fn(async () => {}),
         dispose: vi.fn(async () => { host.running = false; }),
     };
     return host;

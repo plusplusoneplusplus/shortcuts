@@ -43,6 +43,11 @@ session = await joinSession({
                 try { await session.connection.sendRequest('session.send', { sessionId: 'sibling', prompt: 'hi' }); }
                 catch (error) { return error.code; }
             } },
+            { name: 'tool-script', async handler() {
+                const { createToolScriptBridge } = await import('@coc/canvas-extension-tools');
+                const bridge = await createToolScriptBridge(session, { tools: [] });
+                return bridge.runScript('console.log("owner script"); return 7;');
+            } },
             { name: 'ping', handler: () => session.connection.sendRequest('ping', {}) },
             { name: 'environment', handler: () => ({
                 sessionId: process.env.SESSION_ID, home: process.env.COPILOT_HOME,

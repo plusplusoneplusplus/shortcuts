@@ -36,6 +36,8 @@ export interface OwnerScriptRequest {
     /** Tool names the script may call. Every other tool, and nested scripts, are left out. */
     allowTools: readonly string[];
     signal?: AbortSignal;
+    /** Exclude the optional MCP pair for strictly declared extension tools. */
+    includeMcpTools?: boolean;
 }
 
 /** Owner-scoped script execution supplied by the queue runtime. */
@@ -60,6 +62,7 @@ export async function withOwnerToolRuntime<T>(
     signal: AbortSignal | undefined,
     body: (runtime: CocToolRuntime, allowNestedScripts: boolean) => Promise<T>,
     allowTools?: readonly string[],
+    includeMcpTools = true,
 ): Promise<T> {
     signal?.throwIfAborted();
     const context = await buildChatTurnContext({
@@ -80,7 +83,7 @@ export async function withOwnerToolRuntime<T>(
             ...(allowed
                 ? context.tools.filter(tool => tool.name !== RUN_TOOL_SCRIPT_TOOL_NAME && allowed.has(tool.name))
                 : context.tools),
-            ...(context.scriptMcpTools ?? []),
+            ...(includeMcpTools ? context.scriptMcpTools ?? [] : []),
         ];
         const allowNestedScripts = tools.some(tool => tool.name === RUN_TOOL_SCRIPT_TOOL_NAME)
             && !readApprovalRequiredLlmTools(ownerTools.dataDir, ownerTools.workspaceId)
@@ -106,6 +109,7 @@ export function runScriptWithOwnerTools(options: {
     state?: unknown;
     allowTools: readonly string[];
     signal?: AbortSignal;
+    includeMcpTools?: boolean;
 }): Promise<ToolScriptRunResult> {
     return withOwnerToolRuntime(options.ownerTools, options.signal, runtime => runToolScript({
         code: options.code,
@@ -116,5 +120,5 @@ export function runScriptWithOwnerTools(options: {
         scriptToolCallId: '',
         depth: 1,
         signal: options.signal,
-    }), options.allowTools);
+    }), options.allowTools, options.includeMcpTools);
 }

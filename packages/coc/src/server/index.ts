@@ -459,6 +459,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const unsubscribeKustoConfig = runtimeConfigService.onChange(() => kustoRuntime.syncConfig());
     const extensionCanvasStore = new CanvasStore(dataDir);
     const canvasExtensionHosts = new CanvasExtensionHostRegistry({
+        getOwnerScriptRunner: () => bridge.runOwnerScript,
         loadInstances: (owner, key) => loadCanvasExtensionInstances(extensionCanvasStore, owner, key),
         config: () => runtimeConfigService.config, store, dataDir,
         log: message => getServerLogger().warn(message),

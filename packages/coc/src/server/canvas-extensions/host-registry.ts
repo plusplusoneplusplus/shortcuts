@@ -4,6 +4,8 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
+import type { OwnerScriptRunner } from '../executors/owner-script-runner';
+import { runOwnerToolScript } from '../canvas/owner-tool-script-service';
 import { CanvasExtensionHost, type CanvasInstanceRequest, type CanvasExtensionHostOptions } from './extension-host';
 
 export interface CanvasExtensionOwner {
@@ -18,6 +20,7 @@ export interface CanvasExtensionRegistryOptions {
     log: (message: string) => void;
     send?: (owner: CanvasExtensionOwner, extensionKey: string, prompt: string) => Promise<{ messageId: string }>;
     ephemeralQuery?: (owner: CanvasExtensionOwner, extensionKey: string, question: string) => Promise<{ answer: string }>;
+    getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;
     /** Open persisted instances, read once when a conversation runtime is first used. */
     loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
@@ -79,6 +82,9 @@ export class CanvasExtensionHostRegistry {
     }
 
     close(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension, instanceId: string) {
+        // Do not wait behind an action whose script must be cancelled by this close.
+        const entry = this.entries.get(JSON.stringify([owner.workspaceId, owner.processId, extension.extensionKey]));
+        if (entry?.instances.has(instanceId)) entry.host?.cancelScripts();
         return this.run(owner, extension, async (host, entry) => {
             await host.close(this.instance(entry, instanceId));
             this.assertActive(entry);
@@ -204,6 +210,18 @@ export class CanvasExtensionHostRegistry {
                 this.assertActive(entry);
                 if (!this.options.send) throw new Error('Canvas extension follow-up service is unavailable');
                 return this.options.send(entry.owner, entry.extension.extensionKey, prompt);
+            },
+            runScript: async (request, tools, signal) => {
+                this.assertActive(entry);
+                await this.assertOwner(entry.owner);
+                this.assertActive(entry);
+                signal.throwIfAborted();
+                const runner = this.options.getOwnerScriptRunner?.();
+                if (!runner) throw new Error('Canvas extension tool script runtime is unavailable');
+                const result = await runOwnerToolScript({ ...entry.owner, request, tools, runner, signal });
+                await this.assertOwner(entry.owner);
+                this.assertActive(entry);
+                return result;
             },
             ephemeralQuery: question => {
                 this.assertActive(entry);
