@@ -327,6 +327,12 @@ Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a
 not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
 naming `kusto_query`.
 
+`runKustoCanvas` persists success and query-error states against the revision read
+before execution, using `CanvasStore`'s atomic revision check. Concurrent edits or
+another completed run cause a conflict without saving or notifying. The Run route
+returns HTTP 409 with `revision-conflict`, `currentRevision` and the current canvas;
+`kusto_query` returns a tool failure asking for a reload. Neither path retries execution.
+
 Results use `shared/InteractiveTable`, shared with markdown tables. Unwrapped tables
 with more than twelve visible columns grow past the pane to retain readable
 content-proportional widths; the table's own scroll container handles overflow.

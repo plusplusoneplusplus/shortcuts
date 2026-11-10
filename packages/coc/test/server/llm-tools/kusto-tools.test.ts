@@ -100,6 +100,33 @@ describe('kusto_query tool', () => {
         expect(updated.revision).toBeGreaterThan(created.revision);
     });
 
+    it('reports a conflicting edit without a result event or automatic retry', async () => {
+        const record = store.createCanvas({
+            workspaceId: WS, title: 'Query', type: 'kusto', processId: 'query-chat',
+            content: serializeKustoState(createEmptyKustoState()),
+        });
+        const emitProcessEvent = vi.fn();
+        const executeQuery = vi.fn(async () => {
+            store.updateCanvas(WS, record.id, {
+                title: 'Newer title', editor: 'user', expectedRevision: record.revision,
+            });
+            return { primaryResults: [] };
+        });
+        const tool = createKustoTools({
+            dataDir, workspaceId: WS, processId: 'query-chat',
+            processStore: { emitProcessEvent } as unknown as ProcessStore,
+            canvasStore: store, clientFactory: () => ({ executeQuery }),
+        }).kustoQuery;
+        expect(await tool.handler!({
+            canvasId: record.id, query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB',
+        })).toEqual({ success: false, error: expect.stringContaining('Reload') });
+        expect(store.getCanvas(WS, record.id)).toMatchObject({
+            title: 'Newer title', content: record.content, revision: record.revision + 1,
+        });
+        expect(emitProcessEvent).not.toHaveBeenCalled();
+        expect(executeQuery).toHaveBeenCalledTimes(1);
+    });
+
     it('caps the returned row sample at KUSTO_QUERY_ROW_SAMPLE but stores the full count', async () => {
         const rows = Array.from({ length: KUSTO_QUERY_ROW_SAMPLE + 20 }, (_, i) => [i]);
         const tool = makeTool(store, dataDir, mockFactory(rows));

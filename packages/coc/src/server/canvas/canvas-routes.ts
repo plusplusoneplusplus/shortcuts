@@ -528,6 +528,13 @@ export function registerCanvasRoutes(
             if (outcome.kind === 'wrong-type') {
                 return sendError(res, 400, 'Canvas is not a Kusto canvas');
             }
+            if (outcome.kind === 'revision-conflict') {
+                return sendJSON(res, 409, {
+                    error: 'revision-conflict',
+                    currentRevision: outcome.currentRevision,
+                    canvas: outcome.canvas,
+                });
+            }
             if (outcome.kind === 'persist-failed') {
                 return sendError(res, 500, `Failed to persist run: ${outcome.error}`);
             }

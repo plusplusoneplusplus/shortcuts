@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -165,5 +165,62 @@ describe('runKustoCanvas', () => {
         expect(outcome.ok).toBe(true);
         if (!outcome.ok) return;
         expect(outcome.state.chartConfig).toEqual({ type: 'bar', x: 'n', y: ['n'] });
+    });
+
+    it.each(['success', 'error'] as const)('rejects a late %s without overwriting newer edits', async result => {
+        const id = seedKustoCanvas(store, {
+            query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB',
+        });
+        const started = Promise.withResolvers<void>();
+        const finish = Promise.withResolvers<void>();
+        const executeQuery = vi.fn(async () => {
+            started.resolve();
+            await finish.promise;
+            if (result === 'error') throw new Error('Late query failure');
+            return { primaryResults: [] };
+        });
+        const pending = runKustoCanvas(store, WS, id, { clientFactory: () => ({ executeQuery }) });
+        await started.promise;
+        const previous = store.getCanvas(WS, id)!;
+        const editedState = {
+            ...parseKustoState(previous.content), query: 'New query',
+            chartConfig: { type: 'bar' as const, x: 'n', y: ['n'] },
+        };
+        const edit = store.updateCanvas(WS, id, {
+            content: serializeKustoState(editedState), editor: 'user', expectedRevision: previous.revision,
+        });
+        expect(edit.ok).toBe(true);
+        finish.resolve();
+        expect(await pending).toMatchObject({
+            ok: false, reason: 'revision-conflict', currentRevision: previous.revision + 1,
+            error: expect.stringContaining('Reload'),
+        });
+        expect(store.getCanvas(WS, id)).toEqual(edit.ok ? edit.canvas : undefined);
+        expect(executeQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets only one concurrent run commit the same revision without retries', async () => {
+        const id = seedKustoCanvas(store, {
+            query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB',
+        });
+        const before = store.getCanvas(WS, id)!;
+        const firstStarted = Promise.withResolvers<void>();
+        const firstFinish = Promise.withResolvers<void>();
+        const executeQuery = vi.fn(async () => {
+            firstStarted.resolve();
+            await firstFinish.promise;
+            return { primaryResults: [] };
+        });
+        const first = runKustoCanvas(store, WS, id, { clientFactory: () => ({ executeQuery }) });
+        await firstStarted.promise;
+        const second = await runKustoCanvas(store, WS, id, {
+            overrides: { query: 'New query' }, clientFactory: mockFactory([[2]]),
+        });
+        expect(second.ok).toBe(true);
+        firstFinish.resolve();
+        expect(await first).toMatchObject({ ok: false, reason: 'revision-conflict' });
+        expect(store.getCanvas(WS, id)).toEqual(second.ok ? second.canvas : undefined);
+        expect(store.getCanvas(WS, id)?.revision).toBe(before.revision + 1);
+        expect(executeQuery).toHaveBeenCalledTimes(1);
     });
 });

@@ -50,11 +50,12 @@ export type CanvasCapabilityOutcome =
     | { kind: 'run-error'; error: string }
     | { kind: 'conflict'; canvas: CanvasRecord | null };
 
-/** A Kusto run: 200, 404, 400, or 500. */
+/** A Kusto run: 200, 404, 400, 409, or 500. */
 export type CanvasKustoRunOutcome =
     | { kind: 'ok'; canvas: CanvasRecord }
     | { kind: 'not-found' }
     | { kind: 'wrong-type' }
+    | { kind: 'revision-conflict'; currentRevision: number; canvas: CanvasRecord | null }
     | { kind: 'persist-failed'; error: string };
 
 export interface CanvasSaveInput {
@@ -250,6 +251,12 @@ export class CanvasMutationService {
         if (!outcome.ok) {
             if (outcome.reason === 'not-found') return { kind: 'not-found' };
             if (outcome.reason === 'wrong-type') return { kind: 'wrong-type' };
+            if (outcome.reason === 'revision-conflict') {
+                return {
+                    kind: 'revision-conflict', currentRevision: outcome.currentRevision,
+                    canvas: this.store.getCanvas(workspaceId, canvasId),
+                };
+            }
             return { kind: 'persist-failed', error: outcome.error };
         }
 

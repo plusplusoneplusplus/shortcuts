@@ -98,7 +98,33 @@ describe('POST /canvases/:id/run', () => {
         const state = parseKustoState(res.body.canvas.content);
         expect(state.rows).toEqual([[1]]);
         expect(state.lastRun?.status).toBe('success');
-        expect(ctx.broadcastProcessEvent).toHaveBeenCalled();
+        expect(ctx.broadcastProcessEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['success', 'error'] as const)('returns 409 without notifying when a late %s conflicts with an edit', async result => {
+        let id: string;
+        let edited: ReturnType<CanvasStore['getCanvas']>;
+        const executeQuery = vi.fn(async () => {
+            const record = ctx.store.getCanvas(WS, id)!;
+            const saved = ctx.store.updateCanvas(WS, id, {
+                content: serializeKustoState({ ...parseKustoState(record.content), query: 'Newer edit' }),
+                editor: 'user', expectedRevision: record.revision,
+            });
+            expect(saved.ok).toBe(true);
+            edited = ctx.store.getCanvas(WS, id);
+            if (result === 'error') throw new Error('Late failure');
+            return { primaryResults: [] };
+        });
+        ctx = build(true, () => ({ executeQuery }));
+        id = seed(ctx.store);
+        const response = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({
+            error: 'revision-conflict', currentRevision: edited!.revision, canvas: edited!,
+        });
+        expect(ctx.store.getCanvas(WS, id)).toEqual(edited!);
+        expect(ctx.broadcastProcessEvent).not.toHaveBeenCalled();
+        expect(executeQuery).toHaveBeenCalledTimes(1);
     });
 
     it('applies query/cluster/database overrides from the body', async () => {

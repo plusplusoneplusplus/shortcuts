@@ -41,12 +41,13 @@ export type RunKustoCanvasOutcome =
     | { ok: true; canvas: CanvasRecord; state: KustoCanvasState }
     | { ok: false; reason: 'not-found' }
     | { ok: false; reason: 'wrong-type' }
+    | { ok: false; reason: 'revision-conflict'; currentRevision: number; error: string }
     | { ok: false; reason: 'persist-failed'; error: string };
 
 /**
  * Execute the (possibly overridden) query for a Kusto canvas and persist the
  * result. Success and failure both land as a stored `lastRun`; only missing
- * canvas / wrong type / a store write failure return `ok: false`.
+ * canvas / wrong type / a conflicting edit / a store write failure return `ok: false`.
  */
 export async function runKustoCanvas(
     store: CanvasStore,
@@ -120,8 +121,17 @@ export async function runKustoCanvas(
     const saved = store.updateCanvas(workspaceId, canvasId, {
         content: serializeKustoState(next),
         editor,
+        // Query execution yields to other writers. Commit only against the
+        // snapshot we executed; never overwrite newer edits or rerun on conflict.
+        expectedRevision: record.revision,
     });
     if (!saved.ok) {
+        if (saved.reason === 'revision-conflict') {
+            return {
+                ok: false, reason: 'revision-conflict', currentRevision: saved.currentRevision,
+                error: 'Canvas changed while the query was running. Reload before running again.',
+            };
+        }
         const error = saved.reason === 'edit-mismatch' ? saved.error : saved.reason;
         return { ok: false, reason: 'persist-failed', error };
     }
