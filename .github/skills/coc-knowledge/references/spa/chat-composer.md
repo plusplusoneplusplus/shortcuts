@@ -175,6 +175,9 @@ optimistic user turn tagged with an `optimisticId` sent in the request. The resp
 `delivery` decides its fate — `steered` labels it `⚡ steered` (also set by the
 `message-steering` SSE event), `queued` removes it and toasts "Couldn't steer — queued for
 after this turn." so the queued entry is the only copy. A failed send also removes it.
+While a turn runs, Stop replaces the Send button, so a `follow-up-delivery-mode-hint` pill
+next to Stop shows the Enter action: `↵ Queue` by default, orange `⚡ Steer` while Ctrl/Cmd
+is held in the composer.
 
 ### Slash commands
 

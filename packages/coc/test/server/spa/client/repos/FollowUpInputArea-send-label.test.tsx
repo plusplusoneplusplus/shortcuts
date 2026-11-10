@@ -199,6 +199,26 @@ describe('FollowUpInputArea – single send button (new stacked layout)', () => 
         expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 
+    it('shows a Queue mode hint next to Stop during active generation', () => {
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true })} />);
+        const hint = screen.getByTestId('follow-up-delivery-mode-hint');
+        expect(hint.getAttribute('data-mode')).toBe('queue');
+        expect(hint.textContent).toContain('Queue');
+    });
+
+    it('switches the mode hint to Steer while Ctrl/Cmd is held during active generation', () => {
+        mockModHeld = true;
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true })} />);
+        const hint = screen.getByTestId('follow-up-delivery-mode-hint');
+        expect(hint.getAttribute('data-mode')).toBe('steer');
+        expect(hint.textContent).toContain('Steer');
+    });
+
+    it('hides the mode hint when no turn is running', () => {
+        render(<FollowUpInputArea {...defaultProps()} />);
+        expect(screen.queryByTestId('follow-up-delivery-mode-hint')).toBeNull();
+    });
+
     it('applies orange background when modHeld', () => {
         mockModHeld = true;
         render(<FollowUpInputArea {...defaultProps()} />);
