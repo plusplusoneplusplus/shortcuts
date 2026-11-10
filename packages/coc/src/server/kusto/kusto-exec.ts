@@ -70,9 +70,9 @@ interface KustoResponseLike {
     primaryResults: KustoResultTableLike[];
 }
 
-/** The single method of the SDK's `Client` we call. */
+/** Query-only SDK adapter; never expose the SDK's command-dispatching execute(). */
 export interface KustoClientLike {
-    execute(db: string, query: string): Promise<KustoResponseLike>;
+    executeQuery(db: string, query: string): Promise<KustoResponseLike>;
     close?(): void;
 }
 
@@ -96,10 +96,21 @@ export async function buildKustoClient(
     clusterUrl: string,
     credential: import('@azure/identity').TokenCredential,
 ): Promise<KustoClientLike> {
-    const { Client, KustoConnectionStringBuilder } = await import('azure-kusto-data');
+    const { Client, KustoConnectionStringBuilder, ClientRequestProperties } = await import('azure-kusto-data');
     if (!credential) throw new Error('Kusto SDK client requires the host Rust credential.');
     const kcsb = KustoConnectionStringBuilder.withTokenCredential(clusterUrl, credential);
-    return new Client(kcsb);
+    const client = new Client(kcsb);
+    return {
+        executeQuery: (database, query) => {
+            // executeQuery always uses /v2/rest/query, even for disguised commands.
+            // request_readonly prevents writes and cannot be overridden by a KQL set
+            // statement: https://learn.microsoft.com/kusto/api/rest/request-properties
+            const properties = new ClientRequestProperties();
+            properties.setOption('request_readonly', true);
+            return client.executeQuery(database, query, properties);
+        },
+        close: () => client.close(),
+    };
 }
 
 /** Coerce a raw Kusto cell value into a JSON-safe {@link KustoCellValue}. */
@@ -208,12 +219,16 @@ export async function executeKustoQuery(
         throw new Error(`Kusto byte cap must be an integer between 1 and ${MAX_KUSTO_RESULT_BYTES}.`);
     }
 
+    if (params.query.trimStart().startsWith('.')) {
+        throw new Error('Kusto management commands require explicit approval; use the foreground command tool.');
+    }
+
     let response = maybeMockResponse(params.query); // throws on mock:error / bad JSON
     if (!response) {
         const factory = opts.clientFactory;
         if (!factory) throw new Error('Kusto execution requires a host-owned Rust client factory.');
         const client = await factory(params);
-        response = await client.execute(params.database, params.query);
+        response = await client.executeQuery(params.database, params.query);
     }
 
     const table = response?.primaryResults?.[0];

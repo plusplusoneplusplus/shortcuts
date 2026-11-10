@@ -18,7 +18,7 @@ const NOW = '2026-07-18T00:00:00.000Z';
 function mockFactory(rows: unknown[][], columns = [{ name: 'n', type: 'long' }]): KustoClientFactory {
     return () =>
         ({
-            execute: async () => ({
+            executeQuery: async () => ({
                 primaryResults: [
                     { columns, rows: () => rows.map(r => ({ getValueAt: (i: number) => r[i] })) },
                 ],
@@ -77,7 +77,7 @@ describe('kusto_query tool', () => {
             dataDir, workspaceId: WS, processId: 'query-chat',
             processStore: { emitProcessEvent } as unknown as ProcessStore,
             canvasStore: store,
-            clientFactory: fails ? () => ({ execute: async () => { throw new Error('query failed'); } }) : mockFactory([[9]]),
+            clientFactory: fails ? () => ({ executeQuery: async () => { throw new Error('query failed'); } }) : mockFactory([[9]]),
         }).kustoQuery;
         const inputs = { query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
         const created: any = await tool.handler!(inputs);
@@ -152,7 +152,7 @@ describe('kusto_query tool', () => {
 
     it('surfaces a query/auth error as success:false but still persists the Kusto canvas with an embed', async () => {
         const failing: KustoClientFactory = () => ({
-            execute: async () => { throw new Error('Semantic error: bad query'); },
+            executeQuery: async () => { throw new Error('Semantic error: bad query'); },
         });
         const tool = makeTool(store, dataDir, failing);
         const res: any = await tool.handler!({

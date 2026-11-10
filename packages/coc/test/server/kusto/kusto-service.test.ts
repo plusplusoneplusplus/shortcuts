@@ -18,7 +18,7 @@ const NOW = '2026-07-18T00:00:00.000Z';
 function mockFactory(rows: unknown[][], columns = [{ name: 'n', type: 'long' }]): KustoClientFactory {
     return () =>
         ({
-            execute: async () => ({
+            executeQuery: async () => ({
                 primaryResults: [
                     { columns, rows: () => rows.map(r => ({ getValueAt: (i: number) => r[i] })) },
                 ],
@@ -116,7 +116,7 @@ describe('runKustoCanvas', () => {
             database: 'DB',
         });
         const failingFactory: KustoClientFactory = () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 throw new Error('Semantic error: bad query');
             },
         });
@@ -133,7 +133,7 @@ describe('runKustoCanvas', () => {
         let called = false;
         const factory: KustoClientFactory = () => {
             called = true;
-            return { execute: async () => ({ primaryResults: [] }) };
+            return { executeQuery: async () => ({ primaryResults: [] }) };
         };
         const outcome = await runKustoCanvas(store, WS, id, { now: () => NOW, clientFactory: factory });
         expect(called).toBe(false);

@@ -59,7 +59,7 @@ function fixture(enabled = true) {
     const execute = vi.fn(async () => response);
     const close = vi.fn();
     const buildClient = vi.fn(async (_cluster: string, credential?: import('@azure/identity').TokenCredential): Promise<KustoClientLike> => ({
-        execute: async (db, query) => {
+        executeQuery: async (db, query) => {
             if (credential) await credential.getToken([`${resource}/.default`]);
             return execute(db, query);
         },
@@ -88,8 +88,8 @@ describe('host-owned Kusto credential/cache rollout', () => {
             f.runtime.clientFactory({ ...params, database: 'OtherDB' }),
         ]);
         expect(a).toBe(b);
-        await a.execute(params.database, params.query);
-        await b.execute('OtherDB', params.query);
+        await a.executeQuery(params.database, params.query);
+        await b.executeQuery('OtherDB', params.query);
         expect(f.buildClient).toHaveBeenCalledTimes(1);
         expect(f.buildClient.mock.calls[0][1]).toBeInstanceOf(RustKustoCredential);
         expect(f.createProvider).toHaveBeenCalledTimes(1);
@@ -100,7 +100,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it.each(['account', 'tenant', 'subscription'] as const)('rebuilds and disposes on %s changes, rejects old clients without replay', async key => {
         const f = fixture();
         const old = await f.runtime.clientFactory(params);
-        await old.execute(params.database, params.query);
+        await old.executeQuery(params.database, params.query);
         const next = { ...f.getConfig(), azureCli: {
             account, tenant, subscription,
             [key]: key === 'account' ? 'other-fixture' : '33333333-3333-4333-8333-333333333333',
@@ -108,9 +108,9 @@ describe('host-owned Kusto credential/cache rollout', () => {
         f.setConfig(next);
         f.runtime.syncConfig();
         expect(f.providers[0].dispose).toHaveBeenCalledTimes(1);
-        await expect(old.execute(params.database, params.query)).rejects.toThrow('configuration changed');
+        await expect(old.executeQuery(params.database, params.query)).rejects.toThrow('configuration changed');
         const fresh = await f.runtime.clientFactory(params);
-        await fresh.execute(params.database, params.query);
+        await fresh.executeQuery(params.database, params.query);
         expect(f.createProvider).toHaveBeenCalledTimes(2);
         const options = f.createProvider.mock.calls[1][0];
         expect(options).toMatchObject({ azureCli: {
@@ -160,11 +160,11 @@ describe('host-owned Kusto credential/cache rollout', () => {
         expect(f.buildClient.mock.calls.every(([, credential]) => credential instanceof RustKustoCredential)).toBe(true);
     });
 
-    it('wrapped AccountMismatch is visible and never retries a potentially mutating query', async () => {
+    it('wrapped AccountMismatch is visible without retrying the query', async () => {
         const f = fixture();
         await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
         f.providers[0].getToken.mockRejectedValue(new AuthError('AccountMismatch'));
-        await expect(executeKustoQuery({ ...params, query: '.set-or-append FixtureTable <| print value=1' },
+        await expect(executeKustoQuery({ ...params, query: 'print value=1' },
             { clientFactory: f.runtime.clientFactory })).rejects.toThrow('AccountMismatch');
         expect(f.providers[0].getToken).toHaveBeenCalledTimes(2);
         expect(f.execute).toHaveBeenCalledTimes(1);
@@ -174,7 +174,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it('unwraps only sanitized credential errors from the SDK authentication envelope', async () => {
         const f = fixture();
         f.buildClient.mockImplementationOnce(async () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 const inner = new KustoCredentialError('Kusto Rust auth: AccountMismatch.');
                 const error = new Error('fixture-private-wrapper');
                 error.name = 'KustoAuthenticationError';
@@ -195,7 +195,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
             Object.assign(error, { inner: refreshError });
             throw error;
         });
-        f.buildClient.mockResolvedValueOnce({ execute: sdkExecute });
+        f.buildClient.mockResolvedValueOnce({ executeQuery: sdkExecute });
         await expect(executeKustoQuery(params, { clientFactory: f.runtime.clientFactory })).rejects.toBe(refreshError);
         expect(sdkExecute).toHaveBeenCalledTimes(1);
         expect(f.buildClient).toHaveBeenCalledTimes(1);
@@ -204,7 +204,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it('sanitizes an unknown SDK auth payload without selecting another credential', async () => {
         const f = fixture();
         f.buildClient.mockResolvedValueOnce({
-            execute: async () => {
+            executeQuery: async () => {
                 const error = new Error('fixture-private-wrapper');
                 error.name = 'KustoAuthenticationError';
                 Object.assign(error, { inner: new Error('fixture-private-token') });
@@ -222,7 +222,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
         const pending = f.runtime.clientFactory(params);
         await Promise.resolve();
         f.runtime.dispose();
-        resolve({ execute: async () => response, close: f.close });
+        resolve({ executeQuery: async () => response, close: f.close });
         await expect(pending).rejects.toThrow('configuration changed');
         expect(f.close).toHaveBeenCalledTimes(1);
         await expect(f.runtime.clientFactory(params)).rejects.toThrow('owner is closed');
@@ -246,9 +246,9 @@ describe('host-owned Kusto credential/cache rollout', () => {
         it('revokes cached credentials when switching from explicit to native active selection', async () => {
             const f = fixture();
             const old = await f.runtime.clientFactory(params);
-            await old.execute(params.database, params.query);
+            await old.executeQuery(params.database, params.query);
             f.setConfig({ enabled: true });
-            await expect(old.execute(params.database, params.query)).rejects.toThrow('configuration changed');
+            await expect(old.executeQuery(params.database, params.query)).rejects.toThrow('configuration changed');
             expect(f.providers[0].dispose).toHaveBeenCalledTimes(1);
             expect(f.execute).toHaveBeenCalledTimes(1);
             await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });

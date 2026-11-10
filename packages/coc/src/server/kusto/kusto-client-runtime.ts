@@ -84,13 +84,13 @@ export function createKustoClientRuntime(
                 }
                 owned.client = sdkClient;
                 return {
-                    execute: async (database, query) => {
+                    executeQuery: async (database, query) => {
                         try { resolveConfigForRun(); }
                         catch (error) { clear(); throw error; }
                         if (cache !== owner) {
                             throw new KustoCredentialError('Kusto client configuration changed. Run again explicitly.');
                         }
-                        try { return await sdkClient.execute(database, query); }
+                        try { return await sdkClient.executeQuery(database, query); }
                         catch (error) {
                             // The SDK wraps credential errors; expose the native redacted error.
                             if (error instanceof Error && error.name === 'KustoAuthenticationError') {

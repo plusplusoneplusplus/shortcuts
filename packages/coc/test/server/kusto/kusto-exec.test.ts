@@ -23,9 +23,9 @@ function mockResponse(
     };
 }
 
-/** A client factory that resolves to a client whose execute() returns `response`. */
+/** A client factory that resolves to a client whose executeQuery() returns `response`. */
 function factoryReturning(response: unknown): KustoClientFactory {
-    return () => ({ execute: async () => response as never }) as unknown as KustoClientLike;
+    return () => ({ executeQuery: async () => response as never }) as unknown as KustoClientLike;
 }
 
 describe('coerceCellValue', () => {
@@ -66,6 +66,28 @@ describe('coerceCellValue', () => {
 
 describe('executeKustoQuery', () => {
     const params = { clusterUrl: 'https://c.kusto.windows.net', database: 'DB', query: 'T | take 1' };
+
+    it.each([
+        '.show tables',
+        ' \n\t.set-or-append T <| print x=1',
+        '\ufeff.drop table T',
+        '.show tables | count',
+    ])('rejects management text before client construction: %s', async query => {
+        const factory = vi.fn();
+        await expect(executeKustoQuery({ ...params, query }, { clientFactory: factory }))
+            .rejects.toThrow('management commands require explicit approval');
+        expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('uses only executeQuery even when an injected SDK also exposes execute and executeMgmt', async () => {
+        const execute = vi.fn();
+        const executeMgmt = vi.fn();
+        const executeQuery = vi.fn(async () => mockResponse([], []));
+        await executeKustoQuery(params, { clientFactory: () => ({ execute, executeMgmt, executeQuery }) });
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query);
+        expect(execute).not.toHaveBeenCalled();
+        expect(executeMgmt).not.toHaveBeenCalled();
+    });
 
     it('returns typed columns and coerced rows on success', async () => {
         const response = mockResponse(
@@ -153,9 +175,9 @@ describe('executeKustoQuery', () => {
         expect(factory).not.toHaveBeenCalled();
     });
 
-    it('propagates a query error from execute()', async () => {
+    it('propagates a query error from executeQuery()', async () => {
         const factory: KustoClientFactory = () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 throw new Error('Semantic error: query is malformed');
             },
         });
@@ -272,7 +294,7 @@ describe('executeKustoQuery — magic mock: queries', () => {
         let called = 0;
         const factory: KustoClientFactory = () => {
             called++;
-            return { execute: async () => response as never } as unknown as KustoClientLike;
+            return { executeQuery: async () => response as never } as unknown as KustoClientLike;
         };
         const result = await executeKustoQuery(
             { ...params, query: 'T | where Name == "mock" | take 1' },

@@ -49,7 +49,7 @@ function request(handler: ReturnType<typeof createRouter>, method: string, url: 
 
 const okFactory: KustoClientFactory = () =>
     ({
-        execute: async () => ({
+        executeQuery: async () => ({
             primaryResults: [
                 { columns: [{ name: 'n', type: 'long' }], rows: () => [{ getValueAt: () => 1 }] },
             ],
@@ -117,7 +117,7 @@ describe('POST /canvases/:id/run', () => {
 
     it('surfaces a query error as stored error state (still 200)', async () => {
         const failing: KustoClientFactory = () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 throw new Error('Semantic error: boom');
             },
         });
@@ -148,7 +148,7 @@ describe('POST /canvases/:id/run', () => {
         const runtime = createKustoClientRuntime(() => config, {
             diagnostic: vi.fn(), createProvider,
             buildClient: async (_cluster, credential) => ({
-                execute: async () => {
+                executeQuery: async () => {
                     await credential!.getToken(['https://kusto.kusto.windows.net/.default']);
                     return { primaryResults: [{ columns: [{ name: 'n', type: 'long' }], rows: () => [{ getValueAt: () => 1 }] }] };
                 },

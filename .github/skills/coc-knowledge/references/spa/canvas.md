@@ -335,7 +335,10 @@ credential shape and passes redacted `AuthError` through the SDK error envelope.
 Unknown auth payloads are sanitized without fallback or replay.
 Real standalone execution requires a host client factory;
 unwired callers fail rather than constructing an alternative credential.
-`kusto-exec.ts` returns JSON-safe results capped at 10,000 rows and 8 MiB of
+`kusto-exec.ts` rejects direct management commands before client construction.
+The host adapter exposes only `executeQuery`, targeting `/v2/rest/query` with
+`request_readonly: true`; query text cannot override that service request option.
+Results are JSON-safe and capped at 10,000 rows and 8 MiB of
 serialized UTF-8 JSON, including column metadata. Lower per-call limits are
 validated before execution. Results retain a row prefix and count every returned
 row without converting discarded cells; oversized column metadata fails explicitly.
