@@ -170,7 +170,7 @@ preference. These are absent from labels, tooltips, and ARIA copy.
 ### Steer and queue while a turn runs
 
 `Enter` queues: the server buffers the message and `pending-message-added` shows it in the
-queued section until the turn ends. `Ctrl/Cmd+Enter` steers: `useSendMessage` adds an
+queued section until the turn ends. `Ctrl/Cmd+Enter` steers (Copilot and Claude; other providers fall back to queue): `useSendMessage` adds an
 optimistic user turn tagged with an `optimisticId` sent in the request. The response
 `delivery` decides its fate — `steered` labels it `⚡ steered` (also set by the
 `message-steering` SSE event), `queued` removes it and toasts "Couldn't steer — queued for

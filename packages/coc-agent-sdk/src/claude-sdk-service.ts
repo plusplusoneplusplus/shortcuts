@@ -201,6 +201,11 @@ interface ClaudeStreamingUserMessage {
     };
     parent_tool_use_id: null;
     session_id?: string;
+    /**
+     * Delivery priority for a message streamed while a turn runs. `'next'`
+     * joins the running turn at its next step without interrupting it.
+     */
+    priority?: 'now' | 'next' | 'later';
 }
 
 /**
@@ -540,6 +545,8 @@ interface ClaudeSDKModule {
 interface ActiveClaudeSession {
     sessionId: string;
     abortController: AbortController;
+    /** Pushes a message into the running turn; false once the turn can no longer take it. */
+    steer?: (prompt: string) => boolean;
 }
 
 /**
@@ -551,16 +558,15 @@ interface ActiveClaudeSession {
  * SDK an async-iterable that yields the initial user message(s) and then stays
  * open — the session (and its background work) stays alive until {@link close}
  * is called, at which point the SDK observes end-of-input and settles the turn.
+ * While open, {@link push} streams more messages into the live session (steering).
  */
 class ClaudeInputGate {
-    private readonly closeSignal: Promise<void>;
-    private resolveClose!: () => void;
+    private readonly pending: ClaudeStreamingUserMessage[];
+    private wake: (() => void) | undefined;
     private closed = false;
 
-    constructor(private readonly initialMessages: ClaudeStreamingUserMessage[]) {
-        this.closeSignal = new Promise<void>((resolve) => {
-            this.resolveClose = resolve;
-        });
+    constructor(initialMessages: ClaudeStreamingUserMessage[]) {
+        this.pending = [...initialMessages];
     }
 
     get isClosed(): boolean {
@@ -571,18 +577,32 @@ class ClaudeInputGate {
     close(): void {
         if (this.closed) return;
         this.closed = true;
-        this.resolveClose();
+        this.wake?.();
     }
 
-    /** Async-iterable input: yields the initial message(s), then blocks until {@link close}. */
+    /** Queue a message for the live session. Returns false once closed. */
+    push(message: ClaudeStreamingUserMessage): boolean {
+        if (this.closed) return false;
+        this.pending.push(message);
+        this.wake?.();
+        return true;
+    }
+
+    /** Async-iterable input: yields every queued message, then ends once {@link close} is called. */
     stream(): AsyncGenerator<ClaudeStreamingUserMessage> {
-        const initialMessages = this.initialMessages;
-        const closeSignal = this.closeSignal;
+        const gate = this;
         return (async function* () {
-            for (const message of initialMessages) {
-                yield message;
+            for (;;) {
+                const next = gate.pending.shift();
+                if (next) {
+                    yield next;
+                } else if (gate.closed) {
+                    return;
+                } else {
+                    await new Promise<void>((resolve) => { gate.wake = resolve; });
+                    gate.wake = undefined;
+                }
             }
-            await closeSignal;
         })();
     }
 }
@@ -1047,7 +1067,8 @@ export class ClaudeSDKService implements ISDKService {
             signalCleanup = () => options.signal!.removeEventListener('abort', onAbort);
         }
 
-        this.sessions.set(sessionId, { sessionId, abortController });
+        const activeSession: ActiveClaudeSession = { sessionId, abortController };
+        this.sessions.set(sessionId, activeSession);
 
         // Notify caller of session ID immediately so abort can be wired up.
         options.onSessionCreated?.(sessionId);
@@ -1321,6 +1342,15 @@ export class ClaudeSDKService implements ISDKService {
             // for its own turn — the SDK re-invokes after a background task
             // reports — so it settles through the quiet window instead.
             let terminalAssistantSeen = false;
+            // Steering joins the running turn with priority 'next'. Once the turn
+            // has a terminal signal it may settle any moment, so refuse and let
+            // the caller queue the message as its own turn.
+            activeSession.steer = (prompt) => !turnTerminalSignalSeen && !!inputGate?.push({
+                type: 'user',
+                message: { role: 'user', content: prompt },
+                parent_tool_use_id: null,
+                priority: 'next',
+            });
             const settleNow = async (): Promise<void> => {
                 clearDrainCap();
                 clearPostDrainSettle();
@@ -2618,9 +2648,8 @@ export class ClaudeSDKService implements ISDKService {
         return this.abortSession(sessionId);
     }
 
-    public async steerSession(_sessionId: string, _prompt: string): Promise<boolean> {
-        // Steering is not supported by the Claude Code SDK.
-        return false;
+    public async steerSession(sessionId: string, prompt: string): Promise<boolean> {
+        return this.sessions.get(sessionId)?.steer?.(prompt) ?? false;
     }
 
     public hasActiveSession(sessionId: string): boolean {

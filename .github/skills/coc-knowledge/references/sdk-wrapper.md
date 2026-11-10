@@ -12,8 +12,8 @@ Forge imports directly from this package.
 |------|---------|
 | `copilot-sdk-service.ts` | Copilot facade: agent SDK lifecycle and selected one-shot transport |
 | `copilot-http/` | Buffered direct completions, explicit credentials/bindings, bounded HTTP, catalog and wire adapters |
-| `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend |
-| `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend |
+| `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend. `steerSession` returns false (the Codex SDK has no mid-turn input). |
+| `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend. Turns stream input through `ClaudeInputGate`; `steerSession` pushes a `priority: 'next'` user message into the running turn's gate and returns false once the turn has a terminal signal or ended. A steer that misses a tool step runs as a follow-on turn inside the same invocation. |
 | `opencode-sdk-service.ts` | `OpenCodeSDKService` — server-backed adapter starting/connecting to a local opencode HTTP server. No warm client (per-turn server requests). `softAbortSession` delegates to `abortSession`; `steerSession` returns false. |
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract; `TransformOptions`/`TransformResult` |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
