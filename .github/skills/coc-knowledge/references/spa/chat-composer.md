@@ -92,7 +92,7 @@ per workspace; New Chat submits them like any other mode.
 
 ### Sentinel target references
 
-Default-off `features.sentinelTargetAutocomplete` enables `SentinelTargetInput` in initial
+Default-on `features.sentinelTargetAutocomplete` enables `SentinelTargetInput` in initial
 and follow-up Sentinel composers. It resolves the owning server's runtime policy and searches
 `dashboard-discovery/topology` inventory, including cached offline rows and machines without
 repositories. Discovery verifies durable health identity around live workspace/group reads;

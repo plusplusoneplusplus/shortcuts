@@ -384,8 +384,14 @@ describe('Sentinel additional instructions queue gate', () => {
 
 
 describe('Sentinel target autocomplete owner policy', () => {
-    it('defaults off and reads live owner changes', () => {
-        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelTargetAutocompleteEnabled()).toBe(false);
+    it.each([undefined, false, true])('uses its default only when the owner omits the value (%s)', value => {
+        const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelTargetAutocomplete: value } } } as unknown as { config: typeof DEFAULT_CONFIG };
+        expect(createQueueRuntimeConfig(source).getSentinelTargetAutocompleteEnabled()).toBe(value ?? true);
+        expect(createFixedQueueRuntimeConfig({ config: { features: { sentinelTargetAutocomplete: value } } }).getSentinelTargetAutocompleteEnabled()).toBe(value ?? true);
+    });
+
+    it('defaults on and reads live owner changes', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelTargetAutocompleteEnabled()).toBe(true);
         const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelTargetAutocomplete: false } } };
         const live = createQueueRuntimeConfig(source);
         expect(live.getSentinelTargetAutocompleteEnabled()).toBe(false);

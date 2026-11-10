@@ -48,6 +48,7 @@ Queue execution never loads a config file itself. `packages/coc/src/server/queue
 | `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
 | `getDefaultIdleTimeoutMs()` | `idleTimeout` (seconds → ms) | execution start; unset falls back to `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 h) |
 | `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
+| `getSentinelTargetAutocompleteEnabled()` | `features.sentinelTargetAutocomplete` (default on; absent = on, explicit `false` = off) | Sentinel target context build |
 | `getSentinelNextStepsEnabled()` | `features.sentinelNextSteps` (default on; absent = on, explicit `false` = off) | Sentinel chat-turn context build |
 | `getAskUser()` | `chat.askUser` | chat-turn context build |
 | `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
@@ -114,12 +115,12 @@ browser control. The registry derives validation, merge and source tracking.
 | `teamsAiAnswerRelay` | on | Admin -> Connectors -> Teams exposes the live relay opt-out beside bridge observability and message reaction. Missing settings resolve on; explicit false stops answer relay and thread reply polling without restart/reconnect. A connected normal bridge saves per-workspace receipts and relays completed Ask answers or safe terminal notices for new requests to their captured original threads; connectivity, Trouter, Likes and observability remain independent |
 | `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
 | `teamsIc3OwnCommands` | off | Native Azure CLI own-user `@coc <prompt>` launcher; configured under Connectors -> Teams |
-| `sentinelTodoDependencies` | off | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
-| `sentinelTodoExternalReferences` | off | Live gate for typed PR/email/Teams/Slack/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
-| `sentinelTodoInlineNotes` | off | Live SPA-only gate for inline Notes editing in To-do details; publishes `sentinelTodoInlineNotesEnabled`; writes only revisioned `notes` through the existing item update and grants no authority |
-| `sentinelTodoJobs` | off | Live experimental opt-in for Sentinel Refrains (Admin label "Sentinel Refrains"); publishes `sentinelTodoJobsEnabled`. The Admin row requires `sentinel.enabled`; Coda (`sentinelTodoScrubber`, label "Sentinel Coda") retains its independent flag. Keys keep the older names on purpose |
-| `sentinelFollowUpResults` | off | Live gate for returning each tracked Sentinel `send_to_conversation` post-mode turn result as a delegated review; publishes `sentinelFollowUpResultsEnabled` |
-| `sentinelPrOutcomeWake` | off | Live gate for tracked delegated-PR outcome reviews and To-do detail controls; publishes `sentinelPrOutcomeWakeEnabled`, uses native trigger infrastructure, and does not change CI/conflict repair permission |
+| `sentinelTodoDependencies` | on | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
+| `sentinelTodoExternalReferences` | on | Live gate for typed PR/email/Teams/Slack/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
+| `sentinelTodoInlineNotes` | on | Live SPA-only gate for inline Notes editing in To-do details; publishes `sentinelTodoInlineNotesEnabled`; writes only revisioned `notes` through the existing item update and grants no authority |
+| `sentinelTodoJobs` | on | Live gate for Sentinel Refrains (Admin label "Sentinel Refrains"); publishes `sentinelTodoJobsEnabled`. The Admin row requires `sentinel.enabled`; Coda (`sentinelTodoScrubber`, label "Sentinel Coda") retains its independent flag. Keys keep the older names on purpose |
+| `sentinelFollowUpResults` | on | Live gate for returning each tracked Sentinel `send_to_conversation` post-mode turn result as a delegated review; publishes `sentinelFollowUpResultsEnabled` |
+| `sentinelPrOutcomeWake` | on | Live gate for tracked delegated-PR outcome reviews and To-do detail controls; publishes `sentinelPrOutcomeWakeEnabled`, uses native trigger infrastructure, and does not change CI/conflict repair permission |
 | `sentinelDesktopMirror` | off | Admin → Configure → Sentinel → Sentinel desktop messaging mirror; live gate for newly accepted exact-owner dashboard submissions and final replies to active local Sentinel bindings. Bound submissions require an identifiable normal Teams/WhatsApp account at capture; missing identity or staging storage rejects admission safely until available. Existing history is not replayed. See [server architecture](server-architecture.md#desktop-sentinel-mirror) for durable delivery and failure policy |
 | `botManagedConversations` | off | Live integration-control identification gate, independent of AI provider, Teams relay, and bridge observability; runtime capability `botManagedConversationsEnabled` |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
@@ -295,15 +296,23 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 
 ### Sentinel settings
 
-`#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
-`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoCategories`, `sentinelTodoExternalReferences`, `sentinelTodoInlineNotes`,
-`sentinelTodoScrubber`, `sentinelTodoJobs`, `sentinelTodoDateTimeTriggers`,
-`sentinelPrOutcomeWake`, `sentinelFollowUpResults`, and `sentinelDesktopMirror`. The
-presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and
-messaging. Features search renders links to Sentinel, not duplicate controls.
-Shared triggers, execution and connector settings retain their tabs. The existing shared
-draft controller scopes saves, keyboard saves and cancels to the active tab; Admin uses
-the page-origin client and its API prefix independently of the selected workspace.
+`#admin/settings/sentinel` owns the Sentinel behavior controls. The live
+`features.*` settings `sentinelNextSteps`, `sentinelTargetAutocomplete`,
+`sentinelAdditionalInstructions`, `sentinelTodoDependencies`, `sentinelTodoCategories`,
+`sentinelTodoDateTimeTriggers`, `sentinelPrOutcomeWake`, `sentinelFollowUpResults`,
+`sentinelRemoteResults`, `sentinelTodoExternalReferences`, `sentinelTodoInlineNotes`,
+`sentinelTodoScrubber` (Coda), and `sentinelTodoJobs` (Refrains) default on.
+Omitted keys resolve on; explicit `false` wins without rewriting saved config.
+Sentinel Mode (`sentinel.enabled`) and `sentinelDesktopMirror` retain their off defaults.
+Refrains also requires Sentinel Mode, and the `sentinel_jobs` tool keeps its separate
+opt-in. Default-on settings suppress the Experimental badge through the shared resolver.
+
+The presentation-only `sentinelResultCards` defaults on and lives on Appearance →
+Chat Interface. Features search links to Sentinel; registry groups organize mode,
+To-do/PR outcomes and messaging. Saves, keyboard saves and cancels affect only the
+active tab. Admin uses the page-origin client and API prefix independently of the
+selected workspace. Owner checks, remote capability checks and execution authorization
+apply independently of defaults; shared triggers and connector settings retain their tabs.
 
 ### Keyboard saving
 

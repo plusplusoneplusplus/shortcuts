@@ -48,7 +48,7 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.features.commitChatLens).toBe(true);
             expect(svc.config.features.chatStyleSelector).toBe(true);
             expect(svc.config.features).not.toHaveProperty('sentinelTodoLedger');
-            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
+            expect(svc.config.features.sentinelTodoScrubber).toBe(true);
             expect(svc.config.features.autoAgentProviderRouting).toBe(false);
             expect(svc.config.defaultProvider).toBe('copilot');
             expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
@@ -82,7 +82,7 @@ describe('RuntimeConfigService', () => {
             expect(svc.sources).not.toHaveProperty('features.sentinelTodoLedger');
             const flags = buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features;
             expect(flags).not.toHaveProperty('sentinelTodoLedgerEnabled');
-            expect(flags.sentinelTodoScrubberEnabled).toBe(false);
+            expect(flags.sentinelTodoScrubberEnabled).toBe(true);
             expect(flags.sentinelEnabled).toBe(false);
             expect(svc.config.features.composerWordHint).toBe(false);
         });
@@ -235,56 +235,39 @@ describe('RuntimeConfigService', () => {
             expect(new RuntimeConfigService({ configPath }).config.features.diffContentSearch).toBe(false);
         });
 
-        it('persists live To-do jobs opt-in and opt-out on its owning server only', async () => {
+        it.each([
+            'sentinelNextSteps', 'sentinelTargetAutocomplete', 'sentinelAdditionalInstructions',
+            'sentinelTodoDependencies', 'sentinelTodoCategories', 'sentinelTodoDateTimeTriggers',
+            'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
+            'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'sentinelTodoScrubber', 'sentinelTodoJobs',
+        ] as const)('persists a live %s opt-out only on its owning server', async feature => {
             const svc = new RuntimeConfigService({ configPath });
             const otherOwner = new RuntimeConfigService({ fileConfig: {} });
-            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.sentinelTodoJobsEnabled;
-            expect(runtimeFlag()).toBe(false);
-            expect(svc.sources['features.sentinelTodoJobs']).toBe('default');
+            const key = `features.${feature}`;
+            const flag = `${feature}Enabled` as const;
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features[flag];
+            expect(runtimeFlag()).toBe(true);
+            expect(svc.sources[key]).toBe('default');
             const changed = vi.fn();
             svc.onChange(changed);
 
-            const enabled = await svc.updateConfig({
-                'sentinel.enabled': true, 'features.sentinelTodoJobs': true,
-            });
-            expect(enabled.effects).toContainEqual({
-                field: 'features.sentinelTodoJobs', runtime: 'live', requiresRestart: false,
-            });
+            const disabled = await svc.updateConfig({ [key]: false });
+            expect(disabled.effects).toEqual([{ field: key, runtime: 'live', requiresRestart: false }]);
+            expect(runtimeFlag()).toBe(false);
+            expect(disabled.sources[key]).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features[feature]).toBe(false);
+            expect(otherOwner.config.features[feature]).toBe(true);
+            expect(buildRuntimeDashboardConfig(otherOwner, 'other', '127.0.0.1').features[flag]).toBe(true);
+            expect(svc.config.sentinel.enabled).toBe(false);
+
+            // Saving another setting preserves the opted-out value, including on reload.
+            await svc.updateConfig({ parallel: 7 });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features[feature]).toBe(false);
+            await svc.updateConfig({ [key]: true });
             expect(runtimeFlag()).toBe(true);
-            expect(enabled.sources['features.sentinelTodoJobs']).toBe('file');
-            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoJobs).toBe(true);
-            expect(otherOwner.config.features.sentinelTodoJobs).toBe(false);
-            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
-
-            await svc.updateConfig({ 'features.sentinelTodoJobs': false });
-            expect(runtimeFlag()).toBe(false);
-            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoJobs).toBe(false);
-            expect(changed).toHaveBeenCalledTimes(2);
-            expect(svc.config.sentinel.enabled).toBe(true);
-        });
-
-        it('persists live scrubber opt-in and opt-out without changing another server or Sentinel Mode', async () => {
-            const svc = new RuntimeConfigService({ configPath });
-            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
-            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.sentinelTodoScrubberEnabled;
-            expect(runtimeFlag()).toBe(false);
-            const changed = vi.fn();
-            svc.onChange(changed);
-
-            const enabled = await svc.updateConfig({ 'features.sentinelTodoScrubber': true });
-            expect(enabled.effects).toEqual([{
-                field: 'features.sentinelTodoScrubber', runtime: 'live', requiresRestart: false,
-            }]);
-            expect(runtimeFlag()).toBe(true);
-            expect(enabled.sources['features.sentinelTodoScrubber']).toBe('file');
-            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScrubber).toBe(true);
-            expect(otherOwner.config.features.sentinelTodoScrubber).toBe(false);
-
-            await svc.updateConfig({ 'features.sentinelTodoScrubber': false });
-            expect(runtimeFlag()).toBe(false);
-            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScrubber).toBe(false);
-            expect(changed).toHaveBeenCalledTimes(2);
-            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features[feature]).toBe(true);
+            expect(changed).toHaveBeenCalledTimes(3);
             expect(svc.config.sentinel.enabled).toBe(false);
         });
 

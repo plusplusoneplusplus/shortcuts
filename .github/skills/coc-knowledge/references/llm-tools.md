@@ -225,7 +225,7 @@ default `regular`; ledger metadata only, independent of status). `done`/`needs_a
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
-Default-off live `features.sentinelTodoExternalReferences` offers create/update
+Default-on live `features.sentinelTodoExternalReferences` offers create/update
 `externalReferences` with `{ kind: 'pr' | 'email' | 'teams' | 'slack' | 'link', url, title? }` entries.
 An array replaces external links only, `[]` clears, and omission preserves.
 Output `references` combines these entries with unchanged conversation attachments;
@@ -235,7 +235,7 @@ links and never fetch private contents.
 Display references never bind PR outputs, monitor, fulfill dependencies, mark Done
 or authorize work. Native PR verdict-only tools cannot edit them.
 
-With default-off `features.sentinelTodoDependencies` enabled,
+With default-on `features.sentinelTodoDependencies` enabled,
 `set_dependencies` replaces all prerequisites using `itemId`, `expectedRevision`
 and typed `dependsOn` edges. `bind_pr_output` explicitly selects one exact produced
 PR with named output slot and tracked-job or owner-selection provenance/reason;
@@ -321,7 +321,7 @@ active/paused monitors without resetting repair history. Arming happens only for
 explicit `autoFix: true`; failures preserve PR success with a warning. Results include
 `autoFix: { requested, enabled, scope?, triggerId?, warning? }`.
 
-With default-off `features.sentinelPrOutcomeWake`, the exact successful submission
+With default-on `features.sentinelPrOutcomeWake`, the exact successful submission
 also registers a native outcome watch for its tracked Sentinel-delegated item.
 Registration resolves the original owner across local workspaces and is independent
 of `autoFix`; failures preserve PR creation and surface a warning. Outcomes request
@@ -450,7 +450,7 @@ capability endpoint selects the local parent's concrete provider, validated thro
 explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once;
 the returned owning identity qualifies `openLink`.
-Remote Sentinel launches and follow-ups use default-off `features.sentinelRemoteResults`
+Remote Sentinel launches and follow-ups use default-on `features.sentinelRemoteResults`
 and a sender-polling destination for `resultDelivery: { status: 'tracked',
 jobId, remote }`; the destination needs no registration of, or route to, the origin. Origin-only connector context stays outside execution intents. Other
 dispatch returns `status: 'unavailable'` with a reason (`code: 'unsupported'` for incompatible
@@ -597,7 +597,7 @@ lets an explicit `model` override the tier. Create-only titles are ignored in po
 Post mode applies no mode default: an omitted `mode` keeps the conversation's current mode and an
 explicit one switches it. The route-layer `processes/send-message-capability.ts` resolves it with
 `resolveFollowUpMode` (terminal Sentinel mode still wins) before `ProcessMessageDeliveryService`.
-With live, default-off `features.sentinelFollowUpResults`, a local Sentinel's post into another
+With live, default-on `features.sentinelFollowUpResults`, a local Sentinel's post into another
 non-Sentinel queue-backed chat reserves a per-request delegated job (`request:<uuid>`,
 `child.requestId`) before delivery and returns `resultDelivery: { status: 'tracked', jobId }`.
 The request ID is the relay request, pending-message and queue task ID; a requested steer is

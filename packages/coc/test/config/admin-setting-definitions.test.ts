@@ -209,7 +209,13 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
-    describe.each(['railManualRefresh', 'railStatusActions'] as const)('%s default-on contract', feature => {
+    describe.each([
+        'railManualRefresh', 'railStatusActions',
+        'sentinelNextSteps', 'sentinelTargetAutocomplete', 'sentinelAdditionalInstructions',
+        'sentinelTodoDependencies', 'sentinelTodoCategories', 'sentinelTodoDateTimeTriggers',
+        'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
+        'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'sentinelTodoScrubber', 'sentinelTodoJobs',
+    ] as const)('%s default-on contract', feature => {
         const key = `features.${feature}`;
         const flag = `${feature}Enabled`;
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
@@ -230,6 +236,8 @@ describe('resolved config merge honors file overrides', () => {
             expect(buildRuntimeFeatureFlags(config)[flag]).toBe(value);
             expect(buildRuntimeFeatures(resolved)[flag]).toBe(value);
             expect(getNamespaceFieldSource(key, config)).toBe('file');
+            // An unrelated override must not erase a saved opt-out.
+            expect(getConfigValueAtPath(mergeConfig(resolved, { features: { sentinelResultCards: false } }), key)).toBe(value);
         });
     });
 
@@ -429,44 +437,44 @@ describe('Features card UI metadata', () => {
             const parsed = CLIConfigSchema.parse({ features: { sentinelTodoLedger } });
             const config = mergeConfig(DEFAULT_CONFIG, parsed);
             expect(buildRuntimeFeatures(config)).not.toHaveProperty('sentinelTodoLedgerEnabled');
-            expect(buildRuntimeFeatures(config).sentinelTodoDependenciesEnabled).toBe(false);
-            expect(buildRuntimeFeatures(config).sentinelTodoScrubberEnabled).toBe(false);
+            expect(buildRuntimeFeatures(config).sentinelTodoDependenciesEnabled).toBe(true);
+            expect(buildRuntimeFeatures(config).sentinelTodoScrubberEnabled).toBe(true);
         }
     });
 
-    it('exposes the Sentinel To-do Scrubber as a live, default-off toggle', () => {
+    it('exposes the Sentinel Coda as a live, default-on toggle', () => {
         const scrubber = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoScrubber')!;
-        expect(scrubber.default).toBe(false);
+        expect(scrubber.default).toBe(true);
         expect(scrubber.runtime).toBe('live');
         expect(scrubber.ui).toMatchObject({
             tab: 'sentinel', group: 'sentinelTodos', testId: 'toggle-sentinel-todo-scrubber-enabled',
         });
         expect(scrubber.ui?.dependsOn).toBeUndefined();
-        expect(buildRuntimeFeatureFlags({}).sentinelTodoScrubberEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoScrubberEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({}).sentinelEnabled).toBe(false);
-        expect(DEFAULT_CONFIG.features.sentinelTodoScrubber).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoScrubberEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.sentinelTodoScrubber).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoScrubberEnabled).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
             features: { sentinelTodoScrubber: true },
         })).sentinelTodoScrubberEnabled).toBe(true);
     });
 
-    it('exposes Sentinel To-do jobs as a live, experimental opt-in requiring Sentinel Mode', () => {
+    it('exposes Sentinel Refrains as a live, default-on feature requiring Sentinel Mode', () => {
         const jobs = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoJobs')!;
-        expect(jobs.default).toBe(false);
+        expect(jobs.default).toBe(true);
         expect(jobs.runtime).toBe('live');
         expect(jobs.runtimeFlag).toBe('sentinelTodoJobsEnabled');
         expect(jobs.ui).toMatchObject({
             tab: 'sentinel', group: 'sentinelTodos', badge: 'experimental',
             dependsOn: 'sentinel.enabled', testId: 'toggle-sentinel-todo-jobs-enabled',
         });
-        expect(buildRuntimeFeatureFlags({}).sentinelTodoJobsEnabled).toBe(false);
-        expect(DEFAULT_CONFIG.features.sentinelTodoJobs).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoJobsEnabled).toBe(true);
+        expect(DEFAULT_CONFIG.features.sentinelTodoJobs).toBe(true);
         const config = mergeConfig(DEFAULT_CONFIG, {
             sentinel: { enabled: true }, features: { sentinelTodoJobs: true },
         });
         expect(buildRuntimeFeatures(config).sentinelTodoJobsEnabled).toBe(true);
-        expect(config.features.sentinelTodoScrubber).toBe(false);
+        expect(config.features.sentinelTodoScrubber).toBe(true);
     });
 
     it('labels Refrains, Coda and overtures while keeping their wire keys and flags', () => {
@@ -1003,19 +1011,19 @@ describe('Features card UI metadata', () => {
         expect(readAdminSettingValue(def, { features: { [name]: false } })).toBe(false);
     });
 
-    it('exposes Sentinel To-do inline Notes editing as a live, experimental default-off Sentinel toggle', () => {
+    it('exposes Sentinel To-do inline Notes editing as a live, experimental default-on Sentinel toggle', () => {
         const def = getAdminSettingDefinition('features.sentinelTodoInlineNotes')!;
         expect(def.value).toEqual({ kind: 'boolean' });
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('sentinelTodoInlineNotesEnabled');
         expect(def.ui).toMatchObject({
             tab: 'sentinel', group: 'sentinelTodos', badge: 'experimental',
             testId: 'toggle-sentinel-todo-inline-notes-enabled',
         });
-        expect(DEFAULT_CONFIG.features.sentinelTodoInlineNotes).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).sentinelTodoInlineNotesEnabled).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoInlineNotesEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.sentinelTodoInlineNotes).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoInlineNotesEnabled).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoInlineNotesEnabled).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
             features: { sentinelTodoInlineNotes: true },
         })).sentinelTodoInlineNotesEnabled).toBe(true);
@@ -1246,7 +1254,7 @@ describe('feature toggle settings-tab placement', () => {
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'sentinel').map(d => d.key).sort()).toEqual(sentinelKeys);
         const runtime = buildRuntimeFeatureFlags({});
         for (const def of sentinelDefs) {
-            const expectedDefault = ['features.sentinelResultCards', 'features.sentinelNextSteps', 'features.sentinelAdditionalInstructions'].includes(def.key);
+            const expectedDefault = !['sentinel.enabled', 'features.sentinelDesktopMirror'].includes(def.key);
             expect(def.default, def.key).toBe(expectedDefault);
             expect(readAdminSettingValue(def, {}), def.key).toBe(expectedDefault);
             expect(def.runtime, def.key).toBe('live');

@@ -1073,7 +1073,7 @@ as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 ## Sentinel To-do
 
 Every hosted Sentinel chat has a persistent To-do ledger.
-Default-off `features.sentinelPrOutcomeWake` adds `SentinelTodoPrOutcomes` inside
+Default-on `features.sentinelPrOutcomeWake` adds `SentinelTodoPrOutcomes` inside
 the selected normal item's existing detail view, not another panel. It reads exact
 PR outcome/delivery evidence and offers Check outcome and per-item Pause/Resume
 notifications through the owner-routed client. Admission is displayed as queued,
@@ -1088,7 +1088,7 @@ sets `browserChatId`, which `releaseBrowserChatOwners` never drops for To-do).
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the tab persists; the ledger is fetched from the owning server
 (`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
-`sentinel-todos-changed` events on a workspace-subscribed socket. Default-off live
+`sentinel-todos-changed` events on a workspace-subscribed socket. Default-on live
 `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`: an owner-client
 loader and category manager for the workspace's ordered set. Create, rename,
 reorder and confirmed delete use set revisions; deletion previews workspace-wide
@@ -1235,7 +1235,7 @@ Details list every job and explain when the displayed status is derived
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
 owner-scoped, in-memory `SentinelTodoView` across refreshes and remounts.
-Default-off live `sentinelTodoInlineNotesEnabled` adds inline Notes editing on
+Default-on live `sentinelTodoInlineNotesEnabled` adds inline Notes editing on
 non-archived items (normal and manual): Edit/Add notes actions or a click on note
 text (links and text selections excluded) open `SentinelTodoNotesEditor` as a
 `notesOnly` edit draft, sharing the item's draft memory, menu/Organize blocking and
@@ -1249,7 +1249,7 @@ never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual trackin
 `Tracked only · never run` tag. Conversation entries in `item.references`
 (missing `kind` also means conversation) render below jobs as compact, truncated
 `Ref` links with owner-correct excursions and no execution or review label.
-Default-off runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
+Default-on runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
 Email, Teams, Slack and Link anchors to every card and detail view. PR labels identify their
 provider, repository and number; hover titles retain the complete URL. Only
 HTTP(S), plus `mailto:` for email references, render as links. Native anchors
@@ -1262,7 +1262,7 @@ URL validation requires supported HTTPS message/channel URLs for Teams and Slack
 without fetching contents. Untouched references are omitted from writes; an explicit empty list clears only
 external references, never conversation references.
 
-`SentinelTodoDependencies` is gated by default-off
+`SentinelTodoDependencies` is gated by default-on
 `sentinelTodoDependenciesEnabled`. Its owner/item-keyed details add independent
 Waiting/Ready chips, typed prerequisite drafts and exact PR-output
 binding with visible provenance. Readiness reads use the owner client, abort on
@@ -1380,7 +1380,7 @@ With Refrains enabled, `SentinelCoda` supplies the pinned built-in row only
 when the independent Coda flag (`sentinelTodoScrubberEnabled`) is enabled, retaining its findings context,
 routes and execution engine. With Refrains disabled, it renders the Coda strip.
 The wrapper is gated by the
-live, default-off Coda flag. `UnifiedTodoTab` passes a function child that places
+live, default-on Coda flag. `UnifiedTodoTab` passes a function child that places
 the single selection strip in the list column below Overtures, beside the
 detail pane; a plain child renders the strip first. The strip is not sticky; its
 schedule editor, selection and history render inside its selected details. Its owner/endpoint-keyed strip uses
