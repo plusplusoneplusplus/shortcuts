@@ -102,6 +102,7 @@ function formatLocalBaseUrl(host: string, port: number): string {
 interface CloseHandlerDeps {
     adoDispose?: () => void;
     kustoDispose?: () => void;
+    canvasRunsDispose?: () => void;
     canvasExtensionsDispose?: () => Promise<void>;
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
@@ -154,6 +155,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
                 scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
 
+        deps.canvasRunsDispose?.();
         await deps.canvasExtensionsDispose?.();
         await deps.teamsReactions?.dispose();
         await deps.teamsIc3OwnCommands?.dispose();
@@ -861,7 +863,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown, teamsIc3OwnCommands, teamsReactions } = registerAllRoutes(routes, {
+    const { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown, teamsIc3OwnCommands, teamsReactions, canvasMutations } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -909,6 +911,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
+    const unsubscribeCanvasRunsConfig = runtimeConfigService.onChange(() => canvasMutations.syncConfig());
     await codaReady;
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -1027,7 +1030,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             browserState?.delete(workspaceId, process.id);
             browserNavigationApprovals.forgetConversation(workspaceId, process.id);
         },
-        event => canvasExtensionHosts.onProcessChange(event),
+        event => {
+            canvasExtensionHosts.onProcessChange(event);
+            canvasMutations.onProcessChange(event);
+        },
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     wsServer.browserControl.setFramesEnabledGetter(() => runtimeConfigService.config.browserControl.framesEnabled === true);
@@ -1156,6 +1162,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             kustoDispose: () => { unsubscribeKustoConfig(); kustoRuntime.dispose(); },
+            canvasRunsDispose: () => { unsubscribeCanvasRunsConfig(); canvasMutations.dispose(); },
             canvasExtensionsDispose: () => {
                 unsubscribeCanvasExtensionsConfig();
                 return canvasExtensionHosts.dispose();

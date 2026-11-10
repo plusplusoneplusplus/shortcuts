@@ -33,7 +33,7 @@ describe('built-in Kusto Run script lifetime', () => {
             processStore: { getProcess }, getKustoEnabled: () => true, getOwnerScriptRunner: () => runner,
             completeFactory: () => async () => ({ ok: false, error: 'No model call permitted' }),
         });
-        return { canvas, mutations };
+        return { canvas, mutations, owner };
     }
 
     it('times out once, cancels underlying work and ignores late results without retry', async () => {
@@ -73,6 +73,56 @@ describe('built-in Kusto Run script lifetime', () => {
         expect(notify).not.toHaveBeenCalled();
         runner.mockResolvedValueOnce(success);
         expect(await mutations.runKusto('ws', canvas.id, {})).toMatchObject({ kind: 'ok' });
+    });
+
+    it('cancels every pending run of a retired owner but ignores events from a different workspace', async () => {
+        const runner = vi.fn<OwnerScriptRunner>(() => new Promise(() => {}));
+        const { mutations, canvas, owner } = setup(runner);
+        const first = mutations.runKusto('ws', canvas.id, {});
+        const second = mutations.runKusto('ws', canvas.id, {});
+        await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(2));
+        mutations.onProcessChange({ type: 'process-removed', process: { ...owner, metadata: { workspaceId: 'other' } } });
+        mutations.onProcessChange({ type: 'process-updated', process: owner });
+        mutations.syncConfig();
+        expect(runner.mock.calls.every(([request]) => !request.signal?.aborted)).toBe(true);
+        mutations.onProcessChange({ type: 'process-updated', process: { ...owner, archived: true } });
+        expect(runner.mock.calls.every(([request]) => request.signal?.aborted)).toBe(true);
+        expect(await first).toMatchObject({ kind: 'persist-failed' });
+        expect(await second).toMatchObject({ kind: 'persist-failed' });
+        expect(store.getCanvas('ws', canvas.id)).toEqual(canvas);
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('removes request listeners and completed runs before later lifecycle events', async () => {
+        const runner = vi.fn<OwnerScriptRunner>(async () => success);
+        const { mutations, canvas, owner } = setup(runner);
+        const controller = new AbortController();
+        const add = vi.spyOn(controller.signal, 'addEventListener');
+        const remove = vi.spyOn(controller.signal, 'removeEventListener');
+        expect(await mutations.runKusto('ws', canvas.id, {}, controller.signal)).toMatchObject({ kind: 'ok' });
+        const callback = add.mock.calls.find(([type]) => type === 'abort')![1];
+        expect(remove).toHaveBeenCalledWith('abort', callback);
+        const scriptSignal = runner.mock.calls[0][0].signal!;
+        mutations.onProcessChange({ type: 'process-removed', process: owner });
+        mutations.dispose();
+        controller.abort();
+        expect(scriptSignal.aborted).toBe(false);
+        expect(await mutations.runKusto('ws', canvas.id, {})).toMatchObject({
+            kind: 'persist-failed', error: 'Kusto canvas service is closed.',
+        });
+        expect(runner).toHaveBeenCalledOnce();
+        expect(notify).toHaveBeenCalledOnce();
+    });
+
+    it('fails closed when shutdown happens during the initial owner read', async () => {
+        const runner = vi.fn<OwnerScriptRunner>(async () => success);
+        const { mutations, canvas } = setup(runner);
+        const pending = mutations.runKusto('ws', canvas.id, {});
+        mutations.dispose();
+        expect(await pending).toMatchObject({ kind: 'persist-failed' });
+        expect(runner).not.toHaveBeenCalled();
+        expect(store.getCanvas('ws', canvas.id)).toEqual(canvas);
+        expect(notify).not.toHaveBeenCalled();
     });
 
     it.each([null, { success: true, columns: [], rows: [], rowCount: 2, truncated: false }])(

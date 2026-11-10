@@ -91,7 +91,7 @@ export function registerCanvasRoutes(
     completeFactory?: (attribution: CapabilityAttribution) => CapabilityCompleteFn,
     /** Builds `host.runScript` for async runs, bound to the canvas's owner chat. Absent → `disabled`. */
     runScriptFactory?: CanvasRunScriptFactory,
-): void {
+): CanvasMutationService {
     const store = new CanvasStore(dataDir);
 
     /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
@@ -550,4 +550,5 @@ export function registerCanvasRoutes(
             sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
+    return mutations;
 }

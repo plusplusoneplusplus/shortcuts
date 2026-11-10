@@ -338,8 +338,14 @@ This internal path needs no optional canvas host/script flags. The route remains
 `kusto_query` supplies its shared executor directly as a canvas-producing convenience.
 Run requires the stored conversation to be a live, unarchived chat in the exact
 workspace. Its pre-persistence guard rechecks that owner, live Kusto enablement and
-request cancellation before writing either success or error. HTTP disconnects abort
-that request's script; a timeout stores one error and never reruns. Success and
+request cancellation before writing either success or error. `CanvasMutationService`
+tracks request-owned controllers; the server lifecycle fanout aborts the exact owner's
+pending runs on removal/archive and revalidates survivors on workspace-filtered clears.
+Live Kusto disablement and server shutdown abort pending runs; disposal blocks new runs
+and unsubscribes configuration notifications. HTTP disconnects abort only that request.
+Completed runs release their tracking and listeners. Cancelled work cannot persist late
+successes or errors, even if the SDK ignores abort or the owner is restored; shared
+credentials and other owners remain intact. A timeout stores one error and never reruns. Success and
 query-error states use `CanvasStore`'s atomic revision check against that snapshot.
 Concurrent edits or another completed run cause a conflict without saving or notifying. The Run route
 returns HTTP 409 with `revision-conflict`, `currentRevision` and the current canvas;
