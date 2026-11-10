@@ -201,6 +201,17 @@ test.describe('Pull Requests panel — list', () => {
             // Opening a resource must not navigate away from the current chat view.
             await expect(page).toHaveURL(workspaceUrl);
             await expect(page.getByTestId('pr-row')).toHaveCount(MOCK_PR_LIST.length);
+
+            await page.getByTestId('unified-panel-open-menu').click();
+            await expect(page.getByTestId('unified-panel-open-pull-requests')).toHaveAttribute(
+                'title', 'No supported GitHub or Azure DevOps remote found.',
+            );
+            await expect(page.getByTestId('unified-panel-open-pull-requests')).toBeDisabled();
+            const cocPrAction = page.getByTestId('unified-panel-open-coc-pull-requests');
+            await expect(cocPrAction).toBeEnabled();
+            await cocPrAction.click();
+            await expect(tab).toHaveCount(1);
+            await expect(tab).toHaveAttribute('aria-selected', 'true');
         } finally {
             await routeCleanup();
             cleanup();

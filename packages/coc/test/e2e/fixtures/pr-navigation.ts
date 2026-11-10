@@ -15,7 +15,7 @@ export async function openPrPanel(page: Page): Promise<void> {
     }
     await expect(panel).toHaveAttribute('data-open', 'true', { timeout: 10000 });
     await panel.getByTestId('unified-panel-open-menu').click();
-    await page.getByTestId('unified-panel-open-pull-requests').click();
+    await page.getByTestId('unified-panel-open-coc-pull-requests').click();
     await expect(panel.locator('[role="tab"][data-kind="pull-requests"]')).toHaveAttribute(
         'aria-selected', 'true', { timeout: 10000 },
     );
