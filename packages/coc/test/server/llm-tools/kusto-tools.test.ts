@@ -127,6 +127,39 @@ describe('kusto_query tool', () => {
         expect(executeQuery).toHaveBeenCalledTimes(1);
     });
 
+    it('cancels with the turn signal and does not write a late result into the canvas', async () => {
+        const record = store.createCanvas({
+            workspaceId: WS, title: 'Query', type: 'kusto',
+            content: serializeKustoState(createEmptyKustoState()),
+        });
+        const turn = new AbortController();
+        let querySignal: AbortSignal | undefined;
+        const executeQuery = vi.fn((_db: string, _q: string, signal?: AbortSignal) => {
+            querySignal = signal;
+            return new Promise<never>(() => {});
+        });
+        const tool = makeTool(store, dataDir, () => ({ executeQuery }));
+        const pending = tool.handler!(
+            { canvasId: record.id, query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' },
+            { sessionId: 's', toolCallId: 't', toolName: 'kusto_query', arguments: {}, signal: turn.signal } as any,
+        );
+        await vi.waitFor(() => expect(executeQuery).toHaveBeenCalledOnce());
+        turn.abort(new Error('turn cancelled'));
+        expect(await pending).toEqual({ success: false, error: 'turn cancelled' });
+        expect(querySignal?.aborted).toBe(true);
+        expect(store.getCanvas(WS, record.id)).toMatchObject({ content: record.content, revision: record.revision });
+    });
+
+    it('rechecks live disablement before executing', async () => {
+        const clientFactory = vi.fn(mockFactory([[1]]));
+        const tool = createKustoTools({
+            dataDir, workspaceId: WS, canvasStore: store, clientFactory, getEnabled: () => false,
+        }).kustoQuery;
+        const res: any = await tool.handler!({ query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' });
+        expect(res).toMatchObject({ success: false, error: 'Kusto is disabled on the server host.' });
+        expect(clientFactory).not.toHaveBeenCalled();
+    });
+
     it('caps the returned row sample at KUSTO_QUERY_ROW_SAMPLE but stores the full count', async () => {
         const rows = Array.from({ length: KUSTO_QUERY_ROW_SAMPLE + 20 }, (_, i) => [i]);
         const tool = makeTool(store, dataDir, mockFactory(rows));

@@ -15,7 +15,7 @@ import {
 } from '../canvas/kusto-state';
 import type { KustoChartConfig, KustoChartType } from '@plusplusoneplusplus/coc-client';
 import { runKustoCanvas } from '../kusto/kusto-service';
-import { executeKustoQuery, executeKustoCommand, type KustoCommandParams, type KustoCommandClientFactory, type KustoClientFactory } from '../kusto/kusto-exec';
+import { executeKustoQuery, executeKustoCommand, type KustoQueryParams, type KustoCommandParams, type KustoCommandClientFactory, type KustoClientFactory } from '../kusto/kusto-exec';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
 // ============================================================================
@@ -83,6 +83,12 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
         }
     };
 
+    /** Shared by `execute_kusto_query` and `kusto_query`: live enablement plus turn cancellation. */
+    const runQuery = async (params: KustoQueryParams, signal?: AbortSignal) => {
+        if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
+        return executeKustoQuery(params, { clientFactory: deps.clientFactory, signal });
+    };
+
     const executeQuery = defineTool<Pick<KustoQueryArgs, 'query' | 'clusterUrl' | 'database'>>('execute_kusto_query', {
         description:
             'Execute a read-only KQL query against Azure Data Explorer using the owning server\'s selected '
@@ -106,8 +112,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             if (!clusterUrl.trim()) return { success: false, error: 'clusterUrl is required' };
             if (!database.trim()) return { success: false, error: 'database is required' };
             try {
-                if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
-                const result = await executeKustoQuery({ query, clusterUrl, database }, { clientFactory: deps.clientFactory, signal: invocation?.signal });
+                const result = await runQuery({ query, clusterUrl, database }, invocation?.signal);
                 return { success: true, ...result };
             } catch (error) {
                 return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -183,7 +188,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             },
             required: ['query', 'clusterUrl', 'database'],
         },
-        handler: async (args) => {
+        handler: async (args, invocation) => {
             const a = args ?? ({} as KustoQueryArgs);
             const query = typeof a.query === 'string' ? a.query : '';
             const clusterUrl = typeof a.clusterUrl === 'string' ? a.clusterUrl : '';
@@ -230,7 +235,9 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             const outcome = await runKustoCanvas(store, deps.workspaceId, canvasId, {
                 editor: 'ai',
                 overrides: { query, clusterUrl, database },
-                executeQuery: params => executeKustoQuery(params, { clientFactory: deps.clientFactory }),
+                executeQuery: params => runQuery(params, invocation?.signal),
+                // A cancelled turn must not write a late result or abort error into the canvas.
+                beforePersist: async () => invocation?.signal?.throwIfAborted(),
                 ...(deps.now ? { now: deps.now } : {}),
             });
 

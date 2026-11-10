@@ -789,8 +789,10 @@ before SDK dispatch. The tool is outside the read-only canvas script allowlist.
 Invocation cancellation, live disablement and credential/configuration checks
 apply to both execution tools. Commands have no mock path or automatic retry.
 
-`kusto_query` runs the same query executor through `runKustoCanvas`, persisting
-an interactive `type: 'kusto'` canvas. Omit `canvasId` to create (default title
+`kusto_query` runs the same query helper as `execute_kusto_query` (live
+disablement and invocation cancellation included) through `runKustoCanvas`,
+persisting an interactive `type: 'kusto'` canvas. A cancelled turn writes no late
+result or abort error into the canvas. Omit `canvasId` to create (default title
 `Kusto Query`), or pass an existing Kusto canvas to update. Returns column schema,
 a capped row sample (`KUSTO_QUERY_ROW_SAMPLE`), total row count, truncation state,
 and a `canvas://<id>` embed link. The Run route shares this persistence service.
