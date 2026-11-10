@@ -76,6 +76,15 @@ describe('buildBlameDecorations', () => {
         expect(before[3].attachedData).toBe(COMMIT_B.hash);
     });
 
+    it('keeps the empty-range labels visible (Monaco drops collapsed injected text otherwise)', () => {
+        const decorations = buildBlameDecorations(BLAME, 'one\ntwo\nthree\n', CURSOR_STOPS_NONE);
+        expect(decorations).toHaveLength(3);
+        for (const { range, options } of decorations) {
+            expect(range.startColumn).toBe(range.endColumn);
+            expect(options.showIfCollapsed).toBe(true);
+        }
+    });
+
     it('treats every line as not committed yet when HEAD has no blame (empty state)', () => {
         const before = buildBlameDecorations({ lines: [], commits: {} }, 'a\nb', CURSOR_STOPS_NONE).map(d => d.options.before!);
         expect(before.map(b => b.content.trim())).toEqual(['Not committed yet', '']);

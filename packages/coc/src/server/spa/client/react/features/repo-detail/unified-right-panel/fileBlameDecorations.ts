@@ -74,6 +74,8 @@ export function buildBlameDecorations(
                 range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
                 options: {
                     description: 'file-blame',
+                    // Monaco drops injected text on an empty range without this.
+                    showIfCollapsed: true,
                     hoverMessage,
                     before: {
                         content: line === run.startLine ? formatBlameLabel(commit) : blank,
