@@ -25,7 +25,10 @@ import type { CapabilityCompleteFn, RunCanvasCapabilityOptions } from './canvas-
 import type { CanvasRunScriptFactory } from './canvas-script-bridge';
 import { queueCanvasCapabilityRun } from './canvas-capability-queue';
 import { runKustoCanvas } from '../kusto/kusto-service';
-import { executeKustoQuery, type KustoClientFactory } from '../kusto/kusto-exec';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { OwnerScriptRunner } from '../executors/owner-script-runner';
+import { runOwnerToolScript } from './owner-tool-script-service';
+import { readKustoQueryToolResult } from '../kusto/kusto-query-tool-result';
 
 /** Who `host.complete` bills a capability's model call to. */
 export interface CapabilityAttribution {
@@ -85,8 +88,10 @@ export interface CanvasMutationServiceDeps {
     completeFactory: (attribution: CapabilityAttribution) => CapabilityCompleteFn;
     /** Builds the `host.runScript` a given async capability run gets. Absent → `disabled`. */
     runScriptFactory?: CanvasRunScriptFactory;
-    /** Injectable Kusto client factory; defaults to the real SDK when absent. */
-    kustoClientFactory?: KustoClientFactory;
+    /** Built-in Run uses the same internal runner as extension scripts, without extension identity. */
+    getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;
+    processStore?: Pick<ProcessStore, 'getProcess'>;
+    getKustoEnabled?: () => boolean;
 }
 
 /**
@@ -241,11 +246,25 @@ export class CanvasMutationService {
         workspaceId: string,
         canvasId: string,
         overrides: { query?: string; clusterUrl?: string; database?: string },
+        signal: AbortSignal = new AbortController().signal,
     ): Promise<CanvasKustoRunOutcome> {
         const outcome = await runKustoCanvas(this.store, workspaceId, canvasId, {
             overrides,
             editor: 'user',
-            executeQuery: params => executeKustoQuery(params, { clientFactory: this.deps.kustoClientFactory }),
+            executeQuery: async (params, canvas) => {
+                await this.assertKustoOwner(canvas, signal);
+                const runner = this.deps.getOwnerScriptRunner?.();
+                if (!runner) throw new Error('Kusto tool script runtime is unavailable');
+                const run = await runOwnerToolScript({
+                    workspaceId: canvas.workspaceId, processId: canvas.processId!,
+                    tools: ['execute_kusto_query'], runner, signal,
+                    // Inputs are data, never interpolated script source or caller-supplied code.
+                    request: { code: 'return await tools.execute_kusto_query(state);', state: params },
+                });
+                if (!run.ok) throw new Error(run.error ?? 'Kusto tool script failed');
+                return readKustoQueryToolResult(run.result);
+            },
+            beforePersist: canvas => this.assertKustoOwner(canvas, signal),
         });
 
         if (!outcome.ok) {
@@ -262,5 +281,20 @@ export class CanvasMutationService {
 
         this.notifier.canvasUpdated(workspaceId, outcome.canvas, 'user');
         return { kind: 'ok', canvas: outcome.canvas };
+    }
+
+    /** Recheck after execution too: retired owners and disconnected callers cannot write late results. */
+    private async assertKustoOwner(canvas: CanvasRecord, signal: AbortSignal): Promise<void> {
+        signal.throwIfAborted();
+        if (!this.deps.getKustoEnabled?.()) throw new Error('Kusto is disabled on the server host.');
+        const owner = canvas.processId
+            ? await this.deps.processStore?.getProcess(canvas.processId, canvas.workspaceId)
+            : undefined;
+        signal.throwIfAborted();
+        if (!this.deps.getKustoEnabled?.()) throw new Error('Kusto is disabled on the server host.');
+        if (!owner || owner.id !== canvas.processId || owner.type !== 'chat' || owner.archived
+            || owner.metadata?.workspaceId !== canvas.workspaceId) {
+            throw new Error('Kusto canvas owner chat is unavailable; open a canvas linked to a live conversation.');
+        }
     }
 }

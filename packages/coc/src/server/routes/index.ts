@@ -297,7 +297,6 @@ export interface RegisterRoutesOptions {
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
     runtimeConfigService?: RuntimeConfigService;
-    kustoClientFactory?: import('../kusto/kusto-exec').KustoClientFactory;
     canvasExtensionRuntime?: CanvasExtensionRuntime;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
@@ -1141,7 +1140,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled,
+    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, () => bridge.runOwnerScript, isCanvasHostApisEnabled,
         undefined, createCanvasRunScriptFactory({
             getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
             getOwnerScriptRunner: () => bridge.runOwnerScript,

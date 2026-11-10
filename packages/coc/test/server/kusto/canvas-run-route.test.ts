@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -13,6 +13,10 @@ import { createEmptyKustoState, parseKustoState, serializeKustoState } from '../
 import { createKustoClientRuntime } from '../../../src/server/kusto/kusto-client-runtime';
 import type { KustoAuthConfig } from '../../../src/server/kusto/kusto-credential';
 import { AuthError } from '@plusplusoneplusplus/coc-native';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { runScriptWithOwnerTools, type OwnerScriptRunner } from '../../../src/server/executors/owner-script-runner';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { CONFIG_FILE_NAME } from '../../../src/config';
 
 const WS = 'run-route-ws';
 
@@ -56,45 +60,67 @@ const okFactory: KustoClientFactory = () =>
         }),
     }) as unknown as KustoClientLike;
 
-function build(kustoEnabled: boolean, factory: KustoClientFactory = okFactory) {
+async function build(kustoEnabled: boolean, factory: KustoClientFactory = okFactory) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-run-route-'));
     const store = new CanvasStore(dataDir);
+    const processStore = new SqliteProcessStore({ dbPath: ':memory:' });
+    for (const workspaceId of [WS, 'other-run-ws']) {
+        await processStore.registerWorkspace({ id: workspaceId, name: workspaceId, rootPath: dataDir });
+        await processStore.addProcess({ id: `${workspaceId}-chat`, type: 'chat', status: 'completed',
+            startTime: new Date(), promptPreview: 'Kusto', metadata: { workspaceId } });
+        writeRepoPreferences(dataDir, workspaceId, { disabledLlmTools: [] });
+    }
+    // Existing installations need no unrelated canvas/script opt-in.
+    fs.writeFileSync(path.join(dataDir, CONFIG_FILE_NAME),
+        'features:\n  canvasHostApis: false\n  canvasToolScripts: false\n  toolScripting: false\n');
+    const enabled = { value: kustoEnabled };
+    const runner = vi.fn<OwnerScriptRunner>(request => runScriptWithOwnerTools({
+        ...request, ownerTools: { dataDir, workspaceId: request.workspaceId, processId: request.processId,
+            store: processStore, includeMemoryV2: false, kustoRuntime: { getEnabled: () => enabled.value, clientFactory: factory } },
+    }));
     const broadcastProcessEvent = vi.fn();
+    const emitProcessEvent = vi.spyOn(processStore, 'emitProcessEvent');
     const routes: Route[] = [];
-    registerCanvasRoutes(
-        routes,
-        dataDir,
+    registerCanvasRoutes(routes, dataDir,
         () => ({ broadcastProcessEvent } as unknown as ProcessWebSocketServer),
-        undefined,
-        () => kustoEnabled,
-        factory,
-    );
-    return { dataDir, store, handler: createRouter({ routes, spaHtml: '' }), broadcastProcessEvent };
+        processStore, () => enabled.value, () => runner, () => false);
+    return { dataDir, store, processStore, runner, enabled, emitProcessEvent,
+        handler: createRouter({ routes, spaHtml: '' }), broadcastProcessEvent };
 }
 
 function seed(store: CanvasStore): string {
     const state = { ...createEmptyKustoState(), query: 'T | take 1', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
-    return store.createCanvas({ workspaceId: WS, title: 'Kusto Query', type: 'kusto', content: serializeKustoState(state) }).id;
+    return store.createCanvas({ workspaceId: WS, title: 'Kusto Query', type: 'kusto', processId: `${WS}-chat`, content: serializeKustoState(state) }).id;
 }
 
 describe('POST /canvases/:id/run', () => {
-    let ctx: ReturnType<typeof build>;
+    let ctx: Awaited<ReturnType<typeof build>>;
     afterEach(() => {
-        if (ctx) fs.rmSync(ctx.dataDir, { recursive: true, force: true });
+        if (ctx) { ctx.processStore.close(); fs.rmSync(ctx.dataDir, { recursive: true, force: true }); }
     });
 
     it('404s when the Kusto feature is disabled (AC-08)', async () => {
-        ctx = build(false);
+        ctx = await build(false);
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(res.status).toBe(404);
+        expect(ctx.runner).not.toHaveBeenCalled();
     });
 
     it('runs the stored query and persists results when enabled', async () => {
-        ctx = build(true);
+        ctx = await build(true);
         const id = seed(ctx.store);
+        const before = ctx.store.getCanvas(WS, id)!;
+        const ownerBefore = await ctx.processStore.getProcess(`${WS}-chat`, WS);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(res.status).toBe(200);
+        expect(res.body.canvas.revision).toBe(before.revision + 1);
+        expect(ctx.runner).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            workspaceId: WS, processId: `${WS}-chat`, allowTools: ['execute_kusto_query'], includeMcpTools: false,
+            code: 'return await tools.execute_kusto_query(state);',
+        }));
+        expect(await ctx.processStore.getProcess(`${WS}-chat`, WS)).toEqual(ownerBefore);
+        expect(ctx.emitProcessEvent.mock.calls.filter(([, event]) => event.type === 'canvas-updated')).toHaveLength(1);
         const state = parseKustoState(res.body.canvas.content);
         expect(state.rows).toEqual([[1]]);
         expect(state.lastRun?.status).toBe('success');
@@ -115,7 +141,7 @@ describe('POST /canvases/:id/run', () => {
             if (result === 'error') throw new Error('Late failure');
             return { primaryResults: [] };
         });
-        ctx = build(true, () => ({ executeQuery }));
+        ctx = await build(true, () => ({ executeQuery }));
         id = seed(ctx.store);
         const response = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(response.status).toBe(409);
@@ -128,7 +154,7 @@ describe('POST /canvases/:id/run', () => {
     });
 
     it('applies query/cluster/database overrides from the body', async () => {
-        ctx = build(true);
+        ctx = await build(true);
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {
             query: 'Other | take 1',
@@ -147,7 +173,7 @@ describe('POST /canvases/:id/run', () => {
                 throw new Error('Semantic error: boom');
             },
         });
-        ctx = build(true, failing);
+        ctx = await build(true, failing);
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(res.status).toBe(200);
@@ -181,10 +207,10 @@ describe('POST /canvases/:id/run', () => {
             }),
         });
         try {
-            ctx = build(true, runtime.clientFactory);
+            ctx = await build(true, runtime.clientFactory);
             const id = seed(ctx.store);
             const other = ctx.store.createCanvas({
-                workspaceId: 'other-run-ws', title: 'Other fixture', type: 'kusto',
+                workspaceId: 'other-run-ws', processId: 'other-run-ws-chat', title: 'Other fixture', type: 'kusto',
                 content: ctx.store.getCanvas(WS, id)!.content,
             });
             for (const [workspace, canvasId] of [[WS, id], ['other-run-ws', other.id]]) {
@@ -208,15 +234,85 @@ describe('POST /canvases/:id/run', () => {
         }
     });
 
+    it.each(['disabled', 'approval-required'] as const)('honors owner tool %s policy with no SDK fallback', async policy => {
+        const factory = vi.fn(okFactory);
+        ctx = await build(true, factory);
+        writeRepoPreferences(ctx.dataDir, WS, {
+            disabledLlmTools: policy === 'disabled' ? ['execute_kusto_query'] : [],
+            approvalRequiredLlmTools: policy === 'approval-required' ? ['execute_kusto_query'] : [],
+        });
+        const id = seed(ctx.store);
+        const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
+        expect(res.status).toBe(200);
+        expect(parseKustoState(res.body.canvas.content).lastRun?.status).toBe('error');
+        expect(factory).not.toHaveBeenCalled();
+        expect(ctx.runner).toHaveBeenCalledTimes(1);
+        expect((await ctx.processStore.getProcess(`${WS}-chat`, WS))?.pendingAskUser).toBeUndefined();
+    });
+
+    it.each(['unlinked', 'missing', 'wrong-workspace', 'archived', 'wrong-type'] as const)(
+        'rejects a %s owner without running a script or writing a result', async mode => {
+            ctx = await build(true);
+            if (mode === 'missing') await ctx.processStore.removeProcess(`${WS}-chat`);
+            if (mode === 'archived') ctx.processStore.archiveProcess(`${WS}-chat`);
+            if (mode === 'wrong-type') await ctx.processStore.updateProcess(`${WS}-chat`, { type: 'workflow' });
+            const canvas = ctx.store.createCanvas({ workspaceId: WS, title: 'Invalid owner', type: 'kusto',
+                processId: mode === 'unlinked' ? undefined : mode === 'wrong-workspace' ? 'other-run-ws-chat' : `${WS}-chat`,
+                content: serializeKustoState({ ...createEmptyKustoState(), query: 'print 1',
+                    clusterUrl: 'https://c.kusto.windows.net', database: 'DB' }) });
+            const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${canvas.id}/run`, {
+                processId: 'other-run-ws-chat', workspaceId: 'other-run-ws',
+            });
+            expect(res.status).toBe(500);
+            expect(res.body.error).toContain('owner chat is unavailable');
+            expect(ctx.runner).not.toHaveBeenCalled();
+            expect(ctx.store.getCanvas(WS, canvas.id)).toEqual(canvas);
+            expect(ctx.broadcastProcessEvent).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(['archive', 'remove', 'disable'] as const)('rejects late results after owner %s', async operation => {
+        const executeQuery = vi.fn(async () => {
+            if (operation === 'archive') ctx.processStore.archiveProcess(`${WS}-chat`);
+            if (operation === 'remove') await ctx.processStore.removeProcess(`${WS}-chat`);
+            if (operation === 'disable') ctx.enabled.value = false;
+            return { primaryResults: [] };
+        });
+        ctx = await build(true, () => ({ executeQuery }));
+        const id = seed(ctx.store);
+        const before = ctx.store.getCanvas(WS, id);
+        const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
+        expect(res.status).toBe(500);
+        expect(ctx.store.getCanvas(WS, id)).toEqual(before);
+        expect(executeQuery).toHaveBeenCalledTimes(1);
+        expect(ctx.broadcastProcessEvent).not.toHaveBeenCalled();
+    });
+
+    it('never runs management commands or caller-supplied scripts through Run', async () => {
+        const factory = vi.fn(okFactory);
+        ctx = await build(true, factory);
+        const id = seed(ctx.store);
+        const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {
+            query: '.show tables', code: 'return await tools.execute_kusto_command(state)',
+            tools: ['execute_kusto_command'], state: { approval: true },
+        });
+        expect(res.status).toBe(200);
+        expect(parseKustoState(res.body.canvas.content).lastRun?.status).toBe('error');
+        expect(factory).not.toHaveBeenCalled();
+        expect(ctx.runner).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            code: 'return await tools.execute_kusto_query(state);', allowTools: ['execute_kusto_query'],
+        }));
+    });
+
     it('400s for a non-Kusto canvas', async () => {
-        ctx = build(true);
+        ctx = await build(true);
         const rec = ctx.store.createCanvas({ workspaceId: WS, title: 'md', content: '# hi', type: 'markdown' });
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${rec.id}/run`, {});
         expect(res.status).toBe(400);
     });
 
     it('404s for a missing Kusto canvas', async () => {
-        ctx = build(true);
+        ctx = await build(true);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/canvas-missing/run`, {});
         expect(res.status).toBe(404);
     });

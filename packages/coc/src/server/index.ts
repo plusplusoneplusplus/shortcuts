@@ -874,7 +874,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
         runtimeConfigService,
-        kustoClientFactory: kustoRuntime.clientFactory,
         canvasExtensionRuntime,
         remoteServerStore,
         remoteServerConnector,

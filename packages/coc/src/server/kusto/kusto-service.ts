@@ -31,6 +31,8 @@ export interface RunKustoCanvasOptions {
     /** Execute with the exact persisted snapshot, including its owning conversation. */
     executeQuery: (params: KustoQueryParams, canvas: CanvasRecord) => Promise<KustoQueryResult>;
     overrides?: RunKustoCanvasOverrides;
+    /** Revalidate request/owner lifetime before either a result or error is written. */
+    beforePersist?: (canvas: CanvasRecord) => Promise<void>;
     /** Who the persisted edit is attributed to. Defaults to 'user'. */
     editor?: CanvasEditor;
     /** Injectable clock for deterministic tests. */
@@ -113,6 +115,12 @@ export async function runKustoCanvas(
                 },
             };
         }
+    }
+
+    try {
+        await opts.beforePersist?.(record);
+    } catch (error) {
+        return { ok: false, reason: 'persist-failed', error: error instanceof Error ? error.message : String(error) };
     }
 
     const saved = store.updateCanvas(workspaceId, canvasId, {

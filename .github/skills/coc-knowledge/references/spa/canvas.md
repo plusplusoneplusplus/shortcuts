@@ -329,7 +329,17 @@ naming `kusto_query`.
 
 `runKustoCanvas` accepts a required query executor, passing it the resolved inputs
 and exact persisted canvas snapshot, including workspace and optional conversation.
-It owns persistence, not SDK construction or execution transport. Success and
+It owns persistence, not SDK construction or execution transport. Built-in Run uses
+`runOwnerToolScript` with the queue's owner runner, narrowed to `execute_kusto_query`
+and without MCP or extension identity. The fixed script passes resolved inputs as
+state, validates the complete tool result and honors owner preferences/approval.
+This internal path needs no optional canvas host/script flags. The route remains
+`client.canvases.run`'s UI transport and has no SDK factory or execution fallback;
+`kusto_query` supplies its shared executor directly as a canvas-producing convenience.
+Run requires the stored conversation to be a live, unarchived chat in the exact
+workspace. Its pre-persistence guard rechecks that owner, live Kusto enablement and
+request cancellation before writing either success or error. HTTP disconnects abort
+that request's script; a timeout stores one error and never reruns. Success and
 query-error states use `CanvasStore`'s atomic revision check against that snapshot.
 Concurrent edits or another completed run cause a conflict without saving or notifying. The Run route
 returns HTTP 409 with `revision-conflict`, `currentRevision` and the current canvas;
