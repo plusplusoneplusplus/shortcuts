@@ -11,7 +11,8 @@ import type { GitCommitItem } from '../commits/CommitList';
 /** Which detail surface the right panel is showing. */
 export type RightPanelView =
     | { type: 'commit'; commit: GitCommitItem }
-    | { type: 'commit-file'; hash: string; filePath: string }
+    /** `commit` is kept when known, so a commit outside the loaded page keeps its header. */
+    | { type: 'commit-file'; hash: string; filePath: string; commit?: GitCommitItem }
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
     | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }

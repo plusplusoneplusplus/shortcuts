@@ -86,7 +86,7 @@ export function RepoGitDetailPane({
             workspaceId={workspaceId}
             attachmentDestinationId={attachmentDestinationId}
             hash={hash}
-            commit={view.type === 'commit' ? view.commit : commits.find(c => c.hash === hash)}
+            commit={view.type === 'commit' ? view.commit : view.commit ?? commits.find(c => c.hash === hash)}
             filePath={view.type === 'commit-file' ? view.filePath : undefined}
             hunkTarget={hunkTarget}
             onNavigateToCommitFile={onNavigateToCommitFile}

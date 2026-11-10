@@ -154,15 +154,23 @@ export function useRepoGitSelection({
         setView({ type: 'multi-commit', commits: selectedCommits });
     }, [selectCommit]);
 
+    // A file of the commit already shown keeps that commit, so one outside the
+    // loaded page (e.g. opened from blame) keeps its header and switcher.
+    const commitFileView = useCallback((hash: string, filePath: string): RightPanelView => {
+        const current = viewRef.current;
+        const commit = current?.type === 'commit' ? current.commit : current?.type === 'commit-file' ? current.commit : undefined;
+        return { type: 'commit-file', hash, filePath, ...(commit?.hash === hash ? { commit } : {}) };
+    }, []);
+
     const selectCommitFile = useCallback((hash: string, filePath: string) => {
         setHunkTarget(undefined);
-        setView({ type: 'commit-file', hash, filePath });
-    }, []);
+        setView(commitFileView(hash, filePath));
+    }, [commitFileView]);
 
     const navigateToCommitFile = useCallback((hash: string, filePath: string, target: 'first' | 'last') => {
         setHunkTarget(target);
-        setView({ type: 'commit-file', hash, filePath });
-    }, []);
+        setView(commitFileView(hash, filePath));
+    }, [commitFileView]);
 
     const selectBranchRange = useCallback(() => {
         setHunkTarget(undefined);
@@ -233,7 +241,7 @@ export function useRepoGitSelection({
                 const commit = toCommitItem(result);
                 // A deep-linked commit FILE keeps its file once the SHA resolves.
                 setView(options?.filePath
-                    ? { type: 'commit-file', hash: commit.hash, filePath: options.filePath }
+                    ? { type: 'commit-file', hash: commit.hash, filePath: options.filePath, commit }
                     : { type: 'commit', commit });
             })
             .catch(() => {
@@ -294,7 +302,7 @@ export function useRepoGitSelection({
                 withCommit(persisted.hash, commit => ({ type: 'commit', commit }));
                 return;
             case 'commit-file':
-                withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath }));
+                withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath, commit }));
                 return;
             case 'multi-commit': {
                 const found = persisted.hashes.map(loadedCommit).filter((c): c is GitCommitItem => !!c);
@@ -344,7 +352,7 @@ export function useRepoGitSelection({
 
     const selectedCommit = useMemo(() => {
         if (view?.type === 'commit') return view.commit;
-        if (view?.type === 'commit-file') return commits.find(c => c.hash === view.hash) ?? null;
+        if (view?.type === 'commit-file') return view.commit ?? commits.find(c => c.hash === view.hash) ?? null;
         return null;
     }, [view, commits]);
 

@@ -83,6 +83,7 @@ let lookupEnabled = true;
 
 import { useRepoGitData } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitData';
 import { useRepoGitSelection } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitSelection';
+import { persistGitView } from '../../../../src/server/spa/client/react/features/git/repoGitTab/selectionModel';
 import { useGitOperationActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitOperationActions';
 import { useGitAutoPullController } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoPullController';
 import { useGitAutoRefresh, GIT_AUTO_REFRESH_INTERVAL_MS } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoRefresh';
@@ -546,12 +547,32 @@ describe('useRepoGitSelection', () => {
             expect(clientFor(WS).git.getCommit).toHaveBeenCalledWith(WS, remote.hash);
         });
 
-        it('keeps the file when a commit file needs a lookup', async () => {
+        it('keeps the file and the looked-up commit when a commit file needs a lookup', async () => {
             const remote = commit('ffffffffffff');
             clientFor(WS).git.getCommit.mockResolvedValue(remote);
             const { result } = setup();
             act(() => result.current.hydrateFromInitialLoad([], { type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
-            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
+            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts', commit: remote }));
+            expect(result.current.selectedCommit).toEqual(remote);
+            expect(persistGitView(result.current.view!)).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' });
+        });
+
+        it('keeps a looked-up commit (e.g. opened from blame) when moving to its files', async () => {
+            const remote = commit('ffffffffffff');
+            clientFor(WS).git.getCommit.mockResolvedValue(remote);
+            const { result } = setup([commit('aaaaaaaaaaaa')]);
+            act(() => result.current.hydrateFromInitialLoad([], { type: 'commit', hash: remote.hash }));
+            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit', commit: remote }));
+
+            act(() => result.current.navigateToCommitFile(remote.hash, 'src/a.ts', 'first'));
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts', commit: remote });
+            act(() => result.current.selectCommitFile(remote.hash, 'src/b.ts'));
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/b.ts', commit: remote });
+            expect(result.current.selectedCommit).toEqual(remote);
+
+            // Another commit's file never inherits it.
+            act(() => result.current.selectCommitFile('aaaaaaaaaaaa', 'src/c.ts'));
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: 'aaaaaaaaaaaa', filePath: 'src/c.ts' });
         });
 
         it('says so when a restored commit no longer exists, and any selection clears the notice', async () => {
@@ -640,10 +661,10 @@ describe('useRepoGitSelection', () => {
 
         it('follows a same-SHA file change', () => {
             const { result } = mounted({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
-            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts', commit: a });
 
             act(() => result.current.switchViewScope({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' }));
-            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' });
+            expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts', commit: a });
         });
 
         it('follows commit → branch range → branch file', () => {

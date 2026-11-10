@@ -79,7 +79,10 @@ refresh, and the two layouts. Everything else lives here.
   resolver: a commit in the loaded page, or the one an opener handed over
   (`knownCommit.ts`), shows at once; anything else is re-read by exact hash
   with `getCommit`, whatever `gitCommitLookup` says, and a commit that is gone
-  leaves a `restoreNotFound` notice. The `branch-range` and `working-changes`
+  leaves a `restoreNotFound` notice. A live `commit-file` view carries the
+  resolved commit (and keeps the shown commit when moving between its files),
+  so a commit outside the loaded page keeps its header, description and hash
+  switcher; `persistGitView` strips it. The `branch-range` and `working-changes`
   sentinels belong to the `coc://git` grammar
   (`unified-right-panel/unifiedPanelAddresses.ts`). Search-box SHA lookups
   (`lookupCommit`) are the only path gated on `gitCommitLookup` and
