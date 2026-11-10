@@ -1151,7 +1151,6 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
-        ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
         ...(typeof value.workPath === 'string' ? { workPath: value.workPath } : {}),
         ...(kind === 'html-page' ? { htmlPageId: value.htmlPageId as string } : {}),
         ...(kind === 'browser' ? { browserUrl: value.browserUrl as string } : {}),
@@ -1162,14 +1161,6 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value !== '';
-}
-
-function notesViewField(raw: unknown): Pick<UnifiedPanelTab, 'notesView'> {
-    if (raw === null || typeof raw !== 'object') {
-        return {};
-    }
-    const notePath = (raw as Record<string, unknown>).notePath;
-    return isNonEmptyString(notePath) ? { notesView: { notePath } } : {};
 }
 
 function parseList(raw: unknown, expectedScopeKey: string): UnifiedPanelTab[] {

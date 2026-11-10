@@ -508,7 +508,10 @@ describe('SPA browser socket relay', () => {
         expect(first.workspaceTabs).toHaveLength(1);
         expect(first.workspaceTabs[0]).toMatchObject({ kind: 'browser', resourceId: 'browser-agent', ownerWorkspaceId: 'w', browserUrl: 'https://fixture.test/' });
         h.reveal({ workspaceId: 'w', processId: 'q', viewId: 'browser-agent', url: 'https://fixture.test/next' });
-        expect(readUnifiedPanelState('w').workspaceTabs).toHaveLength(1);
+        const reopened = readUnifiedPanelState('w').workspaceTabs;
+        expect(reopened).toHaveLength(1);
+        expect(reopened[0]).toEqual(first.workspaceTabs[0]);
+        expect(reopened[0].rawSource).toBeUndefined();
         h.reveal({ workspaceId: 'other', processId: 'p', viewId: 'other', url: 'https://other.test/' });
         expect(readUnifiedPanelState('other').workspaceTabs).toHaveLength(0);
         h.relay.dispose();

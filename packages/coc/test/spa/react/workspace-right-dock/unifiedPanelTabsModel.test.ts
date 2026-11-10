@@ -1165,6 +1165,28 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
 describe('notes tab view state', () => {
     const notesInput = notesPageInput({ ownerWorkspaceId: WS, chatId: null, browserChatId: null });
 
+    it('migrates a legacy Notes selection into its address while preserving its owner and active tab', () => {
+        const legacyId = ['notes', '@workspace', 'remote:server:member', 'notes'].join('|');
+        const restored = parseUnifiedPanelState(JSON.stringify({
+            version: UNIFIED_PANEL_STATE_VERSION,
+            workspaceTabs: [{
+                id: legacyId, kind: 'notes', ownerWorkspaceId: 'member', ownerRoutingRef: 'remote:server:member',
+                chatId: null, resourceId: 'notes', label: 'Notes', notesView: { notePath: 'Plans/Release.md' },
+            }],
+            chatTabs: {},
+            activeByScope: { [WORKSPACE_SCOPE_KEY]: legacyId },
+        }));
+
+        expect(restored.workspaceTabs).toHaveLength(1);
+        expect(restored.workspaceTabs[0]).toMatchObject({
+            kind: 'browser', ownerWorkspaceId: 'member', ownerRoutingRef: 'remote:server:member',
+            browserUrl: 'coc://notes/Plans/Release.md',
+        });
+        expect(restored.workspaceTabs[0].notesView).toBeUndefined();
+        expect(activeTabId(restored, null)).toBe(restored.workspaceTabs[0].id);
+        expect(parseUnifiedPanelState(serializeUnifiedPanelState(restored)).workspaceTabs).toEqual(restored.workspaceTabs);
+    });
+
     it('persists and restores the selected note in the deep address', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
         state = updateNotesView(state, state.workspaceTabs[0].id, 'Plans/Release.md');
