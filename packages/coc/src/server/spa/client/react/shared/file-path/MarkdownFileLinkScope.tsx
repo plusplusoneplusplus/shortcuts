@@ -14,6 +14,8 @@ import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { SourceCanvasFileRef } from '../../features/chat/source-canvas/types';
 import { isSourceCanvasDirectoryPath } from '../file-path-utils';
 import type { FileReference } from './file-path-preview';
+import { OPEN_CANVAS_REFERENCE_EVENT } from '../canvasLink';
+import { openCanvasLink } from '../../features/repo-detail/unified-right-panel/openCanvasLink';
 
 const PreviewPane = lazy(() => import('../../features/repo-detail/explorer/PreviewPane').then(module => ({ default: module.PreviewPane })));
 
@@ -29,6 +31,9 @@ export function MarkdownFileLinkScope({ workspaceId, routingRef, sourceFilePath,
     const host = useUnifiedPanelHost();
     const owner = useWorkspaceOwner(workspaceId);
     const workspaces = useWorkspacesWithRemoteOptional();
+    // Read at click time: only the canvas tab's repo label uses it.
+    const workspacesRef = useRef(workspaces);
+    workspacesRef.current = workspaces;
     const [error, setError] = useState<string | null>(null);
     const fallbackReveal = useRef(0);
     const [fallback, setFallback] = useState<OpenUnifiedTabInput | null>(null);
@@ -110,10 +115,29 @@ export function MarkdownFileLinkScope({ workspaceId, routingRef, sourceFilePath,
                 if (!controller.signal.aborted) setError(getSpaCocClientErrorMessage(cause, 'Failed to open file.'));
             });
         };
+        const handleCanvas = (event: Event) => {
+            if (event.defaultPrevented) return;
+            const canvasId = (event as CustomEvent<{ canvasId?: string }>).detail?.canvasId;
+            if (!canvasId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            request?.abort();
+            // A remote resource's canvas lives on its remote clone, so the
+            // clone key routes the tab's requests there.
+            const result = openCanvasLink({
+                canvasId,
+                ownerWorkspaceId: parseRemoteCloneKey(ownerRoute) ? ownerRoute! : rawWorkspaceId,
+                host,
+                workspaces: workspacesRef.current,
+            });
+            setError(result.ok ? null : result.reason);
+        };
         element.addEventListener('coc-open-file-reference', handle);
+        element.addEventListener(OPEN_CANVAS_REFERENCE_EVENT, handleCanvas);
         return () => {
             request?.abort();
             element.removeEventListener('coc-open-file-reference', handle);
+            element.removeEventListener(OPEN_CANVAS_REFERENCE_EVENT, handleCanvas);
         };
     }, [workspaceId, rawWorkspaceId, ownerRoute, sourceFilePath, host, onNavigate]);
 

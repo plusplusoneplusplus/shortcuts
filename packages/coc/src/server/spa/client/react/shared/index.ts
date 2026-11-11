@@ -118,3 +118,4 @@ export { SelectionActionsGroup, SELECTION_ACTION_BUTTON_CLASS } from './Selectio
 export type { SelectionActionsGroupProps } from './SelectionActionsGroup';
 export { enqueueReviewChat } from './reviewChatRequest';
 export type { ReviewChatComposerSendOptions } from './reviewChatRequest';
+export { OPEN_CANVAS_REFERENCE_EVENT, parseCanvasLink } from './canvasLink';

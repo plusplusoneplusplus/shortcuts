@@ -53,6 +53,9 @@ import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
 import { jumpToHeadingAnchor } from './noteTocUtils';
+import { parseCanvasLink } from '../../../shared/canvasLink';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvasLink';
 // Every rule in this stylesheet is scoped to `.note-editor .ProseMirror`, so it
 // belongs to the editor, not to the note page that happens to host it. Imported
 // here (rather than only from NoteEditor) so a mount outside Notes — the
@@ -187,6 +190,10 @@ export function RichEditorCore({
     const [linkHandlerConfig] = useLinkHandlers();
     const linkHandlerConfigRef = useRef(linkHandlerConfig);
     linkHandlerConfigRef.current = linkHandlerConfig;
+    // Read at click time by `canvas://` links, which open a panel canvas tab.
+    const canvasLinkContext = { host: useUnifiedPanelHost(), workspaceId };
+    const canvasLinkContextRef = useRef(canvasLinkContext);
+    canvasLinkContextRef.current = canvasLinkContext;
 
     // AC-03: the ⛶ Popup button on a decorated YouTube link asks us to open the
     // video in a Dialog. A `useState` setter is referentially stable, so wiring
@@ -252,6 +259,8 @@ export function RichEditorCore({
             TaskItem.configure({ nested: true }),
             Link.configure({
                 openOnClick: false,
+                // Keep `canvas://<id>` hrefs through parse, render and save.
+                protocols: ['canvas'],
                 HTMLAttributes: {
                     rel: 'noopener noreferrer',
                     target: '_blank',
@@ -377,11 +386,23 @@ export function RichEditorCore({
                     }
                     return true;
                 };
+                // A `canvas://<id>` link opens the canvas as a panel tab. With
+                // no panel or visible chat it is a no-op, never a window.open.
+                const openIfCanvas = (href: string | null | undefined): boolean => {
+                    const canvasLink = href ? parseCanvasLink(href) : null;
+                    if (!canvasLink) return false;
+                    const { host, workspaceId: ownerWorkspaceId } = canvasLinkContextRef.current;
+                    if (ownerWorkspaceId) {
+                        openCanvasLink({ canvasId: canvasLink.canvasId, ownerWorkspaceId, host });
+                    }
+                    return true;
+                };
                 const { state } = view;
                 const $pos = state.doc.resolve(pos);
                 const linkMark = $pos.marks().find((m: any) => m.type.name === 'link');
                 if (linkMark?.attrs.href) {
                     if (jumpIfAnchor(linkMark.attrs.href)) return true;
+                    if (openIfCanvas(linkMark.attrs.href)) return true;
                     openLink(linkMark.attrs.href, linkHandlerConfigRef.current);
                     return true;
                 }
@@ -390,6 +411,7 @@ export function RichEditorCore({
                 // against the page URL, so a fragment arrives absolute.
                 const anchor = (event.target as HTMLElement).closest?.('a');
                 if (anchor && jumpIfAnchor(anchor.getAttribute('href'))) return true;
+                if (anchor && openIfCanvas(anchor.getAttribute('href'))) return true;
                 if (anchor?.href) {
                     openLink(anchor.href, linkHandlerConfigRef.current);
                     return true;
