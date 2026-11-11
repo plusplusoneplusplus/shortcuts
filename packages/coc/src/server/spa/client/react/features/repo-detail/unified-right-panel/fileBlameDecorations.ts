@@ -84,7 +84,6 @@ export function buildBlameDecorations(
             decorations.push({
                 range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
                 options: {
-                    description: 'file-blame',
                     // Monaco drops injected text on an empty range without this.
                     showIfCollapsed: true,
                     hoverMessage,
@@ -121,7 +120,10 @@ export function attachFileBlameDecorations(
     const change = model.onDidChangeContent(() => collection.set(build()));
     const click = editor.onMouseDown(event => {
         if (event.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) return;
-        const hash = event.target.detail?.injectedText?.options.attachedData;
+        // Monaco exposes injected text at runtime but omits it from its public mouse-target types.
+        if (!('detail' in event.target)) return;
+        const detail = event.target.detail as { injectedText?: { options: monacoEditor.InjectedTextOptions } };
+        const hash = detail?.injectedText?.options.attachedData;
         if (typeof hash === 'string' && blame.commits[hash]) onOpenCommit(hash);
     });
     return () => {

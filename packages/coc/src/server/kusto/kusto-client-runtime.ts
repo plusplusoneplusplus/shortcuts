@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { buildKustoClient, type KustoClientFactory, type KustoClientLike } from './kusto-exec';
+import { buildKustoClient, type KustoClientFactory, type KustoClientLike, type KustoCommandClientLike, type KustoCommandClientFactory } from './kusto-exec';
 import {
     KustoCredentialError,
     RustKustoCredential,
@@ -13,19 +13,22 @@ import {
 export interface KustoToolsRuntime {
     getEnabled(): boolean;
     clientFactory: KustoClientFactory;
+    commandClientFactory?: KustoCommandClientFactory;
 }
+
+type RuntimeClient = KustoClientLike & Partial<KustoCommandClientLike>;
 
 interface OwnedClient {
     credential: RustKustoCredential;
-    client?: KustoClientLike;
-    pending: Promise<KustoClientLike>;
+    client?: RuntimeClient;
+    pending: Promise<KustoClientLike & KustoCommandClientLike>;
 }
 
 /** One owner per server host; configuration and provider state never cross hosts. */
 export function createKustoClientRuntime(
     getConfig: () => KustoAuthConfig,
     options: {
-        buildClient?: typeof buildKustoClient;
+        buildClient?: (cluster: string, credential: RustKustoCredential) => Promise<RuntimeClient>;
         createProvider?: KustoProviderFactory;
         diagnostic?: (event: string) => void;
     } = {},
@@ -67,7 +70,7 @@ export function createKustoClientRuntime(
         return config;
     }
 
-    const clientFactory: KustoClientFactory = async ({ clusterUrl }) => {
+    const getClient = async (clusterUrl: string): Promise<KustoClientLike & KustoCommandClientLike> => {
         // Validate the target before metadata I/O.
         const cluster = validateKustoCluster(clusterUrl);
         const config = resolveConfigForRun();
@@ -83,22 +86,28 @@ export function createKustoClientRuntime(
                     throw new KustoCredentialError('Kusto client configuration changed during construction. Run again explicitly.');
                 }
                 owned.client = sdkClient;
+                // Apply the same live ownership/auth checks to both explicit SDK contracts.
+                const execute = async (method: 'executeQuery' | 'executeMgmt', database: string, text: string, signal?: AbortSignal) => {
+                    signal?.throwIfAborted();
+                    try { resolveConfigForRun(); }
+                    catch (error) { clear(); throw error; }
+                    if (cache !== owner) {
+                        throw new KustoCredentialError('Kusto client configuration changed. Run again explicitly.');
+                    }
+                    const handler = sdkClient[method];
+                    if (!handler) throw new Error('Kusto command execution is unavailable on this host.');
+                    try { return await handler.call(sdkClient, database, text, ...(signal ? [signal] : [])); }
+                    catch (error) {
+                        // The SDK wraps credential errors; expose the native redacted error.
+                        if (error instanceof Error && error.name === 'KustoAuthenticationError') {
+                            throw kustoAuthError(Reflect.get(error, 'inner'));
+                        }
+                        throw error;
+                    }
+                };
                 return {
-                    execute: async (database, query) => {
-                        try { resolveConfigForRun(); }
-                        catch (error) { clear(); throw error; }
-                        if (cache !== owner) {
-                            throw new KustoCredentialError('Kusto client configuration changed. Run again explicitly.');
-                        }
-                        try { return await sdkClient.execute(database, query); }
-                        catch (error) {
-                            // The SDK wraps credential errors; expose the native redacted error.
-                            if (error instanceof Error && error.name === 'KustoAuthenticationError') {
-                                throw kustoAuthError(Reflect.get(error, 'inner'));
-                            }
-                            throw error;
-                        }
-                    },
+                    executeQuery: (database, query, signal) => execute('executeQuery', database, query, signal),
+                    executeMgmt: (database, command, signal) => execute('executeMgmt', database, command, signal),
                     close: () => sdkClient.close?.(),
                 };
             }).catch((error: unknown) => {
@@ -113,8 +122,15 @@ export function createKustoClientRuntime(
         return entry.pending;
     };
 
+    const clientFactory: KustoClientFactory = ({ clusterUrl }) => getClient(clusterUrl);
+    const commandClientFactory: KustoCommandClientFactory = async ({ clusterUrl }) => {
+        const client = await getClient(clusterUrl);
+        return { executeMgmt: (database, command, signal) => client.executeMgmt(database, command, signal) };
+    };
+
     return {
         clientFactory,
+        commandClientFactory,
         getEnabled: () => getConfig().enabled === true,
         /** Called after host config updates; lazy reads also detect refresh() changes. */
         syncConfig,

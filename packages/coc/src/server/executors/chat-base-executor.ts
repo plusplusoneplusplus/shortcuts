@@ -405,7 +405,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     };
 
     /** Run a script with any chat's unattended CoC tools, narrowed to `allowTools`. No provider turn starts. */
-    readonly runOwnerScript: OwnerScriptRunner = async ({ workspaceId, processId, code, state, allowTools, signal }) => {
+    readonly runOwnerScript: OwnerScriptRunner = async ({ workspaceId, processId, code, state, allowTools, signal, includeMcpTools }) => {
         signal?.throwIfAborted();
         const owner = await this.store.getProcess(processId, workspaceId);
         signal?.throwIfAborted();
@@ -414,7 +414,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             throw new OwnerScriptUnavailableError();
         }
         return runScriptWithOwnerTools({
-            code, state, allowTools, signal,
+            code, state, allowTools, signal, includeMcpTools,
             ownerTools: this.buildOwnerScriptTools(owner, workspaceId, this.dataDir),
         });
     };

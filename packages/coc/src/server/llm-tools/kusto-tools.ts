@@ -1,18 +1,8 @@
 /**
- * Kusto LLM tool — `kusto_query` (AC-03).
- *
- * A single tool the AI calls to run a Kusto query for the user. It executes the
- * query server-side through the same {@link runKustoCanvas} path used by the
- * AC-02 Run endpoint (official `azure-kusto-data` SDK + host-selected credential),
- * persists the result into a new or existing Kusto canvas, and returns to the
- * model a compact view — column schema, a capped row sample, the total row
- * count — plus a `canvas://<id>` embed link so the canvas renders inline in
- * chat and opens in the side panel.
- *
- * The AI no longer shells out to a Kusto CLI: query execution, truncation, and
- * persistence all funnel through the shared Kusto service.
- *
- * Gated by the `kusto.enabled` feature flag (AC-08) at the addon level.
+ * Kusto tools share the host-owned execution runtime. `execute_kusto_query` returns
+ * bounded structured results; `kusto_query` also persists an interactive canvas.
+ * `execute_kusto_command` uses fresh foreground approval for management commands.
+ * All are gated by `kusto.enabled` during tool assembly.
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -25,7 +15,7 @@ import {
 } from '../canvas/kusto-state';
 import type { KustoChartConfig, KustoChartType } from '@plusplusoneplusplus/coc-client';
 import { runKustoCanvas } from '../kusto/kusto-service';
-import type { KustoClientFactory } from '../kusto/kusto-exec';
+import { executeKustoQuery, executeKustoCommand, type KustoQueryParams, type KustoCommandParams, type KustoCommandClientFactory, type KustoClientFactory } from '../kusto/kusto-exec';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
 // ============================================================================
@@ -43,6 +33,10 @@ export interface KustoToolsDeps {
     canvasStore?: CanvasStore;
     /** Injectable Kusto SDK client factory (mocked in tests). */
     clientFactory?: KustoClientFactory;
+    /** Separate management SDK contract, dispatched only after foreground approval. */
+    commandClientFactory?: KustoCommandClientFactory;
+    /** Live host enablement, checked before standalone execution (including mocks). */
+    getEnabled?: () => boolean;
     /** Injectable clock for deterministic tests. */
     now?: () => string;
 }
@@ -80,7 +74,7 @@ function normalizeChartConfig(raw: KustoChartConfig | undefined): KustoChartConf
 // Tool Factory
 // ============================================================================
 
-export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unknown> } {
+export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unknown>; executeKustoQuery: Tool<unknown>; executeKustoCommand: Tool<unknown> } {
     const store = deps.canvasStore ?? new CanvasStore(deps.dataDir);
 
     const emitUpdate = (canvasId: string, title: string, revision: number): void => {
@@ -88,6 +82,78 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             emitCanvasUpdated(deps.processStore, deps.processId, { canvasId, title, revision, editor: 'ai', canvasType: 'kusto' });
         }
     };
+
+    /** Shared by `execute_kusto_query` and `kusto_query`: live enablement plus turn cancellation. */
+    const runQuery = async (params: KustoQueryParams, signal?: AbortSignal) => {
+        if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
+        return executeKustoQuery(params, { clientFactory: deps.clientFactory, signal });
+    };
+
+    const executeQuery = defineTool<Pick<KustoQueryArgs, 'query' | 'clusterUrl' | 'database'>>('execute_kusto_query', {
+        description:
+            'Execute a read-only KQL query against Azure Data Explorer using the owning server\'s selected '
+            + 'account. Returns JSON-safe columns, rows, rowCount before truncation, and truncated, bounded '
+            + 'to 10,000 rows and 8 MiB. Does not create or update a canvas. Management commands are rejected.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Read-only KQL query text.' },
+                clusterUrl: { type: 'string', description: 'Cluster URL, e.g. "https://help.kusto.windows.net".' },
+                database: { type: 'string', description: 'Database name.' },
+            },
+            required: ['query', 'clusterUrl', 'database'],
+            additionalProperties: false,
+        },
+        handler: async (args, invocation) => {
+            const query = typeof args?.query === 'string' ? args.query : '';
+            const clusterUrl = typeof args?.clusterUrl === 'string' ? args.clusterUrl : '';
+            const database = typeof args?.database === 'string' ? args.database : '';
+            if (!query.trim()) return { success: false, error: 'query is required' };
+            if (!clusterUrl.trim()) return { success: false, error: 'clusterUrl is required' };
+            if (!database.trim()) return { success: false, error: 'database is required' };
+            try {
+                const result = await runQuery({ query, clusterUrl, database }, invocation?.signal);
+                return { success: true, ...result };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+    });
+
+    // This fixed tool name is always gated by applyLlmToolApprovalGate, including
+    // unattended owner scripts. No model-supplied approval field is accepted.
+    const executeCommand = defineTool<KustoCommandParams>('execute_kusto_command', {
+        description: 'Execute a Kusto management command using the owning server account. '
+            + 'Requires fresh explicit approval in a foreground chat for every call. '
+            + 'Unavailable to background scripts. Returns bounded JSON-safe results without saving a canvas.',
+        parameters: {
+            type: 'object',
+            properties: {
+                command: { type: 'string', description: 'Management command text beginning with a dot.' },
+                clusterUrl: { type: 'string', description: 'Azure Data Explorer cluster URL.' },
+                database: { type: 'string', description: 'Database name.' },
+            },
+            required: ['command', 'clusterUrl', 'database'],
+            additionalProperties: false,
+        },
+        handler: async (args, invocation) => {
+            const command = typeof args?.command === 'string' ? args.command : '';
+            const clusterUrl = typeof args?.clusterUrl === 'string' ? args.clusterUrl : '';
+            const database = typeof args?.database === 'string' ? args.database : '';
+            if (!command.trim()) return { success: false, error: 'command is required' };
+            if (!clusterUrl.trim()) return { success: false, error: 'clusterUrl is required' };
+            if (!database.trim()) return { success: false, error: 'database is required' };
+            try {
+                if (deps.getEnabled && !deps.getEnabled()) throw new Error('Kusto is disabled on the server host.');
+                const result = await executeKustoCommand({ command, clusterUrl, database }, {
+                    clientFactory: deps.commandClientFactory, signal: invocation?.signal,
+                });
+                return { success: true, ...result };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+    });
 
     const kustoQuery = defineTool<KustoQueryArgs>('kusto_query', {
         description:
@@ -122,7 +188,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             },
             required: ['query', 'clusterUrl', 'database'],
         },
-        handler: async (args) => {
+        handler: async (args, invocation) => {
             const a = args ?? ({} as KustoQueryArgs);
             const query = typeof a.query === 'string' ? a.query : '';
             const clusterUrl = typeof a.clusterUrl === 'string' ? a.clusterUrl : '';
@@ -169,7 +235,9 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
             const outcome = await runKustoCanvas(store, deps.workspaceId, canvasId, {
                 editor: 'ai',
                 overrides: { query, clusterUrl, database },
-                ...(deps.clientFactory ? { clientFactory: deps.clientFactory } : {}),
+                executeQuery: params => runQuery(params, invocation?.signal),
+                // A cancelled turn must not write a late result or abort error into the canvas.
+                beforePersist: async () => invocation?.signal?.throwIfAborted(),
                 ...(deps.now ? { now: deps.now } : {}),
             });
 
@@ -212,5 +280,5 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
         },
     });
 
-    return { kustoQuery: kustoQuery as Tool<unknown> };
+    return { kustoQuery: kustoQuery as Tool<unknown>, executeKustoQuery: executeQuery as Tool<unknown>, executeKustoCommand: executeCommand as Tool<unknown> };
 }

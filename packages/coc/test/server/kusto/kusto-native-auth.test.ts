@@ -99,7 +99,7 @@ describe('Kusto production adapter with the actual Rust addon and synthetic CLI'
         const runtime = createKustoClientRuntime(() => config, {
             diagnostic: vi.fn(),
             buildClient: async (_cluster, credential) => ({
-                execute: async () => {
+                executeQuery: async () => {
                     await credential!.getToken(`${resource}/.default`);
                     return { primaryResults: [{
                         columns: [{ name: 'auth_check', type: 'long' }],
@@ -124,7 +124,7 @@ describe('Kusto production adapter with the actual Rust addon and synthetic CLI'
         const runtime = createKustoClientRuntime(() => config, {
             diagnostic,
             buildClient: async (_cluster, credential) => ({
-                execute: async () => {
+                executeQuery: async () => {
                     const token = await credential!.getToken([`${resource}/.default`]);
                     expect(token?.expiresOnTimestamp).toBeGreaterThan(Date.now() + 60_000);
                     return { primaryResults: [{
@@ -223,6 +223,90 @@ describe('actual Kusto SDK credential interface without network', () => {
         expect(calls().every(args => !args.includes('set') && !args.includes('login') && !args.includes('logout'))).toBe(true);
     });
 
+    it.each([
+        '.drop table T',
+        '// leading comment\n.drop table T',
+        '/* leading comment */ .set-or-append T <| print x=1',
+        'set request_readonly=false; print x=1',
+    ])('keeps command and override text on the read-only query HTTP contract: %s', async query => {
+        const { CloudSettings, Client } = await import('azure-kusto-data');
+        vi.spyOn(CloudSettings, 'getCloudInfoForCluster').mockResolvedValue(CloudSettings.defaultCloudInfo);
+        const dispatch = vi.spyOn(Client.prototype, 'execute');
+        const management = vi.spyOn(Client.prototype, 'executeMgmt');
+        const post = vi.spyOn(axios.Axios.prototype, 'post').mockRejectedValue(new Error('service rejected request'));
+        const client = await buildKustoClient(clusterUrl, {
+            getToken: async () => ({ token: 'opaque-fixture', expiresOnTimestamp: Date.now() + 120_000 }),
+        });
+        owners.push({ dispose: () => client.close?.() });
+        // Call the adapter directly to bypass local text checks and prove the
+        // installed SDK preserves the protocol boundary for arbitrary text.
+        await expect(client.executeQuery('FixtureDB', query)).rejects.toThrow('service rejected request');
+        expect(post).toHaveBeenCalledTimes(1);
+        const [url, body] = post.mock.calls[0];
+        expect(url).toBe(`${clusterUrl}/v2/rest/query`);
+        expect(JSON.parse(body as string)).toMatchObject({
+            db: 'FixtureDB', csl: query, properties: { Options: { request_readonly: true } },
+        });
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(management).not.toHaveBeenCalled();
+    });
+
+    it.each(['executeQuery', 'executeMgmt'] as const)('cancels only the owning SDK %s request and keeps concurrent and later queries usable', async method => {
+        const { CloudSettings } = await import('azure-kusto-data');
+        vi.spyOn(CloudSettings, 'getCloudInfoForCluster').mockResolvedValue(CloudSettings.defaultCloudInfo);
+        const requests: Array<{ token: import('axios').CancelToken; destroy: ReturnType<typeof vi.spyOn>; finish: () => void }> = [];
+        const post = vi.spyOn(axios.Axios.prototype, 'post').mockImplementation(function (this: import('axios').Axios) {
+            return new Promise(resolve => {
+                requests.push({ token: this.defaults.cancelToken!, destroy: vi.spyOn(this.defaults.httpsAgent, 'destroy'), finish: () => resolve({ status: 200, data: [] }) });
+            });
+        });
+        const getToken = vi.fn(async () => ({ token: 'opaque-fixture', expiresOnTimestamp: Date.now() + 120_000 }));
+        const client = await buildKustoClient(clusterUrl, { getToken });
+        owners.push({ dispose: () => client.close?.() });
+        const controller = new AbortController();
+        const first = client[method]('DB', method === 'executeMgmt' ? '.show tables' : 'print x=1', controller.signal);
+        const second = client.executeQuery('DB', 'print x=2');
+        await vi.waitFor(() => expect(requests).toHaveLength(2));
+        controller.abort(new Error('query cancelled'));
+        await expect(first).rejects.toThrow('query cancelled');
+        expect(requests[0].token.reason).toBeDefined();
+        expect(requests[0].destroy).toHaveBeenCalledOnce();
+        expect(requests[1].destroy).not.toHaveBeenCalled();
+        expect(requests[1].token.reason).toBeUndefined();
+        requests[0].finish(); // Late HTTP completion must not publish a result.
+        requests[1].finish();
+        await expect(second).resolves.toBeDefined();
+        expect(requests[1].destroy).toHaveBeenCalledOnce();
+        const third = client.executeQuery('DB', 'print x=3');
+        await vi.waitFor(() => expect(requests).toHaveLength(3));
+        requests[2].finish();
+        await expect(third).resolves.toBeDefined();
+        expect(post).toHaveBeenCalledTimes(3);
+        expect(getToken).toHaveBeenCalledTimes(3);
+        client.close?.();
+        await expect(client.executeQuery('DB', 'print x=4')).rejects.toThrow('owner is closed');
+        expect(post).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['executeQuery', 'executeMgmt'] as const)('host disposal rejects pending %s authentication without cancelling the shared credential', async method => {
+        const { CloudSettings, Client } = await import('azure-kusto-data');
+        vi.spyOn(CloudSettings, 'getCloudInfoForCluster').mockResolvedValue(CloudSettings.defaultCloudInfo);
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => { started = resolve; });
+        const getToken = vi.fn(() => {
+            started();
+            return new Promise<never>(() => {});
+        });
+        const close = vi.spyOn(Client.prototype, 'close');
+        const client = await buildKustoClient(clusterUrl, { getToken });
+        const run = client[method]('DB', method === 'executeMgmt' ? '.show tables' : 'print x=1');
+        await ready;
+        client.close?.();
+        await expect(run).rejects.toThrow('owner is closed');
+        expect(close).toHaveBeenCalled();
+        expect(getToken).toHaveBeenCalledTimes(1);
+    });
+
     it('the SDK builder refuses a missing credential rather than creating another auth path', async () => {
         await expect(buildKustoClient(clusterUrl, undefined!)).rejects.toThrow('requires the host Rust credential');
     });
@@ -257,5 +341,9 @@ describe('actual Kusto SDK credential interface without network', () => {
             [`${expected}/.default`], { requestOptions: { timeout: undefined }, tenantId: undefined },
         ]);
         expect(post).toHaveBeenCalledTimes(2);
+        for (const [url, body] of post.mock.calls) {
+            expect(url).toBe(`${clusterUrl}/v2/rest/query`);
+            expect(JSON.parse(body as string).properties.Options.request_readonly).toBe(true);
+        }
     });
 });

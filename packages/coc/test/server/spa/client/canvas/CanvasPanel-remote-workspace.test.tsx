@@ -14,10 +14,10 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 
 const mocks = vi.hoisted(() => {
     const remote = {
-        get: vi.fn(), save: vi.fn(), list: vi.fn(), create: vi.fn(),
+        get: vi.fn(), save: vi.fn(), run: vi.fn(), list: vi.fn(), create: vi.fn(),
         listVersions: vi.fn(), getVersion: vi.fn(),
         listComments: vi.fn(), addComment: vi.fn(), setCommentStatus: vi.fn(), deleteComment: vi.fn(),
-        notesSaveContent: vi.fn(),
+        notesSaveContent: vi.fn(), sendMessage: vi.fn(),
     };
     // Every local method throws: touching the default client is a test failure,
     // not a silent fallback.
@@ -25,11 +25,11 @@ const mocks = vi.hoisted(() => {
     return {
         remote,
         local: {
-            get: localFail('get'), save: localFail('save'), list: localFail('list'), create: localFail('create'),
+            get: localFail('get'), save: localFail('save'), run: localFail('run'), list: localFail('list'), create: localFail('create'),
             listVersions: localFail('listVersions'), getVersion: localFail('getVersion'),
             listComments: localFail('listComments'), addComment: localFail('addComment'),
             setCommentStatus: localFail('setCommentStatus'), deleteComment: localFail('deleteComment'),
-            notesSaveContent: localFail('notes.saveContent'),
+            notesSaveContent: localFail('notes.saveContent'), sendMessage: localFail('sendMessage'),
         },
     };
 });
@@ -38,10 +38,12 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         canvases: { ...mocks.local, getExtension: vi.fn() },
         notes: { saveContent: mocks.local.notesSaveContent },
+        processes: { sendMessage: mocks.local.sendMessage },
     }),
     getCocClientFor: () => ({
         canvases: { ...mocks.remote, getExtension: vi.fn() },
         notes: { saveContent: mocks.remote.notesSaveContent },
+        processes: { sendMessage: mocks.remote.sendMessage },
     }),
 }));
 
@@ -76,6 +78,8 @@ describe('CanvasPanel on a remote workspace', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://remote.example' }]);
         mocks.remote.get.mockReset().mockResolvedValue(makeCanvas());
+        mocks.remote.run.mockReset();
+        mocks.remote.sendMessage.mockReset().mockResolvedValue(undefined);
         mocks.remote.save.mockReset().mockResolvedValue(makeCanvas({ revision: 3 }));
         mocks.remote.list.mockReset().mockResolvedValue([]);
         mocks.remote.create.mockReset().mockResolvedValue(makeCanvas({ id: 'doc-new', type: 'kusto' }));
@@ -160,6 +164,56 @@ describe('CanvasPanel on a remote workspace', () => {
         await waitFor(() => expect(mocks.remote.notesSaveContent).toHaveBeenCalledWith(
             'ws-remote', 'canvases/doc.md', '# Remote body',
         ));
+    });
+
+    it.each(['ws-remote', 'owner-alias'])('keeps Kusto Run, chart saves and Ask AI on the explicit %s route', async routingRef => {
+        // The raw ID has no registry route in the alias case. Only the host's
+        // explicit alias identifies the server that returned the record.
+        resetCloneRegistryForTests();
+        registerCloneBaseUrls([{ workspaceId: routingRef, baseUrl: 'http://remote.example' }]);
+        const canvas = makeCanvas({
+            type: 'kusto',
+            content: JSON.stringify({
+                query: 'T | take 1', clusterUrl: 'https://help.kusto.windows.net', database: 'Samples',
+                columns: [], rows: [], truncated: false,
+            }),
+        });
+        mocks.remote.get.mockResolvedValue(canvas);
+        mocks.remote.run.mockResolvedValue({ ...canvas, revision: 3, content: JSON.stringify({
+            ...JSON.parse(canvas.content), columns: [{ name: 'Count', type: 'long' }], rows: [[42]],
+            lastRun: { status: 'success', rowCount: 1 },
+        }) });
+        await renderPanel({ routingRef });
+        fireEvent.change(screen.getByTestId('kusto-query'), { target: { value: 'T | count' } });
+        fireEvent.keyDown(screen.getByTestId('kusto-query'), { key: 'Enter', ctrlKey: true });
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision')).toHaveTextContent('rev 3'));
+        expect(screen.getByText('42')).toBeInTheDocument();
+        expect(mocks.remote.run).toHaveBeenCalledExactlyOnceWith('ws-remote', 'doc-abc123', {
+            query: 'T | count', clusterUrl: 'https://help.kusto.windows.net', database: 'Samples',
+        });
+        expect(mocks.local.run).not.toHaveBeenCalled();
+        expect(mocks.remote.save).not.toHaveBeenCalled();
+        expect(mocks.remote.sendMessage).not.toHaveBeenCalled();
+        expect(mocks.local.sendMessage).not.toHaveBeenCalled();
+
+        const result = mocks.remote.run.mock.results[0].value;
+        const saved = await result;
+        mocks.remote.save.mockImplementation((_ws, _id, request) =>
+            Promise.resolve({ ...saved, revision: 4, content: request.content }));
+        fireEvent.click(screen.getByTestId('kusto-view-chart'));
+        fireEvent.click(screen.getByTestId('kusto-chart-type-line'));
+        await waitFor(() => expect(mocks.remote.save).toHaveBeenCalledWith('ws-remote', 'doc-abc123', {
+            expectedRevision: 3, content: expect.any(String),
+        }));
+        expect(mocks.local.save).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('kusto-ask-toggle'));
+        fireEvent.change(screen.getByTestId('kusto-ask-input'), { target: { value: 'explain this result' } });
+        fireEvent.click(screen.getByTestId('kusto-ask-send'));
+        await waitFor(() => expect(mocks.remote.sendMessage).toHaveBeenCalledWith(
+            'proc-1', expect.objectContaining({ content: expect.stringContaining('explain this result') }),
+            { workspace: 'ws-remote' },
+        ));
+        expect(mocks.local.sendMessage).not.toHaveBeenCalled();
     });
 
     it('creates a Kusto canvas on the remote server', async () => {

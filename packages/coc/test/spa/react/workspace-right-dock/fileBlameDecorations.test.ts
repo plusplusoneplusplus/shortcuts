@@ -131,6 +131,9 @@ function fakeEditor(initial: string) {
         click(type: number, attachedData: unknown) {
             mouseListener?.({ target: { type, detail: { injectedText: { options: { attachedData } } } } });
         },
+        clickPlainText(detail?: object) {
+            mouseListener?.({ target: { type: CONTENT_TEXT, ...(detail === undefined ? {} : { detail }) } });
+        },
         hovers() {
             const decorations = editor.createDecorationsCollection.mock.calls[0][0] as { options: { hoverMessage: IMarkdownString } }[];
             return decorations.map(d => d.options.hoverMessage);
@@ -173,6 +176,9 @@ describe('attachFileBlameDecorations', () => {
         fake.click(CONTENT_TEXT, undefined);
         fake.click(CONTENT_TEXT, 'c'.repeat(40));
         fake.click(2, COMMIT_A.hash);
+        fake.clickPlainText();
+        fake.clickPlainText({ mightBeForeignElement: false });
+        fake.clickPlainText({ injectedText: null });
         expect(onOpenCommit).not.toHaveBeenCalled();
     });
 

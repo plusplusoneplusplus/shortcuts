@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     coerceCellValue,
+    MAX_KUSTO_RESULT_BYTES,
     executeKustoQuery,
     type KustoClientFactory,
     type KustoClientLike,
@@ -22,9 +23,9 @@ function mockResponse(
     };
 }
 
-/** A client factory that resolves to a client whose execute() returns `response`. */
+/** A client factory that resolves to a client whose executeQuery() returns `response`. */
 function factoryReturning(response: unknown): KustoClientFactory {
-    return () => ({ execute: async () => response as never }) as unknown as KustoClientLike;
+    return () => ({ executeQuery: async () => response as never }) as unknown as KustoClientLike;
 }
 
 describe('coerceCellValue', () => {
@@ -50,6 +51,13 @@ describe('coerceCellValue', () => {
         expect(coerceCellValue([1, 2])).toBe('[1,2]');
     });
 
+    it('keeps unusual values JSON-safe', () => {
+        expect(coerceCellValue(Symbol('x'))).toBe('Symbol(x)');
+        expect(coerceCellValue(() => 1)).toEqual(expect.any(String));
+        expect(coerceCellValue(new Date(NaN))).toBe('Invalid Date');
+        expect(coerceCellValue({ toJSON: () => undefined })).toEqual(expect.any(String));
+    });
+
     it('keeps safe bigints as numbers and unsafe ones as strings', () => {
         expect(coerceCellValue(10n)).toBe(10);
         expect(coerceCellValue(9007199254740993n)).toBe('9007199254740993');
@@ -58,6 +66,93 @@ describe('coerceCellValue', () => {
 
 describe('executeKustoQuery', () => {
     const params = { clusterUrl: 'https://c.kusto.windows.net', database: 'DB', query: 'T | take 1' };
+
+    it('rejects pre-aborted real and mock calls without constructing a client', async () => {
+        const signal = AbortSignal.abort(new Error('cancelled'));
+        const factory = vi.fn();
+        for (const query of [params.query, 'mock:big']) {
+            await expect(executeKustoQuery({ ...params, query }, { signal, clientFactory: factory }))
+                .rejects.toThrow('cancelled');
+        }
+        expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('cancels waiting for shared construction without closing the client or executing late', async () => {
+        const controller = new AbortController();
+        let finish!: (client: KustoClientLike) => void;
+        const pending = new Promise<KustoClientLike>(resolve => { finish = resolve; });
+        const client = { executeQuery: vi.fn(), close: vi.fn() };
+        const run = executeKustoQuery(params, { signal: controller.signal, clientFactory: () => pending });
+        controller.abort(new Error('cancelled'));
+        await expect(run).rejects.toThrow('cancelled');
+        finish(client);
+        await Promise.resolve();
+        expect(client.executeQuery).not.toHaveBeenCalled();
+        expect(client.close).not.toHaveBeenCalled();
+    });
+
+    it('forwards the signal and rejects late results from an uncooperative query', async () => {
+        const controller = new AbortController();
+        let finish!: (response: ReturnType<typeof mockResponse>) => void;
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => { started = resolve; });
+        const executeQuery = vi.fn(() => {
+            started();
+            return new Promise<ReturnType<typeof mockResponse>>(resolve => { finish = resolve; });
+        });
+        const close = vi.fn();
+        const run = executeKustoQuery(params, {
+            signal: controller.signal, clientFactory: () => ({ executeQuery, close }),
+        });
+        await ready;
+        controller.abort(new Error('cancelled'));
+        await expect(run).rejects.toThrow('cancelled');
+        finish(mockResponse([], []));
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query, controller.signal);
+        expect(close).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        '.show tables',
+        ' \n\t.set-or-append T <| print x=1',
+        '\ufeff.drop table T',
+        '.show tables | count',
+    ])('rejects management text before client construction: %s', async query => {
+        const factory = vi.fn();
+        await expect(executeKustoQuery({ ...params, query }, { clientFactory: factory }))
+            .rejects.toThrow('management commands require explicit approval');
+        expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('uses only executeQuery even when an injected SDK also exposes execute and executeMgmt', async () => {
+        const execute = vi.fn();
+        const executeMgmt = vi.fn();
+        const executeQuery = vi.fn(async () => mockResponse([], []));
+        await executeKustoQuery(params, { clientFactory: () => ({ execute, executeMgmt, executeQuery }) });
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query);
+        expect(execute).not.toHaveBeenCalled();
+        expect(executeMgmt).not.toHaveBeenCalled();
+    });
+
+    it('removes abort listeners after success and query failure', async () => {
+        for (const fail of [false, true]) {
+            const controller = new AbortController();
+            const add = vi.spyOn(controller.signal, 'addEventListener');
+            const remove = vi.spyOn(controller.signal, 'removeEventListener');
+            const run = executeKustoQuery(params, { signal: controller.signal, clientFactory: () => ({
+                executeQuery: async () => {
+                    if (fail) throw new Error('query failed');
+                    return mockResponse([], []);
+                },
+            }) });
+            if (fail) await expect(run).rejects.toThrow('query failed');
+            else await expect(run).resolves.toMatchObject({ rowCount: 0 });
+            expect(add).toHaveBeenCalledTimes(2);
+            for (const [type, listener] of add.mock.calls) {
+                expect(remove).toHaveBeenCalledWith(type, listener);
+            }
+        }
+    });
 
     it('returns typed columns and coerced rows on success', async () => {
         const response = mockResponse(
@@ -89,9 +184,65 @@ describe('executeKustoQuery', () => {
         expect(result.truncated).toBe(true);
     });
 
-    it('propagates a query error from execute()', async () => {
+    it('bounds UTF-8 JSON bytes and retains a prefix with the full count', async () => {
+        const text = '你好'.repeat(10) + JSON.stringify('line\n');
+        const response = mockResponse([{ name: 'text', type: 'string' }], [
+            [text], ['large'.repeat(100)], ['small'],
+        ]);
+        const result = await executeKustoQuery(params, {
+            clientFactory: factoryReturning(response), maxBytes: 256,
+        });
+        expect(result.rows).toEqual([[text]]);
+        expect(result.rowCount).toBe(3);
+        expect(result.truncated).toBe(true);
+        expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(256);
+    });
+
+    it('applies the default byte ceiling to a single oversized row', async () => {
+        const response = mockResponse([{ name: 'text', type: 'string' }], [
+            ['x'.repeat(MAX_KUSTO_RESULT_BYTES)],
+        ]);
+        const result = await executeKustoQuery(params, { clientFactory: factoryReturning(response) });
+        expect(result).toMatchObject({ rows: [], rowCount: 1, truncated: true });
+        expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(MAX_KUSTO_RESULT_BYTES);
+    });
+
+    it('does not convert rows discarded by row or byte limits', async () => {
+        const read = vi.fn(() => { throw new Error('discarded cells must not be read'); });
+        const response = { primaryResults: [{
+            columns: [{ name: 'x', type: 'string' }],
+            rows: () => [{ getValueAt: () => 'x'.repeat(300) }, { getValueAt: read }],
+        }] };
+        for (const limits of [{ cap: 0 }, { cap: 1 }, { maxBytes: 128 }]) {
+            const result = await executeKustoQuery(params, {
+                clientFactory: factoryReturning(response), ...limits,
+            });
+            expect(result.rowCount).toBe(2);
+            expect(result.truncated).toBe(true);
+        }
+        expect(read).not.toHaveBeenCalled();
+    });
+
+    it('rejects oversized column metadata without returning partial JSON', async () => {
+        const response = mockResponse([{ name: 'x'.repeat(300), type: 'string' }], []);
+        await expect(executeKustoQuery(params, {
+            clientFactory: factoryReturning(response), maxBytes: 128,
+        })).rejects.toThrow('column metadata exceeds the byte limit');
+    });
+
+    it.each([
+        { cap: -1 }, { cap: 1.5 }, { cap: NaN }, { cap: Infinity }, { cap: MAX_KUSTO_ROWS + 1 },
+        { maxBytes: 0 }, { maxBytes: 1.5 }, { maxBytes: NaN }, { maxBytes: Infinity },
+        { maxBytes: MAX_KUSTO_RESULT_BYTES + 1 },
+    ])('rejects invalid bounds before creating a client: %j', async limits => {
+        const factory = vi.fn();
+        await expect(executeKustoQuery(params, { clientFactory: factory, ...limits })).rejects.toThrow('cap must be');
+        expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('propagates a query error from executeQuery()', async () => {
         const factory: KustoClientFactory = () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 throw new Error('Semantic error: query is malformed');
             },
         });
@@ -208,7 +359,7 @@ describe('executeKustoQuery — magic mock: queries', () => {
         let called = 0;
         const factory: KustoClientFactory = () => {
             called++;
-            return { execute: async () => response as never } as unknown as KustoClientLike;
+            return { executeQuery: async () => response as never } as unknown as KustoClientLike;
         };
         const result = await executeKustoQuery(
             { ...params, query: 'T | where Name == "mock" | take 1' },

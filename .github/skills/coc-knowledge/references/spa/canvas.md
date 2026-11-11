@@ -153,12 +153,16 @@ from `COPILOT_HOME`, not the cwd), serves a filterable SSE log view, and sends a
 chosen line with nearby lines through `session.send`. Keep such extensions single-file:
 the content hash covers only `extension.mjs` and `package.json`.
 `test/server/canvas-extensions/coc-log-tail.test.ts` runs it through the real host.
+`.github/extensions/coc-chat-viewer` shows a transcript by process ID through the
+tool-script bridge calling `get_conversation` (marked `readOnly` for this);
+`coc-chat-viewer.test.ts` runs it through the real host and owner runtime.
 
 `extension-host.ts` provides the flag-gated stdio runtime. It starts
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
 conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's
 Node-mode environment when needed. The packaged `coc-sdk-resolver.mjs` resolves SDK
-root/subpath imports from CoC, overriding extension-local installations.
+root/subpath imports from CoC, overriding extension-local installations, and maps
+`@coc/canvas-extension-tools` to the packaged CoC adapter.
 
 The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It captures
 `session.resume` declarations and dispatches canvas open/action/close requests.
@@ -168,6 +172,24 @@ key. Unsupported methods return MethodNotFound and log once per extension/method
 Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
 terminate the child; idempotent disposal waits for exit with forced termination
 after two seconds.
+
+The CoC-owned `coc.toolScripts.v1` RPC uses `register { sessionId, tools }`,
+`run { sessionId, requestId, code, state? }` and `cancel { sessionId, requestId }`.
+Extensions call `createToolScriptBridge(session, { tools })` from
+`@coc/canvas-extension-tools`, then `runScript(code, { state?, signal? })`.
+This adapter uses the SDK connection without changing its API or pin. The host
+accepts one declaration of up to 16 registered, scriptable, read-only tools;
+extra payload fields cannot supply ownership or tool grants.
+
+The registry binds workspace/conversation/extension, rechecks owner and live extension
+availability, and invokes `canvas/owner-tool-script-service.ts` through the queue's
+owner runner. Tools intersect owner permissions; nested scripts and the optional MCP
+pair are excluded. Scripts call handlers without provider turns or transcript writes,
+independently of optional canvas host/script flags. Each run has a 30s budget and a
+16 MiB ceiling covering result, logs and envelope; failures return whole JSON outcomes.
+The host accepts four pending runs and 256 KiB of source per run. Request cancellation,
+instance close, owner removal/archive, disablement and host disposal abort pending work.
+Close cancels before waiting on the action queue; other owners retain their work.
 
 `host-registry.ts` owns lazy runtimes by workspace/conversation/extension key.
 Calls serialize per runtime; crash recovery reopens all known instances with their
@@ -303,10 +325,37 @@ status pill, and the Ask AI toggle, then a Results card whose header carries the
 summary, the Table/Chart segmented switch, and CSV download. Chart controls are one toolbar:
 icon buttons for the chart type (`kusto-chart-type-<type>`), an X select, numeric Y
 columns as toggle chips (`aria-pressed`, swatch matches the plotted series), and a
-Split-by select. Run executes server-side via `client.canvases.run(...)` with no AI turn;
+Split-by select. The panel passes its explicit `routingRef` into `KustoView`;
+Run, chart saves and Ask AI resolve through that owner route (`null` means page
+origin), while request payloads retain raw workspace IDs. Inline views without
+an explicit route use workspace ownership. Run executes server-side via `client.canvases.run(...)` with no AI turn;
 Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a chat (and
 not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
 naming `kusto_query`.
+
+`runKustoCanvas` accepts a required query executor, passing it the resolved inputs
+and exact persisted canvas snapshot, including workspace and optional conversation.
+It owns persistence, not SDK construction or execution transport. Built-in Run uses
+`runOwnerToolScript` with the queue's owner runner, narrowed to `execute_kusto_query`
+and without MCP or extension identity. The fixed script passes resolved inputs as
+state, validates the complete tool result and honors owner preferences/approval.
+This internal path needs no optional canvas host/script flags. The route remains
+`client.canvases.run`'s UI transport and has no SDK factory or execution fallback;
+`kusto_query` supplies its shared executor directly as a canvas-producing convenience.
+Run requires the stored conversation to be a live, unarchived chat in the exact
+workspace. Its pre-persistence guard rechecks that owner, live Kusto enablement and
+request cancellation before writing either success or error. `CanvasMutationService`
+tracks request-owned controllers; the server lifecycle fanout aborts the exact owner's
+pending runs on removal/archive and revalidates survivors on workspace-filtered clears.
+Live Kusto disablement and server shutdown abort pending runs; disposal blocks new runs
+and unsubscribes configuration notifications. HTTP disconnects abort only that request.
+Completed runs release their tracking and listeners. Cancelled work cannot persist late
+successes or errors, even if the SDK ignores abort or the owner is restored; shared
+credentials and other owners remain intact. A timeout stores one error and never reruns. Success and
+query-error states use `CanvasStore`'s atomic revision check against that snapshot.
+Concurrent edits or another completed run cause a conflict without saving or notifying. The Run route
+returns HTTP 409 with `revision-conflict`, `currentRevision` and the current canvas;
+`kusto_query` returns a tool failure asking for a reload. Neither path retries execution.
 
 Results use `shared/InteractiveTable`, shared with markdown tables. Unwrapped tables
 with more than twelve visible columns grow past the pane to retain readable
@@ -328,13 +377,30 @@ mode; partial settings fail. Rust resolves and pins active identity on first tok
 use, checks it before cached returns, and rejects changes with `AccountMismatch`.
 A new provider lifecycle is required to select another identity. File edits require
 host refresh or the next manual start. The SDK resolves
-cloud/MFA audiences into the credential's scopes. Clients invalidate on host
+cloud/MFA audiences into the credential's scopes. Host adapters invalidate on host
 identity/flag changes and close on shutdown. Native auth owns token validation,
 expiry, caching and renewal; the adapter maps access token/expiry to the SDK
 credential shape and passes redacted `AuthError` through the SDK error envelope.
 Unknown auth payloads are sanitized without fallback or replay.
 Real standalone execution requires a host client factory;
 unwired callers fail rather than constructing an alternative credential.
+
+Each query or command owns an SDK client because SDK cancellation is client-wide. Request
+abort closes that client and its connection pools, rejects late results and leaves
+shared credentials and concurrent requests intact. Closing the host adapter aborts
+all its requests. Both standalone tools forward their invocation signals through the
+executor and runtime. Cancellation during shared client construction stops waiting
+without disposing shared state.
+
+`kusto-exec.ts` rejects direct management commands on the query path before client
+construction. The query contract exposes `executeQuery`, targeting `/v2/rest/query`
+with `request_readonly: true`; query text cannot override that service request
+option. The separate command factory exposes `executeMgmt` through `/v1/rest/mgmt`,
+sharing host credentials and ownership checks. Tool approval policy lives in
+[LLM Tools](../llm-tools.md#kusto-tools). Both result paths are JSON-safe and capped
+at 10,000 rows and 8 MiB of serialized UTF-8 JSON, including column metadata. Lower per-call limits are
+validated before execution. Results retain a row prefix and count every returned
+row without converting discarded cells; oversized column metadata fails explicitly.
 
 `CanvasPanel`'s header offers a new-Kusto action (`data-testid="canvas-panel-new-kusto"`)
 creating a blank `type: 'kusto'` canvas, best-effort seeding cluster/database from the

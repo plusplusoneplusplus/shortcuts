@@ -44,7 +44,7 @@ import { createCanvasUpdateNotifier } from './canvas-update-notifier';
 import { CanvasMutationService, isAsyncCapability } from './canvas-mutation-service';
 import type { CanvasRunScriptFactory } from './canvas-script-bridge';
 import type { CapabilityAttribution } from './canvas-mutation-service';
-import type { KustoClientFactory } from '../kusto/kusto-exec';
+import type { OwnerScriptRunner } from '../executors/owner-script-runner';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
 const detailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)$/;
@@ -75,8 +75,8 @@ export function registerCanvasRoutes(
     processStore?: ProcessStore,
     /** Live gate for the Kusto feature (AC-08). When it returns false the Run route 404s. */
     getKustoEnabled?: () => boolean,
-    /** Injectable Kusto client factory; defaults to the real SDK. Overridden in tests. */
-    kustoClientFactory?: KustoClientFactory,
+    /** Internal owner runner for built-in Kusto Run; independent of optional canvas script flags. */
+    getOwnerScriptRunner?: () => OwnerScriptRunner | undefined,
     /**
      * Live gate for the canvas host APIs — async capabilities and the
      * `host.complete` they get access to. When it returns false an invocation
@@ -91,7 +91,7 @@ export function registerCanvasRoutes(
     completeFactory?: (attribution: CapabilityAttribution) => CapabilityCompleteFn,
     /** Builds `host.runScript` for async runs, bound to the canvas's owner chat. Absent → `disabled`. */
     runScriptFactory?: CanvasRunScriptFactory,
-): void {
+): CanvasMutationService {
     const store = new CanvasStore(dataDir);
 
     /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
@@ -110,7 +110,7 @@ export function registerCanvasRoutes(
         ...(getCanvasHostApisEnabled ? { getCanvasHostApisEnabled } : {}),
         completeFactory: completeFactory ?? defaultCompleteFactory,
         ...(runScriptFactory ? { runScriptFactory } : {}),
-        ...(kustoClientFactory ? { kustoClientFactory } : {}),
+        getOwnerScriptRunner, processStore, getKustoEnabled,
     });
 
     routes.push({
@@ -520,13 +520,28 @@ export function registerCanvasRoutes(
             if (typeof body.clusterUrl === 'string') overrides.clusterUrl = body.clusterUrl;
             if (typeof body.database === 'string') overrides.database = body.database;
 
-            const outcome = await mutations.runKusto(wsId, canvasId, overrides);
+            const controller = new AbortController();
+            const cancel = () => controller.abort(new Error('Kusto run request disconnected'));
+            res.once('close', cancel);
+            let outcome;
+            try {
+                outcome = await mutations.runKusto(wsId, canvasId, overrides, controller.signal);
+            } finally {
+                res.off('close', cancel);
+            }
 
             if (outcome.kind === 'not-found') {
                 return sendError(res, 404, 'Kusto canvas not found');
             }
             if (outcome.kind === 'wrong-type') {
                 return sendError(res, 400, 'Canvas is not a Kusto canvas');
+            }
+            if (outcome.kind === 'revision-conflict') {
+                return sendJSON(res, 409, {
+                    error: 'revision-conflict',
+                    currentRevision: outcome.currentRevision,
+                    canvas: outcome.canvas,
+                });
             }
             if (outcome.kind === 'persist-failed') {
                 return sendError(res, 500, `Failed to persist run: ${outcome.error}`);
@@ -535,4 +550,5 @@ export function registerCanvasRoutes(
             sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
+    return mutations;
 }

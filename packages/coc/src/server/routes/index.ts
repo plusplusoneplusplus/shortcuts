@@ -297,7 +297,6 @@ export interface RegisterRoutesOptions {
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
     runtimeConfigService?: RuntimeConfigService;
-    kustoClientFactory?: import('../kusto/kusto-exec').KustoClientFactory;
     canvasExtensionRuntime?: CanvasExtensionRuntime;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
@@ -361,7 +360,7 @@ export interface RegisterRoutesOptions {
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime>; teamsReactions?: { dispose(): Promise<void> } } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime>; teamsReactions?: { dispose(): Promise<void> }; canvasMutations: ReturnType<typeof registerCanvasRoutes> } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -1141,7 +1140,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled,
+    const canvasMutations = registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, () => bridge.runOwnerScript, isCanvasHostApisEnabled,
         undefined, createCanvasRunScriptFactory({
             getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
             getOwnerScriptRunner: () => bridge.runOwnerScript,
@@ -2218,5 +2217,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     return { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
         codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown,
-        teamsIc3OwnCommands, teamsReactions };
+        teamsIc3OwnCommands, teamsReactions, canvasMutations };
 }

@@ -10,6 +10,8 @@ import {
 import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
+import { validateCanvasManifestTools } from '../canvas/canvas-script-bridge';
+import type { OwnerToolScriptRequest, OwnerToolScriptOutcome } from '../canvas/owner-tool-script-service';
 
 const bundledRequire = createRequire(__filename);
 const loggedUnknownMethods = new Set<string>();
@@ -23,6 +25,7 @@ export interface CanvasExtensionHostOptions {
     /** Bound by the registry to this extension's owning conversation. */
     send: (prompt: string) => Promise<{ messageId: string }>;
     ephemeralQuery: (question: string) => Promise<{ answer: string }>;
+    runScript?: (request: OwnerToolScriptRequest, tools: readonly string[], signal: AbortSignal) => Promise<OwnerToolScriptOutcome>;
     timeoutMs?: number;
 }
 
@@ -44,6 +47,8 @@ export class CanvasExtensionHost {
     private readonly connection: MessageConnection;
     private readonly exited: Promise<void>;
     private stopped = false;
+    private scriptTools?: string[];
+    private readonly scripts = new Map<string, AbortController>();
     private stopPromise?: Promise<void>;
     private rejectReady!: (error: Error) => void;
     private resolveReady!: (declarations: CanvasDeclaration[]) => void;
@@ -117,7 +122,13 @@ export class CanvasExtensionHost {
         return this.request('canvas.action.invoke', request);
     }
 
+    /** Closing any instance revokes this extension host's outstanding scripts immediately. */
+    cancelScripts(): void {
+        for (const controller of this.scripts.values()) controller.abort();
+    }
+
     close(request: Pick<CanvasInstanceRequest, 'canvasId' | 'instanceId'>): Promise<void> {
+        this.cancelScripts();
         return this.request('canvas.close', request);
     }
 
@@ -150,6 +161,7 @@ export class CanvasExtensionHost {
             const { getSdkProtocolVersion } = bundledRequire(path.join(sdkDirectory, 'sdkProtocolVersion.js'));
             return { protocolVersion: getSdkProtocolVersion() };
         }
+        if (method.startsWith('coc.toolScripts.v1.')) return this.handleToolScript(method, raw);
         const supported = ['session.resume', 'session.log', 'session.send', 'session.ui.ephemeralQuery'];
         if (!supported.includes(method)) {
             const key = `${this.options.extension.extensionKey}\0${method}`;
@@ -186,9 +198,60 @@ export class CanvasExtensionHost {
         return this.options.ephemeralQuery(params.question as string);
     }
 
+    /**
+     * CoC-owned RPC, not a GitHub SDK API. register: {sessionId, tools};
+     * run: {sessionId, requestId, code, state?}; cancel: {sessionId, requestId}.
+     * Ownership and permissions come from this host, never the payload.
+     */
+    private async handleToolScript(method: string, raw: unknown): Promise<unknown> {
+        const action = method.slice('coc.toolScripts.v1.'.length);
+        const fields = action === 'register' ? ['sessionId', 'tools']
+            : action === 'run' ? ['sessionId', 'requestId', 'code', 'state']
+            : action === 'cancel' ? ['sessionId', 'requestId'] : undefined;
+        if (!fields) throw new ResponseError(ErrorCodes.MethodNotFound, `Method not found: ${method}`);
+        if (this.stopped || !raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            throw new ResponseError(ErrorCodes.InvalidParams, 'Invalid tool script request');
+        }
+        const params = raw as Record<string, unknown>;
+        if (params.sessionId !== this.options.processId || Object.keys(params).some(key => !fields.includes(key))) {
+            throw new ResponseError(ErrorCodes.InvalidParams, 'Invalid tool script identity or fields');
+        }
+        if (action === 'register') {
+            if (this.scriptTools) throw new ResponseError(ErrorCodes.InvalidParams, 'Tool script declaration is already registered');
+            const declaration = validateCanvasManifestTools(params.tools);
+            if (!declaration.ok) throw new ResponseError(ErrorCodes.InvalidParams, declaration.error);
+            this.scriptTools = declaration.tools;
+            return { version: 1 };
+        }
+        if (typeof params.requestId !== 'string' || !params.requestId || params.requestId.length > 128) {
+            throw new ResponseError(ErrorCodes.InvalidParams, 'Invalid tool script requestId');
+        }
+        if (action === 'cancel') {
+            this.scripts.get(params.requestId)?.abort();
+            return {};
+        }
+        if (typeof params.code !== 'string' || !params.code.trim() || Buffer.byteLength(params.code, 'utf8') > 256 * 1024) {
+            throw new ResponseError(ErrorCodes.InvalidParams, 'Tool script code must be non-empty and at most 256 KiB');
+        }
+        if (!this.scriptTools || !this.options.runScript) {
+            return { ok: false, code: 'unavailable', error: 'Tool script bridge or declaration is unavailable', logs: [], callCount: 0 };
+        }
+        if (this.scripts.has(params.requestId) || this.scripts.size >= 4) {
+            throw new ResponseError(ErrorCodes.InvalidParams, 'Duplicate requestId or too many pending tool scripts');
+        }
+        const controller = new AbortController();
+        this.scripts.set(params.requestId, controller);
+        try {
+            return await this.options.runScript({ code: params.code, state: params.state }, this.scriptTools, controller.signal);
+        } finally {
+            this.scripts.delete(params.requestId);
+        }
+    }
+
     private fail(error: Error): void {
         if (this.stopped) return;
         this.stopped = true;
+        this.cancelScripts();
         this.rejectReady(error);
         this.connection.dispose();
     }

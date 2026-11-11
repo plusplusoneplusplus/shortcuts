@@ -19,7 +19,7 @@ The folder has no barrel `index.ts`; import each tool module directly.
 `getEffectiveLlmToolRegistry` filters feature-owned tools from workspace settings when
 its corresponding flag is off: `cronEnabled` for `scheduleWakeup`, `canvasEnabled`
 for `CANVAS_LLM_TOOL_NAMES`, `canvasExtensionsEnabled` for
-`CANVAS_EXTENSION_LLM_TOOL_NAMES`, `kustoEnabled` for `kusto_query`,
+`CANVAS_EXTENSION_LLM_TOOL_NAMES`, `kustoEnabled` for `KUSTO_LLM_TOOL_NAMES`,
 `llmToolSystemOneEnabled` for `system_one`, `browserControlEnabled` for `browser`,
 `toolScriptingEnabled` for `run_tool_script` and `mcp_call`, and `queryPullRequestToolEnabled` for
 `query_pull_request`. Installed-extension tools have their own default-off gate,
@@ -72,7 +72,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `canvas-extension-tools.ts` | `list_canvas_capabilities`, `manage_canvas` (`action: "open" \| "close"`), `invoke_canvas_action` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
-| `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
+| `kusto-tools.ts` | `kusto_query`, `execute_kusto_query`, `execute_kusto_command` | Kusto/KQL against Azure Data Explorer — see below. |
 | `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
@@ -668,7 +668,7 @@ An async capability receives a third argument `host`:
 - `host.tools` — the frozen manifest `tools` list.
 
 Manifest `tools` (validated when `extension_canvas` builds) must be registered, scriptable,
-`readOnly: true` in `LLM_TOOL_REGISTRY` (today only `query_pull_request`), unique, at most 16,
+`readOnly: true` in `LLM_TOOL_REGISTRY` (`query_pull_request`, `execute_kusto_query`), unique, at most 16,
 and never `run_tool_script`. Both invoke paths build async run options with
 `buildCapabilityRunOptions` (`canvas-mutation-service.ts`). The panel shows "Uses: …" when a
 manifest declares tools. `test/fixtures/canvas/pr-dashboard/` is a reference plugin.
@@ -771,16 +771,34 @@ shared-hosting roots), so the first edit saves the defaults with it and removed
 defaults stay removed. While a prompt waits, the conversation's pending actions pause
 their 60s timers; Deny fails them with `user denied access to <site>`.
 
-### kusto_query
+### Kusto tools
 
-Runs a KQL query server-side against Azure Data Explorer using the official
-`azure-kusto-data` SDK with the host-owned Rust Microsoft Azure CLI credential and persists the result into a
-new or existing `type: 'kusto'` canvas rendered by `KustoView` (editable query, result table,
-native charts). Omit `canvasId` to create (default title `Kusto Query`), or pass it to
-re-run/update; an existing target must be `type: 'kusto'`. Returns column schema, a capped row
-sample (`KUSTO_QUERY_ROW_SAMPLE`), total row count, truncation state, and a `canvas://<id>`
-embed link. Shares the `runKustoCanvas` execute/truncate/persist path with
-`POST /canvases/:id/run`. Gated by the `kusto.enabled` config flag.
+`execute_kusto_query` takes `clusterUrl`, `database`, and `query` and returns
+`success`, JSON-safe `columns` and `rows`, `rowCount` before truncation, and
+`truncated`, without canvas persistence or update events. It uses the host-owned
+client factory and the query-only contract and result limits described in
+[Canvas](spa/canvas.md#kusto-canvases). Live host disablement rejects even mock
+queries. The registry marks this tool read-only and scriptable; owner scripts
+retain per-workspace enablement and unattended approval denial.
+
+`execute_kusto_command` takes `clusterUrl`, `database`, and dotted `command`
+text. Its separate host-owned `executeMgmt` contract returns the same bounded
+result without canvas writes. The shared approval gate requires fresh foreground
+approval; unattended scripts and calls without an approval channel are denied
+before SDK dispatch. The tool is outside the read-only canvas script allowlist.
+Invocation cancellation, live disablement and credential/configuration checks
+apply to both execution tools. Commands have no mock path or automatic retry.
+
+`kusto_query` runs the same query helper as `execute_kusto_query` (live
+disablement and invocation cancellation included) through `runKustoCanvas`,
+persisting an interactive `type: 'kusto'` canvas. A cancelled turn writes no late
+result or abort error into the canvas. Omit `canvasId` to create (default title
+`Kusto Query`), or pass an existing Kusto canvas to update. Returns column schema,
+a capped row sample (`KUSTO_QUERY_ROW_SAMPLE`), total row count, truncation state,
+and a `canvas://<id>` embed link. The Run route shares this persistence service.
+All three tools are gated by `kusto.enabled`, independently of optional canvas host
+and tool-script flags. Only `execute_kusto_query` is allowed in read-only canvas
+script manifests.
 
 ### system_one
 
@@ -913,8 +931,12 @@ ask-user construction and sets the approval gate's `denyApprovals` policy. Gated
 handlers return a denied result before consulting interactive wiring or saved
 session approvals. The script engine turns
 that result into `ToolCallError`, including for gated tools called by nested scripts.
-Ungated tools and workspace preferences retain their normal behavior. Ordinary
-bundles retain their existing interactive and noninteractive approval policies.
+Ungated tools and workspace preferences retain their normal behavior. The gate
+always wraps `execute_kusto_command` independently of approval preferences. It
+denies without an interactive approval channel and ignores saved session grants.
+Each command uses a snapshot of the arguments shown in its approval prompt;
+session approval authorizes only that call. Cancellation before dispatch prevents
+execution. Other tools retain their preference-based approval policies.
 
 Sentinel job gates route through `MultiRepoQueueRouter.runRefrainGate`, the owning
 `CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runRefrainGate`.

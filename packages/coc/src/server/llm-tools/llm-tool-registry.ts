@@ -85,6 +85,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         label: 'Get Conversation',
         description: 'Fetches the full transcript of a past session.',
         enabledByDefault: true,
+        readOnly: true,
     },
     {
         name: 'send_to_conversation',
@@ -161,6 +162,19 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'execute_kusto_query',
+        label: 'Execute Kusto Query',
+        description: 'Executes a read-only KQL query and returns bounded structured results without saving a canvas.',
+        enabledByDefault: true,
+        readOnly: true,
+    },
+    {
+        name: 'execute_kusto_command',
+        label: 'Execute Kusto Command',
+        description: 'Executes a management command after fresh foreground approval, returning bounded results without saving a canvas.',
+        enabledByDefault: true,
+    },
+    {
         name: 'kusto_query',
         label: 'Kusto Query',
         description: 'Runs a Kusto (KQL) query server-side and shows the result as an interactive Kusto query canvas.',
@@ -222,7 +236,7 @@ export const CANVAS_EXTENSION_LLM_TOOL_NAMES = [
 ] as const;
 
 /** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */
-export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
+export const KUSTO_LLM_TOOL_NAMES = ['kusto_query', 'execute_kusto_query', 'execute_kusto_command'] as const;
 
 /** Tool names belonging to the System One feature (gated by `LLMToolSystemOne.enabled`). */
 export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;

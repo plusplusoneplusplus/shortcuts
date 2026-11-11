@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthError, type MicrosoftTokenProviderOptions } from '@plusplusoneplusplus/coc-native';
 import { createKustoClientRuntime } from '../../../src/server/kusto/kusto-client-runtime';
 import { KustoCredentialError, RustKustoCredential, type KustoAuthConfig } from '../../../src/server/kusto/kusto-credential';
-import { executeKustoQuery, type KustoClientLike } from '../../../src/server/kusto/kusto-exec';
+import { executeKustoQuery, executeKustoCommand, type KustoClientLike, type KustoCommandClientLike } from '../../../src/server/kusto/kusto-exec';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import { createKustoTools } from '../../../src/server/llm-tools/kusto-tools';
 import { buildKustoToolsAddon } from '../../../src/server/executors/prompt-builder';
@@ -58,10 +58,14 @@ function fixture(enabled = true) {
     });
     const execute = vi.fn(async () => response);
     const close = vi.fn();
-    const buildClient = vi.fn(async (_cluster: string, credential?: import('@azure/identity').TokenCredential): Promise<KustoClientLike> => ({
-        execute: async (db, query) => {
+    const buildClient = vi.fn(async (_cluster: string, credential?: import('@azure/identity').TokenCredential): Promise<KustoClientLike & Partial<KustoCommandClientLike>> => ({
+        executeQuery: async (db, query) => {
             if (credential) await credential.getToken([`${resource}/.default`]);
             return execute(db, query);
+        },
+        executeMgmt: async (db, command) => {
+            if (credential) await credential.getToken([`${resource}/.default`]);
+            return execute(db, command);
         },
         close,
     }));
@@ -74,6 +78,66 @@ function fixture(enabled = true) {
 }
 
 describe('host-owned Kusto credential/cache rollout', () => {
+    it('passes tool invocation cancellation through the host without closing shared runtime state', async () => {
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => { started = resolve; });
+        const executeQuery = vi.fn(async (_db: string, _query: string, signal?: AbortSignal) => {
+            started();
+            return new Promise<typeof response>((_resolve, reject) => {
+                signal!.addEventListener('abort', () => reject(signal!.reason), { once: true });
+            });
+        });
+        const close = vi.fn();
+        const runtime = createKustoClientRuntime(() => ({ enabled: true }), {
+            buildClient: async () => ({ executeQuery, close }), diagnostic: vi.fn(),
+        });
+        owners.push(runtime);
+        const dataDir = mkdtempSync(path.join(tmpdir(), 'kusto-cancel-'));
+        directories.push(dataDir);
+        const tool = createKustoTools({ dataDir, workspaceId: 'owner', clientFactory: runtime.clientFactory }).executeKustoQuery;
+        const controller = new AbortController();
+        const run = tool.handler!(params, { sessionId: 'owner', toolName: 'execute_kusto_query', arguments: params, toolCallId: 'cancel-test', signal: controller.signal });
+        await ready;
+        controller.abort(new Error('query cancelled'));
+        await expect(run).resolves.toMatchObject({ success: false, error: 'query cancelled' });
+        expect(executeQuery).toHaveBeenCalledExactlyOnceWith(params.database, params.query, controller.signal);
+        expect(close).not.toHaveBeenCalled();
+        expect(runtime.getEnabled()).toBe(true);
+    });
+
+    it('commands share selected credentials, redact SDK auth errors and invalidate stale host identities', async () => {
+        const f = fixture();
+        const command = { clusterUrl, database: 'FixtureDB', command: '.show tables' };
+        await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
+        expect(await executeKustoCommand(command, { clientFactory: f.runtime.commandClientFactory })).toMatchObject({ rows: [[1]] });
+        expect(f.buildClient).toHaveBeenCalledTimes(1);
+        expect(f.providers[0].getToken).toHaveBeenCalledTimes(2);
+        expect(f.createProvider.mock.calls[0][0]).toMatchObject({ azureCli: { account: { id: account, tenant }, subscription } });
+        const error = Object.assign(new Error('fixture-private-wrapper'), {
+            name: 'KustoAuthenticationError', inner: new KustoCredentialError('Kusto Rust auth: AccountMismatch.'),
+        });
+        f.execute.mockRejectedValueOnce(error);
+        await expect(executeKustoCommand(command, { clientFactory: f.runtime.commandClientFactory })).rejects.toThrow('AccountMismatch');
+        expect(f.execute).toHaveBeenCalledTimes(3);
+        const old = await f.runtime.commandClientFactory(command);
+        f.setConfig({ ...f.getConfig(), azureCli: { account: 'other', tenant, subscription } });
+        await expect(old.executeMgmt(command.database, command.command)).rejects.toThrow('configuration changed');
+        expect(f.execute).toHaveBeenCalledTimes(3);
+        f.setConfig({ enabled: false });
+        await expect(executeKustoCommand(command, { clientFactory: f.runtime.commandClientFactory })).rejects.toThrow('disabled');
+        expect(f.execute).toHaveBeenCalledTimes(3);
+    });
+
+    it('commands reject untrusted clusters and partial identity before SDK construction', async () => {
+        const f = fixture();
+        const command = { clusterUrl: 'https://untrusted.example', database: 'DB', command: '.show tables' };
+        await expect(f.runtime.commandClientFactory(command)).rejects.toThrow('requires an HTTPS');
+        f.setConfig({ enabled: true, azureCli: { account } });
+        await expect(f.runtime.commandClientFactory({ ...command, clusterUrl })).rejects.toThrow('set kusto.azureCli');
+        expect(f.buildClient).not.toHaveBeenCalled();
+        expect(f.createProvider).not.toHaveBeenCalled();
+    });
+
     it('Kusto without an auth switch always constructs the Rust credential', async () => {
         const f = fixture();
         await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
@@ -88,8 +152,8 @@ describe('host-owned Kusto credential/cache rollout', () => {
             f.runtime.clientFactory({ ...params, database: 'OtherDB' }),
         ]);
         expect(a).toBe(b);
-        await a.execute(params.database, params.query);
-        await b.execute('OtherDB', params.query);
+        await a.executeQuery(params.database, params.query);
+        await b.executeQuery('OtherDB', params.query);
         expect(f.buildClient).toHaveBeenCalledTimes(1);
         expect(f.buildClient.mock.calls[0][1]).toBeInstanceOf(RustKustoCredential);
         expect(f.createProvider).toHaveBeenCalledTimes(1);
@@ -100,7 +164,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it.each(['account', 'tenant', 'subscription'] as const)('rebuilds and disposes on %s changes, rejects old clients without replay', async key => {
         const f = fixture();
         const old = await f.runtime.clientFactory(params);
-        await old.execute(params.database, params.query);
+        await old.executeQuery(params.database, params.query);
         const next = { ...f.getConfig(), azureCli: {
             account, tenant, subscription,
             [key]: key === 'account' ? 'other-fixture' : '33333333-3333-4333-8333-333333333333',
@@ -108,9 +172,9 @@ describe('host-owned Kusto credential/cache rollout', () => {
         f.setConfig(next);
         f.runtime.syncConfig();
         expect(f.providers[0].dispose).toHaveBeenCalledTimes(1);
-        await expect(old.execute(params.database, params.query)).rejects.toThrow('configuration changed');
+        await expect(old.executeQuery(params.database, params.query)).rejects.toThrow('configuration changed');
         const fresh = await f.runtime.clientFactory(params);
-        await fresh.execute(params.database, params.query);
+        await fresh.executeQuery(params.database, params.query);
         expect(f.createProvider).toHaveBeenCalledTimes(2);
         const options = f.createProvider.mock.calls[1][0];
         expect(options).toMatchObject({ azureCli: {
@@ -160,11 +224,11 @@ describe('host-owned Kusto credential/cache rollout', () => {
         expect(f.buildClient.mock.calls.every(([, credential]) => credential instanceof RustKustoCredential)).toBe(true);
     });
 
-    it('wrapped AccountMismatch is visible and never retries a potentially mutating query', async () => {
+    it('wrapped AccountMismatch is visible without retrying the query', async () => {
         const f = fixture();
         await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
         f.providers[0].getToken.mockRejectedValue(new AuthError('AccountMismatch'));
-        await expect(executeKustoQuery({ ...params, query: '.set-or-append FixtureTable <| print value=1' },
+        await expect(executeKustoQuery({ ...params, query: 'print value=1' },
             { clientFactory: f.runtime.clientFactory })).rejects.toThrow('AccountMismatch');
         expect(f.providers[0].getToken).toHaveBeenCalledTimes(2);
         expect(f.execute).toHaveBeenCalledTimes(1);
@@ -174,7 +238,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it('unwraps only sanitized credential errors from the SDK authentication envelope', async () => {
         const f = fixture();
         f.buildClient.mockImplementationOnce(async () => ({
-            execute: async () => {
+            executeQuery: async () => {
                 const inner = new KustoCredentialError('Kusto Rust auth: AccountMismatch.');
                 const error = new Error('fixture-private-wrapper');
                 error.name = 'KustoAuthenticationError';
@@ -195,7 +259,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
             Object.assign(error, { inner: refreshError });
             throw error;
         });
-        f.buildClient.mockResolvedValueOnce({ execute: sdkExecute });
+        f.buildClient.mockResolvedValueOnce({ executeQuery: sdkExecute });
         await expect(executeKustoQuery(params, { clientFactory: f.runtime.clientFactory })).rejects.toBe(refreshError);
         expect(sdkExecute).toHaveBeenCalledTimes(1);
         expect(f.buildClient).toHaveBeenCalledTimes(1);
@@ -204,7 +268,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
     it('sanitizes an unknown SDK auth payload without selecting another credential', async () => {
         const f = fixture();
         f.buildClient.mockResolvedValueOnce({
-            execute: async () => {
+            executeQuery: async () => {
                 const error = new Error('fixture-private-wrapper');
                 error.name = 'KustoAuthenticationError';
                 Object.assign(error, { inner: new Error('fixture-private-token') });
@@ -222,7 +286,7 @@ describe('host-owned Kusto credential/cache rollout', () => {
         const pending = f.runtime.clientFactory(params);
         await Promise.resolve();
         f.runtime.dispose();
-        resolve({ execute: async () => response, close: f.close });
+        resolve({ executeQuery: async () => response, close: f.close });
         await expect(pending).rejects.toThrow('configuration changed');
         expect(f.close).toHaveBeenCalledTimes(1);
         await expect(f.runtime.clientFactory(params)).rejects.toThrow('owner is closed');
@@ -246,9 +310,9 @@ describe('host-owned Kusto credential/cache rollout', () => {
         it('revokes cached credentials when switching from explicit to native active selection', async () => {
             const f = fixture();
             const old = await f.runtime.clientFactory(params);
-            await old.execute(params.database, params.query);
+            await old.executeQuery(params.database, params.query);
             f.setConfig({ enabled: true });
-            await expect(old.execute(params.database, params.query)).rejects.toThrow('configuration changed');
+            await expect(old.executeQuery(params.database, params.query)).rejects.toThrow('configuration changed');
             expect(f.providers[0].dispose).toHaveBeenCalledTimes(1);
             expect(f.execute).toHaveBeenCalledTimes(1);
             await executeKustoQuery(params, { clientFactory: f.runtime.clientFactory });
@@ -285,16 +349,22 @@ describe('workspace consumers', () => {
                 workspaceId, title: 'Auth fixture', type: 'kusto',
                 content: serializeKustoState(createEmptyKustoState(params)),
             });
-            const outcome = await runKustoCanvas(store, workspaceId, canvas.id, { clientFactory: f.runtime.clientFactory });
+            const outcome = await runKustoCanvas(store, workspaceId, canvas.id, {
+                executeQuery: params => executeKustoQuery(params, { clientFactory: f.runtime.clientFactory }),
+            });
             expect(outcome.ok).toBe(true);
             expect(parseKustoState(store.getCanvas(workspaceId, canvas.id)!.content).lastRun?.status).toBe('success');
             expect(store.getCanvas(workspaceId === 'workspace-a' ? 'workspace-b' : 'workspace-a', canvas.id)).toBeNull();
             const addon = buildKustoToolsAddon(directory, undefined, workspaceId, undefined, { enabled: true, runtime: f.runtime });
             const result = await addon.tools[0].handler!(params);
             expect(result).toMatchObject({ success: true });
+            const before = store.listCanvases(workspaceId);
+            const execution = addon.tools.find(tool => tool.name === 'execute_kusto_query')!;
+            expect(await execution.handler!(params)).toMatchObject({ success: true, rows: [[1]] });
+            expect(store.listCanvases(workspaceId)).toEqual(before);
         }
         expect(f.createProvider).toHaveBeenCalledTimes(1);
-        expect(f.providers[0].getToken).toHaveBeenCalledTimes(4);
+        expect(f.providers[0].getToken).toHaveBeenCalledTimes(6);
         expect(store.listCanvases('workspace-a')).toHaveLength(2);
         expect(store.listCanvases('workspace-b')).toHaveLength(2);
     });

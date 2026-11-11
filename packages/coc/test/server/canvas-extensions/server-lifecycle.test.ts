@@ -37,6 +37,11 @@ it('server composition forwards archive/delete events and awaits registry shutdo
         const instance = { canvasId: 'counter', instanceId: 'instance-1' };
         const opened = await hosts.open(owner, extension, instance);
         expect((await fetch(opened.url!)).ok).toBe(true);
+        const beforeScript = await store.getProcess(owner.processId, owner.workspaceId);
+        expect(await hosts.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'tool-script' }))
+            .toEqual({ ok: true, result: 7, logs: ['owner script'], callCount: 0 });
+        expect(await store.getProcess(owner.processId, owner.workspaceId)).toEqual(beforeScript);
+        expect(completion).not.toHaveBeenCalled();
         await store.updateProcess(owner.processId, { status: 'running' });
         const callbackResult = await hosts.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'callbacks' });
         expect(callbackResult).toMatchObject({ messageId: expect.any(String), answer: 'Server answer' });

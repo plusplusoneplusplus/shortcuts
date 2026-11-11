@@ -13,6 +13,7 @@ import { buildChatTurnContext, type ChatTurnContext, type ChatTurnContextInput }
 import { buildChatToolBundle, isToolScriptingMcpEnabled } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import type { LlmToolApprovalRecord } from '../../../src/server/executors/llm-tool-approval-gate';
+import { withOwnerToolRuntime } from '../../../src/server/executors/owner-script-runner';
 import { CONFIG_FILE_NAME } from '../../../src/config';
 
 const FIXTURE = path.join(__dirname, '..', 'llm-tools', 'fixtures', 'fake-mcp-server.cjs');
@@ -83,6 +84,19 @@ describe('run_tool_script MCP access in a chat turn', () => {
     afterEach(() => {
         for (const ctx of contexts) ctx.dispose();
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('excludes the MCP pair for strictly declared extension scripts even when MCP scripting is enabled', async () => {
+        addWorkspace('ws-a', ['alpha']);
+        const ownerTools = { dataDir: tmpDir, workspaceId: 'ws-a', processId: 'chat-a', includeMemoryV2: false,
+            store: { getWorkspaces: vi.fn(async () => workspaces), searchConversations: vi.fn() } as any };
+        for (const includeMcpTools of [true, false]) {
+            await withOwnerToolRuntime(ownerTools, undefined, async runtime => {
+                const names = runtime.listTools().map(tool => tool.name);
+                expect(names.includes('mcp_list_tools')).toBe(includeMcpTools);
+                expect(names.includes('mcp_call')).toBe(includeMcpTools);
+            }, [], includeMcpTools);
+        }
     });
 
     it('enables MCP scripting without a data directory or config file', async () => {

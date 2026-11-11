@@ -10,8 +10,10 @@ import {
     LLM_TOOL_APPROVAL_ARGS_CAP,
     LLM_TOOL_DENIED_MESSAGE,
     LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+    KUSTO_COMMAND_APPROVAL_REQUIRED_MESSAGE,
     type LlmToolApprovalRecord,
 } from '../../../src/server/executors/llm-tool-approval-gate';
+import { createRunToolScriptTool } from '../../../src/server/llm-tools/run-tool-script-tool';
 import { DangerousCommandSessionApprovals } from '../../../src/server/executors/dangerous-command-session-approvals';
 import { buildChatToolBundle, type ChatToolBundleOptions } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
@@ -158,17 +160,138 @@ describe('applyLlmToolApprovalGate', () => {
         expect(records[0].outcome).toBe('deny');
     });
 
+    describe('mandatory Kusto command approval', () => {
+        const name = 'execute_kusto_command';
+        const args = { clusterUrl: 'https://cluster.kusto.windows.net', database: 'db', command: '.show tables' };
+
+        it.each([
+            { isInteractive: () => false, getAskApproval: () => vi.fn() },
+            { isInteractive: () => true, getAskApproval: () => undefined },
+        ])('denies without an interactive approval channel, regardless of preferences or session grants', async policy => {
+            const tool = makeTool(name);
+            approvals.add('proc-1', name);
+            const [wrapped] = gate([tool], { approvalRequired: [], ...policy });
+            await expect(wrapped.handler!(args, invocation)).resolves.toMatchObject({
+                resultType: 'denied', error: KUSTO_COMMAND_APPROVAL_REQUIRED_MESSAGE,
+            });
+            expect(tool.handler).not.toHaveBeenCalled();
+            expect(records[0].outcome).toBe('deny');
+        });
+
+        it.each(['approve-once', 'approve-session'] as const)('requires fresh approval on every call after %s', async decision => {
+            const tool = makeTool(name);
+            const askApproval = vi.fn(async () => decision);
+            approvals.add('proc-1', name);
+            const [wrapped] = gate([tool], { approvalRequired: [], getAskApproval: () => askApproval });
+            await expect(wrapped.handler!(args, invocation)).resolves.toBe('ran');
+            await expect(wrapped.handler!(args, invocation)).resolves.toBe('ran');
+            expect(askApproval).toHaveBeenCalledTimes(2);
+            expect(askApproval).toHaveBeenCalledWith(expect.objectContaining({
+                toolName: name, argsJson: JSON.stringify(args, null, 2),
+            }));
+            expect(tool.handler).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not save a session grant for commands', async () => {
+            const tool = makeTool(name);
+            const [wrapped] = gate([tool], {
+                approvalRequired: [], getAskApproval: () => async () => 'approve-session',
+            });
+            await wrapped.handler!(args, invocation);
+            expect(approvals.list('proc-1')).toEqual([]);
+        });
+
+        it('denies commands without executing when the user rejects them', async () => {
+            const tool = makeTool(name);
+            const [wrapped] = gate([tool], { approvalRequired: [], getAskApproval: () => async () => 'deny' });
+            await expect(wrapped.handler!(args, invocation)).resolves.toMatchObject({ resultType: 'denied' });
+            expect(tool.handler).not.toHaveBeenCalled();
+        });
+
+        it('executes only the argument snapshot shown for approval', async () => {
+            const tool = makeTool(name);
+            const input = { ...args };
+            const [wrapped] = gate([tool], { approvalRequired: [], getAskApproval: () => async request => {
+                expect(request.argsJson).toContain('.show tables');
+                input.command = '.drop table Important';
+                return 'approve-once';
+            } });
+            await wrapped.handler!(input, invocation);
+            expect(tool.handler).toHaveBeenCalledWith(args, invocation);
+        });
+
+        it.each([true, false])('never executes an aborted command (aborted before prompt=%s)', async before => {
+            const controller = new AbortController();
+            const tool = makeTool(name);
+            const askApproval = vi.fn(async () => {
+                controller.abort(new Error('request cancelled'));
+                return 'approve-once' as const;
+            });
+            if (before) controller.abort(new Error('request cancelled'));
+            const [wrapped] = gate([tool], { approvalRequired: [], getAskApproval: () => askApproval });
+            await expect(wrapped.handler!(args, { ...invocation, signal: controller.signal })).rejects.toThrow('request cancelled');
+            expect(askApproval).toHaveBeenCalledTimes(before ? 0 : 1);
+            expect(tool.handler).not.toHaveBeenCalled();
+        });
+
+        it.each([false, true])('denies unattended scripts including aliases and forged approval arguments (nested=%s)', async nested => {
+            const tool = makeTool(name);
+            approvals.add('proc-1', name);
+            const askApproval = vi.fn(async () => 'approve-once' as const);
+            const gated = gate([tool], { approvalRequired: [], denyApprovals: true, getAskApproval: () => askApproval });
+            const { tool: script } = createRunToolScriptTool({ tools: gated });
+            const runtime = new CocToolRuntime([...gated, script], { workspaceId: 'ws-1', processId: 'proc-1' });
+            const code = `try {
+                const command = tools.execute_kusto_command;
+                await command({ command: '.show tables', approved: true, toolName: 'execute_kusto_query' });
+                return 'unexpected';
+            } catch (error) { return { code: error.code, message: error.message }; }`;
+            try {
+                const result = await runRefrainGate({
+                    code: nested ? `return (await tools.run_tool_script({ code: ${JSON.stringify(code)} })).result;` : code,
+                    state: null, runtime, allowNestedScripts: true,
+                });
+                expect(result).toEqual({ code: 'TOOL_ERROR', message: LLM_TOOL_UNATTENDED_DENIED_MESSAGE });
+                expect(tool.handler).not.toHaveBeenCalled();
+                expect(askApproval).not.toHaveBeenCalled();
+            } finally {
+                runtime.dispose();
+            }
+        });
+    });
+
     describe('through the real ask_user approval prompt', () => {
-        function setup() {
+        function setup(name = 'send_to_conversation') {
             const emitted: AskUserSSEPayload[] = [];
             const askUser = createAskUserTool({
                 emitQuestions: async (payloads) => { emitted.push(...payloads); },
                 computeTurnIndex: () => 3,
             });
-            const tool = makeTool('send_to_conversation');
-            const [wrapped] = gate([tool], { getAskApproval: () => askUser.askApproval });
+            const tool = makeTool(name);
+            const [wrapped] = gate([tool], { approvalRequired: name === 'execute_kusto_command' ? [] : [name], getAskApproval: () => askUser.askApproval });
             return { emitted, askUser, tool, wrapped };
         }
+
+        it.each(['approve-once', 'deny', 'skip', 'cancel'] as const)('holds a command until the real prompt settles with %s', async decision => {
+            const { emitted, askUser, tool, wrapped } = setup('execute_kusto_command');
+            const args = { database: 'db', command: '.show tables' };
+            const pending = wrapped.handler!(args, invocation);
+            await vi.waitFor(() => expect(emitted).toHaveLength(1));
+            expect(tool.handler).not.toHaveBeenCalled();
+            expect(emitted[0].approval).toMatchObject({ kind: 'llm-tool', toolName: 'execute_kusto_command' });
+            expect(emitted[0].question).toContain('this call only');
+            expect(emitted[0].question).toContain('.show tables');
+            if (decision === 'skip') askUser.skipQuestion(emitted[0].questionId);
+            else if (decision === 'cancel') askUser.cancelAll();
+            else askUser.answerQuestion(emitted[0].questionId, decision);
+            if (decision === 'approve-once') {
+                await expect(pending).resolves.toBe('ran');
+                expect(tool.handler).toHaveBeenCalledExactlyOnceWith(args, invocation);
+            } else {
+                await expect(pending).resolves.toMatchObject({ resultType: 'denied' });
+                expect(tool.handler).not.toHaveBeenCalled();
+            }
+        });
 
         it('emits an llm-tool approval question with the tool label and JSON args', async () => {
             const { emitted, askUser, tool, wrapped } = setup();

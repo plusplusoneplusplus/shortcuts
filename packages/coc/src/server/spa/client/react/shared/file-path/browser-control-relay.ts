@@ -166,7 +166,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         const scope = existing?.scope ?? (event.workspaceId === workspaceId ? getBrowserControlScope()?.panelScope : undefined) ?? ownerRef;
         // Unseen targets join the strip without changing any selection or opening the dock.
         const tabId = openUnifiedPanelTab(scope, existing ? {
-            ...existing.tab, chatId: event.processId,
+            ...existing.tab, rawSource: undefined, chatId: event.processId,
         } : {
             ...browserOpenInput({ ownerWorkspaceId: event.workspaceId, ownerRoutingRef: ownerRef, chatId: event.processId }, event.url),
             resourceId: event.viewId,
