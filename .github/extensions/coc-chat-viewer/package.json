@@ -1,0 +1,6 @@
+{
+  "name": "coc-chat-viewer",
+  "private": true,
+  "type": "module",
+  "description": "View a CoC conversation transcript by process ID, loaded through the get_conversation tool."
+}

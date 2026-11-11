@@ -153,6 +153,9 @@ from `COPILOT_HOME`, not the cwd), serves a filterable SSE log view, and sends a
 chosen line with nearby lines through `session.send`. Keep such extensions single-file:
 the content hash covers only `extension.mjs` and `package.json`.
 `test/server/canvas-extensions/coc-log-tail.test.ts` runs it through the real host.
+`.github/extensions/coc-chat-viewer` shows a transcript by process ID through the
+tool-script bridge calling `get_conversation` (marked `readOnly` for this);
+`coc-chat-viewer.test.ts` runs it through the real host and owner runtime.
 
 `extension-host.ts` provides the flag-gated stdio runtime. It starts
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,

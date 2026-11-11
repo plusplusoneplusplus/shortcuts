@@ -85,6 +85,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         label: 'Get Conversation',
         description: 'Fetches the full transcript of a past session.',
         enabledByDefault: true,
+        readOnly: true,
     },
     {
         name: 'send_to_conversation',
