@@ -255,12 +255,4 @@ describe('WorkingTreeFileDiff — classic fallback', () => {
         // The patch comes from the existing diff route on the selected workspace client.
         expect(clients['ws-a'].git.getWorkingTreeFileDiff).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', { stage: 'unstaged', full: false });
     });
-
-    it('keeps the untracked branch untouched: preview, no banner, no content request', async () => {
-        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
-        await renderDiff({ stage: 'untracked' });
-        expect(screen.getByTestId('preview-pane')).toBeTruthy();
-        expect(banner()).toBeNull();
-        expect(clients['ws-a'].git.getWorkingTreeFileContent).not.toHaveBeenCalled();
-    });
 });

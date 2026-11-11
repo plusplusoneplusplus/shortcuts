@@ -464,11 +464,11 @@ describe('stagedDiskMatchesIndex', () => {
 describe('WorkingTreeFileDiff — untracked review editing', () => {
     it('retains an unsaved untracked buffer when a refresh reports binary content', async () => {
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\n'));
-        const view = await renderDiff({ stage: 'untracked', untrackedAsDiff: true, refreshKey: 0 });
+        const view = await renderDiff({ stage: 'untracked', refreshKey: 0 });
         act(() => fakes[0].type('unsaved text\n'));
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', '', { binary: true }));
         await act(async () => { view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo"
-            stage="untracked" untrackedAsDiff refreshKey={1} createDiffEditor={createDiffEditor} />); });
+            stage="untracked" refreshKey={1} createDiffEditor={createDiffEditor} />); });
         expect(fakes.at(-1)!.modifiedText).toBe('unsaved text\n');
         expect(screen.queryByTestId('preview-pane')).toBeNull();
         expect(screen.getByTestId('working-tree-file-diff-disk-changed')).toBeTruthy();
@@ -487,7 +487,7 @@ describe('WorkingTreeFileDiff — untracked review editing', () => {
         registerCloneBaseUrls([{ workspaceId: 'ws-a', serverId: 'owner', baseUrl: 'https://owner.test' }]);
         const onDirtyChange = vi.fn(), onSaved = vi.fn();
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\n'));
-        await renderDiff({ stage: 'untracked', untrackedAsDiff: true, attachmentDestinationId: 'remote:owner:ws-a', onDirtyChange, onSaved });
+        await renderDiff({ stage: 'untracked', attachmentDestinationId: 'remote:owner:ws-a', onDirtyChange, onSaved });
         act(() => fakes[0].type('new\nedited\n'));
         expect(onDirtyChange).toHaveBeenLastCalledWith(true);
         await act(async () => { fakes[0].pressSave(); });

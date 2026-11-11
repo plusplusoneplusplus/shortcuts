@@ -52,7 +52,7 @@ const CHANGES = [change('a.ts', 'staged'), change('a.ts', 'unstaged'), change('n
 const nav = () => screen.getByRole('complementary', { name: 'Changed files' });
 const row = (stage: string) => within(nav()).getByRole('button', { name: new RegExp(`, ${stage},`) });
 const current = () => h.panel.mock.calls.at(-1)![0];
-const props = { workspaceId: 'ws-1', attachmentDestinationId: 'ws-1', repoRoot: ROOT, onFileSelect: vi.fn() };
+const props = { workspaceId: 'ws-1', attachmentDestinationId: 'ws-1', repoRoot: ROOT, onNavigateToFile: vi.fn() };
 beforeEach(() => {
     vi.clearAllMocks(); h.endpoint = undefined; h.unresolved = false; h.searchEnabled = false;
     h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: CHANGES });
@@ -130,6 +130,19 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         });
         expect(current().stage).toBe('staged');
     });
+    it('opens on the requested file and stage instead of the first change', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} filePath="/repo/a.ts" stage="unstaged" />);
+        await waitFor(() => expect(current()).toMatchObject({ filePath: '/repo/a.ts', stage: 'unstaged' }));
+        expect(row('Unstaged').getAttribute('aria-current')).toBe('true');
+        expect(h.panel.mock.calls.every(([p]) => p.stage === 'unstaged')).toBe(true);
+    });
+    it('moves to a newly requested file and hunk without remounting the review', async () => {
+        const { rerender } = render(<WorkingTreeAllFilesDiff {...props} filePath="/repo/a.ts" stage="unstaged" />);
+        await waitFor(() => expect(current().stage).toBe('unstaged'));
+        rerender(<WorkingTreeAllFilesDiff {...props} filePath="/repo/new.txt" stage="untracked" initialHunkTarget="last" />);
+        await waitFor(() => expect(current()).toMatchObject({ filePath: '/repo/new.txt', stage: 'untracked', initialHunkTarget: 'last' }));
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenCalledTimes(1);
+    });
     it('keeps repeated display paths from different repository roots selectable in the tree', async () => {
         h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
             change('a.ts', 'staged'),
@@ -142,14 +155,14 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         fireEvent.click(repeated[1]);
         expect(current().filePath).toBe('/other/a.ts');
     });
-    it('searches and filters real paths while keeping stage-specific single-file opening', async () => {
+    it('searches and filters real paths while reporting stage-specific file selection', async () => {
         render(<WorkingTreeAllFilesDiff {...props} />);
         await screen.findByTestId('full-working-diff');
         fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a.ts' } });
         expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(2);
         fireEvent.click(row('Unstaged'));
-        fireEvent.click(screen.getByRole('button', { name: 'Open full diff', exact: true }));
-        expect(props.onFileSelect).toHaveBeenCalledWith('/repo/a.ts', 'unstaged');
+        expect(props.onNavigateToFile).toHaveBeenLastCalledWith('/repo/a.ts', 'unstaged', 'first');
+        expect(screen.queryByRole('button', { name: 'Open full diff', exact: true })).toBeNull();
         fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'A' } });
         expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(0);
     });

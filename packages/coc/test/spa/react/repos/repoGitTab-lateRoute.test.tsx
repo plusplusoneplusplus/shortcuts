@@ -92,8 +92,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDeta
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
     BranchRangeOverview: (props: any) => <div data-testid="stub-branch-overview" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} data-file={props.scrollToFilePath} />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({
-    WorkingTreeFileDiff: (props: any) => <div data-testid="stub-working-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
+vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff', () => ({
+    WorkingTreeAllFilesDiff: (props: any) => <div data-testid="stub-working-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} data-file={props.filePath} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
     GitPanelHeader: () => <div data-testid="stub-git-header" />,
@@ -166,7 +166,7 @@ it.each(['ws-remote-1', 'remote:one:ws-remote-1', 'remote:two:ws-remote-1'])('th
 it.each([
     { type: 'commit-file', hash: 'abc123', filePath: 'src/a.ts' },
     { type: 'branch-file', filePath: 'src/a.ts' },
-    { type: 'working-tree-file', filePath: 'src/a.ts', stage: 'unstaged' },
+    { type: 'working-tree-all', filePath: 'src/a.ts', stage: 'unstaged' },
 ] as const)('preserves the concrete selection destination in $type detail views', selectedView => {
     const branchRange = { baseRef: 'origin/main', headRef: 'HEAD', commitCount: 1, additions: 1, deletions: 0, fileCount: 1 } as any;
     render(<RepoGitDetailPane workspaceId={WS} attachmentDestinationId="remote:one:ws-remote-1"
@@ -177,9 +177,9 @@ it.each([
     const target = screen.getByTestId({
         'commit-file': 'stub-commit-detail',
         'branch-file': 'stub-branch-overview',
-        'working-tree-file': 'stub-working-diff',
+        'working-tree-all': 'stub-working-diff',
     }[selectedView.type]);
     expect(target.getAttribute('data-destination')).toBe('remote:one:ws-remote-1');
     expect(target.getAttribute('data-workspace')).toBe(WS);
-    if (selectedView.type !== 'working-tree-file') expect(target.getAttribute('data-file')).toBe('src/a.ts');
+    expect(target.getAttribute('data-file')).toBe('src/a.ts');
 });

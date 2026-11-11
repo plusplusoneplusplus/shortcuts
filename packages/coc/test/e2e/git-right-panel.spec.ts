@@ -1,7 +1,7 @@
 /**
  * Tests the right-panel diff views rendered by RepoGitTab:
  *   FileDiffPanel    — per-file diff (commit-file and branch-file modes)
- *   WorkingTreeFileDiff — diff when clicking a working-tree file
+ *   Working changes  — clicking a working-tree file opens the review on it
  *   CommitDetail     — commit info header (full-commit view)
  *   GitPanelHeader   — refresh button triggers reload
  *   Deep link        — per-file diff opened from a coc://git address, restored on reload
@@ -60,14 +60,14 @@ test.describe('Git right-panel — CommitDetail per-file', () => {
 });
 
 // ================================================================
-// WorkingTreeFileDiff
+// Working-changes review
 // ================================================================
 
-test.describe('Git right-panel — WorkingTreeFileDiff', () => {
+test.describe('Git right-panel — working-changes review', () => {
     const fileRow = (section: any, fileName: string) =>
         section.locator('[data-testid^="working-tree-file-row-"]').filter({ hasText: fileName });
 
-    test('clicking a working-tree file opens WorkingTreeFileDiff', async ({ page, serverUrl }) => {
+    test('clicking a working-tree file opens the working-changes review on that file', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-wfd-'));
         try {
             const repoDir = createDirtyWorkingTreeRepo(tmpDir);
@@ -82,9 +82,10 @@ test.describe('Git right-panel — WorkingTreeFileDiff', () => {
             await expect(indexRow).toBeVisible();
             await indexRow.click();
 
-            // Right panel should show WorkingTreeFileDiff
+            // Right panel shows the whole working-changes review, focused on the clicked file
+            await expect(page.getByRole('group', { name: 'Review toolbar' })).toContainText('Uncommitted changes', { timeout: 10_000 });
             await expect(page.getByTestId('working-tree-file-diff')).toBeVisible({ timeout: 10_000 });
-            await expect(page.getByTestId('working-tree-file-diff-header')).toBeVisible();
+            await expect(page.getByTestId('working-tree-file-diff-header')).toContainText('index.ts');
             // Wait for diff to load
             await expect(page.getByTestId('working-tree-file-diff-loading')).toBeHidden({ timeout: 10_000 });
             // Should show diff content (the file was modified): the Monaco

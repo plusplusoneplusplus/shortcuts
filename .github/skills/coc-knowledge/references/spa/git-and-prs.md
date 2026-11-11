@@ -117,13 +117,18 @@ compact mode the working-tree header shows `+staged ~modified ?untracked` (or
 commit row leads with its short hash before the subject. The working-tree
 header's all-diffs button opens the `working-tree-all` view
 (`WorkingTreeAllFilesDiff`, deep link `working-changes`): the shared `ReviewFiles`
-navigator with one full `WorkingTreeFileDiff`. Stage labels and repository/stage/path
+navigator with one full `WorkingTreeFileDiff`. There is no single-file working-tree
+view: clicking a working-tree row opens `working-tree-all` with that row's `filePath`
+and `stage`, and the review selects it (`ReviewFiles` remounts once the change list
+loads so the requested file wins over the default first file). Every file the review
+moves to is reported back through `onNavigateToFile`, so the list highlight follows
+and re-clicking a row re-selects it; the deep link and view identity omit the file.
+Stage labels and repository/stage/path
 selection IDs separate partially staged paths in every layout. Untracked text renders
-against an empty base; binary/oversized files retain the preview. Paired content
+against an empty base; binary/oversized files fall back to `PreviewPane`. Paired content
 and Classic patches compare HEAD/index for staged files and index/disk for unstaged
 files. Rename base paths follow the requested stage, so staged rename metadata
-cannot redirect an unstaged index read to the old HEAD path. The full-diff action
-opens the existing single-file route. Owner/endpoint changes replace the host; refresh
+cannot redirect an unstaged index read to the old HEAD path. Owner/endpoint changes replace the host; refresh
 retains dirty buffers, including files removed from the latest change list. Internal
 navigation uses `useDirtyDetailGuard`; mutable changes omit viewed-state controls.
 
@@ -142,9 +147,9 @@ and owner/comparison disposal cancel pending tooltip work.
 
 `git-changed` broadcasts come only from server-initiated git operations, so a file
 deleted by an external process (an agent task, an editor) can linger in the
-working-tree list until the next refresh. When the untracked-file preview's blob
-read 404s, `PreviewPane` fires `onNotFound`; `WorkingTreeFileDiff` replaces the
-preview with a missing-file notice and calls `onFileMissing` once, which
+working-tree list until the next refresh. When an untracked file's content read
+(or its fallback preview's blob read) 404s, `WorkingTreeFileDiff` shows a
+missing-file notice and calls `onFileMissing` once, which
 `RepoGitTab` wires to `bumpWorkingChanges` so the refetched list drops the ghost
 entry. Non-404 preview failures keep the plain error + Retry presentation.
 The preview reads a workspace-relative path built from `RepoGitTab`'s `repoRoot`.
@@ -397,16 +402,16 @@ staged diff stays read-only with a note. Saving never touches the index; Ctrl/Cm
 `explorerApi.writeBlob(workspaceId, repoRelativePath, text)`. Hunks recompute live:
 the controller reports diffs against the editor's current modified text.
 The header shows a Save button and a dirty marker while editable; the view reports
-`onDirtyChange` / `onRegisterSave` (Explorer contract; the untracked `PreviewPane`
-forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGuard`,
+`onDirtyChange` / `onRegisterSave` (Explorer contract; a binary/oversized untracked
+`PreviewPane` also forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGuard`,
 which asks Save / Don't Save / Cancel (`ExplorerCloseTabsDialog`) while the diff is
 dirty; a failed save keeps the prompt and the buffer. It also forwards the same
 reports to `useSplitGitPanel`'s `onDetailDirtyChange` / `onDetailRegisterSave`, which
 reach the panel's `coc://git` page through the dirty bridge in `unifiedGitTabHost`,
 so the tab shows a dirty dot and closing it prompts (`needsDirtyCloseConfirm`
 checks the page kind, like canvas, since Git is a `browser` tab rather than its
-own kind; the prompt's label is the generic "Git", since the address has no
-segment for a working-tree-file view).
+own kind; the prompt's label is the generic "Git", since the `working-changes`
+address has no file segment).
 `RepoGitDetailPane` passes `workingChangesRefreshKey` as `refreshKey`; each bump
 re-reads the diff and both sides quietly. A clean view reloads; unsaved edits are
 never replaced — when the disk text changed, a "File changed on disk" banner offers

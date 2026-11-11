@@ -242,12 +242,6 @@ describe('FileDiffPanel — diff view toggle wiring', () => {
 // ─── WorkingTreeFileDiff ─────────────────────────────────────────────────────
 
 describe('WorkingTreeFileDiff — diff view toggle wiring', () => {
-    it('DiffViewToggle is NOT rendered for untracked stage', async () => {
-        render(<WorkingTreeFileDiff workspaceId="ws1" filePath="newfile.ts" stage="untracked" />);
-        await waitFor(() => expect(screen.getByTestId('working-tree-file-diff-untracked')).toBeTruthy());
-        expect(screen.queryByTestId('diff-view-toggle')).toBeNull();
-    });
-
     it('DiffViewToggle IS rendered for staged stage', async () => {
         render(<WorkingTreeFileDiff workspaceId="ws1" filePath="src/app.ts" stage="staged" />);
         await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());

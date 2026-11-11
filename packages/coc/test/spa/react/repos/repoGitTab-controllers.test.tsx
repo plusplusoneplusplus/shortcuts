@@ -502,11 +502,13 @@ describe('useRepoGitSelection', () => {
         expect(result.current.view).toBeNull();
     });
 
-    it('keeps the current stage when navigating within the working tree', () => {
+    it('opens a working-tree file inside the all-working-changes review', () => {
         const { result } = setup();
         act(() => result.current.selectWorkingTreeFile('a.ts', 'staged'));
-        act(() => result.current.navigateToWorkingTreeFile('b.ts', 'last'));
-        expect(result.current.view).toEqual({ type: 'working-tree-file', filePath: 'b.ts', stage: 'staged' });
+        expect(result.current.view).toEqual({ type: 'working-tree-all', filePath: 'a.ts', stage: 'staged' });
+        expect(result.current.hunkTarget).toBeUndefined();
+        act(() => result.current.navigateToWorkingTreeFile('b.ts', 'untracked', 'last'));
+        expect(result.current.view).toEqual({ type: 'working-tree-all', filePath: 'b.ts', stage: 'untracked' });
         expect(result.current.hunkTarget).toBe('last');
     });
 

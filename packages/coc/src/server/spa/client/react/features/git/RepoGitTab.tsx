@@ -213,7 +213,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
     // user selection replaces it (AC-04). Data-driven view updates go through
     // `rawSelection` (the bridge above) and are never blocked.
     const rawView = rawSelection.view;
-    const detailGuard = useDirtyDetailGuard(rawView?.type === 'working-tree-file' ? rawView.filePath : null);
+    const detailGuard = useDirtyDetailGuard(rawView?.type === 'working-tree-all' ? rawView.filePath ?? null : null);
     const { guard } = detailGuard;
     const handleDetailDirtyChange = useCallback((isDirty: boolean) => {
         detailGuard.onDirtyChange(isDirty);
@@ -234,10 +234,9 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
         selectWorkingTreeFile: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
             // Re-clicking the file already shown is not a navigation.
             const current = rawSelection.getView();
-            if (current?.type === 'working-tree-file' && current.filePath === filePath && current.stage === stage) return;
+            if (current?.type === 'working-tree-all' && current.filePath === filePath && current.stage === stage) return;
             guard(rawSelection.selectWorkingTreeFile)(filePath, stage);
         },
-        navigateToWorkingTreeFile: guard(rawSelection.navigateToWorkingTreeFile),
         selectWorkingTreeAll: guard(rawSelection.selectWorkingTreeAll),
         selectWorkingTreeComments: guard(rawSelection.selectWorkingTreeComments),
         selectBranchRangeComments: guard(rawSelection.selectBranchRangeComments),
@@ -246,7 +245,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
         guard, rawSelection.selectCommit, rawSelection.selectCommits, rawSelection.selectCommitFile,
         rawSelection.navigateToCommitFile, rawSelection.selectBranchRange, rawSelection.selectBranchFile,
         rawSelection.navigateToBranchFile, rawSelection.selectWorkingTreeFile, rawSelection.getView,
-        rawSelection.navigateToWorkingTreeFile, rawSelection.selectWorkingTreeAll, rawSelection.selectWorkingTreeComments,
+        rawSelection.selectWorkingTreeAll, rawSelection.selectWorkingTreeComments,
         rawSelection.selectBranchRangeComments, rawSelection.lookupCommit,
     ]);
     const selection = { ...rawSelection, ...guardedSelectors };
@@ -678,7 +677,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
     const view = selection.view;
     const selectedCommitFile = view?.type === 'commit-file' ? { hash: view.hash, filePath: view.filePath } : null;
     const selectedBranchFile = view?.type === 'branch-file' ? view.filePath : null;
-    const selectedWorkingTreeFile = view?.type === 'working-tree-file' ? view.filePath : null;
+    const selectedWorkingTreeFile = view?.type === 'working-tree-all' ? view.filePath ?? null : null;
 
     const detailPanel = (
         <RepoGitDetailPane
@@ -703,7 +702,6 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
             onNavigateToBranchFile={selection.navigateToBranchFile}
             onNavigateToCommitFile={selection.navigateToCommitFile}
             onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
-            onWorkingTreeFileSelect={selection.selectWorkingTreeFile}
             onWorkingTreeFileMissing={data.bumpWorkingChanges}
             onDetailDirtyChange={handleDetailDirtyChange}
             onDetailRegisterSave={handleDetailRegisterSave}

@@ -33,7 +33,7 @@ const GIT_ROUTE_MEMBER_MARKER = 'member';
 const GIT_BRANCH_RANGE_SENTINEL = 'branch-range';
 const GIT_WORKING_CHANGES_SENTINEL = 'working-changes';
 
-/** The `{ hash, filePath? }` route segments a `PersistedGitView` formats as, or null when the view has no URL form (e.g. `working-tree-file`, `multi-commit`). */
+/** The `{ hash, filePath? }` route segments a `PersistedGitView` formats as, or null when the view has no URL form (e.g. `multi-commit`). */
 function gitRouteSegmentsOf(view: PersistedGitView): { hash: string; filePath?: string } | null {
     switch (view.type) {
         case 'commit': return { hash: view.hash };

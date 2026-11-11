@@ -23,7 +23,7 @@ import { isGitCommitLookupEnabled } from '../../../utils/config';
 import type { GitCommitItem } from '../commits/CommitList';
 import { knownCommitFor } from './knownCommit';
 import { selectedHashesOf } from './selectionModel';
-import type { HunkTarget, PersistedGitView, RightPanelView } from './types';
+import type { HunkTarget, PersistedGitView, RightPanelView, WorkingTreeStage } from './types';
 
 /** A 7–40 char hex string is the only thing worth sending to `getCommit`. */
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -82,8 +82,9 @@ export interface UseRepoGitSelectionReturn {
     selectBranchRange: () => void;
     selectBranchFile: (filePath: string) => void;
     navigateToBranchFile: (filePath: string, target: 'first' | 'last') => void;
-    selectWorkingTreeFile: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
-    navigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
+    /** Opens all working changes on one file. */
+    selectWorkingTreeFile: (filePath: string, stage: WorkingTreeStage) => void;
+    navigateToWorkingTreeFile: (filePath: string, stage: WorkingTreeStage, target: 'first' | 'last') => void;
     selectWorkingTreeAll: () => void;
     selectWorkingTreeComments: () => void;
     selectBranchRangeComments: () => void;
@@ -187,17 +188,14 @@ export function useRepoGitSelection({
         setView({ type: 'branch-file', filePath });
     }, []);
 
-    const selectWorkingTreeFile = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
+    const selectWorkingTreeFile = useCallback((filePath: string, stage: WorkingTreeStage) => {
         setHunkTarget(undefined);
-        setView({ type: 'working-tree-file', filePath, stage });
+        setView({ type: 'working-tree-all', filePath, stage });
     }, []);
 
-    const navigateToWorkingTreeFile = useCallback((filePath: string, target: 'first' | 'last') => {
-        // Working tree navigation keeps the current stage
-        const current = viewRef.current;
-        const currentStage = current?.type === 'working-tree-file' ? current.stage : 'unstaged';
+    const navigateToWorkingTreeFile = useCallback((filePath: string, stage: WorkingTreeStage, target: 'first' | 'last') => {
         setHunkTarget(target);
-        setView({ type: 'working-tree-file', filePath, stage: currentStage });
+        setView({ type: 'working-tree-all', filePath, stage });
     }, []);
 
     const selectWorkingTreeAll = useCallback(() => {
@@ -356,8 +354,8 @@ export function useRepoGitSelection({
         return null;
     }, [view, commits]);
 
-    // Truthy exactly for a view with a commit-ish identity (not a working-tree
-    // file or a transient comments/multi-commit view) — drives CommitList's
+    // Truthy exactly for a view with a commit-ish identity (not a transient
+    // comments/multi-commit view) — drives CommitList's
     // initial ancestor expansion the same way a deep-linked hash used to.
     const initialCommitHash = view?.type === 'commit' ? view.commit.hash
         : view?.type === 'commit-file' ? view.hash
