@@ -10,6 +10,7 @@ vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
 }));
 
 import { EffortTierSelector } from '../../../../../src/server/spa/client/react/features/chat/EffortTierSelector';
+import { Dialog } from '../../../../../src/server/spa/client/react/ui/Dialog';
 import type { LocalEffortTiersMap } from '../../../../../src/server/spa/client/react/hooks/useProviderEffortTiers';
 
 const ALL_TIERS: LocalEffortTiersMap = {
@@ -165,5 +166,21 @@ describe('EffortTierSelector', () => {
             <EffortTierSelector tiers={ALL_TIERS} selectedTier="very-low" onChange={vi.fn()} />,
         );
         expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
+    });
+
+    it('stacks the menu above a non-modal Dialog overlay', () => {
+        // Regression: the menu is portaled to document.body for dialogs without a
+        // focus trap, so it must sit above the overlay or it opens hidden behind it.
+        render(
+            <Dialog open onClose={vi.fn()} title="Run Skill">
+                <EffortTierSelector tiers={ALL_TIERS} selectedTier="low" onChange={vi.fn()} />
+            </Dialog>,
+        );
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        const zIndex = (el: HTMLElement) => Number(/\bz-\[(\d+)\]/.exec(el.className)?.[1] ?? 0);
+        const overlay = screen.getByTestId('dialog-overlay');
+        const menu = screen.getByTestId('effort-tier-menu');
+        expect(overlay.contains(menu)).toBe(false);
+        expect(zIndex(menu)).toBeGreaterThan(zIndex(overlay));
     });
 });

@@ -338,7 +338,7 @@ export function EffortTierSelector({
             {open && !disabled && createPortal(
                 <div
                     className={cn(
-                        'z-[10000] overflow-y-auto',
+                        'z-[10003] overflow-y-auto',
                         view === 'custom' ? 'w-[300px]' : autoProviderMode ? 'min-w-[160px]' : 'min-w-[240px]',
                         'max-w-[calc(100vw-16px)] py-0.5 rounded-md shadow-lg',
                         'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
