@@ -1,16 +1,13 @@
 import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomSnapshot, type BrowserDomSnapshotChunk, type BrowserDomReadPage, type BrowserDomTarget } from './browser-control-dom';
 import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserFrameRegistry } from './browser-frame-registry';
-import { createCdpBrowserControl } from './browser-cdp-control';
-import type { BrowserCdpEventListener } from './browser-host-contract';
+import { isBrowserControlRelease, lazyBrowserControl, type BrowserControl } from './browser-control-engine';
 import type { BrowserControlFrame } from '@plusplusoneplusplus/coc-client';
 import { browserClipRect } from './browser-control-clip';
 import { browserPaste } from './browser-control-paste';
 import { randomUUID } from 'node:crypto';
 import { BROWSER_CURSOR_TAG, buildBrowserCursorExpression, type BrowserCursorCommand, type BrowserCursorPoint } from './browser-control-cursor';
 
-export type BrowserCdpListener = BrowserCdpEventListener;
-export type BrowserCdpSender = (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown>;
 export type BrowserScrollDirection = 'up' | 'down' | 'left' | 'right';
 let nextFrameRef = 1;
 
@@ -28,18 +25,16 @@ export class BrowserControlPage {
     private cursorPoint?: BrowserCursorPoint;
     private cursorDrawn = false;
 
-    private readonly send: BrowserCdpSender;
+    private readonly control: BrowserControl;
 
-    constructor(send: BrowserCdpSender, private readonly platform = process.platform) {
-        this.send = (method, params, session) => {
-            const release = method === 'Input.dispatchMouseEvent' && params?.type === 'mouseReleased'
-                || method === 'Input.dispatchKeyEvent' && params?.type === 'keyUp';
-            if (method.startsWith('Input.') && !release && this.frames && this.inputRevision !== undefined) this.frames.assert(this.inputRevision);
-            return session === undefined ? send(method, params) : send(method, params, session);
-        };
+    constructor(control: BrowserControl, private readonly platform = process.platform) {
+        this.control = lazyBrowserControl(() => control, (call, args) => {
+            const input = call === 'mouse' || call === 'key' || call === 'insertText';
+            if (input && !isBrowserControlRelease(call, args) && this.frames && this.inputRevision !== undefined) this.frames.assert(this.inputRevision);
+        });
     }
 
-    async configureFrames(enabled: boolean, subscribe?: (listener: BrowserCdpListener) => () => void, ready?: () => Promise<void>): Promise<void> {
+    async configureFrames(enabled: boolean): Promise<void> {
         this.inputRevision = undefined;
         if (!enabled) {
             if (this.frames) {
@@ -53,9 +48,7 @@ export class BrowserControlPage {
             }
             return;
         }
-        if (!subscribe) throw new Error('unsupported-runtime: frame event transport unavailable');
-        if (!this.frames) this.frames = new BrowserFrameRegistry(createCdpBrowserControl({ cdp: this.send, onCdpEvent: subscribe,
-            ...(ready ? { waitForCdpEvents: ready } : {}) }), () => this.frameRefs.clear());
+        if (!this.frames) this.frames = new BrowserFrameRegistry(this.control, () => this.frameRefs.clear());
         await this.frames.start();
     }
 
@@ -96,32 +89,32 @@ export class BrowserControlPage {
             this.frames.assert(revision);
             return JSON.stringify(stamps);
         }
-        const result = await this.send('Runtime.evaluate', { expression, returnByValue: true }) as { result?: { value?: unknown }; exceptionDetails?: unknown };
-        if (result.exceptionDetails || typeof result.result?.value !== 'string') throw new Error('stale-action: page validity unavailable');
-        return result.result.value;
+        const result = await this.control.evaluate(expression);
+        if (result.exception !== undefined || typeof result.value !== 'string') throw new Error('stale-action: page validity unavailable');
+        return result.value;
     }
 
     /**
-     * Live per command. Turning it off removes a drawn overlay at once, through `send` when the
+     * Live per command. Turning it off removes a drawn overlay at once, through `control` when the
      * setting turns off between commands; the running command then draws nothing more.
      */
-    setCursorOverlay(enabled: boolean, send: BrowserCdpSender = this.send): void {
+    setCursorOverlay(enabled: boolean, control: BrowserControl = this.control): void {
         // Sent synchronously, so the active command carries it even when it returns at once.
-        if (!enabled) this.removeCursor(send);
+        if (!enabled) this.removeCursor(control);
         this.cursorEnabled = enabled;
     }
 
     /**
-     * Remove a drawn overlay at once through `send`, which may bypass the command queue (human
+     * Remove a drawn overlay at once through `control`, which may bypass the command queue (human
      * takeover, turn finish). The next shown action draws it again; errors are logged and ignored.
      */
-    removeCursor(send: BrowserCdpSender): void {
+    removeCursor(control: BrowserControl): void {
         if (!this.cursorDrawn) return;
         this.cursorDrawn = false;
         this.cursorPoint = undefined;
         // The top-level target's default context is the frames path's main-frame context too.
         let reply: Promise<unknown>;
-        try { reply = send('Runtime.evaluate', { expression: buildBrowserCursorExpression({ op: 'remove' }), returnByValue: true }); }
+        try { reply = control.evaluate(buildBrowserCursorExpression({ op: 'remove' })); }
         catch (error) { reply = Promise.reject(error); }
         reply.catch(error => { console.warn('[coc-desktop] Browser cursor overlay failed:', error instanceof Error ? error.message : error); });
     }
@@ -144,7 +137,7 @@ export class BrowserControlPage {
         let reply: Promise<unknown>;
         try {
             reply = this.frames ? this.frames.evaluate(expression)
-                : this.send('Runtime.evaluate', { expression, returnByValue: true }).then(value => (value as { result?: { value?: unknown } } | undefined)?.result?.value);
+                : this.control.evaluate(expression).then(result => 'value' in result ? result.value : undefined);
         } catch (error) { reply = Promise.reject(error); }
         return reply.then(value => {
             // The page resolves points the caller could not, such as a focused field or a whole-page scroll.
@@ -184,14 +177,10 @@ export class BrowserControlPage {
             }
             return result;
         }
-        const reply = await this.send('Runtime.evaluate', {
-            expression: buildBrowserDomExpression(command), returnByValue: true,
-        }) as { result?: { value?: T }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
-        if (reply.exceptionDetails) {
-            throw new Error(reply.exceptionDetails.exception?.description?.split('\n')[0] || reply.exceptionDetails.text || 'Browser page evaluation failed');
-        }
-        if (!reply.result || !('value' in reply.result)) throw new Error('Browser page returned no result');
-        return reply.result.value as T;
+        const reply = await this.control.evaluate(buildBrowserDomExpression(command));
+        if (reply.exception !== undefined) throw new Error(reply.exception.split('\n')[0] || 'Browser page evaluation failed');
+        if (!('value' in reply)) throw new Error('Browser page returned no result');
+        return reply.value as T;
     }
 
     async snapshot(options: { ref?: string; all?: boolean } = {}): Promise<BrowserDomSnapshot> {
@@ -328,11 +317,9 @@ export class BrowserControlPage {
             return result;
         }
         this.frameFor(undefined, frame);
-        const reply = await this.send('Runtime.evaluate', {
-            expression, returnByValue: true, awaitPromise: true,
-        }) as { result?: { value?: { valueJson: string; valueTruncated: boolean } }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
-        if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text || 'Browser page evaluation failed');
-        const result = reply.result?.value;
+        const reply = await this.control.evaluate(expression, { awaitPromise: true });
+        if (reply.exception !== undefined) throw new Error(reply.exception || 'Browser page evaluation failed');
+        const result = reply.value as { valueJson: string; valueTruncated: boolean } | undefined;
         if (!result || typeof result.valueJson !== 'string' || typeof result.valueTruncated !== 'boolean' || result.valueJson.length > 4000) {
             throw new Error('Browser page returned no valid evaluation result');
         }
@@ -340,13 +327,11 @@ export class BrowserControlPage {
     }
 
     async screenshot(ref?: string, format: 'jpeg' | 'png' = 'jpeg'): Promise<{ data: string; mimeType: 'image/jpeg' | 'image/png' }> {
-        const metrics = await this.send('Page.getLayoutMetrics') as { cssVisualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number }; visualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number } };
-        const viewport = metrics.cssVisualViewport ?? metrics.visualViewport;
-        if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) throw new Error('Browser viewport unavailable');
+        const viewport = await this.control.layoutMetrics();
+        if (viewport.clientWidth <= 0 || viewport.clientHeight <= 0) throw new Error('Browser viewport unavailable');
         const target = ref ? await this.target(ref) : undefined;
         // Resolving a ref scrolls it into view, so obtain the resulting viewport origin.
-        const current = target ? await this.send('Page.getLayoutMetrics') as typeof metrics : metrics;
-        const origin = current.cssVisualViewport ?? current.visualViewport ?? viewport;
+        const origin = target ? await this.control.layoutMetrics() : viewport;
         const clip = target
             ? { x: target.x + origin.pageX, y: target.y + origin.pageY, width: target.width, height: target.height }
             : { x: viewport.pageX, y: viewport.pageY, width: viewport.clientWidth, height: viewport.clientHeight };
@@ -355,15 +340,14 @@ export class BrowserControlPage {
         // The agent never sees its own cursor or effects (a first key chip has no point yet); a slow hide must not hold the capture.
         const hidden = this.cursorDrawn;
         if (hidden) await Promise.race([this.cursor({ op: 'hide' }), delay(250)]);
-        let result: { data?: string };
+        let data: string;
         try {
-            result = await this.send('Page.captureScreenshot', {
-                format, ...(format === 'jpeg' ? { quality: 75 } : {}), captureBeyondViewport: true,
+            data = await this.control.screenshot({
+                format, ...(format === 'jpeg' ? { quality: 75 } : {}),
                 clip: { ...clip, scale: Math.min(1, 1280 / (clip.width * pixelRatio)) },
-            }) as { data?: string };
+            });
         } finally { if (hidden) void this.cursor({ op: 'show' }); }
-        if (!result.data) throw new Error('Browser screenshot returned no image');
-        return { data: result.data, mimeType: format === 'png' ? 'image/png' : 'image/jpeg' };
+        return { data, mimeType: format === 'png' ? 'image/png' : 'image/jpeg' };
     }
 
     private async mouse(target: BrowserDomTarget): Promise<void> {
@@ -371,9 +355,9 @@ export class BrowserControlPage {
         const x = this.mouseContext?.x ?? target.x + target.width / 2;
         const y = this.mouseContext?.y ?? target.y + target.height / 2;
         const session = this.mouseContext?.session;
-        await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }, session);
-        await this.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, session);
-        await this.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, session);
+        await this.control.mouse({ type: 'move', x, y, target: session });
+        await this.control.mouse({ type: 'down', x, y, button: 'left', clickCount: 1, target: session });
+        await this.control.mouse({ type: 'up', x, y, button: 'left', clickCount: 1, target: session });
     }
 
     async click(ref: string): Promise<void> {
@@ -392,7 +376,7 @@ export class BrowserControlPage {
         await this.assertFocusedRef(ref);
         await this.pressKey(this.platform === 'darwin' ? 'Meta+a' : 'Control+a');
         await this.assertFocusedRef(ref);
-        await this.send('Input.insertText', { text });
+        await this.control.insertText(text);
         if (submit) await this.pressKey('Enter');
     }
 
@@ -411,7 +395,7 @@ export class BrowserControlPage {
             if (!text) throw new Error('Option has no searchable label');
             for (let index = 0; index < count; index++) {
                 if (target.optionSearch?.selected) return;
-                await this.send('Input.dispatchKeyEvent', { type: 'char', text: text[0] });
+                await this.control.key({ type: 'char', text: text[0] });
                 target = await this.dom<BrowserDomTarget>(command);
             }
             if (!target.optionSearch?.selected) throw new Error('Option did not respond to trusted keyboard input');
@@ -518,12 +502,12 @@ export class BrowserControlPage {
         const shifted: Record<string, string> = { '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', ',': '<', '.': '>', '/': '?', ';': ':', "'": '"', '[': '{', ']': '}', '\\': '|', '`': '~' };
         const key = modifiers & 8 ? shifted[baseKey] ?? (/^[a-z]$/.test(baseKey) ? baseKey.toUpperCase() : baseKey) : baseKey;
         const text = unmodifiedText && unmodifiedText === baseKey ? key : unmodifiedText;
-        const params = { key, code, windowsVirtualKeyCode, modifiers };
-        await this.send('Input.dispatchKeyEvent', {
-            type: 'keyDown', ...params, ...(text && !(modifiers & 7) ? { text, unmodifiedText } : {}),
+        const params = { key, code, keyCode: windowsVirtualKeyCode, modifiers };
+        await this.control.key({
+            type: 'down', ...params, ...(text && !(modifiers & 7) ? { text, unmodifiedText } : {}),
             ...(this.platform === 'darwin' && baseKey.toLowerCase() === 'a' && modifiers === 4 ? { commands: ['selectAll'] } : {}),
         });
-        await this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
+        await this.control.key({ type: 'up', ...params });
     }
 
     async scroll(direction: BrowserScrollDirection, ref?: string, frame?: string): Promise<void> {
@@ -534,9 +518,7 @@ export class BrowserControlPage {
         const [deltaX, deltaY] = deltas[direction];
         // A whole-page scroll shows its arrow where the cursor already is.
         void this.cursor({ op: 'scroll', direction, ...(ref || frame ? { point: { x: target.x + target.width / 2, y: target.y + target.height / 2 } } : {}) });
-        await this.send('Input.dispatchMouseEvent', {
-            type: 'mouseWheel', x: target.x + target.width / 2, y: target.y + target.height / 2, deltaX, deltaY,
-        });
+        await this.control.mouse({ type: 'wheel', x: target.x + target.width / 2, y: target.y + target.height / 2, deltaX, deltaY });
     }
 
     async wait(textOrMs: string | number, signal?: AbortSignal, frame?: string): Promise<void> {
@@ -636,24 +618,12 @@ export class BrowserControlPage {
     }> {
         const child = this.frames!.resolve(childHandle);
         const parent = this.frames!.resolve(child.parent);
-        const owner = await this.send('DOM.getFrameOwner', { frameId: child.rawId }, parent.session) as { backendNodeId?: number };
-        if (!owner.backendNodeId) throw new Error('Browser frame owner unavailable');
-        const resolved = await this.send('DOM.resolveNode', { backendNodeId: owner.backendNodeId, executionContextId: parent.context }, parent.session) as { object?: { objectId?: string } };
-        const objectId = resolved.object?.objectId;
-        if (!objectId) throw new Error('Browser frame owner context unavailable');
-        try {
-            const reply = await this.send('Runtime.callFunctionOn', { objectId, returnByValue: true,
-                functionDeclaration: `function(scroll,point){return (${frameOwnerGeometry.toString()}).call(this,scroll,point,(${browserClipRect.toString()}))}`,
-                arguments: [{ value: scroll }, { value: point }] }, parent.session) as {
-                    result?: { value?: { x: number; y: number; width: number; height: number; left: number; top: number; right: number; bottom: number } };
-                    exceptionDetails?: { text?: string; exception?: { description?: string } };
-                };
-            if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description?.split('\n')[0] ?? 'Browser frame geometry unavailable');
-            if (!reply.result?.value) throw new Error('Browser frame geometry unavailable');
-            return reply.result.value;
-        } finally {
-            await this.send('Runtime.releaseObject', { objectId }, parent.session);
-        }
+        const reply = await this.control.callOnFrameOwner(child.rawId, { context: parent.context, target: parent.session },
+            `function(scroll,point){return (${frameOwnerGeometry.toString()}).call(this,scroll,point,(${browserClipRect.toString()}))}`, [scroll, point]);
+        if (!reply) throw new Error('Browser frame owner unavailable');
+        if (reply.exception !== undefined) throw new Error(reply.exception.split('\n')[0] || 'Browser frame geometry unavailable');
+        if (!reply.value) throw new Error('Browser frame geometry unavailable');
+        return reply.value as { x: number; y: number; width: number; height: number; left: number; top: number; right: number; bottom: number };
     }
 
     private async visibleFrame(handle: string): Promise<boolean> {

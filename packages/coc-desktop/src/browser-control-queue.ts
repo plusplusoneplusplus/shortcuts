@@ -1,4 +1,5 @@
-import { BrowserControlPage, type BrowserCdpSender } from './browser-control-page';
+import { BrowserControlPage } from './browser-control-page';
+import { isBrowserControlRelease, lazyBrowserControl, type BrowserControl } from './browser-control-engine';
 
 /** The 60s control deadline. It pauses while a held navigation waits for the user's approval. */
 export class ControlDeadline {
@@ -42,7 +43,7 @@ export class ControlDeadline {
     }
 }
 
-/** Serializes trusted input sequences without releasing an outstanding CDP call on cancellation. */
+/** Serializes trusted input sequences without releasing an outstanding engine call on cancellation. */
 export class BrowserControlQueue {
     private readonly page: BrowserControlPage;
     private tail: Promise<void> = Promise.resolve();
@@ -52,18 +53,15 @@ export class BrowserControlQueue {
     private readonly deadlines = new Set<ControlDeadline>();
     private readonly holds = new Set<Map<ControlDeadline, () => void>>();
 
-    constructor(private readonly send: BrowserCdpSender) {
-        this.page = new BrowserControlPage(async (method, params, sessionId) => {
+    /** `control` resolves the view's engine on every call; it may throw once the view is gone. */
+    constructor(private readonly control: BrowserControl) {
+        // Let snapshots retain their ref counter; the next engine call and final result still check cancellation.
+        this.page = new BrowserControlPage(lazyBrowserControl(() => control, (call, args) => {
             const signal = this.active;
             if (!signal) throw new Error('Browser control requires an active command');
-            const release = (method === 'Input.dispatchMouseEvent' && params?.type === 'mouseReleased')
-                || (method === 'Input.dispatchKeyEvent' && params?.type === 'keyUp');
             // Complete a dispatched press so Stop never leaves a mouse button or key held.
-            if (!release) signal.throwIfAborted();
-            const result = await (sessionId === undefined ? send(method, params) : send(method, params, sessionId));
-            // Let snapshots retain their ref counter; the next CDP call and final result still check cancellation.
-            return result;
-        });
+            if (!isBrowserControlRelease(call, args)) signal.throwIfAborted();
+        }));
     }
 
     run<T>(operation: (page: BrowserControlPage, signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -117,10 +115,10 @@ export class BrowserControlQueue {
     }
 
     /** Remove a drawn AI cursor right away; it bypasses the queue so it never waits on or delays a command. */
-    removeCursor(): void { this.page.removeCursor(this.send); }
+    removeCursor(): void { this.page.removeCursor(this.control); }
 
     /** The live setting turned off: remove the cursor out of queue and keep the running command from drawing it again. */
-    disableCursor(): void { this.page.setCursorOverlay(false, this.send); }
+    disableCursor(): void { this.page.setCursorOverlay(false, this.control); }
 
     /** Wait for the issued engine call and required input releases, without waiting on queued commands. */
     settled(): Promise<void> { return this.activeBarrier; }

@@ -7,6 +7,7 @@ import type { BrowserEngineHost, BrowserEventSink, BrowserHostedView } from '../
 import { BROWSER_VIEW_NEW_TAB_CHANNEL } from '../src/browser-view-policy';
 import type { BrowserDemoCapture } from '../src/browser-demo-recorder';
 import { BrowserDemoTabCapture, type BrowserDemoTabSink } from '../src/browser-demo-tab-capture';
+import { cdpBacked } from './cdp-backed-view';
 
 const owner = { workspaceId: 'w', processId: 'p', routingRef: 'w' };
 
@@ -39,7 +40,7 @@ function harness(realCapture = false, configure?: (view: BrowserHostedView, view
                 }),
             };
             configure?.(view, request.viewId);
-            views.set(request.viewId, view);
+            views.set(request.viewId, cdpBacked(view));
             return view;
         },
     };

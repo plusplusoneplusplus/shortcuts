@@ -11,6 +11,10 @@ Paths below are package-relative.
 view identity. URL views and Electron file previews share the host manager but
 keep distinct profiles, permissions and control eligibility. Authentication and
 raw debugger transports stay in main.
+Shared AI control (`browser-control-page.ts`, `browser-control-queue.ts`,
+`browser-frame-registry.ts`) and focus emulation reach a view only through
+`BrowserHostedView.control`; queue cancellation still lets dispatched mouse/key
+releases finish.
 WebView2 control readiness waits for pending site decisions, approved navigation
 dispatch and document loading before CDP inspection. A cancelled pre-approval
 load cannot make the blank document ready. Denial and dispatch failures reach

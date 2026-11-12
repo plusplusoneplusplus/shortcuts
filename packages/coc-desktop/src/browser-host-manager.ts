@@ -11,6 +11,7 @@ import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
 import { BrowserHumanTakeover } from './browser-human-takeover';
 import { BrowserControlQueue } from './browser-control-queue';
+import { lazyBrowserControl } from './browser-control-engine';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { BrowserDemoRecorders } from './browser-demo-recorder';
@@ -314,9 +315,9 @@ export class BrowserHostManager {
         const view = entry.view;
         if (!view || entry.closed) return;
         await view.setBackgroundControl?.(enabled);
-        if (!view.cdp || (entry.focusEmulated ?? false) === enabled) return;
+        if (!view.control || (entry.focusEmulated ?? false) === enabled) return;
         entry.focusEmulated = enabled;
-        await view.cdp('Emulation.setFocusEmulationEnabled', { enabled });
+        await view.control.setFocusEmulation(enabled);
     }
 
     /** The SPA has this view off screen: another tab is selected, its panel is hidden, or it never showed. */
@@ -659,9 +660,7 @@ export class BrowserHostManager {
             this.activateControl(selected, ownerId, request, background);
             await this.backgroundControl(selected, background);
             activeSignal.throwIfAborted();
-            await page.configureFrames(request.framesEnabled === true,
-                view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
-                view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
+            await page.configureFrames(request.framesEnabled === true);
             // Also drawn for background tabs, so the last spot shows when the user switches back.
             page.setCursorOverlay(request.cursorOverlayEnabled === true);
             // Background tabs never take focus: input relies on CDP focus emulation instead.
@@ -857,11 +856,11 @@ export class BrowserHostManager {
         if (entry.sourceKind === 'url') {
             void entry.ready.then(() => this.demos.tabReady(init.ownerId, init.viewId), () => this.demos.tabClosed(init.ownerId, init.viewId))
                 .catch(error => console.error('[coc-desktop] Browser demo tab capture failed:', error));
-            entry.control = new BrowserControlQueue((method, params, sessionId) => {
+            entry.control = new BrowserControlQueue(lazyBrowserControl(() => {
                 if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
-                if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
-                return sessionId === undefined ? entry.view.cdp(method, params) : entry.view.cdp(method, params, sessionId);
-            });
+                if (!entry.view?.control) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+                return entry.view.control;
+            }));
         }
         entries.set(init.viewId, entry);
         return entry;
@@ -1033,7 +1032,7 @@ export class BrowserHostManager {
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
             controlPopoutOpened: (viewId, view, openerViewId) => {
-                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.control) return;
                 const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
                 if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                 const popout: Entry = {
@@ -1042,10 +1041,10 @@ export class BrowserHostManager {
                 };
                 popout.takeover = entry.takeover;
                 for (const item of this.takeovers.values()) if (item.control === entry.takeover) item.entries.add(popout);
-                popout.control = new BrowserControlQueue((method, params) => {
+                popout.control = new BrowserControlQueue(lazyBrowserControl(() => {
                     if (popout.closed || this.disposed) throw new Error('Browser popout closed');
-                    return view.cdp!(method, params);
-                });
+                    return view.control!;
+                }));
                 this.owners.get(entry.ownerId)?.set(viewId, popout);
                 void this.demos.popupOpened(entry.ownerId, opener.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
             },
@@ -1279,7 +1278,7 @@ export class BrowserHostManager {
         return entry.control.run(async (page, commandSignal) => {
             const view = await entry.ready;
             commandSignal.throwIfAborted();
-            if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+            if (!view.control) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
             if (entry.annotation) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);

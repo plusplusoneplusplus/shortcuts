@@ -7,6 +7,7 @@ const path = require('node:path');
 const { app, BrowserWindow, Menu, clipboard } = require('electron');
 const { withRichClipboard } = require('../../dist/browser-rich-clipboard.js');
 const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
+const { createCdpBrowserControl } = require('../../dist/browser-cdp-control.js');
 const { registerBrowserEmbedder } = require('../../dist/browser-webview-guard.js');
 const { ElectronBrowserHost } = require('../../dist/electron-browser-host.js');
 const { WebView2BrowserHost } = require('../../dist/webview2-browser-host.js');
@@ -159,7 +160,7 @@ async function until(check, label, timeout = 8000) {
     throw new Error(`Timed out: ${label}${last ? ': ' + last.message : ''}`);
 }
 const run = operation => queue.run(operation);
-const configure = page => page.configureFrames(true, listener => view.onCdpEvent(listener), () => view.waitForCdpEvents?.());
+const configure = page => page.configureFrames(true);
 const evaluate = (js, frame) => run(async page => JSON.parse((await page.evaluateForTool(js, frame)).valueJson));
 const metadata = () => run(async page => page.frameMetadata());
 const snapshot = () => run(page => page.snapshot());
@@ -249,7 +250,7 @@ async function cleanup() {
     await view.setBounds({ x: 0, y: 0, width: 950, height: 850 });
     await until(() => !view.snapshot().loading, 'initial document');
     await view.focus();
-    queue = new BrowserControlQueue(async (method, params, session) => {
+    queue = new BrowserControlQueue(createCdpBrowserControl({ onCdpEvent: listener => view.onCdpEvent(listener), waitForCdpEvents: () => view.waitForCdpEvents?.(), cdp: async (method, params, session) => {
         commands.push({ method, type: params?.type, session, x: params?.x, y: params?.y });
         if (session && method === 'Runtime.evaluate') {
             sessionEvaluations++;
@@ -264,7 +265,7 @@ async function cleanup() {
             abortMouse.abort(new Error('Synthetic input cancelled')); abortMouse = undefined;
         }
         return result;
-    });
+    } }));
     step('enable real frame discovery');
     unsubscribe = view.onCdpEvent(trace);
     try {

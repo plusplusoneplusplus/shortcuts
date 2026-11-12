@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserControlQueue, ControlDeadline } from '../src/browser-control-queue';
+import { createCdpBrowserControl, type BrowserCdpTransport } from '../src/browser-cdp-control';
+
+const cdpQueue = (cdp: BrowserCdpTransport['cdp']) => new BrowserControlQueue(createCdpBrowserControl({ cdp }));
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -12,7 +15,7 @@ afterEach(() => vi.useRealTimers());
 
 describe('browser command queue', () => {
     it('returns operation results and retains one page across commands', async () => {
-        const queue = new BrowserControlQueue(vi.fn());
+        const queue = cdpQueue(vi.fn());
         const first = await queue.run(async page => page);
         expect(await queue.run(async page => page)).toBe(first);
         expect(await queue.run(async () => ({ ok: true }))).toEqual({ ok: true });
@@ -21,7 +24,7 @@ describe('browser command queue', () => {
     it('serializes whole trusted-input sequences, not individual CDP calls', async () => {
         const gate = deferred<unknown>();
         const send = vi.fn(async (_method: string, _params?: Record<string, unknown>): Promise<unknown> => ({})).mockImplementationOnce(() => gate.promise);
-        const queue = new BrowserControlQueue(send);
+        const queue = cdpQueue(send);
         const first = queue.run(page => page.press('Enter'));
         const second = queue.run(page => page.press('Tab'));
         await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
@@ -37,15 +40,15 @@ describe('browser command queue', () => {
 
     it('does not serialize different views against each other', async () => {
         const gate = deferred<unknown>();
-        const first = new BrowserControlQueue(() => gate.promise).run(page => page.scroll('down'));
-        expect(await new BrowserControlQueue(async () => ({})).run(async () => 'other')).toBe('other');
+        const first = cdpQueue(() => gate.promise).run(page => page.scroll('down'));
+        expect(await cdpQueue(async () => ({})).run(async () => 'other')).toBe('other');
         gate.resolve({});
         await first;
     });
 
     it('preserves engine errors and permits the next operation', async () => {
         const error = new Error('Debugger detached');
-        const queue = new BrowserControlQueue(vi.fn().mockRejectedValueOnce(error).mockResolvedValue({}));
+        const queue = cdpQueue(vi.fn().mockRejectedValueOnce(error).mockResolvedValue({}));
         await expect(queue.run(page => page.press('Enter'))).rejects.toBe(error);
         await expect(queue.run(page => page.press('Tab'))).resolves.toBeUndefined();
     });
@@ -56,14 +59,14 @@ describe('browser command queue', () => {
         const error = new Error('Turn stopped');
         controller.abort(error);
         const operation = vi.fn();
-        await expect(new BrowserControlQueue(vi.fn()).run(operation, controller.signal)).rejects.toBe(error);
+        await expect(cdpQueue(vi.fn()).run(operation, controller.signal)).rejects.toBe(error);
         expect(operation).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
     });
 
     it('cancels queued commands immediately without disturbing the active operation', async () => {
         const gate = deferred<void>();
-        const queue = new BrowserControlQueue(vi.fn());
+        const queue = cdpQueue(vi.fn());
         const first = queue.run(() => gate.promise);
         const controller = new AbortController();
         const operation = vi.fn();
@@ -80,7 +83,7 @@ describe('browser command queue', () => {
     it('rejects active commands immediately but waits for pending CDP before admitting new input', async () => {
         const gate = deferred<unknown>();
         const send = vi.fn(async (_method: string, _params?: Record<string, unknown>): Promise<unknown> => ({})).mockImplementationOnce(() => gate.promise);
-        const queue = new BrowserControlQueue(send);
+        const queue = cdpQueue(send);
         expect(queue.busy).toBe(false);
         const controller = new AbortController();
         const first = queue.run(async page => {
@@ -114,7 +117,7 @@ describe('browser command queue', () => {
             if (params?.type === 'mousePressed') return gate.promise;
             return {};
         });
-        const queue = new BrowserControlQueue(send);
+        const queue = cdpQueue(send);
         const controller = new AbortController();
         const result = queue.run(page => page.type('e1', 'not inserted'), controller.signal);
         await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
@@ -131,7 +134,7 @@ describe('browser command queue', () => {
         const send = vi.fn().mockImplementationOnce(() => gate.promise).mockResolvedValue({
             result: { value: { elements: [], nextRef: 10, url: 'https://fixture.test/', title: 'Fixture' } },
         });
-        const queue = new BrowserControlQueue(send);
+        const queue = cdpQueue(send);
         const controller = new AbortController();
         const snapshot = queue.run(page => page.snapshot(), controller.signal);
         await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
@@ -149,7 +152,7 @@ describe('browser command queue', () => {
         const gate = deferred<unknown>();
         const controller = new AbortController();
         const remove = vi.spyOn(controller.signal, 'removeEventListener');
-        const queue = new BrowserControlQueue(() => gate.promise);
+        const queue = cdpQueue(() => gate.promise);
         const operation = vi.fn();
         const active = expect(queue.run(page => page.scroll('down'), controller.signal)).rejects.toThrow('timed out after 60s');
         const queued = expect(queue.run(operation)).rejects.toThrow('timed out after 60s');
@@ -167,7 +170,7 @@ describe('browser command queue', () => {
     it('pauses the 60s deadline of running and newly queued commands while held, resuming with the time left', async () => {
         vi.useFakeTimers();
         const gate = deferred<unknown>();
-        const queue = new BrowserControlQueue(() => gate.promise);
+        const queue = cdpQueue(() => gate.promise);
         let settled = false;
         const active = queue.run(page => page.scroll('down')).then(() => null, error => { settled = true; return error; });
         await vi.advanceTimersByTimeAsync(50_000);
@@ -210,7 +213,7 @@ describe('browser command queue', () => {
 
     it('cancels every pending command on close/crash and ignores late rejection', async () => {
         const gate = deferred<unknown>();
-        const queue = new BrowserControlQueue(() => gate.promise);
+        const queue = cdpQueue(() => gate.promise);
         const operation = vi.fn();
         const first = queue.run(page => page.scroll('down'));
         const second = queue.run(operation);
@@ -228,7 +231,7 @@ describe('browser command queue', () => {
         vi.useFakeTimers();
         const controller = new AbortController();
         const remove = vi.spyOn(controller.signal, 'removeEventListener');
-        const queue = new BrowserControlQueue(vi.fn());
+        const queue = cdpQueue(vi.fn());
         await queue.run(async () => {}, controller.signal);
         await expect(queue.run(async () => { throw new Error('Action failed'); }, controller.signal)).rejects.toThrow('Action failed');
         expect(vi.getTimerCount()).toBe(0);

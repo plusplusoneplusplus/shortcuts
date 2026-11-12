@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserControlPage } from '../src/browser-control-page';
+import { cdpBacked } from './cdp-backed-view';
 import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
 import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink, BrowserViewRequest } from '../src/browser-host-contract';
@@ -47,7 +48,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
                     return {};
                 }),
             };
-            views.push(view);
+            views.push(cdpBacked(view));
             return view;
         },
     };

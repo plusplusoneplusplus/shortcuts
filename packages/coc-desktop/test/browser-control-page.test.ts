@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserControlPage } from '../src/browser-control-page';
-import type { BrowserCdpListener } from '../src/browser-control-page';
+import { createCdpBrowserControl } from '../src/browser-cdp-control';
+import type { BrowserCdpEventListener as BrowserCdpListener } from '../src/browser-host-contract';
 
 function fixture() {
     const send = vi.fn(async (method: string, _params?: Record<string, unknown>): Promise<unknown> => method === 'Runtime.evaluate'
         ? { result: { value: { x: 10, y: 20, width: 80, height: 30, optionSteps: 2 } } } : {});
-    return { send, page: new BrowserControlPage(send, 'linux') };
+    return { send, page: new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'linux') };
 }
 
 const mouse = [
@@ -41,8 +42,8 @@ describe('engine-neutral trusted CDP actions', () => {
             }
             return {};
         });
-        const page = new BrowserControlPage(send, 'win32');
-        await page.configureFrames(true, callback => { listener = callback; return () => {}; });
+        const page = new BrowserControlPage(createCdpBrowserControl({ cdp: send, onCdpEvent: callback => { listener = callback; return () => {}; } }), 'win32');
+        await page.configureFrames(true);
         await page.snapshot();
         send.mockClear();
         const controller = new AbortController();
@@ -86,11 +87,11 @@ describe('engine-neutral trusted CDP actions', () => {
                 : { exceptionDetails: { exception: { description: 'Browser frame has no visible bounds' } } };
             return {};
         });
-        const page = new BrowserControlPage(send, 'win32');
-        await page.configureFrames(true, callback => {
+        const page = new BrowserControlPage(createCdpBrowserControl({ cdp: send, onCdpEvent: callback => {
             listener = callback;
             return () => {};
-        });
+        } }), 'win32');
+        await page.configureFrames(true);
         const child = page.frameMetadata().frames!.find(frame => frame.depth === 1)!;
         send.mockClear();
         if (focused && visible) {
@@ -177,7 +178,7 @@ describe('engine-neutral trusted CDP actions', () => {
 
     it('uses the native selectAll editing command on macOS without submitting by default', async () => {
         const { send } = fixture();
-        await new BrowserControlPage(send, 'darwin').type('e1', 'new');
+        await new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'darwin').type('e1', 'new');
         expect(send.mock.calls.slice(4)).toEqual([
             ['Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 4, commands: ['selectAll'] }],
             key('a', 'KeyA', 65, 4)[1], ['Input.insertText', { text: 'new' }],
@@ -191,7 +192,7 @@ describe('engine-neutral trusted CDP actions', () => {
         let snapshots = 0;
         send.mockImplementation(async method => method === 'Runtime.evaluate'
             ? { result: { value: { ...target, optionSearch: { ...target.optionSearch, selected: ++snapshots === 3 } } } } : {});
-        await new BrowserControlPage(send, 'darwin').selectOption('e1', 'third');
+        await new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'darwin').selectOption('e1', 'third');
         expect(send.mock.calls.filter(call => call[0] === 'Input.dispatchKeyEvent')).toEqual([
             ['Input.dispatchKeyEvent', { type: 'char', text: 'C' }],
             ['Input.dispatchKeyEvent', { type: 'char', text: 'C' }],
@@ -208,7 +209,7 @@ describe('engine-neutral trusted CDP actions', () => {
         const { send } = fixture();
         send.mockImplementation(async method => method === 'Runtime.evaluate'
             ? { result: { value: { x: 0, y: 0, width: 10, height: 10, optionSearch } } } : {});
-        const selection = new BrowserControlPage(send, 'darwin').selectOption('e1', 'third');
+        const selection = new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'darwin').selectOption('e1', 'third');
         if (error) await expect(selection).rejects.toThrow(error);
         else await selection;
         expect(send.mock.calls.filter(call => call[0] === 'Input.dispatchKeyEvent')).toHaveLength(error === 'did not respond' ? 2 : 0);
@@ -223,7 +224,7 @@ describe('engine-neutral trusted CDP actions', () => {
 
     it('retains trusted Home/arrow selection for macOS list boxes', async () => {
         const { send } = fixture();
-        await new BrowserControlPage(send, 'darwin').selectOption('e5', 'third');
+        await new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'darwin').selectOption('e5', 'third');
         expect(send.mock.calls.slice(1)).toEqual([...key('Home', 'Home', 36), ...key('ArrowDown', 'ArrowDown', 40), ...key('ArrowDown', 'ArrowDown', 40)]);
     });
 

@@ -9,7 +9,7 @@ import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_RE
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 import { ClickOnceError, type ClickOncePolicy } from '../src/browser-clickonce';
-import { withCdpControl } from '../src/browser-cdp-control';
+import { cdpBacked } from './cdp-backed-view';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -34,6 +34,7 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
                 navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(),
                 setPageZoom: vi.fn(), setTabShortcuts: vi.fn(),
             };
+            cdpBacked(view);
             created.push({ request, sink, view, engine });
             return view;
         }),
@@ -1019,6 +1020,7 @@ describe('owner-scoped browser control', () => {
         const view: BrowserHostedView = {
             snapshot: vi.fn(), navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), cdp: vi.fn(),
         };
+        cdpBacked(view);
         gate.resolve(view);
         await closed;
         expect(await opened).toMatchObject({ ok: false, reason: 'not-found' });
@@ -1489,7 +1491,6 @@ describe('owner-bound annotation admission and lifecycle', () => {
             return {};
         });
         view.cdp = cdp;
-        withCdpControl(view);
         await h.manager.bounds(1, 'annotated', { x: 0, y: 0, width: 800, height: 600 });
         const sink = { events: vi.fn(), ended: vi.fn() };
         const start = () => h.manager.startAnnotation(1, 'annotated', 'clone:w', sink);

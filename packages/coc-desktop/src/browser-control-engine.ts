@@ -102,7 +102,7 @@ export interface BrowserControl {
      * Calls `functionDeclaration` with `this` bound to the element that owns frame `frameId`,
      * inside the parent's `context`. Resolves undefined when the parent does not own the frame.
      */
-    callOnFrameOwner(frameId: string, parent: { context: number; target?: string }, functionDeclaration: string, args: unknown[]): Promise<BrowserControlEvaluation | undefined>;
+    callOnFrameOwner(frameId: string, parent: { context?: number; target?: string }, functionDeclaration: string, args: unknown[]): Promise<BrowserControlEvaluation | undefined>;
     /** A fresh isolated world in one frame's current document; returns its context id. */
     createIsolatedWorld(frameId: string, worldName: string, target?: string): Promise<number>;
     addDocumentStartScript(source: string, worldName?: string): Promise<string>;
@@ -129,3 +129,32 @@ export interface BrowserControl {
     waitForEvents?(): Promise<void>;
 }
 
+
+const CONTROL_CALLS = [
+    'mouse', 'key', 'insertText', 'evaluate', 'callOnFrameOwner', 'createIsolatedWorld', 'addDocumentStartScript',
+    'removeDocumentStartScript', 'frameTree', 'enableFrameEvents', 'disableFrameEvents', 'enableContextEvents',
+    'disableContextEvents', 'setChildFrameAttach', 'detachTarget', 'layoutMetrics', 'screenshot', 'setFocusEmulation',
+] as const satisfies ReadonlyArray<Exclude<keyof BrowserControl, 'onEvent' | 'waitForEvents'>>;
+
+/** Whether a call is an input release, which must always complete once its press was dispatched. */
+export function isBrowserControlRelease(call: keyof BrowserControl, args: readonly unknown[]): boolean {
+    return (call === 'mouse' || call === 'key') && (args[0] as { type?: string } | undefined)?.type === 'up';
+}
+
+/**
+ * A control that resolves its engine on every call and runs `before` first (cancellation,
+ * input revision checks). Event subscription bypasses `before`.
+ */
+export function lazyBrowserControl(resolve: () => BrowserControl, before?: (call: keyof BrowserControl, args: readonly unknown[]) => void): BrowserControl {
+    const control = Object.fromEntries(CONTROL_CALLS.map(call => [call, async (...args: unknown[]) => {
+        before?.(call, args);
+        const target = resolve();
+        return (target[call] as (...values: unknown[]) => Promise<unknown>).apply(target, args);
+    }])) as unknown as BrowserControl;
+    control.onEvent = listener => resolve().onEvent(listener);
+    control.waitForEvents = async () => {
+        const target = resolve();
+        await target.waitForEvents?.();
+    };
+    return control;
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserFrameRegistry } from '../src/browser-frame-registry';
 import { createCdpBrowserControl } from '../src/browser-cdp-control';
-import type { BrowserCdpListener } from '../src/browser-control-page';
+import type { BrowserCdpEventListener as BrowserCdpListener } from '../src/browser-host-contract';
 
 function fixture() {
     let event!: BrowserCdpListener;
