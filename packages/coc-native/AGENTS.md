@@ -472,6 +472,24 @@ interception and direct activation routing without installing code. `test/webvie
 probes the debug helper's ClickOnce export and rejects invalid input without
 calling activation.
 
+### Desktop WKWebView
+
+`rust/wkwebview/` ships `coc-wkwebview.darwin-arm64` and `coc-wkwebview.darwin-x64`
+for the macOS desktop host (objc2 + objc2-web-kit, macOS 14+). It speaks the same
+stdio JSON-line protocol as the WebView2 helper: `{"event":"ready"}` on start,
+id-first correlated replies, 1 MiB frames in both directions, and only correlated
+annotation captures may use the larger 28 MB reply budget (`protocol::encode_reply`).
+The main thread runs the AppKit loop as an accessory app (no Dock icon, never
+self-activates); a stdin reader thread hands commands to the main dispatch queue,
+and stdin EOF exits like `quit`. The profile directory (argv[1]) is held with an
+advisory file lock and stores the `WKWebsiteDataStore(forIdentifier:)` UUID in
+`data-store-id`. `--check` prints `{available:true}` on macOS 14+ and
+`unsupported-platform` otherwise. Navigation bookkeeping reuses
+`webview2/src/history.rs`. `src/wkwebview.ts` resolves `COC_WKWEBVIEW_PATH`, the
+local binary, then `prebuilt/darwin-<arch>/`, rewriting ASAR paths to unpacked
+paths; `build:native`/`ensure:native` build it only on darwin arm64/x64. Run
+`cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-wkwebview`.
+
 ### Server artifacts
 
 In order, from `loader.ts`:

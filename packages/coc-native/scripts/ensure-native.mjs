@@ -53,6 +53,7 @@ import { fileURLToPath } from 'node:url';
 import { nativeBinaryName } from './build-native.mjs';
 import { symbolsLspBinaryName } from './build-symbols-lsp.mjs';
 import { supportsWebView2, WEBVIEW2_BINARY_NAME } from './build-webview2.mjs';
+import { supportsWkWebView, wkWebViewBinaryName } from './build-wkwebview.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -79,7 +80,11 @@ export function symbolsLspBinaryPath(root = packageRoot) {
  * stale or nothing will ever rebuild it.
  */
 export function builtBinaryPaths(root = packageRoot, platform = process.platform, arch = process.arch) {
-    return [nativeBinaryPath(root), symbolsLspBinaryPath(root), ...(supportsWebView2(platform, arch) ? [path.join(root, WEBVIEW2_BINARY_NAME)] : [])];
+    return [
+        nativeBinaryPath(root), symbolsLspBinaryPath(root),
+        ...(supportsWebView2(platform, arch) ? [path.join(root, WEBVIEW2_BINARY_NAME)] : []),
+        ...(supportsWkWebView(platform, arch) ? [path.join(root, wkWebViewBinaryName(arch))] : []),
+    ];
 }
 
 /**

@@ -300,6 +300,9 @@ jobs:
           if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = X64 ]; then
             test -f packages/coc-native/coc-webview2.win32-x64-msvc.exe
           fi
+          if [ "$RUNNER_OS" = macOS ]; then
+            ls packages/coc-native/coc-wkwebview.darwin-* >/dev/null
+          fi
 
       # Both artifacts `build:native` produces, for the same reason release.yml
       # ships both: the addon is dlopen'd and the symbol language server is
@@ -314,6 +317,7 @@ jobs:
             packages/coc-native/*.node
             packages/coc-native/coc-symbols-lsp.*
             packages/coc-native/coc-webview2.*.exe
+            packages/coc-native/coc-wkwebview.darwin-*
           if-no-files-found: error
           retention-days: 1
 

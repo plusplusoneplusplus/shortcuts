@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildSymbolsLsp } from './build-symbols-lsp.mjs';
 import { buildWebView2 } from './build-webview2.mjs';
+import { buildWkWebView } from './build-wkwebview.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cargoCwd = path.join('rust', 'napi');
@@ -157,6 +158,7 @@ export function buildNative(options = {}) {
     const sharedTarget = target ?? (options.hostTriple ?? hostTriple)();
     (options.buildSymbolsLsp ?? buildSymbolsLsp)({ profile, target: sharedTarget });
     (options.buildWebView2 ?? buildWebView2)({ profile, target: sharedTarget });
+    (options.buildWkWebView ?? buildWkWebView)({ profile, target: sharedTarget });
 }
 
 /** The triple rustc builds for by default — what napi uses without `--target`. */

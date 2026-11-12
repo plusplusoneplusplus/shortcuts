@@ -77,10 +77,25 @@ describe('electron-builder packaging config', () => {
             expect(unpack).toContain('**/*.node');
             expect(unpack).toContain('**/coc-symbols-lsp*');
             expect(unpack).toContain('**/coc-webview2*');
+            expect(unpack).toContain('**/coc-wkwebview*');
             expect(unpack).toContain('**/@github/copilot/**');
             expect(unpack).toContain('**/@github/copilot-sdk-*/**');
             expect(unpack).toContain('**/@github/copilot-*-*/**');
             expect(unpack.some((glob) => /sqlite/i.test(glob))).toBe(false);
+        }
+    });
+
+    it('packs and unpacks both darwin WKWebView helpers', () => {
+        const config = buildConfig();
+        const excludes = [...(config.files ?? []), ...(config.mac?.files ?? [])]
+            .filter((glob) => glob.startsWith('!')).map((glob) => glob.slice(1));
+        for (const arch of ['arm64', 'x64']) {
+            const helper = `node_modules/@plusplusoneplusplus/coc-native/prebuilt/darwin-${arch}/coc-wkwebview.darwin-${arch}`;
+            expect((config.files ?? []).some((glob) => !glob.startsWith('!') && path.matchesGlob(helper, glob))).toBe(true);
+            expect(excludes.some((glob) => path.matchesGlob(helper, glob))).toBe(false);
+            for (const unpackConfig of [config, containerBuildConfig()]) {
+                expect((unpackConfig.asarUnpack ?? []).some((glob) => path.matchesGlob(helper, glob))).toBe(true);
+            }
         }
     });
 

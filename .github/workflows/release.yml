@@ -143,6 +143,8 @@ jobs:
           # The stdio symbol language server, built by the same command. A
           # release missing it leaves C-family navigation with only clangd.
           ls "packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}"* >/dev/null
+          # The macOS WKWebView browser helper ships for both darwin targets.
+          case "${{ matrix.triple }}" in darwin-*) test -f "packages/coc-native/coc-wkwebview.${{ matrix.triple }}" ;; esac
 
       - name: Run N-API boundary and parity tests
         run: npm run test:run -w packages/coc-native
@@ -156,6 +158,7 @@ jobs:
             packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}
             packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}.exe
             packages/coc-native/coc-webview2.${{ matrix.triple }}.exe
+            packages/coc-native/coc-wkwebview.${{ matrix.triple }}
           if-no-files-found: error
           retention-days: 7
 
@@ -208,6 +211,7 @@ jobs:
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/darwin-arm64/coc-native.darwin-arm64.node
           test -f packages/coc-native/prebuilt/darwin-arm64/coc-symbols-lsp.darwin-arm64
+          test -f packages/coc-native/prebuilt/darwin-arm64/coc-wkwebview.darwin-arm64
 
       - name: Build macOS distributables
         run: npm run dist:mac
