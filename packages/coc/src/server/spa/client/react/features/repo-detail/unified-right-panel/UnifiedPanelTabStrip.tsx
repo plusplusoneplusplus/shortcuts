@@ -384,6 +384,7 @@ export function UnifiedPanelTabStrip({
         setDropIndicator(null);
     }, []);
     const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
+    const [groupMenu, setGroupMenu] = useState<{ group: UnifiedTabStripGroup; x: number; y: number } | null>(null);
     const groups = useMemo(() =>
         groupsEnabled ? groupStripTabs(tabs, {
             activeId, previewId: tabs.find(tab => tab.preview)?.id ?? null, pinnedId,
@@ -425,7 +426,7 @@ export function UnifiedPanelTabStrip({
         return new Map(browserTabs.map((tab, index) => [tab.id, digits[index]]));
     }, [shortcutsOn, stripTabs]);
     const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
-    useEffect(() => { cancelDrag(); endGroupPress(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag, endGroupPress]);
+    useEffect(() => { cancelDrag(); endGroupPress(); setContextMenu(null); setGroupMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag, endGroupPress]);
     useEffect(() => {
         if (draggedId && !stripTabs.some(tab => tab.id === draggedId)) cancelDrag();
         if (dropIndicator && !stripTabs.some(tab => tab.id === dropIndicator.id)) setDropIndicator(null);
@@ -457,7 +458,8 @@ export function UnifiedPanelTabStrip({
 
     useEffect(() => {
         if (contextMenu && !stripTabs.some(tab => tab.id === contextMenu.tabId)) setContextMenu(null);
-    }, [contextMenu, stripTabs]);
+        if (groupMenu && !stripTabs.some(tab => stripGroupForTab(tab) === groupMenu.group)) setGroupMenu(null);
+    }, [contextMenu, groupMenu, stripTabs]);
 
     const dismissContextMenu = useCallback(() => {
         const originId = contextMenu?.tabId;
@@ -805,6 +807,7 @@ export function UnifiedPanelTabStrip({
                             }}
                             onContextMenu={event => {
                                 event.preventDefault();
+                                setGroupMenu(null);
                                 setContextMenu({ tabId: tab.id, x: event.clientX, y: event.clientY });
                             }}
                             onKeyDown={event => onTabKeyDown(event, tab)}
@@ -985,6 +988,11 @@ export function UnifiedPanelTabStrip({
                                 dragging={groupDrag?.group === group}
                                 onPointerDown={groupMoves ? event => onGroupPointerDown(event, group) : undefined}
                                 onKeyDown={groupMoves ? event => onGroupKeyDown(event, group) : undefined}
+                                onContextMenu={event => {
+                                    event.preventDefault();
+                                    setContextMenu(null);
+                                    setGroupMenu({ group, x: event.clientX, y: event.clientY });
+                                }}
                                 onToggle={() => {
                                     if (Date.now() < suppressClickUntil.current || groupPress.current?.dragging) return;
                                     onToggleGroup?.(group);
@@ -1093,6 +1101,26 @@ export function UnifiedPanelTabStrip({
                         {path}
                     </div>,
                     document.body,
+                );
+            })()}
+            {groupMenu && (() => {
+                const source = stripTabs.find(tab => stripGroupForTab(tab) === groupMenu.group);
+                if (!source) return null;
+                const dismiss = () => {
+                    setGroupMenu(null);
+                    focusGroupLabel(groupMenu.group);
+                };
+                return (
+                    <UnifiedPanelTabContextMenu
+                        x={groupMenu.x}
+                        y={groupMenu.y}
+                        items={[{ action: 'close-group', label: 'Close all in group', group: 'close', disabled: false }]}
+                        onDismiss={dismiss}
+                        onAction={action => {
+                            setGroupMenu(null);
+                            onMenuAction?.(action, source.id);
+                        }}
+                    />
                 );
             })()}
             {contextMenu && (() => {

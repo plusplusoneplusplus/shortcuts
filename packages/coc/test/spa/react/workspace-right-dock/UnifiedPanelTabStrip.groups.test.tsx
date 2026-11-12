@@ -454,6 +454,27 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(document.activeElement).toBe(toolsLabel);
     });
 
+    it('right-clicking a group pill offers closing every tab in that group', () => {
+        const tabs = files();
+        const shell = tab('work-items', 'Shell');
+        const { props } = renderStrip({ tabs: [shell, ...tabs] });
+        const filesLabel = screen.getByTestId('unified-panel-group-files');
+        fireEvent.contextMenu(filesLabel);
+        const items = within(screen.getByTestId('unified-panel-tab-menu')).getAllByRole('menuitem');
+        expect(items.map(item => item.textContent)).toEqual(['Close all in group']);
+        fireEvent.click(items[0]);
+        expect(props.onMenuAction).toHaveBeenCalledWith('close-group', tabs[0].id);
+        expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[0].id, 'close-group', new Set()))
+            .toEqual(tabs.map(entry => entry.id));
+        expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+
+        fireEvent.contextMenu(filesLabel);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+        expect(props.onMenuAction).toHaveBeenCalledTimes(1);
+    });
+
     it('offers group bulk commands and disables moves at group boundaries, not global boundaries', () => {
         const tabs = files();
         const shell = tab('work-items', 'Shell');

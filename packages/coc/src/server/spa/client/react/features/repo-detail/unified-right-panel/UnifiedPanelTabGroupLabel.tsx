@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent } from 'react';
+import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 import { cn } from '../../../ui/cn';
 import type { UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 
@@ -9,8 +9,9 @@ export const TAB_GROUP_LABELS: Record<UnifiedTabStripGroup, string> = {
 /**
  * A group's pill. When `onPointerDown` is supplied the pill is also the
  * group's drag handle and Alt+Arrow moves the whole block (`onKeyDown`).
+ * `onContextMenu` opens the group's own menu (right click).
  */
-export function UnifiedPanelTabGroupLabel({ group, count, folded, active, dragging = false, onToggle, onPointerDown, onKeyDown }: {
+export function UnifiedPanelTabGroupLabel({ group, count, folded, active, dragging = false, onToggle, onPointerDown, onKeyDown, onContextMenu }: {
     group: UnifiedTabStripGroup;
     count: number;
     folded: boolean;
@@ -19,6 +20,7 @@ export function UnifiedPanelTabGroupLabel({ group, count, folded, active, draggi
     onToggle: () => void;
     onPointerDown?: (event: PointerEvent<HTMLButtonElement>) => void;
     onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
+    onContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
     return (
         <button
@@ -34,6 +36,7 @@ export function UnifiedPanelTabGroupLabel({ group, count, folded, active, draggi
             onClick={onToggle}
             onPointerDown={onPointerDown}
             onKeyDown={onKeyDown}
+            onContextMenu={onContextMenu}
             className={cn(
                 'unified-panel-group-label mx-2 flex flex-shrink-0 items-center gap-1 self-center rounded-md px-2 py-1 text-[11px]',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]',
