@@ -238,9 +238,6 @@ export interface OpenMenuExtensionResult {
     description?: string;
 }
 
-/** Which list the menu shows: everything, or the Extensions drill-in. */
-export type OpenMenuView = 'main' | 'extensions';
-
 /**
  * A query that names a web address: `url` when it opens, `reason` when it was
  * written as a URL (an explicit scheme) but cannot be opened.
@@ -254,8 +251,7 @@ export type OpenMenuItem =
     | { key: string; type: 'coc'; address: CocAddress }
     | { key: string; type: 'file'; file: OpenMenuFileResult }
     | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult }
-    | { key: string; type: 'extension'; extension: OpenMenuExtensionResult }
-    | { key: string; type: 'back' };
+    | { key: string; type: 'extension'; extension: OpenMenuExtensionResult };
 
 export interface BuildOpenMenuItemsInput {
     actions: readonly OpenMenuAction[];
@@ -264,8 +260,6 @@ export interface BuildOpenMenuItemsInput {
     /** Openable extensions; pass none when there is no chat to open them in. */
     extensions?: readonly OpenMenuExtensionResult[];
     query: string;
-    /** Defaults to the main list. */
-    view?: OpenMenuView;
 }
 
 /**
@@ -295,10 +289,6 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
         .filter(extension => matches(extension.name) || matches(extension.description ?? ''))
         .map(extension => ({ key: `extension:${extension.extensionKey}`, type: 'extension', extension }));
 
-    // The drill-in lists extensions only (the query filters them; no file
-    // search), headed by a row back to the main list.
-    if (input.view === 'extensions') return [{ key: 'back', type: 'back' }, ...extensionItems];
-
     const actionItems: OpenMenuItem[] = input.actions
         .filter(action => matches(action.label))
         .map(action => ({ key: `action:${action.id}`, type: 'action', action }));
@@ -309,7 +299,7 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
         ? []
         : input.files.map(file => ({ key: `file:${file.path}`, type: 'file', file }));
 
-    // With no query extensions stay behind the Extensions entry; a query that
+    // With no query extensions stay in the Extensions flyout; a query that
     // names one reaches it directly.
     if (query === '') return [...actionItems, ...canvasItems];
 
