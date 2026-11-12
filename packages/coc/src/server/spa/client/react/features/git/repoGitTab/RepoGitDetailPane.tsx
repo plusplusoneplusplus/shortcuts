@@ -2,8 +2,8 @@
  * RepoGitDetailPane — the Git tab's right-hand detail surface.
  *
  * A pure switch over `RightPanelView`: commit detail, a commit's file diff, the
- * branch-range overview, a branch-range file diff, a working-tree file diff,
- * all working changes,
+ * branch-range overview, a branch-range file diff, all working changes
+ * (optionally on one file),
  * either all-comments view, a multi-commit summary, or the empty state.
  *
  * Commit review keeps one chat host across overview/file navigation. The same
@@ -18,12 +18,11 @@ import type { CommitDetailProps } from '../commits/CommitDetail';
 import type { CommitPickerOptions, CommitPickerView } from '../commits/CommitHashPicker';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
-import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from '../working-tree/WorkingTreeAllComments';
 import { WorkingTreeAllFilesDiff } from '../working-tree/WorkingTreeAllFilesDiff';
 import type { BranchRangeInfo } from '../branches/BranchChanges';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
-import type { HunkTarget, RightPanelView } from './types';
+import type { HunkTarget, RightPanelView, WorkingTreeStage } from './types';
 
 export interface RepoGitDetailPaneProps {
     workspaceId: string;
@@ -50,9 +49,8 @@ export interface RepoGitDetailPaneProps {
     onBranchFileSelect: (filePath: string) => void;
     onNavigateToBranchFile: (filePath: string, target: 'first' | 'last') => void;
     onNavigateToCommitFile: (hash: string, filePath: string, target: 'first' | 'last') => void;
-    onNavigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
-    /** Opens one file from the all-working-changes view. */
-    onWorkingTreeFileSelect: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
+    /** Reports the file the working-changes review moved to; the review guards unsaved edits itself. */
+    onNavigateToWorkingTreeFile: (filePath: string, stage: WorkingTreeStage, target: 'first' | 'last') => void;
     /** Refreshes the working-tree list when a selected untracked file no longer exists on disk. */
     onWorkingTreeFileMissing?: () => void;
     /** An edited working-tree diff reports unsaved edits and its save function here. */
@@ -70,7 +68,7 @@ export interface RepoGitDetailPaneProps {
 export function RepoGitDetailPane({
     workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
-    onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
+    onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     // One switcher for every review header, so a commit, the branch range and
@@ -129,26 +127,6 @@ export function RepoGitDetailPane({
         );
     }
 
-    if (view?.type === 'working-tree-file') {
-        return (
-            <WorkingTreeFileDiff
-                attachmentDestinationId={attachmentDestinationId}
-                key={`${view.filePath}:${view.stage}`}
-                workspaceId={workspaceId}
-                filePath={view.filePath}
-                stage={view.stage}
-                repoRoot={repoRoot}
-                onNavigateToFile={onNavigateToWorkingTreeFile}
-                initialHunkTarget={hunkTarget}
-                onFileMissing={onWorkingTreeFileMissing}
-                onDirtyChange={onDetailDirtyChange}
-                onRegisterSave={onDetailRegisterSave}
-                refreshKey={workingChangesRefreshKey}
-                onSaved={onWorkingTreeFileSaved}
-            />
-        );
-    }
-
     if (view?.type === 'working-tree-all') {
         return (
             <WorkingTreeAllFilesDiff
@@ -159,7 +137,10 @@ export function RepoGitDetailPane({
                 onDirtyChange={onDetailDirtyChange}
                 onRegisterSave={onDetailRegisterSave}
                 onSaved={onWorkingTreeFileSaved}
-                onFileSelect={onWorkingTreeFileSelect}
+                filePath={view.filePath}
+                stage={view.stage}
+                initialHunkTarget={hunkTarget}
+                onNavigateToFile={onNavigateToWorkingTreeFile}
                 refreshKey={workingChangesRefreshKey}
                 switcher={switcher}
             />

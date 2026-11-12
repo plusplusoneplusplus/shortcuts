@@ -19,9 +19,9 @@ refresh, and the two layouts. Everything else lives here.
 | `useGitOperationActions.ts` | Fetch/pull/push/push-to/rebase/reset/amend/reword/drop/cherry-pick/reorder/conflict, plus all four async-job pollers. |
 | `useGitAutoPullController.ts` | The per-repo auto-pull setting (written via the preferences PATCH) and a read of the server-owned schedule. Owns no timer and never pulls. |
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
-| `useDirtyDetailGuard.tsx` | Save / Don't Save / Cancel prompt before a user selection replaces an edited working-tree diff. `RepoGitTab` wraps the selection's select/navigate functions with `guard`; data-driven `setView` stays unguarded. |
+| `useDirtyDetailGuard.tsx` | Save / Don't Save / Cancel prompt before a user selection replaces an edited working-tree diff. `RepoGitTab` wraps the selection's select/navigate functions with `guard`; data-driven `setView` and `navigateToWorkingTreeFile` (the review reports moves it already guarded) stay unguarded. |
 | `RepoGitListPane.tsx`, `RepoGitOverlays.tsx` | Presentation only; everything arrives as props. |
-| `RepoGitDetailPane.tsx` | Detail routing and an owner/commit-keyed review host. Commit and branch file routes keep the shared navigator mounted; same-commit navigation preserves chat and the file panel. All working changes use `ReviewFiles` with repository/stage/path selection IDs and `WorkingTreeFileDiff`, forwarding concrete ownership, refresh and dirty/save hooks. |
+| `RepoGitDetailPane.tsx` | Detail routing and an owner/commit-keyed review host. Commit and branch file routes keep the shared navigator mounted; same-commit navigation preserves chat and the file panel. All working changes use `ReviewFiles` with repository/stage/path selection IDs and `WorkingTreeFileDiff`, forwarding concrete ownership, refresh and dirty/save hooks. A working-tree row click opens that review on the row's file (`working-tree-all` with `filePath` + `stage`); there is no single-file working-tree view. |
 
 ## Invariants
 

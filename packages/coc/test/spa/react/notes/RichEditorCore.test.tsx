@@ -191,6 +191,9 @@ vi.mock(
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import {
     getLinkHoverTitle,
     getLinkOpenTitle,
@@ -332,6 +335,61 @@ describe('RichEditorCore', () => {
         expect(capturedLinkConfig.HTMLAttributes).toEqual({
             rel: 'noopener noreferrer',
             target: '_blank',
+        });
+    });
+
+    it('allows canvas:// hrefs so canvas links survive parse, render and save', () => {
+        render(<RichEditorCore />);
+        expect(capturedLinkConfig.protocols).toContain('canvas');
+    });
+
+    describe('handleClick on a `canvas://` link', () => {
+        const markView = (href: string) => ({
+            state: { doc: { resolve: () => ({ marks: () => [{ type: { name: 'link' }, attrs: { href } }] }) } },
+        });
+        const hosted = (chatId: string | null) => (
+            <UnifiedPanelHostProvider host={{ workspaceId: 'panel', chatId }}>
+                <RichEditorCore workspaceId="ws-1" />
+            </UnifiedPanelHostProvider>
+        );
+
+        beforeEach(() => localStorage.clear());
+
+        it('opens the canvas as a panel tab and never calls window.open', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            render(hosted('chat-A'));
+            const result = capturedEditorProps.handleClick(markView('canvas://abc'), 0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') });
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(visibleTabs(readUnifiedPanelState('panel'), 'chat-A')[0]).toMatchObject({
+                browserUrl: 'coc://canvas/abc', ownerWorkspaceId: 'ws-1',
+            });
+            openSpy.mockRestore();
+        });
+
+        it('reads the raw href on the DOM-anchor fallback', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            render(hosted('chat-A'));
+            const anchor = document.createElement('a');
+            anchor.setAttribute('href', 'canvas://abc');
+            const result = capturedEditorProps.handleClick(
+                { state: { doc: { resolve: () => ({ marks: () => [] }) } } }, 0,
+                { ctrlKey: true, metaKey: false, target: anchor });
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(visibleTabs(readUnifiedPanelState('panel'), 'chat-A')).toHaveLength(1);
+            openSpy.mockRestore();
+        });
+
+        it('is a no-op without a visible chat', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            render(hosted(null));
+            const result = capturedEditorProps.handleClick(markView('canvas://abc'), 0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') });
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            openSpy.mockRestore();
         });
     });
 

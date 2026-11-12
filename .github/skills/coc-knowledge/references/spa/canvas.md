@@ -496,6 +496,12 @@ and concrete owner, reads roots on that server, and uses `resolveChatFileLink` p
 activates and reveals repeat ranges without replacing buffers. Non-hosted source
 docks use their existing navigation callback; standalone canvas previews show
 `PreviewPane` in a floating, read-only workspace preview. Errors stay in that surface.
+A clicked `.md-link` with a `canvas://<id>` href fires `coc-open-canvas-reference`
+instead of the file event; the scope opens the same tab as the embed's "Open in
+panel" through `openCanvasLink` (owner = the displayed clone, or its remote clone
+key). Notes Ctrl/Cmd+click does the same with `Link` allowing the `canvas` protocol.
+Without a hosting panel showing a chat, the click declines (scope shows an error,
+Notes is a no-op); it never resolves a file or calls `window.open`.
 
 With `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` enabled, user/assistant file clicks and
 portaled tool previews dispatch `coc-open-source-canvas` with originating chat,

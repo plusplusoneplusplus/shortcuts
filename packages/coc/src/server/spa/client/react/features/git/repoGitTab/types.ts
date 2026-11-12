@@ -8,6 +8,8 @@
 
 import type { GitCommitItem } from '../commits/CommitList';
 
+export type WorkingTreeStage = 'staged' | 'unstaged' | 'untracked';
+
 /** Which detail surface the right panel is showing. */
 export type RightPanelView =
     | { type: 'commit'; commit: GitCommitItem }
@@ -15,8 +17,8 @@ export type RightPanelView =
     | { type: 'commit-file'; hash: string; filePath: string; commit?: GitCommitItem }
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
-    | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
-    | { type: 'working-tree-all' }
+    /** All uncommitted changes; `filePath` + `stage` name the file the review shows. */
+    | { type: 'working-tree-all'; filePath?: string; stage?: WorkingTreeStage }
     | { type: 'working-tree-comments' }
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; commits: GitCommitItem[] };
@@ -31,8 +33,7 @@ export type PersistedGitView =
     | { type: 'commit-file'; hash: string; filePath: string }
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
-    | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
-    | { type: 'working-tree-all' }
+    | { type: 'working-tree-all'; filePath?: string; stage?: WorkingTreeStage }
     | { type: 'working-tree-comments' }
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; hashes: string[] };

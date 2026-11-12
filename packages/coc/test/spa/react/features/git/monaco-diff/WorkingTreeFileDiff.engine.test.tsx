@@ -148,7 +148,7 @@ describe('WorkingTreeFileDiff — diff engine', () => {
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\ntext\n', {
             base: { content: '', ref: 'EMPTY', exists: false },
         }));
-        await renderDiff({ stage: 'untracked', untrackedAsDiff: true });
+        await renderDiff({ stage: 'untracked' });
         expect(fakes[0].models[0].original.text).toBe('');
         expect(fakes[0].models[0].modified.text).toBe('new\ntext\n');
         expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'untracked');
@@ -161,13 +161,13 @@ describe('WorkingTreeFileDiff — diff engine', () => {
     it('refreshes a stale untracked entry when its full content read returns 404', async () => {
         const onFileMissing = vi.fn();
         clients['ws-a'].git.getWorkingTreeFileContent.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
-        await renderDiff({ stage: 'untracked', untrackedAsDiff: true, onFileMissing });
+        await renderDiff({ stage: 'untracked', onFileMissing });
         expect(onFileMissing).toHaveBeenCalledOnce();
         expect(screen.getByTestId('working-tree-file-diff-missing')).toBeTruthy();
     });
     it.each([{ binary: true }, { tooLarge: true }])('retains untracked preview handling for %o', async flags => {
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', '', flags));
-        await renderDiff({ stage: 'untracked', untrackedAsDiff: true });
+        await renderDiff({ stage: 'untracked' });
         expect(screen.getByTestId('preview-pane')).toBeTruthy();
         expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();
     });
@@ -292,14 +292,6 @@ describe('WorkingTreeFileDiff — diff engine', () => {
         expect(fakes).toHaveLength(0);
     });
 
-    it('does not offer the engine control for untracked files', async () => {
-        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
-        await renderDiff({ stage: 'untracked' });
-        expect(screen.getByTestId('preview-pane')).toBeTruthy();
-        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
-        expect(clients['ws-a'].git.getWorkingTreeFileContent).not.toHaveBeenCalled();
-    });
-
     it('drives hunk navigation through the Monaco viewer when the editor is active', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         await renderDiff();
@@ -317,7 +309,7 @@ describe('working-tree content search Monaco navigation', () => {
     });
     it.each(['staged', 'unstaged', 'untracked'] as const)('reveals the exact new side in %s without initial-hunk navigation', async stage => {
         const target = match('new');
-        await renderDiff({ stage, untrackedAsDiff: true, contentSearchTarget: target, initialHunkTarget: 'last' });
+        await renderDiff({ stage, contentSearchTarget: target, initialHunkTarget: 'last' });
         expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 7, column: 3 }]);
         expect(fakes[0].adapter.revealModifiedLine).not.toHaveBeenCalled();
     });

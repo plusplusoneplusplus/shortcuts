@@ -9,6 +9,7 @@ import { MarkdownFileLinkScope } from '../../../src/server/spa/client/react/shar
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
 import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { readUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { visibleTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { registerCloneBaseUrls } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 import '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
 
@@ -254,5 +255,56 @@ describe('Markdown preview source links', () => {
         expect(editor).toHaveAttribute('data-range', JSON.stringify({ start: 3, end: 5 }));
         expect(location.href).toBe(url);
         expect((readUnifiedPanelState('panel').chatTabs.chat ?? [])).toHaveLength(0);
+    });
+
+    describe('canvas:// links', () => {
+        const canvasHtml = '<span class="md-link" data-href="canvas://abc-1">Canvas</span>';
+
+        it('opens the canvas tab in the visible chat instead of resolving a file', () => {
+            const fileEvents: Event[] = [];
+            const onFile = (event: Event) => fileEvents.push(event);
+            document.addEventListener('coc-open-file-reference', onFile);
+            render(hosted(<MarkdownFileLinkScope workspaceId="ws" routingRef={null}>
+                <MarkdownView html={canvasHtml} />
+            </MarkdownFileLinkScope>));
+            expect(click(screen.getByText('Canvas')).defaultPrevented).toBe(true);
+            document.removeEventListener('coc-open-file-reference', onFile);
+            expect(fileEvents).toHaveLength(0);
+            expect(mocks.list).not.toHaveBeenCalled();
+            expect(visibleTabs(readUnifiedPanelState('panel'), 'chat')[0]).toMatchObject({
+                browserUrl: 'coc://canvas/abc-1', ownerWorkspaceId: 'ws',
+            });
+            expect(screen.queryByRole('alert')).toBeNull();
+        });
+
+        it('routes a remote resource\'s canvas to its clone key', () => {
+            render(hosted(<MarkdownFileLinkScope workspaceId="ws" routingRef="remote:srv:ws">
+                <MarkdownView html={canvasHtml} />
+            </MarkdownFileLinkScope>));
+            click(screen.getByText('Canvas'));
+            expect(visibleTabs(readUnifiedPanelState('panel'), 'chat')[0]).toMatchObject({ ownerWorkspaceId: 'remote:srv:ws' });
+        });
+
+        it('shows an error without a panel host and never falls back to the file resolver', async () => {
+            render(<MarkdownFileLinkScope workspaceId="ws" routingRef={null}>
+                <MarkdownView html={canvasHtml} />
+            </MarkdownFileLinkScope>);
+            expect(click(screen.getByText('Canvas')).defaultPrevented).toBe(true);
+            expect(await screen.findByRole('alert')).toHaveTextContent('Open a chat in this repo to view the canvas.');
+            expect(mocks.list).not.toHaveBeenCalled();
+            expect(mocks.request).not.toHaveBeenCalled();
+        });
+
+        it('fires the canvas event, not the file event, outside any scope', () => {
+            const seen: string[] = [];
+            const record = (event: Event) => { seen.push(event.type); };
+            document.addEventListener('coc-open-file-reference', record);
+            document.addEventListener('coc-open-canvas-reference', record);
+            render(<MarkdownView html={canvasHtml} />);
+            expect(click(screen.getByText('Canvas')).defaultPrevented).toBe(true);
+            document.removeEventListener('coc-open-file-reference', record);
+            document.removeEventListener('coc-open-canvas-reference', record);
+            expect(seen).toEqual(['coc-open-canvas-reference']);
+        });
     });
 });

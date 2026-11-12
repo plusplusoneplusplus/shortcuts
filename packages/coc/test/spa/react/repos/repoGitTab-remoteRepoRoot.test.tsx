@@ -80,8 +80,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDeta
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
     FileDiffPanel: (props: any) => <div data-testid="stub-file-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({
-    WorkingTreeFileDiff: (props: any) => <div data-testid="stub-working-diff" data-repo-root={props.repoRoot ?? ''} />,
+vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff', () => ({
+    WorkingTreeAllFilesDiff: (props: any) => <div data-testid="stub-working-diff" data-repo-root={props.repoRoot ?? ''} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
     GitPanelHeader: () => <div data-testid="stub-git-header" />,
@@ -116,7 +116,7 @@ async function renderedRepoRoot(sourceSelectionId?: string): Promise<string | nu
     const host = document.createElement('div');
     document.body.append(host);
     render(<RepoGitTab workspaceId={WS} sourceSelectionId={sourceSelectionId} detailContainer={host} detailActive
-        restoreView={{ type: 'working-tree-file', filePath: `${ONE_ROOT}/goal.md`, stage: 'untracked' }} />);
+        restoreView={{ type: 'working-tree-all', filePath: `${ONE_ROOT}/goal.md`, stage: 'untracked' }} />);
     await waitFor(() => expect(screen.getByTestId('stub-working-diff')).toBeTruthy());
     return screen.getByTestId('stub-working-diff').getAttribute('data-repo-root');
 }

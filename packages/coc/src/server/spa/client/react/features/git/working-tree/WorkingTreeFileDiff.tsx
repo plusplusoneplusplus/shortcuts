@@ -1,9 +1,10 @@
 /**
- * WorkingTreeFileDiff — right-panel detail view for a working-tree file diff.
+ * WorkingTreeFileDiff — one file's diff inside the working-changes review.
  *
  * Fetches staged or unstaged diff for a single file via
  * GET /api/workspaces/:id/git/changes/files/<path>/diff?stage=<stage>
- * and renders it in UnifiedDiffViewer. Untracked files show a placeholder.
+ * and renders it in UnifiedDiffViewer. Untracked text renders against an empty
+ * base; binary or oversized untracked files show a file preview.
  *
  * When the diff-engine preference is `monaco`, both full-text sides come from
  * GET .../changes/files/<path>/content?stage=<stage> and render in
@@ -73,10 +74,8 @@ export interface WorkingTreeFileDiffProps {
     attachmentDestinationId?: string;
     filePath: string;
     stage: 'staged' | 'unstaged' | 'untracked';
-    /** Render untracked text against an empty base in the all-changes review. */
-    untrackedAsDiff?: boolean;
     /** Workspace repo root; used to convert the absolute `filePath` to a
-     * repo-relative path for the untracked-file preview. */
+     * repo-relative path for saves, previews and definitions. */
     repoRoot?: string;
     /** Ordered file paths for the working tree (enables cross-file hunk nav). */
     workingTreeFiles?: string[];
@@ -138,8 +137,7 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, untrackedAsDiff = false, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
-    const previewUntracked = stage === 'untracked' && !untrackedAsDiff;
+export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const [untrackedPreviewFallback, setUntrackedPreviewFallback] = useState(false);
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
@@ -178,7 +176,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const cloneClient = useCocClient(workspaceId);
 
     // Monaco engine: load both full-text sides for this file and stage.
-    const wantsEditor = diffEngine === 'monaco' && !previewUntracked;
+    const wantsEditor = diffEngine === 'monaco';
     const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}\u0000${editorAttempt}`;
     const loadEditorContent = useCallback(async (): Promise<LoadedEditorContent> => {
         const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage);
@@ -207,7 +205,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             : { status: currentContent.status };
     const engineSelection = resolveDiffEngineSelection({
         preference: diffEngine,
-        stage: untrackedAsDiff && stage === 'untracked' ? undefined : stage,
+        stage: stage === 'untracked' ? undefined : stage,
         content: contentLoadState,
         editorFailed: editorFailedKey === contentKey,
     });
@@ -246,7 +244,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
     const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
     const diskMatchesIndex = currentContent?.status === 'loaded' && currentContent.diskMatchesIndex;
-    const editable = (untrackedAsDiff && stage === 'untracked') || stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
+    const editable = stage === 'untracked' || stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
     const [editedText, setEditedText] = useState<string | null>(null);
     const [savedText, setSavedText] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -328,21 +326,20 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         }
     }, []);
 
-    // The untracked view forwards these to its PreviewPane instead.
-    const canSave = !previewUntracked && editable && editorSides !== null;
+    const canSave = editable && editorSides !== null;
     useEffect(() => {
-        if (!previewUntracked) onDirtyChange?.(isDirty);
-    }, [previewUntracked, isDirty, onDirtyChange]);
+        onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
     useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
     useEffect(() => {
-        if (!onRegisterSave || previewUntracked) return;
+        if (!onRegisterSave) return;
         if (!canSave) {
             onRegisterSave(null);
             return;
         }
         onRegisterSave(handleSaveEdits);
         return () => onRegisterSave(null);
-    }, [previewUntracked, canSave, onRegisterSave, handleSaveEdits]);
+    }, [canSave, onRegisterSave, handleSaveEdits]);
 
     // ── Go to definition: same diff side, else the current file in Explorer ──
     // The working tree is not a review, so another changed file opens in Explorer too.
@@ -436,10 +433,6 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // Quiet refreshes retain the editor and reject superseded patch reads.
     const fetchDiff = useCallback((full = false, quiet = false) => {
         const generation = ++patchGeneration.current;
-        if (previewUntracked) {
-            setLoading(false); setDiff(null); setError(null);
-            return;
-        }
         if (!quiet) { setLoading(true); setError(null); setDiff(null); }
         const request = stage === 'untracked'
             ? cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'untracked').then(content => {
@@ -456,7 +449,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             if (stage === 'untracked' && err.status === 404) handlePreviewNotFound();
             setError(err.message || 'Failed to load diff');
         }).finally(() => { if (generation === patchGeneration.current) setLoading(false); });
-    }, [workspaceId, filePath, stage, previewUntracked, cloneClient, handlePreviewNotFound, patchContentKey]);
+    }, [workspaceId, filePath, stage, cloneClient, handlePreviewNotFound, patchContentKey]);
 
     useEffect(() => {
         setFullRequested(false);
@@ -471,7 +464,6 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     useEffect(() => {
         if (refreshKey === lastRefreshKeyRef.current) return;
         lastRefreshKeyRef.current = refreshKey;
-        if (previewUntracked) return;
         fetchDiff(fullRequested, true);
         if (!wantsEditor) return;
         const key = saveStateRef.current.contentKey;
@@ -553,8 +545,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                         </button>
                     )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
-                    {!previewUntracked && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
-                    {!previewUntracked && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
+                    <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     {editorSides && <DiffWordWrapToggle />}
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
@@ -631,7 +623,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                                 The change list was out of date and has been refreshed.
                             </span>
                         </div>
-                    ) : previewUntracked || (stage === 'untracked' && untrackedPreviewFallback) ? (
+                    ) : stage === 'untracked' && untrackedPreviewFallback ? (
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
                                 key={attachmentDestinationId ?? workspaceId}

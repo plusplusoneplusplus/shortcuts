@@ -3,6 +3,7 @@ import { Marked } from 'marked';
 import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
 import { htmlLineBreakMarkedExtension } from '../../../../shared/htmlLineBreaks';
 import { escapeHtmlText as escapeHtml } from '../../../../shared/html';
+import { parseCanvasLink } from '../../../shared/canvasLink';
 import { linkifyFilePaths, parseFilePathRef } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
@@ -38,15 +39,8 @@ export function parseExcalidrawLink(url: string): { workspaceId: string; diagram
  *
  * The canvas type is resolved from its persisted descriptor before rendering,
  * so the same marker supports diagram, extension, markdown, and code canvases.
- * Returns null if the marker doesn't match a valid canvas id.
  */
-export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
-    const match = url.match(/^canvas:\/\/([a-z0-9][a-z0-9-]{0,127})$/i);
-    if (!match) {
-        return null;
-    }
-    return { canvasId: match[1] };
-}
+export const parseCanvasEmbedLink = parseCanvasLink;
 
 /**
  * Stamp the workspace id onto canvas embed placeholders. The link renderer and

@@ -233,22 +233,6 @@ describe('WorkingTreeFileDiff — comment integration', () => {
         expect(viewer.getAttribute('data-comment-count')).toBe('2');
     });
 
-    // 8. Untracked files: no toggle button or sidebar
-    it('does not show toggle button or sidebar for untracked files', async () => {
-        await renderDiff('untracked');
-        expect(screen.queryByTestId('toggle-comments-btn')).toBeNull();
-        expect(screen.queryByTestId('comment-sidebar')).toBeNull();
-    });
-
-    // 8b. Untracked files: renders PreviewPane instead of placeholder
-    it('renders PreviewPane for untracked stage', async () => {
-        await renderDiff('untracked');
-        expect(screen.getByTestId('working-tree-file-diff-untracked')).toBeTruthy();
-        expect(screen.getByTestId('mock-preview-pane')).toBeTruthy();
-        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('false');
-        expect(screen.queryByTestId('trigger-add-comment')).toBeNull();
-    });
-
     // 9. Regression: outer container must have 'flex' class for scroll to work
     it('outer container has flex, flex-col, h-full, and overflow-hidden classes (scroll regression)', async () => {
         await renderDiff('staged');

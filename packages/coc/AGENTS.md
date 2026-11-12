@@ -1048,6 +1048,10 @@ references before editing. Paths are package-relative.
   resolved conversation mode through pinned/normal bubbles and `ChatRenderContext`.
   Manual choices survive HTML portal remounts per owner-qualified occurrence;
   workspace/chat/canvas changes isolate state. Panel opening stays owner-routed.
+  Clicked `canvas://<id>` links in markdown previews (`MarkdownFileLinkScope`, via
+  `coc-open-canvas-reference`) and Notes (Ctrl/Cmd+click) open the embed's panel tab
+  through `openCanvasLink`; with no visible chat they decline, never resolving a file
+  or calling `window.open`. Parse with side-effect-free `shared/canvasLink.ts`.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
   Chat and shared Markdown previews render attribute-free `<br>`, `<br/>` and

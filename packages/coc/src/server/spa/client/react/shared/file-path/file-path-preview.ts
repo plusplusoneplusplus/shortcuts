@@ -19,6 +19,7 @@ import {
 } from '../../features/chat/source-canvas/resolve';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 import { getLocalFileLinkKind } from '../../features/chat/conversation/markdownHtml';
+import { OPEN_CANVAS_REFERENCE_EVENT, parseCanvasLink } from '../canvasLink';
 import { isAbsolutePath } from '../../utils/path-resolution';
 import { isHtmlPageTabEnabled } from '../../utils/config';
 import { panelBrowserLinkFromClick, requestPanelBrowserTab } from './browser-bridge';
@@ -1002,6 +1003,17 @@ function initFilePathPreviewDelegation(): void {
         // External URLs — open using link-handler (may redirect to desktop app)
         if (isExternalFileReferenceHref(href)) {
             openLink(href, getLinkHandlersConfig());
+            return;
+        }
+
+        // Canvas links open as a canvas tab through the enclosing markdown
+        // scope. Never fall back to the file resolver.
+        const canvasLink = parseCanvasLink(href);
+        if (canvasLink) {
+            hideTooltip();
+            target.dispatchEvent(new CustomEvent(OPEN_CANVAS_REFERENCE_EVENT, {
+                bubbles: true, cancelable: true, detail: canvasLink,
+            }));
             return;
         }
 

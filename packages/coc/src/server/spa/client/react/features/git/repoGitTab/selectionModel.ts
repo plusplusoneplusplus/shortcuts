@@ -15,7 +15,6 @@ import type { PersistedGitView, RefreshSelectionOptions, RightPanelView } from '
 const REFRESH_STABLE_VIEWS: ReadonlySet<RightPanelView['type']> = new Set([
     'branch-file',
     'branch-range',
-    'working-tree-file',
     'working-tree-all',
     'working-tree-comments',
     'branch-range-comments',
@@ -38,7 +37,6 @@ export function viewIdentity(view: RightPanelView | null): string {
         case 'commit': return `commit:${view.commit.hash}`;
         case 'commit-file': return `commit-file:${view.hash}:${view.filePath}`;
         case 'branch-file': return `branch-file:${view.filePath}`;
-        case 'working-tree-file': return `working-tree-file:${view.stage}:${view.filePath}`;
         case 'multi-commit': return `multi-commit:${view.commits.map(c => c.hash).join(',')}`;
         default: return view.type;
     }
@@ -61,7 +59,6 @@ export function persistedViewIdentity(view: PersistedGitView | null | undefined)
         case 'commit': return `commit:${view.hash}`;
         case 'commit-file': return `commit-file:${view.hash}:${view.filePath}`;
         case 'branch-file': return `branch-file:${view.filePath}`;
-        case 'working-tree-file': return `working-tree-file:${view.stage}:${view.filePath}`;
         case 'multi-commit': return `multi-commit:${view.hashes.join(',')}`;
         default: return view.type;
     }

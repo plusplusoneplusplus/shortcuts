@@ -20,8 +20,12 @@ const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstag
 
 export interface WorkingTreeAllFilesDiffProps extends Pick<WorkingTreeFileDiffProps,
     'workspaceId' | 'attachmentDestinationId' | 'repoRoot' | 'refreshKey' | 'onFileMissing' |
-    'onDirtyChange' | 'onRegisterSave' | 'onSaved' | 'createDiffEditor'> {
-    onFileSelect: (filePath: string, stage: Stage) => void;
+    'onDirtyChange' | 'onRegisterSave' | 'onSaved' | 'createDiffEditor' | 'initialHunkTarget'> {
+    /** The file to show, with `stage`; a change re-selects it. */
+    filePath?: string;
+    stage?: Stage;
+    /** Reports every file the review moves to, so the host can track it. */
+    onNavigateToFile?: (filePath: string, stage: Stage, target: 'first' | 'last') => void;
     /** The commit/view switcher every Git review header shows. */
     switcher?: CommitPickerOptions;
 }
@@ -46,7 +50,7 @@ export function WorkingTreeAllFilesDiff(props: WorkingTreeAllFilesDiffProps) {
 
 /** The shared navigator owns layout; the working-tree pane owns mutable file behavior. */
 function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
-    const { workspaceId, attachmentDestinationId, refreshKey, onFileSelect } = props;
+    const { workspaceId, attachmentDestinationId, refreshKey, filePath, stage, initialHunkTarget, onNavigateToFile, ...fileProps } = props;
     const client = useCocClient(attachmentDestinationId ?? workspaceId);
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loaded, setLoaded] = useState(false);
@@ -85,6 +89,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
         additions: change.additions, deletions: change.deletions,
     })), [retainedChanges, multiRepo]);
     const byKey = useMemo(() => new Map(retainedChanges.map(c => [changeKey(c), c])), [retainedChanges]);
+    const requested = retainedChanges.find(c => c.filePath === filePath && c.stage === stage);
     const identity = JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, 'working-tree']);
     const searchFiles = useMemo(() => files.map(({ id, path, label }) => ({ id, path, label })), [files]);
     const controller = useReviewContentSearchController(identity, searchFiles, file => {
@@ -95,18 +100,24 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     useEffect(() => { setContentSearchTarget(undefined); }, [controller]);
     const retry = () => setAttempt(value => value + 1);
     return <>
-        <ReviewFiles identity={identity}
+        {/* Mounts again once loaded, so the requested file wins over the default first file. */}
+        <ReviewFiles key={String(loaded)} identity={identity}
             files={files} reviewEnabled={false} retainSelection={dirty}
+            selectedPath={requested ? changeKey(requested) : null} initialHunkTarget={initialHunkTarget}
             beforeNavigate={proceed => guard.guard(proceed)()}
-            onSelect={key => { setContentSearchTarget(undefined); setSelected(byKey.get(key)); }}
+            onSelect={(key, target) => {
+                setContentSearchTarget(undefined);
+                const change = byKey.get(key);
+                setSelected(change);
+                if (change) onNavigateToFile?.(change.filePath, change.stage, target);
+            }}
             contentSearch={controller ? { controller, onOpenMatch: (file, match) => {
                 const change = byKey.get(file.id);
                 if (change) setContentSearchTarget({ ...match, filePath: change.filePath });
             } } : undefined}
             loading={!loaded && !error} error={!loaded ? error : undefined} onRetry={retry}
             header={{ identity: <ReviewViewIdentity title="Uncommitted changes" viewId="working-changes" picker={props.switcher} />,
-                actions: selected ? [{ id: 'open-file', label: 'Open full diff', icon: '↗',
-                    onClick: guard.guard(() => onFileSelect(selected.filePath, selected.stage)) }] : [], below: loaded && error
+                below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}
             rowDetails={file => <span className="git-review-muted">{file.label}</span>}
             rowMenu={(file, anchor) => {
@@ -128,8 +139,8 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                 const change = byKey.get(reviewFileKey(file))!;
                 // Cross-file hunk navigation stays within this stage. The shell navigates all stages.
                 const stageChanges = paths.map(key => byKey.get(key)!).filter(c => c.stage === change.stage);
-                return <WorkingTreeFileDiff {...props} key={changeKey(change)}
-                    filePath={change.filePath} stage={change.stage} untrackedAsDiff initialHunkTarget={target}
+                return <WorkingTreeFileDiff {...fileProps} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} key={changeKey(change)}
+                    filePath={change.filePath} stage={change.stage} initialHunkTarget={target}
                     contentSearchTarget={contentSearchTarget}
                     refreshKey={(refreshKey ?? 0) + attempt}
                     workingTreeFiles={stageChanges.map(c => c.filePath)}
