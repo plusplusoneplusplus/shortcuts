@@ -815,9 +815,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         console.error('[job-notices] Could not restore notices:', error))
         .then(() => delegatedJobResults.restore()).catch(error =>
         console.error('[delegated-job-results] Could not restore results:', error));
-    const registerSentinelDelegation = createSentinelDelegationEnqueue({
+    const sentinelDelegationDeps: Parameters<typeof createSentinelDelegationEnqueue>[0] = {
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
         getTask: taskId => bridge.getTask(taskId),
+        onTrackedFailure: (input, error) => {
+            const token = (input.payload.context as Record<string, unknown> | undefined)?.sentinelTodoTracking as
+                import('@plusplusoneplusplus/coc-client').SentinelTodoTrackedAdmission | undefined;
+            if (token && !bridge.getTask(input.id!)) dependencyActions.block(token.owner, token.itemId, error, input.id);
+        },
+    };
+    const registerSentinelDelegation = createSentinelDelegationEnqueue({
+        ...sentinelDelegationDeps,
         guardTracked: async input => {
             const context = input.payload.context as Record<string, unknown> | undefined;
             if (context?.sentinelTodoTracking) return dependencyActions.guard(input, 'enqueue');
@@ -826,12 +834,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             const queued = !parent && isQueueProcessId(context.spawnedFromProcessId) ? bridge.getTask(toTaskId(context.spawnedFromProcessId)) : undefined;
             if (parent?.metadata?.mode === 'sentinel' || queued?.payload.mode === 'sentinel') throw new Error('Sentinel tracked launches require owner/item admission context');
         },
-        onTrackedFailure: (input, error) => {
-            const token = (input.payload.context as Record<string, unknown> | undefined)?.sentinelTodoTracking as
-                import('@plusplusoneplusplus/coc-client').SentinelTodoTrackedAdmission | undefined;
-            if (token && !bridge.getTask(input.id!)) dependencyActions.block(token.owner, token.itemId, error, input.id);
-        },
     });
+    // Phone hand-offs are explicit user commands, not Sentinel tool launches,
+    // so they register as delegations without to-do item admission.
+    const registerMessagingHandOff = createSentinelDelegationEnqueue(sentinelDelegationDeps);
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
         await delegatedResultsRestored;
@@ -1340,11 +1346,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Mode-prefixed phone messages to a sentinel start a separate tracked job.
     const messagingHandOff = createMessagingHandOff({
         store, queue: queueFacade, jobNotices,
-        // Ordinary command handoffs share durable Sentinel admission. Ralph
+        // Ordinary command handoffs share durable Sentinel registration. Ralph
         // grilling needs session-aware registration, separate from this path.
-        enqueue: input => input.payload.mode === 'ralph'
-            ? enqueueWithResolvedDefaults(input)
-            : enqueueSentinelDelegation(input, enqueueWithResolvedDefaults),
+        enqueue: async input => {
+            if (input.payload.mode === 'ralph') return enqueueWithResolvedDefaults(input);
+            await delegatedResultsRestored;
+            return registerMessagingHandOff(input, enqueueWithResolvedDefaults);
+        },
     });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
