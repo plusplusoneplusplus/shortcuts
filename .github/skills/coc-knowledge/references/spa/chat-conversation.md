@@ -504,8 +504,12 @@ tool, so a hidden `suggest_follow_ups` cannot hide a rich answer behind a trivia
 line.
 
 Whisper header parts and the group's reconstructable calls come from
-`buildWhisperGroupModel` / `collectGroupToolCalls` (`whisperGroupModel.ts`). Summary spans
-(skills, memories, files, commits, PRs, pushes) share the `useHoverPopover` /
+`buildWhisperGroupModel` / `collectGroupToolCalls` (`whisperGroupModel.ts`). The subagent
+part counts `task`/`Task`/`Agent` calls across the whole turn (tail included, so an agent
+kept visible by progress still counts) and reads "N agents running (M done)" while any
+run, then "N agents"; its popover lists running agents first with live elapsed time.
+Background agents whose `task` call returns at launch count as done. Summary spans
+(agents, skills, memories, files, commits, PRs, pushes) share the `useHoverPopover` /
 `HoverSummarySpan` primitive (`hoverPopover.tsx`). Selecting a skill opens
 `WhisperSkillDetailDialogProvider`'s panel-scoped dialog; `ChatDetail` mounts that provider
 around the left conversation stack so the backdrop is bounded by the conversation column

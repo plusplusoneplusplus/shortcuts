@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from '../../../../ui';
-import type { WhisperSummary, FileEdit } from './toolGroupUtils';
+import type { WhisperSummary, WhisperAgent, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
@@ -23,7 +23,7 @@ import { lookupCloneBaseUrl } from '../../../../repos/cloneRegistry';
 import { normalizeToolName } from './toolNormalization';
 import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
 import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hoverPopover';
-import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
+import { buildWhisperGroupModel, collectGroupToolCalls, formatWhisperDuration } from './whisperGroupModel';
 import { useWhisperSkillDetailDialog } from './WhisperSkillDetailDialog';
 import { popOutOpened } from '../../../../utils/popOutWindow';
 import { activateChatCommit, useChatCommitOpener } from '../chatCommitOpener';
@@ -360,6 +360,91 @@ function SkillHoverSpan({ text, skillNames, workspaceId, testId }: SkillHoverSpa
                 />
             )}
         </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// AgentHoverPopover — shown when hovering over "N agents (running)"
+// ---------------------------------------------------------------------------
+
+interface AgentHoverPopoverProps {
+    agents: WhisperAgent[];
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+}
+
+/** Elapsed time for one agent; running agents tick against `now`. */
+function formatAgentElapsed(agent: WhisperAgent, now: number): string {
+    if (agent.startTime == null) return '';
+    return formatWhisperDuration(agent.startTime, agent.endTime ?? Math.max(now, agent.startTime));
+}
+
+function AgentHoverPopover({ agents, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: AgentHoverPopoverProps) {
+    const hasRunning = agents.some(a => a.running);
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!hasRunning) return;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [hasRunning]);
+
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 460, agents.length * 28 + 8);
+    // Running first, then finished; call order within each.
+    const ordered = [...agents.filter(a => a.running), ...agents.filter(a => !a.running)];
+
+    return ReactDOM.createPortal(
+        <div
+            ref={popoverRef}
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[240px] max-w-[460px]"
+            style={{ top: pos.top, left: pos.left }}
+            data-testid="agent-hover-popover"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+        >
+            {ordered.map(agent => (
+                <div
+                    key={agent.id}
+                    className="flex items-center gap-2 px-2.5 py-1 text-xs"
+                    data-testid={agent.running ? 'agent-popover-row-running' : 'agent-popover-row-done'}
+                    title={agent.label}
+                >
+                    <span className={cn('shrink-0', agent.running ? 'text-[#0078d4] animate-pulse' : 'text-[#22863a] dark:text-[#85e89d]')}>
+                        {agent.running ? '●' : '✓'}
+                    </span>
+                    <span className={cn('truncate min-w-0 flex-1', agent.running ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]')}>
+                        {agent.label}
+                    </span>
+                    <span className="shrink-0 font-mono text-[#848484]">{formatAgentElapsed(agent, now)}</span>
+                </div>
+            ))}
+        </div>,
+        document.body,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// AgentHoverSpan — the live subagent chip in the collapsed header
+// ---------------------------------------------------------------------------
+
+interface AgentHoverSpanProps {
+    text: string;
+    agents: WhisperAgent[];
+    running: boolean;
+    testId?: string;
+}
+
+function AgentHoverSpan({ text, agents, running, testId }: AgentHoverSpanProps) {
+    return (
+        <HoverSummarySpan
+            text={running ? <><span className="text-[#0078d4] animate-pulse" aria-hidden="true">● </span>{text}</> : text}
+            testId={testId}
+            hasContent={agents.length > 0}
+            renderPopover={(anchor) => <AgentHoverPopover agents={agents} {...anchor} />}
+        />
     );
 }
 
@@ -1129,6 +1214,10 @@ export function WhisperCollapsedGroup({
         } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
             headerElements.push(
                 <SkillHoverSpan key={`part-${idx}`} text={part.text} skillNames={summary.skillNames} workspaceId={workspaceId} testId="whisper-skill-hover" />,
+            );
+        } else if (part.kind === 'agent' && summary.agents && summary.agents.length > 0) {
+            headerElements.push(
+                <AgentHoverSpan key={`part-${idx}`} text={part.text} agents={summary.agents} running={(summary.agentRunningCount ?? 0) > 0} testId="whisper-agent-hover" />,
             );
         } else if (part.kind === 'memory' && summary.memoryActions && summary.memoryActions.length > 0) {
             headerElements.push(

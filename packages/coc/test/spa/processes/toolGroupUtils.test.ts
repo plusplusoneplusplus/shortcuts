@@ -847,6 +847,65 @@ describe('groupConsecutiveToolChunks — agent grouping', () => {
 // ---------------------------------------------------------------------------
 
 describe('filterWhisperChunks', () => {
+    describe('subagent summary', () => {
+        const summaryOf = (chunks: any[], toolById: Map<string, any>) =>
+            (filterWhisperChunks(chunks, toolById)[0] as WhisperGroupChunk).summary;
+
+        it('counts running and finished task calls with labels and times', () => {
+            const chunks = [
+                { kind: 'tool', key: 'k-a', toolId: 'a' },
+                { kind: 'tool-group', key: 'g', toolIds: ['b', 'g1'] },
+                { kind: 'content', key: 'c', html: '<p>Waiting.</p>' },
+            ];
+            const toolById = makeMap([
+                ['a', { toolName: 'task', status: 'completed', args: { agent_type: 'explore', description: 'Find SSE code' }, startTime: '2026-01-01T00:00:00Z', endTime: '2026-01-01T00:00:05Z' }],
+                ['b', { toolName: 'Task', status: 'running', args: { prompt: 'Review the tests' }, startTime: '2026-01-01T00:00:01Z' }],
+                ['g1', { toolName: 'grep', status: 'completed' }],
+            ]);
+            const summary = summaryOf(chunks, toolById);
+            expect(summary.agentRunningCount).toBe(1);
+            expect(summary.agents).toEqual([
+                { id: 'a', label: '[explore] Find SSE code', running: false, startTime: Date.parse('2026-01-01T00:00:00Z'), endTime: Date.parse('2026-01-01T00:00:05Z') },
+                { id: 'b', label: 'Review the tests', running: true, startTime: Date.parse('2026-01-01T00:00:01Z'), endTime: undefined },
+            ]);
+        });
+
+        it('recognizes the Claude Agent tool and its subagent_type arg', () => {
+            const chunks = [
+                { kind: 'tool', key: 'k-a', toolId: 'a' },
+                { kind: 'content', key: 'c', html: '<p>Done.</p>' },
+            ];
+            const toolById = makeMap([['a', { toolName: 'Agent', status: 'pending', args: { subagent_type: 'Plan', description: 'Design it' } }]]);
+            const summary = summaryOf(chunks, toolById);
+            expect(summary.agentRunningCount).toBe(1);
+            expect(summary.agents?.[0].label).toBe('[Plan] Design it');
+        });
+
+        it('still counts a running agent kept in the visible tail by progress messages', () => {
+            const chunks = [
+                { kind: 'tool', key: 'k-g', toolId: 'g' },
+                { kind: 'tool', key: 'k-a', toolId: 'a' },
+            ];
+            const toolById = makeMap([
+                ['g', { toolName: 'grep', status: 'completed' }],
+                ['a', { toolName: 'task', status: 'running', progressMessage: 'Reading files', args: { description: 'Scan' } }],
+            ]);
+            const result = filterWhisperChunks(chunks, toolById);
+            expect((result[1] as any).toolId).toBe('a');
+            expect((result[0] as WhisperGroupChunk).summary.agentRunningCount).toBe(1);
+        });
+
+        it('omits agent fields when no subagent ran', () => {
+            const chunks = [
+                { kind: 'tool', key: 'k-g', toolId: 'g' },
+                { kind: 'content', key: 'c', html: '<p>Done.</p>' },
+            ];
+            const summary = summaryOf(chunks, makeMap([['g', { toolName: 'grep', status: 'completed' }]]));
+            expect(summary.agents).toBeUndefined();
+            expect(summary.agentRunningCount).toBeUndefined();
+        });
+    });
+
     it('returns [] for empty input', () => {
         expect(filterWhisperChunks([], new Map())).toEqual([]);
     });

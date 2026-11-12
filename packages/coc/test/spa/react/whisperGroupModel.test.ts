@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import type { WhisperSummary } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import {
     buildWhisperHeaderParts,
+    buildWhisperAgentPart,
     buildWhisperGroupModel,
     formatWhisperDuration,
     collectGroupToolCalls,
@@ -169,5 +170,36 @@ describe('collectGroupToolCalls', () => {
 
     it('returns an empty list when there are no reconstructable calls', () => {
         expect(collectGroupToolCalls([{ kind: 'content', key: 'k' }], new Map())).toEqual([]);
+    });
+});
+
+describe('buildWhisperAgentPart', () => {
+    const agent = (id: string, running: boolean) => ({ id, label: id, running });
+
+    it('omits the part when the turn has no subagents', () => {
+        expect(buildWhisperAgentPart(summary())).toBeUndefined();
+        expect(buildWhisperHeaderParts(summary({ toolCallCount: 1 })).some(p => p.kind === 'agent')).toBe(false);
+    });
+
+    it('shows the live running count with finished agents in parentheses', () => {
+        expect(buildWhisperAgentPart(summary({
+            agents: [agent('a', true), agent('b', true), agent('c', false)],
+            agentRunningCount: 2,
+        }))).toEqual({ text: '2 agents running (1 done)', kind: 'agent' });
+        expect(buildWhisperAgentPart(summary({ agents: [agent('a', true)], agentRunningCount: 1 })))
+            .toEqual({ text: '1 agent running', kind: 'agent' });
+    });
+
+    it('falls back to a plain total once every agent finished', () => {
+        expect(buildWhisperAgentPart(summary({ agents: [agent('a', false), agent('b', false)], agentRunningCount: 0 })))
+            .toEqual({ text: '2 agents', kind: 'agent' });
+    });
+
+    it('places the agent part right after messages', () => {
+        const parts = buildWhisperHeaderParts(summary({
+            toolCallCount: 2, messageCount: 1, fileEditCount: 1,
+            agents: [agent('a', true)], agentRunningCount: 1,
+        }));
+        expect(parts.map(p => p.text)).toEqual(['2 tool calls', '1 message', '1 agent running', '1 file']);
     });
 });

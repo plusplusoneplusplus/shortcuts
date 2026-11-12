@@ -687,6 +687,62 @@ export function collectFileEdits(toolCalls: readonly FileEditToolCall[]): FileEd
 /**
  * Summary of the "preceding" chunks that Whisper mode collapses.
  */
+export interface WhisperAgent {
+    id: string;
+    /** `[agent_type] description` label (falls back to a prompt excerpt). */
+    label: string;
+    running: boolean;
+    /** Epoch ms. */
+    startTime?: number;
+    /** Epoch ms; undefined while running. */
+    endTime?: number;
+}
+
+/** Subagent launch tools (Copilot/Codex `task`, Claude `Task`/`Agent`). */
+export function isSubagentTool(toolName: string): boolean {
+    return toolName === 'Agent' || normalizeToolName(toolName) === 'task';
+}
+
+function buildAgentLabel(args: unknown): string {
+    if (!isRecord(args)) return 'Subagent';
+    const type = typeof args.agent_type === 'string' ? args.agent_type
+        : typeof args.subagent_type === 'string' ? args.subagent_type : '';
+    let text = typeof args.description === 'string' ? args.description.trim() : '';
+    if (!text && typeof args.prompt === 'string') {
+        const prompt = args.prompt.trim();
+        text = prompt.length > 60 ? `${prompt.slice(0, 57)}...` : prompt;
+    }
+    return [type && `[${type}]`, text].filter(Boolean).join(' ') || 'Subagent';
+}
+
+/**
+ * Collects subagent calls across ALL chunks of the turn — including tail
+ * chunks kept visible because they are actively reporting progress — so the
+ * running count stays accurate while agents work.
+ */
+function collectWhisperAgents(chunks: ToolChunk[], toolById: Map<string, ToolLike>): WhisperAgent[] {
+    const agents: WhisperAgent[] = [];
+    const add = (id: string) => {
+        const tool = toolById.get(id);
+        if (!tool || !isSubagentTool(tool.toolName)) return;
+        const running = tool.status === 'running' || tool.status === 'pending';
+        agents.push({
+            id,
+            label: buildAgentLabel(tool.args),
+            running,
+            startTime: tool.startTime ? new Date(tool.startTime).getTime() : undefined,
+            endTime: !running && tool.endTime ? new Date(tool.endTime).getTime() : undefined,
+        });
+    };
+    for (const c of chunks) {
+        if (c.kind === 'tool' && c.toolId) add(c.toolId);
+        else if (c.kind === 'tool-group' && Array.isArray((c as any).toolIds)) {
+            for (const id of (c as any).toolIds as string[]) add(id);
+        }
+    }
+    return agents;
+}
+
 export interface WhisperSummary {
     toolCallCount: number;
     messageCount: number;
@@ -718,6 +774,10 @@ export interface WhisperSummary {
     memoryCount?: number;
     /** Details of memory tool invocations. */
     memoryActions?: Array<{ action: string; target: string; content?: string }>;
+    /** Subagent (`task`) calls in the turn, in call order. */
+    agents?: WhisperAgent[];
+    /** Number of subagents still running. */
+    agentRunningCount?: number;
     /** Number of unique files edited or created. */
     fileEditCount?: number;
     /** Per-file edit/create statistics. */
@@ -911,6 +971,9 @@ export function filterWhisperChunks(
 
     const deletedFileCount = fileEdits.filter(f => f.isDeleted).length;
 
+    const agents = collectWhisperAgents(chunks, toolById);
+    const agentRunningCount = agents.filter(a => a.running).length;
+
     const summary: WhisperSummary = {
         toolCallCount,
         messageCount,
@@ -921,6 +984,7 @@ export function filterWhisperChunks(
         ...(pushCount > 0 ? { pushCount, pushes } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         ...(memoryActions.length > 0 ? { memoryCount: memoryActions.length, memoryActions } : {}),
+        ...(agents.length > 0 ? { agents, agentRunningCount } : {}),
         ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
         ...(deletedFileCount > 0 ? { deletedFileCount } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,

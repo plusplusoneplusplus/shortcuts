@@ -13,7 +13,7 @@ import type { WhisperSummary } from './toolGroupUtils';
 import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
 
 export type WhisperHeaderPartKind =
-    | 'commit' | 'amend' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory';
+    | 'agent' | 'commit' | 'amend' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory';
 
 export interface WhisperHeaderPart {
     text: string;
@@ -42,9 +42,25 @@ export function formatWhisperDuration(startTime?: number, endTime?: number): str
 }
 
 /**
+ * Subagent chip: "N agents running (M done)" while any run, else "N agents".
+ * Recomputed on every streamed update, so the running count stays live.
+ */
+export function buildWhisperAgentPart(summary: WhisperSummary): WhisperHeaderPart | undefined {
+    const total = summary.agents?.length ?? 0;
+    if (total === 0) return undefined;
+    const running = summary.agentRunningCount ?? 0;
+    if (running === 0) return { text: `${total} agent${total !== 1 ? 's' : ''}`, kind: 'agent' };
+    const done = total - running;
+    return {
+        text: `${running} agent${running !== 1 ? 's' : ''} running${done > 0 ? ` (${done} done)` : ''}`,
+        kind: 'agent',
+    };
+}
+
+/**
  * Builds the ordered header parts for a collapsed group. Order is significant —
  * it is the reading order of the collapsed header — and mirrors the historical
- * inline construction exactly (tool calls · messages · files · removed ·
+ * inline construction exactly (tool calls · messages · agents · files · removed ·
  * commits · amended · fixups · PRs · pushed · skills · memories).
  */
 export function buildWhisperHeaderParts(summary: WhisperSummary): WhisperHeaderPart[] {
@@ -55,6 +71,8 @@ export function buildWhisperHeaderParts(summary: WhisperSummary): WhisperHeaderP
     if (summary.messageCount > 0) {
         parts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
     }
+    const agentPart = buildWhisperAgentPart(summary);
+    if (agentPart) parts.push(agentPart);
     if (summary.fileEditCount && summary.fileEditCount > 0) {
         const activeCount = summary.fileEditCount - (summary.deletedFileCount ?? 0);
         if (activeCount > 0) {
