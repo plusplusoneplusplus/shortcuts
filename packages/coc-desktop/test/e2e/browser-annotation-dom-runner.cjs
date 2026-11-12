@@ -7,6 +7,7 @@ const { captureElectronAnnotation } = require('../../dist/electron-annotation-ca
 const { captureWebView2Annotation } = require('../../dist/webview2-annotation-capture.js');
 const { buildBrowserAnnotationExpression } = require('../../dist/browser-annotation-dom.js');
 const { BrowserAnnotationTab } = require('../../dist/browser-annotation-tab.js');
+const { withCdpControl } = require('../../dist/browser-cdp-control.js');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 
 app.setPath('userData', process.env.COC_BROWSER_E2E_USER_DATA);
@@ -157,7 +158,7 @@ function click(x, y, modifiers = []) {
     const annotationEval = async expression => (await cdp.send('Runtime.evaluate', {
         expression, contextId: annotationContext, returnByValue: true,
     })).result.value;
-    const hosted = { cdp: async (method, params) => {
+    const hosted = withCdpControl({ cdp: async (method, params) => {
         const reply = await cdp.send(method, params);
         if (method === 'Page.createIsolatedWorld') {
             annotationContext = reply.executionContextId;
@@ -173,7 +174,7 @@ function click(x, y, modifiers = []) {
         }
         return reply;
     }, onCdpEvent: cdp.onEvent.bind(cdp),
-        captureAnnotation: (rect, viewport) => captureElectronAnnotation(win.webContents, rect, viewport) };
+        captureAnnotation: (rect, viewport) => captureElectronAnnotation(win.webContents, rect, viewport) });
     const transport = new BrowserAnnotationTab(hosted, {
         events: batch => events.push(...batch), ended: reason => endings.push(reason),
     }, 60_000);
@@ -257,10 +258,10 @@ function click(x, y, modifiers = []) {
     const transportResult = { selection: events[0].kind, rect: events[0].rect, private: transportPrivate,
         endings, navigationEndings, noReinstall, capture: captureResult, fractional, handshake };
     const deniedCommands = [];
-    const deniedHost = { ...hosted, cdp: (method, params) => {
+    const deniedHost = withCdpControl({ ...hosted, cdp: (method, params) => {
         deniedCommands.push(method);
         return cdp.send(method, params);
-    } };
+    } });
     const deniedSink = { events() { throw new Error('Excluded documents must not emit selections'); }, ended() {} };
     const expectDenied = async tab => {
         try { await tab.start(); } catch (error) {

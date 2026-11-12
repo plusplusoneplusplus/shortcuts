@@ -151,7 +151,7 @@ export class BrowserHostManager {
     async startAnnotation(ownerId: number, viewId: unknown, sessionKey: unknown, sink: BrowserAnnotationTabSink): Promise<boolean> {
         const entry = this.annotationEntry(ownerId, viewId, sessionKey);
         const view = entry.view;
-        if (!view?.cdp || !view.onCdpEvent || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
+        if (!view?.control || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
         const state = view.snapshot();
         if (!entry.shown || state.loading || state.error || !validateBrowserUrl(state.url).ok) throw new Error('Browser annotation requires a visible, loaded page.');
         if (this.options.isAppUrl?.(state.url)) throw new Error('Browser annotation is unavailable for the CoC app.');

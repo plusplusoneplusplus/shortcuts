@@ -1,3 +1,4 @@
+import { withCdpControl } from './browser-cdp-control';
 import { downloadSource } from './browser-downloads';
 import type { BrowserImportCookie } from './browser-cookie-import';
 import { BrowserWindow, screen, webContents } from 'electron';
@@ -159,7 +160,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             }
             return this.process.request('cdp', { viewId: id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) });
         };
-        return {
+        return withCdpControl({
             cdp,
             waitForControlReady: async signal => {
                 for (;;) {
@@ -288,7 +289,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 this.remove(id, entry);
                 if (this.process.running) { await this.process.request('close', { viewId: id }); }
             },
-        };
+        });
     }
 
     private gated(entry: NativeEntry): boolean {

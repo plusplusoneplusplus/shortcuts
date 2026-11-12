@@ -9,6 +9,7 @@ import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_RE
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 import { ClickOnceError, type ClickOncePolicy } from '../src/browser-clickonce';
+import { withCdpControl } from '../src/browser-cdp-control';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -1488,6 +1489,7 @@ describe('owner-bound annotation admission and lifecycle', () => {
             return {};
         });
         view.cdp = cdp;
+        withCdpControl(view);
         await h.manager.bounds(1, 'annotated', { x: 0, y: 0, width: 800, height: 600 });
         const sink = { events: vi.fn(), ended: vi.fn() };
         const start = () => h.manager.startAnnotation(1, 'annotated', 'clone:w', sink);

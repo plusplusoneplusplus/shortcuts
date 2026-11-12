@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserAnnotationTab, BROWSER_ANNOTATION_WORLD } from '../src/browser-annotation-tab';
 import type { BrowserCdpEventListener } from '../src/browser-host-contract';
 import { buildBrowserAnnotationExpression } from '../src/browser-annotation-dom';
+import { withCdpControl } from '../src/browser-cdp-control';
 
 function deferred<T = void>() {
     let resolve!: (value: T) => void;
@@ -29,12 +30,12 @@ function fixture(capture = false) {
             default: throw new Error(`Unexpected CDP command: ${method}`);
         }
     });
-    const view = {
+    const view = withCdpControl({
         cdp,
         onCdpEvent: (listener: BrowserCdpEventListener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
         waitForCdpEvents: vi.fn(async () => {}),
         ...(capture ? { captureAnnotation: vi.fn(async () => fixtureImage) } : {}),
-    };
+    });
     const tab = new BrowserAnnotationTab(view, sink, 100);
     const emit = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => {
         for (const listener of [...listeners]) listener(method, params, sessionId);
@@ -104,7 +105,7 @@ describe('BrowserAnnotationTab document transport', () => {
         const original = f.cdp.getMockImplementation()!;
         f.cdp.mockImplementation((method, params) => method === 'Page.getFrameTree' ? pending.promise : original(method, params));
         const starting = f.tab.start();
-        await vi.waitFor(() => expect(f.cdp).toHaveBeenCalledWith('Page.getFrameTree'));
+        await vi.waitFor(() => expect(f.cdp).toHaveBeenCalledWith('Page.getFrameTree', {}));
         f.emit('Page.frameNavigated', { frame: { id: 'replacement' } });
         pending.resolve({ frameTree: { frame: { id: 'main', url: 'https://fixture.test/', mimeType: 'text/html' } } });
         expect(await starting).toBe(false);

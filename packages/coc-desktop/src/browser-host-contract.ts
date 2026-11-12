@@ -4,6 +4,7 @@ import type { HtmlPageBounds } from './html-page-policy';
 import type { BrowserApplicationRequest } from './browser-clickonce';
 import type { BrowserAnnotationRect } from './browser-annotation-dom';
 import type { BrowserAnnotationPageSnapshot } from './browser-annotation-snapshot';
+import type { BrowserControl } from './browser-control-engine';
 
 export interface BrowserAnnotationImage {
     dataUrl: string;
@@ -102,7 +103,9 @@ export interface BrowserHostedView {
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;
-    /** URL views only. Shared browser-control logic sends engine-neutral CDP commands. */
+    /** URL views only. Shared control, frame and annotation code drives the view through this. */
+    readonly control?: BrowserControl;
+    /** Chromium engines only: raw CDP for the engine adapters and demo recording. */
     cdp?(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<unknown>;
     onCdpEvent?(listener: BrowserCdpEventListener): () => void;
     waitForCdpEvents?(): Promise<void>;

@@ -81,7 +81,8 @@ transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide an
 changes reject late captures. Exact-chat SPA chips retain native PNGs and the composer
 attaches their numbered snapshots through its screenshot validator; file previews and popouts expose no annotation capture capability.
 `browser-annotation-tab.ts` transports one admitted URL document through the
-existing main-only CDP interface shared by both engines. Start follows ownership
+main-only engine-neutral `BrowserControl` (`browser-control-engine.ts`); Chromium
+engines supply it from CDP via `browser-cdp-control.ts`. Start follows ownership
 admission and settled human takeover, then requires the engine's committed main
 frame URL and MIME type before creating an isolated world. Refuse PDF documents
 (including extensionless URLs), PDF paths, non-HTTP(S) pages and registered SPA
