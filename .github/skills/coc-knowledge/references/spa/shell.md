@@ -1271,6 +1271,8 @@ The automation names are **Refrains** (user prompts), **Coda** (built-in to-do r
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
 and hosts Coda as its pinned built-in row. Selection-only cards open To-do's detail column;
 per-item controls use the selected detail toolbar, with history and run details in that column.
+Custom instruction edits patch only instructions with a captured revision; active runs
+block saves, errors preserve drafts and changed revisions require fresh review.
 Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to

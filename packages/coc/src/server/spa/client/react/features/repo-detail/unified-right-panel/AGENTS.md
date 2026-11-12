@@ -1346,7 +1346,13 @@ Coda's run, schedule, selection, proposal, recovery and history controls share t
 placement, with its secondary actions behind More. Hosted details (`data-hosted`) drop the
 inline 320px cap and fill the To-do detail column, which scrolls them; standalone details
 stay bounded. Run times render localized with the ISO value in `dateTime`/`title`.
-Forms, errors and run details stay in that column.
+Forms, errors and run details stay in that column. Custom Refrain instructions use
+`SentinelRefrainInstructions` for inline Edit/Save/Cancel with textarea focus and
+Escape cancellation. Save patches only instructions and the captured revision through
+the owner's shared mutation lock. Active runs block editing and saving; failed saves
+retain the draft. A changed revision requires Cancel and a fresh edit, never an
+automatic overwrite. Selection/owner unmounts discard the editor and ignore late
+completion. Coda has no custom instruction editor.
 Selected cards show `data-selected` hover/selected styling. Refrain details show
 the definition, schedule and the current (else latest) run from the live job list, with a
 never-run hint; `SentinelCodaDetails` shows Coda's schedule plus its active run or the latest run's
