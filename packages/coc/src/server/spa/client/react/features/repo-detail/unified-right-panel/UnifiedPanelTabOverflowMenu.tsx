@@ -118,7 +118,8 @@ export function UnifiedPanelTabOverflowMenu({
             if (tab) activate(tab, true);
         }
     };
-    const highlightedDetail = filteredTabs[highlighted] ? describeTab?.(filteredTabs[highlighted]) : null;
+    const highlightedTab = filteredTabs[highlighted];
+    const highlightedDetail = highlightedTab ? tabDetailFolder(describeTab?.(highlightedTab) ?? null, highlightedTab.label) : null;
     const closeTargets = tabs.filter(tab => tab.id !== activeId).map(tab => tab.id);
     const triggerRef = (trigger as typeof trigger & { ref?: Ref<HTMLButtonElement> }).ref;
 
@@ -251,4 +252,18 @@ export function UnifiedPanelTabOverflowMenu({
             document.body,
         )}
     </>;
+}
+
+/**
+ * The footer sits right under the row that already shows the name, so drop a
+ * trailing `label` from the detail; null when nothing but the name is left.
+ */
+export function tabDetailFolder(detail: string | null, label: string): string | null {
+    if (!detail) return null;
+    if (detail === label) return null;
+    // `/` and `\` end a folder; `: ` ends a repo label (`api: plan.md`).
+    for (const sep of ['/', '\\', ': ']) {
+        if (detail.endsWith(sep + label)) return detail.slice(0, -(label.length + sep.length)) || null;
+    }
+    return detail;
 }
