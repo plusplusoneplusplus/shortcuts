@@ -1150,7 +1150,15 @@ references before editing. Paths are package-relative.
 - Separate normal messaging from container relays. Config is global; chat receipts
   are workspace-scoped. Admit eligible human/paired-account posts via explicit bindings;
   suppress own/history replay. Dispose polling/reconnect loops/listeners.
-  Teams and WhatsApp topic list/select uses `src/server/messaging/chat-target.ts`
+  With live default-off `features.teamsFixedRouting`, normal Teams channel roots and
+  replies use the one Sentinel bound to the exact account/team/channel; binding
+  changes serialize with admission and accepted receipts retain their destinations.
+  Bind through the owning-server dashboard or a verified own-user `/binding set`
+  command. Missing owners fail closed. Mentions and reactions use the shared
+  `teamsRouting.workspaceId`; their existing Ask and dispatcher behavior stays intact.
+  The fixed Teams grammar rejects repo/topic selection and chat IDs; WhatsApp and the
+  independent container bridge keep their own routing.
+  WhatsApp and non-fixed Teams topic list/select uses `src/server/messaging/chat-target.ts`
   for bounded (10), conversation-free process pages, not unbounded `getAllProcesses`.
   Shared workspace/topic lookup and terminal-task subscriptions belong there;
   both relays resolve request-correlated answers and safe failure notices
@@ -1237,7 +1245,8 @@ references before editing. Paths are package-relative.
   Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
   this command bypasses pending question answers and never changes selection or invokes AI.
   `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`; WhatsApp and CoC Teams) lists the
-  non-archived items of the quoted binding's chat (Teams: the bound thread's chat), else the
+  non-archived items of the quoted binding's chat (Teams: the bound Sentinel in fixed
+  mode, else the bound thread's chat), else the
   sender's selected topic in the selected repo, via `SentinelTodoService.list` (non-Sentinel → explicit reply; missing server infrastructure → unavailable reply;
   non-local workspace → unsupported reply). Status labels come from the client's
   dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
@@ -1249,7 +1258,7 @@ references before editing. Paths are package-relative.
   without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn
   HEAD, missing upstream and per-repo failures; local tracking refs may be stale.
   Reuse lossless connector text chunking; never silently drop repositories.
-  With no selected repo (or a removed one), plain messages
+  With fixed Teams routing off, and for WhatsApp, with no selected repo (or a removed one), plain messages
   and topic commands in both connectors use the built-in Global workspace via
   `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the
   selection is not persisted). `select repo` (including re-selecting the current repo or
@@ -1279,7 +1288,7 @@ references before editing. Paths are package-relative.
   Rejected admission cleans files and permits retry; matching accepted tasks retain
   files/receipts after observer failures. An empty prefix replies
   "Send a message to start a chat."
-  `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
+  WhatsApp and non-fixed Teams `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
   memory per WhatsApp group / Teams thread; remote repos are never selectable, and
@@ -1302,7 +1311,8 @@ references before editing. Paths are package-relative.
   remote overture data are explicitly unavailable, distinct from an empty list.
 - `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
   messages in self/direct/group/meeting chats to one Ask conversation per account,
-  Teams chat and explicit local `teamsIc3OwnCommands.workspaceId`, using the shared
+  Teams chat and explicit local `teamsRouting.workspaceId` when fixed routing is on,
+  else `teamsIc3OwnCommands.workspaceId`, using the shared
   Teams connection `ic3Region`. Command workspace accepts physical repos and
   registered repo groups, not other virtual scopes. Group jobs run at the group
   root and use normal member context and access policy on initial and follow-up turns.
@@ -1342,8 +1352,9 @@ references before editing. Paths are package-relative.
   See the [IC3 runtime contract](../../.github/skills/coc-knowledge/references/server-architecture.md#ic3-own-command-launcher)
   for read windows, deduplication, reply deadlines and safe-retry rules.
 - Teams reaction delegation defaults off (`features.teamsReactionDelegation`).
-  Enabled configuration requires `teamsReactionDelegation.workspaceId` and
-  `dispatcherSkill`; reject permission/source/provider/model overrides. Resolve
+  Enabled configuration requires `dispatcherSkill` and, with fixed routing off,
+  `teamsReactionDelegation.workspaceId`; fixed routing uses `teamsRouting.workspaceId`.
+  Reject permission/source/provider/model overrides. Resolve
   uncached local repo or repo-group workspace and enabled skill bindings strictly,
   rechecking after preparation. Groups run in their own root and inherit member
   skills in membership order; unreadable membership or policy fails without fallback.

@@ -1248,6 +1248,49 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[1]).toEqual([expect.stringContaining('second answer'), 'ask-two']);
     });
 
+    it('uses the fixed channel target for replies while retaining admitted destinations after a rebind', async () => {
+        const old = {
+            id: 'old', status: 'running', metadata: { workspaceId: 'workspace-a' },
+            conversationTurns: [] as any[],
+        };
+        const next = {
+            id: 'new', status: 'running', metadata: { workspaceId: 'workspace-b' },
+            conversationTurns: [] as any[],
+        };
+        processes.set(old.id, old);
+        processes.set(next.id, next);
+        let current = old;
+        const fixed = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => true,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }),
+            resolveFixedThread: async () => ({ workspaceId: current.metadata.workspaceId, process: current as any }), send,
+        });
+        try {
+            const input = { ...message('fixed-reply'), replyToMessageId: 'thread-root' };
+            await fixed.selectThreadTarget(input, 'workspace-b', next.id);
+            expect((await fixed.resolveThread(input))?.process?.id).toBe('old');
+            let requestId = '';
+            await fixed.admitFollowUp(input, old as any, async id => {
+                requestId = id;
+                old.conversationTurns.push({ role: 'user', content: 'request', turnIndex: 0, relayRequestId: id });
+                return {};
+            });
+            await fixed.acknowledgedMessage(input);
+            current = next;
+            old.conversationTurns.push({ role: 'assistant', content: 'original answer', turnIndex: 1 });
+            tasks.set('fixed-follow', {
+                id: 'fixed-follow', repoId: 'workspace-a', processId: old.id,
+                payload: { relayRequestId: requestId }, status: 'completed',
+            } as QueuedTask);
+            queue.emit('taskCompleted', tasks.get('fixed-follow'));
+            await fixed.reconcile();
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('original answer'), 'thread-root');
+            expect((await fixed.resolveThread(input))?.process?.id).toBe('new');
+        } finally {
+            fixed.dispose();
+        }
+    });
+
     it('matches a cancelled follow-up task to its request even if its process has an earlier answer', async () => {
         const process = {
             id: 'queue_previous', status: 'completed',

@@ -65,7 +65,10 @@ export function createTeamsReactionRuntime(options: Options) {
     function restart(force = false) {
         const config = options.config.config;
         const region = options.teams.getIc3Region();
-        const next = JSON.stringify([config.features?.teamsReactionDelegation, config.teamsReactionDelegation, config.skills, region]);
+        const fixed = config.features?.teamsFixedRouting === true;
+        const next = JSON.stringify([config.features?.teamsReactionDelegation, fixed,
+            fixed ? config.teamsRouting?.workspaceId : config.teamsReactionDelegation?.workspaceId,
+            config.teamsReactionDelegation?.dispatcherSkill, config.skills, region]);
         if (stopped || (!force && signature === next)) return;
         signature = next;
         clearTimeout(retry);

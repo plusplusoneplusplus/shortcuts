@@ -66,6 +66,7 @@ const CUSTOM_FILE_SCHEMAS: Record<string, z.ZodTypeAny> = {
     'agentProviderRouting.auto': autoProviderRoutingSchema,
     'features.chatStylePrompts': chatStylePromptsSchema,
     'teamsIc3OwnCommands.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
+    'teamsRouting.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
     'teamsReactionDelegation.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
     'teamsReactionDelegation.dispatcherSkill': z.string().max(256).regex(
         /^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/, 'Expected a dispatcher skill name, not a file path',
@@ -164,7 +165,7 @@ function treeToZodObject(tree: SchemaTree, namespace = ''): z.ZodTypeAny {
         shape[key] = (isZodType(value) ? value : treeToZodObject(value, namespace ? `${namespace}.${key}` : key)).optional();
     }
     const object = z.object(shape);
-    return namespace === 'teamsIc3OwnCommands' || namespace === 'teamsReactionDelegation'
+    return namespace === 'teamsIc3OwnCommands' || namespace === 'teamsReactionDelegation' || namespace === 'teamsRouting'
         ? object.strict() : object.passthrough();
 }
 
@@ -260,7 +261,9 @@ export const CLIConfigSchema = (treeToZodObject(
         });
     }
     if (config.features?.teamsReactionDelegation !== true) return;
-    for (const field of ['workspaceId', 'dispatcherSkill'] as const) {
+    const requiredFields: ReadonlyArray<'workspaceId' | 'dispatcherSkill'> = config.features?.teamsFixedRouting === true
+        ? ['dispatcherSkill'] : ['workspaceId', 'dispatcherSkill'];
+    for (const field of requiredFields) {
         if (!config.teamsReactionDelegation?.[field]) {
             ctx.addIssue({
                 code: 'custom',

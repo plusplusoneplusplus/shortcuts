@@ -56,6 +56,17 @@ describe('resolveTeamsReactionDispatcher', () => {
         });
     });
 
+    it('uses the shared Teams workspace when fixed routing is enabled', async () => {
+        const other = path.join(root, 'other');
+        fs.mkdirSync(other);
+        const file = skill(path.join(other, '.github', 'skills'));
+        config.features!.teamsFixedRouting = true;
+        config.teamsRouting = { workspaceId: 'workspace-b' };
+        expect(await resolve()).toMatchObject({ workspaceId: 'workspace-b', workingDirectory: other, dispatcherSkillPath: file });
+        config.teamsRouting.workspaceId = '';
+        await expect(resolve()).rejects.toThrow('binding is incomplete');
+    });
+
     async function selectGroup(members = ['workspace-a', 'workspace-b']) {
         const group = await createRepoGroup(dataDir, store, { name: 'Team', members });
         config.teamsReactionDelegation!.workspaceId = group.id;

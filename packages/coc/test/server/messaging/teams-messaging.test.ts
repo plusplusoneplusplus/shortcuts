@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { EventEmitter } from 'node:events';
-import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/server/messaging/teams-messaging-manager';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
@@ -821,6 +821,80 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
+    it('validates channel bindings and routes channel messages through the bound Sentinel', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-binding-api-'));
+        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const sentinel = {
+            id: 'sentinel-a', type: 'chat' as const, status: 'completed' as const, promptPreview: '', fullPrompt: '',
+            startTime: new Date(), metadata: { workspaceId: 'workspace-a', mode: 'sentinel' },
+        };
+        const store = new SqliteProcessStore({ dbPath: path.join(dir, 'processes.db') });
+        await store.registerWorkspace({ id: 'workspace-a', name: 'A', rootPath: dir });
+        await store.addProcess(sentinel);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({
+            ...manager.getStatus(), enabled: true, status: 'connected', teamId: 'team-a', channelId: 'channel-a',
+        });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account-a');
+        const ownSender = vi.spyOn(manager, 'isMirrorSender').mockReturnValue(false);
+        const send = vi.spyOn(manager, 'sendMessage').mockResolvedValue('sent');
+        const setMessageHandler = vi.spyOn(manager, 'setMessageHandler');
+        const relayQueue = Object.assign(new EventEmitter(), { getTask: vi.fn() });
+        const follow = vi.fn(async (_process, _message, _request, _mode, taskId) => ({ taskId }));
+        const routes: Route[] = [];
+        let enabled = false;
+        registerTeamsMessagingRoutes(routes, {
+            dataDir: dir, manager, store, relayQueue, getFixedRoutingEnabled: () => enabled,
+            getAnswerRelayEnabled: () => true,
+            enqueueChat: vi.fn(), executeFollowUp: vi.fn(), enqueueRelayChat: vi.fn(),
+            admitRelayFollowUp: follow,
+        });
+        const server = http.createServer((req, res) => {
+            const pathname = new URL(req.url!, 'http://localhost').pathname;
+            const route = routes.find(r => r.method === req.method && r.pattern.test(pathname));
+            if (route) void Promise.resolve(route.handler(req, res, pathname.match(route.pattern)!));
+            else { res.writeHead(404); res.end(); }
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const address = server.address();
+            if (!address || typeof address === 'string') throw new Error('Expected TCP address');
+            const url = `http://127.0.0.1:${address.port}/api/messaging/teams/channel-binding`;
+            const post = (body: object) => fetch(url, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            expect((await fetch(url)).status).toBe(404);
+            enabled = true;
+            expect((await post({ workspaceId: 'workspace-a', processId: 'missing' })).status).toBe(400);
+            expect((await post({ workspaceId: 'workspace-a', processId: sentinel.id })).status).toBe(200);
+            expect((await post({ workspaceId: 'workspace-a', processId: sentinel.id, expectedBinding: null })).status).toBe(409);
+            expect(await (await fetch(url)).json()).toMatchObject({ binding: { workspaceId: 'workspace-a', processId: sentinel.id } });
+            expect(await (await fetch(`${url}/sentinels?workspaceId=workspace-a`)).json())
+                .toEqual({ sentinels: [{ id: sentinel.id, title: sentinel.id }], nextOffset: null });
+            vi.spyOn(store, 'getProcessSummaries').mockResolvedValueOnce({
+                entries: [{ id: sentinel.id, workspaceId: 'workspace-a', type: 'chat', status: 'completed',
+                    startTime: new Date().toISOString(), promptPreview: '' }], total: 2,
+            });
+            expect(await (await fetch(`${url}/sentinels?workspaceId=workspace-a`)).json())
+                .toEqual({ sentinels: [{ id: sentinel.id, title: sentinel.id }], nextOffset: 1 });
+            expect((await fetch(`${url}/sentinels?workspaceId=workspace-a&offset=-1`)).status).toBe(400);
+            const inbound = setMessageHandler.mock.calls[0][0];
+            const observe = vi.fn();
+            await inbound({ channelId: 'channel-a', messageId: 'foreign-bind', text: '/binding set workspace-a sentinel-a', senderAadId: 'other' }, observe);
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('binding unavailable'), 'foreign-bind');
+            ownSender.mockReturnValue(true);
+            await inbound({ channelId: 'channel-a', messageId: 'question', text: 'hello', senderAadId: 'owner' }, observe);
+            expect(follow).toHaveBeenCalledWith(expect.objectContaining({ id: sentinel.id,
+                metadata: expect.objectContaining({ workspaceId: 'workspace-a', mode: 'sentinel' }) }),
+            'hello', expect.any(String), undefined, expect.any(String));
+        } finally {
+            manager.dispose();
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            store.close();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('exposes explicit 1:1 sends with typed outcomes, no fallback/replay, and strict options', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-direct-api-'));
@@ -1144,16 +1218,20 @@ describe('Teams messaging routes (integration)', () => {
         try {
             const routes: any[] = [];
             registerTeamsMessagingRoutes(routes, { dataDir: tmpDir });
-            expect(routes.length).toBe(7);
+            expect(routes.length).toBe(10);
             expect(routes[0].method).toBe('GET');
-            expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
-            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
-            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/attempts\/([^/]+)$/);
-            expect(routes[3].method).toBe('POST');
-            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
-            expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
-            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/direct-message$/);
-            expect(routes[6].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
+            expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding$/);
+            expect(routes[1].method).toBe('POST');
+            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding$/);
+            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding\/sentinels$/);
+            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
+            expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
+            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/attempts\/([^/]+)$/);
+            expect(routes[6].method).toBe('POST');
+            expect(routes[6].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
+            expect(routes[7].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
+            expect(routes[8].pattern).toEqual(/^\/api\/messaging\/teams\/direct-message$/);
+            expect(routes[9].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

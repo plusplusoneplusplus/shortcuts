@@ -1589,6 +1589,8 @@ describe('AdminPanel', () => {
                 'features.teamsMessageReaction': true,
                 'features.teamsOutboundCompliance': false,
                 'teamsOutboundCompliance.prompt': '',
+                'features.teamsFixedRouting': false,
+                'teamsRouting.workspaceId': '',
                 'features.teamsIc3OwnCommands': false,
                 'teamsIc3OwnCommands.workspaceId': '',
                 'features.teamsReactionDelegation': false,

@@ -258,6 +258,9 @@ export interface CLIConfig {
     teamsIc3OwnCommands?: {
         workspaceId?: string;
     };
+    teamsRouting?: {
+        workspaceId?: string;
+    };
     /** Execution target and dispatcher for own-user Teams Robot reactions. */
     teamsReactionDelegation?: {
         workspaceId?: string;
@@ -331,6 +334,7 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        teamsFixedRouting?: boolean;
         /** Own-user @coc prompts start Ask chats. Disabled by default. */
         teamsIc3OwnCommands?: boolean;
         /** Own-user Robot reactions delegate separate Ask jobs. Disabled by default. */
@@ -716,6 +720,9 @@ export interface ResolvedCLIConfig {
     teamsIc3OwnCommands: {
         workspaceId: string;
     };
+    teamsRouting: {
+        workspaceId: string;
+    };
     teamsReactionDelegation: {
         workspaceId: string;
         dispatcherSkill: string;
@@ -800,6 +807,7 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        teamsFixedRouting: boolean;
         teamsIc3OwnCommands: boolean;
         teamsReactionDelegation: boolean;
         teamsOutboundCompliance: boolean;
@@ -1105,6 +1113,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     browserControl: { enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true, demoRecordingEnabled: false, annotationEnabled: true },
     teamsIc3OwnCommands: { workspaceId: '' },
+    teamsRouting: { workspaceId: '' },
     teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
     teamsOutboundCompliance: { prompt: '' },
     LLMToolSystemOne: {
@@ -1174,6 +1183,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        teamsFixedRouting: false,
         teamsIc3OwnCommands: false,
         teamsReactionDelegation: false,
         teamsOutboundCompliance: false,

@@ -16,7 +16,7 @@ export function createTeamsReactionPickup(options: {
     execution: Pick<ReturnType<typeof createTeamsReactionExecution>, 'run'>;
     store: ProcessStore;
     dataDir: string;
-    getConfig: () => Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'skills'>;
+    getConfig: () => Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'teamsRouting' | 'skills'>;
     signal: AbortSignal;
     /** Account/config lifetime for acknowledged work; notification reconnects only revoke pickup. */
     executionSignal?: AbortSignal;

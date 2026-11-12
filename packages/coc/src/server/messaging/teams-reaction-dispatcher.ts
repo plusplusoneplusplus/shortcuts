@@ -16,14 +16,16 @@ export interface TeamsReactionDispatcher {
 export async function resolveTeamsReactionDispatcher(
     store: ProcessStore,
     dataDir: string,
-    config: Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'skills'>,
+    config: Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'teamsRouting' | 'skills'>,
     signal: AbortSignal,
 ): Promise<TeamsReactionDispatcher> {
     signal.throwIfAborted();
     if (config.features?.teamsReactionDelegation !== true) {
         throw new Error('Teams reaction delegation is disabled.');
     }
-    const { workspaceId, dispatcherSkill } = config.teamsReactionDelegation ?? {};
+    const workspaceId = config.features?.teamsFixedRouting === true
+        ? config.teamsRouting?.workspaceId : config.teamsReactionDelegation?.workspaceId;
+    const { dispatcherSkill } = config.teamsReactionDelegation ?? {};
     if (!workspaceId || !dispatcherSkill) throw new Error('Teams reaction dispatcher binding is incomplete.');
     if (!/^[a-zA-Z0-9_-]{1,256}$/.test(workspaceId)
         || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,255}$/.test(dispatcherSkill) || dispatcherSkill.includes('..')) {

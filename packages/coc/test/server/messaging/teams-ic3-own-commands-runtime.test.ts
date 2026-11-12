@@ -180,6 +180,20 @@ describe('basic IC3 own-command launcher', () => {
         return createTrouter.mock.lastCall![0];
     }
 
+    it('uses the shared workspace for mentions when fixed routing is enabled', async () => {
+        config = mergeConfig(config, { features: { teamsFixedRouting: true }, teamsRouting: { workspaceId: 'workspace-beta' } });
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('own', notifiedChat)]);
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).toHaveBeenCalledWith('workspace-beta', expect.any(String), expect.any(String),
+            expect.any(AbortSignal), expect.any(String));
+        await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        expect(reader.dispose).not.toHaveBeenCalled();
+        await update({ teamsRouting: { workspaceId: '' } });
+        expect(service.getStatus().state).toBe('error');
+    });
+
     it('starts notifications by default and pins a separate listener to the native reader account', async () => {
         const listener = await startNotifications();
         expect(listener.expectedAccount).toEqual({ tenantId: account.tenantId, objectId: account.userId });

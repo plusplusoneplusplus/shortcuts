@@ -129,6 +129,7 @@ export async function compactChatReply(
     customInstructions: string,
     escape: (text: string) => string = plain,
     origin?: MessagingJobOrigin,
+    notFoundReply = 'Chat not found. Use `list topics` to pick one.',
 ): Promise<string> {
     if (!compact) return 'Compaction is unavailable.';
     const { processId: id, workspaceId } = target;
@@ -136,7 +137,7 @@ export async function compactChatReply(
         const process = await store.getProcess(id, workspaceId)
             ?? await store.getProcess(isQueueProcessId(id) ? toTaskId(id) : toQueueProcessId(id), workspaceId);
         if (!process || (workspaceId && process.metadata?.workspaceId !== workspaceId)) {
-            return 'Chat not found. Use `list topics` to pick one.';
+            return notFoundReply;
         }
         const outcome = origin ? await compact(process, customInstructions || undefined, origin)
             : await compact(process, customInstructions || undefined);

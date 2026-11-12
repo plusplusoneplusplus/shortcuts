@@ -465,12 +465,20 @@ registered members supply execution roots and access policy.
 
 `messaging/` owns independent Teams and WhatsApp managers over `coc-connector`.
 Account/connection settings are server-global; accepted requests and answer receipts
-are workspace-scoped. Explicit repo/topic bindings determine chat routing.
-With answer relay enabled, successful Teams channel-root repo/topic selections also
+are workspace-scoped. With `features.teamsFixedRouting` off, explicit repo/topic
+bindings determine chat routing. With answer relay enabled, Teams channel-root selections also
 persist a thread target and command ID; replies use that root's selection independently
-of later user selections. Unknown thread roots do not inherit a sender's current state.
+of later user selections. In this mode unknown thread roots do not inherit sender state.
 Relays deliver the captured conversation's final answer to its original destination despite selection changes.
 Receipts preserve progress; uncertain sends require reconciliation rather than automatic replay.
+With the default-off fixed-routing flag on, `teams-channel-binding.ts` persists one
+workspace/Sentinel per opaque account/team/channel identity; it validates the workspace,
+process owner and Sentinel mode at binding and admission. The owning dashboard or a verified
+own-user Teams command configures the binding. Admission serializes with rebinding; receipts
+retain their original owner and thread. The fixed grammar rejects Teams repo/topic selection
+and explicit chat IDs. Missing bindings never fall back to Global. The separate container
+bridge and WhatsApp routing stay independent.
+Channel bindings are machine-local, excluded from snapshots and cleared by data wipe.
 Accepted Teams channel-thread follow-ups acknowledge durable admission directly
 without a confirmation post; new chats retain confirmations. Upstream Like admission
 and request-correlated final-answer delivery remain independent of acceptance posts.
@@ -646,6 +654,8 @@ else the sender's selected topic (`messaging-todos.ts`).
 use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
 command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
+With fixed Teams routing enabled, `list todos` and `compact` target the bound Sentinel,
+and `/binding show` or `/binding set <workspace-id> <sentinel-id>` manage the channel.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`), Git status and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. WhatsApp and Teams channel/thread
@@ -1040,9 +1050,9 @@ Transports:
 `createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
 `WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
 follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a
-top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
-replies route to the job by root (a reply inside the dispatcher's thread would route to the
-dispatcher) and user selection is untouched.
+top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection.
+With fixed routing off, replies route to that job; fixed routing sends ordinary replies
+to the channel Sentinel. User selection is untouched.
 
 Automatic chat compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
 `taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose

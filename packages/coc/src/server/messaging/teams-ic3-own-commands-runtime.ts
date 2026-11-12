@@ -179,7 +179,9 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     function restart() {
         const config = options.config.config;
         const configuredRegion = options.teams.getIc3Region();
-        const next = JSON.stringify([config.features?.teamsIc3OwnCommands, config.teamsIc3OwnCommands, configuredRegion]);
+        const fixed = config.features?.teamsFixedRouting === true;
+        const next = JSON.stringify([config.features?.teamsIc3OwnCommands, fixed,
+            fixed ? config.teamsRouting : config.teamsIc3OwnCommands, configuredRegion]);
         if (stopped || next === signature) return;
         signature = next;
         controller?.abort();
@@ -245,7 +247,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
             try {
                 const workspaces = await options.store.getWorkspaces();
                 signal.throwIfAborted();
-                const target = config.teamsIc3OwnCommands;
+                const target = config.features?.teamsFixedRouting === true
+                    ? { workspaceId: config.teamsRouting?.workspaceId ?? '' } : config.teamsIc3OwnCommands;
                 const workspace = workspaces.find(workspace => workspace.id === target.workspaceId
                     && (!workspace.virtual || isRepoGroupWorkspaceId(workspace.id)) && isAbsolute(workspace.rootPath));
                 if (!configuredRegion || !workspace) {

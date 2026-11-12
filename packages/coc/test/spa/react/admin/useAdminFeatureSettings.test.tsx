@@ -119,6 +119,24 @@ describe('useAdminFeatureSettings', () => {
         teamsReactionDelegation: { workspaceId: 'alpha', dispatcherSkill: 'dispatcher' },
     };
 
+    it('validates mentions and reaction skills against the shared fixed-routing workspace', async () => {
+        const { view } = renderController();
+        act(() => view.result.current.hydrate({
+            features: { teamsFixedRouting: true, teamsIc3OwnCommands: true, teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: 'alpha' },
+            teamsReactionDelegation: { workspaceId: '', dispatcherSkill: 'dispatcher' },
+        }));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(listSkills).toHaveBeenCalledWith('alpha');
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsFixedRouting': true, 'teamsRouting.workspaceId': 'alpha',
+        }));
+        updateConfig.mockClear();
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'teamsRouting.workspaceId': '' })));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(updateConfig).not.toHaveBeenCalled();
+    });
+
     it.each(['tab', 'all'])('validates enabled reaction bindings before a %s save', async scope => {
         const { view } = renderController();
         act(() => view.result.current.hydrate(binding));

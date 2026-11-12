@@ -24,6 +24,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettin
 }));
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     applyRuntimeConfigPatch,
+    isContainerMode: () => false,
 }));
 
 import { TabFeatureSettingsCard } from '../../../src/server/spa/client/react/admin/FeatureSettingsCard';
@@ -81,6 +82,18 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it('shows one shared workspace for fixed Teams routing', async () => {
+        render(<Harness tabs={['teams']} />);
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Enable IC3 @coc own commands' }));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Enable Robot reaction delegation' }));
+        expect(screen.getByLabelText('Command workspace')).toBeTruthy();
+        expect(screen.getByLabelText('Execution workspace')).toBeTruthy();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Use fixed Teams routing' }));
+        expect(screen.queryByLabelText('Command workspace')).toBeNull();
+        expect(screen.queryByLabelText('Execution workspace')).toBeNull();
+        await screen.findByLabelText('Mention and reaction workspace');
+    });
+
     it.each(['', ' \n\t'])('associates an inline error with an enabled blank prompt (%j), retaining the draft on Save', async draft => {
         render(<Harness tabs={['teams']} />);
         expect(screen.queryByRole('textbox', { name: 'Compliance decision prompt' })).toBeNull();

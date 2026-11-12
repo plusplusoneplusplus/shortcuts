@@ -161,6 +161,21 @@ describe('Teams reaction notification lifecycle', () => {
         expect(runtime.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
     });
 
+    it('restarts on shared workspace changes, not inactive legacy workspace changes', async () => {
+        config = mergeConfig(config, { features: { teamsFixedRouting: true }, teamsRouting: { workspaceId: 'workspace-a' } });
+        await registered();
+        config = mergeConfig(config, { teamsReactionDelegation: { workspaceId: 'workspace-b' } });
+        change();
+        await flush();
+        expect(createSession).toHaveBeenCalledTimes(1);
+        expect(readers[0].dispose).not.toHaveBeenCalled();
+        config = mergeConfig(config, { teamsRouting: { workspaceId: 'workspace-b' } });
+        change();
+        await flush();
+        expect(readers[0].dispose).toHaveBeenCalledOnce();
+        expect(createSession).toHaveBeenCalledTimes(2);
+    });
+
     it.each(['allow', 'block', 'malformed', 'unavailable', 'disabled', 'done'] as const)(
         'production reaction %s uses original context and the shared delivery gate', async outcome => {
             const sdk = createMockSDKService().service;

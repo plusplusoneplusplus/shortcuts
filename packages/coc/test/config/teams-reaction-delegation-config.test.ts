@@ -45,6 +45,20 @@ describe('Teams reaction delegation settings', () => {
         }).success).toBe(true);
     });
 
+    it('uses the shared workspace contract when fixed routing is enabled', () => {
+        expect(CLIConfigSchema.safeParse({
+            features: { teamsFixedRouting: true, teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: 'workspace-alpha' },
+            teamsReactionDelegation: { dispatcherSkill: 'dispatcher' },
+        }).success).toBe(true);
+        expect(CLIConfigSchema.safeParse({
+            features: { teamsFixedRouting: true, teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: 'workspace-alpha' },
+            teamsReactionDelegation: {},
+        }).success).toBe(false);
+        expect(CLIConfigSchema.safeParse({ teamsRouting: { workspaceId: 'workspace-alpha', token: 'unsupported' } }).success).toBe(false);
+    });
+
     it.each([
         ['workspaceId', '../invalid'],
         ['workspaceId', 'remote:server:workspace'],

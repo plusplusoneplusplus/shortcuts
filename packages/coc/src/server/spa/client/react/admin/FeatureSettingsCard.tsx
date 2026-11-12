@@ -107,7 +107,11 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                 />
             ) : ui.control?.type === 'skill' ? (
                 <AdminSkillSelect
-                    workspaceId={String(featureValues[ui.control.workspaceKey] ?? '')}
+                    workspaceId={String(featureValues[
+                        def.key === 'teamsReactionDelegation.dispatcherSkill' && !isContainerMode()
+                            && featureValues['features.teamsFixedRouting'] === true
+                            ? 'teamsRouting.workspaceId' : ui.control.workspaceKey
+                    ] ?? '')}
                     value={String(featureValues[def.key] ?? '')}
                     onChange={value => setFeatureValues(prev => ({ ...prev, [def.key]: value }))}
                     label={ui.label}
@@ -161,6 +165,9 @@ export function FeatureSettingsCard({
             defs: getFeatureCardSettings(group.id).filter(def => {
                 const ui = def.ui!;
                 // dependsOn-hidden rows never appear, regardless of text match.
+                if (isContainerMode() && (def.key === 'features.teamsFixedRouting' || def.key === 'teamsRouting.workspaceId')) return false;
+                if (!isContainerMode() && featureValues['features.teamsFixedRouting'] === true
+                    && (def.key === 'teamsIc3OwnCommands.workspaceId' || def.key === 'teamsReactionDelegation.workspaceId')) return false;
                 if (ui.dependsOn && featureValues[ui.dependsOn] !== true) return false;
                 if (!query) return getFeatureSettingTab(def) === 'features';
                 return ui.label.toLowerCase().includes(query)
@@ -282,7 +289,10 @@ export function TabFeatureSettingsCard({
             group,
             defs: getFeatureCardSettings(group.id, tab).filter(def => {
                 const dependsOn = def.ui!.dependsOn;
-                return !dependsOn || featureValues[dependsOn] === true;
+                return !(isContainerMode() && (def.key === 'features.teamsFixedRouting' || def.key === 'teamsRouting.workspaceId'))
+                    && !(!isContainerMode() && featureValues['features.teamsFixedRouting'] === true
+                    && (def.key === 'teamsIc3OwnCommands.workspaceId' || def.key === 'teamsReactionDelegation.workspaceId'))
+                    && (!dependsOn || featureValues[dependsOn] === true);
             }),
         }))
         .filter(entry => entry.defs.length > 0);
