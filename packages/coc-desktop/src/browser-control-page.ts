@@ -1,12 +1,15 @@
 import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomSnapshot, type BrowserDomSnapshotChunk, type BrowserDomReadPage, type BrowserDomTarget } from './browser-control-dom';
 import { setTimeout as delay } from 'node:timers/promises';
-import { BrowserFrameRegistry, type BrowserCdpListener } from './browser-frame-registry';
+import { BrowserFrameRegistry } from './browser-frame-registry';
+import { createCdpBrowserControl } from './browser-cdp-control';
+import type { BrowserCdpEventListener } from './browser-host-contract';
 import type { BrowserControlFrame } from '@plusplusoneplusplus/coc-client';
 import { browserClipRect } from './browser-control-clip';
 import { browserPaste } from './browser-control-paste';
 import { randomUUID } from 'node:crypto';
 import { BROWSER_CURSOR_TAG, buildBrowserCursorExpression, type BrowserCursorCommand, type BrowserCursorPoint } from './browser-control-cursor';
 
+export type BrowserCdpListener = BrowserCdpEventListener;
 export type BrowserCdpSender = (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown>;
 export type BrowserScrollDirection = 'up' | 'down' | 'left' | 'right';
 let nextFrameRef = 1;
@@ -51,8 +54,9 @@ export class BrowserControlPage {
             return;
         }
         if (!subscribe) throw new Error('unsupported-runtime: frame event transport unavailable');
-        if (!this.frames) this.frames = new BrowserFrameRegistry(this.send, () => this.frameRefs.clear());
-        await this.frames.start(subscribe, ready);
+        if (!this.frames) this.frames = new BrowserFrameRegistry(createCdpBrowserControl({ cdp: this.send, onCdpEvent: subscribe,
+            ...(ready ? { waitForCdpEvents: ready } : {}) }), () => this.frameRefs.clear());
+        await this.frames.start();
     }
 
     frameMetadata(offset = 0, frame?: string, ref?: string): { frames?: BrowserControlFrame[]; frame?: string; document?: string; truncated?: string } {

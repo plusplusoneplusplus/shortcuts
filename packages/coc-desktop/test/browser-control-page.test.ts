@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserControlPage } from '../src/browser-control-page';
-import type { BrowserCdpListener } from '../src/browser-frame-registry';
+import type { BrowserCdpListener } from '../src/browser-control-page';
 
 function fixture() {
     const send = vi.fn(async (method: string, _params?: Record<string, unknown>): Promise<unknown> => method === 'Runtime.evaluate'

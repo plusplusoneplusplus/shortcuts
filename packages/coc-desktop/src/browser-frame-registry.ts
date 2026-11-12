@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BrowserControlFrame } from '@plusplusoneplusplus/coc-client';
-import type { BrowserCdpSender } from './browser-control-page';
-
-export type BrowserCdpListener = (method: string, params: Record<string, unknown>, sessionId?: string) => void;
+import type { BrowserControl, BrowserControlEvent, BrowserControlFrameInfo, BrowserControlFrameTree } from './browser-control-engine';
 
 interface Frame extends BrowserControlFrame {
     rawId: string;
@@ -12,12 +10,7 @@ interface Frame extends BrowserControlFrame {
     parentRaw?: string;
 }
 
-interface FrameTree {
-    frame: { id: string; parentId?: string; name?: string; securityOrigin?: string; loaderId?: string };
-    childFrames?: FrameTree[];
-}
-
-/** Private view-owned identities. Protocol identifiers never leave the main process. */
+/** Private view-owned identities. Engine identifiers never leave the main process. */
 export class BrowserFrameRegistry {
     private readonly entries = new Map<string, Frame>();
     private readonly sessions = new Map<string, { frameId: string; initialized: boolean; parentSession?: string }>();
@@ -30,14 +23,14 @@ export class BrowserFrameRegistry {
     revision = 0;
     truncated?: string;
 
-    constructor(private readonly send: BrowserCdpSender, private readonly invalidate: () => void) {}
+    constructor(private readonly control: BrowserControl, private readonly invalidate: () => void) {}
 
     private changed(): void {
         this.revision++;
         this.invalidate();
     }
 
-    private update(info: FrameTree['frame'], session?: string): Frame {
+    private update(info: BrowserControlFrameInfo, session?: string): Frame {
         let frame = this.entries.get(info.id);
         if (!frame) {
             if (this.entries.size >= 256) throw new Error('Browser frame registry limit exceeded');
@@ -56,7 +49,7 @@ export class BrowserFrameRegistry {
         frame.loader = info.loaderId ?? frame.loader;
         frame.parentRaw = info.parentId ?? frame.parentRaw;
         frame.name = (info.name ?? frame.name).replace(/[\r\n\t]/g, ' ').slice(0, 160);
-        frame.origin = (info.securityOrigin ?? frame.origin).slice(0, 256) || 'opaque';
+        frame.origin = (info.origin ?? frame.origin).slice(0, 256) || 'opaque';
         frame.session = session;
         return frame;
     }
@@ -71,16 +64,15 @@ export class BrowserFrameRegistry {
         for (const [key, context] of this.contexts) if (context.frame === rawId) this.contexts.delete(key);
     }
 
-    private readonly event: BrowserCdpListener = (method, params, session) => {
+    private readonly event = (event: BrowserControlEvent): void => {
         if (!this.started || this.failure) return;
+        const session = 'target' in event && event.type !== 'target-attached' && event.type !== 'target-detached' ? event.target : undefined;
         try {
-            if (method === 'Target.attachedToTarget') {
-                const info = params.targetInfo as { type?: string; targetId?: string } | undefined;
-                if (info?.type !== 'iframe' || typeof params.sessionId !== 'string' || !info.targetId) return;
+            if (event.type === 'target-attached') {
                 if (this.sessions.size >= 256) throw new Error('Browser frame session limit exceeded');
-                this.sessions.set(params.sessionId, { frameId: info.targetId, initialized: false, parentSession: session });
-            } else if (method === 'Target.detachedFromTarget') {
-                const id = String(params.sessionId);
+                this.sessions.set(event.target, { frameId: event.frameId, initialized: false, parentSession: event.parentTarget });
+            } else if (event.type === 'target-detached') {
+                const id = event.target;
                 if (this.sessions.has(id)) {
                     const removed = new Set([id]);
                     for (const [child, info] of this.sessions) if (info.parentSession && removed.has(info.parentSession)) removed.add(child);
@@ -92,44 +84,40 @@ export class BrowserFrameRegistry {
                     }
                     this.changed();
                 }
-            } else if (method === 'Page.frameAttached') {
-                if (typeof params.frameId === 'string') this.update({ id: params.frameId, parentId: String(params.parentFrameId) }, session);
-            } else if (method === 'Page.frameNavigated') {
-                const info = params.frame as FrameTree['frame'] | undefined;
-                if (info?.id) { this.update(info, session); this.changed(); }
-            } else if (method === 'Page.navigatedWithinDocument') {
-                if (typeof params.frameId === 'string') {
-                    const frame = this.entries.get(params.frameId);
-                    if (frame) {
-                        frame.id = `f${randomUUID()}`;
-                        frame.document = `${this.epoch}:${++this.sequence}`;
-                    }
-                    this.changed();
+            } else if (event.type === 'frame-attached') {
+                this.update({ id: event.frameId, parentId: event.parentFrameId }, session);
+            } else if (event.type === 'frame-navigated') {
+                this.update(event.frame, session); this.changed();
+            } else if (event.type === 'frame-same-document') {
+                const frame = this.entries.get(event.frameId);
+                if (frame) {
+                    frame.id = `f${randomUUID()}`;
+                    frame.document = `${this.epoch}:${++this.sequence}`;
                 }
-            } else if (method === 'Page.frameDetached' && params.reason !== 'swap') {
-                if (typeof params.frameId === 'string') { this.retire(params.frameId); this.changed(); }
-            } else if (method === 'Runtime.executionContextCreated') {
-                const context = params.context as { id: number; origin?: string; auxData?: { frameId?: string; isDefault?: boolean } } | undefined;
-                if (!context?.auxData?.isDefault || !context.auxData.frameId) return;
-                if (this.contexts.size >= 256 && !this.contexts.has(`${session ?? ''}:${context.id}`)) throw new Error('Browser frame context limit exceeded');
-                const frameId = context.auxData.frameId;
-                this.contexts.set(`${session ?? ''}:${context.id}`, { frame: frameId, id: context.id });
+                this.changed();
+            } else if (event.type === 'frame-detached' && !event.swapped) {
+                this.retire(event.frameId); this.changed();
+            } else if (event.type === 'context-created') {
+                if (!event.isDefault || !event.frameId) return;
+                if (this.contexts.size >= 256 && !this.contexts.has(`${session ?? ''}:${event.context}`)) throw new Error('Browser frame context limit exceeded');
+                const frameId = event.frameId;
+                this.contexts.set(`${session ?? ''}:${event.context}`, { frame: frameId, id: event.context });
                 const frame = this.entries.get(frameId);
                 if (frame) {
-                    if (frame.context !== undefined && (frame.context !== context.id || frame.session !== session)) {
+                    if (frame.context !== undefined && (frame.context !== event.context || frame.session !== session)) {
                         frame.id = `f${randomUUID()}`;
                         frame.document = `${this.epoch}:${++this.sequence}`;
                         this.changed();
                     }
-                    frame.context = context.id;
+                    frame.context = event.context;
                     frame.session = session;
-                    frame.origin = (context.origin || frame.origin).slice(0, 256);
+                    frame.origin = (event.origin || frame.origin).slice(0, 256);
                     frame.status = 'ready';
                 }
-            } else if (method === 'Runtime.executionContextDestroyed' || method === 'Runtime.executionContextsCleared') {
+            } else if (event.type === 'context-destroyed' || event.type === 'contexts-cleared') {
                 for (const [key, context] of [...this.contexts]) {
                     if (!key.startsWith(`${session ?? ''}:`)) continue;
-                    if (method.endsWith('Destroyed') && context.id !== params.executionContextId) continue;
+                    if (event.type === 'context-destroyed' && context.id !== event.context) continue;
                     const frame = this.entries.get(context.frame);
                     if (frame?.context === context.id && frame.session === session) {
                         frame.context = undefined;
@@ -140,7 +128,7 @@ export class BrowserFrameRegistry {
                     this.contexts.delete(key);
                     this.changed();
                 }
-            } else if (method === 'Inspector.detached' || method === 'Inspector.targetCrashed') {
+            } else if (event.type === 'detached') {
                 throw new Error('Browser frame debugger unavailable');
             }
         } catch (error) {
@@ -149,12 +137,12 @@ export class BrowserFrameRegistry {
         }
     };
 
-    async start(subscribe: (listener: BrowserCdpListener) => () => void, ready?: () => Promise<void>): Promise<void> {
+    async start(): Promise<void> {
         if (this.started) return this.refresh();
         this.started = true;
-        this.unsubscribe = subscribe(this.event);
+        this.unsubscribe = this.control.onEvent(this.event);
         try {
-            await ready?.();
+            await this.control.waitForEvents?.();
             await this.initialize();
             await this.refresh();
         } catch (error) {
@@ -166,20 +154,18 @@ export class BrowserFrameRegistry {
     }
 
     private async initialize(session?: string): Promise<void> {
-        await this.send('Page.enable', {}, session);
-        const tree = await this.send('Page.getFrameTree', {}, session) as { frameTree?: FrameTree };
-        if (!tree.frameTree) throw new Error('Browser frame tree unavailable');
-        const walk = (node: FrameTree, parent?: string, depth = 0) => {
+        await this.control.enableFrameEvents(session);
+        const tree = await this.control.frameTree(session);
+        const walk = (node: BrowserControlFrameTree, parent?: string, depth = 0) => {
             if (depth > 8 || this.entries.size >= 256) { this.truncated = 'frame-registry-limit'; return; }
             const retainedSession = session ?? this.entries.get(node.frame.id)?.session;
             this.update({ ...node.frame, parentId: node.frame.parentId ?? parent }, retainedSession);
-            for (const child of node.childFrames ?? []) walk(child, node.frame.id, depth + 1);
+            for (const child of node.children ?? []) walk(child, node.frame.id, depth + 1);
         };
-        walk(tree.frameTree);
-        await this.send('Runtime.enable', {}, session);
-        // Auto-attach is scoped to related iframe targets, never browser-wide discovery.
-        await this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
-            filter: [{ type: 'iframe', exclude: false }, { exclude: true }] }, session);
+        walk(tree);
+        await this.control.enableContextEvents(session);
+        // Attachment is scoped to related child frames, never browser-wide discovery.
+        await this.control.setChildFrameAttach(true, session);
     }
 
     async refresh(): Promise<void> {
@@ -192,9 +178,8 @@ export class BrowserFrameRegistry {
             // Related attachment is insufficient: a frame must be in this view's tree.
             if (!this.entries.has(value.frameId)) {
                 // OOPIFs need not appear in the root target's frame tree.
-                const tree = await this.send('Page.getFrameTree', {}, session) as { frameTree?: FrameTree };
-                const info = tree.frameTree?.frame;
-                if (!info || info.id !== value.frameId) throw new Error('Browser iframe target ancestry unavailable');
+                const info = (await this.control.frameTree(session)).frame;
+                if (info.id !== value.frameId) throw new Error('Browser iframe target ancestry unavailable');
                 const parents = info.parentId ? [this.entries.get(info.parentId)].filter((frame): frame is Frame => !!frame) : [...this.entries.values()];
                 for (const parent of parents) {
                     if (parent.context === undefined) continue;
@@ -219,22 +204,14 @@ export class BrowserFrameRegistry {
     }
 
     private async ownsFrame(parent: Frame, rawId: string): Promise<boolean> {
-        let objectId: string | undefined;
         try {
-            const owner = await this.send('DOM.getFrameOwner', { frameId: rawId }, parent.session) as { backendNodeId?: number };
-            if (!owner.backendNodeId) return false;
-            const object = await this.send('DOM.resolveNode', { backendNodeId: owner.backendNodeId, executionContextId: parent.context }, parent.session) as { object?: { objectId?: string } };
-            objectId = object.object?.objectId;
-            if (!objectId) return false;
-            const result = await this.send('Runtime.callFunctionOn', { objectId,
-                functionDeclaration: 'function(){return this.ownerDocument === document}', returnByValue: true }, parent.session) as { result?: { value?: boolean } };
-            return result.result?.value === true;
+            const result = await this.control.callOnFrameOwner(rawId, { context: parent.context!, target: parent.session },
+                'function(){return this.ownerDocument === document}', []);
+            return !!result && 'value' in result && result.value === true;
         } catch (error) {
-            // A parent target may not own this backend node; other protocol failures remain visible.
+            // A parent target may not own this frame; other engine failures remain visible.
             if (error instanceof Error && /frame.*(not found|not belong)|no frame|could not find.*(frame|node)|node.*not found|cannot find context/i.test(error.message)) return false;
             throw error;
-        } finally {
-            if (objectId) await this.send('Runtime.releaseObject', { objectId }, parent.session);
         }
     }
 
@@ -274,17 +251,15 @@ export class BrowserFrameRegistry {
     async evaluate<T>(expression: string, handle?: string, awaitPromise = false): Promise<T> {
         const frame = this.resolve(handle);
         const { document, context, session, rawId, id } = frame;
-        const reply = await this.send('Runtime.evaluate', { expression, contextId: frame.context, returnByValue: true, awaitPromise }, frame.session) as {
-            result?: { value?: T }; exceptionDetails?: { text?: string; exception?: { description?: string } };
-        };
+        const reply = await this.control.evaluate(expression, { context: frame.context, target: frame.session, awaitPromise });
         if (this.failure) throw this.failure;
         const current = this.entries.get(rawId);
         if (!current || current.id !== id || current.document !== document || current.context !== context || current.session !== session) {
             throw new Error('stale browser frame context, re-snapshot');
         }
-        if (reply.exceptionDetails) throw new Error((reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text ?? 'Frame evaluation failed').slice(0, 4000));
-        if (!reply.result || !('value' in reply.result)) throw new Error('Browser frame returned no result');
-        return reply.result.value as T;
+        if (reply.exception !== undefined) throw new Error((reply.exception || 'Frame evaluation failed').slice(0, 4000));
+        if (!('value' in reply)) throw new Error('Browser frame returned no result');
+        return reply.value as T;
     }
 
     async stop(): Promise<void> {
@@ -292,11 +267,10 @@ export class BrowserFrameRegistry {
         try {
             const results: PromiseSettledResult<unknown>[] = [];
             for (const [session, info] of [...this.sessions].reverse()) {
-                results.push(...await Promise.allSettled([this.send('Target.detachFromTarget', { sessionId: session }, info.parentSession)]));
+                results.push(...await Promise.allSettled([this.control.detachTarget(session, info.parentSession)]));
             }
             results.push(...await Promise.allSettled([
-                this.send('Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }),
-                this.send('Runtime.disable'), this.send('Page.disable')]));
+                this.control.setChildFrameAttach(false), this.control.disableContextEvents(), this.control.disableFrameEvents()]));
             const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
             if (failed) throw failed.reason;
         } finally {

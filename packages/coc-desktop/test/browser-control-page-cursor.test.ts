@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserControlPage } from '../src/browser-control-page';
 import type { BrowserCursorCommand } from '../src/browser-control-cursor';
-import type { BrowserCdpListener } from '../src/browser-frame-registry';
+import type { BrowserCdpListener } from '../src/browser-control-page';
 
 interface Overlay { layer: HTMLElement; cursor: HTMLElement }
 const overlay = () => (window as Window & { __cocCursorOverlay?: Overlay }).__cocCursorOverlay;
