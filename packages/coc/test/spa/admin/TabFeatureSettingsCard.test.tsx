@@ -82,13 +82,11 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
-    it('shows one shared workspace for fixed Teams routing', async () => {
+    it('always shows one shared workspace without a routing toggle', async () => {
         render(<Harness tabs={['teams']} />);
         fireEvent.click(screen.getByRole('checkbox', { name: 'Enable IC3 @coc own commands' }));
         fireEvent.click(screen.getByRole('checkbox', { name: 'Enable Robot reaction delegation' }));
-        expect(screen.getByLabelText('Command workspace')).toBeTruthy();
-        expect(screen.getByLabelText('Execution workspace')).toBeTruthy();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Use fixed Teams routing' }));
+        expect(screen.queryByRole('checkbox', { name: 'Use fixed Teams routing' })).toBeNull();
         expect(screen.queryByLabelText('Command workspace')).toBeNull();
         expect(screen.queryByLabelText('Execution workspace')).toBeNull();
         await screen.findByLabelText('Mention and reaction workspace');
@@ -209,7 +207,7 @@ describe('TabFeatureSettingsCard', () => {
         expect(toggle.closest('#teams-group-teamsReactionDelegation')).not.toBeNull();
         expect(toggle.closest('.ar-row')?.textContent).toContain('Experimental');
         fireEvent.click(toggle);
-        expect(screen.getByTestId('select-teams-reaction-workspace').tagName).toBe('SELECT');
+        expect(screen.getByTestId('select-teams-routing-workspace').tagName).toBe('SELECT');
         expect(screen.getByTestId('select-teams-reaction-dispatcher-skill')).toHaveProperty('disabled', true);
         const keys = getTabFeatureSettings('teams').filter(def => def.ui?.group === 'teamsReactionDelegation').map(def => def.key);
         expect(keys).toEqual([
@@ -217,19 +215,15 @@ describe('TabFeatureSettingsCard', () => {
         ]);
     });
 
-    it('offers repo groups for reaction execution and IC3 own commands', async () => {
+    it('offers repo groups for the shared mention and reaction workspace', async () => {
         render(<Harness tabs={['teams']} />);
         fireEvent.click(screen.getByTestId('toggle-teams-reaction-delegation-enabled'));
         fireEvent.click(screen.getByTestId('toggle-teams-ic3-own-commands-enabled'));
-        const reactions = screen.getByTestId('select-teams-reaction-workspace');
-        const commands = screen.getByTestId('select-teams-ic3-command-workspace');
-        await waitFor(() => expect(reactions).toHaveProperty('disabled', false));
-        expect(within(reactions).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
-        expect(within(commands).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
-        fireEvent.change(reactions, { target: { value: 'group-team' } });
-        expect(controller.featureValues['teamsReactionDelegation.workspaceId']).toBe('group-team');
-        fireEvent.change(commands, { target: { value: 'group-team' } });
-        expect(controller.featureValues['teamsIc3OwnCommands.workspaceId']).toBe('group-team');
+        const shared = screen.getByTestId('select-teams-routing-workspace');
+        await waitFor(() => expect(shared).toHaveProperty('disabled', false));
+        expect(within(shared).getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined();
+        fireEvent.change(shared, { target: { value: 'group-team' } });
+        expect(controller.featureValues['teamsRouting.workspaceId']).toBe('group-team');
     });
 
     it('ignores saved panel categories in Appearance while preserving the groups control and save path', async () => {

@@ -8,7 +8,6 @@ import { useAdminDirtyGuard, useAdminServer, type AdminServerAccess } from './ad
 
 interface TeamsStatus {
     connectionId?: string | null;
-    fixedRoutingEnabled?: boolean;
     channelReadBackend?: 'graph';
     outboundBackend?: 'mcp' | 'graph';
     enableTrouter?: boolean;
@@ -129,6 +128,8 @@ function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [confirm, setConfirm] = useState(false);
+    const [bindingReady, setBindingReady] = useState(false);
+    const [retryBinding, setRetryBinding] = useState(0);
 
     useEffect(() => {
         let current = true;
@@ -137,6 +138,7 @@ function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
         setWorkspaceId('');
         setProcessId('');
         setError(null);
+        setBindingReady(false);
         if (status.status !== 'connected') return () => { current = false; };
         void request<{ binding: { workspaceId: string; processId: string; title: string } | null; unavailable?: boolean }>(
             admin, '/messaging/teams/channel-binding',
@@ -146,9 +148,10 @@ function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
             setUnavailable(result.unavailable === true);
             setWorkspaceId(result.binding?.workspaceId ?? '');
             setProcessId(result.binding?.processId ?? '');
+            setBindingReady(true);
         }).catch(err => { if (current) setError(err instanceof Error ? err.message : String(err)); });
         return () => { current = false; };
-    }, [admin, status.connectionId, status.status]);
+    }, [admin, status.connectionId, status.status, retryBinding]);
 
     useEffect(() => {
         let current = true;
@@ -215,9 +218,13 @@ function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
             <p className="ar-teams-hint">Every channel thread uses the same Sentinel. In-flight requests keep their original destination.</p>
             <p className="ar-teams-hint">From the connected Teams account, use /binding show or /binding set with the workspace and Sentinel IDs.</p>
             <p role="status">{status.status !== 'connected' ? 'Connect Teams to configure the binding.'
-                : binding ? `${unavailable ? 'Unavailable' : 'Bound'}: ${binding.workspaceId} / ${binding.title}` : 'Not configured'}</p>
+                : !bindingReady ? error ? 'Binding unavailable' : 'Loading binding…'
+                    : binding ? `${unavailable ? 'Unavailable' : 'Bound'}: ${binding.workspaceId} / ${binding.title}` : 'Not configured'}</p>
             {unavailable && <p role="alert" className="ar-teams-error">The workspace or Sentinel is unavailable. Select another binding.</p>}
             {error && <p role="alert" className="ar-teams-error">{error}</p>}
+            {!bindingReady && status.status === 'connected' && error && <Button size="sm" variant="secondary"
+                onClick={() => setRetryBinding(value => value + 1)}>Retry binding</Button>}
+            {bindingReady && <>
             <label className="ar-teams-field">Workspace</label>
             <AdminWorkspaceSelect value={workspaceId} includeRepoGroups label="Channel workspace"
                 data-testid="teams-channel-workspace" onChange={value => { setWorkspaceId(value); setProcessId(''); }} />
@@ -237,6 +244,7 @@ function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
                 || !sentinels.some(item => item.id === processId)}
                 onClick={() => binding && (binding.workspaceId !== workspaceId || binding.processId !== processId)
                     ? setConfirm(true) : void save()}>Save binding</Button>
+            </>}
             <Dialog open={confirm} onClose={() => setConfirm(false)} title="Change channel binding" trapFocus
                 footer={<><Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button>
                     <Button onClick={() => void save()}>Change binding</Button></>}>
@@ -560,7 +568,7 @@ export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
                             })}>Save channel</Button>
                     </div>
                 </section>
-                {status?.fixedRoutingEnabled && <TeamsChannelBinding status={status} />}
+                {status && <TeamsChannelBinding status={status} />}
                 <section className="ar-teams-section" aria-label="Connect">
                     <h4><span className="ar-teams-step" aria-hidden="true">3</span> Connect</h4>
                     <div className="ar-teams-connect">

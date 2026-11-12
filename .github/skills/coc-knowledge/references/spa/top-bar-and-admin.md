@@ -94,8 +94,7 @@ from `notificationStatus`; enabled notifications show fallback cadence and sanit
 errors separately from reader connectivity, outside collapsed settings.
 
 The Teams-only registry controls (`features.teamsBridgeObservability`,
-`features.teamsAiAnswerRelay`, `features.teamsMessageReaction`, default-off
-`features.teamsFixedRouting`, and IC3 own-command and reaction-delegation
+`features.teamsAiAnswerRelay`, `features.teamsMessageReaction`, and IC3 own-command and reaction-delegation
 settings; `ui.tab: 'teams'`) render
 only in a "Teams features" card below detailed configuration on Connectors → Teams. Its groups are
 Teams channel bridge (observability, answer relay, reaction), IC3 own commands, reaction
@@ -107,10 +106,10 @@ saves only its keys through `PUT /api/admin/config`, separately from the connect
 them to `#admin/messaging`. The IC3 workspace picker lists local registrations from
 the selected Admin server. Saving enabled IC3 settings starts the
 [Ask launcher](../admin-config.md#ic3-own-command-configuration).
-With fixed routing enabled, the connection card binds the current channel to a local
+The connection card binds the current channel to a local
 workspace and Sentinel, confirms changes, and shows unavailable owners. Its draft uses
-the owning Admin server and dirty guard. The registry replaces the separate mention and
-reaction workspace controls with `teamsRouting.workspaceId`; the dispatcher skill picker
+the owning Admin server and dirty guard. The registry exposes `teamsRouting.workspaceId`
+as the shared mention and reaction workspace; the dispatcher skill picker
 and save validation use that shared workspace. The Reaction delegation group uses the same responsive admin rows and page-scoped
 Save/Cancel. Its dispatcher picker reads installed skills for the selected execution
 workspace, excludes disabled names and preserves unavailable saved selections with

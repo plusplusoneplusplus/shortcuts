@@ -334,7 +334,6 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
-        teamsFixedRouting?: boolean;
         /** Own-user @coc prompts start Ask chats. Disabled by default. */
         teamsIc3OwnCommands?: boolean;
         /** Own-user Robot reactions delegate separate Ask jobs. Disabled by default. */
@@ -807,7 +806,6 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
-        teamsFixedRouting: boolean;
         teamsIc3OwnCommands: boolean;
         teamsReactionDelegation: boolean;
         teamsOutboundCompliance: boolean;
@@ -1183,7 +1181,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
-        teamsFixedRouting: false,
         teamsIc3OwnCommands: false,
         teamsReactionDelegation: false,
         teamsOutboundCompliance: false,

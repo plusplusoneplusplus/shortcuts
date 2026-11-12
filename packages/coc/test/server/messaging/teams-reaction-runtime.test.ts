@@ -132,6 +132,7 @@ describe('Teams reaction notification lifecycle', () => {
         });
         config = mergeConfig(DEFAULT_CONFIG, {
             features: { teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: binding.workspaceId },
             teamsReactionDelegation: { workspaceId: binding.workspaceId, dispatcherSkill: binding.dispatcherSkill },
         });
         region = 'amer';
@@ -162,7 +163,7 @@ describe('Teams reaction notification lifecycle', () => {
     });
 
     it('restarts on shared workspace changes, not inactive legacy workspace changes', async () => {
-        config = mergeConfig(config, { features: { teamsFixedRouting: true }, teamsRouting: { workspaceId: 'workspace-a' } });
+        config = mergeConfig(config, { teamsRouting: { workspaceId: 'workspace-a' } });
         await registered();
         config = mergeConfig(config, { teamsReactionDelegation: { workspaceId: 'workspace-b' } });
         change();
@@ -501,7 +502,7 @@ describe('Teams reaction notification lifecycle', () => {
     it.each(['workspace', 'dispatcher', 'skills', 'region', 'disabled'] as const)(
         'revokes old callbacks and native resources on %s changes, retaining the shared coordinator', async changeKind => {
             const notification = await registered();
-            if (changeKind === 'workspace') config.teamsReactionDelegation.workspaceId = 'workspace-b';
+            if (changeKind === 'workspace') config.teamsRouting.workspaceId = 'workspace-b';
             if (changeKind === 'dispatcher') config.teamsReactionDelegation.dispatcherSkill = 'dispatcher-b';
             if (changeKind === 'skills') config.skills = { ...config.skills, globalExtraFolders: [path.resolve('extra-skills')] };
             if (changeKind === 'region') region = 'emea';

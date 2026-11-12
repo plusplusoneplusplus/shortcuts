@@ -612,32 +612,30 @@ describe('Teams authoritative binding release', () => {
         return handle;
     };
 
-    it('production startup/inbound typed retry continues unrelated work and later completes release', async () => {
+    it('production startup/inbound retries release while refusing unbound channel work', async () => {
         await admitOrigin();
         writeReceipt({ releaseState: 'releasing' });
         rejectQueueRelease();
         const handle = wireProduction();
         await handle(message('unrelated'));
-        expect(queue.createAggregateQueueFacade().getAll().filter(task => task.id !== 'origin')).toHaveLength(1);
+        expect(queue.createAggregateQueueFacade().getAll().filter(task => task.id !== 'origin')).toHaveLength(0);
         expect(receipt().releaseState).toBe('releasing');
         expect(console.error).toHaveBeenCalledWith('[teams-answer-relay] Binding release reconciliation failed');
         store.getDatabase().exec('DROP TRIGGER reject_release');
         await handle(message());
         expect(receipt().releaseState).toBe('released');
         expect(control()).toBeUndefined();
-        expect(queue.createAggregateQueueFacade().getAll()).toHaveLength(2);
+        expect(queue.createAggregateQueueFacade().getAll()).toHaveLength(1);
     });
 
-    it('production ordinary controlled follow-ups retain authoritative admission-only receipts', async () => {
+    it('production refuses an unbound follow-up while releasing the original controlled receipt', async () => {
         await admitOrigin();
         await register();
         const handle = wireProduction();
         await handle({ ...message('choose'), text: `/select topic ${processId}` });
         await handle(message('ordinary-follow-up'));
-        expect(receipt('ordinary-follow-up').admissionOnly).toBe(true);
+        expect(fs.existsSync(receiptFile('ordinary-follow-up'))).toBe(false);
         await remove();
-        expect(control()?.source).toBe('teams');
-        await remove('ordinary-follow-up');
         expect(control()).toBeUndefined();
         expect((await store.getProcess(processId))?.metadata?.botControl).toBeUndefined();
     });

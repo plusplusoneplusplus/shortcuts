@@ -1410,7 +1410,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getBotManagedConversationsEnabled: () =>
             (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.botManagedConversations === true,
         getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
-        getFixedRoutingEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsFixedRouting === true,
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,

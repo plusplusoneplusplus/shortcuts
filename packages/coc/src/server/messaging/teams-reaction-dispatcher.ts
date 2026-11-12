@@ -23,8 +23,7 @@ export async function resolveTeamsReactionDispatcher(
     if (config.features?.teamsReactionDelegation !== true) {
         throw new Error('Teams reaction delegation is disabled.');
     }
-    const workspaceId = config.features?.teamsFixedRouting === true
-        ? config.teamsRouting?.workspaceId : config.teamsReactionDelegation?.workspaceId;
+    const workspaceId = config.teamsRouting?.workspaceId;
     const { dispatcherSkill } = config.teamsReactionDelegation ?? {};
     if (!workspaceId || !dispatcherSkill) throw new Error('Teams reaction dispatcher binding is incomplete.');
     if (!/^[a-zA-Z0-9_-]{1,256}$/.test(workspaceId)

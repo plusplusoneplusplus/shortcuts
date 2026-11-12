@@ -1541,10 +1541,11 @@ describe('AdminPanel', () => {
             expect(card.textContent).toContain('Teams @coc <prompt> messages share one Ask conversation per Teams chat');
             expect(screen.queryByTestId('select-teams-ic3-own-command-region')).toBeNull();
             expect(screen.getByLabelText('IC3 region')).toBeDefined();
-            // Follow-up settings stay hidden until their feature is turned on.
             expect(screen.queryByTestId('select-teams-ic3-command-workspace')).toBeNull();
+            expect(screen.getAllByTestId('select-teams-routing-workspace')).toHaveLength(1);
             await act(async () => { fireEvent.click(screen.getByTestId('toggle-teams-ic3-own-commands-enabled')); });
-            expect(screen.getAllByTestId('select-teams-ic3-command-workspace')).toHaveLength(1);
+            expect(screen.queryByTestId('select-teams-ic3-command-workspace')).toBeNull();
+            expect(screen.getAllByTestId('select-teams-routing-workspace')).toHaveLength(1);
         });
 
         it('links Features search results for Teams settings to Connectors → Teams', async () => {
@@ -1589,7 +1590,6 @@ describe('AdminPanel', () => {
                 'features.teamsMessageReaction': true,
                 'features.teamsOutboundCompliance': false,
                 'teamsOutboundCompliance.prompt': '',
-                'features.teamsFixedRouting': false,
                 'teamsRouting.workspaceId': '',
                 'features.teamsIc3OwnCommands': false,
                 'teamsIc3OwnCommands.workspaceId': '',

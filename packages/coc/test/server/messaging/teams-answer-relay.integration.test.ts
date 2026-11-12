@@ -10,6 +10,7 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
+import { TeamsChannelBindings } from '../../../src/server/messaging/teams-channel-binding';
 
 const teamId = 'test-team';
 const channelId = 'test-channel';
@@ -41,11 +42,15 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it.each(['mcp', 'graph'] as const)('correlates queued, running, explicit and silent thread follow-ups across workspaces (%s reads)', { timeout: 20_000 }, async channelReadBackend => {
+    it.each(['mcp', 'graph'] as const)('keeps admitted answers bound across channel rebinding (%s reads)', { timeout: 20_000 }, async channelReadBackend => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-answer-relay-integration-'));
         const store = new FileProcessStore({ dataDir });
         for (const [id, name] of [['ws-a', 'Alpha'], ['ws-b', 'Beta']]) {
+            fs.mkdirSync(path.join(dataDir, id));
             await store.registerWorkspace({ id, name, rootPath: path.join(dataDir, id) });
+            await store.addProcess({ id: `sentinel-${id}`, type: 'chat', status: 'completed', startTime: new Date(),
+                promptPreview: '', fullPrompt: '', sdkSessionId: 'synthetic-session',
+                metadata: { workspaceId: id, mode: 'sentinel', provider: 'copilot' } });
         }
 
         const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
@@ -138,6 +143,10 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             enabled: true, status: 'connected', teamId, channelId,
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
+        const bindings = new TeamsChannelBindings(dataDir, store);
+        const identity = { accountKey: 'account', teamId, channelId };
+        await bindings.bind(identity, 'ws-a', 'sentinel-ws-a');
         vi.spyOn(manager, 'sendMessage').mockImplementation(
             (text, rootId) => transport.send(channelId, text, { replyToId: rootId }));
         let handle!: (msg: InboundTeamsMessage) => Promise<void>;
@@ -162,7 +171,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 return { taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                     id, type: 'chat', repoId: process.metadata.workspaceId as string,
                     processId: process.id, priority: 'normal',
-                    payload: { kind: 'chat', mode: 'ask', processId: process.id,
+                    payload: { kind: 'chat', mode: 'sentinel', processId: process.id,
                         prompt: text, workspaceId: process.metadata.workspaceId, relayRequestId: requestId },
                     config: {},
                 }) };
@@ -179,191 +188,38 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         const repliesFor = (root: string) => calls.filter(call => call.arguments.messageId === root)
             .map(call => String(call.arguments.content));
 
-        await handle(inbound('choose-a', '/select repo Alpha'));
+        await handle(inbound('removed-command', '/select repo Beta'));
+        expect(repliesFor('removed-command')).toEqual([expect.stringContaining('Unknown command')]);
         await handle(inbound('root-a', 'alpha prompt'));
         const taskA = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()[0];
-        expect(taskA.repoId).toBe('ws-a');
-        expect(taskA.botControl).toEqual(createBotControlMetadata('teams'));
-        expect(repliesFor('root-a')).toEqual([expect.stringContaining('New topic created')]);
-        expect(repliesFor('root-a')[0]).toContain('New topic created');
+        expect(taskA).toMatchObject({ repoId: 'ws-a', processId: 'sentinel-ws-a' });
+        queue.activateQueueProcessing();
+        await until(() => entered.includes('alpha prompt'));
 
-        await handle(inbound('choose-b', '/select repo Beta'));
-        await handle(inbound('new-b', '/create topic'));
+        await bindings.bind(identity, 'ws-b', 'sentinel-ws-b');
         await handle(inbound('root-b', 'beta prompt'));
         const taskB = registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll()[0];
-        expect(taskB.repoId).toBe('ws-b');
-        expect(taskB.botControl).toEqual(createBotControlMetadata('teams'));
-        expect(repliesFor('root-b')).toHaveLength(1);
-        await handle(inbound('queued-follow', 'queued follow-up'));
-        expect(repliesFor('queued-follow')).toEqual([expect.stringContaining('Message sent')]);
-
-        queue.activateQueueProcessing();
-        await until(() => entered.includes('alpha prompt') && entered.includes('beta prompt'));
-        await handle(inbound('running-follow', 'running follow-up'));
-        expect(repliesFor('running-follow')).toEqual([expect.stringContaining('Message sent')]);
-        expect(repliesFor('root-a')).toHaveLength(1);
-        expect(repliesFor('root-b')).toHaveLength(1);
-        gates.get('beta prompt')!.resolve();
+        expect(taskB).toMatchObject({ repoId: 'ws-b', processId: 'sentinel-ws-b' });
+        await until(() => entered.includes('beta prompt'));
         gates.get('alpha prompt')!.resolve();
-        await until(() => repliesFor('root-a').length === 2 && repliesFor('root-b').length === 2);
-        expect(repliesFor('root-a')[1]).toContain('Answer for alpha prompt');
-        expect(repliesFor('root-b')[1]).toContain('Answer for beta prompt');
-        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.workspaceId).toBe('ws-a');
-        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.workspaceId).toBe('ws-b');
-        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.botControl)
-            .toEqual(createBotControlMetadata('teams'));
-        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.botControl)
-            .toEqual(createBotControlMetadata('teams'));
-        await until(() => entered.includes('queued follow-up'));
-        gates.get('queued follow-up')!.resolve();
-        await until(() => repliesFor('queued-follow').length === 2);
-        await until(() => entered.includes('running follow-up'));
-        gates.get('running follow-up')!.resolve();
-        await until(() => repliesFor('running-follow').length === 2);
-        expect(repliesFor('queued-follow')[1]).toContain('Answer for queued follow-up');
-        expect(repliesFor('running-follow')[1]).toContain('Answer for running follow-up');
+        gates.get('beta prompt')!.resolve();
+        await until(() => repliesFor('root-a').some(reply => reply.includes('Answer for alpha prompt'))
+            && repliesFor('root-b').some(reply => reply.includes('Answer for beta prompt')));
+        expect((await store.getProcess('sentinel-ws-a'))?.metadata?.botControl).toEqual(createBotControlMetadata('teams'));
+        expect((await store.getProcess('sentinel-ws-b'))?.metadata?.botControl).toEqual(createBotControlMetadata('teams'));
 
-        // An existing unmarked conversation is adopted by authoritative follow-up admission.
-        const existing = (await store.getProcess(toQueueProcessId(taskB.id)))!;
-        const metadata = { ...existing.metadata };
-        delete metadata.botControl;
-        await store.updateProcess(existing.id, { metadata });
-        expect((await store.getProcess(existing.id))?.metadata?.botControl).toBeUndefined();
-
-        // An explicit chat ID and then the selected last-active topic address the same conversation.
-        await handle(inbound('follow-b-1', `[${toQueueProcessId(taskB.id)}] first follow-up`));
-        expect((await store.getProcess(existing.id))?.metadata).toMatchObject({
-            botControl: createBotControlMetadata('teams'), provider: existing.metadata.provider,
-        });
-        await handle(inbound('follow-b-2', 'second follow-up'));
-        await until(() => entered.includes('first follow-up'));
-        expect(repliesFor('follow-b-1')).toEqual([expect.stringContaining('Message sent')]);
-        expect(repliesFor('follow-b-2')).toEqual([expect.stringContaining('Message sent')]);
-        gates.get('first follow-up')!.resolve();
-        await until(() => entered.includes('second follow-up'));
-        expect(repliesFor('follow-b-2')).toHaveLength(1);
-        gates.get('second follow-up')!.resolve();
-        await until(() => repliesFor('follow-b-1').length === 2 && repliesFor('follow-b-2').length === 2);
-        expect(repliesFor('follow-b-1')[1]).toContain('Answer for first follow-up');
-        expect(repliesFor('follow-b-2')[1]).toContain('Answer for second follow-up');
-        await handle(inbound('select-topic-b', `/select topic ${toQueueProcessId(taskB.id)}`));
-        await handle(inbound('selected-follow', 'selected follow-up'));
-        expect(repliesFor('selected-follow')).toEqual([expect.stringContaining('Message sent')]);
-        await until(() => entered.includes('selected follow-up'));
-        gates.get('selected follow-up')!.resolve();
-        await until(() => repliesFor('selected-follow').length === 2);
-        expect(repliesFor('selected-follow')[1]).toContain('Answer for selected follow-up');
-        expect(repliesFor('root-b')).toHaveLength(2);
-        expect(repliesFor('root-a')).toHaveLength(2);
-        const turns = (await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns ?? [];
-        const userTurns = turns.filter(turn => turn.role === 'user');
-        expect(userTurns).toHaveLength(6);
-        expect(userTurns[0].content).toMatch(/beta prompt$/);
-        expect(userTurns.slice(1).map(turn => turn.content)).toEqual([
-            'queued follow-up', 'running follow-up', 'first follow-up', 'second follow-up', 'selected follow-up',
-        ]);
-        expect(userTurns[1].relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
-        expect(userTurns[2].relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
-        expect(userTurns[1].relayRequestId).not.toBe(userTurns[2].relayRequestId);
-        expect(turns.filter(turn => turn.role === 'assistant').map(turn => turn.content))
-            .toEqual([
-                'Answer for beta prompt', 'Answer for queued follow-up',
-                'Answer for running follow-up', 'Answer for first follow-up',
-                'Answer for second follow-up', 'Answer for selected follow-up',
-            ]);
         const polled = await transport.poll(channelId);
         expect(polled.messages).toEqual([
-            expect.objectContaining({ messageId: 'root-b', replyToMessageId: undefined }),
-            expect.objectContaining({ messageId: 'thread-follow', replyToMessageId: 'root-b',
-                senderAadId: 'synthetic-user' }),
+            expect.objectContaining({ messageId: 'root-b' }),
+            expect.objectContaining({ messageId: 'thread-follow', replyToMessageId: 'root-b' }),
         ]);
         await handle(polled.messages[1]);
-        expect(repliesFor('root-b')).toHaveLength(2);
         await until(() => entered.includes('thread follow-up'));
         gates.get('thread follow-up')!.resolve();
-        await until(() => repliesFor('root-b').length === 3);
-        expect(repliesFor('root-b')[2]).toContain('Answer for thread follow-up');
+        await until(() => repliesFor('root-b').some(reply => reply.includes('Answer for thread follow-up')));
+        expect((await store.getProcess('sentinel-ws-b'))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('thread follow-up');
         expect(repliesFor('thread-follow')).toHaveLength(0);
-        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').at(-1)?.relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
-
-        // The sender still has Beta selected; threaded replies must follow their root, not that selection.
-        await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
-        await handle(inbound('thread-b-1', 'beta threaded reply', 'root-b'));
-        await handle(inbound('thread-a-2', 'alpha again', 'root-a'));
-        expect(repliesFor('root-a').at(-1)).toContain('not found or unavailable');
-        expect(repliesFor('root-a')).toHaveLength(3);
-        expect(repliesFor('root-b')).toHaveLength(3);
-        await until(() => entered.includes('beta threaded reply'));
-        gates.get('beta threaded reply')!.resolve();
-        await until(() => entered.includes('alpha again'));
-        gates.get('alpha again')!.resolve();
-        await until(async () => (await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').length === 2);
-        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('alpha again');
-        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('beta threaded reply');
-        await until(() => repliesFor('root-a').length === 4 && repliesFor('root-b').length === 4);
-        const taskCount = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll().length
-            + registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll().length;
-        await handle(inbound('unknown-reply', 'must not become a new topic', 'unknown-root'));
-        expect(repliesFor('unknown-root')).toEqual([expect.stringContaining('/select repo <name>')]);
-        expect(registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll().length
-            + registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll().length).toBe(taskCount);
-        const sentCount = calls.length;
-        await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
-        expect(calls).toHaveLength(sentCount);
-        await handle(inbound('thread-a-3', 'another turn after the answer', 'root-a'));
-        await until(() => entered.includes('another turn after the answer'));
-        gates.get('another turn after the answer')!.resolve();
-        await until(() => repliesFor('root-a').length === 5);
-        expect(repliesFor('root-a').at(-1)).toContain('Answer for another turn after the answer');
-        expect(repliesFor('thread-a-3')).toHaveLength(0);
-        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('another turn after the answer');
-
-        // A selection posted as a channel root also selects the target for its thread.
-        selectionThread = true;
-        const selectionPoll = await transport.poll(channelId);
-        expect(selectionPoll.messages).toEqual([
-            expect.objectContaining({ messageId: 'selection-root', text: '/select repo 1', replyToMessageId: undefined }),
-            expect.objectContaining({ messageId: 'thread-first', replyToMessageId: 'selection-root' }),
-        ]);
-        for (const msg of selectionPoll.messages) await handle(msg);
-        await until(() => entered.includes('first thread question'));
-        const threadTask = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()
-            .find(task => task.payload?.kind === 'chat' && task.payload.prompt === 'first thread question')!;
-        expect(threadTask.repoId).toBe('ws-a');
-        expect(repliesFor('selection-root').at(-1)).toContain('New chat started');
-        await handle(inbound('thread-pending', 'pending thread question', 'selection-root'));
-        expect(repliesFor('thread-pending')).toHaveLength(0);
-        gates.get('first thread question')!.resolve();
-        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for first thread question')));
-        await until(() => entered.includes('pending thread question'));
-        gates.get('pending thread question')!.resolve();
-        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for pending thread question')));
-
-        // Later user selections do not move an established thread to another workspace.
-        await handle(inbound('selection-elsewhere', '/select repo Beta'));
-        await handle(inbound('thread-second', 'second thread question', 'selection-root'));
-        await until(() => entered.includes('second thread question'));
-        gates.get('second thread question')!.resolve();
-        await until(() => repliesFor('selection-root').some(reply => reply.includes('Answer for second thread question')));
-        expect((await store.getProcess(toQueueProcessId(threadTask.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').map(turn => turn.content))
-            .toEqual([expect.stringMatching(/first thread question$/), 'pending thread question', 'second thread question']);
-        expect(repliesFor('thread-first')).toHaveLength(0);
-        expect(repliesFor('thread-second')).toHaveLength(0);
-
-        await handle(inbound('topic-selection-root', `/select topic ws-b/${toQueueProcessId(taskB.id)}`));
-        await handle(inbound('topic-thread-follow', 'selected topic thread question', 'topic-selection-root'));
-        await until(() => entered.includes('selected topic thread question'));
-        gates.get('selected topic thread question')!.resolve();
-        await until(() => repliesFor('topic-selection-root').some(reply => reply.includes('Answer for selected topic thread question')));
-        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('selected topic thread question');
-        expect(repliesFor('topic-thread-follow')).toHaveLength(0);
 
         expect(calls.every(call => call.name === 'ReplyToChannelMessage'
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);

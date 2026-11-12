@@ -34,7 +34,6 @@ describe('fixed Teams channel routing', () => {
             acknowledgeFollowUp: vi.fn().mockResolvedValue(undefined),
             validateImageTarget: vi.fn().mockResolvedValue(undefined),
             fixedChannel: {
-                enabled: () => true,
                 resolve: vi.fn().mockResolvedValue({ workspaceId: 'workspace-a', process: sentinel }),
                 bind: vi.fn().mockResolvedValue(undefined),
             },
@@ -111,5 +110,17 @@ describe('fixed Teams channel routing', () => {
         expect(deps.admitFollowUp).not.toHaveBeenCalled();
         expect(image.download).not.toHaveBeenCalled();
         expect(deps.sendReply).toHaveBeenCalledWith(expect.stringContaining('changed'), 'image-root');
+    });
+
+    it('sends retained image instructions to the bound Sentinel in the original thread', async () => {
+        const image = { mimeType: 'image/png', download: vi.fn(async () => Buffer.from('image')) };
+        await router.handle({ ...message('image-root', ''), images: [image] });
+        const instruction = message('instruction', 'describe this', 'image-root');
+        await router.handle(instruction);
+        expect(deps.admitFollowUp).toHaveBeenCalledWith(
+            expect.objectContaining({ messageId: 'instruction', replyToMessageId: 'image-root', images: [image] }),
+            sentinel, 'describe this', undefined,
+        );
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
     });
 });

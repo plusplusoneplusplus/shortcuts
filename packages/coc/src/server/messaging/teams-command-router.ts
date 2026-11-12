@@ -107,7 +107,6 @@ export interface TeamsCommandRouterDeps {
     dataDir: string;
     isOwnMirrorMessage?: (message: InboundTeamsMessage) => boolean | Promise<boolean>;
     fixedChannel?: {
-        enabled(): boolean;
         resolve(msg: InboundTeamsMessage): Promise<{ workspaceId: string; process: AIProcess } | null>;
         bind(msg: InboundTeamsMessage, workspaceId: string, processId: string): Promise<void>;
     };
@@ -131,7 +130,7 @@ export class TeamsCommandRouter {
     private imageRoots = createImageRootCache();
 
     private parse(text: string): MessagingCommand {
-        return parseMessagingCommand(text, 'teams', { fixedTeamsChannel: this.deps.fixedChannel?.enabled() === true });
+        return parseMessagingCommand(text, 'teams', { fixedTeamsChannel: !!this.deps.fixedChannel });
     }
 
     private imageRootKey(channelId: string, rootId: string): string {
@@ -235,7 +234,7 @@ export class TeamsCommandRouter {
         const generation = this.imageGeneration;
         let workspaceId: string | undefined;
         let chatId: string | null = null;
-        if (this.deps.fixedChannel?.enabled()) {
+        if (this.deps.fixedChannel) {
             const binding = await this.deps.fixedChannel.resolve(msg);
             if (!binding) throw new TeamsChannelBindingError();
             workspaceId = binding.workspaceId;
@@ -288,7 +287,7 @@ export class TeamsCommandRouter {
             const instructionKey = this.instructionKey(msg);
             if (this.consumedImageInstructions.has(instructionKey)) return;
             if (msg.botAuthored) return;
-            if (this.deps.fixedChannel?.enabled() && /^\/?binding(?:\s|$)/i.test(msg.text.trim())) {
+            if (this.deps.fixedChannel && /^\/?binding(?:\s|$)/i.test(msg.text.trim())) {
                 if (msg.images?.length || msg.initializationReplay || msg.historicalSelectionReplay) return;
                 await this.handleFixedBindingCommand(msg);
                 return;
@@ -321,7 +320,7 @@ export class TeamsCommandRouter {
                         frame.roots.push(msg.messageId);
                         this.imageRoots.set(this.latestImageRootKey(msg), frame);
                         this.imageRoots.set(this.imageRootKey(msg.channelId, msg.messageId), frame);
-                        if (!this.deps.fixedChannel?.enabled()) await this.deps.bindImageRoot?.(msg, scope.workspaceId, scope.chatId);
+                        if (!this.deps.fixedChannel) await this.deps.bindImageRoot?.(msg, scope.workspaceId, scope.chatId);
                     }
                     await this.deps.sendReply('Images received. Send instructions here within 30 minutes.', msg.replyToMessageId || msg.messageId);
                 }
@@ -336,7 +335,7 @@ export class TeamsCommandRouter {
                 if (consumedRoots) this.clearRootFrame(consumedRoots);
                 msg = { ...msg, images: [...pending, ...(msg.images ?? [])] };
             }
-            if (this.deps.fixedChannel?.enabled()) {
+            if (this.deps.fixedChannel) {
                 if (msg.historicalSelectionReplay) return;
                 await this.handleFixedChannelMessage(msg, observe);
                 return;
@@ -513,6 +512,7 @@ export class TeamsCommandRouter {
         const destination = msg.replyToMessageId || msg.messageId;
         const command = this.parse(msg.text);
         if (command.type !== 'chat') {
+            observe?.('dispatch-command');
             const commandMessage = msg.replyToMessageId ? msg : { ...msg, replyToMessageId: msg.messageId };
             if (this.deps.hasThreadCommand?.(commandMessage)) return;
             this.deps.recordThreadCommand?.(commandMessage);
@@ -869,7 +869,7 @@ export class TeamsCommandRouter {
             if (admission.duplicate) return true;
         } else {
             // Bound-thread replies are deduplicated by message id, like thread commands.
-            if ((msg.replyToMessageId || this.deps.fixedChannel?.enabled()) && this.deps.isAnswerRelayEnabled?.() === true) {
+            if ((msg.replyToMessageId || this.deps.fixedChannel) && this.deps.isAnswerRelayEnabled?.() === true) {
                 const commandMessage = msg.replyToMessageId ? msg : { ...msg, replyToMessageId: msg.messageId };
                 if (this.deps.hasThreadCommand?.(commandMessage)) return true;
                 this.deps.recordThreadCommand?.(commandMessage);

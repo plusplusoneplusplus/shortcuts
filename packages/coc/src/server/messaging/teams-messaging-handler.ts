@@ -77,7 +77,6 @@ export interface TeamsMessagingRoutesOptions {
     getAnswerRelayEnabled?: () => boolean;
     getBotManagedConversationsEnabled?: () => boolean;
     getMessageReactionEnabled?: () => boolean;
-    getFixedRoutingEnabled?: () => boolean;
     onAnswerRelayConfigChanged?: (callback: () => void) => () => void;
     /** Send a follow-up message to an existing process. */
     executeFollowUp?: (processId: string, message: string, mode?: MessagingChatMode) => Promise<void>;
@@ -108,7 +107,6 @@ export function registerTeamsMessagingRoutes(
 ): TeamsMessagingManager {
     const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir, { getObservabilityEnabled: opts.getObservabilityEnabled });
     const channelBindings = opts.store ? new TeamsChannelBindings(opts.dataDir, opts.store) : undefined;
-    const fixedRoutingEnabled = () => opts.getFixedRoutingEnabled?.() === true;
     const identity = (): TeamsChannelIdentity | null => {
         const status = manager.getStatus();
         const accountKey = manager.getMirrorAccountKey();
@@ -117,7 +115,7 @@ export function registerTeamsMessagingRoutes(
     };
     const identityMatches = (expected: TeamsChannelIdentity) => {
         const current = identity();
-        return fixedRoutingEnabled() && !!current && current.accountKey === expected.accountKey
+        return !!current && current.accountKey === expected.accountKey
             && current.teamId === expected.teamId && current.channelId === expected.channelId;
     };
     const resolveFixedChannel = async (msg: InboundTeamsMessage) => {
@@ -173,7 +171,7 @@ export function registerTeamsMessagingRoutes(
                     const status = manager.getStatus();
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
                 },
-                resolveFixedThread: msg => fixedRoutingEnabled() ? resolveFixedChannel(msg) : Promise.resolve(undefined),
+                resolveFixedThread: resolveFixedChannel,
                 send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
                 onReconnected: () => opts.jobNotices?.reconcile('teams') ?? Promise.resolve(),
             })
@@ -211,7 +209,6 @@ export function registerTeamsMessagingRoutes(
         // task owns its files even when a post-admission observer throws.
         let imageConnection = new AbortController();
         const imageSignals = new AsyncLocalStorage<AbortSignal>();
-        const fixedAdmissions = new AsyncLocalStorage<boolean>();
         const inboundDispatches = new Map<string, Promise<void>>();
         const withImages = async <T>(msg: InboundTeamsMessage, workspaceId: string, taskId: string,
             enqueue: (images?: PreparedIncomingImages) => Promise<T>): Promise<T> => {
@@ -233,7 +230,6 @@ export function registerTeamsMessagingRoutes(
         };
         const router = new TeamsCommandRouter({
             fixedChannel: {
-                enabled: fixedRoutingEnabled,
                 resolve: resolveFixedChannel,
                 bind: async (msg, workspaceId, processId) => {
                     const current = identity();
@@ -316,12 +312,10 @@ export function registerTeamsMessagingRoutes(
                     const admit = (requestId: string) => withImages(msg, workspaceId, taskId, images => {
                         const enqueue = async (admissionHeld = false) => {
                             try {
-                                if (fixedAdmissions.getStore() === true) {
-                                    const current = await resolveFixedChannel(msg);
-                                    if (!current || current.workspaceId !== workspaceId || current.process.id !== proc.id
-                                        || (imageSignals.getStore() ?? imageConnection.signal).aborted) {
-                                        throw new Error('Teams channel binding changed during admission.');
-                                    }
+                                const current = await resolveFixedChannel(msg);
+                                if (!current || current.workspaceId !== workspaceId || current.process.id !== proc.id
+                                    || (imageSignals.getStore() ?? imageConnection.signal).aborted) {
+                                    throw new Error('Teams channel binding changed during admission.');
                                 }
                                 const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, ...((images || admissionHeld ? [images, admissionHeld] : []) as [PreparedIncomingImages?, boolean?]));
                                 if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
@@ -414,8 +408,8 @@ export function registerTeamsMessagingRoutes(
             }
             if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.length > 0
                 && parseMessagingCommand(msg.text).type !== 'git-status'
-                && !(fixedRoutingEnabled() && (/^\/?binding(?:\s|$)/i.test(msg.text.trim())
-                    || parseMessagingCommand(msg.text, 'teams', { fixedTeamsChannel: true }).type !== 'chat'))
+                && !(/^\/?binding(?:\s|$)/i.test(msg.text.trim())
+                    || parseMessagingCommand(msg.text, 'teams', { fixedTeamsChannel: true }).type !== 'chat')
                 && !router.hasPendingImageInstructions(msg)
                 && !msg.images?.length && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
                 const teamId = manager.getStatus().teamId ?? '';
@@ -436,8 +430,8 @@ export function registerTeamsMessagingRoutes(
                     return;
                 }
             }
-            if (fixedRoutingEnabled() && channelBindings) {
-                await channelBindings.exclusive(() => fixedAdmissions.run(true, () => router.handle(msg, observe)));
+            if (channelBindings) {
+                await channelBindings.exclusive(() => router.handle(msg, observe));
             } else {
                 await router.handle(msg, observe);
             }
@@ -465,7 +459,7 @@ export function registerTeamsMessagingRoutes(
         method: 'GET',
         pattern: /^\/api\/messaging\/teams\/channel-binding$/,
         handler: async (_req, res) => {
-            if (!fixedRoutingEnabled() || !channelBindings) { sendError(res, 404, 'Teams fixed routing is unavailable'); return; }
+            if (!channelBindings) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
             const current = identity();
             if (!current) { sendError(res, 409, 'Connect Teams before configuring the channel binding'); return; }
             try {
@@ -496,7 +490,7 @@ export function registerTeamsMessagingRoutes(
         method: 'POST',
         pattern: /^\/api\/messaging\/teams\/channel-binding$/,
         handler: async (req, res) => {
-            if (!fixedRoutingEnabled() || !channelBindings) { sendError(res, 404, 'Teams fixed routing is unavailable'); return; }
+            if (!channelBindings) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
             const body = await parseBodyOrReject(req, res);
             if (!body) return;
             const { workspaceId, processId } = body;
@@ -540,7 +534,7 @@ export function registerTeamsMessagingRoutes(
         method: 'GET',
         pattern: /^\/api\/messaging\/teams\/channel-binding\/sentinels$/,
         handler: async (req, res) => {
-            if (!fixedRoutingEnabled() || !opts.store) { sendError(res, 404, 'Teams fixed routing is unavailable'); return; }
+            if (!opts.store) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
             const params = new URL(req.url ?? '', 'http://localhost').searchParams;
             const workspaceId = params.get('workspaceId');
             const offset = parsePageNumber(params.get('offset'), 0, Number.MAX_SAFE_INTEGER);
@@ -588,7 +582,6 @@ export function registerTeamsMessagingRoutes(
                 ...manager.getStatus(), oauthAvailable: opts.oauthAvailable ?? false,
                 teamsOAuthAvailable: !!oauthFlow,
                 teamsBridgeObservabilityEnabled: opts.getObservabilityEnabled?.() === true,
-                fixedRoutingEnabled: fixedRoutingEnabled(),
             });
         },
     });

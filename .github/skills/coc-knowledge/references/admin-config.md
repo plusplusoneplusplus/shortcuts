@@ -114,7 +114,6 @@ browser control. The registry derives validation, merge and source tracking.
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
 | `teamsAiAnswerRelay` | on | Admin -> Connectors -> Teams exposes the live relay opt-out beside bridge observability and message reaction. Missing settings resolve on; explicit false stops answer relay and thread reply polling without restart/reconnect. A connected normal bridge saves per-workspace receipts and relays completed Ask answers or safe terminal notices for new requests to their captured original threads; connectivity, Trouter, Likes and observability remain independent |
 | `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
-| `teamsFixedRouting` | off | Fixed channel Sentinel binding and one shared mention/reaction workspace; normal Teams only |
 | `teamsIc3OwnCommands` | off | Native Azure CLI own-user `@coc <prompt>` launcher; configured under Connectors -> Teams |
 | `sentinelTodoDependencies` | on | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
 | `sentinelTodoExternalReferences` | on | Live gate for typed PR/email/Teams/Slack/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
@@ -181,10 +180,8 @@ the configured default; a server default of Direct injects on the initial turn.
 ### IC3 own-command configuration
 
 `features.teamsIc3OwnCommands` (default off) enables the independent native Azure CLI
-[Ask launcher](server-architecture.md#ic3-own-command-launcher). Its live
-`teamsIc3OwnCommands.workspaceId` selects a registered local workspace or repo group
-on the owning server when `features.teamsFixedRouting` is off. When it is on,
-mentions and reactions use `teamsRouting.workspaceId`; missing workspace blocks both.
+[Ask launcher](server-architecture.md#ic3-own-command-launcher). Mentions and reactions
+use the live `teamsRouting.workspaceId` on the owning server; a missing workspace blocks both.
 The selector labels groups and excludes other virtual scopes.
 The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
 the shared explicit `amer`, `emea` or `apac` region for IC3 operations. Saving a
@@ -195,16 +192,15 @@ returning each request's answer to its source chat. Interactive questions stay i
 ### Teams reaction delegation configuration
 
 `features.teamsReactionDelegation` defaults off. The admin registry persists its
-live configuration contract and `teamsReactionDelegation.workspaceId` /
-`dispatcherSkill`, both empty by default. With fixed routing off, file and merged admin
-validation require both when enabled; with it on, the shared workspace supplies the
-target and the dispatcher skill remains required. Disabled drafts may be incomplete.
+live `teamsReactionDelegation.dispatcherSkill`, empty by default. File and merged admin
+validation require the dispatcher skill when enabled; the shared workspace supplies the
+target. Disabled drafts may be incomplete.
 Workspace IDs exclude
 remote selectors, and dispatcher values identify a skill by name, not a path.
 The strict namespace accepts neither permission/source selectors nor provider/model
 overrides. Connections -> Teams presents one registry group with the experimental
-toggle; its workspace and dispatcher skill selectors appear once the toggle is on.
-Fixed routing shows the shared workspace instead of the separate execution workspace.
+toggle and dispatcher skill selector. The shared workspace selector is independent of
+the feature toggles.
 `AdminSkillSelect`
 uses ordinary workspace skill listing and filters workspace/global disabled names.
 `adminWorkspaceSkills.ts` checks repo/group registration and enabled skills on the

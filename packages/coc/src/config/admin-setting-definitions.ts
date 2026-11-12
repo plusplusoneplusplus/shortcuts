@@ -1109,14 +1109,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             control: { type: 'textarea' }, testId: 'textarea-teams-outbound-compliance-prompt',
         },
     },
-    bool({
-        key: 'features.teamsFixedRouting', default: false, runtime: 'live',
-        ui: {
-            tab: 'teams', group: 'teamsBridge', order: 1, label: 'Use fixed Teams routing', badge: 'experimental',
-            hint: 'Bind the channel to one Sentinel and use one workspace for Teams mentions and reactions.',
-            testId: 'toggle-teams-fixed-routing',
-        },
-    }),
     {
         key: 'teamsRouting.workspaceId',
         value: {
@@ -1127,7 +1119,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsBridge', order: 2, label: 'Mention and reaction workspace',
-            dependsOn: 'features.teamsFixedRouting',
             hint: 'Teams mentions and reactions use this workspace on the configured server.',
             control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-routing-workspace',
         },
@@ -1136,7 +1127,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.teamsIc3OwnCommands', default: false, runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsOwnCommands', order: 10, label: 'Enable IC3 @coc own commands', badge: 'experimental',
-            hint: 'Teams @coc <prompt> messages share one Ask conversation per Teams chat in the configured workspace and return each answer through IC3. Fixed Teams routing uses the shared mention and reaction workspace. Requires the IC3 region saved in the Teams connection card. Trouter notifications trigger chat reads, with background fallback scans and native Azure CLI authentication. Interactive questions stay in the dashboard.',
+            hint: 'Teams @coc <prompt> messages share one Ask conversation per Teams chat in the shared mention and reaction workspace and return each answer through IC3. Requires the IC3 region saved in the Teams connection card. Trouter notifications trigger chat reads, with background fallback scans and native Azure CLI authentication. Interactive questions stay in the dashboard.',
             testId: 'toggle-teams-ic3-own-commands-enabled',
         },
     }),
@@ -1158,7 +1149,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.teamsReactionDelegation', default: false, runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 10, label: 'Enable Robot reaction delegation', badge: 'experimental',
-            hint: 'Start separate Ask jobs for your live Robot reactions in Teams self, direct and group chats. Fixed Teams routing uses the shared mention and reaction workspace. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
+            hint: 'Start separate Ask jobs for your live Robot reactions in Teams self, direct and group chats in the shared mention and reaction workspace. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
             testId: 'toggle-teams-reaction-delegation-enabled',
         },
     }),
@@ -1188,7 +1179,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill', dependsOn: 'features.teamsReactionDelegation',
             hint: 'Select one enabled skill from the execution workspace to handle Teams reactions. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
-            control: { type: 'skill', workspaceKey: 'teamsReactionDelegation.workspaceId' },
+            control: { type: 'skill', workspaceKey: 'teamsRouting.workspaceId' },
             testId: 'select-teams-reaction-dispatcher-skill',
         },
     },

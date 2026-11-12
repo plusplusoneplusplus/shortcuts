@@ -30,7 +30,7 @@ describe('Teams reaction delegation settings', () => {
             .teamsReactionDelegation).toEqual({ workspaceId: 'workspace-beta', dispatcherSkill: 'other-dispatcher' });
     });
 
-    it.each([undefined, {}, { workspaceId: '' }, { workspaceId: binding.workspaceId }, { dispatcherSkill: binding.dispatcherSkill }])(
+    it.each([undefined, {}, { workspaceId: '' }, { workspaceId: binding.workspaceId }])(
         'rejects enabling with an incomplete binding: %j', teamsReactionDelegation => {
             expect(() => validateConfigWithSchema({
                 features: { teamsReactionDelegation: true }, teamsReactionDelegation,
@@ -45,14 +45,14 @@ describe('Teams reaction delegation settings', () => {
         }).success).toBe(true);
     });
 
-    it('uses the shared workspace contract when fixed routing is enabled', () => {
+    it('uses the shared workspace contract without a feature flag', () => {
         expect(CLIConfigSchema.safeParse({
-            features: { teamsFixedRouting: true, teamsReactionDelegation: true },
+            features: { teamsReactionDelegation: true },
             teamsRouting: { workspaceId: 'workspace-alpha' },
             teamsReactionDelegation: { dispatcherSkill: 'dispatcher' },
         }).success).toBe(true);
         expect(CLIConfigSchema.safeParse({
-            features: { teamsFixedRouting: true, teamsReactionDelegation: true },
+            features: { teamsReactionDelegation: true },
             teamsRouting: { workspaceId: 'workspace-alpha' },
             teamsReactionDelegation: {},
         }).success).toBe(false);
@@ -130,7 +130,6 @@ describe('Teams reaction delegation admin persistence', () => {
         expect(result.sources['teamsReactionDelegation.dispatcherSkill']).toBe('file');
         const before = fs.readFileSync(config.configPath, 'utf8');
         await expect(config.updateConfig({ 'teamsReactionDelegation.dispatcherSkill': '' })).rejects.toThrow(/Required/);
-        await expect(config.updateConfig({ 'teamsReactionDelegation.workspaceId': '' })).rejects.toThrow(/Required/);
         expect(fs.readFileSync(config.configPath, 'utf8')).toBe(before);
         expect(config.revision).toBe(1);
         await config.updateConfig({ 'teamsReactionDelegation.workspaceId': 'workspace-beta' });

@@ -26,6 +26,21 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it('does not expose binding controls before the saved binding loads', async () => {
+        let resolveBinding!: (value: { ok: boolean; json(): Promise<object> }) => void;
+        const pending = new Promise<{ ok: boolean; json(): Promise<object> }>(resolve => { resolveBinding = resolve; });
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+            if (url.endsWith('/channel-binding')) return pending;
+            return { ok: true, json: async () => ({ ...status, enabled: true, status: 'connected', connectionId: 'connection-a' }) };
+        }));
+        render(<TeamsConnectionCard />);
+        await screen.findByText('Loading binding…');
+        expect(screen.queryByLabelText('Channel workspace')).toBeNull();
+        resolveBinding({ ok: true, json: async () => ({ binding: null }) });
+        await screen.findByText('Not configured');
+        expect(screen.getByLabelText('Channel workspace')).toBeDefined();
+    });
+
     it('sets and confirms a channel Sentinel binding on the owning server', async () => {
         let binding: { workspaceId: string; processId: string; title: string } | null = null;
         const fetch = vi.fn(async (url: string, options?: RequestInit) => {
@@ -38,7 +53,7 @@ describe('TeamsConnectionCard', () => {
                 binding = { ...body, title: body.processId };
                 result = binding;
             } else if (url.endsWith('/channel-binding')) result = { binding };
-            else result = { ...status, enabled: true, status: 'connected', connectionId: 'connection-a', fixedRoutingEnabled: true };
+            else result = { ...status, enabled: true, status: 'connected', connectionId: 'connection-a' };
             return { ok: true, json: async () => result };
         });
         vi.stubGlobal('fetch', fetch);

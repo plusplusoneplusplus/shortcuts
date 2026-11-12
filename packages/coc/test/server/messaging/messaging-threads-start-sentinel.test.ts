@@ -125,7 +125,7 @@ describe('phone threads start chats in sentinel mode', () => {
         expect(await deps.store.getProcess('queue_external', GLOBAL)).toBeUndefined();
     });
 
-    it('Teams thread lists an external queued chat and durably admits a dependent turn without an initial receipt', { timeout: 20_000 }, async () => {
+    it('Teams rejects external topic selection without a channel binding', { timeout: 20_000 }, async () => {
         await start(false);
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
@@ -142,16 +142,12 @@ describe('phone threads start chats in sentinel mode', () => {
         try {
             await deps.enqueueChat(GLOBAL, 'External chat', 'ask', 'external');
             await handle(inbound('list', '/list topics -v'));
-            expect(send).toHaveBeenCalledWith(expect.stringContaining(`${GLOBAL}/queue_external`), 'root');
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('Unknown command'), 'root');
             await handle(inbound('select', '/select topic 1'));
             await handle(inbound('continue', 'Continue externally queued chat'));
             const tasks = deps.relayQueue.getAll();
-            expect(tasks).toHaveLength(2);
-            const follow = tasks.find((task: any) => task.id !== 'external');
-            expect(follow.repoId).toBe(GLOBAL);
-            expect(follow.processId).toBe('queue_external');
-            expect(follow.payload.processId).toBe('queue_external');
-            expect(follow.config.processPredecessorId).toBe('external');
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].id).toBe('external');
             expect(await deps.store.getProcess('queue_external', GLOBAL)).toBeUndefined();
         } finally { manager.dispose(); }
     });
@@ -188,7 +184,7 @@ describe('phone threads start chats in sentinel mode', () => {
         }
     });
 
-    it.each([false, true])('Teams routes first, pending and active follow-up images through real server callbacks (reverse snapshot=%s)', { timeout: 20_000 }, async reverseSnapshot => {
+    it.each([false, true])('Teams routes bound Sentinel images through real server callbacks (reverse snapshot=%s)', { timeout: 20_000 }, async reverseSnapshot => {
         await start(false);
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
@@ -197,10 +193,24 @@ describe('phone threads start chats in sentinel mode', () => {
             enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
         vi.spyOn(manager, 'sendMessage').mockResolvedValue('outbound');
         let handle!: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) => Promise<void>;
         vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => { handle = msg => handler(msg); });
         const deps = captured.teams;
+        const { TeamsChannelBindings } = await import('../../../src/server/messaging/teams-channel-binding');
+        const workspaceId = 'ws-images';
+        const workspaceRoot = path.join(dataDir!, workspaceId);
+        fs.mkdirSync(workspaceRoot);
+        await deps.store.registerWorkspace({ id: workspaceId, name: 'Images', rootPath: workspaceRoot });
+        const paused = await fetch(`${server!.url}/api/queue/pause?repoId=${workspaceId}`, { method: 'POST' });
+        expect(paused.ok).toBe(true);
+        await deps.store.addProcess({
+            id: 'sentinel', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', metadata: { workspaceId, mode: 'sentinel' },
+        });
+        await new TeamsChannelBindings(dataDir!, deps.store).bind(
+            { accountKey: 'account', teamId: 'team', channelId: 'channel' }, workspaceId, 'sentinel');
         registerTeamsMessagingRoutes([], { ...deps, manager,
             getAnswerRelayEnabled: () => true, getBotManagedConversationsEnabled: () => false,
         });
@@ -210,30 +220,24 @@ describe('phone threads start chats in sentinel mode', () => {
             images: [{ mimeType: 'image/png', download: async () => bytes }],
         });
         try {
-            await handle(inbound('teams-first', '/ask describe this'));
-            const initial = deps.relayQueue.getAll()[0];
-            await handle(inbound('teams-pending', '/autopilot compare this'));
-            await deps.store.addProcess({
-                id: initial.processId, type: 'chat', status: 'completed', startTime: new Date(),
-                promptPreview: 'describe this', fullPrompt: 'describe this',
-                metadata: { workspaceId: GLOBAL, queueTaskId: initial.id, mode: 'ask' },
-            });
-            await handle(inbound('teams-active', `/autopilot [${initial.processId}] inspect again`));
+            await handle(inbound('teams-first', 'describe this'));
+            await handle(inbound('teams-pending', 'compare this'));
+            await handle(inbound('teams-active', 'inspect again'));
             const tasks = deps.relayQueue.getAll();
             expect(tasks).toHaveLength(3);
             if (reverseSnapshot) tasks.reverse();
-            for (const [index, prompt] of ['describe this', 'compare this', 'inspect again'].entries()) {
+            for (const prompt of ['describe this', 'compare this', 'inspect again']) {
                 const matches = tasks.filter((task: { payload: { prompt: string } }) => task.payload.prompt === prompt);
                 expect(matches).toHaveLength(1);
                 const [task] = matches;
-                expect(task.repoId).toBe(GLOBAL);
-                expect(task.payload.mode).toBe(index === 0 ? 'ask' : 'autopilot');
+                expect(task.repoId).toBe(workspaceId);
+                expect(task.payload.mode).toBe('sentinel');
                 expect(task.payload.prompt).toBe(prompt);
-                expect(task.payload.processId).toBe(index === 0 ? undefined : initial.processId);
+                expect(task.payload.processId).toBe('sentinel');
                 expect(task.payload.attachments).toHaveLength(1);
                 expect(fs.readFileSync(task.payload.attachments[0].path)).toEqual(bytes);
                 expect(task.payload.images).toEqual([`data:image/png;base64,${bytes.toString('base64')}`]);
-                expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', GLOBAL, 'attachments'));
+                expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', workspaceId, 'attachments'));
             }
         } finally {
             manager.dispose();
@@ -241,12 +245,12 @@ describe('phone threads start chats in sentinel mode', () => {
         }
     });
 
-    it('both connectors admit real image handoffs from a queued sentinel with notices and stable selection', { timeout: 20_000 }, async () => {
+    it('both connectors admit real image handoffs to their respective Sentinels', { timeout: 20_000 }, async () => {
         await start(false);
         const { WhatsAppCommandRouter } = await import('../../../src/server/messaging/whatsapp-command-router');
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
-        const { TeamsUserStateStore } = await import('../../../src/server/messaging/teams-user-state');
+        const { TeamsChannelBindings } = await import('../../../src/server/messaging/teams-channel-binding');
         const waDeps = captured.whatsapp; const teamsDeps = captured.teams;
         const sentinelId = 'image-sentinel'; const parent = toQueueProcessId(sentinelId);
         await waDeps.enqueue(GLOBAL, 'dispatch', undefined, parent, sentinelId);
@@ -259,17 +263,25 @@ describe('phone threads start chats in sentinel mode', () => {
         await router.handle({ chatJid: 'group@g.us', senderJid: 'group@g.us', fromMe: true,
             messageId: 'wa-handoff', text: '/ask inspect WA', images: images() });
         expect(waDeps.bindings.topic(GLOBAL)).toBe(parent);
-        new TeamsUserStateStore(dataDir!).update('sender', { selectedRepo: GLOBAL, selectedTopic: null, lastActiveTopic: null });
+        const teamsWorkspace = 'ws-teams';
+        const teamsRoot = path.join(dataDir!, teamsWorkspace);
+        fs.mkdirSync(teamsRoot);
+        await teamsDeps.store.registerWorkspace({ id: teamsWorkspace, name: 'Teams', rootPath: teamsRoot });
+        expect((await fetch(`${server!.url}/api/queue/pause?repoId=${teamsWorkspace}`, { method: 'POST' })).ok).toBe(true);
+        const teamsParent = 'teams-sentinel';
+        await teamsDeps.store.addProcess({ id: teamsParent, type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', metadata: { workspaceId: teamsWorkspace, mode: 'sentinel' } });
+        await new TeamsChannelBindings(dataDir!, teamsDeps.store).bind(
+            { accountKey: 'account', teamId: 'team', channelId: 'channel' }, teamsWorkspace, teamsParent);
         const manager = new TeamsMessagingManager(dataDir!);
         vi.spyOn(manager, 'getStatus').mockReturnValue({ enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
             botName: 'CoC', error: null, serverUrl: null, authStatus: null });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
         vi.spyOn(manager, 'sendMessage').mockResolvedValue('teams-outbound');
         let handle!: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) => Promise<void>;
         vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => { handle = msg => handler(msg); });
         registerTeamsMessagingRoutes([], { ...teamsDeps, manager, getAnswerRelayEnabled: () => true, getBotManagedConversationsEnabled: () => false });
         try {
-            await handle({ channelId: 'channel', senderAadId: 'sender', messageId: 'teams-sentinel', text: '/sentinel dispatch' });
-            const teamsParent = teamsDeps.relayQueue.getAll().find((task: any) => task.payload.prompt === 'dispatch' && task.id !== sentinelId).processId;
             await handle({ channelId: 'channel', senderAadId: 'sender', messageId: 'teams-handoff', text: '/autopilot inspect Teams', images: images() });
             // The handoff receipt preserves the queued sentinel's identity for later replies.
             await handle({ channelId: 'channel', senderAadId: 'sender', messageId: 'teams-continue', replyToMessageId: 'teams-handoff', text: 'continue' });
@@ -279,14 +291,16 @@ describe('phone threads start chats in sentinel mode', () => {
                 expect(task.payload.context.spawnedFromProcessId).toBe(task.payload.context.messagingOrigin.connector === 'teams' ? teamsParent : parent);
                 expect(task.payload.images).toEqual([`data:image/png;base64,${bytes.toString('base64')}`]);
                 expect(fs.readFileSync(task.payload.attachments[0].path)).toEqual(bytes);
-                expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', GLOBAL, 'attachments'));
+                const owner = task.payload.context.messagingOrigin.connector === 'teams' ? teamsWorkspace : GLOBAL;
+                expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', owner, 'attachments'));
             }
             const continuation = teamsDeps.relayQueue.getAll().find((task: any) => task.payload.prompt === 'continue');
             expect(continuation?.processId).toBe(teamsParent);
-            expect(new TeamsUserStateStore(dataDir!).get('sender').lastActiveTopic).toBe(teamsParent);
-            const ledger = JSON.parse(fs.readFileSync(path.join(dataDir!, 'repos', GLOBAL, 'messaging-job-notices.json'), 'utf8'));
-            expect(ledger).toHaveLength(2);
-            expect(ledger.map((entry: any) => entry.origin.connector).sort()).toEqual(['teams', 'whatsapp']);
+            for (const [owner, connector] of [[GLOBAL, 'whatsapp'], [teamsWorkspace, 'teams']]) {
+                const ledger = JSON.parse(fs.readFileSync(path.join(dataDir!, 'repos', owner, 'messaging-job-notices.json'), 'utf8'));
+                expect(ledger).toHaveLength(1);
+                expect(ledger[0].origin.connector).toBe(connector);
+            }
         } finally { manager.dispose(); vi.restoreAllMocks(); }
     });
 

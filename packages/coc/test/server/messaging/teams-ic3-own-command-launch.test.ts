@@ -236,7 +236,7 @@ describe('IC3 Ask queue admission', () => {
             teams: { getIc3Region: () => 'amer', onIc3RegionChange: () => () => {} },
             config: {
                 config: mergeConfig(DEFAULT_CONFIG, { features: { teamsIc3OwnCommands: true },
-                    teamsIc3OwnCommands: { workspaceId: commandWorkspaceId } }),
+                    teamsRouting: { workspaceId: commandWorkspaceId } }),
                 onChange: () => () => {},
             },
             store, queue: bridge.createAggregateQueueFacade(), launch, routes: [],

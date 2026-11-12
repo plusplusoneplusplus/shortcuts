@@ -261,8 +261,7 @@ export const CLIConfigSchema = (treeToZodObject(
         });
     }
     if (config.features?.teamsReactionDelegation !== true) return;
-    const requiredFields: ReadonlyArray<'workspaceId' | 'dispatcherSkill'> = config.features?.teamsFixedRouting === true
-        ? ['dispatcherSkill'] : ['workspaceId', 'dispatcherSkill'];
+    const requiredFields: ReadonlyArray<'dispatcherSkill'> = ['dispatcherSkill'];
     for (const field of requiredFields) {
         if (!config.teamsReactionDelegation?.[field]) {
             ctx.addIssue({
