@@ -191,7 +191,7 @@ without advancing ledger/item revisions.
 `references` combines owner-verified conversation attachments with typed external
 `pr`/`email`/`teams`/`slack`/`link` display entries. Conversations retain their scoped table and
 missing-kind compatibility; externals use additive item-column `external_references`
-JSON defaulting to `[]`. Default-off live `features.sentinelTodoExternalReferences`
+JSON defaulting to `[]`. Default-on live `features.sentinelTodoExternalReferences`
 gates external projection and authoring. Create/update `externalReferences` replaces
 only external entries; omission preserves, `[]` clears. Validation canonicalizes
 supported PRs and deduplicates safe URLs; Teams/Slack require supported HTTPS
@@ -210,7 +210,7 @@ can participate without job authority; dependency edits preserve fulfillment and
 user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
 Dependency authoring shares the owner-validated service through PUT
 `.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
-default-off `features.sentinelTodoDependencies`. Native
+default-on `features.sentinelTodoDependencies`. Native
 tracked admission checks readiness while Sentinel follows ordinary user authorization.
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
 Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding

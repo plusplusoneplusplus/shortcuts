@@ -667,7 +667,8 @@ describe('registerAllRoutes', () => {
             opts.runtimeConfigService = undefined;
             if (source === 'resolved') {
                 opts.resolvedConfig = mergeConfig(DEFAULT_CONFIG, {});
-                Object.assign(opts.resolvedConfig.features, { sentinelTodoLedger: value });
+                // Coda is on by default; keep it off so this case checks only the retired ledger flag.
+                Object.assign(opts.resolvedConfig.features, { sentinelTodoLedger: value, sentinelTodoScrubber: false });
             }
         }
         let getTodos!: () => SentinelTodoService | undefined;
@@ -1183,6 +1184,39 @@ describe('registerAllRoutes', () => {
             spawnedFromProcessId: 'queue_parent', messagingOrigin: { connector: 'teams', threadId: 'command' },
         });
         expect(new TeamsUserStateStore(tmpDir).get('sender').selectedTopic).toBe('queue_parent');
+    });
+
+    it('admits Teams command handoffs without to-do admission while untracked Sentinel tool launches stay guarded', async () => {
+        const store = createMockProcessStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-parent', name: 'Parent', rootPath: path.join(tmpDir, 'parent') },
+        ]);
+        await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
+        new TeamsUserStateStore(tmpDir).update('sender', { selectedRepo: 'ws-parent', selectedTopic: 'queue_parent' });
+        const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id);
+        let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
+        vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => { inbound = handler; });
+        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+        });
+        vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        let enqueueChat!: (input: CreateTaskInput) => Promise<string>;
+        const opts = makeOpts({ dataDir: tmpDir, store, bridge, setEnqueueChat: value => { enqueueChat = value; } });
+        Object.assign(opts.runtimeConfigService!.config.features, { teamsAiAnswerRelay: false, sentinelTodoDependencies: true });
+        registerAllRoutes([], opts);
+        await expect(enqueueChat({ id: 'tool-child', type: 'chat', priority: 'normal', config: {},
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Fix it', workspaceId: 'ws-parent',
+                context: { spawnedFromProcessId: 'queue_parent' } } }))
+            .rejects.toThrow('Sentinel tracked launches require owner/item admission context');
+        await inbound!({ text: '/autopilot inspect', senderAadId: 'sender', messageId: 'command', channelId: 'channel' }, () => {});
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(bridge.enqueue.mock.calls[0][0].payload.context).toMatchObject({
+            spawnedFromProcessId: 'queue_parent', messagingOrigin: { connector: 'teams', threadId: 'command' },
+        });
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toHaveLength(1);
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {

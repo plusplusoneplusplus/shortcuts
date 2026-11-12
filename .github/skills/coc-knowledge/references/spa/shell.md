@@ -1204,7 +1204,7 @@ from cached local/remote/group metadata; the current repo omits its badge and
 remote labels include the configured server name. Exact-owner target labels and
 last-known offline names provide fallbacks; unavailable metadata stays explicit
 and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
-reference-only conversations keep navigation without job badges. Default-off live
+reference-only conversations keep navigation without job badges. Default-on live
 `sentinelTodoExternalReferencesEnabled` adds typed PR/email/Teams/Slack/web reference chips to
 cards and an external-link editor in the existing detail form. Its URL field parses
 pasted Markdown links into editable title/URL fields with accessible validation.
@@ -1217,7 +1217,7 @@ store and edit raw Markdown but display inline Markdown through `SentinelTodoNot
 (the AskUser safe renderer: raw HTML escaped, non-http(s)/mailto/relative/hash URLs
 become `#`); links stop row propagation, http(s) opens the panel browser, in-app hash
 links join the excursion, and a remote ledger qualifies bare `#repos/<ws>` links with
-its server. Default-off live `sentinelTodoInlineNotesEnabled` adds in-place Notes
+its server. Default-on live `sentinelTodoInlineNotesEnabled` adds in-place Notes
 editing in details (see the unified-right-panel AGENTS.md). Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
@@ -1230,7 +1230,7 @@ contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 ### Sentinel To-do categories
 
-Default-off live `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`
+Default-on live `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`
 to the To-do toolbar. Its owner-client loader reads the workspace's ordered set;
 the manager creates, renames, reorders and confirms deletes with workspace-wide
 item/chat counts. Writes carry set revisions. Concurrent changes retain name
@@ -1254,7 +1254,7 @@ automatically (no `categoryId` sent); edit conflicts keep the category draft.
 
 ### Sentinel To-do dependencies
 
-Default-off `sentinelTodoDependenciesEnabled` adds `SentinelTodoDependencies` to
+Default-on `sentinelTodoDependenciesEnabled` adds `SentinelTodoDependencies` to
 each owner-ledger row. Typed graph and exact PR-binding drafts retain captured
 revisions through conflicts; rebasing is explicit. Abortable readiness reads
 refresh on any ledger revision. A prerequisite-first accessible chain navigates
@@ -1271,6 +1271,8 @@ The automation names are **Refrains** (user prompts), **Coda** (built-in to-do r
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
 and hosts Coda as its pinned built-in row. Selection-only cards open To-do's detail column;
 per-item controls use the selected detail toolbar, with history and run details in that column.
+Custom instruction edits patch only instructions with a captured revision; active runs
+block saves, errors preserve drafts and changed revisions require fresh review.
 Refrain history navigation and selection,
 dialogs, gate status, Test gate/Resume gate and skip labels are described in the
 unified-right-panel `AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to

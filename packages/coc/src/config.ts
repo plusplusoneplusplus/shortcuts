@@ -336,22 +336,22 @@ export interface CLIConfig {
         /** Own-user Robot reactions delegate separate Ask jobs. Disabled by default. */
         teamsReactionDelegation?: boolean;
         teamsOutboundCompliance?: boolean;
-        /** Optional Sentinel next actions and click-to-send. Disabled by default. */
+        /** Optional Sentinel next actions and click-to-send. Enabled by default. */
         sentinelNextSteps?: boolean;
-        /** Inline Sentinel target context discovery. Disabled by default. */
+        /** Inline Sentinel target context discovery. Enabled by default. */
         sentinelTargetAutocomplete?: boolean;
-        /** Native prerequisite authoring and admission. Disabled by default. */
+        /** Native prerequisite authoring and admission. Enabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoCategories?: boolean;
-        /** Typed display-only external references on Sentinel items. Disabled by default. */
+        /** Typed display-only external references on Sentinel items. Enabled by default. */
         sentinelTodoExternalReferences?: boolean;
-        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        /** Inline Notes editing in Sentinel To-do details. Enabled by default. */
         sentinelTodoInlineNotes?: boolean;
-        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Enabled by default. */
         sentinelTodoScrubber?: boolean;
-        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Enabled by default. */
         sentinelTodoJobs?: boolean;
-        /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
+        /** Per-chat Sentinel additional instructions editor and context injection. Enabled by default. */
         sentinelAdditionalInstructions?: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Enabled by default. */
         toolScripting?: boolean;
@@ -360,9 +360,9 @@ export interface CLIConfig {
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool?: boolean;
         sentinelPrOutcomeWake?: boolean;
-        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
+        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Enabled by default. */
         sentinelFollowUpResults?: boolean;
-        /** Return new remote Sentinel requests by polling durable destination receipts. Default off. */
+        /** Return new remote Sentinel requests by polling durable destination receipts. Default on. */
         sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
@@ -808,13 +808,13 @@ export interface ResolvedCLIConfig {
         sentinelTodoDependencies: boolean;
         sentinelTodoCategories: boolean;
         sentinelTodoExternalReferences: boolean;
-        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        /** Inline Notes editing in Sentinel To-do details. Enabled by default. */
         sentinelTodoInlineNotes: boolean;
-        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Enabled by default. */
         sentinelTodoScrubber: boolean;
-        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Enabled by default. */
         sentinelTodoJobs: boolean;
-        /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
+        /** Per-chat Sentinel additional instructions editor and context injection. Enabled by default. */
         sentinelAdditionalInstructions: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Enabled by default. */
         toolScripting: boolean;
@@ -823,7 +823,7 @@ export interface ResolvedCLIConfig {
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool: boolean;
         sentinelPrOutcomeWake: boolean;
-        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
+        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Enabled by default. */
         sentinelFollowUpResults: boolean;
         sentinelRemoteResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
@@ -1178,21 +1178,21 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsReactionDelegation: false,
         teamsOutboundCompliance: false,
         sentinelNextSteps: true,
-        sentinelTargetAutocomplete: false,
-        sentinelTodoDependencies: false,
-        sentinelTodoCategories: false,
-        sentinelTodoExternalReferences: false,
-        sentinelTodoInlineNotes: false,
-        sentinelTodoScrubber: false,
-        sentinelTodoJobs: false,
+        sentinelTargetAutocomplete: true,
+        sentinelTodoDependencies: true,
+        sentinelTodoCategories: true,
+        sentinelTodoExternalReferences: true,
+        sentinelTodoInlineNotes: true,
+        sentinelTodoScrubber: true,
+        sentinelTodoJobs: true,
         sentinelAdditionalInstructions: true,
         toolScripting: true,
         toolScriptingMcp: true,
         queryPullRequestTool: true,
-        sentinelPrOutcomeWake: false,
-        sentinelFollowUpResults: false,
-        sentinelRemoteResults: false,
-        sentinelTodoDateTimeTriggers: false,
+        sentinelPrOutcomeWake: true,
+        sentinelFollowUpResults: true,
+        sentinelRemoteResults: true,
+        sentinelTodoDateTimeTriggers: true,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,

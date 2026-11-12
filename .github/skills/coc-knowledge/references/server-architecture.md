@@ -221,7 +221,7 @@ identify exact turns; Ralph uses whole-session evidence, not grilling milestones
 First bounded outcomes persist in admissions. Startup captures before queue activation;
 SQLite retains needed terminal tasks independently of capped history.
 
-`delegation/remote-delegation-return.ts` admits new Sentinel requests under default-off
+`delegation/remote-delegation-return.ts` admits new Sentinel requests under default-on
 `features.sentinelRemoteResults` and a destination advertising `senderPolling: true`; older
 callback-verifying destinations report `unsupported` before any reservation. Origin
 reservations precede execution. New-input validation failures and failed publication
@@ -244,7 +244,7 @@ The ledger retains produced-PR receipts. `recordPullRequest` requires a register
 and records exact canonical provider/host/repository/number identity with an item ID
 and immutable receipt. Repeated submissions reuse that receipt; each distinct PR
 remains separate. `triggers/sentinel-pr-outcome-service.ts` verifies the original
-Sentinel/item/job relationship and registers native one-shot watches under default-off
+Sentinel/item/job relationship and registers native one-shot watches under default-on
 `features.sentinelPrOutcomeWake`, independently of execution-result delivery and repair
 permission. New submission results are authoritative; prose and historical URLs do
 not establish ownership. Ralph submissions resolve the original tracked session
@@ -256,7 +256,7 @@ the identity of the entire delegated session.
 
 `triggers/sentinel-overture-service.ts` owns authoring for normal eligible items,
 using exact owner checks, optimistic revisions and owner-scoped creation receipts.
-PR rules need no setting; date rules require default-off live
+PR rules need no setting; date rules require default-on live
 `features.sentinelTodoDateTimeTriggers`. Rules share the active cap and never expire.
 PR authoring preflights canonical provider URLs. Date authoring validates future
 UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's
@@ -434,7 +434,7 @@ Creates without `categoryId` are saved, then auto-picked by the single-choice
 `pickTodoCategory` decision (8s bound); `setPickedCategory` applies a match only if the
 item and set revisions are unchanged, so a user move wins. No match, timeout or an
 unavailable backend leave it Uncategorized; explicit choices and later edits never re-pick.
-`SentinelTodoService` verifies a Sentinel chat in that workspace and the live default-off
+`SentinelTodoService` verifies a Sentinel chat in that workspace and the live default-on
 `features.sentinelTodoCategories` gate for every category command. Owning-server REST
 and `coc-client` use `/sentinel-todos/:processId/categories`; post-commit workspace
 invalidations carry the set revision, and deletions also invalidate affected ledgers.

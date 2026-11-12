@@ -634,10 +634,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTargetAutocomplete', default: false, runtime: 'live', runtimeFlag: 'sentinelTargetAutocompleteEnabled',
+        key: 'features.sentinelTargetAutocomplete', default: true, runtime: 'live', runtimeFlag: 'sentinelTargetAutocompleteEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.15, label: 'Sentinel # target autocomplete', badge: 'experimental',
-            hint: 'Select exact servers, repositories and repo groups as inline context in Sentinel messages. Selection grants no execution or delegation permission. Disabled by default.',
+            hint: 'Select exact servers, repositories and repo groups as inline context in Sentinel messages. Selection grants no execution or delegation permission. Enabled by default.',
             testId: 'toggle-sentinel-target-autocomplete',
         },
     }),
@@ -658,83 +658,83 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
+        key: 'features.sentinelTodoDependencies', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
-            hint: 'Author explicit prerequisites in one Sentinel ledger. Readiness never grants execution authority. Disabled by default.',
+            hint: 'Author explicit prerequisites in one Sentinel ledger. Readiness never grants execution authority. Enabled by default.',
             testId: 'toggle-sentinel-todo-dependencies-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoCategories', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoCategoriesEnabled',
+        key: 'features.sentinelTodoCategories', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoCategoriesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.565, label: 'Sentinel To-do categories', badge: 'experimental',
-            hint: 'Workspace categories shared by every Sentinel chat. Disabled by default.',
+            hint: 'Workspace categories shared by every Sentinel chat. Enabled by default.',
             testId: 'toggle-sentinel-todo-categories-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoDateTimeTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled',
+        key: 'features.sentinelTodoDateTimeTriggers', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'Date/time overtures', badge: 'experimental',
-            hint: 'Allow one-time dated overtures to wake their owning Sentinel. Does not authorize work.',
+            hint: 'Allow one-time dated overtures to wake their owning Sentinel. Does not authorize work. Enabled by default.',
             testId: 'toggle-sentinel-todo-date-time-triggers',
         },
     }),
     bool({
-        key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
+        key: 'features.sentinelPrOutcomeWake', default: true, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
-            hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Disabled by default.',
+            hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Enabled by default.',
             testId: 'toggle-sentinel-pr-outcome-wake-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelFollowUpResults', default: false, runtime: 'live', runtimeFlag: 'sentinelFollowUpResultsEnabled',
+        key: 'features.sentinelFollowUpResults', default: true, runtime: 'live', runtimeFlag: 'sentinelFollowUpResultsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.585, label: 'Sentinel follow-up results', badge: 'experimental',
-            hint: 'Return the result of each message a Sentinel posts into an existing local chat as a review. Disabled by default.',
+            hint: 'Return the result of each message a Sentinel posts into an existing local chat as a review. Enabled by default.',
             testId: 'toggle-sentinel-follow-up-results-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelRemoteResults', default: false, runtime: 'live', runtimeFlag: 'sentinelRemoteResultsEnabled',
+        key: 'features.sentinelRemoteResults', default: true, runtime: 'live', runtimeFlag: 'sentinelRemoteResultsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.587, label: 'Sentinel remote results', badge: 'experimental',
-            hint: 'Track new remote launches and follow-ups and queue their results in the originating Sentinel. This server polls the destination for receipts; the destination needs no connection back. Requires an up-to-date destination. Recovery continues when disabled.',
+            hint: 'Track new remote launches and follow-ups and queue their results in the originating Sentinel. This server polls the destination for receipts; the destination needs no connection back. Requires an up-to-date destination. Recovery continues when disabled. Enabled by default.',
             testId: 'toggle-sentinel-remote-results-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoExternalReferences', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
+        key: 'features.sentinelTodoExternalReferences', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.59, label: 'Sentinel To-do external references', badge: 'experimental',
-            hint: 'Display and edit PR, email and web links as references only. References never bind PR outputs or authorize work. Disabled by default.',
+            hint: 'Display and edit PR, email and web links as references only. References never bind PR outputs or authorize work. Enabled by default.',
             testId: 'toggle-sentinel-todo-external-references-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoInlineNotes', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoInlineNotesEnabled',
+        key: 'features.sentinelTodoInlineNotes', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoInlineNotesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.595, label: 'Sentinel To-do inline Notes editing', badge: 'experimental',
-            hint: 'Click a To-do\'s Notes in its details to edit them in place. Saves only Notes, checks for concurrent changes and grants no execution authority. Disabled by default.',
+            hint: 'Click a To-do\'s Notes in its details to edit them in place. Saves only Notes, checks for concurrent changes and grants no execution authority. Enabled by default.',
             testId: 'toggle-sentinel-todo-inline-notes-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
+        key: 'features.sentinelTodoScrubber', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel Coda', badge: 'experimental',
-            hint: 'Add the built-in Coda review to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
+            hint: 'Add the built-in Coda review to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Enabled by default.',
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),
     bool({
-        key: 'features.sentinelTodoJobs', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoJobsEnabled',
+        key: 'features.sentinelTodoJobs', default: true, runtime: 'live', runtimeFlag: 'sentinelTodoJobsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.61, label: 'Sentinel Refrains', badge: 'experimental',
             dependsOn: 'sentinel.enabled',
-            hint: 'Manage refrains (scheduled and on-demand prompts) from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Disabled by default.',
+            hint: 'Manage refrains (scheduled and on-demand prompts) from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Enabled by default.',
             testId: 'toggle-sentinel-todo-jobs-enabled',
         },
     }),

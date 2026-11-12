@@ -222,7 +222,7 @@ references before editing. Paths are package-relative.
   accepted outcomes in the destination admission ledger through the shared local recorder,
   with exact destination request IDs for ordinary launch/follow-up turns and whole-session
   Ralph results only. The first persisted outcome wins; capture never queues an origin review.
-  Default-off `features.sentinelRemoteResults` admits new tracked Sentinel launches and
+  Default-on `features.sentinelRemoteResults` admits new tracked Sentinel launches and
   follow-ups only with compatible authenticated destination support. `RemoteDelegationReturn`
   transfers receipts with persisted backoff independently of admission flags, never execution
   replay. Exact origin reviews share local queue/connector delivery; unavailable parents fail
@@ -360,7 +360,7 @@ references before editing. Paths are package-relative.
 - `DelegatedJobStore.recordPullRequest` stores each exact submitted PR's canonical
   provider identity and item receipt in the originating workspace's existing job ledger.
   Replays preserve the receipt. `SentinelPrOutcomeService` verifies tracked ownership
-  and item eligibility before native monitoring under default-off
+  and item eligibility before native monitoring under default-on
   `features.sentinelPrOutcomeWake`, independently of CI/conflict repair permission.
   Outcome reviews use dedicated read-only admission; stopped Sentinel reviews restore
   stop and never promote ordinary buffered work. Per-item pause retains terminal evidence.
@@ -529,7 +529,7 @@ references before editing. Paths are package-relative.
 - Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
   `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
-  `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
+  `features.sentinelTodoJobs` is live and default-on in `sentinelTodos`;
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
 - Sentinel automation names: **Refrains** (user prompts on demand or cron; wire word `jobs`),
   **Coda** (built-in to-do review; wire word `scrubber`/`scrub`) and **Overtures** (one-shot
@@ -665,7 +665,7 @@ references before editing. Paths are package-relative.
   applies a match via `setPickedCategory`, which CAS-checks item and set revisions so a user move wins;
   no match/timeout/unavailable stays Uncategorized. Explicit `categoryId`/`null` and later edits never
   re-pick. Category sets stay
-  machine-local and participate in server-data wipe. Default-off live
+  machine-local and participate in server-data wipe. Default-on live
   `features.sentinelTodoCategories` gates owner-validated REST/client category commands;
   post-commit `sentinel-todo-categories-changed` invalidates the workspace set, and
   deletion also emits whole-ledger invalidations for affected chats. Mutations acquire the database
@@ -683,7 +683,7 @@ references before editing. Paths are package-relative.
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
   owning parent ledger, regardless of execution workspace; self/duplicate/foreign/
   archived references and cycles are invalid. Dependency edits preserve fulfillment
-  and user-verdict bookkeeping. `features.sentinelTodoDependencies` defaults off and
+  and user-verdict bookkeeping. `features.sentinelTodoDependencies` defaults on and
   requires the ledger. Owner-validated `setDependencies`, PUT `.../dependencies`,
   the client resource and Sentinel `set_dependencies` share the graph command.
   `bindPrOutput` and `acceptArtifact` store revision-checked, actor-attributed
@@ -731,7 +731,7 @@ references before editing. Paths are package-relative.
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
-  Sentinel Mode and Coda are independently default-off. The
+  Sentinel Mode defaults off; Coda defaults on with its independent flag. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability. Its `list` includes separate compact custom
   Refrain latest-run summaries through the late-bound, read-only native commands on
@@ -776,7 +776,7 @@ references before editing. Paths are package-relative.
   Duplicates are no-ops, and references never change status, create execution/review state,
   or message, start or retry the referenced chat.
   The `references` contract combines conversation entries (missing kind means conversation)
-  with typed `pr`/`email`/`link` external entries. Default-off live
+  with typed `pr`/`email`/`link` external entries. Default-on live
   `features.sentinelTodoExternalReferences` gates external reads and create/update
   `externalReferences`: omission preserves, an array replaces external entries only, and `[]`
   clears them without removing conversations. The additive item JSON column defaults to `[]`.
@@ -832,7 +832,7 @@ references before editing. Paths are package-relative.
   delivery state transitions; child output cannot change routing. Operational receipts are
   wiped through the snapshot registry and excluded from export/import.
   Tool-bound local Sentinel admission and ordinary connector command handoffs reserve
-  the child ID and persist the relationship before queue execution. Under default-off
+  the child ID and persist the relationship before queue execution. Under default-on
   `features.sentinelFollowUpResults`, Sentinel post-mode sends into non-Sentinel chats
   reserve per-request rows (`child.requestId`, also the relay/pending/task ID) the same way;
   only the task carrying that ID settles the row, never the chat-level create row, and
@@ -902,7 +902,7 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
-- Default-off `features.sentinelTargetAutocomplete` gates Sentinel initial/follow-up
+- Default-on `features.sentinelTargetAutocomplete` gates Sentinel initial/follow-up
   `#` discovery on the owning server. Inline references serialize durable server and
   workspace/group IDs; never use names or route aliases as identity. Keep atoms and
   native undo in `RichTextInput`, revalidate exact owners/targets before clearing drafts,

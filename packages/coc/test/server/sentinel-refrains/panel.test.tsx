@@ -1039,6 +1039,262 @@ describe('Sentinel Refrains', () => {
     });
 });
 
+describe('Inline Refrain instructions', () => {
+    const edit = async () => {
+        const detail = await selectDetails();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit instructions' }));
+        return within(detail).getByRole('textbox', { name: 'Instructions for Daily review' });
+    };
+    const save = () => screen.getByRole('button', { name: 'Save instructions' });
+    const changedEvent = () => mock.connect.mock.calls[0][0].onMessage({
+        type: 'sentinel-jobs-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId,
+    });
+    afterEach(() => {
+        for (const action of [mock.start, mock.cancel, mock.create, mock.delete, mock.testGate, mock.resumeGate,
+            mock.scrubStart, mock.scrubUpdate]) expect(action).not.toHaveBeenCalled();
+    });
+
+    it('edits by keyboard in narrow hosted details and sends only instructions plus the captured revision', async () => {
+        const calls: string[][] = [];
+        const user = userEvent.setup();
+        const saved = 'Review the snapshot.\n\n  Keep this indentation.\nDo not change the schedule.';
+        const original = job({ instructions: 'First line.\n\n  Existing indentation.', cron: '0 9 * * *', enabled: false,
+            effortTier: 'medium', gateScript: 'return state;', revision: 7 });
+        mock.list.mockResolvedValue({ jobs: [original] });
+        mock.update.mockImplementation(async (_workspace, _process, _id, patch) => {
+            mock.list.mockResolvedValue({ jobs: [{ ...original, ...patch, revision: 8 }] });
+            return {};
+        });
+        render(<DetailHost wide={false} calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        const detail = await selectDetails();
+        const button = within(detail).getByRole('button', { name: 'Edit instructions' });
+        expect(within(screen.getByTestId('host-list')).queryByRole('button', { name: 'Edit instructions' })).toBeNull();
+        button.focus();
+        await user.keyboard('{Enter}');
+        const input = within(detail).getByRole('textbox', { name: 'Instructions for Daily review' });
+        expect(input).toHaveFocus();
+        expect(input).toHaveValue(original.instructions);
+        expect(input).toHaveAttribute('maxlength', '32000');
+        fireEvent.change(input, { target: { value: saved } });
+        save().focus();
+        await user.keyboard('{Enter}');
+        await waitFor(() => expect(mock.update).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1', {
+            instructions: saved, expectedRevision: 7,
+        }));
+        const content = await screen.findByRole('region', { name: 'Instructions for Daily review' });
+        expect(content.textContent).toBe(saved);
+        expect(within(detail).getByRole('button', { name: 'Edit instructions' })).toHaveFocus();
+        expect(within(detail).getByText('0 9 * * *')).toBeVisible();
+        expect(screen.getByTestId('host-target').contains(content)).toBe(true);
+    });
+
+    it.each(['button', 'Escape'] as const)('cancels using %s without changing saved content or closing details', async method => {
+        const original = 'Original\n\n  Instructions.';
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: original })] });
+        view();
+        const input = await edit();
+        fireEvent.change(input, { target: { value: 'Unsaved replacement' } });
+        if (method === 'button') fireEvent.click(screen.getByRole('button', { name: 'Cancel instructions edit' }));
+        else fireEvent.keyDown(input, { key: 'Escape' });
+        expect(screen.getByRole('region', { name: 'Instructions for Daily review' }).textContent).toBe(original);
+        expect(screen.getByRole('button', { name: 'Edit instructions' })).toHaveFocus();
+        expect(screen.getByRole('region', { name: 'Refrain details for Daily review' })).toBeVisible();
+        expect(mock.update).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Edit instructions' }));
+        expect(screen.getByRole('textbox', { name: 'Instructions for Daily review' })).toHaveValue(original);
+    });
+
+    it.each(['', ' \n\t ', 'x'.repeat(32_001)])('rejects empty or oversized instructions without saving (%#)', async instructions => {
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        view();
+        fireEvent.change(await edit(), { target: { value: instructions } });
+        expect(save()).toBeDisabled();
+        expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Enter instructions (up to 32,000 characters).');
+        fireEvent.submit(screen.getByRole('form', { name: 'Edit instructions for Daily review' }));
+        expect(mock.update).not.toHaveBeenCalled();
+    });
+
+    it('holds Save and Cancel pending through reload, ignores repeated submits, and preserves draft on errors', async () => {
+        const update = deferred<unknown>();
+        const reload = deferred<{ jobs: SentinelRefrain[] }>();
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        mock.update.mockReturnValueOnce(update.promise).mockRejectedValueOnce(new Error('Could not save instructions'));
+        view();
+        const input = await edit();
+        fireEvent.change(input, { target: { value: 'Changed instructions' } });
+        const form = screen.getByRole('form', { name: 'Edit instructions for Daily review' });
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+        expect(mock.update).toHaveBeenCalledTimes(1);
+        expect(form).toHaveAttribute('aria-busy', 'true');
+        expect(input).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Cancel instructions edit' })).toBeDisabled();
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(form).toBeVisible();
+        mock.list.mockReturnValueOnce(reload.promise);
+        await act(async () => update.resolve({}));
+        expect(screen.getByRole('button', { name: 'Saving instructions...' })).toBeDisabled();
+        await act(async () => reload.resolve({ jobs: [job({ instructions: 'Changed instructions', revision: 3 })] }));
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: 'Changed instructions', revision: 3 })] });
+        await screen.findByRole('button', { name: 'Edit instructions' });
+        fireEvent.click(screen.getByRole('button', { name: 'Edit instructions' }));
+        const nextInput = screen.getByRole('textbox');
+        fireEvent.change(nextInput, { target: { value: 'Keep my failed draft' } });
+        fireEvent.click(save());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not save instructions');
+        expect(nextInput).toHaveValue('Keep my failed draft');
+        await waitFor(() => expect(save()).not.toBeDisabled());
+        mock.update.mockImplementationOnce(async () => {
+            mock.list.mockResolvedValue({ jobs: [job({ instructions: 'Keep my failed draft', revision: 4 })] });
+            return {};
+        });
+        fireEvent.click(save());
+        await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', 'j1', {
+            instructions: 'Keep my failed draft', expectedRevision: 3,
+        }));
+        await screen.findByRole('button', { name: 'Edit instructions' });
+    });
+
+    it.each(['conflict', 'refresh'] as const)('preserves the captured draft and requires review when a %s changes the revision', async source => {
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        view();
+        const input = await edit();
+        fireEvent.change(input, { target: { value: 'My draft' } });
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: 'Changed elsewhere', cron: '0 14 * * *', revision: 3 })] });
+        if (source === 'conflict') {
+            mock.update.mockRejectedValueOnce(Object.assign(new Error('conflict'), { status: 409 }));
+            fireEvent.click(save());
+            await screen.findByText(/Refrain changed\. Review the refreshed refrain/);
+        } else await act(async () => changedEvent());
+        await screen.findByText(/Cancel and edit again to review the saved instructions/);
+        expect(input).toHaveValue('My draft');
+        expect(save()).toBeDisabled();
+        const writes = mock.update.mock.calls.length;
+        fireEvent.submit(screen.getByRole('form', { name: 'Edit instructions for Daily review' }));
+        expect(mock.update).toHaveBeenCalledTimes(writes);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel instructions edit' }));
+        expect(screen.getByRole('region', { name: 'Instructions for Daily review' })).toHaveTextContent('Changed elsewhere');
+        fireEvent.click(screen.getByRole('button', { name: 'Edit instructions' }));
+        expect(screen.getByRole('textbox')).toHaveValue('Changed elsewhere');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Reviewed replacement' } });
+        fireEvent.click(save());
+        await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', 'j1', {
+            instructions: 'Reviewed replacement', expectedRevision: 3,
+        }));
+    });
+
+    it('does not steal focus from another draft when a pending save finishes', async () => {
+        const update = deferred<unknown>();
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        mock.update.mockReturnValueOnce(update.promise);
+        render(<>
+            <label>Other draft<input /></label>
+            <SentinelRefrains owner={owner} items={[]} onFollowLink={follow} />
+        </>);
+        fireEvent.change(await edit(), { target: { value: 'Saved instructions' } });
+        fireEvent.click(save());
+        const other = screen.getByRole('textbox', { name: 'Other draft' });
+        other.focus();
+        fireEvent.change(other, { target: { value: 'Still typing here' } });
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: 'Saved instructions', revision: 3 })] });
+        await act(async () => update.resolve({}));
+        await screen.findByRole('button', { name: 'Edit instructions' });
+        expect(other).toHaveFocus();
+        expect(other).toHaveValue('Still typing here');
+        expect(screen.getByRole('region', { name: 'Instructions for Daily review' })).toHaveTextContent('Saved instructions');
+    });
+
+    it.each(['queued', 'running'] as const)('blocks editing during an active %s run, including one admitted during editing', async status => {
+        mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ status }) })] });
+        view();
+        const detail = await selectDetails();
+        const button = within(detail).getByRole('button', { name: 'Edit instructions' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'Wait for the active run to finish');
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        await act(async () => changedEvent());
+        await waitFor(() => expect(button).not.toBeDisabled());
+        fireEvent.click(button);
+        const input = screen.getByRole('textbox');
+        fireEvent.change(input, { target: { value: 'Draft before run' } });
+        mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ status }) })] });
+        await act(async () => changedEvent());
+        expect(input).toBeDisabled();
+        expect(input).toHaveValue('Draft before run');
+        expect(save()).toBeDisabled();
+        expect(screen.getByText('Wait for the active run to finish before saving instructions.')).toBeVisible();
+        fireEvent.submit(screen.getByRole('form', { name: 'Edit instructions for Daily review' }));
+        expect(mock.update).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel instructions edit' }));
+        expect(screen.getByRole('button', { name: 'Edit instructions' })).toBeDisabled();
+    });
+
+    it('keeps new selections independent of drafts and late save results', async () => {
+        const calls: string[][] = [];
+        const update = deferred<unknown>();
+        mock.list.mockResolvedValue({ jobs: [job(), job({ id: 'j2', name: 'Weekly sweep', instructions: 'Weekly instructions', revision: 8 })] });
+        mock.update.mockReturnValueOnce(update.promise);
+        render(<DetailHost calls={calls}><SentinelRefrains owner={owner} items={[]} onFollowLink={follow} /></DetailHost>);
+        fireEvent.change(await edit(), { target: { value: 'Saved to first only' } });
+        fireEvent.click(save());
+        await selectDetails('Weekly sweep');
+        expect(screen.queryByRole('textbox')).toBeNull();
+        await act(async () => update.resolve({}));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit instructions' }));
+        expect(screen.getByRole('textbox')).toHaveValue('Weekly instructions');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Second only' } });
+        fireEvent.click(save());
+        await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', 'j2', {
+            instructions: 'Second only', expectedRevision: 8,
+        }));
+        expect(mock.update.mock.calls[0]).toEqual(['ws-a', 'queue_sentinel', 'j1', { instructions: 'Saved to first only', expectedRevision: 2 }]);
+    });
+
+    it.each(['workspace', 'process', 'server', 'endpoint'] as const)('drops drafts and late saves when the %s owner changes', async change => {
+        const calls: string[][] = [];
+        const update = deferred<unknown>();
+        const own = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
+        mock.route = { kind: 'remote', baseUrl: 'https://owner.test' };
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        mock.update.mockReturnValueOnce(update.promise);
+        const page = render(<DetailHost calls={calls}><SentinelRefrains owner={own} items={[]} onFollowLink={follow} /></DetailHost>);
+        fireEvent.change(await edit(), { target: { value: 'Old owner draft' } });
+        fireEvent.click(save());
+        const next = change === 'workspace' ? { ...own, ownerWorkspaceId: 'ws-b', ownerRoutingRef: 'remote:server-a:ws-b' }
+            : change === 'process' ? { ...own, processId: 'queue_other' }
+                : change === 'server' ? { ...own, ownerRoutingRef: 'remote:server-b:ws-a' } : own;
+        if (change === 'endpoint') mock.route = { kind: 'remote', baseUrl: 'https://other-owner.test' };
+        mock.list.mockResolvedValue({ jobs: [job({ instructions: 'New owner instructions', revision: 9 })] });
+        page.rerender(<DetailHost calls={calls}><SentinelRefrains owner={next} items={[]} onFollowLink={follow} /></DetailHost>);
+        await screen.findByRole('button', { name: 'Show details for Daily review' });
+        expect(screen.getByTestId('host-target')).toBeEmptyDOMElement();
+        await edit();
+        const input = screen.getByRole('textbox');
+        expect(input).toHaveValue('New owner instructions');
+        await act(async () => update.resolve({}));
+        expect(input).toBeVisible();
+        expect(input).toHaveValue('New owner instructions');
+        fireEvent.change(input, { target: { value: 'New owner edit' } });
+        fireEvent.click(save());
+        await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith(next.ownerWorkspaceId, next.processId, 'j1', {
+            instructions: 'New owner edit', expectedRevision: 9,
+        }));
+        expect(mock.refs).toContain(next.ownerRoutingRef);
+    });
+
+    it('keeps built-in Coda outside custom instruction editing', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Show details for Coda' }));
+        const detail = screen.getByTestId('sentinel-coda-details');
+        expect(within(detail).queryByRole('button', { name: 'Edit instructions' })).toBeNull();
+        expect(within(detail).queryByRole('textbox')).toBeNull();
+        expect(mock.update).not.toHaveBeenCalled();
+    });
+});
+
 describe('Refrains section collapse under the dashboard stylesheet', () => {
     let style: HTMLStyleElement;
     beforeEach(() => {

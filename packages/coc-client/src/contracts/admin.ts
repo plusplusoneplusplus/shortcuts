@@ -321,7 +321,7 @@ export interface RuntimeDashboardConfig {
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoCategoriesEnabled: boolean;
     sentinelTodoExternalReferencesEnabled: boolean;
-    /** Inline Notes editing in Sentinel To-do details (`features.sentinelTodoInlineNotes`); defaults off. */
+    /** Inline Notes editing in Sentinel To-do details (`features.sentinelTodoInlineNotes`); defaults on. */
     sentinelTodoInlineNotesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelTodoJobsEnabled: boolean;

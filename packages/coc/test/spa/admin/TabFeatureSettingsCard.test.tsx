@@ -287,32 +287,32 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty('appearance')).toBe(false);
     });
 
-    it('omits the ledger toggle and keeps Sentinel Mode and Scrubber independently default-off', () => {
+    it('omits the ledger toggle and keeps Sentinel Mode default-off independently of default-on Coda', () => {
         render(<Harness tabs={['sentinel']} />);
         expect(screen.queryByTestId('toggle-sentinel-todo-ledger-enabled')).toBeNull();
         expect(controller.featureValues).not.toHaveProperty('features.sentinelTodoLedger');
-        expect(controller.featureValues['features.sentinelTodoScrubber']).toBe(false);
+        expect(controller.featureValues['features.sentinelTodoScrubber']).toBe(true);
         expect(screen.getByTestId('toggle-sentinel-todo-scrubber-enabled')).toBeTruthy();
         expect(controller.featureValues['sentinel.enabled']).toBe(false);
     });
 
-    it('shows To-do jobs under To-do & PR Outcomes only with Sentinel Mode and saves its live flag', async () => {
+    it('shows To-do jobs under To-do & PR Outcomes only with Sentinel Mode and saves its live opt-out', async () => {
         render(<Harness tabs={['sentinel']} />);
-        expect(controller.featureValues['features.sentinelTodoJobs']).toBe(false);
+        expect(controller.featureValues['features.sentinelTodoJobs']).toBe(true);
         expect(screen.queryByTestId('toggle-sentinel-todo-jobs-enabled')).toBeNull();
         fireEvent.click(screen.getByTestId('toggle-sentinel-enabled'));
         const toggle = screen.getByTestId('toggle-sentinel-todo-jobs-enabled');
-        expect(toggle).toHaveProperty('checked', false);
+        expect(toggle).toHaveProperty('checked', true);
         expect(toggle.closest('#sentinel-group-sentinelTodos')).not.toBeNull();
-        expect(toggle.closest('.ar-row')?.textContent).toContain('Experimental');
+        expect(toggle.closest('.ar-row')?.textContent).not.toContain('Experimental');
         fireEvent.click(toggle);
         await act(async () => { await controller.handleSaveTab('sentinel'); });
         expect(updateConfig.mock.calls[0][0]).toMatchObject({
-            'sentinel.enabled': true, 'features.sentinelTodoJobs': true,
-            'features.sentinelTodoScrubber': false,
+            'sentinel.enabled': true, 'features.sentinelTodoJobs': false,
+            'features.sentinelTodoScrubber': true,
         });
         expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
-            sentinelEnabled: true, sentinelTodoJobsEnabled: true,
+            sentinelEnabled: true, sentinelTodoJobsEnabled: false,
         });
         expect(controller.isTabDirty('sentinel')).toBe(false);
         fireEvent.click(screen.getByTestId('toggle-sentinel-enabled'));

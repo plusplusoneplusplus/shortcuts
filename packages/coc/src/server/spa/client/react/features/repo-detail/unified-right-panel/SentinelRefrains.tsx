@@ -12,6 +12,7 @@ import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
 import { SentinelRefrainDialog } from './SentinelRefrainDialog';
+import { SentinelRefrainInstructions, type SaveRefrainInstructions } from './SentinelRefrainInstructions';
 import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
 import { AutomationError, AutomationTitleButton, RefrainHistoryHostContext, selectCardOnClick } from './SentinelAutomationCard';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
@@ -195,6 +196,8 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
             {jobs?.length === 10 && <p role="status" className={MUTED}>10-refrain limit reached. Delete a refrain before creating another.</p>}
             {jobs?.map(job => <JobRow key={job.id} job={job} owner={owner} onFollowLink={onFollowLink} disabled={busy || !!readError} error={actionError ?? readError}
                 onEdit={() => { setActionError(null); setEditor(job); }} onDelete={() => { setActionError(null); setDeleting(job); }}
+                onClearError={() => setActionError(null)}
+                onSaveInstructions={(instructions, expectedRevision) => mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { instructions, expectedRevision }))}
                 onRun={() => void mutate(() => api.start(owner.ownerWorkspaceId, owner.processId, job.id), undefined, false)}
                 onCancel={() => { if (job.activeRun) void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, job.id, job.activeRun!.id)); }}
                 onToggle={() => void mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { enabled: !job.enabled, expectedRevision: job.revision }))}
@@ -217,10 +220,11 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
 }
 
 type GateTestProps = { onTestGate: (signal: AbortSignal) => Promise<SentinelRefrainGateTest>; onResumeGate: () => void };
-function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, onRun, onCancel, onToggle, onTestGate, onResumeGate }: GateTestProps & {
+function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, onRun, onCancel, onToggle, onTestGate, onResumeGate, onClearError, onSaveInstructions }: GateTestProps & {
     job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; disabled: boolean;
     error: string | null;
     onEdit: () => void; onDelete: () => void; onRun: () => void; onCancel: () => void; onToggle: () => void;
+    onClearError: () => void; onSaveInstructions: SaveRefrainInstructions;
 }) {
     const last = job.runs[0];
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -277,7 +281,8 @@ function JobRow({ job, owner, onFollowLink, disabled, error, onEdit, onDelete, o
         {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
             : !historyOpen && last && <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>Last run #{last.runNumber}: {runOutcome(last)}</p>}
     </article>
-        <RefrainRunHistory job={job} owner={owner} onFollowLink={onFollowLink} onOpenChange={setHistoryOpen} selection={selection} actions={actions} wide={host?.wide ?? width >= 660}>
+        <RefrainRunHistory job={job} owner={owner} onFollowLink={onFollowLink} onOpenChange={setHistoryOpen} selection={selection} actions={actions} wide={host?.wide ?? width >= 660}
+            instructions={<SentinelRefrainInstructions job={job} disabled={disabled} onClearError={onClearError} onSave={onSaveInstructions} />}>
             {error && <p role="alert">{error}</p>}
             {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
         </RefrainRunHistory>
@@ -291,10 +296,10 @@ type RefrainSelection = {
     titleRef: RefObject<HTMLButtonElement>; detailId: string;
 };
 /** History and actions share the selected detail column and narrow Back navigation. */
-function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection, actions, children, wide }: {
+function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection, actions, children, wide, instructions }: {
     job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; onOpenChange: (open: boolean) => void;
     selection: RefrainSelection;
-    actions: ReactNode; children: ReactNode; wide: boolean;
+    actions: ReactNode; children: ReactNode; wide: boolean; instructions: ReactNode;
 }) {
     const host = useContext(RefrainHistoryHostContext);
     const listRef = useRef<HTMLOListElement>(null);
@@ -401,7 +406,7 @@ function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange, selection, 
                 {!overview && !selected && <p role="status" className={MUTED}>This run is no longer in retained history. Select another run.</p>}
                 {children}
                 {history}
-                {overview ? <RefrainOverview job={job} owner={owner} onFollowLink={onFollowLink} />
+                {overview ? <RefrainOverview job={job} owner={owner} onFollowLink={onFollowLink} instructions={instructions} />
                     : selected && <RunFacts run={selected} job={job} owner={owner} onFollowLink={onFollowLink} />}
             </section>;
     if (!active || !shown) return null;
@@ -414,7 +419,7 @@ function scheduleLabel(job: SentinelRefrain) {
     return job.cron ? describeCron(job.cron) || job.cron : 'Manual only';
 }
 /** Definition and schedule always render; the current (else latest) run follows live list refreshes. */
-function RefrainOverview({ job, owner, onFollowLink }: { job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink'] }) {
+function RefrainOverview({ job, owner, onFollowLink, instructions }: { job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; instructions: ReactNode }) {
     const newest = [...job.runs].sort((a, b) => b.runNumber - a.runNumber)[0];
     const current = job.activeRun ?? job.latestRun ?? newest;
     return <>
@@ -425,8 +430,7 @@ function RefrainOverview({ job, owner, onFollowLink }: { job: SentinelRefrain; o
             <div><dt>Runs</dt><dd>{job.runs.length} retained{job.runHistoryTruncated ? ' (older runs expired)' : ''}</dd></div>
         </dl>
         {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
-        <h5 className="font-semibold">Instructions</h5>
-        <pre role="region" tabIndex={0} aria-label={`Instructions for ${job.name}`}>{job.instructions}</pre>
+        {instructions}
         <h5 className="font-semibold">{current ? `${job.activeRun ? 'Current' : 'Latest'} run #${current.runNumber}: ${current.status}` : 'No runs yet'}</h5>
         {current ? <RunFacts run={current} job={job} owner={owner} onFollowLink={onFollowLink} />
             : <p className={MUTED}>{job.cron && job.enabled ? 'The first run starts at its next scheduled time or with Run now.' : 'Use Run now to start the first run.'}</p>}

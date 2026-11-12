@@ -472,6 +472,14 @@ describe('AdminPanel — Workspace Features search', () => {
             const sentinelCard = await screen.findByTestId('settings-tab-features-sentinel');
             const mode = screen.getByTestId('toggle-sentinel-enabled') as HTMLInputElement;
             expect(mode.checked).toBe(false);
+            for (const def of ADMIN_SETTING_DEFINITIONS.filter(d => getFeatureSettingTab(d) === 'sentinel' && !d.ui?.dependsOn)) {
+                const control = within(sentinelCard).getByTestId(def.ui!.testId) as HTMLInputElement;
+                expect(control.checked, def.key).toBe(def.default);
+                if (def.default === true) {
+                    expect(control.closest('.ar-row')?.querySelector('.ar-badge'), def.key).toBeNull();
+                    expect(def.ui?.hint, def.key).toContain('Enabled by default.');
+                }
+            }
             expect(screen.queryByTestId('toggle-sentinel-result-cards-enabled')).toBeNull();
             expect(mockFetch.mock.calls.some(([url]) => url === `${apiBase}/admin/config`)).toBe(true);
             expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
@@ -504,7 +512,7 @@ describe('AdminPanel — Workspace Features search', () => {
             const payload = JSON.parse(puts[0][1].body);
             const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
             expect(Object.keys(payload).sort()).toEqual(defs.map(def => def.key).sort());
-            expect(payload['features.sentinelTodoExternalReferences']).toBe(true);
+            expect(payload['features.sentinelTodoExternalReferences']).toBe(false);
             expect(payload['sentinel.enabled']).toBe(false);
             expect(payload).not.toHaveProperty('features.sentinelResultCards');
 

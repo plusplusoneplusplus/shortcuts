@@ -83,12 +83,14 @@ describe('resolveFeatureBadge', () => {
         });
     });
 
-    it('omits the ledger setting while retaining the opt-in scrubber and Sentinel Mode badges', () => {
+    it('suppresses enabled Sentinel feature badges and retains the Sentinel Mode opt-in badge', () => {
         expect(ADMIN_SETTING_DEFINITIONS.some(d => d.key === 'features.sentinelTodoLedger')).toBe(false);
-        for (const key of ['features.sentinelTodoScrubber', 'features.sentinelTodoJobs', 'sentinel.enabled']) {
-            expect(def(key).default).toBe(false);
-            expect(resolveFeatureBadge(def(key))?.label).toBe('Experimental');
+        for (const setting of ADMIN_SETTING_DEFINITIONS.filter(d => d.key.startsWith('features.sentinel') && d.key !== 'features.sentinelDesktopMirror')) {
+            expect(setting.default, setting.key).toBe(true);
+            expect(resolveFeatureBadge(setting), setting.key).toBeUndefined();
         }
+        expect(def('sentinel.enabled').default).toBe(false);
+        expect(resolveFeatureBadge(def('sentinel.enabled'))?.label).toBe('Experimental');
     });
 
     it('leaves non-experimental badges alone regardless of default', () => {
