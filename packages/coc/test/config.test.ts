@@ -1141,6 +1141,8 @@ timeout: 300
                 'teamsReactionDelegation:',
                 '  workspaceId: ws-fixture',
                 '  dispatcherSkill: dispatcher-fixture',
+                'teamsRouting:',
+                '  workspaceId: ws-fixture',
                 'teamsOutboundCompliance:',
                 '  prompt: Block secrets in replies.',
                 'dangerousCommandGuard:',
@@ -1840,6 +1842,9 @@ timeout: 300
                     "dispatcherSkill": "",
                     "workspaceId": "",
                   },
+                  "teamsRouting": {
+                    "workspaceId": "",
+                  },
                   "terminal": {
                     "enabled": false,
                   },
@@ -2022,6 +2027,7 @@ timeout: 300
                   "teamsOutboundCompliance.prompt": "default",
                   "teamsReactionDelegation.dispatcherSkill": "default",
                   "teamsReactionDelegation.workspaceId": "default",
+                  "teamsRouting.workspaceId": "default",
                   "terminal.enabled": "file",
                   "timeout": "file",
                   "toolCompactness": "file",

@@ -19,22 +19,19 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import type { Route } from '../../src/server/types';
 import { registerAllRoutes } from '../../src/server/routes/index';
 import type { RegisterRoutesOptions } from '../../src/server/routes/index';
-import type { CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoService } from '../../src/server/sentinel-todos/sentinel-todo-service';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
 import { WhatsAppMessagingManager } from '../../src/server/messaging/whatsapp-messaging-manager';
 import { SentinelMirrorService } from '../../src/server/messaging/sentinel-mirror-service';
-import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
-import { isChatPayload } from '../../src/server/tasks/task-types';
 import { MessagingJobNotices } from '../../src/server/messaging/job-notices';
 import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
 import { RemoteDelegationResults } from '../../src/server/delegation/remote-delegation-results';
 import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
-import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state';
+import { TeamsChannelBindings } from '../../src/server/messaging/teams-channel-binding';
 import { createMockProcessStore } from '../helpers/mock-process-store';
-import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
 import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
 import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
@@ -194,6 +191,16 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
         } as any,
         ...overrides,
     };
+}
+
+async function bindTeamsSentinel(dataDir: string, store: ProcessStore, workspaceId: string, processId: string): Promise<void> {
+    await new TeamsChannelBindings(dataDir, store).bind(
+        { accountKey: 'account', teamId: 'team', channelId: 'channel' }, workspaceId, processId);
+    vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
+        enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+        botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+    });
+    vi.spyOn(TeamsMessagingManager.prototype, 'getMirrorAccountKey').mockReturnValue('account');
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -900,34 +907,19 @@ describe('registerAllRoutes', () => {
         expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 
-    it('executes ordinary Teams messages as workspace-scoped chats with assistant turns', async () => {
+    it('routes messages from different senders and threads to the bound Sentinel', async () => {
         const store = createMockProcessStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'global-workspace-00', name: 'Global', rootPath: path.join(tmpDir, 'first') },
-            { id: 'ws-second', name: 'Second', rootPath: path.join(tmpDir, 'second') },
+            { id: 'ws-bound', name: 'Bound', rootPath: tmpDir },
+            { id: 'ws-other', name: 'Other', rootPath: tmpDir },
         ]);
-        const sdk = createMockSDKService({
-            listModelsResult: [{
-                id: 'gpt-6.1-sol', name: 'gpt-6.1-sol',
-                capabilities: {
-                    supports: { reasoningEffort: true, vision: false },
-                    limits: { max_context_window_tokens: 200_000 },
-                },
-                supportedReasoningEfforts: ['medium'],
-            }],
+        await store.addProcess({
+            id: 'sentinel', type: 'chat', status: 'completed', startTime: new Date(),
+            metadata: { workspaceId: 'ws-bound', mode: 'sentinel' },
         });
-        sdk.mockSendMessage.mockResolvedValue({
-            success: true, response: 'A reply', sessionId: 'session-1',
-        });
-        const executor = new CLITaskExecutor(store, { aiService: sdk.service, dataDir: tmpDir });
+        await bindTeamsSentinel(tmpDir, store, 'ws-bound', 'sentinel');
         const bridge = makeBridge();
-        let taskNumber = 0;
-        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => {
-            const id = `teams-task-${++taskNumber}`;
-            const task: QueuedTask = { ...input, id, status: 'running', createdAt: Date.now() };
-            await executor.execute(task);
-            return id;
-        });
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id);
 
         let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
         vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => {
@@ -935,53 +927,41 @@ describe('registerAllRoutes', () => {
         });
         const send = vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
         const opts = makeOpts({ store, bridge, dataDir: tmpDir });
-        opts.runtimeConfigService!.config.features.teamsAiAnswerRelay = false;
         registerAllRoutes([], opts);
         expect(inbound).toBeDefined();
 
         const message = (text: string, senderAadId: string, messageId: string): InboundTeamsMessage =>
-            ({ text, senderAadId, messageId, channelId: 'channel-1' });
+            ({ text, senderAadId, messageId, channelId: 'channel' });
         await inbound!(message('how many outgoing commits?', 'sender-first', 'message-1'), () => {});
         await inbound!(message('/select repo 2', 'sender-second', 'message-2'), () => {});
-        await inbound!(message('check the build', 'sender-second', 'message-3'), () => {});
+        await inbound!({ ...message('check the build', 'sender-second', 'message-3'),
+            replyToMessageId: 'other-thread' }, () => {});
 
         expect(bridge.enqueue).toHaveBeenCalledTimes(2);
-        for (const [index, workspaceId, prompt] of [
-            [0, 'global-workspace-00', 'how many outgoing commits?'],
-            [1, 'ws-second', 'check the build'],
+        for (const [index, prompt] of [
+            [0, 'how many outgoing commits?'],
+            [1, 'check the build'],
         ] as const) {
             const input = bridge.enqueue.mock.calls[index][0] as CreateTaskInput;
             expect(input).toMatchObject({
-                type: 'chat', repoId: workspaceId, priority: 'normal',
-                payload: { kind: 'chat', mode: 'sentinel', prompt, workspaceId },
-                config: { afterEffortTier: 'medium', model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
+                type: 'chat', repoId: 'ws-bound', processId: 'sentinel', priority: 'normal',
+                payload: { kind: 'chat', mode: 'sentinel', processId: 'sentinel', prompt, workspaceId: 'ws-bound',
+                    relayRequestId: expect.any(String) },
             });
-            expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
-            expect(isChatPayload(input.payload)).toBe(true);
-            const process = await store.getProcess(toQueueProcessId(`teams-task-${index + 1}`), workspaceId);
-            expect(process?.status).toBe('completed');
-            expect(process?.metadata?.afterEffortTier).toBe('medium');
-            expect(process?.conversationTurns).toEqual(expect.arrayContaining([
-                expect.objectContaining({ role: 'user', content: expect.stringContaining(prompt) }),
-                expect.objectContaining({ role: 'assistant', content: 'A reply' }),
-            ]));
+            expect(input.id).toEqual(expect.any(String));
         }
-        expect(sdk.mockSendMessage).toHaveBeenCalledTimes(2);
-        expect(sdk.mockSendMessage.mock.calls.map(([options]) => ({
-            model: options.model, reasoningEffort: options.reasoningEffort,
-        }))).toEqual([
-            { model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
-            { model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
-        ]);
-        expect(send).toHaveBeenCalledTimes(3);
+        expect(send).toHaveBeenCalledOnce();
+        expect(send.mock.calls[0][0]).toContain('Unknown command');
     });
 
     it.each([undefined, true, false])('resolves Teams relay admission from partial live config (%s)', async relayEnabled => {
-        const store = makeStore();
+        const store = createMockProcessStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'global-workspace-00', name: 'Global', rootPath: path.join(tmpDir, 'a') },
-            { id: 'ws-b', name: 'Beta', rootPath: path.join(tmpDir, 'b') },
+            { id: 'ws-bound', name: 'Bound', rootPath: tmpDir },
         ]);
+        await store.addProcess({ id: 'sentinel', type: 'chat', status: 'completed', startTime: new Date(),
+            metadata: { workspaceId: 'ws-bound', mode: 'sentinel' } });
+        await bindTeamsSentinel(tmpDir, store, 'ws-bound', 'sentinel');
         const bridge = makeBridge();
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id);
         const opts = makeOpts({ store, bridge, dataDir: tmpDir });
@@ -998,39 +978,33 @@ describe('registerAllRoutes', () => {
         vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => {
             inbound = handler;
         });
-        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
-            enabled: true, status: 'connected', teamId: 'team-1', channelId: 'channel-1',
-            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
-        });
-        vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        const send = vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
         registerAllRoutes([], opts);
 
         await inbound!({
-            text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel-1',
+            text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel',
         }, () => {});
 
-        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
-        const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
-        expect(input).toMatchObject({
-            type: 'chat', repoId: 'global-workspace-00',
-            payload: { kind: 'chat', mode: 'sentinel', prompt: 'relay question', workspaceId: 'global-workspace-00' },
-            config: { afterEffortTier: 'medium', model: 'custom-medium', reasoningEffort: 'high' },
-        });
         if (relayEnabled === false) {
-            expect(input.id).toBeUndefined();
-            expect(input.processId).toBeUndefined();
-            await expect(fs.access(path.join(tmpDir, 'repos', 'global-workspace-00', 'teams-answer-relay'))).rejects.toThrow();
+            expect(bridge.enqueue).not.toHaveBeenCalled();
+            expect(send.mock.calls[0][0]).toContain('Teams answer relay is unavailable');
+            await expect(fs.access(path.join(tmpDir, 'repos', 'ws-bound', 'teams-answer-relay'))).rejects.toThrow();
         } else {
+            expect(bridge.enqueue).toHaveBeenCalledOnce();
+            const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
+            expect(input).toMatchObject({
+                type: 'chat', repoId: 'ws-bound', processId: 'sentinel',
+                payload: { kind: 'chat', mode: 'sentinel', processId: 'sentinel', prompt: 'relay question',
+                    workspaceId: 'ws-bound', relayRequestId: expect.any(String) },
+            });
             expect(input.id).toEqual(expect.any(String));
-            expect(input.processId).toBe(toQueueProcessId(input.id!));
-            const receipts = await fs.readdir(path.join(tmpDir, 'repos', 'global-workspace-00', 'teams-answer-relay'));
+            const receipts = await fs.readdir(path.join(tmpDir, 'repos', 'ws-bound', 'teams-answer-relay'));
             expect(receipts).toHaveLength(1);
             await inbound!({
-                text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel-1',
+                text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel',
             }, () => {});
             expect(bridge.enqueue).toHaveBeenCalledOnce();
         }
-        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
     it('populates the routes array with a large set of routes', () => {
@@ -1150,11 +1124,11 @@ describe('registerAllRoutes', () => {
             new Promise<void>(resolve => { finishRestore = resolve; }));
         const store = createMockProcessStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'ws-parent', name: 'Parent', rootPath: path.join(tmpDir, 'parent') },
+            { id: 'ws-parent', name: 'Parent', rootPath: tmpDir },
         ]);
         await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
-        new TeamsUserStateStore(tmpDir).update('sender', { selectedRepo: 'ws-parent', selectedTopic: 'queue_parent' });
+        await bindTeamsSentinel(tmpDir, store, 'ws-parent', 'queue_parent');
         const bridge = makeBridge();
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => {
             expect(new DelegatedJobStore(tmpDir).list('ws-parent')[0]).toMatchObject({
@@ -1165,13 +1139,8 @@ describe('registerAllRoutes', () => {
         });
         let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
         vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => { inbound = handler; });
-        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
-            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
-            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
-        });
         vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
         const opts = makeOpts({ dataDir: tmpDir, store, bridge });
-        opts.runtimeConfigService!.config.features.teamsAiAnswerRelay = false;
         registerAllRoutes([], opts);
         const admitted = inbound!({ text: '/autopilot inspect', senderAadId: 'sender', messageId: 'command', channelId: 'channel' }, () => {});
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -1183,29 +1152,26 @@ describe('registerAllRoutes', () => {
         expect(bridge.enqueue.mock.calls[0][0].payload.context).toMatchObject({
             spawnedFromProcessId: 'queue_parent', messagingOrigin: { connector: 'teams', threadId: 'command' },
         });
-        expect(new TeamsUserStateStore(tmpDir).get('sender').selectedTopic).toBe('queue_parent');
+        expect(new TeamsChannelBindings(tmpDir, store).lookup({ accountKey: 'account', teamId: 'team', channelId: 'channel' }))
+            .toMatchObject({ workspaceId: 'ws-parent', processId: 'queue_parent' });
     });
 
     it('admits Teams command handoffs without to-do admission while untracked Sentinel tool launches stay guarded', async () => {
         const store = createMockProcessStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'ws-parent', name: 'Parent', rootPath: path.join(tmpDir, 'parent') },
+            { id: 'ws-parent', name: 'Parent', rootPath: tmpDir },
         ]);
         await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
-        new TeamsUserStateStore(tmpDir).update('sender', { selectedRepo: 'ws-parent', selectedTopic: 'queue_parent' });
+        await bindTeamsSentinel(tmpDir, store, 'ws-parent', 'queue_parent');
         const bridge = makeBridge();
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id);
         let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
         vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => { inbound = handler; });
-        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
-            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
-            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
-        });
         vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
         let enqueueChat!: (input: CreateTaskInput) => Promise<string>;
         const opts = makeOpts({ dataDir: tmpDir, store, bridge, setEnqueueChat: value => { enqueueChat = value; } });
-        Object.assign(opts.runtimeConfigService!.config.features, { teamsAiAnswerRelay: false, sentinelTodoDependencies: true });
+        Object.assign(opts.runtimeConfigService!.config.features, { teamsAiAnswerRelay: true, sentinelTodoDependencies: true });
         registerAllRoutes([], opts);
         await expect(enqueueChat({ id: 'tool-child', type: 'chat', priority: 'normal', config: {},
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'Fix it', workspaceId: 'ws-parent',
