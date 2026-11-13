@@ -25,7 +25,8 @@ function readPreferences(dataDir: string): Record<string, unknown> {
 
 export function readBrowserEngine(dataDir: string, platform: string = process.platform, arch: string = process.arch): BrowserEngine {
     const engine = readPreferences(dataDir).defaultEngine;
-    return isBrowserEngine(engine) && (engine === 'electron' || (platform === 'win32' && arch === 'x64')) ? engine : 'electron';
+    const supported = engine === 'webview2' ? platform === 'win32' && arch === 'x64' : engine === 'wkwebview' ? platform === 'darwin' : true;
+    return isBrowserEngine(engine) && supported ? engine : 'electron';
 }
 
 export function writeBrowserEngine(dataDir: string, engine: BrowserEngine): void {

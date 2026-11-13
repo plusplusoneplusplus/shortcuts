@@ -14,6 +14,7 @@ import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserAppUrl, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
+import { WkWebViewBrowserHost } from './wkwebview-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest, validateBrowserControlPlacement } from './browser-control-command';
 import {
@@ -147,6 +148,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (result.canceled || !downloadOwnerCurrent(ownerId) || owners.get(ownerId) !== window) return;
         return result.filePath;
     }, downloadOwnerCurrent);
+    const wkwebview = new WkWebViewBrowserHost(browserProfilePath(dataDir, 'wkwebview'));
     const history = new BrowserHistoryStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_HISTORY_CHANGED_CHANNEL));
     const favoriteStore = favorites = new BrowserFavoritesStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_FAVORITES_CHANGED_CHANNEL));
     historyMaintenance = setInterval(() => {
@@ -179,6 +181,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         hosts: {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron'), downloads),
             webview2,
+            wkwebview,
         },
         fileHost: new ElectronFilePreviewHost(downloads),
         getDefault: () => readBrowserEngine(dataDir),
@@ -424,6 +427,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (window) {
             window.webContents.focus();
             void webview2.focusOwner(event.sender.id).catch(error => console.error('[coc-desktop] Browser focus handoff failed:', error));
+            void wkwebview.focusOwner(event.sender.id).catch(error => console.error('[coc-desktop] Browser focus handoff failed:', error));
         }
     });
     ipcMain.on(BROWSER_VIEW_CLOSE_CHANNEL, (event, id: unknown) => {

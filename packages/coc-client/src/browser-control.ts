@@ -58,7 +58,7 @@ export interface BrowserControlTab {
     id: string;
     title: string;
     url: string;
-    engine: 'electron' | 'webview2';
+    engine: 'electron' | 'webview2' | 'wkwebview';
 }
 
 export interface BrowserCommandResult {

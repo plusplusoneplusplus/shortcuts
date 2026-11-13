@@ -201,7 +201,7 @@ export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
 /** SPA → main: open a view's current page in the system browser `(viewId)`. */
 export const BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-view-open-external';
 
-export type BrowserEngine = 'electron' | 'webview2';
+export type BrowserEngine = 'electron' | 'webview2' | 'wkwebview';
 
 /** The key that reveals tab-shortcut hints and forms Ctrl/Cmd+1–9: Command on macOS, Control elsewhere. */
 export function browserTabShortcutModifierKey(platform: NodeJS.Platform): 'Meta' | 'Control' {
@@ -222,7 +222,7 @@ export function browserTabShortcutDigit(
     return match ? Number(match[1]) : null;
 }
 export function isBrowserEngine(value: unknown): value is BrowserEngine {
-    return value === 'electron' || value === 'webview2';
+    return value === 'electron' || value === 'webview2' || value === 'wkwebview';
 }
 
 export type BrowserFailureReason =

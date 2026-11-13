@@ -184,7 +184,7 @@ interface HtmlPageRect {
 }
 
 /** Reply to `browser.open` / `browser.navigate` (mirrors `BrowserOpenResult` in browser-view-policy.ts). */
-type BrowserEngine = 'electron' | 'webview2';
+type BrowserEngine = 'electron' | 'webview2' | 'wkwebview';
 type BrowserSourceKind = typeof BROWSER_SOURCE_KINDS[number];
 type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };

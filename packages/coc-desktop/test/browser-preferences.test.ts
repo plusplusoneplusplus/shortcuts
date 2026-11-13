@@ -75,6 +75,15 @@ describe('desktop browser preferences', () => {
         expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
     });
 
+    it('keeps a saved WKWebView choice on macOS only', () => {
+        const dir = directory();
+        writeBrowserEngine(dir, 'wkwebview');
+        for (const arch of ['x64', 'arm64']) expect(readBrowserEngine(dir, 'darwin', arch)).toBe('wkwebview');
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('electron');
+        expect(readBrowserEngine(dir, 'linux', 'x64')).toBe('electron');
+        expect(browserProfilePath(dir, 'wkwebview')).toBe(path.join(dir, 'browser', 'wkwebview'));
+    });
+
     it('defaults invalid saved values and malformed JSON to Electron', () => {
         const dir = directory();
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -259,6 +259,25 @@ describe('desktop browser history store', () => {
         expect(await store.clearEngine('electron')).toBe(false);
     });
 
+    it('persists WKWebView visits across restart and clears them without touching other engines', async () => {
+        const dir = directory();
+        let now = 100;
+        const store = new BrowserHistoryStore(dir, () => now);
+        await store.recordVisit('electron', 'https://example.com/', 'Electron title');
+        now = 200;
+        await store.recordVisit('wkwebview', 'https://example.com/', 'WebKit title');
+        await store.recordVisit('wkwebview', 'https://webkit-only.example/', 'WebKit only');
+        expect(await store.updateTitle('wkwebview', 'https://webkit-only.example/', 'WebKit renamed')).toBe(true);
+        expect((await new BrowserHistoryStore(dir, () => now).query()).entries).toEqual([
+            { url: 'https://example.com/', title: 'WebKit title', lastVisited: 200, visitCount: 2 },
+            { url: 'https://webkit-only.example/', title: 'WebKit renamed', lastVisited: 200, visitCount: 1 },
+        ]);
+        expect(await store.clearEngine('wkwebview')).toBe(true);
+        expect((await new BrowserHistoryStore(dir, () => now).query()).entries).toEqual([
+            { url: 'https://example.com/', title: 'Electron title', lastVisited: 100, visitCount: 1 },
+        ]);
+    });
+
     it('expires at 90 days from the latest URL visit and filters expiry while running', async () => {
         const dir = directory();
         let now = BROWSER_HISTORY_RETENTION_MS + 1000;

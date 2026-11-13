@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { BrowserEngine, BrowserPreferences, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
+import { browserEngineName, type BrowserEngine, type BrowserPreferences, type DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { NativeViewIcon, nativeViewIconButton, nativeViewToolbarButton } from './NativeViewTab';
 
 export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, onDownloads, bridge }: {
@@ -151,7 +151,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                 {onDownloads && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
                     onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onDownloads(); }}>Downloads</button>}
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
-                    Engine: {engine === 'electron' ? 'Electron' : 'WebView2'}
+                    Engine: {browserEngineName(engine)}
                 </div>}
                 <div role="group" aria-label="Web page zoom" className="border-b border-[#e5e5e5] px-2 py-1 dark:border-[#333]">
                     <div className="mb-1 text-[#616161] dark:text-[#9d9d9d]" title="All embedded web pages in every workspace and desktop window. Does not change app zoom.">Web page zoom (all pages)</div>

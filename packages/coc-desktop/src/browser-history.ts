@@ -104,7 +104,7 @@ function readData(value: unknown): HistoryData {
         const url = sanitizeHistoryUrl(item.url);
         if (!url || !item.engines || typeof item.engines !== 'object') continue;
         const entry = entries.get(url) ?? { url, engines: {} };
-        for (const engine of ['electron', 'webview2'] as const) {
+        for (const engine of ['electron', 'webview2', 'wkwebview'] as const) {
             const visit = item.engines[engine];
             if (!visit || typeof visit.title !== 'string' || !Number.isSafeInteger(visit.lastVisited)
                 || visit.lastVisited < 0 || !Number.isSafeInteger(visit.visitCount) || visit.visitCount < 1) continue;

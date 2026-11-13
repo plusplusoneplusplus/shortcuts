@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BrowserDownloadAction, BrowserDownloadsResult, BrowserEngine, DesktopBrowserDownloads } from '../../../shared/file-path/browser-bridge';
+import { browserEngineName, type BrowserDownloadAction, type BrowserDownloadsResult, type BrowserEngine, type DesktopBrowserDownloads } from '../../../shared/file-path/browser-bridge';
 import { Dialog } from '../../../ui/Dialog';
 
 const button = 'rounded-full px-3 py-1.5 text-xs font-medium hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc] disabled:opacity-40 disabled:cursor-not-allowed dark:hover:bg-white/10';
@@ -69,7 +69,7 @@ export function BrowserDownloadsPanel({ downloads, engine, desktop, onClose }: {
                         <div className="break-words text-sm font-medium" dir="auto">{entry.filename}</div>
                         <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-[#616161] dark:text-[#aaa]">
                             <span className="break-all">{entry.source}</span>
-                            <span>{entry.engine === 'webview2' ? 'WebView2' : 'Electron'}</span>
+                            <span>{browserEngineName(entry.engine)}</span>
                             <time dateTime={new Date(entry.started).toISOString()}>{new Date(entry.started).toLocaleString()}</time>
                         </div>
                         <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs">

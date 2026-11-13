@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { DESKTOP_BROWSER_PREFERENCES_HASH, type BrowserSiteInfo, type BrowserSiteInfoResult } from '../../../shared/file-path/browser-bridge';
+import { browserEngineName, DESKTOP_BROWSER_PREFERENCES_HASH, type BrowserSiteInfo, type BrowserSiteInfoResult } from '../../../shared/file-path/browser-bridge';
 import { NativeViewIcon, nativeViewIconButton } from './NativeViewTab';
 
 /** Where site information comes from: an owned desktop view, a local preview, or nowhere. */
@@ -32,7 +32,7 @@ interface Row { id: string; icon: ReactNode; tone?: keyof typeof toneClass; titl
 
 const localFileRow: Row = { id: 'connection', icon: icons.file, title: 'Local file', details: ['Read from disk. Not a network connection.'] };
 
-const engineName = (engine: BrowserSiteInfo['engine']) => engine === 'webview2' ? 'WebView2' : 'Electron';
+const engineName = browserEngineName;
 const formatDate = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 function connectionRow(info: BrowserSiteInfo): Row {
