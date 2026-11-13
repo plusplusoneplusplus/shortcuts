@@ -1,6 +1,9 @@
 // The skeleton exposes the transport and policy the view host builds on.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod certificate;
+#[path = "../../webview2/src/download.rs"]
+#[allow(dead_code)]
+mod download;
 #[path = "../../webview2/src/history.rs"]
 #[allow(dead_code)]
 mod history;

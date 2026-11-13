@@ -47,7 +47,8 @@ export class WebView2Downloads {
     private choosers = new Set<number>();
     private closed = false;
 
-    constructor(private readonly store: BrowserDownloadStore, private readonly request: NativeRequest) {}
+    constructor(private readonly store: BrowserDownloadStore, private readonly request: NativeRequest,
+        private readonly engine: 'webview2' | 'wkwebview' = 'webview2') {}
 
     start(viewId: string, id: string, url: string, filename: string, approval: WebView2DownloadApproval): void {
         if (this.transfers.has(id) || this.seen.has(id)) { approval.dispose(); return; }
@@ -68,7 +69,7 @@ export class WebView2Downloads {
             resume: () => this.action(id, 'resume'),
             cancel: () => this.action(id, 'cancel'),
             dispose: () => this.retire(id),
-        }, 'webview2');
+        }, this.engine);
         if (!lease) { approval.failure(); reject(); return; }
         const item: Transfer = {
             viewId, id, approval, lease, phase: 'pending',

@@ -1,4 +1,8 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BrowserDownloadStore } from '../src/browser-downloads';
 import { WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 
@@ -641,5 +645,84 @@ describe('WKWebView profile data', () => {
         await expect(onPlatform('linux', () => host.clearData())).rejects.toMatchObject({ reason: 'unsupported-platform' });
         expect(mocks.request).not.toHaveBeenCalled();
         await host.dispose();
+    });
+});
+
+describe('WKWebView managed native downloads', () => {
+    const downloadId = '00000000-0000-0000-0000-000000000001';
+    async function managed(choose: (ownerId: number, filename: string) => Promise<string | undefined>) {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-download-host-'));
+        const store = new BrowserDownloadStore(dir);
+        const host = new WkWebViewBrowserHost('/data/browser/wkwebview', store, choose, ownerId => ownerId === 7);
+        const approval = { current: vi.fn(() => true), dispose: vi.fn() };
+        const sink = makeSink({ downloadApproval: vi.fn(() => approval) });
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, sink);
+        const cleanup = async () => { await host.dispose(); await store.dispose(); fs.rmSync(dir, { recursive: true, force: true }); };
+        return { dir, store, host, view, sink, approval, cleanup };
+    }
+    const decisions = () => mocks.request.mock.calls.filter(([op]) => op === 'download-decide').map(([, payload]) => payload);
+
+    it('reports helper refusals and cancels downloads from unknown views', async () => {
+        const { host, sink } = await open();
+        mocks.onEvent({ event: 'download', viewId: '7:tab:1', url: 'https://files.test/a?token=secret', reason: 'limit' });
+        expect(sink.download).toHaveBeenLastCalledWith({ viewId: 'tab', url: 'files.test', ok: false, error: 'Too many active downloads or pending approvals.' });
+        mocks.onEvent({ event: 'download', viewId: '7:tab:1', url: 'data:text/plain,x', reason: 'unsupported' });
+        expect(sink.download).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, error: 'This download URL is unsupported or exceeds the native limit.' }));
+        mocks.onEvent({ event: 'download', viewId: 'gone', downloadId, url: 'https://files.test/a', filename: 'a' });
+        expect(mocks.request).toHaveBeenCalledWith('download-decide', { viewId: 'gone', downloadId, action: 'cancel' });
+        // Without a download store, an announced download is refused rather than left waiting.
+        mocks.onEvent({ event: 'download', viewId: '7:tab:1', downloadId, url: 'https://files.test/a', filename: 'a' });
+        expect(sink.download).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, error: 'Download approval is unavailable for this source.' }));
+        expect(mocks.request).toHaveBeenCalledWith('download-decide', { viewId: '7:tab:1', downloadId, action: 'cancel' });
+        await host.dispose();
+    });
+
+    it('approves the Save dialog path and routes completion after the tab closes', async () => {
+        let file = '';
+        const choose = vi.fn(async () => file);
+        const fixture = await managed(choose);
+        try {
+            file = path.join(fixture.dir, 'report.csv');
+            mocks.onEvent({ event: 'download', viewId: '7:tab:1', downloadId, url: 'https://files.test/report.csv', filename: '../report?.csv' });
+            await vi.waitFor(() => expect(decisions()).toEqual([{ viewId: '7:tab:1', downloadId, action: 'approve', destination: file }]));
+            expect(choose).toHaveBeenCalledExactlyOnceWith(7, 'report_.csv');
+            await fixture.view.close();
+            fs.writeFileSync(file, 'a,b\n1');
+            mocks.onEvent({ event: 'download-progress', viewId: '7:tab:1', downloadId, state: 'completed', received: 5, total: 5, final: true, canPause: false, canResume: false });
+            const record = (await fixture.store.query()).entries[0];
+            expect(record).toMatchObject({ engine: 'wkwebview', state: 'completed', fileAvailable: true });
+            expect(JSON.stringify(record)).not.toContain(file);
+        } finally { await fixture.cleanup(); }
+    });
+
+    it('drops a pending approval when main navigates the tab before the Save dialog answers', async () => {
+        let finish!: (file: string) => void;
+        const fixture = await managed(() => new Promise<string>(resolve => { finish = resolve; }));
+        try {
+            mocks.onEvent({ event: 'download', viewId: '7:tab:1', downloadId, url: 'https://files.test/report.csv', filename: 'report.csv' });
+            await fixture.view.navigate('https://tab.test/next');
+            expect(decisions()).toEqual([{ viewId: '7:tab:1', downloadId, action: 'cancel' }]);
+            finish(path.join(fixture.dir, 'late.csv'));
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(decisions().some(payload => payload.action === 'approve')).toBe(false);
+            expect((await fixture.store.query()).entries[0]).toMatchObject({ engine: 'wkwebview', state: 'cancelled', fileAvailable: false });
+        } finally { await fixture.cleanup(); }
+    });
+
+    it('interrupts transfers when the helper fails and cancels them before clearing data', async () => {
+        const fixture = await managed(async () => path.join(os.tmpdir(), 'never-written.csv'));
+        try {
+            mocks.onEvent({ event: 'download', viewId: '7:tab:1', downloadId, url: 'https://files.test/a.csv', filename: 'a.csv' });
+            await vi.waitFor(() => expect(decisions()).toHaveLength(1));
+            mocks.onEvent({ event: 'download-progress', viewId: '7:tab:1', downloadId, state: 'downloading', received: 1, total: 5, final: false, canPause: false, canResume: false });
+            expect((await fixture.store.query()).entries[0]).toMatchObject({ state: 'downloading', canPause: false });
+            if (process.platform === 'darwin') {
+                mocks.request.mockClear();
+                await fixture.host.clearData();
+                expect(mocks.request.mock.calls.map(([op, payload]) => [op, payload?.action])).toEqual([['download-action', 'cancel'], ['clear', undefined]]);
+            }
+            mocks.onFailure(new BrowserHostError('runtime-crashed', 'Helper exited.'));
+            expect((await fixture.store.query()).entries[0]).toMatchObject({ state: 'interrupted', active: false });
+        } finally { await fixture.cleanup(); }
     });
 });

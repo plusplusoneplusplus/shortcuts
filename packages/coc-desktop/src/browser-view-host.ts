@@ -137,7 +137,8 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         const window = owners.get(ownerId);
         return !!window && !window.isDestroyed() && !window.webContents.isDestroyed() && isBrowserEmbedder(window.webContents);
     };
-    const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'), downloads, async (ownerId, filename) => {
+    // Native engines ask main for every destination; the page never picks the path.
+    const chooseDownload = async (ownerId: number, filename: string) => {
         if (!downloadOwnerCurrent(ownerId)) return;
         const window = owners.get(ownerId)!;
         const result = await dialog.showSaveDialog(window, {
@@ -147,8 +148,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         });
         if (result.canceled || !downloadOwnerCurrent(ownerId) || owners.get(ownerId) !== window) return;
         return result.filePath;
-    }, downloadOwnerCurrent);
-    const wkwebview = new WkWebViewBrowserHost(browserProfilePath(dataDir, 'wkwebview'));
+    };
+    const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'), downloads, chooseDownload, downloadOwnerCurrent);
+    const wkwebview = new WkWebViewBrowserHost(browserProfilePath(dataDir, 'wkwebview'), downloads, chooseDownload, downloadOwnerCurrent);
     const history = new BrowserHistoryStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_HISTORY_CHANGED_CHANNEL));
     const favoriteStore = favorites = new BrowserFavoritesStore(dataDir, Date.now, () => broadcastInvalidation(BROWSER_FAVORITES_CHANGED_CHANNEL));
     historyMaintenance = setInterval(() => {

@@ -21,15 +21,16 @@ use objc2_app_kit::{
 use objc2_core_foundation::CGPoint;
 use objc2_core_graphics::{CGEvent, CGScrollEventUnit};
 use objc2_foundation::{
-    NSDataBase64EncodingOptions, NSDictionary, NSError, NSKeyValueChangeKey,
+    NSDataBase64EncodingOptions, NSDictionary, NSError, NSHTTPURLResponse, NSKeyValueChangeKey,
     NSKeyValueObservingOptions, NSNotification, NSNotificationCenter, NSNumber, NSObject,
     NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSOperationQueue, NSPoint,
     NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
 };
 use objc2_web_kit::{
-    WKContentWorld, WKNavigation, WKNavigationAction, WKNavigationActionPolicy,
-    WKNavigationDelegate, WKNavigationType, WKSnapshotConfiguration, WKUIDelegate, WKWebView,
-    WKWebViewConfiguration, WKWebsiteDataStore, WKWindowFeatures,
+    WKContentWorld, WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy,
+    WKNavigationDelegate, WKNavigationResponse, WKNavigationResponsePolicy, WKNavigationType,
+    WKSnapshotConfiguration, WKUIDelegate, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKWindowFeatures,
 };
 use serde_json::json;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -38,6 +39,8 @@ use std::ffi::c_void;
 use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+mod downloads;
 
 pub type HostResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -201,6 +204,11 @@ define_class!(
             action: &WKNavigationAction,
             handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>,
         ) {
+            // `<a download>`: saved through main's approval, which the Save dialog gates.
+            if unsafe { action.shouldPerformDownload() } {
+                handler.call((WKNavigationActionPolicy::Download,));
+                return;
+            }
             // Main-frame documents stay HTTP(S); subframes may use about:/data: documents.
             let main_frame = unsafe { action.targetFrame() }.is_some_and(|frame| unsafe { frame.isMainFrame() });
             let url = url_string(unsafe { action.request() }.URL().as_deref());
@@ -225,6 +233,32 @@ define_class!(
                 *view.policy_url.borrow_mut() = url.clone();
             }
             handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
+        }
+
+        #[unsafe(method(webView:decidePolicyForNavigationResponse:decisionHandler:))]
+        fn decide_response(
+            &self,
+            _web_view: &WKWebView,
+            response: &WKNavigationResponse,
+            handler: &block2::DynBlock<dyn Fn(WKNavigationResponsePolicy)>,
+        ) {
+            let (can_show, native) = unsafe { (response.canShowMIMEType(), response.response()) };
+            let disposition = native
+                .downcast_ref::<NSHTTPURLResponse>()
+                .and_then(|http| http.valueForHTTPHeaderField(&NSString::from_str("Content-Disposition")))
+                .map(|value| value.to_string());
+            let download = protocol::download_response(can_show, disposition.as_deref());
+            handler.call((if download { WKNavigationResponsePolicy::Download } else { WKNavigationResponsePolicy::Allow },));
+        }
+
+        #[unsafe(method(webView:navigationAction:didBecomeDownload:))]
+        fn action_download(&self, _web_view: &WKWebView, _action: &WKNavigationAction, download: &WKDownload) {
+            self.became_download(download);
+        }
+
+        #[unsafe(method(webView:navigationResponse:didBecomeDownload:))]
+        fn response_download(&self, _web_view: &WKWebView, _response: &WKNavigationResponse, download: &WKDownload) {
+            self.became_download(download);
         }
 
         #[unsafe(method(webView:didStartProvisionalNavigation:))]
@@ -350,6 +384,13 @@ impl NavigationDelegate {
         };
         // WebKit treats None as a blocked window.
         open_popup(&opener, configuration, &url, size, position, main_thread())
+    }
+
+    fn became_download(&self, download: &WKDownload) {
+        match self.view() {
+            Some(view) => downloads::begin(&view, download, main_thread()),
+            None => unsafe { download.cancel(None) },
+        }
     }
 
     fn view(&self) -> Option<Rc<View>> {
@@ -555,6 +596,7 @@ impl View {
         }
         // WebKit requires every policy handler to be called.
         self.cancel_held_gates();
+        downloads::cancel_view(&self.id);
         if self.popup {
             protocol::emit(
                 json!({ "event": "popup-closed", "viewId": self.id, "rootId": self.root_id }),
@@ -612,6 +654,10 @@ impl View {
             return;
         }
         let id = self.navigation_id(navigation);
+        // A new document revokes the old one's unanswered download approvals.
+        if !self.provisional.get() {
+            downloads::cancel_view(&self.id);
+        }
         self.provisional.set(true);
         self.history.borrow_mut().started(id);
         let url = url_string(unsafe { self.webview.URL() }.as_deref());
@@ -1130,6 +1176,7 @@ impl View {
             return;
         }
         self.close_popups();
+        downloads::cancel_view(&self.id);
         self.history.borrow_mut().invalidate();
         self.navigations.borrow_mut().clear();
         *self.error.borrow_mut() = Some((code.to_string(), message.to_string()));
@@ -1813,6 +1860,11 @@ fn dispatch(command: Command) {
             std::process::exit(0);
         }
         "open" => match open(&command, main_thread()) {
+            Ok(()) => protocol::success(command.id),
+            Err(message) => protocol::failure(command.id, "invalid", message),
+        },
+        // Approved downloads outlive their view; the owner id still has to match.
+        "download-decide" | "download-action" => match downloads::command(&command) {
             Ok(()) => protocol::success(command.id),
             Err(message) => protocol::failure(command.id, "invalid", message),
         },

@@ -102,6 +102,10 @@ pub struct Command {
     pub allow: Option<bool>,
     /// `import-profile-cookies`: cookies added to the profile's data store.
     pub cookies: Option<Vec<ImportCookie>>,
+    /// `download-decide`/`download-action`: the helper's id for a held or running download.
+    pub download_id: Option<String>,
+    /// `download-decide` approve: absolute path from main's native Save dialog.
+    pub destination: Option<String>,
 }
 
 /// Same shape as WebView2's import (`BrowserImportCookie` in coc-desktop).
@@ -618,6 +622,25 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
     write_line(&format!("{{\"id\":{id},\"ok\":false,\"reason\":{reason},\"message\":{message}}}"));
 }
 
+/// Main supplies the destination from its native Save dialog, never a page or renderer:
+/// an absolute path of plain components.
+pub fn allowed_download_destination(value: &str) -> bool {
+    value.len() <= 1024
+        && !value.chars().any(char::is_control)
+        && value.strip_prefix('/').is_some_and(|tail| {
+            tail.split('/')
+                .all(|part| !part.is_empty() && part != "." && part != ".." && part.len() <= 255)
+        })
+}
+
+/// WebKit saves a response it cannot show, or one the server marks as an attachment.
+pub fn download_response(can_show: bool, disposition: Option<&str>) -> bool {
+    !can_show
+        || disposition.is_some_and(|value| {
+            value.split(';').next().unwrap_or_default().trim().eq_ignore_ascii_case("attachment")
+        })
+}
+
 /// `--check` result for a macOS major version; WKWebView hosting requires macOS 14+.
 pub fn availability(macos_major: Option<u64>) -> Value {
     match macos_major {
@@ -1036,5 +1059,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!((decision.gate_id, decision.allow), (Some(3), Some(false)));
+    }
+
+    #[test]
+    fn download_destinations_are_plain_absolute_paths() {
+        for path in ["/Users/me/Downloads/file.zip", "/tmp/a b/file", "/f"] {
+            assert!(allowed_download_destination(path), "{path}");
+        }
+        let long = format!("/{}", "a".repeat(256));
+        for path in [
+            "",
+            "/",
+            "relative/file",
+            "~/file",
+            "/a/../file",
+            "/a/./file",
+            "/a//file",
+            "/a/file/",
+            "/a/\0file",
+            "/a/\nfile",
+            long.as_str(),
+        ] {
+            assert!(!allowed_download_destination(path), "{path:?}");
+        }
+        assert!(!allowed_download_destination(&format!("/{}", "a/".repeat(600))));
+    }
+
+    #[test]
+    fn responses_download_when_unshowable_or_attachments() {
+        assert!(download_response(false, None));
+        assert!(download_response(true, Some("attachment")));
+        assert!(download_response(true, Some(" Attachment ; filename=\"a.txt\"")));
+        assert!(!download_response(true, Some("inline; filename=a.txt")));
+        assert!(!download_response(true, Some("attachments")));
+        assert!(!download_response(true, None));
     }
 }

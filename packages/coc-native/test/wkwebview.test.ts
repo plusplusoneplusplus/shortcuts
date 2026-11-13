@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import * as http from 'node:http';
 import * as https from 'node:https';
@@ -500,6 +500,102 @@ describe('desktop native WKWebView packaging contract', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     }, 30_000);
+
+    it.skipIf(!supportedMacos || !helper)('holds downloads for a main-approved destination and reports progress', async () => {
+        const body = 'downloaded '.repeat(1000);
+        let release: (() => void) | undefined;
+        const server = http.createServer((request, response) => {
+            if (request.url === '/file') {
+                response.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="report.txt"' });
+                response.end(body);
+            } else if (request.url === '/binary') {
+                response.writeHead(200, { 'content-type': 'application/x-coc-test' });
+                response.end('binary');
+            } else if (request.url === '/slow') {
+                response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': '2000000' });
+                response.write(Buffer.alloc(1000));
+                release = () => response.destroy();
+            } else {
+                response.writeHead(200, { 'content-type': 'text/html' });
+                response.end('<title>Downloads</title>');
+            }
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const dir = mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-downloads-'));
+        const run = runHelper(`coc-wkwebview-downloads-${process.pid}`);
+        const download = async (url: string) => {
+            const from = run.events.length;
+            await run.send({ op: 'navigate', viewId: 'dl', url });
+            return run.waitFor(event => event.event === 'download', from);
+        };
+        const final = (id: string) => run.waitFor(event => event.event === 'download-progress' && event.downloadId === id && event.final);
+        try {
+            await run.ready;
+            await run.send({ op: 'open', viewId: 'dl', url: `${origin}/` });
+            await run.waitFor(event => event.event === 'visited');
+
+            // An attachment waits for main's destination; replacing a file is the Save dialog's choice.
+            const first = await download(`${origin}/file`);
+            expect(first).toMatchObject({ viewId: 'dl', url: `${origin}/file`, filename: 'report.txt' });
+            expect(first.downloadId).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+            const destination = path.join(dir, 'saved.txt');
+            writeFileSync(destination, 'old');
+            expect(await run.send({ op: 'download-decide', viewId: 'other', downloadId: first.downloadId, action: 'approve', destination }))
+                .toMatchObject({ ok: false });
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: first.downloadId, action: 'approve', destination }))
+                .toMatchObject({ ok: true });
+            expect(await final(first.downloadId)).toMatchObject({ viewId: 'dl', state: 'completed', received: body.length, total: body.length, canPause: false });
+            expect(readFileSync(destination, 'utf8')).toBe(body);
+            // The download is not a failed navigation, and decisions are single-use.
+            expect((await run.send({ op: 'view-state', viewId: 'dl' })).result.error).toBeUndefined();
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: first.downloadId, action: 'cancel' })).toMatchObject({ ok: false });
+
+            // A type WebKit cannot show downloads too; a bad destination fails it.
+            const second = await download(`${origin}/binary`);
+            expect(second.filename).toBe('binary');
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: second.downloadId, action: 'approve', destination: 'relative.txt' }))
+                .toMatchObject({ ok: false });
+            expect(await final(second.downloadId)).toMatchObject({ state: 'failed' });
+
+            // Main can refuse; a new document revokes an unanswered approval.
+            const third = await download(`${origin}/file`);
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: third.downloadId, action: 'cancel' })).toMatchObject({ ok: true });
+            expect(await final(third.downloadId)).toMatchObject({ state: 'cancelled' });
+            const fourth = await download(`${origin}/file`);
+            await run.send({ op: 'navigate', viewId: 'dl', url: `${origin}/` });
+            expect(await final(fourth.downloadId)).toMatchObject({ state: 'cancelled' });
+
+            // A running transfer reports progress, cannot pause, and can be cancelled.
+            const slow = await download(`${origin}/slow`);
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: slow.downloadId, action: 'approve', destination: path.join(dir, 'slow.bin') }))
+                .toMatchObject({ ok: true });
+            expect(await run.waitFor(event => event.event === 'download-progress' && event.downloadId === slow.downloadId && event.received > 0))
+                .toMatchObject({ state: 'downloading', total: 2000000, final: false, canPause: false });
+            expect(await run.send({ op: 'download-action', viewId: 'dl', downloadId: slow.downloadId, action: 'pause' })).toMatchObject({ ok: false });
+            expect(await run.send({ op: 'download-action', viewId: 'dl', downloadId: slow.downloadId, action: 'cancel' })).toMatchObject({ ok: true });
+            expect(await final(slow.downloadId)).toMatchObject({ state: 'cancelled' });
+            release?.();
+
+            // `<a download>` with a page blob goes through the same approval.
+            const from = run.events.length;
+            await run.send({ op: 'evaluate', viewId: 'dl', world: 'page', expression:
+                `(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['blob body'])); a.download = 'blob.txt'; document.body.append(a); a.click(); return true; })()` });
+            const blob = await run.waitFor(event => event.event === 'download', from);
+            expect(blob).toMatchObject({ filename: 'blob.txt' });
+            expect(blob.url).toMatch(/^blob:/);
+            expect(await run.send({ op: 'download-decide', viewId: 'dl', downloadId: blob.downloadId, action: 'approve', destination: path.join(dir, 'blob.txt') }))
+                .toMatchObject({ ok: true });
+            expect(await final(blob.downloadId)).toMatchObject({ state: 'completed' });
+            expect(readFileSync(path.join(dir, 'blob.txt'), 'utf8')).toBe('blob body');
+            await run.send({ op: 'quit' });
+        } finally {
+            release?.();
+            run.child.kill();
+            server.close();
+            rmSync(dir, { recursive: true, force: true });
+        }
+    }, 60_000);
 
     it.skipIf(!supportedMacos || !helper)('drives background views with synthesized input, content worlds and screenshots', async () => {
         const page = `<title>Control</title><style>
