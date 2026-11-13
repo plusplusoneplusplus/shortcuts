@@ -80,6 +80,8 @@ pub struct Command {
     pub page_zoom_percent: Option<f64>,
     /// `open`/`tab-shortcuts`: route Cmd+1–9 and Cmd hold to main for tab switching.
     pub tab_shortcuts: Option<bool>,
+    /// `evaluate`: JavaScript expression run in the helper's isolated content world.
+    pub expression: Option<String>,
 }
 
 pub fn allowed_view_id(value: &str) -> bool {
@@ -198,6 +200,15 @@ pub fn tab_modifier_report(modifier_change: bool, command: bool, held: bool) -> 
 /// popups (sign-in windows); anything else opens as a tab in main.
 pub fn popup_window(has_size: bool, has_position: bool, toolbars: Option<bool>) -> bool {
     has_size || has_position || toolbars == Some(false)
+}
+
+/// Wraps an expression so its awaited result comes back as JSON text (null for
+/// `undefined`), which keeps the reply independent of WebKit's object bridging.
+pub fn evaluation_body(expression: &str) -> String {
+    format!(
+        "const value = await (0, eval)({});\nreturn value === undefined ? null : JSON.stringify(value);",
+        serde_json::to_string(expression).unwrap_or_default()
+    )
 }
 
 /// Error text for a failed main-frame load, or None when the load was cancelled
@@ -410,6 +421,15 @@ mod tests {
         assert_eq!(tab_modifier_report(true, false, false), None);
         assert_eq!(tab_modifier_report(false, true, true), Some(false));
         assert_eq!(tab_modifier_report(false, true, false), None);
+    }
+
+    #[test]
+    fn evaluation_body_quotes_the_expression() {
+        let body = evaluation_body("document.title + \"\\n\"");
+        assert!(
+            body.starts_with("const value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");")
+        );
+        assert!(body.ends_with("return value === undefined ? null : JSON.stringify(value);"));
     }
 
     #[test]

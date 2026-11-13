@@ -232,4 +232,97 @@ describe('desktop native WKWebView packaging contract', () => {
             server.close();
         }
     }, 30_000);
+
+    it.skipIf(!supportedMacos || !helper)('hosts page-opened popups under their root tab and closes them with it', async () => {
+        const pages: Record<string, string> = {
+            '/opener': '<title>Opener</title>',
+            '/popup': '<title>Popup</title>',
+        };
+        const server = http.createServer((request, response) => {
+            const page = pages[request.url ?? ''];
+            response.writeHead(page ? 200 : 404, { 'content-type': 'text/html' });
+            response.end(page ?? 'missing');
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const helperRun = runHelper(`coc-wkwebview-popup-${process.pid}`);
+        const { events, send, waitFor } = helperRun;
+        try {
+            await helperRun.ready;
+            await send({ op: 'open', viewId: 'v1', url: `${origin}/opener` });
+            await waitFor(event => event.event === 'visited' && event.viewId === 'v1');
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: '({ title: document.title, n: 1 + 1 })' }))
+                .toEqual({ id: 2, ok: true, result: { value: { title: 'Opener', n: 2 } } });
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'undefined' })).toMatchObject({ ok: true, result: { value: null } });
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'throw new Error("boom")' }))
+                .toMatchObject({ ok: false, reason: 'evaluation-failed' });
+
+            // A window without features is a tab request for main; nothing is hosted.
+            await send({ op: 'evaluate', viewId: 'v1', expression: 'String(window.open("/popup"))' });
+            expect(await waitFor(event => event.event === 'new-tab')).toEqual({ event: 'new-tab', viewId: 'v1', url: `${origin}/popup` });
+
+            await send({ op: 'evaluate', viewId: 'v1', expression: 'window.open("/popup", "p", "width=320,height=240") ? "opened" : "blocked"' });
+            const opened = await waitFor(event => event.event === 'popup-opened');
+            expect(opened).toEqual({ event: 'popup-opened', viewId: expect.stringMatching(/^v1:popup:[1-9]\d*$/), rootId: 'v1', url: `${origin}/popup` });
+            const popupId = opened.viewId as string;
+            // History is recorded against the root tab, with the popup as the source.
+            expect(await waitFor(event => event.event === 'visited' && event.sourceViewId === popupId))
+                .toMatchObject({ viewId: 'v1', url: `${origin}/popup` });
+            await waitFor(event => event.event === 'state' && event.viewId === popupId && event.state.title === 'Popup' && !event.state.loading);
+            const popupState = (await send({ op: 'view-state', viewId: popupId })).result;
+            expect(popupState).toMatchObject({ mode: 'popup', visible: true, page: { url: `${origin}/popup`, title: 'Popup' } });
+            expect(popupState.frame).toMatchObject({ width: 320 });
+            // Background work opened the popup, so it appears without taking the keyboard.
+            expect(popupState.key).toBe(false);
+
+            // The page closing its own window closes the popup.
+            await send({ op: 'evaluate', viewId: popupId, expression: 'window.close()' });
+            expect(await waitFor(event => event.event === 'popup-closed')).toEqual({ event: 'popup-closed', viewId: popupId, rootId: 'v1' });
+            expect(await send({ op: 'view-state', viewId: popupId })).toMatchObject({ ok: false, reason: 'not-found' });
+
+            // Closing the root tab closes its remaining popups.
+            await send({ op: 'evaluate', viewId: 'v1', expression: 'window.open("/popup", "q", "left=10,top=20") ? "opened" : "blocked"' });
+            const second = await waitFor(event => event.event === 'popup-opened' && event.viewId !== popupId);
+            await send({ op: 'close', viewId: 'v1' });
+            expect(await waitFor(event => event.event === 'popup-closed' && event.viewId === second.viewId)).toMatchObject({ rootId: 'v1' });
+            expect(await send({ op: 'view-state', viewId: second.viewId })).toMatchObject({ ok: false, reason: 'not-found' });
+            await send({ op: 'quit' });
+        } finally {
+            helperRun.child.kill();
+            server.close();
+        }
+    }, 30_000);
 });
+
+function runHelper(name: string) {
+    const child = spawn(helper, [path.join(os.tmpdir(), name)], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const lines = readline.createInterface({ input: child.stdout });
+    const pending = new Map<number, (reply: any) => void>();
+    const events: any[] = [];
+    const waiters: Array<{ match: (event: any) => boolean; resolve: (event: any) => void }> = [];
+    let isReady!: () => void;
+    const ready = new Promise<void>(resolve => { isReady = resolve; });
+    lines.on('line', line => {
+        const message = JSON.parse(line);
+        if (message.event === 'ready') { isReady(); return; }
+        if (message.event) {
+            events.push(message);
+            for (const waiter of waiters.splice(0)) {
+                if (waiter.match(message)) { waiter.resolve(message); } else { waiters.push(waiter); }
+            }
+            return;
+        }
+        pending.get(message.id)?.(message);
+    });
+    const waitFor = (match: (event: any) => boolean, from = 0) => new Promise<any>(resolve => {
+        const found = events.slice(from).find(match);
+        if (found) { resolve(found); } else { waiters.push({ match, resolve }); }
+    });
+    let nextId = 1;
+    const send = (command: Record<string, unknown>) => new Promise<any>(resolve => {
+        const id = nextId++;
+        pending.set(id, resolve);
+        child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
+    });
+    return { child, events, ready, send, waitFor };
+}

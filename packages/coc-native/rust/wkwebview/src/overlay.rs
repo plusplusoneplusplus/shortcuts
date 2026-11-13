@@ -44,6 +44,33 @@ pub fn from_appkit(frame: &Frame, primary_height: f64) -> Bounds {
     }
 }
 
+/// Content bounds (Electron screen coordinates) for a page-opened popup window: the
+/// requested size clamped to 100–8192 points (480x560 by default), at the requested
+/// position or centered on the opener.
+pub fn popup_bounds(
+    size: (Option<f64>, Option<f64>),
+    position: (Option<f64>, Option<f64>),
+    opener: &Bounds,
+) -> Bounds {
+    let edge = |value: Option<f64>, default: f64| {
+        value
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .map_or(default, |value| value.clamp(100.0, 8192.0))
+    };
+    let (width, height) = (edge(size.0, 480.0), edge(size.1, 560.0));
+    let coordinate = |value: Option<f64>, centered: f64| {
+        value
+            .filter(|value| value.is_finite())
+            .map_or(centered, |value| value.clamp(-1_000_000.0, 1_000_000.0))
+    };
+    Bounds {
+        x: coordinate(position.0, opener.x + (opener.width - width) / 2.0),
+        y: coordinate(position.1, opener.y + (opener.height - height) / 2.0),
+        width,
+        height,
+    }
+}
+
 /// What main last told the helper about one view.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Placement {
@@ -108,6 +135,27 @@ mod tests {
 
     fn bounds(x: f64, y: f64, width: f64, height: f64) -> Bounds {
         Bounds { x, y, width, height }
+    }
+
+    #[test]
+    fn popups_center_on_the_opener_with_clamped_requested_sizes() {
+        let opener = bounds(100.0, 50.0, 800.0, 600.0);
+        assert_eq!(
+            popup_bounds((None, None), (None, None), &opener),
+            bounds(260.0, 70.0, 480.0, 560.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(20.0), Some(9000.0)), (None, None), &opener),
+            bounds(450.0, -3746.0, 100.0, 8192.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(f64::NAN), Some(-1.0)), (Some(10.0), Some(f64::INFINITY)), &opener),
+            bounds(10.0, 70.0, 480.0, 560.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(300.0), Some(200.0)), (Some(-50.0), Some(40.0)), &opener),
+            bounds(-50.0, 40.0, 300.0, 200.0)
+        );
     }
 
     fn placed() -> Placement {

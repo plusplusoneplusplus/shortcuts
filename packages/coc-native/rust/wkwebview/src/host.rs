@@ -11,19 +11,20 @@ use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy,
     NSApplicationDidChangeScreenParametersNotification, NSAutoresizingMaskOptions,
     NSBackingStoreType, NSEvent, NSEventModifierFlags, NSEventType, NSPanel, NSResponder, NSScreen,
-    NSWindow, NSWindowCollectionBehavior, NSWindowNumberListOptions, NSWindowOrderingMode,
-    NSWindowStyleMask, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
-    NSWorkspaceDidActivateApplicationNotification,
+    NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowNumberListOptions,
+    NSWindowOrderingMode, NSWindowStyleMask, NSWorkspace,
+    NSWorkspaceActiveSpaceDidChangeNotification, NSWorkspaceDidActivateApplicationNotification,
 };
 use objc2_foundation::{
-    NSDictionary, NSError, NSKeyValueChangeKey, NSKeyValueObservingOptions, NSNotificationCenter,
-    NSObject, NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSOperationQueue, NSPoint,
-    NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
+    NSDictionary, NSError, NSKeyValueChangeKey, NSKeyValueObservingOptions, NSNotification,
+    NSNotificationCenter, NSObject, NSObjectNSKeyValueObserverRegistration, NSObjectProtocol,
+    NSOperationQueue, NSPoint, NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL,
+    NSUUID,
 };
 use objc2_web_kit::{
-    WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
-    WKNavigationType, WKUIDelegate, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
-    WKWindowFeatures,
+    WKContentWorld, WKNavigation, WKNavigationAction, WKNavigationActionPolicy,
+    WKNavigationDelegate, WKNavigationType, WKUIDelegate, WKWebView, WKWebViewConfiguration,
+    WKWebsiteDataStore, WKWindowFeatures,
 };
 use serde_json::json;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -242,23 +243,29 @@ define_class!(
         fn create_web_view(
             &self,
             _web_view: &WKWebView,
-            _configuration: &WKWebViewConfiguration,
+            configuration: &WKWebViewConfiguration,
             action: &WKNavigationAction,
             features: &WKWindowFeatures,
         ) -> Option<Retained<WKWebView>> {
-            let popup = unsafe {
-                protocol::popup_window(
-                    features.width().is_some() || features.height().is_some(),
-                    features.x().is_some() || features.y().is_some(),
-                    features.toolbarsVisibility().map(|visible| visible.boolValue()),
-                )
-            };
-            // Popup windows are not hosted yet; WebKit treats None as a blocked window.
-            if !popup {
-                let url = url_string(unsafe { action.request() }.URL().as_deref());
-                self.with_view(|view| view.new_tab(&url));
+            self.create_web_view_for(configuration, action, features)
+        }
+
+        #[unsafe(method(webViewDidClose:))]
+        fn did_close(&self, _web_view: &WKWebView) {
+            // `window.close()`; only popups close themselves, tabs stay owned by main.
+            if let Some(view) = self.view().filter(|view| view.popup) {
+                discard(&view);
             }
-            None
+        }
+    }
+
+    unsafe impl NSWindowDelegate for NavigationDelegate {
+        #[unsafe(method(windowWillClose:))]
+        fn window_will_close(&self, _notification: &NSNotification) {
+            // The user closed a popup window with its close button or Cmd+W.
+            if let Some(view) = self.view().filter(|view| view.popup) {
+                discard(&view);
+            }
         }
     }
 
@@ -283,9 +290,45 @@ impl NavigationDelegate {
         unsafe { msg_send![super(this), init] }
     }
 
-    fn with_view(&self, action: impl FnOnce(&View)) {
+    fn create_web_view_for(
+        &self,
+        configuration: &WKWebViewConfiguration,
+        action: &WKNavigationAction,
+        features: &WKWindowFeatures,
+    ) -> Option<Retained<WKWebView>> {
+        let popup = unsafe {
+            protocol::popup_window(
+                features.width().is_some() || features.height().is_some(),
+                features.x().is_some() || features.y().is_some(),
+                features.toolbarsVisibility().map(|visible| visible.boolValue()),
+            )
+        };
+        let url = url_string(unsafe { action.request() }.URL().as_deref());
+        let opener = self.view()?;
+        if !popup {
+            opener.new_tab(&url);
+            return None;
+        }
+        let number = |value: Option<Retained<objc2_foundation::NSNumber>>| {
+            value.map(|value| value.doubleValue())
+        };
+        let (size, position) = unsafe {
+            (
+                (number(features.width()), number(features.height())),
+                (number(features.x()), number(features.y())),
+            )
+        };
+        // WebKit treats None as a blocked window.
+        open_popup(&opener, configuration, &url, size, position, main_thread())
+    }
+
+    fn view(&self) -> Option<Rc<View>> {
         let view = VIEWS.with(|views| views.borrow().get(&self.ivars().view_id).cloned());
-        if let Some(view) = view.filter(|view| !view.closed.get()) {
+        view.filter(|view| !view.closed.get())
+    }
+
+    fn with_view(&self, action: impl FnOnce(&View)) {
+        if let Some(view) = self.view() {
             action(&view);
         }
     }
@@ -297,6 +340,10 @@ fn url_string(url: Option<&NSURL>) -> String {
 
 struct View {
     id: String,
+    /// The tab a popup belongs to; a tab's own id. History and cleanup follow the root.
+    root_id: String,
+    /// A page-opened window (sign-in and similar) rather than a tab's overlay panel.
+    popup: bool,
     panel: Retained<BrowserPanel>,
     webview: Retained<WKWebView>,
     delegate: Retained<NavigationDelegate>,
@@ -322,6 +369,7 @@ struct View {
 thread_local! {
     static DATA_STORE: OnceCell<String> = const { OnceCell::new() };
     static VIEWS: RefCell<HashMap<String, Rc<View>>> = RefCell::new(HashMap::new());
+    static NEXT_POPUP: Cell<u64> = const { Cell::new(0) };
 }
 
 fn main_thread() -> MainThreadMarker {
@@ -349,6 +397,10 @@ fn frame_of(rect: NSRect) -> Frame {
 
 impl View {
     fn apply(&self, mtm: MainThreadMarker) {
+        // Popups are ordinary windows the user moves; main does not place them.
+        if self.popup {
+            return;
+        }
         let mut placement = self.placement.get();
         placement.parent_on_active_space =
             self.parent_window.get().is_none_or(|window| parent_on_active_space(window, mtm));
@@ -387,7 +439,7 @@ impl View {
     fn state(&self, mtm: MainThreadMarker) -> serde_json::Value {
         let frame = overlay::from_appkit(&frame_of(self.panel.frame()), primary_height(mtm));
         json!({
-            "mode": self.mode.get().name(),
+            "mode": if self.popup { "popup" } else { self.mode.get().name() },
             "visible": self.panel.isVisible(),
             "key": self.panel.isKeyWindow(),
             "frame": { "x": frame.x, "y": frame.y, "width": frame.width, "height": frame.height },
@@ -400,6 +452,13 @@ impl View {
         if self.closed.replace(true) {
             return;
         }
+        if self.popup {
+            protocol::emit(
+                json!({ "event": "popup-closed", "viewId": self.id, "rootId": self.root_id }),
+            );
+        } else {
+            self.close_popups();
+        }
         unsafe {
             self.webview.setNavigationDelegate(None);
             self.webview.setUIDelegate(None);
@@ -410,6 +469,16 @@ impl View {
         }
         self.panel.orderOut(None);
         self.panel.close();
+    }
+
+    fn close_popups(&self) {
+        let popups: Vec<_> = VIEWS.with(|views| {
+            let views = views.borrow();
+            views.values().filter(|view| view.popup && view.root_id == self.id).cloned().collect()
+        });
+        for popup in popups {
+            discard(&popup);
+        }
     }
 
     fn navigation_id(&self, navigation: Option<&WKNavigation>) -> u64 {
@@ -499,6 +568,11 @@ impl View {
             "title" if self.history.borrow().title_changed() => self.push_history(false),
             _ => {}
         }
+        if self.popup && key == "title" {
+            let title =
+                unsafe { self.webview.title() }.map(|title| title.to_string()).unwrap_or_default();
+            self.panel.setTitle(&NSString::from_str(&protocol::wire_title(&title)));
+        }
         self.push();
     }
 
@@ -571,7 +645,9 @@ impl View {
         let url = url_string(unsafe { self.webview.URL() }.as_deref());
         let title =
             unsafe { self.webview.title() }.map(|title| title.to_string()).unwrap_or_default();
-        if let Some(message) = protocol::history_message(&self.id, &self.id, &url, &title, visit) {
+        if let Some(message) =
+            protocol::history_message(&self.root_id, &self.id, &url, &title, visit)
+        {
             protocol::emit(message);
         }
     }
@@ -638,6 +714,14 @@ impl View {
     }
 
     fn fail(&self, code: &str, message: &str) {
+        // A crashed popup closes like WebView2's; a tab keeps its crash page for recovery.
+        if self.popup {
+            if let Some(view) = VIEWS.with(|views| views.borrow().get(&self.id).cloned()) {
+                discard(&view);
+            }
+            return;
+        }
+        self.close_popups();
         self.history.borrow_mut().invalidate();
         self.navigations.borrow_mut().clear();
         *self.error.borrow_mut() = Some((code.to_string(), message.to_string()));
@@ -721,23 +805,13 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         percent => percent.unwrap_or(100.0),
     };
     let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1024.0, 768.0));
-    let panel: Retained<BrowserPanel> = unsafe {
-        msg_send![
-            super(BrowserPanel::alloc(mtm).set_ivars(PanelIvars::default())),
-            initWithContentRect: rect,
-            styleMask: NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel,
-            backing: NSBackingStoreType::Buffered,
-            defer: false,
-        ]
-    };
+    let panel =
+        new_panel(rect, NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel, mtm);
     let webview = unsafe {
         let configuration = WKWebViewConfiguration::new(mtm);
         configuration.setWebsiteDataStore(&WKWebsiteDataStore::dataStoreForIdentifier(&uuid, mtm));
         WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), rect, &configuration)
     };
-    unsafe { panel.setReleasedWhenClosed(false) };
-    // Panels hide when their app deactivates; this helper is never the active app.
-    panel.setHidesOnDeactivate(false);
     panel.setHasShadow(false);
     panel.setCollectionBehavior(
         NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -745,6 +819,50 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
             | NSWindowCollectionBehavior::IgnoresCycle
             | NSWindowCollectionBehavior::Transient,
     );
+    let view = register_view(id, id, panel, webview, url, mtm);
+    view.parent_window.set(parent);
+    view.placement.set(Placement {
+        bounds,
+        parent_shown: command.visible.unwrap_or(false),
+        ..Placement::default()
+    });
+    view.tab_shortcuts.set(command.tab_shortcuts == Some(true));
+    unsafe { view.webview.setPageZoom(zoom / 100.0) };
+    view.apply(mtm);
+    view.navigate(|| view.load(url));
+    Ok(())
+}
+
+fn new_panel(
+    rect: NSRect,
+    style: NSWindowStyleMask,
+    mtm: MainThreadMarker,
+) -> Retained<BrowserPanel> {
+    let panel: Retained<BrowserPanel> = unsafe {
+        msg_send![
+            super(BrowserPanel::alloc(mtm).set_ivars(PanelIvars::default())),
+            initWithContentRect: rect,
+            styleMask: style,
+            backing: NSBackingStoreType::Buffered,
+            defer: false,
+        ]
+    };
+    unsafe { panel.setReleasedWhenClosed(false) };
+    // Panels hide when their app deactivates; this helper is never the active app.
+    panel.setHidesOnDeactivate(false);
+    panel
+}
+
+/// Wires a new web view to its delegate and registers it. A popup's id differs from
+/// its root's; a tab is its own root.
+fn register_view(
+    id: &str,
+    root_id: &str,
+    panel: Retained<BrowserPanel>,
+    webview: Retained<WKWebView>,
+    url: &str,
+    mtm: MainThreadMarker,
+) -> Rc<View> {
     webview.setAutoresizingMask(
         NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
     );
@@ -752,15 +870,13 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
     let delegate = NavigationDelegate::new(id, mtm);
     let view = Rc::new(View {
         id: id.to_string(),
+        root_id: root_id.to_string(),
+        popup: id != root_id,
         panel,
         webview,
         delegate,
-        parent_window: Cell::new(parent),
-        placement: Cell::new(Placement {
-            bounds,
-            parent_shown: command.visible.unwrap_or(false),
-            ..Placement::default()
-        }),
+        parent_window: Cell::new(None),
+        placement: Cell::new(Placement::default()),
         mode: Cell::new(PanelMode::Hidden),
         closed: Cell::new(false),
         history: RefCell::new(HistoryNavigation::default()),
@@ -770,13 +886,12 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         requested: RefCell::new(url.to_string()),
         error: RefCell::new(None),
         pushed: RefCell::new(None),
-        tab_shortcuts: Cell::new(command.tab_shortcuts == Some(true)),
+        tab_shortcuts: Cell::new(false),
         tab_modifier_held: Cell::new(false),
     });
     let _ = view.panel.ivars().view_id.set(id.to_string());
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
     unsafe {
-        view.webview.setPageZoom(zoom / 100.0);
         view.webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
         view.webview.setUIDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
         for key in OBSERVED_KEYS {
@@ -788,9 +903,83 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
             );
         }
     }
-    view.apply(mtm);
-    view.navigate(|| view.load(url));
-    Ok(())
+    view
+}
+
+/// Removes a view the helper closes on its own (popup close, crash, root close).
+fn discard(view: &Rc<View>) {
+    VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        if views.get(&view.id).is_some_and(|current| Rc::ptr_eq(current, view)) {
+            views.remove(&view.id);
+        }
+    });
+    view.close();
+}
+
+/// Hosts a page-opened window in a titled window built from WebKit's configuration, so
+/// `window.opener` and the shared session keep working. WebKit loads the request itself.
+fn open_popup(
+    opener: &View,
+    configuration: &WKWebViewConfiguration,
+    url: &str,
+    size: (Option<f64>, Option<f64>),
+    position: (Option<f64>, Option<f64>),
+    mtm: MainThreadMarker,
+) -> Option<Retained<WKWebView>> {
+    if opener.error.borrow().as_ref().is_some_and(|(code, _)| code == "runtime-crashed") {
+        return None;
+    }
+    let root = VIEWS.with(|views| views.borrow().get(&opener.root_id).cloned())?;
+    if root.closed.get() {
+        return None;
+    }
+    let number = NEXT_POPUP.with(|next| {
+        next.set(next.get() + 1);
+        next.get()
+    });
+    let id = format!("{}:popup:{number}", root.id);
+    let primary = primary_height(mtm);
+    let anchor = if opener.panel.isVisible()
+        && opener.panel.frame().origin.x > overlay::OFFSCREEN_ORIGIN / 2.0
+    {
+        opener.panel.frame()
+    } else {
+        NSScreen::mainScreen(mtm).map_or(opener.panel.frame(), |screen| screen.visibleFrame())
+    };
+    let bounds =
+        overlay::popup_bounds(size, position, &overlay::from_appkit(&frame_of(anchor), primary));
+    let content = ns_rect(overlay::to_appkit(&bounds, primary));
+    let panel = new_panel(
+        content,
+        NSWindowStyleMask::Titled
+            | NSWindowStyleMask::Closable
+            | NSWindowStyleMask::Miniaturizable
+            | NSWindowStyleMask::Resizable,
+        mtm,
+    );
+    let webview = unsafe {
+        WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), content, configuration)
+    };
+    let url = if protocol::allowed_url(url, false) { url } else { "about:blank" };
+    let view = register_view(&id, &root.id, panel, webview, url, mtm);
+    view.panel.setDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
+    // The initial document is pending until WebKit starts loading it.
+    view.history.borrow_mut().requested();
+    protocol::emit(json!({ "event": "popup-opened", "viewId": id, "rootId": root.id, "url": url }));
+    // A popup the user opened from a focused tab takes focus; one opened by background
+    // work only appears, so it never steals the keyboard.
+    if opener.panel.isKeyWindow() {
+        view.panel.ivars().key_allowed.set(true);
+        NSApplication::sharedApplication(mtm).activate();
+        view.panel.makeKeyAndOrderFront(None);
+        view.panel.makeFirstResponder(Some(&view.webview));
+        protocol::emit(json!({ "event": "control-focused", "viewId": id }));
+    } else {
+        view.panel.orderFrontRegardless();
+    }
+    view.push();
+    Some(view.webview.clone())
 }
 
 fn view_command(
@@ -816,7 +1005,7 @@ fn view_command(
         }
         "focus" => {
             view.apply(mtm);
-            if !matches!(view.mode.get(), PanelMode::Shown(_)) {
+            if !view.popup && !matches!(view.mode.get(), PanelMode::Shown(_)) {
                 return Err("Browser view is not visible.");
             }
             // Explicit focus is the only path that activates the helper and makes the
@@ -871,6 +1060,11 @@ fn view_command(
             }
             return Ok(None);
         }
+        "evaluate" => {
+            let expression = command.expression.as_deref().ok_or("An expression is required.")?;
+            evaluate(view, command.id, expression, mtm);
+            return Err(DEFERRED);
+        }
         "page-zoom" => {
             let percent = command
                 .page_zoom_percent
@@ -883,6 +1077,40 @@ fn view_command(
     }
     view.apply(mtm);
     Ok(None)
+}
+
+/// `view_command` error meaning the reply is sent later by a completion handler.
+const DEFERRED: &str = "";
+
+fn evaluate(view: &View, id: u64, expression: &str, mtm: MainThreadMarker) {
+    let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+        if let Some(error) = unsafe { error.as_ref() } {
+            let message = error.localizedDescription().to_string();
+            protocol::failure(
+                id,
+                "evaluation-failed",
+                message.chars().take(1024).collect::<String>(),
+            );
+            return;
+        }
+        let text = unsafe { result.as_ref() }
+            .and_then(|result| result.downcast_ref::<NSString>())
+            .map(|text| text.to_string());
+        let value = match text {
+            Some(text) => serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
+            None => serde_json::Value::Null,
+        };
+        protocol::reply(id, Some(json!({ "value": value })));
+    });
+    unsafe {
+        view.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
+            &NSString::from_str(&protocol::evaluation_body(expression)),
+            None,
+            None,
+            &WKContentWorld::defaultClientWorld(mtm),
+            Some(&completion),
+        );
+    }
 }
 
 fn dispatch(command: Command) {
@@ -913,6 +1141,7 @@ fn dispatch(command: Command) {
             };
             match view_command(&view, &command, main_thread()) {
                 Ok(result) => protocol::reply(command.id, result),
+                Err(DEFERRED) => {}
                 Err(message) => protocol::failure(command.id, "invalid", message),
             }
         }

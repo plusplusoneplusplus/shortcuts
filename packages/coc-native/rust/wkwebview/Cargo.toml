@@ -15,6 +15,6 @@ url = "2"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSDictionary", "NSError", "NSGeometry", "NSKeyValueObserving", "NSNotification", "NSOperation", "NSProcessInfo", "NSString", "NSThread", "NSURL", "NSURLRequest", "NSUUID", "NSValue", "block2"] }
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSGraphics", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow", "NSWorkspace", "block2"] }
-objc2-web-kit = { version = "0.3", features = ["WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKUIDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKWindowFeatures", "block2", "objc2-app-kit"] }
+objc2-web-kit = { version = "0.3", features = ["WKContentWorld", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKUIDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKWindowFeatures", "block2", "objc2-app-kit"] }
 block2 = "0.6"
 dispatch2 = "0.3"
