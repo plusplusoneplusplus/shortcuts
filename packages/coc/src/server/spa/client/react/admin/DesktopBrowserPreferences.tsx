@@ -130,6 +130,9 @@ export function DesktopBrowserPreferences() {
                                     <option key={engine.engine} value={engine.engine}>{browserEngineName(engine.engine)}{engine.available ? '' : ' (unavailable)'}</option>
                                 ))}
                             </select>
+                            {preferences.defaultFallback && (
+                                <p role="status" className="ar-muted" data-testid="desktop-browser-default-fallback">{preferences.defaultFallback}</p>
+                            )}
                         </AdminRow>
                         {preferences.clickOnce && bridge.setClickOnce && (
                             <AdminRow name="Windows ClickOnce" hint="Off by default. Applies to new tabs. HTTPS deployment links activate directly through Windows without a CoC confirmation. Windows may show installation or trust prompts.">

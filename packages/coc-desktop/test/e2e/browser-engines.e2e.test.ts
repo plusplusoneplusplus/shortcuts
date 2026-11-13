@@ -166,6 +166,8 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         expect(steps.get('sharing')?.foreign).toEqual({ ok: false, reason: 'not-found' });
         if (steps.has('mixed')) {
             expect(steps.get('mixed')?.engine).not.toBe(engine);
+            // macOS switches the default from Electron to WebKit; new tabs follow it, existing ones keep their engine.
+            if (process.platform === 'darwin') expect(steps.get('mixed')?.engine).toBe('wkwebview');
             expect(steps.get('mixed')?.report).toMatchObject({ storage: null, cookie: '' });
             expect(steps.get('mixed')?.existing.engine).toBe(engine);
         }

@@ -41,7 +41,7 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
         importCookies: vi.fn(async () => {}),
         clearData: vi.fn(async () => {}), dispose: vi.fn(async () => {}),
     });
-    const hosts = { electron: makeHost('electron'), webview2: makeHost('webview2') };
+    const hosts = { electron: makeHost('electron'), webview2: makeHost('webview2'), wkwebview: makeHost('wkwebview') };
     const files: { request: FileViewRequest; sink: BrowserEventSink; view: BrowserHostedView }[] = [];
     const fileHost: FilePreviewHost = {
         create: vi.fn(async (request, sink) => {
@@ -920,6 +920,49 @@ describe('engine availability and startup errors', () => {
         expect(await h.manager.select('webview2')).toMatchObject({ ok: false, reason: 'unsupported-platform' });
         expect(await h.manager.select('unknown')).toEqual({ ok: false, reason: 'bad-engine' });
         expect((await h.manager.preferences()).defaultEngine).toBe('electron');
+    });
+});
+
+describe('WKWebView default engine', () => {
+    it('opens new tabs in WKWebView when it is the default and available', async () => {
+        const h = harness('wkwebview');
+        expect(await h.manager.open(1, 'view', 'https://example.test/', 'owner')).toEqual({ ok: true, engine: 'wkwebview', sourceKind: 'url' });
+        expect(h.created.map(item => item.engine)).toEqual(['wkwebview']);
+        const preferences = await h.manager.preferences();
+        expect(preferences.defaultEngine).toBe('wkwebview');
+        expect(preferences.defaultFallback).toBeUndefined();
+    });
+
+    it('falls back to Electron with the availability message and keeps the saved choice', async () => {
+        const h = harness('wkwebview');
+        const message = 'WebKit (WKWebView) requires macOS 14 or later. Use Electron.';
+        vi.mocked(h.hosts.wkwebview.availability).mockResolvedValue({ engine: 'wkwebview', available: false, reason: 'unsupported-platform', message });
+        expect(await h.manager.open(1, 'view', 'https://example.test/', 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
+        expect(h.created.map(item => item.engine)).toEqual(['electron']);
+        expect(h.hosts.wkwebview.create).not.toHaveBeenCalled();
+        expect(await h.manager.preferences()).toMatchObject({ defaultEngine: 'electron', defaultFallback: message });
+        // An explicit related engine is not a default and is never replaced.
+        expect(await h.manager.open(1, 'other', 'https://example.test/', 'owner', 'wkwebview')).toMatchObject({ engine: 'wkwebview' });
+    });
+
+    it('never asks WKWebView availability for other defaults', async () => {
+        const h = harness('electron');
+        await h.manager.open(1, 'view', 'https://example.test/', 'owner');
+        expect(h.hosts.wkwebview.availability).not.toHaveBeenCalled();
+        expect((await h.manager.preferences()).defaultFallback).toBeUndefined();
+    });
+
+    it('creates one view when opens race the availability check', async () => {
+        const h = harness('wkwebview');
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        vi.mocked(h.hosts.wkwebview.availability).mockImplementation(async () => { await gate; return { engine: 'wkwebview', available: true }; });
+        const first = h.manager.open(1, 'view', 'https://example.test/', 'owner');
+        const second = h.manager.open(1, 'view', 'https://example.test/next', 'owner');
+        release();
+        expect(await first).toMatchObject({ ok: true, engine: 'wkwebview' });
+        expect(await second).toMatchObject({ ok: true, engine: 'wkwebview' });
+        expect(h.created).toHaveLength(1);
     });
 });
 

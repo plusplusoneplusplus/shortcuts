@@ -122,6 +122,8 @@ app.whenReady().then(async () => {
     // Direct input into a hidden guest must not invoke Electron's default
     // window-close accelerator; hidden guests stay active for shared page zoom.
     Menu.setApplicationMenu(null);
+    // These cases cover Electron tabs; macOS otherwise defaults new installs to WKWebView.
+    require('../../dist/browser-preferences').writeBrowserEngine(path.join(app.getPath('userData'), 'coc'), 'electron');
     registerBrowserViewIpc(path.join(app.getPath('userData'), 'coc'));
     const server = http.createServer(handler);
     const port = await listen(server);

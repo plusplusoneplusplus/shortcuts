@@ -732,10 +732,22 @@ export class BrowserHostManager {
         return isValidBrowserViewId(viewId) ? this.owners.get(ownerId)?.get(viewId) : undefined;
     }
 
+    /** The saved (or platform) default; an unavailable WKWebView falls back to Electron with its availability message. */
+    private async defaultEngine(): Promise<{ engine: BrowserEngine; fallback?: string }> {
+        const engine = this.options.getDefault();
+        if (engine !== 'wkwebview') return { engine };
+        const availability = await this.options.hosts.wkwebview.availability();
+        if (availability.available) return { engine };
+        return { engine: 'electron', fallback: availability.message ?? 'WebKit (WKWebView) is unavailable. Using Electron.' };
+    }
+
     async preferences(): Promise<BrowserPreferences> {
-        const engines = await Promise.all(Object.values(this.options.hosts).map(host => host.availability()));
+        const [engines, current] = await Promise.all([
+            Promise.all(Object.values(this.options.hosts).map(host => host.availability())),
+            this.defaultEngine(),
+        ]);
         return {
-            defaultEngine: this.options.getDefault(), engines, clearing: [...this.clearing],
+            defaultEngine: current.engine, ...(current.fallback ? { defaultFallback: current.fallback } : {}), engines, clearing: [...this.clearing],
             pageZoom: { percent: this.options.getPageZoom(), min: BROWSER_PAGE_ZOOM.min, max: BROWSER_PAGE_ZOOM.max, step: BROWSER_PAGE_ZOOM.step },
         };
     }
@@ -812,6 +824,10 @@ export class BrowserHostManager {
         let engine: BrowserEngine;
         try {
             engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : this.options.getDefault());
+            if (!entry && relatedEngine === undefined && engine === 'wkwebview') {
+                // The WKWebView check is async; reopen with the resolved engine so the entry lookup is current.
+                return this.open(ownerId, viewId, url, sessionKey, (await this.defaultEngine()).engine);
+            }
         } catch (error) {
             return this.failure(error, 'startup-failed');
         }
@@ -1160,7 +1176,7 @@ export class BrowserHostManager {
         if (entry && entry.sourceKind !== 'url') return { ok: false, reason: 'unsupported' };
         if (relatedEngine !== undefined && !isBrowserEngine(relatedEngine)) return { ok: false, reason: 'bad-engine' };
         let engine: BrowserEngine;
-        try { engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : this.options.getDefault()); }
+        try { engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : (await this.defaultEngine()).engine); }
         catch { return { ok: false, reason: 'bad-engine' }; }
         if (this.disposed || this.clearing.has(engine)) return { ok: false, reason: 'busy' };
         let cookies;

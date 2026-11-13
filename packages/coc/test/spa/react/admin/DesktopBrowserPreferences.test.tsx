@@ -70,6 +70,23 @@ describe('Desktop Preferences browser engines', () => {
         await screen.findByText('Default browser engine saved. Existing tabs are unchanged.');
         expect(setDefaultEngine).toHaveBeenCalledWith('wkwebview');
     });
+    it('shows the macOS WebKit default and its Electron fallback message', async () => {
+        preferences.defaultEngine = 'wkwebview';
+        preferences.engines[1] = { engine: 'wkwebview', available: true };
+        const { unmount } = render(<DesktopBrowserPreferences />);
+        expect(((await screen.findByLabelText('Default browser engine')) as HTMLSelectElement).value).toBe('wkwebview');
+        expect(screen.queryByTestId('desktop-browser-default-fallback')).toBeNull();
+        unmount();
+        const message = 'WebKit (WKWebView) requires macOS 14 or later. Use Electron.';
+        preferences.defaultEngine = 'electron';
+        preferences.defaultFallback = message;
+        preferences.engines[1] = { engine: 'wkwebview', available: false, reason: 'unsupported-platform', message };
+        render(<DesktopBrowserPreferences />);
+        const selector = await screen.findByLabelText('Default browser engine');
+        expect((selector as HTMLSelectElement).value).toBe('electron');
+        expect(selector.querySelectorAll('option')).toHaveLength(1);
+        expect(screen.getByTestId('desktop-browser-default-fallback').textContent).toBe(message);
+    });
     it('shows platform restrictions without offering unsupported selection or cleanup', async () => {
         preferences.engines[1] = { engine: 'webview2', available: false, reason: 'unsupported-platform', message: 'WebView2 is available only on Windows x64.' };
         render(<DesktopBrowserPreferences />);

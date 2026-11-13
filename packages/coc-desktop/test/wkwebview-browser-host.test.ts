@@ -91,6 +91,26 @@ describe('WKWebView engine availability', () => {
         expect(availability).toMatchObject({ engine: 'wkwebview', available: false, reason: 'unsupported-platform' });
     });
 
+    it.runIf(process.platform === 'darwin')('runs the helper check once and maps an old macOS to unsupported-platform', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-check-'));
+        const counter = path.join(dir, 'count');
+        const helper = path.join(dir, 'helper.sh');
+        fs.writeFileSync(helper, `#!/bin/sh\necho x >> '${counter}'\necho '{"available":false,"reason":"unsupported-platform"}'\n`, { mode: 0o755 });
+        const previous = process.env.COC_WKWEBVIEW_PATH;
+        process.env.COC_WKWEBVIEW_PATH = helper;
+        try {
+            const host = new WkWebViewBrowserHost('profile');
+            const [first, second] = await Promise.all([host.availability(), host.availability()]);
+            expect(first).toEqual({ engine: 'wkwebview', available: false, reason: 'unsupported-platform', message: 'WebKit (WKWebView) requires macOS 14 or later. Use Electron.' });
+            expect(await host.availability()).toBe(first);
+            expect(second).toBe(first);
+            expect(fs.readFileSync(counter, 'utf8').trim().split('\n')).toHaveLength(1);
+        } finally {
+            if (previous === undefined) delete process.env.COC_WKWEBVIEW_PATH; else process.env.COC_WKWEBVIEW_PATH = previous;
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('reads the AppKit window number from the macOS media source id', () => {
         expect(wkWebViewParentWindow({ getMediaSourceId: () => 'window:4242:0' })).toBe(4242);
         for (const id of ['screen:1:0', 'window:0:0', 'window::0', ''])

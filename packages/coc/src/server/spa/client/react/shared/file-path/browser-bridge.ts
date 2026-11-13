@@ -15,6 +15,7 @@ export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: 
 export interface BrowserPreferences {
     clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
+    defaultFallback?: string;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
     pageZoom?: { percent: number; min: number; max: number; step: number };

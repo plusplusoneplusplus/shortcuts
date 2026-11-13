@@ -266,6 +266,8 @@ export interface BrowserAvailability {
 export interface BrowserPreferences {
     clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
+    /** Why `defaultEngine` is Electron instead of the saved or platform default. */
+    defaultFallback?: string;
     engines: BrowserAvailability[];
     clearing: BrowserEngine[];
     pageZoom: { percent: number; min: number; max: number; step: number };

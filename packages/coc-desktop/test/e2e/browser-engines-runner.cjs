@@ -423,7 +423,7 @@ app.whenReady().then(async () => {
         await settled(secondWindow, 'other', s => s.title === 'Home');
         await waitFor(() => reports.get('other'), 'second workspace report');
         emit('sharing', { report: reports.get('other'), foreign: await call(secondWindow, 'navigate', 'main', base + '/second') });
-        const otherEngine = engine === 'electron' ? 'webview2' : 'electron';
+        const otherEngine = engine !== 'electron' ? 'electron' : process.platform === 'darwin' ? 'wkwebview' : 'webview2';
         const canMix = pref.engines.find(e => e.engine === otherEngine)?.available;
         if (canMix) {
             await call(main, 'setDefaultEngine', otherEngine);

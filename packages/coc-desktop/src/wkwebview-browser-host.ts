@@ -94,7 +94,15 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         return (require('@plusplusoneplusplus/coc-native') as typeof import('@plusplusoneplusplus/coc-native')).loadWkWebViewBinary();
     }
 
-    async availability(): Promise<BrowserAvailability> {
+    private checked?: Promise<BrowserAvailability>;
+
+    /** The OS version and the shipped helper don't change while CoC runs, so the check runs once. */
+    availability(): Promise<BrowserAvailability> {
+        this.checked ??= this.check();
+        return this.checked;
+    }
+
+    private async check(): Promise<BrowserAvailability> {
         if (process.platform !== 'darwin') {
             return { engine: this.engine, available: false, reason: 'unsupported-platform', message: 'WebKit (WKWebView) is available only on macOS. Use Electron on this platform.' };
         }
