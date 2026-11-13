@@ -1,11 +1,12 @@
+use crate::history::HistoryNavigation;
 use crate::overlay::{self, Frame, PanelMode, Placement};
 use crate::protocol::{self, Command};
 use crate::{profile, protocol::availability};
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
-use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy,
     NSApplicationDidChangeScreenParametersNotification, NSAutoresizingMaskOptions,
@@ -15,13 +16,18 @@ use objc2_app_kit::{
     NSWorkspaceDidActivateApplicationNotification,
 };
 use objc2_foundation::{
-    NSNotificationCenter, NSObjectProtocol, NSOperationQueue, NSPoint, NSProcessInfo, NSRect,
-    NSSize, NSString, NSURLRequest, NSURL, NSUUID,
+    NSDictionary, NSError, NSKeyValueChangeKey, NSKeyValueObservingOptions, NSNotificationCenter,
+    NSObject, NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSOperationQueue, NSPoint,
+    NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
 };
-use objc2_web_kit::{WKWebView, WKWebViewConfiguration, WKWebsiteDataStore};
+use objc2_web_kit::{
+    WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate, WKWebView,
+    WKWebViewConfiguration, WKWebsiteDataStore,
+};
 use serde_json::json;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -131,12 +137,129 @@ define_class!(
     }
 );
 
+/// Web view properties whose changes refresh the state main renders.
+const OBSERVED_KEYS: [&str; 5] = ["URL", "title", "canGoBack", "canGoForward", "loading"];
+
+struct DelegateIvars {
+    view_id: String,
+}
+
+define_class!(
+    /// Navigation delegate and KVO observer for one view. It holds only the view id and
+    /// resolves the view per callback, so a closed view's late callbacks are dropped.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "CocBrowserNavigationDelegate"]
+    #[ivars = DelegateIvars]
+    struct NavigationDelegate;
+
+    unsafe impl NSObjectProtocol for NavigationDelegate {}
+
+    unsafe impl WKNavigationDelegate for NavigationDelegate {
+        #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
+        fn decide_policy(
+            &self,
+            _web_view: &WKWebView,
+            action: &WKNavigationAction,
+            handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>,
+        ) {
+            // Main-frame documents stay HTTP(S); subframes may use about:/data: documents.
+            let main_frame = unsafe { action.targetFrame() }.is_some_and(|frame| unsafe { frame.isMainFrame() });
+            let url = url_string(unsafe { action.request() }.URL().as_deref());
+            let allowed = !main_frame || protocol::allowed_url(&url, true);
+            handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
+        }
+
+        #[unsafe(method(webView:didStartProvisionalNavigation:))]
+        fn did_start(&self, _web_view: &WKWebView, navigation: Option<&WKNavigation>) {
+            self.with_view(|view| view.started(navigation));
+        }
+
+        #[unsafe(method(webView:didReceiveServerRedirectForProvisionalNavigation:))]
+        fn did_redirect(&self, _web_view: &WKWebView, navigation: Option<&WKNavigation>) {
+            self.with_view(|view| view.started(navigation));
+        }
+
+        #[unsafe(method(webView:didCommitNavigation:))]
+        fn did_commit(&self, _web_view: &WKWebView, _navigation: Option<&WKNavigation>) {
+            self.with_view(|view| {
+                view.history.borrow_mut().source_changed(true);
+                view.push();
+            });
+        }
+
+        #[unsafe(method(webView:didFinishNavigation:))]
+        fn did_finish(&self, _web_view: &WKWebView, navigation: Option<&WKNavigation>) {
+            self.with_view(|view| view.completed(navigation, None));
+        }
+
+        #[unsafe(method(webView:didFailProvisionalNavigation:withError:))]
+        fn did_fail_provisional(&self, _web_view: &WKWebView, navigation: Option<&WKNavigation>, error: &NSError) {
+            self.with_view(|view| view.completed(navigation, Some(error)));
+        }
+
+        #[unsafe(method(webView:didFailNavigation:withError:))]
+        fn did_fail(&self, _web_view: &WKWebView, navigation: Option<&WKNavigation>, error: &NSError) {
+            self.with_view(|view| view.completed(navigation, Some(error)));
+        }
+
+        #[unsafe(method(webViewWebContentProcessDidTerminate:))]
+        fn did_terminate(&self, _web_view: &WKWebView) {
+            self.with_view(|view| view.fail("runtime-crashed", "Browser page crashed. Reload to recover."));
+        }
+    }
+
+    impl NavigationDelegate {
+        #[unsafe(method(observeValueForKeyPath:ofObject:change:context:))]
+        fn observe_value(
+            &self,
+            key_path: Option<&NSString>,
+            _object: Option<&AnyObject>,
+            _change: Option<&NSDictionary<NSKeyValueChangeKey, AnyObject>>,
+            _context: *mut c_void,
+        ) {
+            let key = key_path.map(|key| key.to_string()).unwrap_or_default();
+            self.with_view(|view| view.observed(&key));
+        }
+    }
+);
+
+impl NavigationDelegate {
+    fn new(view_id: &str, mtm: MainThreadMarker) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(DelegateIvars { view_id: view_id.to_string() });
+        unsafe { msg_send![super(this), init] }
+    }
+
+    fn with_view(&self, action: impl FnOnce(&View)) {
+        let view = VIEWS.with(|views| views.borrow().get(&self.ivars().view_id).cloned());
+        if let Some(view) = view.filter(|view| !view.closed.get()) {
+            action(&view);
+        }
+    }
+}
+
+fn url_string(url: Option<&NSURL>) -> String {
+    url.and_then(|url| url.absoluteString()).map(|url| url.to_string()).unwrap_or_default()
+}
+
 struct View {
+    id: String,
     panel: Retained<BrowserPanel>,
     webview: Retained<WKWebView>,
+    delegate: Retained<NavigationDelegate>,
     parent_window: Cell<Option<isize>>,
     placement: Cell<Placement>,
     mode: Cell<PanelMode>,
+    closed: Cell<bool>,
+    history: RefCell<HistoryNavigation>,
+    /// WKNavigation objects in flight, mapped to the ids HistoryNavigation tracks.
+    navigations: RefCell<Vec<(Retained<WKNavigation>, u64)>>,
+    next_navigation: Cell<u64>,
+    /// Last URL main or the page asked for; shown while the document is failed.
+    requested: RefCell<String>,
+    error: RefCell<Option<(String, String)>>,
+    /// Last state sent to main; KVO and delegate callbacks often repeat it.
+    pushed: RefCell<Option<serde_json::Value>>,
 }
 
 thread_local! {
@@ -217,8 +340,175 @@ impl View {
     }
 
     fn close(&self) {
+        if self.closed.replace(true) {
+            return;
+        }
+        unsafe {
+            self.webview.setNavigationDelegate(None);
+            for key in OBSERVED_KEYS {
+                self.webview.removeObserver_forKeyPath(&self.delegate, &NSString::from_str(key));
+            }
+            self.webview.stopLoading();
+        }
         self.panel.orderOut(None);
         self.panel.close();
+    }
+
+    fn navigation_id(&self, navigation: Option<&WKNavigation>) -> u64 {
+        let mut navigations = self.navigations.borrow_mut();
+        if let Some(navigation) = navigation {
+            if let Some((_, id)) =
+                navigations.iter().find(|(known, _)| std::ptr::eq(&**known, navigation))
+            {
+                return *id;
+            }
+        }
+        let id = self.next_navigation.get() + 1;
+        self.next_navigation.set(id);
+        if let Some(navigation) = navigation {
+            // Superseded navigations may never complete; keep the list bounded.
+            if navigations.len() >= 16 {
+                navigations.remove(0);
+            }
+            navigations.push((navigation.retain(), id));
+        }
+        id
+    }
+
+    fn started(&self, navigation: Option<&WKNavigation>) {
+        let id = self.navigation_id(navigation);
+        self.history.borrow_mut().started(id);
+        let url = url_string(unsafe { self.webview.URL() }.as_deref());
+        if protocol::allowed_url(&url, true) {
+            *self.requested.borrow_mut() = url;
+        }
+        *self.error.borrow_mut() = None;
+        self.push();
+    }
+
+    fn completed(&self, navigation: Option<&WKNavigation>, error: Option<&NSError>) {
+        let Some(navigation) = navigation else {
+            self.push();
+            return;
+        };
+        let id = {
+            let mut navigations = self.navigations.borrow_mut();
+            let Some(index) =
+                navigations.iter().position(|(known, _)| std::ptr::eq(&**known, navigation))
+            else {
+                drop(navigations);
+                self.push();
+                return;
+            };
+            navigations.remove(index).1
+        };
+        let visit = self.history.borrow_mut().completed(id, error.is_none());
+        let Some(visit) = visit else {
+            self.push();
+            return;
+        };
+        if let Some(error) = error {
+            let message = protocol::navigation_error(
+                &error.domain().to_string(),
+                error.code() as i64,
+                &error.localizedDescription().to_string(),
+            );
+            if let Some(message) = message {
+                *self.error.borrow_mut() = Some(("navigation-failed".into(), message));
+            }
+        }
+        if visit {
+            self.push_history(true);
+        }
+        self.push();
+    }
+
+    fn observed(&self, key: &str) {
+        match key {
+            // Fragment, pushState and same-document back/forward have no delegate callbacks.
+            "URL"
+                if self.navigations.borrow().is_empty() && !unsafe { self.webview.isLoading() } =>
+            {
+                if self.history.borrow_mut().source_changed(false) {
+                    self.push_history(true);
+                }
+            }
+            "title" if self.history.borrow().title_changed() => self.push_history(false),
+            _ => {}
+        }
+        self.push();
+    }
+
+    /// Records a request before WebKit reports the provisional navigation.
+    fn navigate(&self, action: impl FnOnce() -> bool) {
+        self.history.borrow_mut().requested();
+        if !action() {
+            self.history.borrow_mut().invalidate();
+        }
+        self.push();
+    }
+
+    fn load(&self, url: &str) -> bool {
+        let Some(request) = NSURL::URLWithString(&NSString::from_str(url))
+            .map(|url| NSURLRequest::requestWithURL(&url))
+        else {
+            return false;
+        };
+        *self.requested.borrow_mut() = url.to_string();
+        *self.error.borrow_mut() = None;
+        unsafe { self.webview.loadRequest(&request) }.is_some()
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        let url = url_string(unsafe { self.webview.URL() }.as_deref());
+        let title =
+            unsafe { self.webview.title() }.map(|title| title.to_string()).unwrap_or_default();
+        let error = self.error.borrow();
+        let mut state = json!({
+            "viewId": self.id, "engine": "wkwebview",
+            "url": if error.is_some() || !protocol::allowed_url(&url, false) { self.requested.borrow().clone() } else { url },
+            "title": if error.is_some() { String::new() } else { protocol::wire_title(&title) },
+            "canGoBack": unsafe { self.webview.canGoBack() },
+            "canGoForward": unsafe { self.webview.canGoForward() },
+            "loading": self.history.borrow().loading(),
+        });
+        if let Some((code, message)) = error.as_ref() {
+            state["errorCode"] = json!(code);
+            state["error"] = json!(message);
+        }
+        state
+    }
+
+    fn push(&self) {
+        if self.closed.get() {
+            return;
+        }
+        let state = self.snapshot();
+        if self.pushed.borrow().as_ref() != Some(&state) {
+            protocol::emit(json!({ "event": "state", "viewId": self.id, "state": state.clone() }));
+            *self.pushed.borrow_mut() = Some(state);
+        }
+    }
+
+    fn push_history(&self, visit: bool) {
+        let url = url_string(unsafe { self.webview.URL() }.as_deref());
+        let title =
+            unsafe { self.webview.title() }.map(|title| title.to_string()).unwrap_or_default();
+        if let Some(message) = protocol::history_message(&self.id, &self.id, &url, &title, visit) {
+            protocol::emit(message);
+        }
+    }
+
+    fn fail(&self, code: &str, message: &str) {
+        self.history.borrow_mut().invalidate();
+        self.navigations.borrow_mut().clear();
+        *self.error.borrow_mut() = Some((code.to_string(), message.to_string()));
+        let state = json!({
+            "viewId": self.id, "engine": "wkwebview", "url": self.requested.borrow().clone(), "title": "",
+            "canGoBack": false, "canGoForward": false, "loading": false, "error": message, "errorCode": code
+        });
+        protocol::emit(json!({ "event": "state", "viewId": self.id, "state": state.clone() }));
+        *self.pushed.borrow_mut() = Some(state);
     }
 }
 
@@ -288,9 +578,10 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         DATA_STORE.with(|cell| cell.get().cloned()).ok_or("Browser profile unavailable.")?;
     let uuid = NSUUID::from_string(&NSString::from_str(&store_id))
         .ok_or("Browser profile unavailable.")?;
-    let request = NSURL::URLWithString(&NSString::from_str(url))
-        .map(|url| NSURLRequest::requestWithURL(&url))
-        .ok_or("A browser view id and HTTP(S) URL are required.")?;
+    let zoom = match command.page_zoom_percent {
+        Some(percent) if !protocol::allowed_page_zoom(percent) => return Err("Invalid page zoom."),
+        percent => percent.unwrap_or(100.0),
+    };
     let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1024.0, 768.0));
     let panel: Retained<BrowserPanel> = unsafe {
         msg_send![
@@ -320,9 +611,12 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
     );
     panel.setContentView(Some(&webview));
+    let delegate = NavigationDelegate::new(id, mtm);
     let view = Rc::new(View {
+        id: id.to_string(),
         panel,
         webview,
+        delegate,
         parent_window: Cell::new(parent),
         placement: Cell::new(Placement {
             bounds,
@@ -330,10 +624,29 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
             ..Placement::default()
         }),
         mode: Cell::new(PanelMode::Hidden),
+        closed: Cell::new(false),
+        history: RefCell::new(HistoryNavigation::default()),
+        navigations: RefCell::new(Vec::new()),
+        next_navigation: Cell::new(0),
+        requested: RefCell::new(url.to_string()),
+        error: RefCell::new(None),
+        pushed: RefCell::new(None),
     });
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
+    unsafe {
+        view.webview.setPageZoom(zoom / 100.0);
+        view.webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
+        for key in OBSERVED_KEYS {
+            view.webview.addObserver_forKeyPath_options_context(
+                &view.delegate,
+                &NSString::from_str(key),
+                NSKeyValueObservingOptions::empty(),
+                std::ptr::null_mut(),
+            );
+        }
+    }
     view.apply(mtm);
-    unsafe { view.webview.loadRequest(&request) };
+    view.navigate(|| view.load(url));
     Ok(())
 }
 
@@ -373,7 +686,55 @@ fn view_command(
         }
         "view-state" => {
             view.apply(mtm);
-            return Ok(Some(view.state(mtm)));
+            let mut state = view.state(mtm);
+            state["page"] = view.snapshot();
+            return Ok(Some(state));
+        }
+        "navigate" => {
+            let url = command
+                .url
+                .as_deref()
+                .filter(|url| protocol::allowed_url(url, false))
+                .ok_or("An HTTP(S) URL is required.")?;
+            view.navigate(|| view.load(url));
+            return Ok(None);
+        }
+        "nav" => {
+            let webview = &view.webview;
+            match command.action.as_deref() {
+                Some("back") if unsafe { webview.canGoBack() } => {
+                    view.navigate(|| unsafe { webview.goBack() }.is_some())
+                }
+                Some("forward") if unsafe { webview.canGoForward() } => {
+                    view.navigate(|| unsafe { webview.goForward() }.is_some())
+                }
+                Some("back" | "forward") => {}
+                Some("stop") => {
+                    view.history.borrow_mut().stop();
+                    view.navigations.borrow_mut().clear();
+                    unsafe { webview.stopLoading() };
+                    view.push();
+                }
+                Some("reload") => {
+                    // A failed or crashed document reloads the URL main last asked for.
+                    if view.error.borrow().is_some() {
+                        let url = view.requested.borrow().clone();
+                        view.navigate(|| view.load(&url));
+                    } else {
+                        view.navigate(|| unsafe { webview.reload() }.is_some());
+                    }
+                }
+                _ => return Err("Unsupported navigation action."),
+            }
+            return Ok(None);
+        }
+        "page-zoom" => {
+            let percent = command
+                .page_zoom_percent
+                .filter(|percent| protocol::allowed_page_zoom(*percent))
+                .ok_or("Invalid page zoom.")?;
+            unsafe { view.webview.setPageZoom(percent / 100.0) };
+            return Ok(None);
         }
         _ => return Err("Unsupported WKWebView command."),
     }

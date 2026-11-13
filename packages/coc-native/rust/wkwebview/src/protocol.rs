@@ -74,6 +74,10 @@ pub struct Command {
     pub parent_window: Option<i64>,
     /// `background`: keep the page rendering off-screen while control runs.
     pub enabled: Option<bool>,
+    /// `nav`: back, forward, reload or stop.
+    pub action: Option<String>,
+    /// `open`/`page-zoom`: page zoom in percent, 50–200 in 25 steps like WebView2.
+    pub page_zoom_percent: Option<f64>,
 }
 
 pub fn allowed_view_id(value: &str) -> bool {
@@ -96,6 +100,45 @@ pub fn annotation_preview_size_allowed(width: i64, height: i64) -> bool {
     width > 0
         && height > 0
         && width.checked_mul(height).is_some_and(|pixels| pixels <= MAX_ANNOTATION_PIXELS as i64)
+}
+
+pub fn allowed_page_zoom(percent: f64) -> bool {
+    percent.is_finite() && (50.0..=200.0).contains(&percent) && (percent - 50.0) % 25.0 == 0.0
+}
+
+pub fn wire_title(title: &str) -> String {
+    title.chars().take(4096).collect()
+}
+
+/// History is recorded by main from these; titles never create entries (`visit` false).
+pub fn history_message(
+    view_id: &str,
+    source_view_id: &str,
+    url: &str,
+    title: &str,
+    visit: bool,
+) -> Option<Value> {
+    allowed_url(url, false).then(|| {
+        serde_json::json!({
+            "event": if visit { "visited" } else { "title-updated" },
+            "viewId": view_id, "sourceViewId": source_view_id, "url": url, "title": wire_title(title)
+        })
+    })
+}
+
+/// Error text for a failed main-frame load, or None when the load was cancelled
+/// (stop, a superseding navigation) or handed to a download, which are not page errors.
+pub fn navigation_error(domain: &str, code: i64, description: &str) -> Option<String> {
+    let cancelled = (domain == "NSURLErrorDomain" && code == -999)
+        || (domain == "WebKitErrorDomain" && code == 102);
+    (!cancelled).then(|| {
+        let description = description.chars().take(512).collect::<String>();
+        if description.is_empty() {
+            format!("Navigation failed ({domain} {code})")
+        } else {
+            format!("Navigation failed: {description}")
+        }
+    })
 }
 
 /// Serializes a reply, enforcing the frame limit. Only a correlated capture reply may
@@ -276,6 +319,52 @@ mod tests {
             assert!(!allowed_url(url, false), "{url}");
         }
         assert!(!allowed_url(&format!("https://example.test/{}", "x".repeat(8192)), false));
+    }
+
+    #[test]
+    fn page_zoom_matches_webview2_steps() {
+        for percent in [50.0, 75.0, 100.0, 125.0, 200.0] {
+            assert!(allowed_page_zoom(percent));
+        }
+        for percent in [f64::NAN, f64::INFINITY, 49.0, 201.0, 101.0] {
+            assert!(!allowed_page_zoom(percent));
+        }
+        let command = read(br#"{"id":1,"op":"page-zoom","viewId":"v","pageZoomPercent":125}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(command.page_zoom_percent, Some(125.0));
+        let nav = read(br#"{"id":2,"op":"nav","viewId":"v","action":"back"}"#).unwrap().unwrap();
+        assert_eq!(nav.action.as_deref(), Some("back"));
+    }
+
+    #[test]
+    fn history_messages_carry_only_http_documents_and_bounded_titles() {
+        let visit =
+            history_message("tab", "popup", "https://example.test/", "Title", true).unwrap();
+        assert_eq!(visit["event"], "visited");
+        assert_eq!(
+            (visit["viewId"].as_str(), visit["sourceViewId"].as_str()),
+            (Some("tab"), Some("popup"))
+        );
+        let title =
+            history_message("tab", "tab", "http://x.test/", &"t".repeat(5000), false).unwrap();
+        assert_eq!(title["event"], "title-updated");
+        assert_eq!(title["title"].as_str().unwrap().chars().count(), 4096);
+        for url in ["about:blank", "file:///x", "data:text/html,x"] {
+            assert!(history_message("tab", "tab", url, "", true).is_none());
+        }
+    }
+
+    #[test]
+    fn cancelled_and_download_handoff_loads_are_not_page_errors() {
+        assert_eq!(navigation_error("NSURLErrorDomain", -999, "cancelled"), None);
+        assert_eq!(navigation_error("WebKitErrorDomain", 102, "interrupted"), None);
+        assert_eq!(
+            navigation_error("NSURLErrorDomain", -1004, "Could not connect to the server.")
+                .unwrap(),
+            "Navigation failed: Could not connect to the server."
+        );
+        assert_eq!(navigation_error("X", 7, "").unwrap(), "Navigation failed (X 7)");
     }
 
     #[test]

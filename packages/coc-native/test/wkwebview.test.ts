@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
+import * as http from 'node:http';
+import * as net from 'node:net';
+import type { AddressInfo } from 'node:net';
 import * as readline from 'node:readline';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -124,6 +127,104 @@ describe('desktop native WKWebView packaging contract', () => {
             await send({ op: 'quit' });
         } finally {
             child.kill();
+        }
+    }, 30_000);
+
+    it.skipIf(!supportedMacos || !helper)('navigates and reports state, visits and titles like WebView2', async () => {
+        const pages: Record<string, string> = {
+            '/a': '<title>Page A</title><a id="hash" href="#section">x</a>',
+            '/b': '<title>Page B</title><script>setTimeout(() => { document.title = "Page B2"; }, 300)</script>',
+        };
+        const server = http.createServer((request, response) => {
+            const page = pages[request.url ?? ''];
+            response.writeHead(page ? 200 : 404, { 'content-type': 'text/html' });
+            response.end(page ?? 'missing');
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const profile = path.join(os.tmpdir(), `coc-wkwebview-nav-${process.pid}`);
+        const child = spawn(helper, [profile], { stdio: ['pipe', 'pipe', 'inherit'] });
+        const lines = readline.createInterface({ input: child.stdout });
+        const pending = new Map<number, (reply: any) => void>();
+        const events: any[] = [];
+        const waiters: Array<{ match: (event: any) => boolean; resolve: (event: any) => void }> = [];
+        let ready!: () => void;
+        const isReady = new Promise<void>(resolve => { ready = resolve; });
+        lines.on('line', line => {
+            const message = JSON.parse(line);
+            if (message.event === 'ready') { ready(); return; }
+            if (message.event) {
+                events.push(message);
+                for (const waiter of waiters.splice(0)) {
+                    if (waiter.match(message)) { waiter.resolve(message); } else { waiters.push(waiter); }
+                }
+                return;
+            }
+            pending.get(message.id)?.(message);
+        });
+        const waitFor = (match: (event: any) => boolean, from = 0) => new Promise<any>(resolve => {
+            const found = events.slice(from).find(match);
+            if (found) { resolve(found); } else { waiters.push({ match, resolve }); }
+        });
+        let nextId = 1;
+        const send = (command: Record<string, unknown>) => new Promise<any>(resolve => {
+            const id = nextId++;
+            pending.set(id, resolve);
+            child.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
+        });
+        try {
+            await isReady;
+            expect(await send({ op: 'open', viewId: 'v1', url: `${origin}/a`, pageZoomPercent: 125 })).toEqual({ id: 1, ok: true });
+            // The request is published as loading before WebKit starts the navigation.
+            expect(events[0]).toMatchObject({ event: 'state', viewId: 'v1', state: { engine: 'wkwebview', url: `${origin}/a`, loading: true } });
+            expect(await waitFor(event => event.event === 'visited')).toMatchObject({ event: 'visited', viewId: 'v1', sourceViewId: 'v1', url: `${origin}/a` });
+            // WebKit publishes the title after didFinishNavigation; it only updates the visit.
+            expect(await waitFor(event => event.event === 'title-updated')).toMatchObject({ url: `${origin}/a`, title: 'Page A' });
+            expect((await waitFor(event => event.event === 'state' && event.state.title === 'Page A')).state).toMatchObject({ loading: false, canGoBack: false });
+
+            expect(await send({ op: 'navigate', viewId: 'v1', url: `${origin}/b` })).toMatchObject({ ok: true });
+            await waitFor(event => event.event === 'visited' && event.url === `${origin}/b`);
+            // A title change after load updates the entry without creating a visit.
+            expect(await waitFor(event => event.event === 'title-updated' && event.title === 'Page B2')).toMatchObject({ url: `${origin}/b` });
+            expect(events.filter(event => event.event === 'visited')).toHaveLength(2);
+            // Repeated KVO/delegate callbacks never resend an unchanged state.
+            const states = events.filter(event => event.event === 'state').map(event => JSON.stringify(event.state));
+            expect(states.every((state, index) => index === 0 || state !== states[index - 1])).toBe(true);
+
+            const beforeBack = events.length;
+            await send({ op: 'nav', viewId: 'v1', action: 'back' });
+            await waitFor(event => event.event === 'visited' && event.url === `${origin}/a`, beforeBack);
+            await waitFor(event => event.event === 'state' && event.state.url === `${origin}/a` && !event.state.loading && event.state.canGoForward, beforeBack);
+            expect(events.filter(event => event.event === 'visited')).toHaveLength(3);
+
+            expect(await send({ op: 'navigate', viewId: 'v1', url: 'file:///etc/passwd' })).toMatchObject({ ok: false, reason: 'invalid' });
+            expect(await send({ op: 'nav', viewId: 'v1', action: 'sideways' })).toMatchObject({ ok: false });
+            expect(await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 101 })).toMatchObject({ ok: false });
+            expect(await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 150 })).toMatchObject({ ok: true });
+
+            // A refused connection is a page error; reload retries the requested URL.
+            // A just-closed port refuses the connection (port 9 is on WebKit's blocked list).
+            const probe = net.createServer();
+            await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+            const dead = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/`;
+            await new Promise(resolve => probe.close(resolve));
+            const beforeDead = events.length;
+            await send({ op: 'navigate', viewId: 'v1', url: dead });
+            expect((await waitFor(event => event.event === 'state' && event.state.errorCode === 'navigation-failed', beforeDead)).state)
+                .toMatchObject({ url: dead, title: '', loading: false });
+            expect(events.some(event => event.event === 'visited' && event.url === dead)).toBe(false);
+            await send({ op: 'nav', viewId: 'v1', action: 'reload' });
+            expect((await send({ op: 'view-state', viewId: 'v1' })).result.page).toMatchObject({ url: dead, loading: true });
+            await send({ op: 'nav', viewId: 'v1', action: 'stop' });
+            expect((await send({ op: 'view-state', viewId: 'v1' })).result.page).toMatchObject({ loading: false });
+
+            await send({ op: 'close', viewId: 'v1' });
+            const count = events.length;
+            await send({ op: 'quit' });
+            expect(events.slice(count)).toEqual([]);
+        } finally {
+            child.kill();
+            server.close();
         }
     }, 30_000);
 });
