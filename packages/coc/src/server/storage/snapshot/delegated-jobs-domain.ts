@@ -6,6 +6,7 @@ import { DELEGATED_JOBS_FILE } from '../../delegation/delegated-job-store';
 import { REMOTE_DELEGATION_REQUESTS_FILE } from '../../delegation/remote-delegation-request-store';
 import { REMOTE_DELEGATION_ADMISSIONS_FILE } from '../../delegation/remote-delegation-admission-store';
 import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../messaging/sentinel-mirror-outbox';
+import { TEAMS_CHANNEL_BINDINGS_FILE } from '../../messaging/teams-channel-binding';
 import { EMPTY_COLLECT_RESULT, type StorageSnapshotDomain } from './types';
 import { getErrorMessage, listRepoFiles } from './snapshot-fs';
 
@@ -13,6 +14,30 @@ import { getErrorMessage, listRepoFiles } from './snapshot-fs';
 export function createDelegatedJobsDomain(): StorageSnapshotDomain<string[]> {
     return createMachineLocalRepoFileDomain('delegated-jobs', DELEGATED_JOBS_FILE,
         REMOTE_DELEGATION_REQUESTS_FILE, REMOTE_DELEGATION_ADMISSIONS_FILE);
+}
+
+export function createTeamsChannelBindingsDomain(): StorageSnapshotDomain<string[]> {
+    return {
+        id: 'teams-channel-bindings',
+        collect: () => EMPTY_COLLECT_RESULT,
+        restoreReplace() {},
+        restoreMerge() {},
+        planWipe(ctx) {
+            const file = path.join(ctx.dataDir, TEAMS_CHANNEL_BINDINGS_FILE);
+            return { plan: fs.existsSync(file) ? [file] : [], counts: {}, errors: [] };
+        },
+        executeWipe(_ctx, files, result) {
+            for (const file of files ?? []) {
+                try {
+                    fs.unlinkSync(file);
+                } catch (error) {
+                    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+                        result.errors.push(`Failed to delete Teams channel bindings: ${getErrorMessage(error)}`);
+                    }
+                }
+            }
+        },
+    };
 }
 
 /** Sentinel to-do ledgers are keyed by local chat IDs, so they follow the same policy. */

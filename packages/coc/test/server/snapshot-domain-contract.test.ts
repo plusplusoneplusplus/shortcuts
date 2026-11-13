@@ -37,6 +37,7 @@ import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/ser
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelDependencyStore, type DependencyAdmissionRecord } from '../../src/server/sentinel-todos/sentinel-dependency-store';
 import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
+import { TEAMS_CHANNEL_BINDINGS_FILE } from '../../src/server/messaging/teams-channel-binding';
 
 // ============================================================================
 // Helpers
@@ -116,6 +117,8 @@ async function seedFixture(dataDir: string, store: SqliteProcessStore): Promise<
     const screenshot = path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     fs.writeFileSync(screenshot, 'machine-local screenshot');
+    writeJSON(path.join(dataDir, TEAMS_CHANNEL_BINDINGS_FILE), [{ accountKey: 'fixture', teamId: 'team',
+        channelId: 'channel', workspaceId: 'ws1', processId: 'p1' }]);
 
     // preserved (never wiped)
     fs.writeFileSync(path.join(dataDir, 'config.yaml'), 'server: {}\n', 'utf-8');
@@ -144,7 +147,7 @@ describe('snapshot domain contract harness', () => {
     it('registers every storage domain once', () => {
         expect(createSnapshotDomains().map(domain => domain.id)).toEqual([
             'core-store', 'queue', 'image-blobs', 'preferences', 'schedules', 'git-ops',
-            'browser-screenshots', 'delegated-jobs', 'sentinel-todos', 'sentinel-mirror-outbox',
+            'browser-screenshots', 'delegated-jobs', 'sentinel-todos', 'sentinel-mirror-outbox', 'teams-channel-bindings',
         ]);
     });
 
@@ -466,6 +469,22 @@ describe('snapshot domain behavior', () => {
         expect(snapshot).not.toContain('machine-local screenshot');
         expect(fs.readFileSync(path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png'), 'utf-8'))
             .toBe('machine-local screenshot');
+    });
+
+    it('Teams channel bindings remain machine-local and are removed by wipe', async () => {
+        const domain = createSnapshotDomains().find(item => item.id === 'teams-channel-bindings')!;
+        const file = path.join(dataDir, TEAMS_CHANNEL_BINDINGS_FILE);
+        const snapshot = JSON.stringify(await collectStorageSnapshot({ dataDir, store }));
+        expect(snapshot).not.toContain('accountKey');
+        const result = createImportResult();
+        await domain.restoreReplace(emptyPayload(), { dataDir, store }, result);
+        await domain.restoreMerge(emptyPayload(), { dataDir, store }, result);
+        expect(fs.existsSync(file)).toBe(true);
+        const plan = await domain.planWipe({ dataDir, store });
+        const wipe = { errors: [] as string[] };
+        await domain.executeWipe({ dataDir, store }, plan.plan, wipe);
+        expect(wipe.errors).toEqual([]);
+        expect(fs.existsSync(file)).toBe(false);
     });
 
     it.each([

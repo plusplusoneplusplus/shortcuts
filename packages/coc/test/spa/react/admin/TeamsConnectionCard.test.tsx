@@ -3,6 +3,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { TeamsConnectionCard } from '../../../../src/server/spa/client/react/admin/TeamsConnectionCard';
 import { IMSettingsSection } from '../../../../src/server/spa/client/react/admin/IMSettingsSection';
 
+vi.mock('../../../../src/server/spa/client/react/admin/AdminWorkspaceSelect', () => ({
+    AdminWorkspaceSelect: ({ value, onChange, label }: { value: string; onChange(value: string): void; label: string }) =>
+        <select aria-label={label} value={value} onChange={event => onChange(event.target.value)}>
+            <option value="">Select</option><option value="workspace-a">A</option><option value="workspace-b">B</option>
+        </select>,
+}));
+
 const status = {
     enabled: false,
     status: 'disconnected',
@@ -19,6 +26,53 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it('does not expose binding controls before the saved binding loads', async () => {
+        let resolveBinding!: (value: { ok: boolean; json(): Promise<object> }) => void;
+        const pending = new Promise<{ ok: boolean; json(): Promise<object> }>(resolve => { resolveBinding = resolve; });
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+            if (url.endsWith('/channel-binding')) return pending;
+            return { ok: true, json: async () => ({ ...status, enabled: true, status: 'connected', connectionId: 'connection-a' }) };
+        }));
+        render(<TeamsConnectionCard />);
+        await screen.findByText('Loading binding…');
+        expect(screen.queryByLabelText('Channel workspace')).toBeNull();
+        resolveBinding({ ok: true, json: async () => ({ binding: null }) });
+        await screen.findByText('Not configured');
+        expect(screen.getByLabelText('Channel workspace')).toBeDefined();
+    });
+
+    it('sets and confirms a channel Sentinel binding on the owning server', async () => {
+        let binding: { workspaceId: string; processId: string; title: string } | null = null;
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            let result: unknown;
+            if (url.includes('/channel-binding/sentinels')) {
+                const id = url.includes('workspace-b') ? 'sentinel-b' : 'sentinel-a';
+                result = { sentinels: [{ id, title: id }] };
+            } else if (url.endsWith('/channel-binding') && options?.method === 'POST') {
+                const body = JSON.parse(String(options.body)) as { workspaceId: string; processId: string };
+                binding = { ...body, title: body.processId };
+                result = binding;
+            } else if (url.endsWith('/channel-binding')) result = { binding };
+            else result = { ...status, enabled: true, status: 'connected', connectionId: 'connection-a' };
+            return { ok: true, json: async () => result };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText('Not configured');
+        fireEvent.change(screen.getByLabelText('Channel workspace'), { target: { value: 'workspace-a' } });
+        await screen.findByRole('option', { name: 'sentinel-a (sentinel-a)' });
+        fireEvent.change(screen.getByLabelText('Channel Sentinel'), { target: { value: 'sentinel-a' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save binding' }));
+        await screen.findByText('Bound: workspace-a / sentinel-a');
+        fireEvent.change(screen.getByLabelText('Channel workspace'), { target: { value: 'workspace-b' } });
+        await screen.findByRole('option', { name: 'sentinel-b (sentinel-b)' });
+        fireEvent.change(screen.getByLabelText('Channel Sentinel'), { target: { value: 'sentinel-b' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save binding' }));
+        expect(screen.getByRole('dialog', { name: 'Change channel binding' })).toBeDefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Change binding' }));
+        await screen.findByText('Bound: workspace-b / sentinel-b');
+    });
+
     it('places all status panels before detailed configuration without duplicating controls', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
             ...status, outboundBackend: 'mcp', ic3Region: 'emea', enableTrouter: true,

@@ -465,9 +465,17 @@ registered members supply execution roots and access policy.
 
 `messaging/` owns independent Teams and WhatsApp managers over `coc-connector`.
 Account/connection settings are server-global; accepted requests and answer receipts
-are workspace-scoped. Explicit repo/topic bindings determine chat routing.
+are workspace-scoped. WhatsApp uses explicit repo/topic bindings.
 Relays deliver the captured conversation's final answer to its original destination despite selection changes.
 Receipts preserve progress; uncertain sends require reconciliation rather than automatic replay.
+`teams-channel-binding.ts` persists one
+workspace/Sentinel per opaque account/team/channel identity; it validates the workspace,
+process owner and Sentinel mode at binding and admission. The owning dashboard or a verified
+own-user Teams command configures the binding. Admission serializes with rebinding; receipts
+retain their original owner and thread. The fixed grammar rejects Teams repo/topic selection
+and explicit chat IDs. Missing bindings never fall back to Global. The separate container
+bridge and WhatsApp routing stay independent.
+Channel bindings are machine-local, excluded from snapshots and cleared by data wipe.
 Accepted Teams channel-thread follow-ups acknowledge durable admission directly
 without a confirmation post; new chats retain confirmations. Upstream Like admission
 and request-correlated final-answer delivery remain independent of acceptance posts.
@@ -634,15 +642,18 @@ answer-part ordering stays independent.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`, `git status`,
-`compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
+`compact [instructions]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; WhatsApp also supports
+`[chatid]`. Unknown `/word` → "Unknown
 command" + generated help, never sent to the AI). The CoC routers pass `platform: 'whatsapp'`
 or `'teams'`, enabling read-only `list todos` (alias `todo[s]`): every active non-archived
-Sentinel ledger item plus at most the 5 most recent Done of the quoted chat or bound Teams thread,
-else the sender's selected topic (`messaging-todos.ts`).
+Sentinel ledger item plus at most the 5 most recent Done of the bound Teams Sentinel or
+the quoted/selected WhatsApp chat (`messaging-todos.ts`).
 `formatMessagingHelp` derives grouped help from the command/mode specs. Routers
 use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
 command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
+In Teams, `list todos` and `compact` target the bound Sentinel,
+and `/binding show` or `/binding set <workspace-id> <sentinel-id>` manage the channel.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`), Git status and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. WhatsApp and Teams channel/thread
@@ -650,7 +661,7 @@ quota commands share `formatQuotaReply`: every finite normalized snapshot retain
 remaining percentage and reset date, with `5h`/`7d` labels and Codex limit-id prefixes;
 unknown percentages stay unknown. Collection, cache freshness and provider-selection
 thresholds belong to the quota cache and provider router. `compact` targets the quoted
-WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
+WhatsApp answer's chat or selected topic, or the bound Teams Sentinel,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
 `POST /api/processes/:id/compact`). Busy compaction admits one durable queue operation
 through conversation admission, promoting earlier buffered messages first; later arrivals
@@ -659,7 +670,7 @@ acknowledge admission and use the per-workspace job-notice ledger for completion
 failure and cancellation at the captured destination; selection stays unchanged. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit
 mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
 `sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
-dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
+dashboard picker. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
 When the target is a sentinel (persisted or still queued), `/ask`, `/autopilot`, and `/ralph`
 hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one instance in
@@ -676,13 +687,12 @@ selected target remains the sentinel (including its queued task id). Matching qu
 payloads retain files and notice tracking after observer failures; rejected admission
 cleans files and allows redelivery. No sentinel turn runs and selection is unchanged;
 `/sentinel` or no prefix reaches the sentinel. An empty mode prefix replies "Send a message to start a chat.".
-`list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
+WhatsApp `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`
 (`list()` + `listRemoteChats()` → the remote's `GET /api/processes?workspace=&limit=`).
-The `n.m` numbering lives in a per-chat in-memory `RemoteRefMemory` (WhatsApp group,
-Teams thread or channel+user); remote repos never become the selected repo.
-Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-browse.ts`
+The `n.m` numbering lives in a per-group in-memory `RemoteRefMemory`; remote repos
+never become the selected repo. Local and remote topic lists share `formatTopicList` in `remote-browse.ts`
 (`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
 `lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). Local
 `local-topics.ts` merges transcript-free saved pages with owner-verified first-turn
@@ -690,9 +700,8 @@ chat queue tasks across registered workspaces: five chats created within 24 hour
 ranked pinned, running, queued, then activity. Follow-ups and internal jobs do not
 create rows. Queued rows carry a label and stable owner-qualified process ID.
 Numeric selection retains the displayed refs and revalidates the owner and live
-queue/process transition. Both connectors admit subsequent turns through existing
-durable receipts and queue dependencies; Teams thread selections retain task IDs
-until the process exists. Cancelled or missing queue targets reject selection and
+queue/process transition. Subsequent WhatsApp turns use existing durable receipts
+and queue dependencies. Cancelled or missing queue targets reject selection and
 delivery. Remote directory lists expose saved processes only. WhatsApp's optional
 topic-list supplement (`whatsapp-overtures.ts`) lists up to five saved triggers across
 registered local workspaces, independently of recent topic age/numbering. Owner names
@@ -1037,9 +1046,8 @@ Transports:
 `createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
 `WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
 follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a
-top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
-replies route to the job by root (a reply inside the dispatcher's thread would route to the
-dispatcher) and user selection is untouched.
+top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection.
+Ordinary Teams replies route to the channel Sentinel. User selection is untouched.
 
 Automatic chat compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
 `taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose

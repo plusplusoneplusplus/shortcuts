@@ -14,6 +14,7 @@ import { createBaileysConnection } from '../../../../coc-connector/src/whatsapp/
 import { GraphChannelReader } from '../../../../coc-connector/src/teams/graph/channel-reader';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsChannelBindings } from '../../../src/server/messaging/teams-channel-binding';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../../../src/server/messaging/whatsapp-command-router';
@@ -189,6 +190,11 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
         disconnect = () => router.resetPendingImages();
         transport = await whatsappTransport(dataDir, msg => router.handle(msg));
     } else {
+        await store.addProcess({ id: 'sentinel', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'test-session',
+            metadata: { workspaceId: 'ws-a', mode: 'sentinel', provider } });
+        await new TeamsChannelBindings(dataDir, store).bind(
+            { accountKey: 'account', teamId: 'team', channelId: 'channel' }, 'ws-a', 'sentinel');
         const manager = new TeamsMessagingManager(dataDir);
         cleanup.push(() => manager.dispose());
         disconnect = () => { void manager.disconnect(); };
@@ -196,6 +202,7 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
             enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
         vi.spyOn(manager, 'sendMessage').mockImplementation(async text => { sends.push(text); return `out-${sends.length}`; });
         let handle!: (msg: InboundTeamsMessage) => Promise<void>;
         vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => { handle = msg => handler(msg, () => {}); });
@@ -212,7 +219,7 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
             }),
             admitRelayFollowUp: async (process, prompt, requestId, mode, id, images) => ({ taskId: await queue.enqueue({
                 id, processId: process.id, type: 'chat', repoId: String(process.metadata.workspaceId), priority: 'normal', config: {},
-                payload: { kind: 'chat', prompt, mode: mode ?? 'ask', workspaceId: process.metadata.workspaceId,
+                payload: { kind: 'chat', prompt, mode: mode ?? 'sentinel', workspaceId: process.metadata.workspaceId,
                     processId: process.id, relayRequestId: requestId, ...incomingImageTaskPayload(images) },
             }) }),
             enqueuePendingRelayFollowUp: (workspaceId, processId, prompt, requestId, mode, id, images) => queue.enqueue({
@@ -223,7 +230,7 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
         });
         transport = await teamsTransport(msg => handle(msg));
     }
-    await transport.deliver('select', '/select repo ws-a');
+    if (platform === 'whatsapp') await transport.deliver('select', '/select repo ws-a');
     const settle = async () => {
         queue.activateQueueProcessing();
         await vi.waitFor(() => expect(facade.getAll().every(task => ['completed', 'failed'].includes(task.status))).toBe(true), { timeout: 10_000 });
@@ -231,7 +238,7 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
     return { dataDir, store, queue, facade, received, sends, questions, disconnect, settle, ...transport };
 }
 
-describe.each(['whatsapp', 'teams'] as const)('%s native images through execution and recorded chat', platform => {
+describe.each(['whatsapp'] as const)('%s native images through execution and recorded chat', platform => {
     it.each([false, true])('preserves first and follow-up attachments (await instructions=%s)', { timeout: 20_000 }, async captionless => {
         const ctx = await harness(platform);
         if (captionless) {
@@ -509,57 +516,46 @@ describe.each(['whatsapp', 'teams'] as const)('%s native images through executio
     });
 });
 
-describe('Teams native pending thread boundaries', () => {
-    it('accepts instructions replying to the captionless image root and keeps that thread bound', { timeout: 20_000 }, async () => {
+describe('Teams bound Sentinel native images through execution', () => {
+    it.each([false, true])('executes captioned and pending images in the bound Sentinel (pending=%s)', { timeout: 20_000 }, async pending => {
+        const ctx = await harness('teams');
+        if (pending) {
+            await ctx.deliver('image-root', '', true);
+            expect(ctx.downloadCount()).toBe(0);
+            await ctx.deliver('instruction', 'describe the image', false, 'image-root');
+        } else await ctx.deliver('image-root', 'describe the image', true);
+        const task = ctx.facade.getAll()[0];
+        expect(task).toMatchObject({ repoId: 'ws-a', processId: 'sentinel',
+            payload: { mode: 'sentinel', images: [IMAGE_URL] } });
+        await ctx.settle();
+        expect(ctx.received).toHaveLength(1);
+        expect(ctx.received[0].bytes).toEqual([PNG]);
+        expect(ctx.received[0].prompt).toContain('describe the image');
+        expect((await ctx.store.getProcess('sentinel'))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.images).toEqual([IMAGE_URL]);
+        expect(ctx.downloadCount()).toBe(1);
+    });
+
+    it('does not execute an image-less turn for an unsupported provider', { timeout: 20_000 }, async () => {
+        const ctx = await harness('teams', 'opencode');
+        await ctx.deliver('image-root', 'describe the image', true);
+        await ctx.settle();
+        expect((await ctx.store.getProcess('sentinel'))?.status).toBe('failed');
+        expect(ctx.received).toEqual([]);
+        await vi.waitFor(() => expect(ctx.sends.some(text => text.includes(CHAT_IMAGE_FAILURE_TEXT.provider))).toBe(true));
+    });
+
+    it('rejects retained images after the channel is rebound', async () => {
         const ctx = await harness('teams');
         await ctx.deliver('image-root', '', true);
+        await ctx.store.addProcess({ id: 'sentinel-b', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-b', mode: 'sentinel' } });
+        await new TeamsChannelBindings(ctx.dataDir, ctx.store).bind(
+            { accountKey: 'account', teamId: 'team', channelId: 'channel' }, 'ws-b', 'sentinel-b');
+        await ctx.deliver('instruction', 'describe the image', false, 'image-root');
         expect(ctx.facade.getAll()).toHaveLength(0);
-        await ctx.deliver('instructions', '/ask inspect', false, 'image-root');
-        expect(ctx.facade.getAll()[0]?.payload.images).toEqual([IMAGE_URL]);
-        await ctx.settle();
-        const first = ctx.facade.getAll()[0];
-        await ctx.deliver('follow', '/ask more', false, 'image-root');
-        await ctx.settle();
-        const follow = ctx.facade.getAll().find(task => task.id !== first.id);
-        expect(follow?.processId).toBe(first.processId);
-        expect(ctx.received.map(turn => turn.bytes)).toEqual([[PNG], []]);
-    });
-
-    it('keeps independent thread/workspace batches bound despite root selection changes', async () => {
-        const ctx = await harness('teams');
-        await ctx.deliver('select-a', '/select repo ws-a', false, 'root-a');
-        await ctx.deliver('select-b', '/select repo ws-b', false, 'root-b');
-        await ctx.deliver('image-a', '', true, 'root-a');
-        await ctx.deliver('image-b', '', true, 'root-b');
-        await ctx.deliver('root-selection', '/select repo ws-b');
-        await ctx.deliver('instructions-b', '/ask inspect B', false, 'root-b');
-        await ctx.deliver('instructions-a', '/ask inspect A', false, 'root-a');
-        expect(ctx.facade.getAll().map(task => task.repoId)).toEqual(['ws-b', 'ws-a']);
-        expect(ctx.facade.getAll().map(task => task.payload.images)).toEqual([[IMAGE_URL], [IMAGE_URL]]);
-    });
-
-    it('a shared selection in an image-root alias invalidates its whole retained batch', async () => {
-        const ctx = await harness('teams');
-        await ctx.deliver('image-a', '', true);
-        await ctx.deliver('image-b', '', true);
-        await ctx.deliver('reselect', '/select repo ws-a', false, 'image-b', 'other');
-        await ctx.deliver('instructions', '/ask inspect', false, 'image-a');
-        expect(ctx.facade.getAll()[0]?.payload.images).toBeUndefined();
         expect(ctx.downloadCount()).toBe(0);
-    });
-
-    it('shared thread reselection invalidates pending batches of every sender', { timeout: 20_000 }, async () => {
-        const ctx = await harness('teams');
-        await ctx.deliver('select-thread', '/select repo ws-a', false, 'root');
-        await ctx.deliver('image-own', '', true, 'root');
-        await ctx.deliver('image-other', '', true, 'root', 'other');
-        await ctx.deliver('reselect-thread', '/select repo ws-a', false, 'root', 'third');
-        await ctx.deliver('instructions-own', '/ask own', false, 'root');
-        await ctx.settle();
-        await ctx.deliver('instructions-other', '/ask other', false, 'root', 'other');
-        await ctx.settle();
-        expect(ctx.received.map(turn => turn.bytes)).toEqual([[], []]);
-        expect(ctx.downloadCount()).toBe(0);
+        expect(ctx.sends.at(-1)).toContain('changed');
     });
 });
 

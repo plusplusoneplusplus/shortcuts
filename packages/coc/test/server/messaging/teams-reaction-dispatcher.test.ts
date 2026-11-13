@@ -38,6 +38,7 @@ describe('resolveTeamsReactionDispatcher', () => {
         ] });
         config = {
             features: { teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: 'workspace-a' },
             teamsReactionDelegation: { workspaceId: 'workspace-a', dispatcherSkill: 'dispatcher' },
             skills: { autoDetectDefaultFolders: false },
         };
@@ -56,9 +57,19 @@ describe('resolveTeamsReactionDispatcher', () => {
         });
     });
 
+    it('always uses the shared Teams workspace, ignoring the separate reaction workspace', async () => {
+        const other = path.join(root, 'other');
+        fs.mkdirSync(other);
+        const file = skill(path.join(other, '.github', 'skills'));
+        config.teamsRouting = { workspaceId: 'workspace-b' };
+        expect(await resolve()).toMatchObject({ workspaceId: 'workspace-b', workingDirectory: other, dispatcherSkillPath: file });
+        config.teamsRouting.workspaceId = '';
+        await expect(resolve()).rejects.toThrow('binding is incomplete');
+    });
+
     async function selectGroup(members = ['workspace-a', 'workspace-b']) {
         const group = await createRepoGroup(dataDir, store, { name: 'Team', members });
-        config.teamsReactionDelegation!.workspaceId = group.id;
+        config.teamsRouting!.workspaceId = group.id;
         return group;
     }
 
@@ -150,9 +161,15 @@ describe('resolveTeamsReactionDispatcher', () => {
     });
 
     it.each([
-        {}, { workspaceId: 'workspace-a' }, { dispatcherSkill: 'dispatcher' },
+        {}, { workspaceId: 'workspace-a' },
     ])('rejects incomplete bindings %j', async binding => {
         config.teamsReactionDelegation = binding;
+        await expect(resolve()).rejects.toThrow('incomplete');
+        expect(store.getWorkspaces).not.toHaveBeenCalled();
+    });
+
+    it('does not fall back to the old reaction workspace when the shared workspace is missing', async () => {
+        config.teamsRouting!.workspaceId = '';
         await expect(resolve()).rejects.toThrow('incomplete');
         expect(store.getWorkspaces).not.toHaveBeenCalled();
     });
@@ -166,7 +183,7 @@ describe('resolveTeamsReactionDispatcher', () => {
     );
 
     it('rejects remote workspace selectors before reads', async () => {
-        config.teamsReactionDelegation!.workspaceId = 'remote:server:workspace-a';
+        config.teamsRouting!.workspaceId = 'remote:server:workspace-a';
         await expect(resolve()).rejects.toThrow('Invalid');
         expect(store.getWorkspaces).not.toHaveBeenCalled();
     });

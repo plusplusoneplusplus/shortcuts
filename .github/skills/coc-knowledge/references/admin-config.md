@@ -180,9 +180,9 @@ the configured default; a server default of Direct injects on the initial turn.
 ### IC3 own-command configuration
 
 `features.teamsIc3OwnCommands` (default off) enables the independent native Azure CLI
-[Ask launcher](server-architecture.md#ic3-own-command-launcher). Its live
-`teamsIc3OwnCommands.workspaceId` selects a registered local workspace or repo group
-on the owning server. The selector labels groups and excludes other virtual scopes.
+[Ask launcher](server-architecture.md#ic3-own-command-launcher). Mentions and reactions
+use the live `teamsRouting.workspaceId` on the owning server; a missing workspace blocks both.
+The selector labels groups and excludes other virtual scopes.
 The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
 the shared explicit `amer`, `emea` or `apac` region for IC3 operations. Saving a
 region change restarts own-command reads; an unset region blocks connection.
@@ -192,14 +192,16 @@ returning each request's answer to its source chat. Interactive questions stay i
 ### Teams reaction delegation configuration
 
 `features.teamsReactionDelegation` defaults off. The admin registry persists its
-live configuration contract and `teamsReactionDelegation.workspaceId` /
-`dispatcherSkill`, both empty by default. File and merged admin validation require
-both names when enabled; disabled drafts may be incomplete. Workspace IDs exclude
+live `teamsReactionDelegation.dispatcherSkill`, empty by default. File and merged admin
+validation require the dispatcher skill when enabled; the shared workspace supplies the
+target. Disabled drafts may be incomplete.
+Workspace IDs exclude
 remote selectors, and dispatcher values identify a skill by name, not a path.
 The strict namespace accepts neither permission/source selectors nor provider/model
 overrides. Connections -> Teams presents one registry group with the experimental
-toggle; its local execution workspace (repo or repo group) and dispatcher skill selectors
-use `dependsOn` and appear once the toggle is on. `AdminSkillSelect`
+toggle and dispatcher skill selector. The shared workspace selector is independent of
+the feature toggles.
+`AdminSkillSelect`
 uses ordinary workspace skill listing and filters workspace/global disabled names.
 `adminWorkspaceSkills.ts` checks repo/group registration and enabled skills on the
 selected Admin server; enabled UI saves re-read these before persisting. Failures

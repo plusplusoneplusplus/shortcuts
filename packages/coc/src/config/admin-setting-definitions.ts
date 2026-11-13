@@ -1109,11 +1109,25 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             control: { type: 'textarea' }, testId: 'textarea-teams-outbound-compliance-prompt',
         },
     },
+    {
+        key: 'teamsRouting.workspaceId',
+        value: {
+            kind: 'custom',
+            validate: value => typeof value === 'string' && value.length <= 256 && /^[a-zA-Z0-9_-]*$/.test(value)
+                ? undefined : 'Select a local workspace ID registered on this server.',
+        },
+        default: '', runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsBridge', order: 2, label: 'Mention and reaction workspace',
+            hint: 'Teams mentions and reactions use this workspace on the configured server.',
+            control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-routing-workspace',
+        },
+    },
     bool({
         key: 'features.teamsIc3OwnCommands', default: false, runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsOwnCommands', order: 10, label: 'Enable IC3 @coc own commands', badge: 'experimental',
-            hint: 'Teams @coc <prompt> messages share one Ask conversation per Teams chat in the selected workspace and return each answer through IC3. Requires the IC3 region saved in the Teams connection card. Trouter notifications trigger chat reads, with background fallback scans and native Azure CLI authentication. Interactive questions stay in the dashboard.',
+            hint: 'Teams @coc <prompt> messages share one Ask conversation per Teams chat in the shared mention and reaction workspace and return each answer through IC3. Requires the IC3 region saved in the Teams connection card. Trouter notifications trigger chat reads, with background fallback scans and native Azure CLI authentication. Interactive questions stay in the dashboard.',
             testId: 'toggle-teams-ic3-own-commands-enabled',
         },
     }),
@@ -1135,7 +1149,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.teamsReactionDelegation', default: false, runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 10, label: 'Enable Robot reaction delegation', badge: 'experimental',
-            hint: 'Start separate Ask jobs for your live Robot reactions in Teams self, direct and group chats. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
+            hint: 'Start separate Ask jobs for your live Robot reactions in Teams self, direct and group chats in the shared mention and reaction workspace. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
             testId: 'toggle-teams-reaction-delegation-enabled',
         },
     }),
@@ -1165,7 +1179,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill', dependsOn: 'features.teamsReactionDelegation',
             hint: 'Select one enabled skill from the execution workspace to handle Teams reactions. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
-            control: { type: 'skill', workspaceKey: 'teamsReactionDelegation.workspaceId' },
+            control: { type: 'skill', workspaceKey: 'teamsRouting.workspaceId' },
             testId: 'select-teams-reaction-dispatcher-skill',
         },
     },

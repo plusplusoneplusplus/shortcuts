@@ -6,7 +6,7 @@ import { enqueueViaBridge, validateAndParseTask, type QueueRouteContext } from '
 import { resolveTeamsReactionDispatcher } from './teams-reaction-dispatcher';
 import { teamsReactionOutcomeInstructions } from './teams-reaction-outcome';
 
-type DispatcherConfig = Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'skills'>;
+type DispatcherConfig = Pick<CLIConfig, 'features' | 'teamsReactionDelegation' | 'teamsRouting' | 'skills'>;
 
 export class TeamsReactionLaunchError extends Error {
     constructor(readonly cause: unknown, readonly outcome: 'not-admitted' | 'unknown') {

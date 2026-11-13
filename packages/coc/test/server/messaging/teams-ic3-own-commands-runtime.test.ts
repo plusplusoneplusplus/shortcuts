@@ -8,6 +8,7 @@ import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
 import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
 import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page, TeamsIc3Session } from '@plusplusoneplusplus/coc-native';
 import { DEFAULT_CONFIG, mergeConfig, type CLIConfig } from '../../../src/config';
+import { CLIConfigSchema } from '../../../src/config/schema';
 import { createTeamsIc3OwnCommandsRuntime } from '../../../src/server/messaging/teams-ic3-own-commands-runtime';
 import type { ScheduleQueueEventBus } from '../../../src/server/schedule/schedule-queue-await';
 import type { Route } from '../../../src/server/types';
@@ -111,7 +112,7 @@ describe('basic IC3 own-command launcher', () => {
         decisionService = undefined;
         routes = [];
         config = mergeConfig(DEFAULT_CONFIG, {
-            features: { teamsIc3OwnCommands: true }, teamsIc3OwnCommands: { workspaceId },
+            features: { teamsIc3OwnCommands: true }, teamsRouting: { workspaceId },
         });
         sharedRegion = region;
         vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
@@ -136,7 +137,7 @@ describe('basic IC3 own-command launcher', () => {
     });
 
     it('treats a partial live config without features as disabled', async () => {
-        config = { teamsIc3OwnCommands: { workspaceId } } as typeof config;
+        config = { teamsRouting: { workspaceId } } as typeof config;
         expect(() => start()).not.toThrow();
         await vi.advanceTimersByTimeAsync(60_000);
         expect(createSession).not.toHaveBeenCalled();
@@ -179,6 +180,22 @@ describe('basic IC3 own-command launcher', () => {
         await vi.advanceTimersByTimeAsync(0);
         return createTrouter.mock.lastCall![0];
     }
+
+    it('uses the shared workspace for mentions when fixed routing is enabled', async () => {
+        config = mergeConfig(config, CLIConfigSchema.parse({
+            features: { teamsFixedRouting: false }, teamsRouting: { workspaceId: 'workspace-beta' },
+        }));
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('own', notifiedChat)]);
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).toHaveBeenCalledWith('workspace-beta', expect.any(String), expect.any(String),
+            expect.any(AbortSignal), expect.any(String));
+        await update({ teamsRouting: { workspaceId: 'workspace-beta' } });
+        expect(reader.dispose).not.toHaveBeenCalled();
+        await update({ teamsRouting: { workspaceId: '' } });
+        expect(service.getStatus().state).toBe('error');
+    });
 
     it('starts notifications by default and pins a separate listener to the native reader account', async () => {
         const listener = await startNotifications();
@@ -373,7 +390,7 @@ describe('basic IC3 own-command launcher', () => {
         if (action === 'shutdown') disposal = service.dispose();
         else {
             histories.clear();
-            await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+            await update({ teamsRouting: { workspaceId: 'workspace-beta' } });
         }
         expect(signal.aborted).toBe(true);
         expect(reactions.dispose).toHaveBeenCalledOnce();
@@ -542,7 +559,7 @@ describe('basic IC3 own-command launcher', () => {
         }
         await vi.advanceTimersByTimeAsync(0);
         expect(reader.readHistory).toHaveBeenCalledTimes(reads);
-        await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        await update({ teamsRouting: { workspaceId: 'workspace-beta' } });
         expect(notification.stop).toHaveBeenCalledOnce();
         const after = reader.readHistory.mock.calls.length;
         listener.onWake({ cause: 'message', conversationId: notifiedChat });
@@ -793,7 +810,7 @@ describe('basic IC3 own-command launcher', () => {
         };
         histories.set('direct', [message('second', 'direct', { authorId: nextAccount.userId })]);
         reader.connect.mockResolvedValueOnce(nextAccount);
-        if (field === 'workspace') config = mergeConfig(config, { teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        if (field === 'workspace') config = mergeConfig(config, { teamsRouting: { workspaceId: 'workspace-beta' } });
         sharedRegion = 'emea';
         regionChanged();
         await vi.advanceTimersByTimeAsync(0);
@@ -847,7 +864,7 @@ describe('basic IC3 own-command launcher', () => {
     });
 
     it.each(['missing', 'virtual', 'group-missing', 'group-relative', 'group-INVALID'])('does not connect for %s targets or fall back to another workspace', async target => {
-        config = mergeConfig(config, { teamsIc3OwnCommands: { workspaceId: target } });
+        config = mergeConfig(config, { teamsRouting: { workspaceId: target } });
         start();
         await vi.advanceTimersByTimeAsync(0);
         expect(createSession).not.toHaveBeenCalled();
@@ -892,7 +909,7 @@ describe('basic IC3 own-command launcher', () => {
         start();
         await vi.advanceTimersByTimeAsync(0);
         const signal = launch.mock.calls[0][3];
-        await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        await update({ teamsRouting: { workspaceId: 'workspace-beta' } });
         expect(signal.aborted).toBe(true);
         histories.set('direct', [message('second')]);
         await vi.advanceTimersByTimeAsync(30_000);
@@ -1360,7 +1377,7 @@ describe('basic IC3 own-command launcher', () => {
 
     it('revokes pending result delivery when the target changes', async () => {
         const id = await launched();
-        await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        await update({ teamsRouting: { workspaceId: 'workspace-beta' } });
         store.getProcess.mockResolvedValue(result(id));
         events.emit('taskCompleted', terminal(id));
         await vi.advanceTimersByTimeAsync(0);

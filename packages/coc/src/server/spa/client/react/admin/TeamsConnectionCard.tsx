@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../ui';
 import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowController';
 import { SettingsCard } from './SettingsCard';
+import { Dialog } from '../ui/Dialog';
+import { AdminWorkspaceSelect } from './AdminWorkspaceSelect';
 import { useAdminDirtyGuard, useAdminServer, type AdminServerAccess } from './adminTarget';
 
 interface TeamsStatus {
+    connectionId?: string | null;
     channelReadBackend?: 'graph';
     outboundBackend?: 'mcp' | 'graph';
     enableTrouter?: boolean;
@@ -110,6 +113,145 @@ async function request<T>(admin: AdminServerAccess, path: string, body?: object)
         throw new Error(result?.error ?? `HTTP ${response.status}`);
     }
     return response.json() as Promise<T>;
+}
+
+function TeamsChannelBinding({ status }: { status: TeamsStatus }) {
+    const admin = useAdminServer();
+    const [workspaceId, setWorkspaceId] = useState('');
+    const [processId, setProcessId] = useState('');
+    const [binding, setBinding] = useState<{ workspaceId: string; processId: string; title: string } | null>(null);
+    const [unavailable, setUnavailable] = useState(false);
+    const [sentinels, setSentinels] = useState<Array<{ id: string; title: string }>>([]);
+    const [nextOffset, setNextOffset] = useState<number | null>(null);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const listGeneration = useRef(0);
+    const [error, setError] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [confirm, setConfirm] = useState(false);
+    const [bindingReady, setBindingReady] = useState(false);
+    const [retryBinding, setRetryBinding] = useState(0);
+
+    useEffect(() => {
+        let current = true;
+        setBinding(null);
+        setUnavailable(false);
+        setWorkspaceId('');
+        setProcessId('');
+        setError(null);
+        setBindingReady(false);
+        if (status.status !== 'connected') return () => { current = false; };
+        void request<{ binding: { workspaceId: string; processId: string; title: string } | null; unavailable?: boolean }>(
+            admin, '/messaging/teams/channel-binding',
+        ).then(result => {
+            if (!current) return;
+            setBinding(result.binding);
+            setUnavailable(result.unavailable === true);
+            setWorkspaceId(result.binding?.workspaceId ?? '');
+            setProcessId(result.binding?.processId ?? '');
+            setBindingReady(true);
+        }).catch(err => { if (current) setError(err instanceof Error ? err.message : String(err)); });
+        return () => { current = false; };
+    }, [admin, status.connectionId, status.status, retryBinding]);
+
+    useEffect(() => {
+        let current = true;
+        const generation = ++listGeneration.current;
+        setSentinels([]);
+        setNextOffset(null);
+        setLoadingMore(false);
+        if (!workspaceId) return () => { current = false; };
+        void request<{ sentinels: Array<{ id: string; title: string }>; nextOffset?: number | null }>(
+            admin, `/messaging/teams/channel-binding/sentinels?workspaceId=${encodeURIComponent(workspaceId)}`,
+        ).then(result => {
+            if (current && generation === listGeneration.current) {
+                setSentinels(result.sentinels);
+                setNextOffset(result.nextOffset ?? null);
+            }
+        })
+            .catch(err => { if (current) setError(err instanceof Error ? err.message : String(err)); });
+        return () => { current = false; listGeneration.current++; };
+    }, [admin, workspaceId]);
+
+    const loadMore = async () => {
+        if (nextOffset === null || loadingMore) return;
+        const generation = listGeneration.current;
+        setLoadingMore(true);
+        try {
+            const result = await request<{ sentinels: Array<{ id: string; title: string }>; nextOffset: number | null }>(
+                admin, `/messaging/teams/channel-binding/sentinels?workspaceId=${encodeURIComponent(workspaceId)}&offset=${nextOffset}`,
+            );
+            if (generation !== listGeneration.current) return;
+            setSentinels(current => [...current, ...result.sentinels.filter(item => !current.some(row => row.id === item.id))]);
+            setNextOffset(result.nextOffset);
+        } catch (err) {
+            if (generation === listGeneration.current) setError(err instanceof Error ? err.message : String(err));
+        } finally {
+            if (generation === listGeneration.current) setLoadingMore(false);
+        }
+    };
+
+    const save = async () => {
+        setConfirm(false);
+        setBusy(true);
+        setError(null);
+        try {
+            await request(admin, '/messaging/teams/channel-binding', { workspaceId, processId,
+                expectedBinding: binding ? { workspaceId: binding.workspaceId, processId: binding.processId } : null });
+            setBinding({ workspaceId, processId, title: sentinels.find(item => item.id === processId)?.title ?? processId });
+            setUnavailable(false);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+    useAdminDirtyGuard('teams-channel-binding', {
+        label: 'Teams channel binding',
+        dirty: !!(workspaceId || processId) && (workspaceId !== (binding?.workspaceId ?? '')
+            || processId !== (binding?.processId ?? '')),
+        saving: busy,
+        save,
+    });
+    return (
+        <section className="ar-teams-section" aria-label="Channel binding">
+            <h4>Channel binding</h4>
+            <p className="ar-teams-hint">Every channel thread uses the same Sentinel. In-flight requests keep their original destination.</p>
+            <p className="ar-teams-hint">From the connected Teams account, use /binding show or /binding set with the workspace and Sentinel IDs.</p>
+            <p role="status">{status.status !== 'connected' ? 'Connect Teams to configure the binding.'
+                : !bindingReady ? error ? 'Binding unavailable' : 'Loading binding…'
+                    : binding ? `${unavailable ? 'Unavailable' : 'Bound'}: ${binding.workspaceId} / ${binding.title}` : 'Not configured'}</p>
+            {unavailable && <p role="alert" className="ar-teams-error">The workspace or Sentinel is unavailable. Select another binding.</p>}
+            {error && <p role="alert" className="ar-teams-error">{error}</p>}
+            {!bindingReady && status.status === 'connected' && error && <Button size="sm" variant="secondary"
+                onClick={() => setRetryBinding(value => value + 1)}>Retry binding</Button>}
+            {bindingReady && <>
+            <label className="ar-teams-field">Workspace</label>
+            <AdminWorkspaceSelect value={workspaceId} includeRepoGroups label="Channel workspace"
+                data-testid="teams-channel-workspace" onChange={value => { setWorkspaceId(value); setProcessId(''); }} />
+            <label className="ar-teams-field">Sentinel
+                <select className="ar-select ar-med" aria-label="Channel Sentinel" value={processId}
+                    data-testid="teams-channel-sentinel" disabled={!workspaceId}
+                    onChange={event => setProcessId(event.target.value)}>
+                    <option value="">Select a Sentinel</option>
+                    {processId && !sentinels.some(item => item.id === processId)
+                        && <option value={processId}>{processId} (unavailable)</option>}
+                    {sentinels.map(item => <option key={item.id} value={item.id}>{item.title} ({item.id})</option>)}
+                </select>
+            </label>
+            {nextOffset !== null && <Button size="sm" variant="secondary" disabled={loadingMore}
+                onClick={() => void loadMore()}>Load more Sentinels</Button>}
+            <Button size="sm" disabled={busy || status.status !== 'connected' || !workspaceId
+                || !sentinels.some(item => item.id === processId)}
+                onClick={() => binding && (binding.workspaceId !== workspaceId || binding.processId !== processId)
+                    ? setConfirm(true) : void save()}>Save binding</Button>
+            </>}
+            <Dialog open={confirm} onClose={() => setConfirm(false)} title="Change channel binding" trapFocus
+                footer={<><Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button>
+                    <Button onClick={() => void save()}>Change binding</Button></>}>
+                Future channel requests use the new Sentinel. Requests already accepted keep their original destination.
+            </Dialog>
+        </section>
+    );
 }
 
 export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
@@ -426,6 +568,7 @@ export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
                             })}>Save channel</Button>
                     </div>
                 </section>
+                {status && <TeamsChannelBinding status={status} />}
                 <section className="ar-teams-section" aria-label="Connect">
                     <h4><span className="ar-teams-step" aria-hidden="true">3</span> Connect</h4>
                     <div className="ar-teams-connect">

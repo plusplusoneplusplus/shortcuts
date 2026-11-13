@@ -30,7 +30,7 @@ import { createPreferencesDomain } from './preferences-domain';
 import { createScheduleDomain } from './schedule-domain';
 import { createGitOpsDomain } from './git-ops-domain';
 import { createBrowserScreenshotsDomain } from './browser-screenshots-domain';
-import { createDelegatedJobsDomain, createSentinelTodosDomain, createSentinelMirrorOutboxDomain } from './delegated-jobs-domain';
+import { createDelegatedJobsDomain, createSentinelTodosDomain, createSentinelMirrorOutboxDomain, createTeamsChannelBindingsDomain } from './delegated-jobs-domain';
 
 /** Build a fresh, ordered set of snapshot domains. */
 export function createSnapshotDomains(): StorageSnapshotDomain[] {
@@ -45,6 +45,7 @@ export function createSnapshotDomains(): StorageSnapshotDomain[] {
         createDelegatedJobsDomain(),
         createSentinelTodosDomain(),
         createSentinelMirrorOutboxDomain(),
+        createTeamsChannelBindingsDomain(),
     ];
 }
 

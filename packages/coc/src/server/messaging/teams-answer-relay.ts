@@ -83,6 +83,7 @@ export interface TeamsAnswerRelayDeps {
     isEnabled: () => boolean;
     isBotManagedConversationsEnabled?: () => boolean;
     target: () => { connected: boolean; teamId?: string; channelId?: string };
+    resolveFixedThread?: (msg: InboundTeamsMessage) => Promise<{ process: AIProcess; workspaceId: string } | null | undefined>;
     /** Reply in `rootId`'s thread, or post a new top-level message when it is omitted. */
     send: (text: string, rootId?: string) => Promise<string>;
     /** Called after reconnect reconciliation (e.g. to post pending job notices). */
@@ -282,6 +283,8 @@ export class TeamsAnswerRelay {
     } | null> {
         const target = this.deps.target();
         if (!msg.replyToMessageId || !target.teamId || target.channelId !== msg.channelId) return null;
+        const fixed = await this.deps.resolveFixedThread?.(msg);
+        if (fixed !== undefined) return fixed;
         const root = this.rootEntry(msg)?.[1].value;
         const state = this.threadSelections.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId))?.value;
         if (root?.releaseState && (!state || state.processId === root.processId)) {

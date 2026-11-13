@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
@@ -28,13 +28,19 @@ describe('Teams channel Like admission', () => {
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
         const store = {
             getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'Global', rootPath: dataDir }]),
-            getProcess: vi.fn().mockResolvedValue(undefined),
+            getProcess: vi.fn().mockResolvedValue({ id: 'sentinel', type: 'chat', status: 'completed',
+                metadata: { workspaceId: 'global-workspace-00', mode: 'sentinel' } }),
         } as unknown as ProcessStore;
         manager = new TeamsMessagingManager(dataDir);
         vi.spyOn(manager, 'getStatus').mockReturnValue({
             enabled: true, status: 'connected', teamId: 'team-a', channelId: 'channel-a',
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
+        fs.writeFileSync(path.join(dataDir, 'teams-channel-bindings.json'), JSON.stringify([{
+            accountKey: 'account', teamId: 'team-a', channelId: 'channel-a',
+            workspaceId: 'global-workspace-00', processId: 'sentinel',
+        }]));
         const react = vi.spyOn(manager, 'reactToChannelMessage').mockImplementation(async msg => {
             events.push(`like:${msg.messageId}`);
         });
@@ -56,11 +62,16 @@ describe('Teams channel Like admission', () => {
             ...(relay ? {
                 relayQueue: queue,
                 getAnswerRelayEnabled: () => true,
-                admitRelayFollowUp: vi.fn().mockResolvedValue({}),
+                admitRelayFollowUp: vi.fn(async (_process, _text, requestId, _mode, taskId) => {
+                    events.push('enqueue-follow-up');
+                    tasks.set(taskId, { id: taskId, repoId: 'global-workspace-00', processId: 'sentinel',
+                        status: 'queued', payload: { relayRequestId: requestId } } as QueuedTask);
+                    return { taskId };
+                }),
                 enqueueRelayChat: async (workspaceId: string, _text: string, taskId: string) => {
                     events.push('enqueue');
                     tasks.set(taskId, {
-                        id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+                        id: taskId, repoId: workspaceId, processId: `queue_${taskId}`, status: 'queued',
                         type: 'chat', payload: { kind: 'chat', workspaceId },
                     } as QueuedTask);
                     return taskId;
@@ -80,7 +91,7 @@ describe('Teams channel Like admission', () => {
     }
 
     it('is live and default off; preserves command and chat replies while reacting before dispatch', async () => {
-        const { handle, message, react, send, events, setEnabled } = setup();
+        const { handle, message, react, send, events, setEnabled } = setup(true);
         await handle(message('off', '/list repos'));
         expect(react).not.toHaveBeenCalled();
         expect(send).toHaveBeenCalledOnce();
@@ -91,13 +102,11 @@ describe('Teams channel Like admission', () => {
         expect(events[1]).toContain('reply:command:');
         events.length = 0;
         await handle(message('chat', 'new request'));
-        expect(events).toEqual([
-            'like:chat', 'enqueue', expect.stringContaining('reply:chat:'),
-        ]);
+        expect(events).toEqual(['like:chat', 'enqueue-follow-up']);
         setEnabled(false);
         await handle(message('off-again', '/list repos'));
         expect(react).toHaveBeenCalledTimes(2);
-        expect(send).toHaveBeenCalledTimes(4);
+        expect(send).toHaveBeenCalledTimes(3);
     });
 
     it('reacts to an admitted tracked thread reply, not its parent, and skips durable duplicates', async () => {
@@ -159,7 +168,7 @@ describe('Teams channel Like admission', () => {
     });
 
     it('does not react to bot authors, empty posts, or unsupported thread replies', async () => {
-        const { handle, message, react, events, setEnabled } = setup();
+        const { handle, message, react, events, setEnabled } = setup(true);
         setEnabled(true);
         await handle({ ...message('bot', '/list repos'), botAuthored: true });
         await handle(message('empty', '   '));
@@ -179,7 +188,7 @@ describe('Teams channel Like admission', () => {
     });
 
     it('logs a rejected Like and still dispatches, replies, and processes the next post', async () => {
-        const { handle, message, react, events, setEnabled } = setup();
+        const { handle, message, react, events, setEnabled } = setup(true);
         setEnabled(true);
         react.mockRejectedValueOnce(new Error('private provider details'));
         const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -188,7 +197,7 @@ describe('Teams channel Like admission', () => {
             await handle(message('second', 'another request'));
             expect(react).toHaveBeenCalledTimes(2);
             expect(events.some(event => event.startsWith('reply:first:'))).toBe(true);
-            expect(events).toContain('enqueue');
+            expect(events).toContain('enqueue-follow-up');
             expect(errors).toHaveBeenCalledWith(
                 '[teams-messaging] Teams Like reaction unavailable or failed:', 'Error',
             );
@@ -215,31 +224,31 @@ describe('Teams channel Like admission', () => {
     });
 
     it('dispatches and accepts subsequent messages without waiting for a slow Like', async () => {
-        const { handle, message, react, enqueue, send, setEnabled } = setup();
+        const { handle, message, react, events, send, setEnabled } = setup(true);
         setEnabled(true);
         let finishLike!: () => void;
         react.mockImplementationOnce(() => new Promise<void>(resolve => { finishLike = resolve; }));
         try {
             await handle(message('slow-like', 'new request'));
-            expect(enqueue).toHaveBeenCalledOnce();
-            expect(send).toHaveBeenCalledOnce();
+            expect(events).toContain('enqueue-follow-up');
+            expect(send).not.toHaveBeenCalled();
             await handle(message('next-command', '/list repos'));
             expect(react).toHaveBeenCalledTimes(2);
-            expect(send).toHaveBeenCalledTimes(2);
+            expect(send).toHaveBeenCalledTimes(1);
         } finally {
             finishLike?.();
         }
     });
 
     it('logs a late Like rejection without failing admission or leaking provider details', async () => {
-        const { handle, message, react, enqueue, setEnabled } = setup();
+        const { handle, message, react, events, setEnabled } = setup(true);
         setEnabled(true);
         let rejectLike!: (error: Error) => void;
         const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
         react.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectLike = reject; }));
         try {
             await handle(message('late-like', 'new request'));
-            expect(enqueue).toHaveBeenCalledOnce();
+            expect(events).toContain('enqueue-follow-up');
             rejectLike(new Error('private provider details'));
             await Promise.resolve();
             expect(errors).toHaveBeenCalledWith(

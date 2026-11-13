@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toQueueProcessId, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMessagingManager, TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsChannelBindings } from '../../../src/server/messaging/teams-channel-binding';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 import { AskUserQuestionRelayHub, QUESTION_RELAY_TEXT } from '../../../src/server/messaging/ask-user-relay';
 import { teamsQuestionChatKey } from '../../../src/server/messaging/teams-answer-relay';
@@ -41,11 +42,19 @@ describe('Teams ask_user question relay', () => {
         tasks = new Map();
         followUps = [];
         processes.clear();
+        store.getWorkspaces.mockResolvedValue([{ id: 'global-workspace-00', name: 'Alpha', rootPath: dataDir }]);
+        processes.set('sentinel', {
+            id: 'sentinel', type: 'chat', status: 'completed',
+            metadata: { workspaceId: 'global-workspace-00', mode: 'sentinel' },
+        });
         manager = new TeamsMessagingManager(dataDir);
         vi.spyOn(manager, 'getStatus').mockReturnValue({
             enabled: true, status: 'connected', teamId, channelId,
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         } as any);
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
+        await new TeamsChannelBindings(dataDir, store as any).bind(
+            { accountKey: 'account', teamId, channelId }, 'global-workspace-00', 'sentinel');
         sendMessage = vi.fn(async () => `sent-${++sent}`);
         vi.spyOn(manager, 'sendMessage').mockImplementation(sendMessage as any);
         react = vi.fn().mockResolvedValue(undefined);
@@ -70,6 +79,8 @@ describe('Teams ask_user question relay', () => {
             },
             admitRelayFollowUp: async (process, _text, requestId, _mode, taskId) => {
                 followUps.push({ processId: process.id, requestId });
+                tasks.set(taskId!, { id: taskId, repoId: 'global-workspace-00', processId: process.id,
+                    status: 'running', payload: { relayRequestId: requestId } } as QueuedTask);
                 return { taskId };
             },
         });
@@ -85,8 +96,9 @@ describe('Teams ask_user question relay', () => {
 
     async function startRequest(): Promise<{ processId: string; requestId: string }> {
         await handle(inbound('root', 'please help'));
-        const [taskId] = [...tasks.keys()];
-        return { processId: toQueueProcessId(taskId), requestId: taskId };
+        const request = followUps.shift();
+        if (!request) throw new Error('Sentinel follow-up was not admitted');
+        return request;
     }
 
     function ask(request: { processId: string; requestId: string; origin?: MessagingJobOrigin }, questions: AskUserQuestion[]) {
@@ -226,7 +238,7 @@ describe('Teams ask_user question relay', () => {
         expect((await result)[0].answer).toBe('widget');
         // Nothing pending: a top-level post is an ordinary request again.
         await handle(inbound('next', 'another question'));
-        expect(String(sendMessage.mock.calls.at(-1)![0])).toMatch(/^💬 /);
+        expect(followUps).toHaveLength(1);
     });
 
     it.each(['select', 'multi-select', 'yes-no', 'confirm'] as const)('delivers a thread clarification for %s once without a follow-up turn', async type => {
@@ -277,7 +289,8 @@ describe('Teams ask_user question relay', () => {
     it('locates a follow-up turn by its relay request id', async () => {
         const request = await startRequest();
         processes.set(request.processId, {
-            id: request.processId, status: 'completed', metadata: { workspaceId: 'global-workspace-00', queueTaskId: request.requestId },
+            id: request.processId, type: 'chat', status: 'completed',
+            metadata: { workspaceId: 'global-workspace-00', mode: 'sentinel' },
         });
         await handle(inbound('follow', 'and then?', 'root'));
         expect(followUps).toHaveLength(1);

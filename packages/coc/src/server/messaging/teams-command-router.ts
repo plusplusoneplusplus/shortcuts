@@ -31,6 +31,7 @@ import { IncomingImagesError, MAX_MESSAGING_IMAGES } from './incoming-images';
 import { PendingImages, PendingImagesError, PENDING_IMAGE_TTL_MS, type PendingImageContext, type PendingImageScope } from './pending-images';
 import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
 import { createCache } from '../cache';
+import { TeamsChannelBindingError } from './teams-channel-binding';
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
 const THREAD_NO_TOPIC_REPLY = '❌ No topic selected in this thread. Use `/list topics`, then `/select topic <n>` here.';
@@ -105,6 +106,10 @@ export interface TeamsCommandRouterDeps {
     /** Data directory for persisting user state. */
     dataDir: string;
     isOwnMirrorMessage?: (message: InboundTeamsMessage) => boolean | Promise<boolean>;
+    fixedChannel?: {
+        resolve(msg: InboundTeamsMessage): Promise<{ workspaceId: string; process: AIProcess } | null>;
+        bind(msg: InboundTeamsMessage, workspaceId: string, processId: string): Promise<void>;
+    };
 }
 
 // ============================================================================
@@ -123,6 +128,10 @@ export class TeamsCommandRouter {
     private stopped = false;
     private imageGeneration = 0;
     private imageRoots = createImageRootCache();
+
+    private parse(text: string): MessagingCommand {
+        return parseMessagingCommand(text, 'teams', { fixedTeamsChannel: !!this.deps.fixedChannel });
+    }
 
     private imageRootKey(channelId: string, rootId: string): string {
         return JSON.stringify(['root', channelId, rootId]);
@@ -215,7 +224,7 @@ export class TeamsCommandRouter {
 
     hasPendingImageInstructions(msg: InboundTeamsMessage): boolean {
         if (this.stopped || !msg.senderAadId || msg.botAuthored || msg.initializationReplay || msg.historicalSelectionReplay) return false;
-        const command = parseMessagingCommand(msg.text, 'teams');
+        const command = this.parse(msg.text);
         return (command.type === 'chat' || command.type === 'chat-explicit')
             && !!command.args && (this.pendingImages.has(this.rootFrame(msg)?.scope ?? this.imageContext(msg))
                 || this.consumedImageInstructions.has(this.instructionKey(msg)));
@@ -225,7 +234,12 @@ export class TeamsCommandRouter {
         const generation = this.imageGeneration;
         let workspaceId: string | undefined;
         let chatId: string | null = null;
-        if (msg.replyToMessageId) {
+        if (this.deps.fixedChannel) {
+            const binding = await this.deps.fixedChannel.resolve(msg);
+            if (!binding) throw new TeamsChannelBindingError();
+            workspaceId = binding.workspaceId;
+            chatId = binding.process.id;
+        } else if (msg.replyToMessageId) {
             if (this.deps.isAnswerRelayEnabled?.() !== true) throw new Error('Teams thread target is unavailable');
             const binding = await this.deps.resolveThreadReply?.(msg);
             if (!binding) throw new Error('Teams thread target is unavailable');
@@ -273,16 +287,21 @@ export class TeamsCommandRouter {
             const instructionKey = this.instructionKey(msg);
             if (this.consumedImageInstructions.has(instructionKey)) return;
             if (msg.botAuthored) return;
+            if (this.deps.fixedChannel && /^\/?binding(?:\s|$)/i.test(msg.text.trim())) {
+                if (msg.images?.length || msg.initializationReplay || msg.historicalSelectionReplay) return;
+                await this.handleFixedBindingCommand(msg);
+                return;
+            }
             if ((msg.images?.length || (msg.senderAadId && this.pendingImages.has(this.imageContext(msg))))
                 && (msg.initializationReplay || msg.historicalSelectionReplay)) return;
             if (msg.images?.length) {
-                const mediaCommand = parseMessagingCommand(msg.text, 'teams');
+                const mediaCommand = this.parse(msg.text);
                 if (mediaCommand.type === 'invalid' || isMessagingControlCommand(mediaCommand)) {
                     await this.deps.sendReply('Send the images with chat instructions, separately from control commands.', msg.replyToMessageId || msg.messageId);
                     return;
                 }
             }
-            const parsedImageCommand = parseMessagingCommand(msg.text, 'teams');
+            const parsedImageCommand = this.parse(msg.text);
             const explicit = msg.images?.length && !msg.replyToMessageId && parsedImageCommand.type === 'chat'
                 ? /^\[([^\]]+)\]$/.exec(parsedImageCommand.args) : null;
             const imageCommand = explicit && parsedImageCommand.type === 'chat'
@@ -301,7 +320,7 @@ export class TeamsCommandRouter {
                         frame.roots.push(msg.messageId);
                         this.imageRoots.set(this.latestImageRootKey(msg), frame);
                         this.imageRoots.set(this.imageRootKey(msg.channelId, msg.messageId), frame);
-                        await this.deps.bindImageRoot?.(msg, scope.workspaceId, scope.chatId);
+                        if (!this.deps.fixedChannel) await this.deps.bindImageRoot?.(msg, scope.workspaceId, scope.chatId);
                     }
                     await this.deps.sendReply('Images received. Send instructions here within 30 minutes.', msg.replyToMessageId || msg.messageId);
                 }
@@ -316,6 +335,11 @@ export class TeamsCommandRouter {
                 if (consumedRoots) this.clearRootFrame(consumedRoots);
                 msg = { ...msg, images: [...pending, ...(msg.images ?? [])] };
             }
+            if (this.deps.fixedChannel) {
+                if (msg.historicalSelectionReplay) return;
+                await this.handleFixedChannelMessage(msg, observe);
+                return;
+            }
             if (msg.replyToMessageId && this.deps.resolveThreadReply
                 && this.deps.isAnswerRelayEnabled?.() !== true) {
                 await this.deps.sendReply('❌ Teams thread follow-ups are unavailable.', msg.replyToMessageId);
@@ -323,7 +347,7 @@ export class TeamsCommandRouter {
             }
             if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
                 boundThread = true;
-                command = parseMessagingCommand(msg.text, 'teams');
+                command = this.parse(msg.text);
                 if ('historicalSelectionReplay' in msg && msg.historicalSelectionReplay === true) {
                     if (!isMessagingControlCommand(command) || this.deps.hasThreadCommand?.(msg)) return;
                     const key = `${msg.channelId}\0${msg.replyToMessageId}`;
@@ -400,7 +424,7 @@ export class TeamsCommandRouter {
                 return;
             }
 
-            command = parseMessagingCommand(msg.text, 'teams');
+            command = this.parse(msg.text);
             const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
             if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
             if (command.type === 'invalid') {
@@ -410,6 +434,11 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
+                if (this.deps.isAnswerRelayEnabled?.() === true
+                    && (command.type === 'select-repo' || command.type === 'select-topic' || command.type === 'create-topic')
+                    && this.deps.hasThreadCommand?.({ ...msg, replyToMessageId: msg.messageId })) {
+                    return;
+                }
                 await this.sendControlReply(command, command.type === 'list-todos' ? await this.selectedTodosReply(userKey)
                     : await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
             }
@@ -424,6 +453,10 @@ export class TeamsCommandRouter {
             if (consumedRoots) this.clearRootFrame(consumedRoots);
             if (this.stopped || generation !== this.imageGeneration) return;
             observe?.('dispatch-failed');
+            if (err instanceof TeamsChannelBindingError) {
+                await this.deps.sendReply(err.message, msg.replyToMessageId || msg.messageId);
+                return;
+            }
             if (err instanceof ImageDownloadError || err instanceof IncomingImagesError || err instanceof PendingImagesError) {
                 await this.deps.sendReply(err.message, msg.replyToMessageId || msg.messageId);
                 return;
@@ -447,13 +480,105 @@ export class TeamsCommandRouter {
         }
     }
 
+    private async handleFixedBindingCommand(msg: InboundTeamsMessage): Promise<void> {
+        const command = /^\/?binding\s+(show|set)(?:\s+(\S+)\s+(\S+))?\s*$/i.exec(msg.text.trim());
+        const destination = msg.replyToMessageId || msg.messageId;
+        if (!command || (command[1].toLowerCase() === 'show' && command[2])
+            || (command[1].toLowerCase() === 'set' && !command[2])) {
+            await this.deps.sendReply('Use `/binding show` or `/binding set <workspace-id> <sentinel-id>`.', destination);
+            return;
+        }
+        const commandMessage = msg.replyToMessageId ? msg : { ...msg, replyToMessageId: msg.messageId };
+        if (this.deps.hasThreadCommand?.(commandMessage)) return;
+        this.deps.recordThreadCommand?.(commandMessage);
+        try {
+            if (command[1].toLowerCase() === 'set') {
+                await this.deps.fixedChannel!.bind(msg, command[2], command[3]);
+            }
+            const target = await this.deps.fixedChannel!.resolve(msg);
+            await this.deps.sendReply(target
+                ? `Channel binding: ${teamsCodeSpan(target.workspaceId)} / ${teamsCodeSpan(target.process.id)}.`
+                : 'No channel binding. Configure it in the dashboard or use `/binding set <workspace-id> <sentinel-id>`.',
+            destination);
+        } catch {
+            console.error('[teams-messaging] Channel binding command failed');
+            await this.deps.sendReply('Channel binding unavailable. Check the workspace, Sentinel and Teams account.', destination);
+        }
+    }
+
+    private async handleFixedChannelMessage(
+        msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void,
+    ): Promise<void> {
+        const destination = msg.replyToMessageId || msg.messageId;
+        const command = this.parse(msg.text);
+        if (command.type !== 'chat') {
+            observe?.('dispatch-command');
+            const commandMessage = msg.replyToMessageId ? msg : { ...msg, replyToMessageId: msg.messageId };
+            if (this.deps.hasThreadCommand?.(commandMessage)) return;
+            this.deps.recordThreadCommand?.(commandMessage);
+        }
+        if (command.type === 'invalid' || command.type === 'chat-explicit') {
+            await this.deps.sendReply(`❌ ${invalidCommandReply({ ...TEAMS_FORMAT, fixedTeamsChannel: true })}`, destination);
+            return;
+        }
+        if (command.type === 'help') {
+            await this.sendControlReply(command, formatMessagingHelp({ ...TEAMS_FORMAT, fixedTeamsChannel: true }), destination);
+            return;
+        }
+        if (command.type === 'quota' || command.type === 'git-status') {
+            await this.sendControlReply(command, command.type === 'quota'
+                ? await readQuotaReply(this.deps.getQuota)
+                : await this.handleControlCommand('', command, msg.channelId, msg), destination);
+            return;
+        }
+        const target = await this.deps.fixedChannel!.resolve(msg);
+        if (!target) {
+            await this.deps.sendReply('Channel binding is not configured. Configure it in the dashboard or use `/binding set <workspace-id> <sentinel-id>`.', destination);
+            return;
+        }
+        if (command.type === 'list-todos') {
+            await this.sendControlReply(command, await listTodosReply(this.deps.getTodos?.(), this.deps.store,
+                { workspaceId: target.workspaceId, processId: target.process.id }, escapeTeamsMarkdown), destination);
+            return;
+        }
+        if (command.type === 'compact') {
+            await this.deps.sendReply(await compactChatReply(this.deps.store, this.deps.compact,
+                { workspaceId: target.workspaceId, processId: target.process.id }, command.args,
+                escapeTeamsMarkdown, this.deps.handOffOrigin?.(msg),
+                'The channel Sentinel is unavailable. Update the channel binding.'), destination);
+            return;
+        }
+        if (command.type !== 'chat') {
+            await this.deps.sendReply(`❌ ${invalidCommandReply({ ...TEAMS_FORMAT, fixedTeamsChannel: true })}`, destination);
+            return;
+        }
+        if (!command.args) {
+            await this.deps.sendReply(`❌ ${EMPTY_CHAT_REPLY}`, destination);
+            return;
+        }
+        if (this.deps.isAnswerRelayEnabled?.() !== true || !this.deps.admitFollowUp) {
+            await this.deps.sendReply('Teams answer relay is unavailable. Enable it before using the channel binding.', destination);
+            return;
+        }
+        if (await this.tryHandOff(msg, target.process.id, command.args, command.mode, observe, target.workspaceId)) return;
+        const admission = await this.deps.admitFollowUp(msg, target.process, command.args, command.mode);
+        if (admission.duplicate) return;
+        observe?.('dispatch-follow-up');
+        await this.deps.acknowledgeFollowUp?.(msg);
+    }
+
     /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
-    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
+    private async handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
         const discard = () => {
             if (msg?.senderAadId) this.pendingImages.discard(this.imageContext(msg));
             if (msg) this.imageRoots.delete(this.latestImageRootKey(msg));
         };
-        return handleMessagingCommand(command, {
+        const threadRoot = msg && !msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true
+            && this.deps.selectThreadTarget
+            && (command.type === 'select-repo' || command.type === 'select-topic' || command.type === 'create-topic')
+            ? { ...msg, replyToMessageId: msg.messageId } : undefined;
+        const threadTarget: { value?: { workspaceId: string; processId: string | null } } = {};
+        const reply = await handleMessagingCommand(command, {
             store: this.deps.store,
             dataDir: this.deps.dataDir,
             readGitStatus: this.deps.readGitStatus,
@@ -476,11 +601,26 @@ export class TeamsCommandRouter {
                 repoId: () => this.userState.get(userKey).selectedRepo,
                 selectRepo: workspaceId => { discard(); this.userState.update(userKey, { selectedRepo: workspaceId }); },
                 topicId: () => this.userState.get(userKey).selectedTopic,
-                selectTopic: (_workspaceId, processId) => { discard(); this.userState.update(userKey, processId
-                    ? { selectedTopic: processId }
-                    : { selectedTopic: null, lastActiveTopic: null }); },
+                selectTopic: (workspaceId, processId) => {
+                    discard();
+                    this.userState.update(userKey, processId
+                        ? { selectedTopic: processId }
+                        : { selectedTopic: null, lastActiveTopic: null });
+                    if (threadRoot) {
+                        threadTarget.value = { workspaceId, processId };
+                    }
+                },
             },
         });
+        if (threadRoot && threadTarget.value) {
+            try {
+                await this.deps.selectThreadTarget!(threadRoot, threadTarget.value.workspaceId, threadTarget.value.processId);
+            } catch (error) {
+                console.error('[teams-messaging] Thread selection could not be saved');
+                throw Object.assign(new Error('Teams thread selection is unavailable'), { cause: error });
+            }
+        }
+        return reply;
     }
 
     /** Top-level `list todos` reads the sender's selected topic in the selected repo only. */
@@ -719,6 +859,7 @@ export class TeamsCommandRouter {
     ): Promise<boolean> {
         const target = await this.deps.handOff?.resolve(targetProcessId, mode);
         if (!target) return false;
+        if (this.stopped) throw new Error('Teams message admission is unavailable');
         if (workspaceId && target.workspaceId !== workspaceId) throw new Error('Teams conversation target is unavailable');
         const origin = this.deps.handOffOrigin?.(msg);
         if (!origin) throw new Error('Teams hand-off origin is unavailable');
@@ -728,9 +869,10 @@ export class TeamsCommandRouter {
             if (admission.duplicate) return true;
         } else {
             // Bound-thread replies are deduplicated by message id, like thread commands.
-            if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
-                if (this.deps.hasThreadCommand?.(msg)) return true;
-                this.deps.recordThreadCommand?.(msg);
+            if ((msg.replyToMessageId || this.deps.fixedChannel) && this.deps.isAnswerRelayEnabled?.() === true) {
+                const commandMessage = msg.replyToMessageId ? msg : { ...msg, replyToMessageId: msg.messageId };
+                if (this.deps.hasThreadCommand?.(commandMessage)) return true;
+                this.deps.recordThreadCommand?.(commandMessage);
             }
             await this.deps.handOff!.start(target, message, origin);
         }

@@ -42,8 +42,8 @@ function configUpdate(values: FeatureValues): Record<string, boolean | string | 
         && !String(values['teamsOutboundCompliance.prompt'] ?? '').trim()) {
         throw new Error('A nonblank decision prompt is required when outbound compliance check is enabled.');
     }
-    if (values['features.teamsIc3OwnCommands'] === true
-        && !values['teamsIc3OwnCommands.workspaceId']) {
+    const commandWorkspace = values['teamsRouting.workspaceId'];
+    if (values['features.teamsIc3OwnCommands'] === true && !commandWorkspace) {
         throw new Error('Select a command workspace before enabling own commands.');
     }
     return Object.fromEntries(Object.entries(values).map(([key, value]) => {
@@ -54,7 +54,7 @@ function configUpdate(values: FeatureValues): Record<string, boolean | string | 
 
 async function validateReactionDelegation(client: CocClient, values: FeatureValues): Promise<void> {
     if (values['features.teamsReactionDelegation'] !== true) return;
-    const workspaceId = values['teamsReactionDelegation.workspaceId'];
+    const workspaceId = values['teamsRouting.workspaceId'];
     const dispatcherSkill = values['teamsReactionDelegation.dispatcherSkill'];
     if (typeof workspaceId !== 'string' || !workspaceId || typeof dispatcherSkill !== 'string' || !dispatcherSkill) {
         throw new Error('Select an execution workspace and dispatcher skill before enabling reaction delegation.');

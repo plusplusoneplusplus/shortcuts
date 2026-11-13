@@ -78,6 +78,7 @@ describe('Teams reaction session pickup', () => {
         account = { ...owner };
         config = {
             features: { teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: binding.workspaceId },
             teamsReactionDelegation: { workspaceId: binding.workspaceId, dispatcherSkill: 'dispatcher' },
         };
         store = createMockProcessStore();

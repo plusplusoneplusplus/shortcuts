@@ -61,6 +61,7 @@ describe('Teams reaction separate Ask job admission', () => {
         fs.writeFileSync(skillFile(), 'Interpret the task and apply the installed policy.');
         config = {
             features: { teamsReactionDelegation: true },
+            teamsRouting: { workspaceId },
             teamsReactionDelegation: { workspaceId, dispatcherSkill: 'dispatcher' },
             skills: { autoDetectDefaultFolders: false },
         };
@@ -122,7 +123,7 @@ describe('Teams reaction separate Ask job admission', () => {
     it('admits and deduplicates a group-owned Ask job with its inherited dispatcher', async () => {
         const group = await createRepoGroup(directory, store, { name: 'Team', members: [workspaceId, 'workspace-beta'] });
         bridge.registerRepoId(group.id, group.rootPath);
-        config.teamsReactionDelegation!.workspaceId = group.id;
+        config.teamsRouting!.workspaceId = group.id;
         const result = { workspaceId: group.id, processId: toQueueProcessId(requestId) };
         expect(await start()).toEqual(result);
         expect(await start()).toEqual(result);
@@ -137,7 +138,7 @@ describe('Teams reaction separate Ask job admission', () => {
     it('rejects a group whose inherited dispatcher changes during preparation', async () => {
         const group = await createRepoGroup(directory, store, { name: 'Team', members: [workspaceId, 'workspace-beta'] });
         bridge.registerRepoId(group.id, group.rootPath);
-        config.teamsReactionDelegation!.workspaceId = group.id;
+        config.teamsRouting!.workspaceId = group.id;
         const other = path.join(directory, 'beta', '.github', 'skills', 'dispatcher', 'SKILL.md');
         fs.mkdirSync(path.dirname(other), { recursive: true });
         fs.writeFileSync(other, 'Different policy.');
@@ -278,7 +279,7 @@ describe('Teams reaction separate Ask job admission', () => {
         'resolves current dispatcher policy and fails closed (%s)', async reason => {
             if (reason === 'disabled') config.features!.teamsReactionDelegation = false;
             if (reason === 'missing-skill') fs.unlinkSync(skillFile());
-            if (reason === 'missing-workspace') config.teamsReactionDelegation!.workspaceId = 'missing';
+            if (reason === 'missing-workspace') config.teamsRouting!.workspaceId = 'missing';
             if (reason === 'global-disabled') fs.writeFileSync(path.join(directory, 'preferences.json'),
                 JSON.stringify({ globalDisabledSkills: ['dispatcher'] }));
             if (reason === 'virtual') await store.registerWorkspace({ id: workspaceId, name: 'Virtual', rootPath: root(), virtual: true });
@@ -300,7 +301,7 @@ describe('Teams reaction separate Ask job admission', () => {
                     const beta = path.join(directory, 'beta', '.github', 'skills', 'dispatcher', 'SKILL.md');
                     fs.mkdirSync(path.dirname(beta), { recursive: true });
                     fs.writeFileSync(beta, 'Different policy.');
-                    config.teamsReactionDelegation!.workspaceId = 'workspace-beta';
+                    config.teamsRouting!.workspaceId = 'workspace-beta';
                 }
                 if (change === 'source-changed') {
                     const managed = path.join(directory, 'skills', 'dispatcher', 'SKILL.md');

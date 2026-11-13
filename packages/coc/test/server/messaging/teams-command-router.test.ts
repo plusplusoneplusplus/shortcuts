@@ -176,6 +176,7 @@ describe('TeamsCommandRouter', () => {
         expect(readGitStatus).not.toHaveBeenCalled();
         await router.handle(makeMsg('select repo 1'));
         sendReplySpy.mockClear();
+        selectThreadTarget.mockClear();
         await router.handle(makeMsg('/GIT STATUS', { messageId: 'root-command' }));
         await router.handle(makeMsg('git status', { replyToMessageId: 'bound-root' }));
         expect(readGitStatus).toHaveBeenCalledTimes(6);
@@ -579,6 +580,7 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/select topic proc-222'));
         const selection = new TeamsUserStateStore(tmpDir).get('user-aad-1');
         sendReplySpy.mockClear();
+        vi.mocked(deps.selectThreadTarget).mockClear();
         await router.handle(makeMsg('/quota', { replyToMessageId: root, messageId: 'quota-windows' }));
         expect(sendReplySpy).toHaveBeenCalledOnce();
         expect(sendReplySpy).toHaveBeenCalledWith('codex: 72% left (5h); 19% left (7d)', root ?? 'quota-windows');
@@ -710,6 +712,55 @@ describe('TeamsCommandRouter', () => {
                 return null;
             });
             router = new TeamsCommandRouter(deps);
+        });
+
+        it('binds successful channel-root selections to their own threads', async () => {
+            const repo = makeMsg('/select repo 2', { messageId: 'repo-root' });
+            const topic = makeMsg('/select topic proc-111', { messageId: 'topic-root' });
+            const create = makeMsg('/create topic', { messageId: 'create-root' });
+            await router.handle(repo);
+            await router.handle(topic);
+            await router.handle(create);
+            expect(deps.selectThreadTarget).toHaveBeenNthCalledWith(1,
+                { ...repo, replyToMessageId: 'repo-root' }, 'ws-2', null);
+            expect(deps.selectThreadTarget).toHaveBeenNthCalledWith(2,
+                { ...topic, replyToMessageId: 'topic-root' }, 'ws-1', 'proc-111');
+            expect(deps.selectThreadTarget).toHaveBeenNthCalledWith(3,
+                { ...create, replyToMessageId: 'create-root' }, 'ws-1', null);
+            expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['repo-root', 'topic-root', 'create-root']);
+        });
+
+        it('binds a queued topic selection to the root with its owning workspace', async () => {
+            const task = { id: 'external', processId: 'queue_external', repoId: 'ws-2', type: 'chat', status: 'queued',
+                createdAt: Date.now(), payload: { kind: 'chat', workspaceId: 'ws-2', prompt: 'External chat' } };
+            deps.topicQueue = { getAll: () => [task] as any };
+            const root = makeMsg('/select topic ws-2/queue_external', { messageId: 'queued-root' });
+            await router.handle(root);
+            expect(deps.selectThreadTarget).toHaveBeenCalledExactlyOnceWith(
+                { ...root, replyToMessageId: 'queued-root' }, 'ws-2', 'queue_external');
+        });
+
+        it('does not bind invalid selections or change disabled relay behavior', async () => {
+            await router.handle(makeMsg('/select repo missing'));
+            await router.handle(makeMsg('/select topic missing'));
+            expect(deps.selectThreadTarget).not.toHaveBeenCalled();
+            deps.isAnswerRelayEnabled = () => false;
+            await router.handle(makeMsg('/select repo ProjectA'));
+            expect(deps.selectThreadTarget).not.toHaveBeenCalled();
+            expect(new TeamsUserStateStore(tmpDir).get('user-aad-1').selectedRepo).toBe('ws-1');
+        });
+
+        it('ignores a replayed root selection and reports binding failures safely', async () => {
+            deps.hasThreadCommand = msg => msg.messageId === 'duplicate';
+            await router.handle(makeMsg('/select repo ProjectB', { messageId: 'duplicate' }));
+            expect(deps.selectThreadTarget).not.toHaveBeenCalled();
+            expect(sendReplySpy).not.toHaveBeenCalled();
+            expect(new TeamsUserStateStore(tmpDir).get('user-aad-1').selectedRepo).toBeNull();
+
+            vi.mocked(deps.selectThreadTarget!).mockRejectedValueOnce(new Error('private storage detail'));
+            await router.handle(makeMsg('/select repo ProjectA', { messageId: 'failed-root' }));
+            expect(sendReplySpy).toHaveBeenCalledExactlyOnceWith(
+                '❌ Error: Teams thread selection is unavailable', 'failed-root');
         });
 
         it('reads thread topics with a bounded, conversation-free query', async () => {

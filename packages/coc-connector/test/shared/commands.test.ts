@@ -81,6 +81,29 @@ const cases: Array<[string, MessagingCommand]> = [
 ];
 
 describe('parseMessagingCommand', () => {
+    it('restricts repo and topic selection only for fixed Teams channels', () => {
+        const options = { fixedTeamsChannel: true };
+        for (const text of ['list repos', 'list agents', 'select repo 2', 'list remotes',
+            'list topics', 'select topic 1', 'create topic', '[chat] message',
+            '[chat]message', '/ask [chat] message', '[chat]']) {
+            expect(parseMessagingCommand(text, 'teams', options)).toEqual({ type: 'invalid', args: text });
+            expect(parseMessagingCommand(text, 'whatsapp', options).type).not.toBe('invalid');
+        }
+        expect(parseMessagingCommand('/ask explain this', 'teams', options))
+            .toEqual({ type: 'chat', args: 'explain this', mode: 'ask' });
+        expect(parseMessagingCommand('list todos', 'teams', options)).toEqual({ type: 'list-todos', args: '' });
+        expect(parseMessagingCommand('list repos', 'teams').type).toBe('list-repos');
+    });
+
+    it('describes the fixed Teams channel without advertising topic selection', () => {
+        const help = formatMessagingHelp({ platform: 'teams', fixedTeamsChannel: true });
+        for (const usage of ['list repos', 'select repo', 'list remotes', 'list topics',
+            'select topic', 'create topic', '[chatid]']) expect(help).not.toContain(usage);
+        expect(help).toContain('Sentinel bound to this Teams channel');
+        expect(help).toContain('/ask <message>');
+        expect(formatMessagingHelp({ platform: 'whatsapp', fixedTeamsChannel: true })).toContain('list repos');
+    });
+
     it.each(cases)('parses %j', (input, expected) => {
         expect(parseMessagingCommand(input)).toEqual(expected);
     });

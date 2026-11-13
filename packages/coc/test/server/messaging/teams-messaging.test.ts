@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { EventEmitter } from 'node:events';
-import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/server/messaging/teams-messaging-manager';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
@@ -43,6 +43,7 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
             stop: vi.fn().mockResolvedValue(undefined),
             send: vi.fn().mockResolvedValue('msg-123'),
             getConnectionId: vi.fn().mockReturnValue('test-connection'),
+            getMirrorAccountKey: vi.fn().mockReturnValue('fixture-account'),
             sendMessage: vi.fn().mockResolvedValue({ outcome: 'accepted', message: {
                 backend: 'ic3', connectionId: 'test-connection', messageId: '123',
                 destination: { kind: 'chat', chatId: '19:direct@thread.v2' },
@@ -821,6 +822,81 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
+    it('validates channel bindings and routes channel messages through the bound Sentinel', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-binding-api-'));
+        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const sentinel = {
+            id: 'sentinel-a', type: 'chat' as const, status: 'completed' as const, promptPreview: '', fullPrompt: '',
+            startTime: new Date(), metadata: { workspaceId: 'workspace-a', mode: 'sentinel' },
+        };
+        const store = new SqliteProcessStore({ dbPath: path.join(dir, 'processes.db') });
+        await store.registerWorkspace({ id: 'workspace-a', name: 'A', rootPath: dir });
+        await store.addProcess(sentinel);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({
+            ...manager.getStatus(), enabled: true, status: 'connected', teamId: 'team-a', channelId: 'channel-a',
+        });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account-a');
+        const ownSender = vi.spyOn(manager, 'isMirrorSender').mockReturnValue(false);
+        const send = vi.spyOn(manager, 'sendMessage').mockResolvedValue('sent');
+        const setMessageHandler = vi.spyOn(manager, 'setMessageHandler');
+        const relayQueue = Object.assign(new EventEmitter(), { getTask: vi.fn() });
+        const follow = vi.fn(async (_process, _message, _request, _mode, taskId) => ({ taskId }));
+        const routes: Route[] = [];
+        registerTeamsMessagingRoutes(routes, {
+            dataDir: dir, manager, store, relayQueue,
+            getAnswerRelayEnabled: () => true,
+            enqueueChat: vi.fn(), executeFollowUp: vi.fn(), enqueueRelayChat: vi.fn(),
+            admitRelayFollowUp: follow,
+        });
+        const server = http.createServer((req, res) => {
+            const pathname = new URL(req.url!, 'http://localhost').pathname;
+            const route = routes.find(r => r.method === req.method && r.pattern.test(pathname));
+            if (route) void Promise.resolve(route.handler(req, res, pathname.match(route.pattern)!));
+            else { res.writeHead(404); res.end(); }
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const address = server.address();
+            if (!address || typeof address === 'string') throw new Error('Expected TCP address');
+            const url = `http://127.0.0.1:${address.port}/api/messaging/teams/channel-binding`;
+            const post = (body: object) => fetch(url, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            expect(await (await fetch(url)).json()).toEqual({ binding: null, unavailable: false });
+            const inbound = setMessageHandler.mock.calls[0][0];
+            const observe = vi.fn();
+            await inbound({ channelId: 'channel-a', messageId: 'unbound', text: 'hello', senderAadId: 'owner' }, observe);
+            expect(follow).not.toHaveBeenCalled();
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('not configured'), 'unbound');
+            expect((await post({ workspaceId: 'workspace-a', processId: 'missing' })).status).toBe(400);
+            expect((await post({ workspaceId: 'workspace-a', processId: sentinel.id })).status).toBe(200);
+            expect((await post({ workspaceId: 'workspace-a', processId: sentinel.id, expectedBinding: null })).status).toBe(409);
+            expect(await (await fetch(url)).json()).toMatchObject({ binding: { workspaceId: 'workspace-a', processId: sentinel.id } });
+            expect(await (await fetch(`${url}/sentinels?workspaceId=workspace-a`)).json())
+                .toEqual({ sentinels: [{ id: sentinel.id, title: sentinel.id }], nextOffset: null });
+            vi.spyOn(store, 'getProcessSummaries').mockResolvedValueOnce({
+                entries: [{ id: sentinel.id, workspaceId: 'workspace-a', type: 'chat', status: 'completed',
+                    startTime: new Date().toISOString(), promptPreview: '' }], total: 2,
+            });
+            expect(await (await fetch(`${url}/sentinels?workspaceId=workspace-a`)).json())
+                .toEqual({ sentinels: [{ id: sentinel.id, title: sentinel.id }], nextOffset: 1 });
+            expect((await fetch(`${url}/sentinels?workspaceId=workspace-a&offset=-1`)).status).toBe(400);
+            await inbound({ channelId: 'channel-a', messageId: 'foreign-bind', text: '/binding set workspace-a sentinel-a', senderAadId: 'other' }, observe);
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('binding unavailable'), 'foreign-bind');
+            ownSender.mockReturnValue(true);
+            await inbound({ channelId: 'channel-a', messageId: 'question', text: 'hello', senderAadId: 'owner' }, observe);
+            expect(follow).toHaveBeenCalledWith(expect.objectContaining({ id: sentinel.id,
+                metadata: expect.objectContaining({ workspaceId: 'workspace-a', mode: 'sentinel' }) }),
+            'hello', expect.any(String), undefined, expect.any(String));
+        } finally {
+            manager.dispose();
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            store.close();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('exposes explicit 1:1 sends with typed outcomes, no fallback/replay, and strict options', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-direct-api-'));
@@ -901,206 +977,107 @@ describe('Teams messaging routes (integration)', () => {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
-    it('honors a live relay opt-out for thread polling, admission and terminal delivery without reconnect', async () => {
+    it('retains the original receipt and pauses delivery when relay is disabled', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-opt-out-test-'));
-        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const manager = new TeamsMessagingManager(dir);
         const tasks = new Map<string, QueuedTask>();
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
-        const store = {
-            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'A', rootPath: dir }]),
-            getProcess: vi.fn().mockResolvedValue(undefined),
-        } as unknown as ProcessStore;
+        const sentinel = { id: 'sentinel', type: 'chat' as const, status: 'completed' as const,
+            startTime: new Date(), promptPreview: '', fullPrompt: '',
+            metadata: { workspaceId: 'ws-a', mode: 'sentinel' }, conversationTurns: [] as any[] };
+        const store = { getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-a', name: 'A', rootPath: dir }]),
+            getProcess: vi.fn().mockResolvedValue(sentinel) } as unknown as ProcessStore;
+        vi.spyOn(manager, 'getStatus').mockReturnValue({ ...manager.getStatus(), enabled: true,
+            status: 'connected', teamId: 'team', channelId: 'channel' });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
+        const send = vi.spyOn(manager, 'sendMessage').mockResolvedValue('sent');
+        const setHandler = vi.spyOn(manager, 'setMessageHandler');
+        fs.writeFileSync(path.join(dir, 'teams-channel-bindings.json'), JSON.stringify([{
+            accountKey: 'account', teamId: 'team', channelId: 'channel', workspaceId: 'ws-a', processId: 'sentinel',
+        }]));
         let enabled = false;
-        const enqueueChat = vi.fn().mockResolvedValue('opt-out-task');
-        const enqueueRelayChat = vi.fn(async (workspaceId: string, _text: string, taskId: string) => {
-            const receipts = fs.readdirSync(getRepoDataPath(dir, workspaceId, 'teams-answer-relay'));
-            expect(receipts).toHaveLength(1);
-            tasks.set(taskId, {
-                id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
-            } as QueuedTask);
-            return taskId;
+        const follow = vi.fn(async (_process, text, requestId, _mode, taskId) => {
+            sentinel.conversationTurns.push({ role: 'user', content: text, turnIndex: 0, relayRequestId: requestId });
+            tasks.set(taskId, { id: taskId, repoId: 'ws-a', processId: sentinel.id, status: 'queued',
+                payload: { relayRequestId: requestId } } as QueuedTask);
+            return { taskId };
         });
         try {
-            registerTeamsMessagingRoutes([], {
-                dataDir: dir, manager, store, relayQueue: queue, enqueueChat, enqueueRelayChat,
-                executeFollowUp: vi.fn(), getAnswerRelayEnabled: () => enabled,
-            });
-            await manager.configureServer('https://example.test/teams');
-            await manager.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
-            await manager.connect();
-            const opts = vi.mocked(TeamsBot).mock.lastCall![0];
-            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
-            const root = { channelId: 'channel-id-resolved', messageId: 'disabled-root', text: 'question', senderAadId: 'human' };
-            expect(opts.pollChannelReplies?.()).toBe(false);
-            await opts.onMessage(root);
-            expect(enqueueChat).toHaveBeenCalledOnce();
-            expect(enqueueRelayChat).not.toHaveBeenCalled();
-            expect(fs.existsSync(getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay'))).toBe(false);
-
+            registerTeamsMessagingRoutes([], { dataDir: dir, manager, store, relayQueue: queue,
+                getAnswerRelayEnabled: () => enabled, enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+                enqueueRelayChat: vi.fn(), admitRelayFollowUp: follow });
+            const handle = setHandler.mock.calls[0][0];
+            const root = { channelId: 'channel', messageId: 'root', text: 'question', senderAadId: 'human' };
+            await handle(root, () => {});
+            expect(follow).not.toHaveBeenCalled();
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('answer relay'), 'root');
             enabled = true;
-            expect(opts.pollChannelReplies?.()).toBe(true);
-            await opts.onMessage({ ...root, messageId: 'enabled-root', senderAadId: 'another-human' });
-            expect(enqueueRelayChat).toHaveBeenCalledOnce();
-            const taskId = enqueueRelayChat.mock.calls[0][2];
+            await handle({ ...root, messageId: 'enabled' }, () => {});
+            expect(follow).toHaveBeenCalledOnce();
+            const task = [...tasks.values()][0];
             enabled = false;
-            expect(opts.pollChannelReplies?.()).toBe(false);
-            expect(manager.getStatus().status).toBe('connected');
-            bot.send.mockClear();
-            await opts.onMessage({ ...root, messageId: 'disabled-reply', replyToMessageId: 'enabled-root' });
-            expect(enqueueRelayChat).toHaveBeenCalledOnce();
-            expect(enqueueChat).toHaveBeenCalledOnce();
-            expect(bot.send.mock.calls[0][1]).toContain('thread follow-ups are unavailable');
-            bot.send.mockClear();
-            const task = tasks.get(taskId)!;
+            send.mockClear();
+            await handle({ ...root, messageId: 'disabled', replyToMessageId: 'enabled' }, () => {});
+            expect(follow).toHaveBeenCalledOnce();
+            send.mockClear();
+            sentinel.conversationTurns.push({ role: 'assistant', content: 'Answer withheld', turnIndex: 1 });
             task.status = 'completed';
-            vi.mocked(store.getProcess).mockResolvedValue({
-                id: toQueueProcessId(taskId), type: 'chat', status: 'completed',
-                startTime: new Date(), promptPreview: 'question', fullPrompt: 'question',
-                metadata: { workspaceId: 'global-workspace-00' },
-                conversationTurns: [
-                    { role: 'user', content: 'question', turnIndex: 0, timestamp: new Date(), timeline: [] },
-                    { role: 'assistant', content: 'Answer withheld', turnIndex: 1, timestamp: new Date(), timeline: [] },
-                ],
-            });
             queue.emit('taskCompleted', task);
             await vi.waitFor(() => {
-                const folder = getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay');
+                const folder = getRepoDataPath(dir, 'ws-a', 'teams-answer-relay');
                 const receipt = JSON.parse(fs.readFileSync(path.join(folder, fs.readdirSync(folder)[0]), 'utf8'));
                 expect(receipt.terminalStatus).toBe('completed');
             });
-            expect(bot.send).not.toHaveBeenCalled();
-            expect(bot.reactToChannelMessage).not.toHaveBeenCalled();
-            expect(opts.enableTrouter).toBe(false);
-        } finally {
-            manager.dispose();
-            fs.rmSync(dir, { recursive: true, force: true });
-        }
+            expect(send).not.toHaveBeenCalled();
+        } finally { manager.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
     });
 
-    it('silently acknowledges thread follow-ups while preserving Likes, replay suppression and final answers', async () => {
+    it('deduplicates Sentinel thread follow-ups and relays their answer to the original root', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-replay-test-'));
-        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const manager = new TeamsMessagingManager(dir);
         const tasks = new Map<string, QueuedTask>();
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
-        const store = {
-            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'A', rootPath: dir }]),
-            getProcess: vi.fn().mockResolvedValue(undefined),
-        } as unknown as ProcessStore;
-        const enqueueFollowUp = vi.fn(async (_ws, _process, _text, _request, _mode, taskId) => taskId);
-        const questionRelay = {
-            register: vi.fn(),
-            tryAnswer: vi.fn().mockResolvedValue(false),
-        };
+        const sentinel = { id: 'sentinel', type: 'chat' as const, status: 'completed' as const,
+            startTime: new Date(), promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-a', mode: 'sentinel' },
+            conversationTurns: [] as any[] };
+        const store = { getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-a', name: 'A', rootPath: dir }]),
+            getProcess: vi.fn().mockResolvedValue(sentinel) } as unknown as ProcessStore;
+        vi.spyOn(manager, 'getStatus').mockReturnValue({ ...manager.getStatus(), enabled: true,
+            status: 'connected', teamId: 'team', channelId: 'channel' });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('account');
+        const send = vi.spyOn(manager, 'sendMessage').mockResolvedValue('sent');
+        const react = vi.spyOn(manager, 'reactToChannelMessage').mockResolvedValue(undefined);
+        const setHandler = vi.spyOn(manager, 'setMessageHandler');
+        fs.writeFileSync(path.join(dir, 'teams-channel-bindings.json'), JSON.stringify([{
+            accountKey: 'account', teamId: 'team', channelId: 'channel', workspaceId: 'ws-a', processId: 'sentinel',
+        }]));
+        const follow = vi.fn(async (_process, text, requestId, _mode, taskId) => {
+            sentinel.conversationTurns.push({ role: 'user', content: text, turnIndex: sentinel.conversationTurns.length, relayRequestId: requestId });
+            tasks.set(taskId, { id: taskId, repoId: 'ws-a', processId: sentinel.id, status: 'queued',
+                payload: { relayRequestId: requestId } } as QueuedTask);
+            return { taskId };
+        });
         try {
-            registerTeamsMessagingRoutes([], {
-                dataDir: dir, manager, store, relayQueue: queue, questionRelay,
-                getMessageReactionEnabled: () => true,
-                enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
-                admitRelayFollowUp: vi.fn().mockResolvedValue({}),
-                enqueueRelayChat: async (workspaceId, _text, taskId) => {
-                    tasks.set(taskId, {
-                        id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
-                        type: 'chat', payload: { kind: 'chat', workspaceId },
-                    } as QueuedTask);
-                    return taskId;
-                },
-                enqueuePendingRelayFollowUp: enqueueFollowUp,
-            });
-            await manager.configureServer('https://example.test/teams');
-            await manager.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
-            await manager.connect();
-            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
-            const opts = vi.mocked(TeamsBot).mock.lastCall![0];
-            expect(opts.pollChannelReplies?.()).toBe(true);
-            const root = { channelId: 'channel-id-resolved', messageId: 'root', text: 'new request', senderAadId: 'human' };
-            await opts.onMessage(root);
-            expect(questionRelay.register).toHaveBeenCalledOnce();
-            expect(questionRelay.tryAnswer).toHaveBeenCalledWith('teams', expect.objectContaining({
-                messageId: 'root', text: 'new request',
-            }));
-            expect(bot.send).toHaveBeenCalledOnce();
-            expect(bot.send.mock.calls[0][1]).toContain('New topic created');
-            bot.send.mockClear();
-            const historical = {
-                ...root, messageId: 'historical', replyToMessageId: 'root', text: 'old follow-up',
-                createdDateTime: '2026-01-01T00:00:00Z', initializationReplay: true,
-            };
-            await opts.onMessage(historical);
-            expect(enqueueFollowUp).toHaveBeenCalledOnce();
-            expect(bot.reactToChannelMessage.mock.calls.map(([msg]: [typeof root]) => msg.messageId)).toEqual(['root']);
-            const folder = getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay');
-            const receipts = () => fs.readdirSync(folder)
-                .map(name => JSON.parse(fs.readFileSync(path.join(folder, name), 'utf8')));
-            expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
-                lastReplyAt: '2026-01-01T00:00:00.000Z', lastReplyIds: ['historical'],
-            });
-            expect(receipts().find(receipt => receipt.messageId === 'historical')).toMatchObject({
-                status: 'awaiting', rootId: 'root', workspaceId: 'global-workspace-00',
-            });
-            await opts.onMessage(historical);
-            expect(enqueueFollowUp).toHaveBeenCalledOnce();
-            await opts.onMessage({
-                ...historical, messageId: 'fresh', text: 'fresh follow-up',
-                createdDateTime: '2026-01-01T00:01:00Z', initializationReplay: false,
-            });
-            expect(bot.reactToChannelMessage.mock.calls.map(([msg]: [typeof root]) => msg.messageId))
-                .toEqual(['root', 'fresh']);
-            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
-            expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
-                lastReplyAt: '2026-01-01T00:01:00.000Z', lastReplyIds: ['fresh'],
-            });
-            const receipt = receipts().find(receipt => receipt.messageId === 'fresh');
-            expect(receipt).toMatchObject({ status: 'awaiting', rootId: 'root', workspaceId: 'global-workspace-00' });
-            expect(bot.send).not.toHaveBeenCalled();
-
-            await opts.onMessage({
-                ...historical, messageId: 'fresh', initializationReplay: false,
-            });
-            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
-            expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(2);
-            expect(bot.send).not.toHaveBeenCalled();
-
-            vi.mocked(store.getProcess).mockResolvedValue({
-                id: receipt.processId, type: 'chat', status: 'completed',
-                startTime: new Date('2026-01-01T00:01:00Z'),
-                promptPreview: 'fresh follow-up', fullPrompt: 'fresh follow-up',
-                metadata: { workspaceId: 'global-workspace-00' },
-                conversationTurns: [
-                    { role: 'user', content: 'fresh follow-up', turnIndex: 0, relayRequestId: receipt.requestId,
-                        timestamp: new Date('2026-01-01T00:01:00Z'), timeline: [] },
-                    { role: 'assistant', content: 'Final follow-up answer', turnIndex: 1,
-                        timestamp: new Date('2026-01-01T00:02:00Z'), timeline: [] },
-                ],
-            });
-            const completed = {
-                id: receipt.taskId, repoId: 'global-workspace-00', processId: receipt.processId,
-                status: 'completed', payload: { relayRequestId: receipt.requestId },
-            } as QueuedTask;
-            tasks.set(completed.id, completed);
-            queue.emit('taskCompleted', completed);
-            await vi.waitFor(() => {
-                expect(receipts().find(value => value.messageId === 'fresh').status).toBe('delivered');
-            });
-            expect(bot.send).toHaveBeenCalledOnce();
-            expect(bot.send.mock.calls[0][1]).toContain('Final follow-up answer');
-            expect(bot.send.mock.calls[0][2]).toMatchObject({ replyToId: 'root' });
-            expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(2);
-            questionRelay.tryAnswer.mockResolvedValueOnce(true);
-            await opts.onMessage({
-                ...root, messageId: 'question-answer', replyToMessageId: 'root', text: 'yes',
-            });
-            expect(questionRelay.tryAnswer).toHaveBeenLastCalledWith('teams', expect.objectContaining({
-                messageId: 'question-answer', replyToId: 'root', text: 'yes',
-            }));
-            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
-            expect(bot.send).toHaveBeenCalledOnce();
-        } finally {
-            await manager.disconnect();
-            manager.dispose();
-            fs.rmSync(dir, { recursive: true, force: true });
-        }
+            registerTeamsMessagingRoutes([], { dataDir: dir, manager, store, relayQueue: queue,
+                getAnswerRelayEnabled: () => true, getMessageReactionEnabled: () => true,
+                enqueueChat: vi.fn(), executeFollowUp: vi.fn(), enqueueRelayChat: vi.fn(), admitRelayFollowUp: follow });
+            const handle = setHandler.mock.calls[0][0];
+            const root = { channelId: 'channel', messageId: 'root', text: 'question', senderAadId: 'human' };
+            await handle(root, () => {});
+            const reply = { ...root, messageId: 'reply', text: 'follow-up', replyToMessageId: 'root' };
+            await handle(reply, () => {});
+            await handle(reply, () => {});
+            expect(follow).toHaveBeenCalledTimes(2);
+            expect(react).toHaveBeenCalledTimes(2);
+            expect(send).not.toHaveBeenCalled();
+            const task = [...tasks.values()][1];
+            sentinel.conversationTurns.push({ role: 'assistant', content: 'Final follow-up answer', turnIndex: 2 });
+            task.status = 'completed';
+            queue.emit('taskCompleted', task);
+            await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.stringContaining('Final follow-up answer'), 'root', 'html'));
+        } finally { manager.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
     });
 
     it('records rejected replies without interrupting command routing or disconnecting', async () => {
@@ -1144,16 +1121,20 @@ describe('Teams messaging routes (integration)', () => {
         try {
             const routes: any[] = [];
             registerTeamsMessagingRoutes(routes, { dataDir: tmpDir });
-            expect(routes.length).toBe(7);
+            expect(routes.length).toBe(10);
             expect(routes[0].method).toBe('GET');
-            expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
-            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
-            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/attempts\/([^/]+)$/);
-            expect(routes[3].method).toBe('POST');
-            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
-            expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
-            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/direct-message$/);
-            expect(routes[6].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
+            expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding$/);
+            expect(routes[1].method).toBe('POST');
+            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding$/);
+            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/channel-binding\/sentinels$/);
+            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
+            expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
+            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/attempts\/([^/]+)$/);
+            expect(routes[6].method).toBe('POST');
+            expect(routes[6].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
+            expect(routes[7].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
+            expect(routes[8].pattern).toEqual(/^\/api\/messaging\/teams\/direct-message$/);
+            expect(routes[9].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

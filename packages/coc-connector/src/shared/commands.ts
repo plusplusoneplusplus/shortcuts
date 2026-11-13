@@ -97,6 +97,16 @@ export interface MessagingHelpFormat {
     escape?: (text: string) => string;
     /** Includes this connector's platform-limited commands. */
     platform?: MessagingPlatform;
+    /** A Teams channel with a fixed repo and Sentinel does not support selection. */
+    fixedTeamsChannel?: boolean;
+}
+
+const FIXED_TEAMS_CHANNEL_COMMANDS = new Set<MessagingControlCommand['type']>([
+    'list-repos', 'select-repo', 'list-remotes', 'list-topics', 'create-topic', 'select-topic',
+]);
+
+function isFixedTeamsChannel(platform: MessagingPlatform | undefined, fixedTeamsChannel: boolean | undefined): boolean {
+    return platform === 'teams' && fixedTeamsChannel === true;
 }
 
 /** Reusable grouped layout for consumers with their own command grammar. */
@@ -123,10 +133,17 @@ export function formatMessagingHelp(format: MessagingHelpFormat = {}): string {
     const strong = format.strong ?? plain;
     const code = format.code ?? plain;
     const escape = format.escape ?? plain;
+    const fixedChannel = isFixedTeamsChannel(format.platform, format.fixedTeamsChannel);
     const sections = [
-        `${strong('CoC help')}\nCommands ignore case; leading / is optional.\n<...> required · [...] optional · n = list number`,
-        formatMessagingHelpCommands(MESSAGING_COMMAND_SPECS.filter(spec => supports(spec, format.platform)), format),
-        [
+        `${strong('CoC help')}\nCommands ignore case; leading / is optional.\n<...> required · [...] optional${fixedChannel ? '' : ' · n = list number'}`,
+        formatMessagingHelpCommands(MESSAGING_COMMAND_SPECS.filter(spec => supports(spec, format.platform)
+            && (!fixedChannel || !FIXED_TEAMS_CHANNEL_COMMANDS.has(spec.type))), format),
+        fixedChannel ? [
+            strong('Chat'),
+            'Send plain text to the Sentinel bound to this Teams channel.',
+            `${code('/binding show')} — Show the channel binding.`,
+            `${code('/binding set <workspace-id> <sentinel-id>')} — Bind this channel (connected account only).`,
+        ].join('\n') : [
             strong('Chat'),
             'Send plain text to continue the selected chat in its current mode.',
             'Without a topic, a new sentinel (dispatcher) chat starts.',
@@ -135,8 +152,9 @@ export function formatMessagingHelp(format: MessagingHelpFormat = {}): string {
         [
             strong('Modes (/ required)'),
             ...MESSAGING_MODE_SPECS.map(spec => `${code(`/${spec.mode} <message>`)} — ${escape(spec.summary)}`),
-            'Set the mode for this message; prefixes can also target a chat.',
-            `Example: ${code('/ask [chatid] What changed?')}`,
+            fixedChannel ? 'Set the mode for this message.'
+                : 'Set the mode for this message; prefixes can also target a chat.',
+            `Example: ${code(fixedChannel ? '/ask What changed?' : '/ask [chatid] What changed?')}`,
         ].join('\n'),
         'Unknown /commands reply with this help.',
     ];
@@ -152,14 +170,16 @@ function parseChat(text: string, mode?: MessagingChatMode): MessagingCommand {
     return { type: 'chat', args: text, mode };
 }
 
-export function parseMessagingCommand(text: string, platform?: MessagingPlatform): MessagingCommand {
+export function parseMessagingCommand(text: string, platform?: MessagingPlatform, options?: { fixedTeamsChannel?: boolean }): MessagingCommand {
     const value = text.trim();
     const body = value.replace(/^\//, '').trim();
+    const fixedChannel = isFixedTeamsChannel(platform, options?.fixedTeamsChannel);
     for (const spec of MESSAGING_COMMAND_SPECS) {
         if (!supports(spec, platform)) continue;
         const { pattern, type } = spec;
         const match = pattern.exec(body);
         if (!match) continue;
+        if (fixedChannel && FIXED_TEAMS_CHANNEL_COMMANDS.has(type)) return { type: 'invalid', args: value };
         const args = (match[1] ?? '').trim();
         return (type === 'list-topics' ? { type, args, verbose: !!match[2] } : { type, args }) as MessagingControlCommand;
     }
@@ -168,10 +188,12 @@ export function parseMessagingCommand(text: string, platform?: MessagingPlatform
         const message = (modeCommand[2] ?? '').trim();
         const mode = modeCommand[1].toLowerCase() as MessagingChatMode;
         // An empty body stays a chat so callers can ask for the message.
+        if (fixedChannel && /^\[[^\]]+\]/s.test(message)) return { type: 'invalid', args: value };
         return message ? parseChat(message, mode) : { type: 'chat', args: '', mode };
     }
     if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)
         || (!!platform && TODO_COMMAND_LIKE_PATTERN.test(body))) return { type: 'invalid', args: value };
+    if (fixedChannel && /^\[[^\]]+\]/s.test(value)) return { type: 'invalid', args: value };
     return parseChat(value);
 }
 

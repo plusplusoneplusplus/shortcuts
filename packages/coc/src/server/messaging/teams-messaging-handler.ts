@@ -14,7 +14,7 @@
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { isQueueProcessId, toTaskId, toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId, toQueueProcessId, type ProcessStore, type AIProcess, type ProcessOwnerProjection } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
@@ -40,6 +40,7 @@ import { IncomingImagesError, prepareIncomingImages, type PreparedIncomingImages
 import { cleanupTempDir } from '../core/image-utils';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
+import { TeamsChannelBindingError, TeamsChannelBindings, type TeamsChannelIdentity } from './teams-channel-binding';
 
 function attemptSummary(attempt: TeamsAttempt) {
     return {
@@ -59,6 +60,8 @@ function parsePageNumber(value: string | null, fallback: number, maximum: number
     const number = Number(value);
     return Number.isSafeInteger(number) && number <= maximum ? number : null;
 }
+
+class TeamsChannelBindingConflict extends Error {}
 
 export interface TeamsMessagingRoutesOptions {
     dataDir: string;
@@ -103,6 +106,25 @@ export function registerTeamsMessagingRoutes(
     opts: TeamsMessagingRoutesOptions,
 ): TeamsMessagingManager {
     const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir, { getObservabilityEnabled: opts.getObservabilityEnabled });
+    const channelBindings = opts.store ? new TeamsChannelBindings(opts.dataDir, opts.store) : undefined;
+    const identity = (): TeamsChannelIdentity | null => {
+        const status = manager.getStatus();
+        const accountKey = manager.getMirrorAccountKey();
+        return status.enabled && status.status === 'connected' && status.teamId && status.channelId && accountKey
+            ? { accountKey, teamId: status.teamId, channelId: status.channelId } : null;
+    };
+    const identityMatches = (expected: TeamsChannelIdentity) => {
+        const current = identity();
+        return !!current && current.accountKey === expected.accountKey
+            && current.teamId === expected.teamId && current.channelId === expected.channelId;
+    };
+    const resolveFixedChannel = async (msg: InboundTeamsMessage) => {
+        const current = identity();
+        if (!current || current.channelId !== msg.channelId || !channelBindings) return null;
+        const result = await channelBindings.resolve(current);
+        if (!identityMatches(current)) return null;
+        return result ? { workspaceId: result.binding.workspaceId, process: result.process } : null;
+    };
     const getAnswerRelayEnabled = opts.getAnswerRelayEnabled ?? (() => DEFAULT_CONFIG.features.teamsAiAnswerRelay);
     const oauthFlow = opts.oauthManager
         ? new TeamsOAuthFlow(opts.oauthManager, serverUrl => getTeamsOAuthCredential(opts.dataDir, serverUrl))
@@ -149,6 +171,7 @@ export function registerTeamsMessagingRoutes(
                     const status = manager.getStatus();
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
                 },
+                resolveFixedThread: resolveFixedChannel,
                 send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
                 onReconnected: () => opts.jobNotices?.reconcile('teams') ?? Promise.resolve(),
             })
@@ -189,9 +212,10 @@ export function registerTeamsMessagingRoutes(
         const inboundDispatches = new Map<string, Promise<void>>();
         const withImages = async <T>(msg: InboundTeamsMessage, workspaceId: string, taskId: string,
             enqueue: (images?: PreparedIncomingImages) => Promise<T>): Promise<T> => {
+            const signal = imageSignals.getStore() ?? imageConnection.signal;
+            if (signal.aborted) throw new ImageDownloadError('cancelled');
             if (!msg.images?.length) return enqueue();
             if (!relay) throw new IncomingImagesError('storage');
-            const signal = imageSignals.getStore() ?? imageConnection.signal;
             const images = await prepareIncomingImages(opts.dataDir, workspaceId, msg.images, signal);
             try {
                 if (signal.aborted) throw new ImageDownloadError('cancelled');
@@ -205,6 +229,15 @@ export function registerTeamsMessagingRoutes(
             }
         };
         const router = new TeamsCommandRouter({
+            fixedChannel: {
+                resolve: resolveFixedChannel,
+                bind: async (msg, workspaceId, processId) => {
+                    const current = identity();
+                    if (!current || current.channelId !== msg.channelId || !channelBindings
+                        || manager.isMirrorSender(msg) !== true) throw new Error('Teams binding authorization unavailable.');
+                    await channelBindings.bind(current, workspaceId, processId, () => identityMatches(current));
+                },
+            },
             ...(opts.isOwnMirrorMessage ? { isOwnMirrorMessage: (message: InboundTeamsMessage) =>
                 opts.isOwnMirrorMessage!(message, manager.getStatus().teamId ?? '', manager.getMirrorAccountKey(), manager.isMirrorSender(message)) } : {}),
             bindImageRoot: async (msg, workspaceId, processId) => {
@@ -279,6 +312,11 @@ export function registerTeamsMessagingRoutes(
                     const admit = (requestId: string) => withImages(msg, workspaceId, taskId, images => {
                         const enqueue = async (admissionHeld = false) => {
                             try {
+                                const current = await resolveFixedChannel(msg);
+                                if (!current || current.workspaceId !== workspaceId || current.process.id !== proc.id
+                                    || (imageSignals.getStore() ?? imageConnection.signal).aborted) {
+                                    throw new Error('Teams channel binding changed during admission.');
+                                }
                                 const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, ...((images || admissionHeld ? [images, admissionHeld] : []) as [PreparedIncomingImages?, boolean?]));
                                 if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
                                 return result;
@@ -370,6 +408,8 @@ export function registerTeamsMessagingRoutes(
             }
             if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.length > 0
                 && parseMessagingCommand(msg.text).type !== 'git-status'
+                && !(/^\/?binding(?:\s|$)/i.test(msg.text.trim())
+                    || parseMessagingCommand(msg.text, 'teams', { fixedTeamsChannel: true }).type !== 'chat')
                 && !router.hasPendingImageInstructions(msg)
                 && !msg.images?.length && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
                 const teamId = manager.getStatus().teamId ?? '';
@@ -390,7 +430,11 @@ export function registerTeamsMessagingRoutes(
                     return;
                 }
             }
-            await router.handle(msg, observe);
+            if (channelBindings) {
+                await channelBindings.exclusive(() => router.handle(msg, observe));
+            } else {
+                await router.handle(msg, observe);
+            }
         };
         manager.setMessageHandler(async (msg, observe) => {
             const connection = imageConnection;
@@ -410,6 +454,125 @@ export function registerTeamsMessagingRoutes(
             }
         });
     }
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/messaging\/teams\/channel-binding$/,
+        handler: async (_req, res) => {
+            if (!channelBindings) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
+            const current = identity();
+            if (!current) { sendError(res, 409, 'Connect Teams before configuring the channel binding'); return; }
+            try {
+                const result = await channelBindings.exclusive(async () => {
+                    if (!identityMatches(current)) throw new Error('Teams connection changed.');
+                    const binding = channelBindings.lookup(current);
+                    if (!binding) return { binding: null, unavailable: false };
+                    try {
+                        const resolved = await channelBindings.resolve(current);
+                        if (!identityMatches(current)) throw new Error('Teams connection changed.');
+                        return { binding: { workspaceId: binding.workspaceId, processId: binding.processId,
+                            title: resolved?.process.customTitle ?? resolved?.process.title ?? binding.processId }, unavailable: false };
+                    } catch (error) {
+                        if (!(error instanceof TeamsChannelBindingError)) throw error;
+                        if (!identityMatches(current)) throw new Error('Teams connection changed.');
+                        return { binding: { workspaceId: binding.workspaceId, processId: binding.processId,
+                            title: binding.processId }, unavailable: true };
+                    }
+                });
+                sendJSON(res, 200, result);
+            } catch {
+                sendError(res, 409, 'The channel binding is unavailable. Select an existing Sentinel.');
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/messaging\/teams\/channel-binding$/,
+        handler: async (req, res) => {
+            if (!channelBindings) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
+            const body = await parseBodyOrReject(req, res);
+            if (!body) return;
+            const { workspaceId, processId } = body;
+            if (typeof workspaceId !== 'string' || typeof processId !== 'string') {
+                sendError(res, 400, 'Provide a workspace and Sentinel'); return;
+            }
+            const expected = body.expectedBinding;
+            if (expected !== undefined && expected !== null
+                && (typeof expected !== 'object' || Array.isArray(expected)
+                    || typeof expected.workspaceId !== 'string' || typeof expected.processId !== 'string')) {
+                sendError(res, 400, 'Invalid expected channel binding'); return;
+            }
+            const current = identity();
+            if (!current) { sendError(res, 409, 'Connect Teams before configuring the channel binding'); return; }
+            try {
+                await channelBindings.exclusive(async () => {
+                    const latest = identity();
+                    if (!latest || !identityMatches(current)) {
+                        throw new Error('Teams connection changed.');
+                    }
+                    if (expected !== undefined) {
+                        const saved = channelBindings.lookup(current);
+                        if ((expected === null && saved)
+                            || (expected !== null && (!saved || saved.workspaceId !== expected.workspaceId
+                                || saved.processId !== expected.processId))) throw new TeamsChannelBindingConflict();
+                    }
+                    await channelBindings.bind(current, workspaceId, processId, () => identityMatches(current));
+                });
+                sendJSON(res, 200, { workspaceId, processId });
+            } catch (error) {
+                if (error instanceof TeamsChannelBindingConflict) {
+                    sendError(res, 409, 'The channel binding changed. Reload the page before saving.');
+                } else {
+                    sendError(res, 400, 'Unable to bind this channel. Select an available Sentinel in the chosen workspace.');
+                }
+            }
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/messaging\/teams\/channel-binding\/sentinels$/,
+        handler: async (req, res) => {
+            if (!opts.store) { sendError(res, 404, 'Teams channel binding is unavailable'); return; }
+            const params = new URL(req.url ?? '', 'http://localhost').searchParams;
+            const workspaceId = params.get('workspaceId');
+            const offset = parsePageNumber(params.get('offset'), 0, Number.MAX_SAFE_INTEGER);
+            if (!workspaceId || offset === null || params.getAll('workspaceId').length !== 1 || params.getAll('offset').length > 1
+                || [...params.keys()].some(key => key !== 'workspaceId' && key !== 'offset')) {
+                sendError(res, 400, 'Invalid Sentinel pagination'); return;
+            }
+            try {
+                if (!(await opts.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
+                    sendError(res, 400, 'Select an available workspace'); return;
+                }
+                const store = opts.store;
+                if (!store.getProcessSummaries || !store.getProcessOwnerProjection) throw new Error('Sentinel summaries unavailable.');
+                const projectOwner = store.getProcessOwnerProjection.bind(store);
+                const { entries, total } = await store.getProcessSummaries({ workspaceId, type: 'chat', limit: 100, offset });
+                if (!entries.length && offset < total) throw new Error('Sentinel summary page is incomplete.');
+                const sentinels: Array<{ id: string; title: string }> = [];
+                for (let i = 0; i < entries.length; i += 8) {
+                    const batch = entries.slice(i, i + 8);
+                    const owners: Array<ProcessOwnerProjection | undefined> = await Promise.all(
+                        batch.map(p => projectOwner(p.id, workspaceId)),
+                    );
+                    for (let j = 0; j < batch.length; j++) {
+                        const process = batch[j], owner = owners[j];
+                        if (process.workspaceId === workspaceId && process.type === 'chat' && owner?.id === process.id
+                            && owner.workspaceId === workspaceId && owner.mode === 'sentinel'
+                            && !['failed', 'cancelled'].includes(owner.status)) {
+                            sentinels.push({ id: process.id, title: process.customTitle ?? process.title ?? process.id });
+                        }
+                    }
+                }
+                sendJSON(res, 200, { sentinels,
+                nextOffset: offset + entries.length < total && entries.length ? offset + entries.length : null });
+            } catch {
+                sendError(res, 500, 'Unable to list Sentinel chats.');
+            }
+        },
+    });
 
     routes.push({
         method: 'GET',

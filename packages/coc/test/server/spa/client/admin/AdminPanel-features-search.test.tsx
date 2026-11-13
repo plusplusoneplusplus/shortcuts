@@ -377,6 +377,7 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(defs.map(def => def.key)).toEqual([
             'features.teamsBridgeObservability', 'features.teamsAiAnswerRelay', 'features.teamsMessageReaction',
             'features.teamsOutboundCompliance', 'teamsOutboundCompliance.prompt',
+            'teamsRouting.workspaceId',
             'features.teamsIc3OwnCommands', 'teamsIc3OwnCommands.workspaceId',
             'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId',
             'teamsReactionDelegation.dispatcherSkill',

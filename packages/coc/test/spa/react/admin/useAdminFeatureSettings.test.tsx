@@ -116,8 +116,27 @@ describe('useAdminFeatureSettings', () => {
 
     const binding = {
         features: { teamsReactionDelegation: true },
+        teamsRouting: { workspaceId: 'alpha' },
         teamsReactionDelegation: { workspaceId: 'alpha', dispatcherSkill: 'dispatcher' },
     };
+
+    it('validates mentions and reaction skills against the shared fixed-routing workspace', async () => {
+        const { view } = renderController();
+        act(() => view.result.current.hydrate({
+            features: { teamsIc3OwnCommands: true, teamsReactionDelegation: true },
+            teamsRouting: { workspaceId: 'alpha' },
+            teamsReactionDelegation: { workspaceId: '', dispatcherSkill: 'dispatcher' },
+        }));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(listSkills).toHaveBeenCalledWith('alpha');
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'teamsRouting.workspaceId': 'alpha',
+        }));
+        updateConfig.mockClear();
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'teamsRouting.workspaceId': '' })));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(updateConfig).not.toHaveBeenCalled();
+    });
 
     it.each(['tab', 'all'])('validates enabled reaction bindings before a %s save', async scope => {
         const { view } = renderController();
@@ -162,7 +181,7 @@ describe('useAdminFeatureSettings', () => {
         ] });
         const { view } = renderController();
         act(() => view.result.current.hydrate({
-            ...binding, teamsReactionDelegation: { workspaceId: 'group-team', dispatcherSkill: 'dispatcher' },
+            ...binding, teamsRouting: { workspaceId: 'group-team' },
         }));
         await act(async () => {
             if (scope === 'tab') await view.result.current.handleSaveTab('teams');
@@ -171,7 +190,7 @@ describe('useAdminFeatureSettings', () => {
         expect(listSkills).toHaveBeenCalledWith('group-team');
         expect(workspaceConfig).toHaveBeenCalledWith('group-team');
         expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
-            'teamsReactionDelegation.workspaceId': 'group-team',
+            'teamsRouting.workspaceId': 'group-team',
             'teamsReactionDelegation.dispatcherSkill': 'dispatcher',
         }));
     });
