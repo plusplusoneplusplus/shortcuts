@@ -421,6 +421,7 @@ const MAX_HELD_GATES: usize = 16;
 
 thread_local! {
     static DATA_STORE: OnceCell<String> = const { OnceCell::new() };
+    static STORE: OnceCell<Retained<WKWebsiteDataStore>> = const { OnceCell::new() };
     static VIEWS: RefCell<HashMap<String, Rc<View>>> = RefCell::new(HashMap::new());
     static NEXT_POPUP: Cell<u64> = const { Cell::new(0) };
     static NEXT_GATE: Cell<u64> = const { Cell::new(0) };
@@ -443,6 +444,19 @@ fn remember_synthesized_key(time: f64) {
         }
         keys.push(time);
     });
+}
+
+/// The profile's dedicated persistent store; every view and profile op uses it.
+fn data_store(mtm: MainThreadMarker) -> Result<Retained<WKWebsiteDataStore>, &'static str> {
+    let store_id =
+        DATA_STORE.with(|cell| cell.get().cloned()).ok_or("Browser profile unavailable.")?;
+    let uuid = NSUUID::from_string(&NSString::from_str(&store_id))
+        .ok_or("Browser profile unavailable.")?;
+    // One shared instance: cookies set through a short-lived instance are dropped with it.
+    Ok(STORE.with(|cell| {
+        cell.get_or_init(|| unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&uuid, mtm) })
+            .clone()
+    }))
 }
 
 fn main_thread() -> MainThreadMarker {
@@ -1156,10 +1170,7 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
     }
     let parent = parent_window(command)?;
     let bounds = checked_bounds(command)?;
-    let store_id =
-        DATA_STORE.with(|cell| cell.get().cloned()).ok_or("Browser profile unavailable.")?;
-    let uuid = NSUUID::from_string(&NSString::from_str(&store_id))
-        .ok_or("Browser profile unavailable.")?;
+    let store = data_store(mtm)?;
     let zoom = match command.page_zoom_percent {
         Some(percent) if !protocol::allowed_page_zoom(percent) => return Err("Invalid page zoom."),
         percent => percent.unwrap_or(100.0),
@@ -1169,7 +1180,7 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         new_panel(rect, NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel, mtm);
     let webview = unsafe {
         let configuration = WKWebViewConfiguration::new(mtm);
-        configuration.setWebsiteDataStore(&WKWebsiteDataStore::dataStoreForIdentifier(&uuid, mtm));
+        configuration.setWebsiteDataStore(&store);
         WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), rect, &configuration)
     };
     panel.setHasShadow(false);
@@ -1634,6 +1645,127 @@ fn encode_image(
     Some(data.base64EncodedStringWithOptions(NSDataBase64EncodingOptions::empty()).to_string())
 }
 
+fn object<T: Message>(value: Retained<T>) -> Retained<AnyObject> {
+    // Every Objective-C object is an AnyObject.
+    unsafe { Retained::cast_unchecked(value) }
+}
+
+fn ns_cookie(
+    cookie: &protocol::ImportCookie,
+    domain: &str,
+) -> Option<Retained<objc2_foundation::NSHTTPCookie>> {
+    use objc2_foundation::{
+        NSDate, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieExpires, NSHTTPCookieName,
+        NSHTTPCookiePath, NSHTTPCookieSameSiteLax, NSHTTPCookieSameSitePolicy,
+        NSHTTPCookieSameSiteStrict, NSHTTPCookieSecure, NSHTTPCookieValue,
+    };
+    let text = |value: &str| object(NSString::from_str(value));
+    let http_only = NSString::from_str("HttpOnly");
+    let mut keys: Vec<&NSString> =
+        unsafe { vec![NSHTTPCookieName, NSHTTPCookieValue, NSHTTPCookieDomain, NSHTTPCookiePath] };
+    let mut values =
+        vec![text(&cookie.name), text(&cookie.value), text(domain), text(&cookie.path)];
+    if cookie.secure {
+        keys.push(unsafe { NSHTTPCookieSecure });
+        values.push(text("TRUE"));
+    }
+    if cookie.http_only {
+        keys.push(&http_only);
+        values.push(text("TRUE"));
+    }
+    let same_site = match cookie.same_site {
+        protocol::SameSite::Lax => Some(unsafe { NSHTTPCookieSameSiteLax }),
+        protocol::SameSite::Strict => Some(unsafe { NSHTTPCookieSameSiteStrict }),
+        protocol::SameSite::None => None,
+    };
+    if let Some(policy) = same_site {
+        keys.push(unsafe { NSHTTPCookieSameSitePolicy });
+        values.push(object(policy.retain()));
+    }
+    if let Some(expiry) = cookie.expiration_date {
+        keys.push(unsafe { NSHTTPCookieExpires });
+        values.push(object(NSDate::dateWithTimeIntervalSince1970(expiry)));
+    }
+    let properties = NSDictionary::from_retained_objects(&keys, &values);
+    unsafe { NSHTTPCookie::cookieWithProperties(&properties) }
+}
+
+/// Ops on the profile's shared data store rather than one view.
+fn profile_command(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
+    let store = data_store(mtm)?;
+    let id = command.id;
+    match command.op.as_str() {
+        "import-profile-cookies" => {
+            let cookies = command.cookies.as_deref().unwrap_or_default();
+            if cookies.is_empty() || cookies.len() > protocol::MAX_IMPORT_COOKIES {
+                return Err("Cookie import failed. Nothing was added.");
+            }
+            // Prepare the whole batch before modifying the shared profile.
+            let prepared = cookies
+                .iter()
+                .map(|cookie| ns_cookie(cookie, &protocol::import_cookie_domain(cookie)?))
+                .collect::<Option<Vec<_>>>()
+                .ok_or("Cookie import failed. Nothing was added.")?;
+            let remaining = Rc::new(Cell::new(prepared.len()));
+            let cookie_store = unsafe { store.httpCookieStore() };
+            for cookie in prepared {
+                let remaining = remaining.clone();
+                let done = RcBlock::new(move || {
+                    remaining.set(remaining.get() - 1);
+                    if remaining.get() == 0 {
+                        protocol::success(id);
+                    }
+                });
+                unsafe { cookie_store.setCookie_completionHandler(&cookie, Some(&done)) };
+            }
+        }
+        "cookie-count" => {
+            // Count only: names and values never leave the helper.
+            let url = command
+                .url
+                .as_deref()
+                .filter(|url| protocol::allowed_url(url, false))
+                .and_then(|url| url::Url::parse(url).ok())
+                .ok_or("An HTTP(S) URL is required.")?;
+            let done = RcBlock::new(
+                move |cookies: std::ptr::NonNull<
+                    objc2_foundation::NSArray<objc2_foundation::NSHTTPCookie>,
+                >| {
+                    let now = objc2_foundation::NSDate::now().timeIntervalSince1970();
+                    let count = unsafe { cookies.as_ref() }
+                        .iter()
+                        .filter(|cookie| {
+                            cookie
+                                .expiresDate()
+                                .is_none_or(|date| date.timeIntervalSince1970() > now)
+                                && protocol::cookie_matches(
+                                    &url,
+                                    &cookie.domain().to_string(),
+                                    &cookie.path().to_string(),
+                                    cookie.isSecure(),
+                                )
+                        })
+                        .count();
+                    protocol::reply(id, Some(json!({ "count": count })));
+                },
+            );
+            unsafe { store.httpCookieStore().getAllCookies(&done) };
+        }
+        "clear" => {
+            let done = RcBlock::new(move || protocol::success(id));
+            unsafe {
+                store.removeDataOfTypes_modifiedSince_completionHandler(
+                    &WKWebsiteDataStore::allWebsiteDataTypes(mtm),
+                    &objc2_foundation::NSDate::distantPast(),
+                    &done,
+                );
+            }
+        }
+        _ => unreachable!("profile op"),
+    }
+    Ok(())
+}
+
 fn dispatch(command: Command) {
     if protocol::output_failed() {
         std::process::exit(1);
@@ -1647,6 +1779,11 @@ fn dispatch(command: Command) {
             Ok(()) => protocol::success(command.id),
             Err(message) => protocol::failure(command.id, "invalid", message),
         },
+        "import-profile-cookies" | "cookie-count" | "clear" => {
+            if let Err(message) = profile_command(&command, main_thread()) {
+                protocol::failure(command.id, "invalid", message);
+            }
+        }
         "close" => {
             let id = command.view_id.as_deref().unwrap_or_default();
             if let Some(view) = VIEWS.with(|views| views.borrow_mut().remove(id)) {

@@ -3,7 +3,8 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
+import type { BrowserImportCookie } from './browser-cookie-import';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { browserMessage } from './webview2-process';
@@ -175,6 +176,19 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 entry.navigationGate = enabled;
                 const views = entry.root ? [entry] : [entry, ...[...this.views.values()].filter(view => view.root === entry)];
                 await Promise.all(views.map(view => this.process.request('navigation-gate', { viewId: view.nativeId, navigationGate: this.gated(view) })));
+            },
+            // Every view shares the profile's data store, so a tab import is a profile import.
+            importCookies: cookies => this.importCookies(cookies),
+            // WebKit fails invalid certificates without offering to proceed (no challenge handler).
+            siteFacts: async url => {
+                const facts: BrowserSiteFacts = { rejectsInvalidCertificates: true, certificateError: false };
+                if (!url) return facts;
+                try {
+                    // The helper replies with a count only; names and values stay in WebKit.
+                    const result = await this.process.request('cookie-count', { url }) as { count?: unknown } | undefined;
+                    if (typeof result?.count === 'number') facts.cookieCount = result.count;
+                } catch { /* reported as unavailable; cookie errors are never surfaced */ }
+                return facts;
             },
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
@@ -386,8 +400,13 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         }
     }
 
+    async importCookies(cookies: BrowserImportCookie[]): Promise<void> {
+        await this.process.request('import-profile-cookies', { cookies });
+    }
+
     async clearData(): Promise<void> {
-        throw new BrowserHostError('unsupported', 'Clearing WebKit (WKWebView) data is not available yet.');
+        if (process.platform !== 'darwin') { throw new BrowserHostError('unsupported-platform', 'WKWebView requires macOS.'); }
+        await this.process.request('clear');
     }
 
     async dispose(): Promise<void> {

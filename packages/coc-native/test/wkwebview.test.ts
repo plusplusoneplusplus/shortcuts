@@ -414,6 +414,58 @@ describe('desktop native WKWebView packaging contract', () => {
         }
     }, 30_000);
 
+    it.skipIf(!supportedMacos || !helper)('imports, counts and clears cookies in the persistent profile store', async () => {
+        const seen: string[] = [];
+        const server = http.createServer((request, response) => {
+            seen.push(request.headers.cookie ?? '');
+            response.end('<title>cookies</title>');
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const name = `coc-wkwebview-cookies-${process.pid}`;
+        let run = runHelper(name);
+        try {
+            await run.ready;
+            const cookie = (values: Record<string, unknown>) => ({ url: `${origin}/`, name: 'session', value: 'token', path: '/', secure: false, httpOnly: true, sameSite: 'lax', ...values });
+            // A bad item rejects the whole batch before anything is added.
+            expect(await run.send({ op: 'import-profile-cookies', cookies: [cookie({ name: 'first' }), cookie({ url: 'file:///etc/passwd' })] }))
+                .toMatchObject({ ok: false, reason: 'invalid' });
+            expect(await run.send({ op: 'import-profile-cookies', cookies: [] })).toMatchObject({ ok: false });
+            expect(await run.send({ op: 'cookie-count', url: `${origin}/` })).toEqual({ id: 3, ok: true, result: { count: 0 } });
+            expect(await run.send({ op: 'import-profile-cookies', cookies: [
+                cookie({}),
+                cookie({ name: 'scoped', path: '/app', sameSite: 'strict', expirationDate: Math.floor(Date.now() / 1000) + 3600 }),
+                cookie({ name: 'tls', secure: true, sameSite: 'no_restriction' }),
+                cookie({ name: 'expired', expirationDate: Math.floor(Date.now() / 1000) - 3600 }),
+            ] })).toEqual({ id: 4, ok: true });
+            const count = async (url: string) => (await run.send({ op: 'cookie-count', url })).result?.count;
+            expect(await count(`${origin}/`)).toBe(1);
+            expect(await count(`${origin}/app/page`)).toBe(2);
+            expect(await count('http://other.test/')).toBe(0);
+            expect(await run.send({ op: 'cookie-count', url: 'file:///tmp' })).toMatchObject({ ok: false, reason: 'invalid' });
+            // Pages get imported cookies from the same store.
+            expect(await run.send({ op: 'open', viewId: 'cookies', url: `${origin}/app/page` })).toMatchObject({ ok: true });
+            await run.waitFor(event => event.event === 'visited' && event.viewId === 'cookies');
+            expect(seen.at(-1)?.split('; ').sort()).toEqual(['scoped=token', 'session=token']);
+            await run.send({ op: 'close', viewId: 'cookies' });
+            await run.send({ op: 'quit' });
+            // The store is persistent: a new helper on the profile keeps the cookie with an expiry.
+            // WebKit loads saved cookies with the first network load, so open a page first.
+            run = runHelper(name);
+            await run.ready;
+            expect(await run.send({ op: 'open', viewId: 'cookies', url: `${origin}/app/x` })).toMatchObject({ ok: true });
+            await run.waitFor(event => event.event === 'visited' && event.viewId === 'cookies');
+            expect(seen.at(-1)).toBe('scoped=token');
+            expect((await run.send({ op: 'cookie-count', url: `${origin}/app/x` })).result?.count).toBe(1);
+            expect(await run.send({ op: 'clear' })).toEqual({ id: 3, ok: true });
+            expect((await run.send({ op: 'cookie-count', url: `${origin}/app/x` })).result?.count).toBe(0);
+        }
+        finally {
+            run.child.kill();
+            server.close();
+        }
+    }, 60_000);
+
     it.skipIf(!supportedMacos || !helper)('drives background views with synthesized input, content worlds and screenshots', async () => {
         const page = `<title>Control</title><style>
             body { margin: 0; height: 3000px; }

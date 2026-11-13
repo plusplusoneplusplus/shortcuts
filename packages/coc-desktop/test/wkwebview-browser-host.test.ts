@@ -565,3 +565,48 @@ describe('WKWebView agent navigation approval gate', () => {
         await h.host.dispose();
     });
 });
+
+describe('WKWebView profile data', () => {
+    const cookie = { url: 'https://app.test/', name: 'session', value: 'token', path: '/', secure: true, httpOnly: true, sameSite: 'lax' as const };
+
+    function onPlatform<T>(platform: NodeJS.Platform, run: () => Promise<T>): Promise<T> {
+        const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        Object.defineProperty(process, 'platform', { value: platform });
+        return run().finally(() => Object.defineProperty(process, 'platform', original));
+    }
+
+    it('imports cookies into the shared profile store from the host and from a tab', async () => {
+        const { host, view } = await open();
+        await host.importCookies([cookie]);
+        await view.importCookies!([cookie]);
+        expect(mocks.request.mock.calls.filter(([op]) => op === 'import-profile-cookies'))
+            .toEqual([['import-profile-cookies', { cookies: [cookie] }], ['import-profile-cookies', { cookies: [cookie] }]]);
+        mocks.request.mockRejectedValueOnce(new BrowserHostError('invalid', 'Cookie import failed. Nothing was added.'));
+        await expect(host.importCookies([cookie])).rejects.toThrow('Nothing was added');
+        await host.dispose();
+    });
+
+    it('reports strict certificates and a cookie count only, treating count failures as unavailable', async () => {
+        const { host, view } = await open();
+        expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
+        expect(mocks.request).not.toHaveBeenCalledWith('cookie-count', expect.anything());
+        mocks.request.mockResolvedValueOnce({ count: 3 });
+        expect(await view.siteFacts!('https://app.test/docs')).toEqual({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 3 });
+        expect(mocks.request).toHaveBeenLastCalledWith('cookie-count', { url: 'https://app.test/docs' });
+        mocks.request.mockResolvedValueOnce({ count: 'many' });
+        expect(await view.siteFacts!('https://app.test/')).not.toHaveProperty('cookieCount');
+        mocks.request.mockRejectedValueOnce(new BrowserHostError('runtime-crashed', 'WKWebView host is not running.'));
+        expect(await view.siteFacts!('https://app.test/')).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
+        await host.dispose();
+    });
+
+    it('clears the profile store through the helper on macOS only', async () => {
+        const host = new WkWebViewBrowserHost('/data/browser/wkwebview');
+        await onPlatform('darwin', () => host.clearData());
+        expect(mocks.request).toHaveBeenCalledExactlyOnceWith('clear');
+        mocks.request.mockClear();
+        await expect(onPlatform('linux', () => host.clearData())).rejects.toMatchObject({ reason: 'unsupported-platform' });
+        expect(mocks.request).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+});

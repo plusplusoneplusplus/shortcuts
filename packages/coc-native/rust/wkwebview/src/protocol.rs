@@ -100,6 +100,72 @@ pub struct Command {
     pub gate_id: Option<u64>,
     /// `navigation-decision`: let the held navigation load or cancel it.
     pub allow: Option<bool>,
+    /// `import-profile-cookies`: cookies added to the profile's data store.
+    pub cookies: Option<Vec<ImportCookie>>,
+}
+
+/// Same shape as WebView2's import (`BrowserImportCookie` in coc-desktop).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportCookie {
+    pub url: String,
+    pub name: String,
+    pub value: String,
+    pub domain: Option<String>,
+    pub path: String,
+    pub secure: bool,
+    pub http_only: bool,
+    pub same_site: SameSite,
+    pub expiration_date: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub enum SameSite {
+    #[serde(rename = "lax")]
+    Lax,
+    #[serde(rename = "strict")]
+    Strict,
+    #[serde(rename = "no_restriction")]
+    None,
+}
+
+/// Most cookies one import may add; matches the WebView2 helper.
+pub const MAX_IMPORT_COOKIES: usize = 200;
+
+/// The cookie domain to store: the given domain, else the URL's host (host-only).
+/// Rejects batches main should never send so nothing is added from a bad batch.
+pub fn import_cookie_domain(cookie: &ImportCookie) -> Option<String> {
+    let url = url::Url::parse(&cookie.url).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || cookie.name.is_empty()
+        || !cookie.path.starts_with('/')
+        || cookie.expiration_date.is_some_and(|expiry| !expiry.is_finite())
+    {
+        return None;
+    }
+    let domain = cookie.domain.clone().or_else(|| url.host_str().map(str::to_string))?;
+    (!domain.is_empty()).then_some(domain)
+}
+
+/// RFC 6265 domain and path matching for counting the cookies a URL would send.
+/// `domain` uses NSHTTPCookie's form: a leading dot means the domain and its subdomains.
+pub fn cookie_matches(url: &url::Url, domain: &str, path: &str, secure: bool) -> bool {
+    let Some(host) = url.host_str().map(str::to_ascii_lowercase) else {
+        return false;
+    };
+    if secure && url.scheme() != "https" {
+        return false;
+    }
+    let domain = domain.to_ascii_lowercase();
+    let domain_match = match domain.strip_prefix('.') {
+        Some(base) => host == base || host.ends_with(&format!(".{base}")),
+        None => host == domain,
+    };
+    let request_path = url.path();
+    let path_match = request_path == path
+        || (request_path.starts_with(path)
+            && (path.ends_with('/') || request_path[path.len()..].starts_with('/')));
+    domain_match && path_match
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -559,6 +625,56 @@ pub fn availability(macos_major: Option<u64>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_cookies_parse_and_validate() {
+        let command = read(br#"{"id":1,"op":"import-profile-cookies","cookies":[{"url":"https://app.example.com/","name":"session","value":"token","domain":".example.com","path":"/","secure":true,"httpOnly":true,"sameSite":"no_restriction","expirationDate":2000000000}]}
+"#).unwrap().unwrap();
+        let cookies = command.cookies.unwrap();
+        assert_eq!(cookies[0].same_site, SameSite::None);
+        assert_eq!(import_cookie_domain(&cookies[0]).as_deref(), Some(".example.com"));
+        for invalid in [
+            r#"{"id":1,"op":"import-profile-cookies","cookies":[{"name":"a"}]}"#,
+            r#"{"id":1,"op":"import-profile-cookies","cookies":"a=b"}"#,
+            r#"{"id":1,"op":"import-profile-cookies","script":"unsafe"}"#,
+        ] {
+            assert!(read(format!("{invalid}\n").as_bytes()).unwrap().is_err(), "{invalid}");
+        }
+        let cookie = |url: &str, path: &str, domain: Option<&str>| ImportCookie {
+            url: url.into(),
+            name: "a".into(),
+            value: "b".into(),
+            domain: domain.map(str::to_string),
+            path: path.into(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expiration_date: None,
+        };
+        assert_eq!(
+            import_cookie_domain(&cookie("http://host.test:8080/x", "/", None)).as_deref(),
+            Some("host.test")
+        );
+        assert!(import_cookie_domain(&cookie("file:///tmp/a", "/", None)).is_none());
+        assert!(import_cookie_domain(&cookie("https://host.test/", "x", None)).is_none());
+        assert!(import_cookie_domain(&cookie("https://host.test/", "/", Some(""))).is_none());
+    }
+
+    #[test]
+    fn cookies_match_like_a_browser_sends_them() {
+        let url = |value: &str| url::Url::parse(value).unwrap();
+        let page = url("https://app.example.com/docs/page");
+        assert!(cookie_matches(&page, ".example.com", "/", true));
+        assert!(cookie_matches(&page, ".app.example.com", "/docs", false));
+        assert!(cookie_matches(&page, "APP.example.com", "/docs/", false));
+        assert!(!cookie_matches(&page, "example.com", "/", false), "host-only");
+        assert!(!cookie_matches(&page, ".other.com", "/", false));
+        assert!(!cookie_matches(&page, ".ample.com", "/", false));
+        assert!(!cookie_matches(&page, ".example.com", "/doc", false), "partial segment");
+        assert!(!cookie_matches(&page, ".example.com", "/admin", false));
+        assert!(!cookie_matches(&url("http://app.example.com/"), ".example.com", "/", true));
+        assert!(cookie_matches(&url("http://app.example.com/"), ".example.com", "/", false));
+    }
 
     fn read(input: &[u8]) -> Option<std::result::Result<Command, &'static str>> {
         read_command(&mut io::BufReader::with_capacity(64, input)).unwrap()
