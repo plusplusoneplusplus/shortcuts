@@ -88,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, windows-latest]
+        os: [ubuntu-latest, macos-15, windows-latest]
         node-version: [24.x]
 
     steps:
@@ -160,8 +160,8 @@ jobs:
   # Rust unit layer plus the N-API boundary suite, on every platform we ship a
   # binary for. The binary each job builds is what its own tests run against.
   coc-native:
-    # Native artifacts and macOS consumers share the Intel runner pool.
-    # release.yml independently builds and tests macOS ARM64.
+    # Native artifacts and macOS consumers share the ARM64 runner pool.
+    # release.yml independently builds and tests macOS Intel too.
     runs-on: ${{ matrix.os }}
     # The linux binary is built inside the image we ship, not on the runner. The
     # addon spawns processes now, and that pulls Rust std's `pidfd_spawnp` and
@@ -179,7 +179,7 @@ jobs:
         include:
           - os: ubuntu-latest
             container: node:24-bookworm
-          - os: macos-15-intel
+          - os: macos-15
           - os: windows-latest
 
     steps:
@@ -415,7 +415,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, windows-latest]
+        os: [ubuntu-latest, macos-15, windows-latest]
         shard: [1, 2, 3, 4, 5]
         node-version: [24.x]
 
@@ -818,7 +818,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, windows-latest]
+        os: [ubuntu-latest, macos-15, windows-latest]
         node-version: [24.x]
 
     steps:
