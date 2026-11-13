@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { randomUUID } from 'crypto';
+import { constants as fsConstants, promises as fs } from 'fs';
 import { createRequire } from 'module';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
@@ -12,6 +13,7 @@ import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
 import { validateCanvasManifestTools } from '../canvas/canvas-script-bridge';
 import type { OwnerToolScriptRequest, OwnerToolScriptOutcome } from '../canvas/owner-tool-script-service';
+import { sessionWorkspacePath } from './session-workspace';
 
 const bundledRequire = createRequire(__filename);
 const loggedUnknownMethods = new Set<string>();
@@ -19,6 +21,7 @@ const loggedUnknownMethods = new Set<string>();
 export interface CanvasExtensionHostOptions {
     config: Pick<CLIConfig, 'canvasExtensions'>;
     extension: DiscoveredCanvasExtension;
+    workspaceId: string;
     processId: string;
     dataDir: string;
     log: (message: string) => void;
@@ -183,8 +186,16 @@ export class CanvasExtensionHost {
                 || typeof canvas.description !== 'string')) {
                 throw new ResponseError(ErrorCodes.InvalidParams, 'Invalid canvas declarations');
             }
-            this.resolveReady(canvases);
-            return { sessionId: this.options.processId, capabilities: {} };
+            try {
+                const workspacePath = sessionWorkspacePath(this.options.dataDir, this.options);
+                await fs.mkdir(workspacePath, { recursive: true });
+                await fs.access(workspacePath, fsConstants.W_OK);
+                this.resolveReady(canvases);
+                return { sessionId: this.options.processId, capabilities: {}, workspacePath };
+            } catch (error) {
+                this.rejectReady(error instanceof Error ? error : new Error(String(error)));
+                throw error;
+            }
         }
         const field = method === 'session.log' ? 'message' : method === 'session.send' ? 'prompt' : 'question';
         if (typeof params[field] !== 'string') {

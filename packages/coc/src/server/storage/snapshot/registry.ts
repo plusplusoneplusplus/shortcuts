@@ -30,6 +30,7 @@ import { createPreferencesDomain } from './preferences-domain';
 import { createScheduleDomain } from './schedule-domain';
 import { createGitOpsDomain } from './git-ops-domain';
 import { createBrowserScreenshotsDomain } from './browser-screenshots-domain';
+import { createCanvasSessionWorkspacesDomain } from './canvas-session-workspaces-domain';
 import { createDelegatedJobsDomain, createSentinelTodosDomain, createSentinelMirrorOutboxDomain, createTeamsChannelBindingsDomain } from './delegated-jobs-domain';
 
 /** Build a fresh, ordered set of snapshot domains. */
@@ -42,6 +43,7 @@ export function createSnapshotDomains(): StorageSnapshotDomain[] {
         createScheduleDomain(),
         createGitOpsDomain(),
         createBrowserScreenshotsDomain(),
+        createCanvasSessionWorkspacesDomain(),
         createDelegatedJobsDomain(),
         createSentinelTodosDomain(),
         createSentinelMirrorOutboxDomain(),

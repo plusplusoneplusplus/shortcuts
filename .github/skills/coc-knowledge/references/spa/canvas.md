@@ -165,7 +165,11 @@ root/subpath imports from CoC, overriding extension-local installations, and map
 `@coc/canvas-extension-tools` to the packaged CoC adapter.
 
 The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It captures
-`session.resume` declarations and dispatches canvas open/action/close requests.
+`session.resume` declarations, creates an absolute writable `workspacePath` under
+`<dataDir>/repos/<workspaceId>/canvas-ext/session-state/`, and dispatches canvas
+open/action/close requests. The encoded conversation directory is shared by its
+extensions and persists across runtime restarts. Session workspace files remain
+machine-local, excluded from snapshots and included in data wipe.
 `session.send` and ephemeral queries use required conversation-bound callbacks;
 session IDs are checked before dispatch. Session logs and stderr carry the extension
 key. Unsupported methods return MethodNotFound and log once per extension/method.
@@ -196,8 +200,9 @@ Calls serialize per runtime; crash recovery reopens all known instances with the
 saved input before dispatching the next action, without replaying failed actions.
 Open instances prevent idle expiry; otherwise `COC_CANVAS_EXT_IDLE_TTL_MS` defaults
 to 600000. The server forwards archive/removal events and reconciles filtered clears
-against surviving owners. Disabling the flag and shutdown stop runtimes and drain
-pending startup; deletion removes the conversation's isolated session-state folder.
+against surviving owners, including persisted workspaces without running hosts.
+Disabling the flag and shutdown stop runtimes and drain pending startup; deletion
+removes only the conversation owner's session workspace.
 `conversation-callbacks.ts` binds `session.send` to owner-validated
 `ProcessMessageDeliveryService.deliverOnce`: attributed text, stable message receipt,
 enqueue-only delivery and ordinary pending-message/SSE handling. Busy conversations

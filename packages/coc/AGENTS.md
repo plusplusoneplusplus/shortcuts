@@ -278,6 +278,8 @@ references before editing. Paths are package-relative.
   owning cwd and isolated `<dataDir>/canvas-ext/home`. Keep the SDK resolver in
   the package build; it forces root/subpath imports to CoC's pinned SDK. Bound
   startup/RPC calls, stop children on transport failure, and await disposal.
+  `session.resume` creates and returns an absolute writable session workspace under
+  the owning workspace's repo data. All extensions in one conversation share it.
   `host-registry.ts` serializes calls per conversation/extension, keeps open
   instances alive, and reopens their saved inputs after crashes before dispatch.
   It caches cloned declarations by entry path/content hash across conversations;
@@ -286,7 +288,8 @@ references before editing. Paths are package-relative.
   clear the cache; idle expiry preserves it.
   No-open-instance idle TTL uses `COC_CANVAS_EXT_IDLE_TTL_MS` (default 600000).
   Server lifecycle/config wiring stops runtimes on archive/delete/disable/shutdown;
-  deletion removes only that conversation's isolated session-state directory.
+  deletion removes only that owner's session workspace, including on filtered clears
+  after runtimes have stopped.
   `conversation-callbacks.ts` routes attributed `session.send` messages through
   guarded `ProcessMessageDeliveryService.deliverOnce` admission with stable receipts.
   Sends queue, never steer; ephemeral queries reuse canvas completion with the active

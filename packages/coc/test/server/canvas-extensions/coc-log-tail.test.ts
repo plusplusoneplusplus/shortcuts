@@ -37,7 +37,7 @@ describe('coc-log-tail canvas extension', () => {
             config: { canvasExtensions: { enabled: true } },
             extension: { extensionKey: 'ws:coc-log-tail', name: 'coc-log-tail', ownerWorkspaceId: 'ws',
                 extensionPath, cwd: repoRoot, contentHash: 'test' },
-            processId: 'conversation-1', dataDir, log: vi.fn(),
+            workspaceId: 'ws', processId: 'conversation-1', dataDir, log: vi.fn(),
             send: vi.fn(async () => ({ messageId: 'message-1' })),
             ephemeralQuery: vi.fn(async () => ({ answer: '' })), timeoutMs: 10_000,
         };

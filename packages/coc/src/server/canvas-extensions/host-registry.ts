@@ -1,5 +1,4 @@
 import { promises as fs } from 'fs';
-import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
@@ -7,6 +6,7 @@ import type { DiscoveredCanvasExtension } from './discovery';
 import type { OwnerScriptRunner } from '../executors/owner-script-runner';
 import { runOwnerToolScript } from '../canvas/owner-tool-script-service';
 import { CanvasExtensionHost, type CanvasInstanceRequest, type CanvasExtensionHostOptions } from './extension-host';
+import { listSessionWorkspaceOwners, sessionWorkspacePath } from './session-workspace';
 
 export interface CanvasExtensionOwner {
     workspaceId: string;
@@ -100,11 +100,7 @@ export class CanvasExtensionHostRegistry {
         return this.track((async () => {
             await Promise.all(stops);
             if (deleted) {
-                const directory = path.join(this.options.dataDir, 'canvas-ext', 'home', 'session-state');
-                const target = path.resolve(directory, owner.processId);
-                // IDs come from the store, but never let malformed historical IDs remove other data.
-                if (path.dirname(target) !== path.resolve(directory)) throw new Error('Invalid canvas conversation ID');
-                await fs.rm(target, { recursive: true, force: true });
+                await fs.rm(sessionWorkspacePath(this.options.dataDir, owner), { recursive: true, force: true });
             }
         })());
     }
@@ -113,15 +109,20 @@ export class CanvasExtensionHostRegistry {
         let cleanup: Promise<void> | undefined;
         if (event.type === 'processes-cleared') {
             // Clear can be workspace-filtered; keep surviving conversations' runtimes intact.
-            const owners = new Map([...this.entries.values()].map(entry => [
-                JSON.stringify(entry.owner), entry.owner,
-            ]));
-            cleanup = Promise.all([...owners.values()].map(async owner => {
-                const conversation = await this.options.store.getProcess(owner.processId, owner.workspaceId);
-                if (!conversation || conversation.metadata?.workspaceId !== owner.workspaceId) {
-                    await this.stopConversation(owner, true);
-                } else if (conversation.archived) await this.stopConversation(owner);
-            })).then(() => {});
+            cleanup = (async () => {
+                const owners = new Map([...this.entries.values()].map(entry => [
+                    JSON.stringify(entry.owner), entry.owner,
+                ]));
+                for (const owner of await listSessionWorkspaceOwners(this.options.dataDir)) {
+                    owners.set(JSON.stringify(owner), owner);
+                }
+                await Promise.all([...owners.values()].map(async owner => {
+                    const conversation = await this.options.store.getProcess(owner.processId, owner.workspaceId);
+                    if (!conversation || conversation.metadata?.workspaceId !== owner.workspaceId) {
+                        await this.stopConversation(owner, true);
+                    } else if (conversation.archived) await this.stopConversation(owner);
+                }));
+            })();
             this.track(cleanup);
         } else if (event.process && (event.type === 'process-removed' || event.process.archived)) {
             const workspaceId = event.process.metadata?.workspaceId;
@@ -205,7 +206,8 @@ export class CanvasExtensionHostRegistry {
         this.assertActive(entry);
         const host = await (this.options.startHost ?? CanvasExtensionHost.start)({
             config: this.options.config(), extension: entry.extension,
-            processId: entry.owner.processId, dataDir: this.options.dataDir, log: this.options.log,
+            workspaceId: entry.owner.workspaceId, processId: entry.owner.processId,
+            dataDir: this.options.dataDir, log: this.options.log,
             send: prompt => {
                 this.assertActive(entry);
                 if (!this.options.send) throw new Error('Canvas extension follow-up service is unavailable');
