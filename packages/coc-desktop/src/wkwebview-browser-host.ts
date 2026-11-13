@@ -6,6 +6,7 @@ import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type B
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { browserMessage } from './webview2-process';
+import { WkWebViewBrowserControl } from './wkwebview-browser-control';
 import { WkWebViewProcess } from './wkwebview-process';
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +24,8 @@ interface NativeEntry {
     window: BrowserWindow;
     pageZoom: number;
     tabShortcuts?: boolean;
+    /** Replaced when a crashed view is reopened; the old one stays failed. */
+    control: WkWebViewBrowserControl;
     /** Pushes placement and parent visibility after window move/resize/minimize/hide/fullscreen. */
     reposition(): void;
     parentChanged(): void;
@@ -56,6 +59,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             for (const entry of [...this.views.values()]) {
                 if (entry.root) { this.remove(entry.nativeId, entry); continue; }
                 entry.state = { ...entry.state, loading: false, errorCode: error.reason, error: error.message };
+                entry.control.stateChanged(entry.state);
                 entry.sink.state(entry.state);
             }
         });
@@ -113,6 +117,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         const entry: NativeEntry = {
             nativeId: id, request, sink, window, parentWindow, bounds: null, background: false, pageZoom: request.pageZoomPercent ?? 100,
             state: { viewId: request.viewId, engine: 'wkwebview', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
+            control: this.control(id),
             reposition: () => {
                 if (entry.bounds && this.views.get(id) === entry) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(failed); }
             },
@@ -131,12 +136,17 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         return this.hosted(entry);
     }
 
+    private control(nativeId: string): WkWebViewBrowserControl {
+        return new WkWebViewBrowserControl((op, payload) => this.process.request(op as 'evaluate', { ...payload, viewId: nativeId }));
+    }
+
     private hosted(entry: NativeEntry): BrowserHostedView {
         const id = entry.nativeId;
         const live = () => {
             if (this.views.get(id) !== entry || entry.window.isDestroyed()) throw new BrowserHostError('not-found', 'Browser tab is closed.');
         };
         return {
+            get control() { return entry.control; },
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 live();
@@ -149,6 +159,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                     // A crashed or lost helper view is reopened in place with its last placement.
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
+                    entry.control.close('detached');
+                    entry.control = this.control(id);
                     await this.process.request('open', this.openPayload(entry));
                     if (entry.background) await this.process.request('background', { viewId: id, enabled: true });
                 } else { await this.process.request('nav', { viewId: id, action }); }
@@ -192,6 +204,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         if (this.views.get(id) !== entry) { return; }
         this.views.delete(id);
         this.process.rejectView(id);
+        entry.control.close('detached');
         if (entry.root) {
             entry.root.sink.controlPopoutClosed?.(entry.request.viewId);
             return;
@@ -219,6 +232,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
     private viewFailure(entry: NativeEntry, error: unknown): void {
         if (this.views.get(entry.nativeId) !== entry) { return; }
         entry.state = { ...entry.state, loading: false, errorCode: 'runtime-crashed', error: error instanceof Error ? error.message : String(error) };
+        entry.control.close('crashed');
         if (entry.root) { this.remove(entry.nativeId, entry); }
         else {
             this.removePopups(entry);
@@ -239,7 +253,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 ...root, root, nativeId: message.viewId, tabShortcuts: false,
                 request: { ...root.request, viewId, url: message.url },
                 state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
-                bounds: null, background: false,
+                bounds: null, background: false, control: this.control(message.viewId),
             };
             this.views.set(message.viewId, popup);
             root.sink.controlPopoutOpened?.(viewId, this.hosted(popup));
@@ -266,6 +280,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 ...(state.errorCode === 'runtime-crashed' || state.errorCode === 'navigation-failed' ? { errorCode: state.errorCode } : {}),
             };
             if (!entry.state.error && validateBrowserUrl(entry.state.url).ok) { entry.request.url = entry.state.url; }
+            entry.control.stateChanged(entry.state);
             if (entry.root) {
                 if (entry.state.errorCode === 'runtime-crashed') { this.remove(entry.nativeId, entry); }
             } else {

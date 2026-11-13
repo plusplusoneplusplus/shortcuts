@@ -248,6 +248,28 @@ describe('WKWebView navigation and page state', () => {
         await host.dispose();
     });
 
+    it('drives native control on the exact view, and replaces it when a crashed tab reopens', async () => {
+        const { host, view } = await open();
+        const control = view.control!;
+        await control.mouse({ type: 'move', x: 1, y: 2 });
+        expect(mocks.request).toHaveBeenLastCalledWith('input', { input: { kind: 'mouse', type: 'move', x: 1, y: 2 }, viewId: '7:tab:1' });
+        await control.setFocusEmulation(true);
+        expect(mocks.request).toHaveBeenLastCalledWith('focus-emulation', { enabled: true, viewId: '7:tab:1' });
+        const events: unknown[] = [];
+        control.onEvent(event => events.push(event));
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, errorCode: 'runtime-crashed', error: 'Web content process ended.' } });
+        expect(events).toEqual([{ type: 'crashed' }, { type: 'detached', reason: 'crashed' }]);
+        await expect(control.evaluate('1')).rejects.toMatchObject({ reason: 'not-found' });
+        await view.nav('reload');
+        expect(view.control).not.toBe(control);
+        mocks.request.mockResolvedValueOnce({ value: 2 });
+        await expect(view.control!.evaluate('1 + 1')).resolves.toEqual({ value: 2 });
+        expect(mocks.request).toHaveBeenLastCalledWith('evaluate', { expression: '1 + 1', world: 'page', viewId: '7:tab:1' });
+        await view.close();
+        await expect(view.control!.insertText('x')).rejects.toMatchObject({ reason: 'not-found' });
+        await host.dispose();
+    });
+
     it('marks every tab failed when the helper process fails', async () => {
         const { host, view, sink } = await open();
         mocks.onFailure(new BrowserHostError('runtime-crashed', 'WKWebView host stopped.'));
@@ -325,6 +347,9 @@ describe('WKWebView native popups', () => {
         expect(mocks.request).not.toHaveBeenCalled();
         mocks.onEvent({ event: 'control-focused', viewId: '7:tab:1:popup:1' });
         expect(h.sink.controlFocused).toHaveBeenCalledOnce();
+        expect(h.popup.control).not.toBe(h.root.control);
+        await h.popup.control!.insertText('x');
+        expect(mocks.request).toHaveBeenLastCalledWith('input', { input: { kind: 'text', text: 'x' }, viewId: '7:tab:1:popup:1' });
         await h.host.dispose();
     });
 

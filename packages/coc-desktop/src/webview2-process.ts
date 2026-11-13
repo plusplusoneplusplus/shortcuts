@@ -26,12 +26,15 @@ export interface NativeBrowserProcessOptions {
     name?: string;
     /** Ops scoped to one view: rejected with it, and a timeout fails only that request. */
     viewOps?: readonly string[];
+    /** Ops whose replies may carry an image up to the capture budget. */
+    captureOps?: readonly string[];
 }
 
 /** Stdio JSON-line transport to a native browser helper (WebView2 or WKWebView). */
 export class WebView2Process {
     private readonly name: string;
     private readonly viewOps: ReadonlySet<string>;
+    private readonly captureOps: ReadonlySet<string>;
     private child?: ChildProcessWithoutNullStreams;
     private starting?: Promise<void>;
     private sequence = 0;
@@ -53,6 +56,7 @@ export class WebView2Process {
     ) {
         this.name = options.name ?? 'WebView2';
         this.viewOps = new Set(options.viewOps ?? ['cdp', 'cdp-subscribe', 'capture-annotation']);
+        this.captureOps = new Set(options.captureOps ?? ['capture-annotation']);
     }
 
     get running(): boolean { return Boolean(this.child && !this.closing); }
@@ -217,7 +221,7 @@ export class WebView2Process {
         }
     }
 
-    request(op: 'cdp' | 'capture-annotation' | 'evaluate' | 'view-state', payload: Record<string, unknown>): Promise<unknown>;
+    request(op: 'cdp' | 'capture-annotation' | 'evaluate' | 'view-state' | 'input' | 'screenshot', payload: Record<string, unknown>): Promise<unknown>;
     request(op: string, payload?: Record<string, unknown>): Promise<void>;
     async request(op: string, payload: Record<string, unknown> = {}): Promise<unknown> {
         if (!this.child && op !== 'open' && op !== 'clear' && op !== 'import-profile-cookies') {
@@ -246,7 +250,7 @@ export class WebView2Process {
                 reject(error);
             }, 60_000);
             this.pending.set(id, {
-                resolve, reject, timer, resultLimit: op === 'capture-annotation' ? 28_000_000 : 1_048_576,
+                resolve, reject, timer, resultLimit: this.captureOps.has(op) ? 28_000_000 : 1_048_576,
                 ...(viewRequest && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}),
                 ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}),
             });

@@ -13,7 +13,8 @@ use objc2_app_kit::{
     NSBackingStoreType, NSBitmapImageFileType, NSBitmapImageRep, NSDeviceRGBColorSpace, NSEvent,
     NSEventModifierFlags, NSEventType, NSFloatingWindowLevel, NSGraphicsContext, NSImage,
     NSImageCompressionFactor, NSNormalWindowLevel, NSPanel, NSResponder, NSScreen, NSWindow,
-    NSWindowCollectionBehavior, NSWindowDelegate, NSWindowNumberListOptions, NSWindowOrderingMode,
+    NSWindowCollectionBehavior, NSWindowDelegate, NSWindowDidBecomeKeyNotification,
+    NSWindowDidResignKeyNotification, NSWindowNumberListOptions, NSWindowOrderingMode,
     NSWindowStyleMask, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
     NSWorkspaceDidActivateApplicationNotification,
 };
@@ -102,6 +103,9 @@ struct PanelIvars {
     /// Set by an explicit `focus` or a real user click; cleared when the panel loses key
     /// status or leaves the screen, so ordering a panel in never takes keyboard focus.
     key_allowed: Cell<bool>,
+    /// Background control: WebKit sees the panel as key (page focus, `document.hasFocus()`)
+    /// while AppKit never makes it key, so it takes no keyboard focus from the user.
+    focus_emulated: Cell<bool>,
     view_id: OnceCell<String>,
 }
 
@@ -118,6 +122,11 @@ define_class!(
         #[unsafe(method(canBecomeKeyWindow))]
         fn can_become_key_window(&self) -> bool {
             self.ivars().key_allowed.get()
+        }
+
+        #[unsafe(method(isKeyWindow))]
+        fn is_key_window(&self) -> bool {
+            self.ivars().focus_emulated.get() || unsafe { msg_send![super(self), isKeyWindow] }
         }
 
         #[unsafe(method(canBecomeMainWindow))]
@@ -154,6 +163,11 @@ define_class!(
 );
 
 impl BrowserPanel {
+    /// AppKit key status, ignoring focus emulation.
+    fn really_key(&self) -> bool {
+        unsafe { msg_send![super(self), isKeyWindow] }
+    }
+
     fn key_event(&self, event: &NSEvent) -> bool {
         let id = self.ivars().view_id.get();
         let view = id.and_then(|id| VIEWS.with(|views| views.borrow().get(id).cloned()));
@@ -445,7 +459,7 @@ impl View {
             }
             PanelMode::Background(frame) => {
                 // A background panel must never keep keyboard focus.
-                if self.panel.isKeyWindow() {
+                if self.panel.really_key() {
                     self.panel.orderOut(None);
                 }
                 self.set_transparent(true);
@@ -478,7 +492,7 @@ impl View {
             "mode": if self.popup { "popup" } else { self.mode.get().name() },
             "visible": self.panel.isVisible(),
             "transparent": self.panel.alphaValue() == 0.0,
-            "key": self.panel.isKeyWindow(),
+            "key": self.panel.really_key(),
             "frame": { "x": frame.x, "y": frame.y, "width": frame.width, "height": frame.height },
             "windowNumber": self.panel.windowNumber(),
             "parentOnActiveSpace": self.placement.get().parent_on_active_space,
@@ -903,6 +917,32 @@ impl View {
         Ok(())
     }
 
+    /// WebKit re-reads `isKeyWindow` on the key notifications; the panel itself stays non-key.
+    fn set_focus_emulation(&self, enabled: bool) {
+        let ivars = self.panel.ivars();
+        if ivars.focus_emulated.get() == enabled {
+            return;
+        }
+        let really_key = self.panel.really_key();
+        ivars.focus_emulated.set(enabled);
+        if enabled {
+            self.panel.makeFirstResponder(Some(&self.webview));
+        }
+        if !really_key {
+            let name = unsafe {
+                if enabled {
+                    NSWindowDidBecomeKeyNotification
+                } else {
+                    NSWindowDidResignKeyNotification
+                }
+            };
+            unsafe {
+                NSNotificationCenter::defaultCenter()
+                    .postNotificationName_object(name, Some(&*self.panel));
+            }
+        }
+    }
+
     fn set_tab_shortcuts(&self, enabled: bool) {
         self.tab_shortcuts.set(enabled);
         if !enabled && self.tab_modifier_held.replace(false) {
@@ -1165,7 +1205,7 @@ fn open_popup(
     protocol::emit(json!({ "event": "popup-opened", "viewId": id, "rootId": root.id, "url": url }));
     // A popup the user opened from a focused tab takes focus; one opened by background
     // work only appears, so it never steals the keyboard.
-    if opener.panel.isKeyWindow() {
+    if opener.panel.really_key() {
         view.panel.ivars().key_allowed.set(true);
         NSApplication::sharedApplication(mtm).activate();
         view.panel.makeKeyAndOrderFront(None);
@@ -1210,6 +1250,11 @@ fn view_command(
             NSApplication::sharedApplication(mtm).activate();
             view.panel.makeKeyAndOrderFront(None);
             view.panel.makeFirstResponder(Some(&view.webview));
+            return Ok(None);
+        }
+        "focus-emulation" => {
+            let enabled = command.enabled.ok_or("Focus emulation state is required.")?;
+            view.set_focus_emulation(enabled);
             return Ok(None);
         }
         "tab-shortcuts" => {
@@ -1316,7 +1361,13 @@ fn content_world(
 fn evaluate(view: &View, id: u64, expression: &str, world: &WKContentWorld) {
     let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
         if let Some(error) = unsafe { error.as_ref() } {
-            let message = error.localizedDescription().to_string();
+            // A page exception carries its own text; localizedDescription is generic.
+            let exception = error
+                .userInfo()
+                .objectForKey(&NSString::from_str("WKJavaScriptExceptionMessage"))
+                .and_then(|value| value.downcast::<NSString>().ok())
+                .map(|value| value.to_string());
+            let message = exception.unwrap_or_else(|| error.localizedDescription().to_string());
             protocol::failure(
                 id,
                 "evaluation-failed",

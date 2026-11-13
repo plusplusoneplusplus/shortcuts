@@ -254,7 +254,7 @@ describe('desktop native WKWebView packaging contract', () => {
                 .toEqual({ id: 2, ok: true, result: { value: { title: 'Opener', n: 2 } } });
             expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'undefined' })).toMatchObject({ ok: true, result: { value: null } });
             expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'throw new Error("boom")' }))
-                .toMatchObject({ ok: false, reason: 'evaluation-failed' });
+                .toMatchObject({ ok: false, reason: 'evaluation-failed', message: expect.stringContaining('boom') });
 
             // A window without features is a tab request for main; nothing is hosted.
             await send({ op: 'evaluate', viewId: 'v1', expression: 'String(window.open("/popup"))' });
