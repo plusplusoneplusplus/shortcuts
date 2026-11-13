@@ -70,6 +70,10 @@ pub struct Command {
     pub url: Option<String>,
     pub bounds: Option<Bounds>,
     pub visible: Option<bool>,
+    /// `open`/`parent`: AppKit window number of the Electron window the panel follows.
+    pub parent_window: Option<i64>,
+    /// `background`: keep the page rendering off-screen while control runs.
+    pub enabled: Option<bool>,
 }
 
 pub fn allowed_view_id(value: &str) -> bool {

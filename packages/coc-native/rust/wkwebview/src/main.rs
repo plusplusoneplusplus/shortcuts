@@ -5,6 +5,8 @@ mod history;
 #[cfg(target_os = "macos")]
 mod host;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod overlay;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod profile;
 #[allow(dead_code)]
 mod protocol;
