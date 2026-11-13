@@ -80,8 +80,199 @@ pub struct Command {
     pub page_zoom_percent: Option<f64>,
     /// `open`/`tab-shortcuts`: route Cmd+1–9 and Cmd hold to main for tab switching.
     pub tab_shortcuts: Option<bool>,
-    /// `evaluate`: JavaScript expression run in the helper's isolated content world.
+    /// `evaluate`: JavaScript expression run in a content world (helper's own by default).
     pub expression: Option<String>,
+    /// `evaluate`: `page` for the page's own world or a named isolated world.
+    pub world: Option<String>,
+    /// `input`: one synthesized event for the web view.
+    pub input: Option<Input>,
+    /// `screenshot`: viewport rect in CSS pixels.
+    pub rect: Option<Bounds>,
+    /// `screenshot`: output size multiplier of the device pixel size, 0–1.
+    pub scale: Option<f64>,
+    /// `screenshot`: png or jpeg.
+    pub format: Option<String>,
+    /// `screenshot`: JPEG quality 0–100.
+    pub quality: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MouseAction {
+    Move,
+    Down,
+    Up,
+    Wheel,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyAction {
+    Down,
+    Up,
+    Char,
+}
+
+/// Synthesized input in CSS pixels of the viewport, mirroring the desktop's
+/// `BrowserControlMouseInput`/`BrowserControlKeyInput`.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Input {
+    #[serde(rename_all = "camelCase")]
+    Mouse {
+        #[serde(rename = "type")]
+        action: MouseAction,
+        x: f64,
+        y: f64,
+        click_count: Option<i64>,
+        delta_x: Option<f64>,
+        delta_y: Option<f64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Key {
+        #[serde(rename = "type")]
+        action: KeyAction,
+        key: Option<String>,
+        code: Option<String>,
+        /// Bit mask: 1 Alt, 2 Control, 4 Meta, 8 Shift.
+        modifiers: Option<u32>,
+        text: Option<String>,
+        unmodified_text: Option<String>,
+        commands: Option<Vec<String>>,
+    },
+    Text {
+        text: String,
+    },
+}
+
+pub const MAX_INPUT_TEXT_CHARS: usize = 65_536;
+
+pub fn allowed_point(x: f64, y: f64) -> bool {
+    x.is_finite() && y.is_finite() && (-1.0e6..=1.0e6).contains(&x) && (-1.0e6..=1.0e6).contains(&y)
+}
+
+/// Mac virtual key code (kVK_*) of a DOM `code`; unknown codes map to none.
+pub fn mac_key_code(code: &str) -> Option<u16> {
+    const LETTERS: [u16; 26] = [
+        0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 12, 15, 1, 17, 32, 9, 13, 7, 16,
+        6,
+    ];
+    const DIGITS: [u16; 10] = [29, 18, 19, 20, 21, 23, 22, 26, 28, 25];
+    const FUNCTION: [u16; 12] = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111];
+    if let Some(letter) = code.strip_prefix("Key").filter(|rest| rest.len() == 1) {
+        let byte = letter.as_bytes()[0];
+        return byte.is_ascii_uppercase().then(|| LETTERS[(byte - b'A') as usize]);
+    }
+    if let Some(digit) = code.strip_prefix("Digit").and_then(|rest| rest.parse::<usize>().ok()) {
+        return DIGITS.get(digit).copied();
+    }
+    if let Some(number) = code.strip_prefix('F').and_then(|rest| rest.parse::<usize>().ok()) {
+        return number.checked_sub(1).and_then(|index| FUNCTION.get(index)).copied();
+    }
+    Some(match code {
+        "Enter" => 36,
+        "Tab" => 48,
+        "Space" => 49,
+        "Backspace" => 51,
+        "Escape" => 53,
+        "Delete" => 117,
+        "Home" => 115,
+        "End" => 119,
+        "PageUp" => 116,
+        "PageDown" => 121,
+        "ArrowLeft" => 123,
+        "ArrowRight" => 124,
+        "ArrowDown" => 125,
+        "ArrowUp" => 126,
+        "Minus" => 27,
+        "Equal" => 24,
+        "BracketLeft" => 33,
+        "BracketRight" => 30,
+        "Backslash" => 42,
+        "Semicolon" => 41,
+        "Quote" => 39,
+        "Comma" => 43,
+        "Period" => 47,
+        "Slash" => 44,
+        "Backquote" => 50,
+        _ => return None,
+    })
+}
+
+/// The DOM `code` of a single typed letter or digit, for `char` input without a code.
+pub fn letter_code(characters: &str) -> Option<String> {
+    let mut chars = characters.chars();
+    let first = chars.next().filter(|_| chars.next().is_none())?;
+    if first.is_ascii_alphabetic() {
+        Some(format!("Key{}", first.to_ascii_uppercase()))
+    } else if first.is_ascii_digit() {
+        Some(format!("Digit{first}"))
+    } else {
+        None
+    }
+}
+
+/// Named isolated worlds; `page` is reserved for the page's own world.
+pub fn allowed_world(name: &str) -> bool {
+    name != "page"
+        && !name.is_empty()
+        && name.len() <= 128
+        && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.' | b':'))
+}
+
+/// AppKit `characters` for a key event: the typed text, or the control/function
+/// character AppKit reports for a named key.
+pub fn key_characters(key: &str, text: Option<&str>) -> String {
+    if let Some(text) = text.filter(|text| !text.is_empty()) {
+        return text.to_string();
+    }
+    let function = |offset: u32| char::from_u32(0xF700 + offset).unwrap().to_string();
+    match key {
+        "Enter" => "\r".into(),
+        "Tab" => "\t".into(),
+        "Backspace" => "\u{7f}".into(),
+        "Escape" => "\u{1b}".into(),
+        " " => " ".into(),
+        "ArrowUp" => function(0),
+        "ArrowDown" => function(1),
+        "ArrowLeft" => function(2),
+        "ArrowRight" => function(3),
+        "Delete" => function(0x28),
+        "Home" => function(0x29),
+        "End" => function(0x2B),
+        "PageUp" => function(0x2C),
+        "PageDown" => function(0x2D),
+        _ => match key.strip_prefix('F').and_then(|rest| rest.parse::<u32>().ok()) {
+            Some(number @ 1..=12) => function(3 + number),
+            _ if key.chars().count() == 1 => key.to_string(),
+            _ => String::new(),
+        },
+    }
+}
+
+/// Editing commands a key may perform (`commands`), as responder selectors.
+pub fn editing_selector(command: &str) -> Option<String> {
+    const ALLOWED: [&str; 8] =
+        ["selectAll", "copy", "cut", "paste", "undo", "redo", "deleteBackward", "deleteForward"];
+    ALLOWED.contains(&command).then(|| format!("{command}:"))
+}
+
+/// Validated screenshot output size in pixels for a viewport rect.
+pub fn screenshot_pixels(rect: &Bounds, device_scale: f64, scale: f64) -> Option<(usize, usize)> {
+    let valid = |value: f64| value.is_finite() && value > 0.0;
+    if !valid(rect.width)
+        || !valid(rect.height)
+        || !valid(device_scale)
+        || !valid(scale)
+        || scale > 1.0
+    {
+        return None;
+    }
+    let width = (rect.width * device_scale * scale).round().max(1.0);
+    let height = (rect.height * device_scale * scale).round().max(1.0);
+    let pixels = width * height;
+    (width <= 16384.0 && height <= 16384.0 && pixels <= MAX_ANNOTATION_PIXELS as f64)
+        .then_some((width as usize, height as usize))
 }
 
 pub fn allowed_view_id(value: &str) -> bool {
@@ -520,5 +711,96 @@ mod tests {
         assert!(!annotation_preview_size_allowed(4097, 4096));
         assert!(!annotation_preview_size_allowed(0, 10));
         assert!(!annotation_preview_size_allowed(i64::MAX, 2));
+    }
+
+    #[test]
+    fn input_commands_parse_tagged_mouse_key_and_text_events() {
+        let command = read(
+            br#"{"id":1,"op":"input","viewId":"v","input":{"kind":"mouse","type":"down","x":10,"y":20.5,"clickCount":1}}
+"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            command.input,
+            Some(Input::Mouse {
+                action: MouseAction::Down,
+                x: 10.0,
+                y: 20.5,
+                click_count: Some(1),
+                delta_x: None,
+                delta_y: None
+            })
+        );
+        let command = read(
+            br#"{"id":2,"op":"input","viewId":"v","input":{"kind":"key","type":"down","key":"a","code":"KeyA","modifiers":4,"commands":["selectAll"]}}
+"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(matches!(
+            command.input,
+            Some(Input::Key { action: KeyAction::Down, modifiers: Some(4), .. })
+        ));
+        let command = read(
+            br#"{"id":3,"op":"input","viewId":"v","input":{"kind":"text","text":"hi"}}
+"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(command.input, Some(Input::Text { text: "hi".into() }));
+        for invalid in [
+            &br#"{"id":4,"op":"input","input":{"kind":"mouse","type":"drag","x":1,"y":1}}
+"#[..],
+            &br#"{"id":5,"op":"input","input":{"kind":"touch"}}
+"#[..],
+        ] {
+            assert!(read(invalid).unwrap().is_err());
+        }
+    }
+
+    #[test]
+    fn keys_map_to_mac_key_codes_and_appkit_characters() {
+        assert_eq!(mac_key_code("KeyA"), Some(0));
+        assert_eq!(mac_key_code("KeyZ"), Some(6));
+        assert_eq!(mac_key_code("Digit1"), Some(18));
+        assert_eq!(mac_key_code("Digit0"), Some(29));
+        assert_eq!(mac_key_code("F12"), Some(111));
+        assert_eq!(mac_key_code("Enter"), Some(36));
+        assert_eq!(mac_key_code("ArrowDown"), Some(125));
+        assert_eq!(mac_key_code("Keya"), None);
+        assert_eq!(mac_key_code("F13"), None);
+        assert_eq!(mac_key_code("Unknown"), None);
+        assert_eq!(key_characters("a", Some("A")), "A");
+        assert_eq!(key_characters("Enter", None), "\r");
+        assert_eq!(key_characters("Backspace", None), "\u{7f}");
+        assert_eq!(key_characters("ArrowUp", None), "\u{f700}");
+        assert_eq!(key_characters("Home", None), "\u{f729}");
+        assert_eq!(key_characters("F1", None), "\u{f704}");
+        assert_eq!(key_characters("Shift", None), "");
+        assert_eq!(letter_code("q").as_deref(), Some("KeyQ"));
+        assert_eq!(letter_code("7").as_deref(), Some("Digit7"));
+        assert_eq!(letter_code("ab"), None);
+        assert_eq!(editing_selector("selectAll").as_deref(), Some("selectAll:"));
+        assert_eq!(editing_selector("terminate"), None);
+    }
+
+    #[test]
+    fn worlds_points_and_screenshot_sizes_are_bounded() {
+        assert!(allowed_world("coc-annotation:1"));
+        assert!(!allowed_world("page"));
+        assert!(!allowed_world(""));
+        assert!(!allowed_world("has space"));
+        assert!(allowed_point(-10.0, 5.0));
+        assert!(!allowed_point(f64::NAN, 0.0));
+        assert!(!allowed_point(2.0e6, 0.0));
+        let rect = Bounds { x: 0.0, y: 0.0, width: 100.0, height: 50.0 };
+        assert_eq!(screenshot_pixels(&rect, 2.0, 1.0), Some((200, 100)));
+        assert_eq!(screenshot_pixels(&rect, 2.0, 0.5), Some((100, 50)));
+        assert_eq!(screenshot_pixels(&rect, 2.0, 0.001), Some((1, 1)));
+        assert_eq!(screenshot_pixels(&rect, 2.0, 1.5), None);
+        assert_eq!(screenshot_pixels(&Bounds { width: 0.0, ..rect }, 2.0, 1.0), None);
+        let huge = Bounds { x: 0.0, y: 0.0, width: 8000.0, height: 8000.0 };
+        assert_eq!(screenshot_pixels(&huge, 1.0, 1.0), None);
     }
 }

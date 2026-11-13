@@ -2,9 +2,6 @@ use crate::protocol::Bounds;
 
 /// Largest panel edge main may place, in points. Larger requests are rejected.
 pub const MAX_PANEL_EDGE: f64 = 16_384.0;
-/// Background panels render here: far outside any display arrangement, so they stay
-/// ordered in (WebKit keeps painting and running timers) without being seen.
-pub const OFFSCREEN_ORIGIN: f64 = -100_000.0;
 
 /// A rectangle in AppKit screen coordinates (bottom-left origin of the primary display).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,7 +87,10 @@ pub struct Placement {
 pub enum PanelMode {
     /// Ordered in above the parent at this frame.
     Shown(Frame),
-    /// Ordered in off-screen at the last size; never visible and never key.
+    /// Ordered in on a display but fully transparent and click-through, at the view's
+    /// slot or the primary display's corner. WebKit throttles rendering (no animation
+    /// frames) for windows on no display or occluded, so the panel stays on-screen and
+    /// unoccluded; it is never seen, never clicked and never key.
     Background(Frame),
     /// Ordered out.
     Hidden,
@@ -114,17 +114,11 @@ pub fn panel_mode(placement: &Placement, primary_height: f64) -> PanelMode {
         return PanelMode::Shown(to_appkit(&bounds, primary_height));
     }
     if placement.background {
-        let (width, height) = placement
-            .bounds
-            .map(|bounds| (bounds.width, bounds.height))
-            .or(placement.last_size)
-            .unwrap_or((1024.0, 768.0));
-        return PanelMode::Background(Frame {
-            x: OFFSCREEN_ORIGIN - width,
-            y: OFFSCREEN_ORIGIN - height,
-            width,
-            height,
-        });
+        if let Some(bounds) = placement.bounds {
+            return PanelMode::Background(to_appkit(&bounds, primary_height));
+        }
+        let (width, height) = placement.last_size.unwrap_or((1024.0, 768.0));
+        return PanelMode::Background(Frame { x: 0.0, y: 0.0, width, height });
     }
     PanelMode::Hidden
 }
@@ -215,14 +209,12 @@ mod tests {
     }
 
     #[test]
-    fn background_control_renders_off_screen_at_the_last_size() {
+    fn background_control_renders_on_screen_at_the_slot_or_last_size() {
         let hidden = Placement { parent_shown: false, background: true, ..placed() };
-        let PanelMode::Background(frame) = panel_mode(&hidden, 1000.0) else {
-            panic!("expected background mode");
-        };
-        assert_eq!((frame.width, frame.height), (800.0, 600.0));
-        assert!(frame.x + frame.width < OFFSCREEN_ORIGIN + 1.0);
-        assert!(frame.y + frame.height < OFFSCREEN_ORIGIN + 1.0);
+        assert_eq!(
+            panel_mode(&hidden, 1000.0),
+            PanelMode::Background(Frame { x: 100.0, y: 350.0, width: 800.0, height: 600.0 })
+        );
         let unplaced = Placement {
             bounds: None,
             last_size: Some((640.0, 480.0)),
@@ -232,7 +224,7 @@ mod tests {
         let PanelMode::Background(frame) = panel_mode(&unplaced, 1000.0) else {
             panic!("expected background mode");
         };
-        assert_eq!((frame.width, frame.height), (640.0, 480.0));
+        assert_eq!(frame, Frame { x: 0.0, y: 0.0, width: 640.0, height: 480.0 });
         // A visible placed view stays where main put it even while control runs.
         assert!(matches!(
             panel_mode(&Placement { background: true, ..placed() }, 1000.0),

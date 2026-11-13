@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import * as readline from 'node:readline';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
 import { wkWebViewBinaryCandidates, wkWebViewBinaryName } from '../src/wkwebview';
 // @ts-expect-error -- build scripts have no type declarations.
 import { supportsWkWebView, wkWebViewBinaryName as scriptBinaryName } from '../scripts/build-wkwebview.mjs';
@@ -105,14 +106,12 @@ describe('desktop native WKWebView packaging contract', () => {
             // A minimized/hidden parent hides the panel.
             await send({ op: 'parent', viewId: 'v1', visible: false });
             expect(await state()).toMatchObject({ mode: 'hidden', visible: false });
-            // Background control renders off-screen at the last size without focus.
+            // Background control keeps rendering in place, invisible and click-through, without focus.
             await send({ op: 'background', viewId: 'v1', enabled: true });
-            const background = await state();
-            expect(background).toMatchObject({ mode: 'background', visible: true, key: false, frame: { width: 400, height: 300 } });
-            expect(background.frame.x).toBeLessThan(-90_000);
+            expect(await state()).toMatchObject({ mode: 'background', visible: true, transparent: true, key: false, frame: moved });
             await send({ op: 'background', viewId: 'v1', enabled: false });
             await send({ op: 'parent', viewId: 'v1', visible: true });
-            expect(await state()).toMatchObject({ mode: 'shown', key: false, frame: moved });
+            expect(await state()).toMatchObject({ mode: 'shown', transparent: false, key: false, frame: moved });
             // An unplaced view hides; a parent missing from the active Space hides too.
             await send({ op: 'bounds', viewId: 'v1' });
             expect(await send({ op: 'focus', viewId: 'v1' })).toMatchObject({ ok: false });
@@ -292,7 +291,159 @@ describe('desktop native WKWebView packaging contract', () => {
             server.close();
         }
     }, 30_000);
+
+    it.skipIf(!supportedMacos || !helper)('drives background views with synthesized input, content worlds and screenshots', async () => {
+        const page = `<title>Control</title><style>
+            body { margin: 0; height: 3000px; }
+            #red, #blue { position: absolute; top: 0; width: 100px; height: 100px; }
+            #red { left: 0; background: #f00; } #blue { left: 100px; background: #00f; }
+            #field { position: absolute; left: 20px; top: 150px; width: 200px; height: 30px; }
+            #button { position: absolute; left: 20px; top: 200px; width: 100px; height: 40px; }
+            #pane { position: absolute; left: 300px; top: 300px; width: 200px; height: 100px; overflow: auto; }
+            </style><div id="red"></div><div id="blue"></div><input id="field"><button id="button">Go</button>
+            <div id="pane"><div style="height: 2000px"></div></div>
+            <script>
+            window.log = [];
+            button.addEventListener('click', event => log.push(['click', event.isTrusted, event.clientX, event.clientY]));
+            field.addEventListener('keydown', event => log.push(['keydown', event.key, event.isTrusted]));
+            document.addEventListener('wheel', event => log.push(['wheel', event.deltaY, event.clientX, event.clientY, event.isTrusted]));
+            </script>`;
+        const server = http.createServer((_request, response) => {
+            response.writeHead(200, { 'content-type': 'text/html' });
+            response.end(page);
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const helperRun = runHelper(`coc-wkwebview-control-${process.pid}`);
+        const { send, waitFor } = helperRun;
+        const evaluate = async (expression: string, world = 'page') => {
+            const reply = await send({ op: 'evaluate', viewId: 'v1', expression, world });
+            expect(reply).toMatchObject({ ok: true });
+            return reply.result.value;
+        };
+        const until = async (expression: string) => {
+            for (let attempt = 0; attempt < 50 && !await evaluate(expression); attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            return evaluate(expression);
+        };
+        const mouse = (input: Record<string, unknown>) => send({ op: 'input', viewId: 'v1', input: { kind: 'mouse', ...input } });
+        const key = (input: Record<string, unknown>) => send({ op: 'input', viewId: 'v1', input: { kind: 'key', ...input } });
+        const text = (value: string) => send({ op: 'input', viewId: 'v1', input: { kind: 'text', text: value } });
+        try {
+            await helperRun.ready;
+            // Hidden parent + background control: the page renders off-screen, never key.
+            await send({ op: 'open', viewId: 'v1', url: `${origin}/control`, bounds: { x: 40, y: 60, width: 640, height: 480 }, visible: false });
+            await send({ op: 'background', viewId: 'v1', enabled: true });
+            await waitFor(event => event.event === 'state' && event.state.title === 'Control' && !event.state.loading);
+
+            // WebKit throttles windows that are off-screen or occluded; background panels keep animation frames.
+            expect(await evaluate(`Promise.race([
+                new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve('frame')))),
+                new Promise(resolve => setTimeout(() => resolve('throttled'), 2000))])`)).toBe('frame');
+
+            // The page world sees page globals; isolated worlds do not, and named worlds keep theirs.
+            expect(await evaluate('typeof window.log')).toBe('object');
+            expect(await evaluate('typeof window.log', 'coc-test')).toBe('undefined');
+            await evaluate('globalThis.mark = 7', 'coc-test');
+            expect(await evaluate('globalThis.mark', 'coc-test')).toBe(7);
+            expect(await evaluate('typeof globalThis.mark')).toBe('undefined');
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: '1', world: 'not a world' })).toMatchObject({ ok: false, reason: 'invalid' });
+
+            // Trusted click at viewport CSS coordinates.
+            for (const type of ['move', 'down', 'up']) {
+                expect(await mouse({ type, x: 70, y: 220, clickCount: 1 })).toMatchObject({ ok: true });
+            }
+            expect(await until('log.some(entry => entry[0] === "click")')).toBe(true);
+            expect(await evaluate('log.find(entry => entry[0] === "click")')).toEqual(['click', true, 70, 220]);
+
+            // Click focuses the field; keys and text insertion edit it.
+            for (const type of ['move', 'down', 'up']) {await mouse({ type, x: 120, y: 165, clickCount: 1 });}
+            expect(await until('document.activeElement === field')).toBe(true);
+            await key({ type: 'down', key: 'a', code: 'KeyA', text: 'a', unmodifiedText: 'a' });
+            await key({ type: 'up', key: 'a', code: 'KeyA' });
+            expect(await until('field.value === "a"')).toBe(true);
+            expect(await evaluate('log.find(entry => entry[0] === "keydown")')).toEqual(['keydown', 'a', true]);
+            await text('hello');
+            expect(await until('field.value === "ahello"')).toBe(true);
+            await key({ type: 'down', key: 'a', code: 'KeyA', modifiers: 4, commands: ['selectAll'] });
+            await key({ type: 'up', key: 'a', code: 'KeyA', modifiers: 4 });
+            await text('X');
+            expect(await until('field.value === "X"')).toBe(true);
+            await key({ type: 'down', key: 'Backspace', code: 'Backspace' });
+            await key({ type: 'up', key: 'Backspace', code: 'Backspace' });
+            expect(await until('field.value === ""')).toBe(true);
+            expect(await key({ type: 'down', key: 'a', commands: ['terminate'] })).toMatchObject({ ok: false, reason: 'invalid' });
+            // Agent keys reach the page only; they never become browser chords.
+            await send({ op: 'tab-shortcuts', viewId: 'v1', tabShortcuts: true });
+            for (const [code, k] of [['KeyW', 'w'], ['Digit1', '1']]) {
+                await key({ type: 'down', key: k, code, modifiers: 4 });
+                await key({ type: 'up', key: k, code, modifiers: 4 });
+            }
+            expect(await until('log.filter(entry => entry[0] === "keydown").length >= 5')).toBe(true);
+            expect(helperRun.events.filter(event => /requested|tab-modifier/.test(event.event))).toEqual([]);
+
+            // Wheel scrolls what is under the point: the inner pane, then the page.
+            expect(await mouse({ type: 'wheel', x: 400, y: 350, deltaX: 0, deltaY: 300 })).toMatchObject({ ok: true });
+            expect(await until('pane.scrollTop > 0')).toBe(true);
+            expect(await until('log.some(entry => entry[0] === "wheel")')).toBe(true);
+            expect(await evaluate('log.find(entry => entry[0] === "wheel")')).toEqual(['wheel', 300, 400, 350, true]);
+            expect(await evaluate('window.scrollY')).toBe(0);
+            expect(await mouse({ type: 'wheel', x: 600, y: 100, deltaX: 0, deltaY: 600 })).toMatchObject({ ok: true });
+            expect(await until('window.scrollY > 0')).toBe(true);
+            await evaluate('window.scrollTo(0, 0)');
+            expect(await mouse({ type: 'wheel', x: Number.MAX_VALUE, y: 0 })).toMatchObject({ ok: false });
+
+            // Points stay in CSS pixels under page zoom.
+            await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 150 });
+            await evaluate('log.length = 0');
+            for (const type of ['move', 'down', 'up']) {await mouse({ type, x: 70, y: 220, clickCount: 1 });}
+            expect(await until('log.some(entry => entry[0] === "click")')).toBe(true);
+            expect(await evaluate('log.find(entry => entry[0] === "click")')).toEqual(['click', true, 70, 220]);
+
+            // Screenshots cover a viewport rect at device pixels times scale.
+            const ratio = await evaluate('window.devicePixelRatio') as number;
+            const red = await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 100, height: 100 }, format: 'png' });
+            expect(red).toMatchObject({ ok: true });
+            expect(pngSize(red.result.data)).toEqual({ width: Math.round(100 * ratio), height: Math.round(100 * ratio) });
+            const [r, g, b] = pngFirstPixel(red.result.data);
+            expect(r).toBeGreaterThan(200); expect(g).toBeLessThan(80); expect(b).toBeLessThan(80);
+            const blue = await send({ op: 'screenshot', viewId: 'v1', rect: { x: 100, y: 0, width: 100, height: 100 }, format: 'png', scale: 0.5 });
+            expect(pngSize(blue.result.data)).toEqual({ width: Math.round(50 * ratio), height: Math.round(50 * ratio) });
+            const [br, , bb] = pngFirstPixel(blue.result.data);
+            expect(bb).toBeGreaterThan(200); expect(br).toBeLessThan(80);
+            const jpeg = await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 640, height: 480 }, format: 'jpeg', quality: 75 });
+            expect(jpeg.result.data.startsWith('/9j/')).toBe(true);
+            expect(await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 0, height: 10 } })).toMatchObject({ ok: false, reason: 'invalid' });
+            expect(await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 10, height: 10 }, format: 'gif' })).toMatchObject({ ok: false, reason: 'invalid' });
+
+            // None of it showed the panel or took the keyboard.
+            expect((await send({ op: 'view-state', viewId: 'v1' })).result).toMatchObject({ mode: 'background', transparent: true, key: false });
+            await send({ op: 'quit' });
+        } finally {
+            helperRun.child.kill();
+            server.close();
+        }
+    }, 30_000);
 });
+
+function pngSize(base64: string): { width: number; height: number } {
+    const data = Buffer.from(base64, 'base64');
+    return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
+}
+
+/** Row 0's first pixel is stored unfiltered under every PNG filter type. */
+function pngFirstPixel(base64: string): number[] {
+    const data = Buffer.from(base64, 'base64');
+    const chunks: Buffer[] = [];
+    for (let offset = 8; offset < data.length;) {
+        const length = data.readUInt32BE(offset);
+        if (data.toString('latin1', offset + 4, offset + 8) === 'IDAT') {chunks.push(data.subarray(offset + 8, offset + 8 + length));}
+        offset += length + 12;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(chunks));
+    return [raw[1], raw[2], raw[3]];
+}
 
 function runHelper(name: string) {
     const child = spawn(helper, [path.join(os.tmpdir(), name)], { stdio: ['pipe', 'pipe', 'inherit'] });

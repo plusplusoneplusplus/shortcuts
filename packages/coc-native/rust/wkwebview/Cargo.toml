@@ -13,8 +13,10 @@ url = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSArray", "NSDictionary", "NSError", "NSGeometry", "NSKeyValueObserving", "NSNotification", "NSOperation", "NSProcessInfo", "NSString", "NSThread", "NSURL", "NSURLRequest", "NSUUID", "NSValue", "block2"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSGraphics", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow", "NSWorkspace", "block2"] }
-objc2-web-kit = { version = "0.3", features = ["WKContentWorld", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKUIDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKWindowFeatures", "block2", "objc2-app-kit"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSKeyValueObserving", "NSNotification", "NSOperation", "NSProcessInfo", "NSString", "NSThread", "NSURL", "NSURLRequest", "NSUUID", "NSValue", "block2"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSBitmapImageRep", "NSEvent", "NSGraphicsContext", "NSImage", "NSImageRep", "objc2-core-graphics", "NSGraphics", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow", "NSWorkspace", "block2"] }
+objc2-web-kit = { version = "0.3", features = ["WKContentWorld", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKSnapshotConfiguration", "WKUIDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKWindowFeatures", "block2", "objc2-app-kit"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGEvent", "CGEventTypes"] }
 block2 = "0.6"
 dispatch2 = "0.3"
