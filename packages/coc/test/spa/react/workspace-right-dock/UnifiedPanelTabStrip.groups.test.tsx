@@ -13,6 +13,7 @@ import type { UnifiedTabStripGroup } from '../../../../src/server/spa/client/rea
 import {
     clearUnifiedTabGroupState, moveTabGroup, readUnifiedTabGroupOrder, useUnifiedTabGroupOrder,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroupStore';
+import { tabDetailFolder } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabOverflowMenu';
 import {
     unifiedPanelBulkCloseTargets,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabMenuModel';
@@ -454,6 +455,27 @@ describe('UnifiedPanelTabStrip grouped presentation', () => {
         expect(document.activeElement).toBe(toolsLabel);
     });
 
+    it('right-clicking a group pill offers closing every tab in that group', () => {
+        const tabs = files();
+        const shell = tab('work-items', 'Shell');
+        const { props } = renderStrip({ tabs: [shell, ...tabs] });
+        const filesLabel = screen.getByTestId('unified-panel-group-files');
+        fireEvent.contextMenu(filesLabel);
+        const items = within(screen.getByTestId('unified-panel-tab-menu')).getAllByRole('menuitem');
+        expect(items.map(item => item.textContent)).toEqual(['Close all in group']);
+        fireEvent.click(items[0]);
+        expect(props.onMenuAction).toHaveBeenCalledWith('close-group', tabs[0].id);
+        expect(unifiedPanelBulkCloseTargets(props.tabs, tabs[0].id, 'close-group', new Set()))
+            .toEqual(tabs.map(entry => entry.id));
+        expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+        expect(props.onToggleGroup).not.toHaveBeenCalled();
+
+        fireEvent.contextMenu(filesLabel);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+        expect(props.onMenuAction).toHaveBeenCalledTimes(1);
+    });
+
     it('offers group bulk commands and disables moves at group boundaries, not global boundaries', () => {
         const tabs = files();
         const shell = tab('work-items', 'Shell');
@@ -775,12 +797,25 @@ describe('UnifiedPanelTabStrip folded group menu', () => {
         expect(option(/plan\.md/)).toHaveAttribute('title', 'api: docs/plans/plan.md');
         expect(option(/file-2\.ts/)).toHaveAttribute('title', 'file-2.ts');
         expect(option(/Clip/)).not.toHaveAttribute('title');
-        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('api: docs/plans/plan.md');
+        // The footer shows the folder only: the row above already shows the name.
+        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent(/^api: docs\/plans$/);
         const search = screen.getByRole('textbox');
         fireEvent.keyDown(search, { key: 'ArrowDown' });
         expect(screen.queryByTestId('unified-panel-group-menu-files-detail')).toBeNull();
         fireEvent.keyDown(search, { key: 'ArrowDown' });
-        expect(screen.getByTestId('unified-panel-group-menu-files-detail')).toHaveTextContent('file-1.ts');
+        expect(screen.queryByTestId('unified-panel-group-menu-files-detail')).toBeNull();
+    });
+
+    it('keeps the file name out of the menu footer so it is not shown twice', () => {
+        expect(tabDetailFolder('packages/coc/src/server/canvas/kusto-state.ts', 'kusto-state.ts'))
+            .toBe('packages/coc/src/server/canvas');
+        expect(tabDetailFolder('C:\\repo\\src\\a.ts', 'a.ts')).toBe('C:\\repo\\src');
+        expect(tabDetailFolder('api: plan.md', 'plan.md')).toBe('api');
+        expect(tabDetailFolder('/a.ts', 'a.ts')).toBeNull();
+        expect(tabDetailFolder('a.ts', 'a.ts')).toBeNull();
+        expect(tabDetailFolder(null, 'a.ts')).toBeNull();
+        // A label that differs from the path's last part keeps the full path.
+        expect(tabDetailFolder('src/b.ts', 'b.ts (preview)')).toBe('src/b.ts');
     });
 
     it('shows hidden file paths in the expanded group +N menu', () => {

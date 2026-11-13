@@ -332,14 +332,4 @@ describe('Extensions entry and drill-in', () => {
         const byDescription = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board, logs], query: 'sprint' });
         expect(byDescription.filter(item => item.type === 'extension').map(item => item.key)).toEqual(['extension:ws-repo:board']);
     });
-
-    it('shows Back plus the filtered extensions, and nothing else, in the drill-in', () => {
-        const all = buildOpenMenuItems({ actions, files: [{ path: 'a.ts' }], canvases: [{ id: 'c', title: 'C' }],
-            extensions: [board, logs], query: '', view: 'extensions' });
-        expect(all.map(item => item.key)).toEqual(['back', 'extension:ws-repo:board', 'extension:ws-repo:coc-log-tail']);
-        const filtered = buildOpenMenuItems({ actions, files: [], canvases: [], extensions: [board, logs], query: 'BOARD', view: 'extensions' });
-        expect(filtered.map(item => item.key)).toEqual(['back', 'extension:ws-repo:board']);
-        expect(firstOpenMenuIndex(all)).toBe(0);
-        expect(isOpenMenuItemEnabled(all[1])).toBe(true);
-    });
 });

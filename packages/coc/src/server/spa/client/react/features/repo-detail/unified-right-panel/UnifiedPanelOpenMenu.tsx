@@ -29,11 +29,11 @@
  *    search (with Retry) are all rendered; an unavailable target disables the
  *    repo-bound actions with the reason rather than silently dropping them.
  *
- * Extensions is a drill-in: selecting it (or ArrowRight on it) swaps the list
- * for the workspace's discovered Copilot canvas extensions, headed by a Back
- * row; ArrowLeft, Escape or Backspace in an empty box return. Picking one opens
- * its canvas in the selected chat. A query in the main list also reaches
- * matching extensions directly.
+ * Extensions is a submenu: hovering it, selecting it or ArrowRight on it shows
+ * the workspace's discovered Copilot canvas extensions in a flyout beside the
+ * menu; ArrowLeft or Escape leave it. Picking one opens its canvas in the
+ * selected chat. A query in the main list also reaches matching extensions
+ * directly.
  *
  * Selection is handed back as an `OpenUnifiedTabInput` (files, canvases,
  * changes) or a workspace-resource action (terminal, explorer, notes) — `explorer` toggles
@@ -41,7 +41,7 @@
  * session, so this component never touches it directly.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
 import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
@@ -63,7 +63,6 @@ import {
     type OpenMenuExtensionResult,
     type OpenMenuFileResult,
     type OpenMenuItem,
-    type OpenMenuView,
     type WorkResourceKind,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
@@ -130,7 +129,10 @@ export function UnifiedPanelOpenMenu({
     const [createError, setCreateError] = useState<string | null>(null);
     const [cocError, setCocError] = useState<string | null>(null);
     useEffect(() => { setCocError(null); }, [query]);
-    const [view, setView] = useState<OpenMenuView>('main');
+    // The Extensions flyout: null when closed; `cursor` is -1 until the
+    // keyboard moves into it.
+    const [flyout, setFlyout] = useState<{ cursor: number } | null>(null);
+    const [flyoutPosition, setFlyoutPosition] = useState<{ left: number; top: number } | null>(null);
     const [extensions, setExtensions] = useState<readonly OpenMenuExtensionResult[]>([]);
     const [openingExtension, setOpeningExtension] = useState<string | null>(null);
     const [extensionError, setExtensionError] = useState<string | null>(null);
@@ -145,6 +147,9 @@ export function UnifiedPanelOpenMenu({
     const [webOpenError, setWebOpenError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
+    const extensionsRowRef = useRef<HTMLButtonElement | null>(null);
+    const flyoutRef = useRef<HTMLDivElement | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -207,8 +212,8 @@ export function UnifiedPanelOpenMenu({
 
     // Extensions open in a chat, so without one they are not offered at all.
     const items = useMemo(
-        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query, view }),
-        [actions, files, canvases, extensions, chatId, query, view],
+        () => buildOpenMenuItems({ actions, files, canvases, extensions: chatId === null ? [] : extensions, query }),
+        [actions, files, canvases, extensions, chatId, query],
     );
 
     // The cursor is an index into a list that changes under it; re-seat it on
@@ -303,8 +308,7 @@ export function UnifiedPanelOpenMenu({
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const trimmed = query.trim();
-        // The Extensions drill-in filters its own list; it never searches files.
-        if (trimmed === '' || view === 'extensions') {
+        if (trimmed === '') {
             abortRef.current?.abort();
             setFiles([]);
             setLoading(false);
@@ -315,7 +319,7 @@ export function UnifiedPanelOpenMenu({
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
         };
-    }, [query, target, runSearch, view]);
+    }, [query, target, runSearch]);
 
     useEffect(() => () => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -360,11 +364,40 @@ export function UnifiedPanelOpenMenu({
         }
     }, [chatId, creating, workspaceId, ownerContext, onOpenResource, onClose]);
 
-    const enterView = useCallback((next: OpenMenuView) => {
-        setView(next);
-        setQuery('');
+    const openFlyout = useCallback((cursor: number) => {
+        setFlyout(current => (current && cursor < 0 ? current : { cursor }));
+    }, []);
+    const closeFlyout = useCallback(() => {
+        setFlyout(null);
         setExtensionError(null);
     }, []);
+    // Typing changes the list under the flyout, and a list without the
+    // Extensions row has nothing to hang it from.
+    const extensionsListed = items.some(item => item.type === 'action'
+        && item.action.id === 'extensions' && item.action.disabled !== true);
+    useEffect(() => { closeFlyout(); }, [query, closeFlyout]);
+    useEffect(() => { if (!extensionsListed) closeFlyout(); }, [extensionsListed, closeFlyout]);
+    const flyoutOpen = flyout !== null;
+
+    // Beside the menu, level with its row: left when there is room (the "+"
+    // sits at the panel's right edge), otherwise right; kept on screen.
+    useLayoutEffect(() => {
+        if (!flyoutOpen) {
+            setFlyoutPosition(null);
+            return;
+        }
+        const row = extensionsRowRef.current?.getBoundingClientRect();
+        const popover = popoverRef.current?.getBoundingClientRect();
+        const box = flyoutRef.current?.getBoundingClientRect();
+        if (!row || !popover) return;
+        const width = box?.width || FLYOUT_WIDTH;
+        const height = box?.height ?? 0;
+        const left = popover.left - width - FLYOUT_GAP >= FLYOUT_MARGIN
+            ? popover.left - width - FLYOUT_GAP
+            : Math.min(popover.right + FLYOUT_GAP, window.innerWidth - width - FLYOUT_MARGIN);
+        const top = Math.max(FLYOUT_MARGIN, Math.min(row.top - 4, window.innerHeight - height - FLYOUT_MARGIN));
+        setFlyoutPosition(current => (current?.left === left && current.top === top ? current : { left, top }));
+    }, [flyoutOpen, extensions, openingExtension, extensionError]);
 
     const openExtension = useCallback(async (extension: OpenMenuExtensionResult) => {
         if (chatId === null || openingExtension !== null) return;
@@ -420,10 +453,6 @@ export function UnifiedPanelOpenMenu({
             onClose();
             return;
         }
-        if (item.type === 'back') {
-            enterView('main');
-            return;
-        }
         if (item.type === 'extension') {
             void openExtension(item.extension);
             return;
@@ -455,7 +484,7 @@ export function UnifiedPanelOpenMenu({
             return;
         }
         if (item.action.id === 'extensions') {
-            enterView('extensions');
+            openFlyout(0);
             return;
         }
         if (item.action.id === 'canvas') {
@@ -492,33 +521,52 @@ export function UnifiedPanelOpenMenu({
         }
         onOpenWorkspaceResource(id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, enterView, chatChanges, chatId, targetOption?.label, webResult, target, targetRoutingRef, webKey]);
+    }, [onOpenResource, onOpenWorkspaceResource, onOpenCocAddress, onClose, ownerContext, browserContext, workspaceId, createCanvas, openExtension, openFlyout, chatChanges, chatId, targetOption?.label, webResult, target, targetRoutingRef, webKey]);
+
+    const flyoutExtensions = chatId === null ? [] : extensions;
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+        // Inside the flyout the arrows walk the extensions; ArrowLeft and
+        // Escape step back to the Extensions row before Escape closes the menu.
+        if (flyout && flyout.cursor >= 0) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const count = flyoutExtensions.length;
+                if (count > 0) setFlyout({ cursor: (flyout.cursor + (event.key === 'ArrowDown' ? 1 : -1) + count) % count });
+                return;
+            }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const extension = flyoutExtensions[flyout.cursor];
+                if (extension) void openExtension(extension);
+                return;
+            }
+            if (event.key === 'ArrowLeft' || event.key === 'Escape') {
+                event.preventDefault();
+                closeFlyout();
+                return;
+            }
+        }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
+            closeFlyout();
             setCursor(current => nextOpenMenuIndex(items, current, event.key === 'ArrowDown' ? 1 : -1));
         } else if (event.key === 'Enter') {
             event.preventDefault();
             const item = items[cursor];
             if (item) selectItem(item);
-        } else if (event.key === 'ArrowRight' && view === 'main') {
+        } else if (event.key === 'ArrowRight') {
             const item = items[cursor];
             if (item?.type === 'action' && item.action.id === 'extensions' && item.action.disabled !== true) {
                 event.preventDefault();
-                enterView('extensions');
+                openFlyout(0);
             }
-        } else if (view === 'extensions' && query === ''
-            && (event.key === 'ArrowLeft' || event.key === 'Backspace')) {
-            event.preventDefault();
-            enterView('main');
         } else if (event.key === 'Escape') {
             event.preventDefault();
-            // Escape steps out of the drill-in before it closes the menu.
-            if (view === 'extensions') enterView('main');
+            if (flyout) closeFlyout();
             else onClose();
         }
-    }, [items, cursor, selectItem, onClose, view, query, enterView]);
+    }, [items, cursor, selectItem, onClose, flyout, flyoutExtensions, openExtension, openFlyout, closeFlyout]);
 
     return (
         <div
@@ -528,6 +576,7 @@ export function UnifiedPanelOpenMenu({
             )}
             role="dialog"
             aria-label="Open a resource"
+            ref={popoverRef}
             onKeyDown={handleKeyDown}
             data-testid="unified-panel-open-menu-popover"
         >
@@ -538,10 +587,9 @@ export function UnifiedPanelOpenMenu({
                     type="text"
                     value={query}
                     onChange={event => setQuery(event.target.value)}
-                    placeholder={view === 'extensions' ? 'Filter extensions…'
-                        : targetUnavailable ? 'Repository unavailable' : 'Search files or paste a URL…'}
-                    disabled={targetUnavailable && view === 'main'}
-                    aria-label={view === 'extensions' ? 'Filter extensions' : 'Search files'}
+                    placeholder={targetUnavailable ? 'Repository unavailable' : 'Search files or paste a URL…'}
+                    disabled={targetUnavailable}
+                    aria-label="Search files"
                     className="min-w-0 flex-1 bg-transparent text-xs text-[#1f1f1f] outline-none placeholder-[#999] dark:text-[#cccccc] dark:placeholder-[#777]"
                     data-testid="unified-panel-open-menu-search"
                 />
@@ -567,7 +615,7 @@ export function UnifiedPanelOpenMenu({
                                 type="button"
                                 className={rowClass}
                                 title={item.file.path}
-                                onMouseEnter={() => setCursor(index)}
+                                onMouseEnter={() => { setCursor(index); closeFlyout(); }}
                                 onClick={() => selectItem(item)}
                                 data-testid={`unified-panel-open-menu-file-${index}`}
                             >
@@ -590,7 +638,7 @@ export function UnifiedPanelOpenMenu({
                                 type="button"
                                 className={rowClass}
                                 title={item.url}
-                                onMouseEnter={() => setCursor(index)}
+                                onMouseEnter={() => { setCursor(index); closeFlyout(); }}
                                 onClick={() => selectItem(item)}
                                 data-testid="unified-panel-open-menu-url"
                             >
@@ -608,7 +656,7 @@ export function UnifiedPanelOpenMenu({
                                 type="button"
                                 className={rowClass}
                                 title={text}
-                                onMouseEnter={() => setCursor(index)}
+                                onMouseEnter={() => { setCursor(index); closeFlyout(); }}
                                 onClick={() => selectItem(item)}
                                 data-testid="unified-panel-open-menu-coc"
                             >
@@ -634,27 +682,12 @@ export function UnifiedPanelOpenMenu({
                                 key={item.key}
                                 type="button"
                                 className={rowClass}
-                                onMouseEnter={() => setCursor(index)}
+                                onMouseEnter={() => { setCursor(index); closeFlyout(); }}
                                 onClick={() => selectItem(item)}
                                 data-testid={`unified-panel-open-menu-canvas-${item.canvas.id}`}
                             >
                                 <span aria-hidden className="opacity-60">🎨</span>
                                 <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">{item.canvas.title}</span>
-                            </button>
-                        );
-                    }
-                    if (item.type === 'back') {
-                        return (
-                            <button
-                                key={item.key}
-                                type="button"
-                                className={rowClass}
-                                onMouseEnter={() => setCursor(index)}
-                                onClick={() => selectItem(item)}
-                                data-testid="unified-panel-open-menu-back"
-                            >
-                                <span aria-hidden className="opacity-60">‹</span>
-                                <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Extensions</span>
                             </button>
                         );
                     }
@@ -666,7 +699,7 @@ export function UnifiedPanelOpenMenu({
                                 type="button"
                                 className={rowClass}
                                 title={item.extension.description}
-                                onMouseEnter={() => setCursor(index)}
+                                onMouseEnter={() => { setCursor(index); closeFlyout(); }}
                                 onClick={() => selectItem(item)}
                                 data-testid={`unified-panel-open-menu-extension-${item.extension.extensionKey}`}
                             >
@@ -681,14 +714,23 @@ export function UnifiedPanelOpenMenu({
                         );
                     }
                     const disabled = item.action.disabled === true;
+                    const isExtensions = item.action.id === 'extensions';
                     return (
                         <button
                             key={item.key}
+                            ref={isExtensions ? extensionsRowRef : undefined}
                             type="button"
                             disabled={disabled}
                             title={item.action.disabledReason}
+                            aria-haspopup={isExtensions ? 'menu' : undefined}
+                            aria-expanded={isExtensions ? flyout !== null : undefined}
                             className={cn(rowClass, disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent')}
-                            onMouseEnter={() => { if (!disabled) setCursor(index); }}
+                            onMouseEnter={() => {
+                                if (disabled) return;
+                                setCursor(index);
+                                if (isExtensions) openFlyout(-1);
+                                else closeFlyout();
+                            }}
                             onClick={() => selectItem(item)}
                             data-testid={`unified-panel-open-${item.action.id}`}
                         >
@@ -727,17 +769,12 @@ export function UnifiedPanelOpenMenu({
                         </button>
                     </div>
                 )}
-                {view === 'extensions' && items.length === 1 && (
-                    <div className="px-2.5 py-2 text-[11px] text-[#8a8a8a]" data-testid="unified-panel-open-menu-no-extensions">
-                        No matching extensions
-                    </div>
-                )}
-                {!loading && !searchError && view === 'main' && query.trim() !== '' && files.length === 0 && (
+                {!loading && !searchError && query.trim() !== '' && files.length === 0 && (
                     <div className="px-2.5 py-2 text-[11px] text-[#8a8a8a]" data-testid="unified-panel-open-menu-no-results">
                         No matching files
                     </div>
                 )}
-                {extensionError && (
+                {extensionError && !flyout && (
                     <div className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-extension-error">
                         {extensionError}
                     </div>
@@ -762,9 +799,57 @@ export function UnifiedPanelOpenMenu({
                     </div>
                 )}
             </div>
+
+            {flyout && (
+                <div
+                    ref={flyoutRef}
+                    role="menu"
+                    aria-label="Extensions"
+                    data-testid="unified-panel-open-menu-extensions-flyout"
+                    style={{ left: flyoutPosition?.left ?? 0, top: flyoutPosition?.top ?? 0, width: FLYOUT_WIDTH }}
+                    className={cn(
+                        'fixed z-30 max-h-[300px] overflow-y-auto rounded border border-[#c8c8c8] bg-white py-1 shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526]',
+                        !flyoutPosition && 'invisible',
+                    )}
+                >
+                    {flyoutExtensions.map((extension, index) => {
+                        const opening = openingExtension === extension.extensionKey;
+                        return (
+                            <button
+                                key={extension.extensionKey}
+                                type="button"
+                                role="menuitem"
+                                title={extension.description}
+                                onMouseEnter={() => setFlyout({ cursor: index })}
+                                onClick={() => void openExtension(extension)}
+                                className={cn(
+                                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[#1f1f1f] dark:text-[#cccccc]',
+                                    index === flyout.cursor ? 'bg-[#0078d4]/10 dark:bg-[#0078d4]/25' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#37373d]',
+                                )}
+                                data-testid={`unified-panel-open-menu-extension-${extension.extensionKey}`}
+                            >
+                                <span aria-hidden className="opacity-60">{ACTION_ICONS.extensions}</span>
+                                <span className="flex-shrink-0">{opening ? `Opening ${extension.name}…` : extension.name}</span>
+                                {extension.description && (
+                                    <span className="ml-auto truncate text-[10px] text-[#8a8a8a]">{extension.description}</span>
+                                )}
+                            </button>
+                        );
+                    })}
+                    {extensionError && (
+                        <div className="px-2.5 py-2 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="unified-panel-open-menu-extension-error">
+                            {extensionError}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
+
+const FLYOUT_WIDTH = 260;
+const FLYOUT_GAP = 2;
+const FLYOUT_MARGIN = 4;
 
 /** Keyed by action id so a new action cannot ship without a leading icon. */
 const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
