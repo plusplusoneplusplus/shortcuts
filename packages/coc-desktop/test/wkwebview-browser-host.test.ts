@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WkWebViewBrowserHost, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
+import { WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 
 const mocks = vi.hoisted(() => {
@@ -588,16 +588,49 @@ describe('WKWebView profile data', () => {
 
     it('reports strict certificates and a cookie count only, treating count failures as unavailable', async () => {
         const { host, view } = await open();
+        const nativeId = '7:tab:1';
+        const replies: Record<string, unknown> = { 'site-info': { certificateError: false } };
+        mocks.request.mockImplementation(async (op: string) => {
+            const reply = replies[op];
+            if (reply instanceof Error) throw reply;
+            return reply;
+        });
         expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
+        expect(mocks.request).toHaveBeenLastCalledWith('site-info', { viewId: nativeId });
         expect(mocks.request).not.toHaveBeenCalledWith('cookie-count', expect.anything());
-        mocks.request.mockResolvedValueOnce({ count: 3 });
+        replies['cookie-count'] = { count: 3 };
         expect(await view.siteFacts!('https://app.test/docs')).toEqual({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 3 });
-        expect(mocks.request).toHaveBeenLastCalledWith('cookie-count', { url: 'https://app.test/docs' });
-        mocks.request.mockResolvedValueOnce({ count: 'many' });
+        expect(mocks.request).toHaveBeenCalledWith('site-info', { viewId: nativeId, url: 'https://app.test/docs' });
+        expect(mocks.request).toHaveBeenCalledWith('cookie-count', { url: 'https://app.test/docs' });
+        replies['cookie-count'] = { count: 'many' };
         expect(await view.siteFacts!('https://app.test/')).not.toHaveProperty('cookieCount');
-        mocks.request.mockRejectedValueOnce(new BrowserHostError('runtime-crashed', 'WKWebView host is not running.'));
+        replies['cookie-count'] = new BrowserHostError('runtime-crashed', 'WKWebView host is not running.');
+        replies['site-info'] = new BrowserHostError('runtime-crashed', 'WKWebView host is not running.');
         expect(await view.siteFacts!('https://app.test/')).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
         await host.dispose();
+    });
+
+    it('reports the helper certificate and certificate rejections in site facts', async () => {
+        const { host, view } = await open();
+        const certificate = { subject: 'app.test', issuer: 'Test CA', validStart: 1_700_000_000, validExpiry: 1_800_000_000 };
+        let site: unknown = { certificateError: false, certificate };
+        mocks.request.mockImplementation(async (op: string) => op === 'site-info' ? site : { count: 0 });
+        expect(await view.siteFacts!('https://app.test/')).toEqual({ rejectsInvalidCertificates: true, certificateError: false, certificate, cookieCount: 0 });
+        site = { certificateError: true };
+        expect(await view.siteFacts!('https://bad.test/')).toEqual({ rejectsInvalidCertificates: true, certificateError: true, cookieCount: 0 });
+        site = { certificateError: 'yes', certificate: { ...certificate, validExpiry: 'never' } };
+        expect(await view.siteFacts!('https://app.test/')).toEqual({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 0 });
+        await host.dispose();
+    });
+
+    it('accepts only well-formed helper certificates', () => {
+        const certificate = { subject: 'a', issuer: 'b', validStart: 1, validExpiry: 2 };
+        expect(wkWebViewCertificate(certificate)).toEqual(certificate);
+        expect(wkWebViewCertificate({ ...certificate, extra: 'dropped' })).toEqual(certificate);
+        expect(wkWebViewCertificate({ ...certificate, subject: 7 })).toBeUndefined();
+        expect(wkWebViewCertificate({ ...certificate, validStart: Number.NaN })).toBeUndefined();
+        expect(wkWebViewCertificate(null)).toBeUndefined();
+        expect(wkWebViewCertificate('cert')).toBeUndefined();
     });
 
     it('clears the profile store through the helper on macOS only', async () => {

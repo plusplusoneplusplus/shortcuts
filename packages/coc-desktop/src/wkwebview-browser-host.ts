@@ -5,13 +5,22 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import type { BrowserImportCookie } from './browser-cookie-import';
-import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
+import { validateBrowserUrl, type BrowserAvailability, type BrowserSiteCertificate, type BrowserViewState } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { browserMessage } from './webview2-process';
 import { WkWebViewBrowserControl } from './wkwebview-browser-control';
 import { WkWebViewProcess } from './wkwebview-process';
 
 const execFileAsync = promisify(execFile);
+
+/** The helper's server-certificate summary (display names, Unix-second validity), or undefined if malformed. */
+export function wkWebViewCertificate(value: unknown): BrowserSiteCertificate | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const { subject, issuer, validStart, validExpiry } = value as Record<string, unknown>;
+    if (typeof subject !== 'string' || typeof issuer !== 'string') return undefined;
+    if (!Number.isFinite(validStart) || !Number.isFinite(validExpiry)) return undefined;
+    return { subject, issuer, validStart: validStart as number, validExpiry: validExpiry as number };
+}
 
 interface NativeEntry {
     /** Set on page-opened popup windows; they follow their root's lifetime. */
@@ -182,12 +191,22 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             // WebKit fails invalid certificates without offering to proceed (no challenge handler).
             siteFacts: async url => {
                 const facts: BrowserSiteFacts = { rejectsInvalidCertificates: true, certificateError: false };
-                if (!url) return facts;
-                try {
+                const [site, cookies] = await Promise.allSettled([
+                    this.process.request('site-info', url ? { viewId: id, url } : { viewId: id }),
                     // The helper replies with a count only; names and values stay in WebKit.
-                    const result = await this.process.request('cookie-count', { url }) as { count?: unknown } | undefined;
-                    if (typeof result?.count === 'number') facts.cookieCount = result.count;
-                } catch { /* reported as unavailable; cookie errors are never surfaced */ }
+                    url ? this.process.request('cookie-count', { url }) : undefined,
+                ]);
+                // Failures are reported as unavailable facts; helper errors are never surfaced.
+                if (site.status === 'fulfilled') {
+                    const info = site.value as { certificateError?: unknown; certificate?: unknown } | undefined;
+                    facts.certificateError = info?.certificateError === true;
+                    const certificate = wkWebViewCertificate(info?.certificate);
+                    if (url && certificate) facts.certificate = certificate;
+                }
+                if (cookies.status === 'fulfilled') {
+                    const count = (cookies.value as { count?: unknown } | undefined)?.count;
+                    if (typeof count === 'number') facts.cookieCount = count;
+                }
                 return facts;
             },
             snapshot: () => ({ ...entry.state }),

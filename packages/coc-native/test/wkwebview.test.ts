@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import * as http from 'node:http';
+import * as https from 'node:https';
 import * as net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import * as readline from 'node:readline';
@@ -465,6 +466,40 @@ describe('desktop native WKWebView packaging contract', () => {
             server.close();
         }
     }, 60_000);
+
+    it.skipIf(!supportedMacos || !helper)('reports certificate rejections and no certificate for plain HTTP in site info', async () => {
+        // A throwaway self-signed certificate; macOS ships openssl (LibreSSL).
+        const dir = mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-tls-'));
+        const fixture = (file: string) => readFileSync(path.join(dir, file));
+        expect(spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1',
+            '-keyout', path.join(dir, 'wkwebview-self-signed.key'), '-out', path.join(dir, 'wkwebview-self-signed.crt')]).status).toBe(0);
+        const page = (_request: http.IncomingMessage, response: http.ServerResponse) => response.end('<title>site</title>');
+        const secure = https.createServer({ key: fixture('wkwebview-self-signed.key'), cert: fixture('wkwebview-self-signed.crt') }, page);
+        const plain = http.createServer(page);
+        await Promise.all([secure, plain].map(server => new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))));
+        const secureUrl = `https://127.0.0.1:${(secure.address() as AddressInfo).port}/`;
+        const plainUrl = `http://127.0.0.1:${(plain.address() as AddressInfo).port}/`;
+        const run = runHelper(`coc-wkwebview-site-${process.pid}`);
+        try {
+            await run.ready;
+            // WebKit rejects the self-signed certificate: the helper has no way past it.
+            await run.send({ op: 'open', viewId: 'site', url: secureUrl });
+            await run.waitFor(event => event.event === 'state' && event.state.errorCode === 'navigation-failed');
+            expect((await run.send({ op: 'site-info', viewId: 'site', url: secureUrl })).result).toEqual({ certificateError: true });
+            // A later load clears the failure; plain HTTP has no certificate.
+            await run.send({ op: 'navigate', viewId: 'site', url: plainUrl });
+            await run.waitFor(event => event.event === 'visited' && event.url === plainUrl);
+            expect((await run.send({ op: 'site-info', viewId: 'site', url: plainUrl })).result).toEqual({ certificateError: false });
+            expect((await run.send({ op: 'site-info', viewId: 'site' })).result).toEqual({ certificateError: false });
+            expect(await run.send({ op: 'site-info', viewId: 'missing' })).toMatchObject({ ok: false, reason: 'not-found' });
+            await run.send({ op: 'quit' });
+        } finally {
+            run.child.kill();
+            secure.close();
+            plain.close();
+            rmSync(dir, { recursive: true, force: true });
+        }
+    }, 30_000);
 
     it.skipIf(!supportedMacos || !helper)('drives background views with synthesized input, content worlds and screenshots', async () => {
         const page = `<title>Control</title><style>

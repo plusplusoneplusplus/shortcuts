@@ -221,7 +221,7 @@ export class WebView2Process {
         }
     }
 
-    request(op: 'cdp' | 'capture-annotation' | 'evaluate' | 'view-state' | 'input' | 'screenshot' | 'cookie-count', payload: Record<string, unknown>): Promise<unknown>;
+    request(op: 'cdp' | 'capture-annotation' | 'evaluate' | 'view-state' | 'input' | 'screenshot' | 'cookie-count' | 'site-info', payload: Record<string, unknown>): Promise<unknown>;
     request(op: string, payload?: Record<string, unknown>): Promise<void>;
     async request(op: string, payload: Record<string, unknown> = {}): Promise<unknown> {
         if (!this.child && op !== 'open' && op !== 'clear' && op !== 'import-profile-cookies') {

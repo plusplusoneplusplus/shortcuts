@@ -535,6 +535,13 @@ pub fn navigation_error(domain: &str, code: i64, description: &str) -> Option<St
     })
 }
 
+/// A failed load rejected the server certificate (bad date, untrusted, unknown root,
+/// not yet valid, client certificate rejected or required). A plain TLS failure
+/// (-1200) is a connection error, as it is for Chromium.
+pub fn certificate_error(domain: &str, code: i64) -> bool {
+    domain == "NSURLErrorDomain" && (-1206..=-1201).contains(&code)
+}
+
 /// Serializes a reply, enforcing the frame limit. Only a correlated capture reply may
 /// use the larger capture budget; anything else oversized becomes a small correlated
 /// `invalid` error so the desktop never has to discard an unbounded frame.
@@ -871,6 +878,16 @@ mod tests {
             "Navigation failed: Could not connect to the server."
         );
         assert_eq!(navigation_error("X", 7, "").unwrap(), "Navigation failed (X 7)");
+    }
+
+    #[test]
+    fn only_server_certificate_failures_are_certificate_errors() {
+        assert!(certificate_error("NSURLErrorDomain", -1202));
+        assert!(certificate_error("NSURLErrorDomain", -1201));
+        assert!(certificate_error("NSURLErrorDomain", -1206));
+        assert!(!certificate_error("NSURLErrorDomain", -1200));
+        assert!(!certificate_error("NSURLErrorDomain", -1004));
+        assert!(!certificate_error("WebKitErrorDomain", -1202));
     }
 
     #[test]

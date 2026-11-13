@@ -390,6 +390,8 @@ struct View {
     /// Last URL main or the page asked for; shown while the document is failed.
     requested: RefCell<String>,
     error: RefCell<Option<(String, String)>>,
+    /// The failed load was rejected for its server certificate.
+    certificate_error: Cell<bool>,
     /// Last state sent to main; KVO and delegate callbacks often repeat it.
     pushed: RefCell<Option<serde_json::Value>>,
     tab_shortcuts: Cell<bool>,
@@ -617,6 +619,7 @@ impl View {
             *self.requested.borrow_mut() = url;
         }
         *self.error.borrow_mut() = None;
+        self.certificate_error.set(false);
         self.push();
     }
 
@@ -650,6 +653,9 @@ impl View {
             );
             if let Some(message) = message {
                 *self.error.borrow_mut() = Some(("navigation-failed".into(), message));
+                let domain = error.domain().to_string();
+                self.certificate_error
+                    .set(protocol::certificate_error(&domain, error.code() as i64));
             }
         }
         if visit {
@@ -714,7 +720,35 @@ impl View {
             .map(|url| NSURLRequest::requestWithURL(&url))?;
         *self.requested.borrow_mut() = url.to_string();
         *self.error.borrow_mut() = None;
+        self.certificate_error.set(false);
         unsafe { self.webview.loadRequest(&request) }
+    }
+
+    /// Site information facts: whether the failed load was a certificate rejection and,
+    /// for a committed HTTPS document on `url`'s host, the server certificate WebKit
+    /// accepted (WebKit rejects invalid certificates; the helper offers no way past).
+    fn site_info(&self, url: Option<&str>) -> serde_json::Value {
+        let failed = self.error.borrow().is_some();
+        let mut facts = json!({ "certificateError": failed && self.certificate_error.get() });
+        let current = url_string(unsafe { self.webview.URL() }.as_deref());
+        let host = |value: &str| {
+            url::Url::parse(value)
+                .ok()
+                .filter(|url| url.scheme() == "https")
+                .and_then(|url| url.host_str().map(str::to_owned))
+        };
+        let same_host = url.and_then(host).is_some_and(|wanted| host(&current) == Some(wanted));
+        if !failed && same_host {
+            #[allow(deprecated)]
+            let leaf = unsafe { self.webview.serverTrust() }
+                .and_then(|trust| unsafe { trust.certificate_at_index(0) });
+            if let Some(certificate) =
+                leaf.and_then(|leaf| crate::certificate::summary(&unsafe { leaf.data() }.to_vec()))
+            {
+                facts["certificate"] = certificate;
+            }
+        }
+        facts
     }
 
     fn snapshot(&self) -> serde_json::Value {
@@ -1099,6 +1133,7 @@ impl View {
         self.history.borrow_mut().invalidate();
         self.navigations.borrow_mut().clear();
         *self.error.borrow_mut() = Some((code.to_string(), message.to_string()));
+        self.certificate_error.set(false);
         let state = json!({
             "viewId": self.id, "engine": "wkwebview", "url": self.requested.borrow().clone(), "title": "",
             "canGoBack": false, "canGoForward": false, "loading": false, "error": message, "errorCode": code
@@ -1257,6 +1292,7 @@ fn register_view(
         next_navigation: Cell::new(0),
         requested: RefCell::new(url.to_string()),
         error: RefCell::new(None),
+        certificate_error: Cell::new(false),
         pushed: RefCell::new(None),
         tab_shortcuts: Cell::new(false),
         tab_modifier_held: Cell::new(false),
@@ -1467,6 +1503,7 @@ fn view_command(
             view.input(input, mtm)?;
             return Ok(None);
         }
+        "site-info" => return Ok(Some(view.site_info(command.url.as_deref()))),
         "screenshot" => {
             screenshot(view, command, mtm)?;
             return Err(DEFERRED);
