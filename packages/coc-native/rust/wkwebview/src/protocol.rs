@@ -78,6 +78,8 @@ pub struct Command {
     pub action: Option<String>,
     /// `open`/`page-zoom`: page zoom in percent, 50–200 in 25 steps like WebView2.
     pub page_zoom_percent: Option<f64>,
+    /// `open`/`tab-shortcuts`: route Cmd+1–9 and Cmd hold to main for tab switching.
+    pub tab_shortcuts: Option<bool>,
 }
 
 pub fn allowed_view_id(value: &str) -> bool {
@@ -124,6 +126,78 @@ pub fn history_message(
             "viewId": view_id, "sourceViewId": source_view_id, "url": url, "title": wire_title(title)
         })
     })
+}
+
+/// Browser chords the helper turns into requests for main instead of passing to the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shortcut {
+    Tab(u32),
+    Close,
+    OpenMenu,
+    ReopenClosed,
+    FocusAddress,
+}
+
+impl Shortcut {
+    pub fn event(self) -> &'static str {
+        match self {
+            Shortcut::Tab(_) => "tab-shortcut-requested",
+            Shortcut::Close => "close-requested",
+            Shortcut::OpenMenu => "open-menu-requested",
+            Shortcut::ReopenClosed => "reopen-closed-requested",
+            Shortcut::FocusAddress => "focus-address-requested",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Modifiers {
+    pub command: bool,
+    pub option: bool,
+    pub control: bool,
+    pub shift: bool,
+}
+
+/// macOS virtual key codes of the top-row digits 1–9 (kVK_ANSI_1…kVK_ANSI_9).
+const DIGIT_KEY_CODES: [u16; 9] = [18, 19, 20, 21, 23, 22, 26, 28, 25];
+
+/// Maps a key-down to a browser chord, mirroring the WebView2 Ctrl chords with Cmd.
+/// Digits match by key code so non-US layouts keep Cmd+1–9; letters match by character.
+/// Option and Control always leave the key with the page.
+pub fn shortcut(
+    key_code: u16,
+    chars: &str,
+    keys: Modifiers,
+    tab_shortcuts: bool,
+) -> Option<Shortcut> {
+    if !keys.command || keys.option || keys.control {
+        return None;
+    }
+    if let Some(index) = DIGIT_KEY_CODES.iter().position(|code| *code == key_code) {
+        return (tab_shortcuts && !keys.shift).then_some(Shortcut::Tab(index as u32 + 1));
+    }
+    match (chars.to_ascii_lowercase().as_str(), keys.shift) {
+        ("w", _) => Some(Shortcut::Close),
+        ("t", false) => Some(Shortcut::OpenMenu),
+        ("t", true) => Some(Shortcut::ReopenClosed),
+        ("l", false) => Some(Shortcut::FocusAddress),
+        _ => None,
+    }
+}
+
+/// The next Cmd-hold report: Cmd changing state on a modifier change, or another key
+/// cancelling a reported hold.
+pub fn tab_modifier_report(modifier_change: bool, command: bool, held: bool) -> Option<bool> {
+    if modifier_change {
+        return (command != held).then_some(command);
+    }
+    held.then_some(false)
+}
+
+/// `window.open`/`target=_blank` requests with size, position or hidden toolbars are
+/// popups (sign-in windows); anything else opens as a tab in main.
+pub fn popup_window(has_size: bool, has_position: bool, toolbars: Option<bool>) -> bool {
+    has_size || has_position || toolbars == Some(false)
 }
 
 /// Error text for a failed main-frame load, or None when the load was cancelled
@@ -292,6 +366,59 @@ mod tests {
         );
         let small = serde_json::json!({ "id": 3, "ok": true });
         assert_eq!(encode_reply(&small, false), small.to_string());
+    }
+
+    #[test]
+    fn shortcuts_mirror_the_webview2_chords_with_command() {
+        let command = Modifiers { command: true, ..Modifiers::default() };
+        let shift = Modifiers { shift: true, ..command };
+        assert_eq!(shortcut(13, "w", command, false), Some(Shortcut::Close));
+        assert_eq!(shortcut(13, "W", shift, false), Some(Shortcut::Close));
+        assert_eq!(shortcut(17, "t", command, false), Some(Shortcut::OpenMenu));
+        assert_eq!(shortcut(17, "T", shift, false), Some(Shortcut::ReopenClosed));
+        assert_eq!(shortcut(37, "l", command, false), Some(Shortcut::FocusAddress));
+        assert_eq!(shortcut(37, "L", shift, false), None);
+        assert_eq!(shortcut(8, "c", command, true), None);
+        for keys in [
+            Modifiers::default(),
+            Modifiers { option: true, ..command },
+            Modifiers { control: true, ..command },
+        ] {
+            assert_eq!(shortcut(13, "w", keys, true), None);
+            assert_eq!(shortcut(18, "1", keys, true), None);
+        }
+        assert_eq!(Shortcut::FocusAddress.event(), "focus-address-requested");
+    }
+
+    #[test]
+    fn tab_digits_follow_key_codes_and_the_tab_shortcut_setting() {
+        let command = Modifiers { command: true, ..Modifiers::default() };
+        for (digit, code) in DIGIT_KEY_CODES.iter().enumerate() {
+            assert_eq!(shortcut(*code, "&", command, true), Some(Shortcut::Tab(digit as u32 + 1)));
+            assert_eq!(shortcut(*code, "1", command, false), None);
+        }
+        assert_eq!(shortcut(29, "0", command, true), None);
+        assert_eq!(shortcut(18, "!", Modifiers { shift: true, ..command }, true), None);
+        assert_eq!(Shortcut::Tab(3).event(), "tab-shortcut-requested");
+    }
+
+    #[test]
+    fn tab_modifier_reports_changes_and_cancels_on_other_keys() {
+        assert_eq!(tab_modifier_report(true, true, false), Some(true));
+        assert_eq!(tab_modifier_report(true, true, true), None);
+        assert_eq!(tab_modifier_report(true, false, true), Some(false));
+        assert_eq!(tab_modifier_report(true, false, false), None);
+        assert_eq!(tab_modifier_report(false, true, true), Some(false));
+        assert_eq!(tab_modifier_report(false, true, false), None);
+    }
+
+    #[test]
+    fn popup_windows_need_size_position_or_hidden_toolbars() {
+        assert!(!popup_window(false, false, None));
+        assert!(!popup_window(false, false, Some(true)));
+        assert!(popup_window(true, false, None));
+        assert!(popup_window(false, true, None));
+        assert!(popup_window(false, false, Some(false)));
     }
 
     #[test]

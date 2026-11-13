@@ -201,6 +201,11 @@ describe('desktop native WKWebView packaging contract', () => {
             expect(await send({ op: 'nav', viewId: 'v1', action: 'sideways' })).toMatchObject({ ok: false });
             expect(await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 101 })).toMatchObject({ ok: false });
             expect(await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 150 })).toMatchObject({ ok: true });
+            expect(await send({ op: 'tab-shortcuts', viewId: 'v1', tabShortcuts: true })).toMatchObject({ ok: true });
+            expect(await send({ op: 'tab-shortcuts', viewId: 'v1', tabShortcuts: false })).toMatchObject({ ok: true });
+            expect(await send({ op: 'tab-shortcuts', viewId: 'v1' })).toMatchObject({ ok: false, reason: 'invalid' });
+            // Turning shortcuts off without a reported hold sends no release.
+            expect(events.some(event => event.event === 'tab-modifier')).toBe(false);
 
             // A refused connection is a page error; reload retries the requested URL.
             // A just-closed port refuses the connection (port 9 is on WebKit's blocked list).

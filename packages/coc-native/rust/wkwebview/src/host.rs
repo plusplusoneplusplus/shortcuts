@@ -10,9 +10,9 @@ use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOn
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy,
     NSApplicationDidChangeScreenParametersNotification, NSAutoresizingMaskOptions,
-    NSBackingStoreType, NSEvent, NSEventType, NSPanel, NSResponder, NSScreen, NSWindow,
-    NSWindowCollectionBehavior, NSWindowNumberListOptions, NSWindowOrderingMode, NSWindowStyleMask,
-    NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
+    NSBackingStoreType, NSEvent, NSEventModifierFlags, NSEventType, NSPanel, NSResponder, NSScreen,
+    NSWindow, NSWindowCollectionBehavior, NSWindowNumberListOptions, NSWindowOrderingMode,
+    NSWindowStyleMask, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
     NSWorkspaceDidActivateApplicationNotification,
 };
 use objc2_foundation::{
@@ -21,8 +21,9 @@ use objc2_foundation::{
     NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
 };
 use objc2_web_kit::{
-    WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate, WKWebView,
-    WKWebViewConfiguration, WKWebsiteDataStore,
+    WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
+    WKNavigationType, WKUIDelegate, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKWindowFeatures,
 };
 use serde_json::json;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -96,6 +97,7 @@ struct PanelIvars {
     /// Set by an explicit `focus` or a real user click; cleared when the panel loses key
     /// status or leaves the screen, so ordering a panel in never takes keyboard focus.
     key_allowed: Cell<bool>,
+    view_id: OnceCell<String>,
 }
 
 define_class!(
@@ -118,8 +120,17 @@ define_class!(
             false
         }
 
+        // Cmd chords reach the window before the web view; unmatched ones go to the page.
+        #[unsafe(method(performKeyEquivalent:))]
+        fn perform_key_equivalent(&self, event: &NSEvent) -> bool {
+            self.key_event(event) || unsafe { msg_send![super(self), performKeyEquivalent: event] }
+        }
+
         #[unsafe(method(sendEvent:))]
         fn send_event(&self, event: &NSEvent) {
+            if self.key_event(event) {
+                return;
+            }
             if matches!(
                 event.r#type(),
                 NSEventType::LeftMouseDown | NSEventType::RightMouseDown | NSEventType::OtherMouseDown
@@ -136,6 +147,14 @@ define_class!(
         }
     }
 );
+
+impl BrowserPanel {
+    fn key_event(&self, event: &NSEvent) -> bool {
+        let id = self.ivars().view_id.get();
+        let view = id.and_then(|id| VIEWS.with(|views| views.borrow().get(id).cloned()));
+        view.is_some_and(|view| view.key_event(event))
+    }
+}
 
 /// Web view properties whose changes refresh the state main renders.
 const OBSERVED_KEYS: [&str; 5] = ["URL", "title", "canGoBack", "canGoForward", "loading"];
@@ -167,6 +186,15 @@ define_class!(
             let main_frame = unsafe { action.targetFrame() }.is_some_and(|frame| unsafe { frame.isMainFrame() });
             let url = url_string(unsafe { action.request() }.URL().as_deref());
             let allowed = !main_frame || protocol::allowed_url(&url, true);
+            // Cmd+click on a link opens a tab like WebView2's Ctrl+click.
+            let new_tab = main_frame
+                && unsafe { action.navigationType() } == WKNavigationType::LinkActivated
+                && unsafe { action.modifierFlags() }.contains(NSEventModifierFlags::Command);
+            if allowed && new_tab {
+                self.with_view(|view| view.new_tab(&url));
+                handler.call((WKNavigationActionPolicy::Cancel,));
+                return;
+            }
             handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
         }
 
@@ -206,6 +234,31 @@ define_class!(
         #[unsafe(method(webViewWebContentProcessDidTerminate:))]
         fn did_terminate(&self, _web_view: &WKWebView) {
             self.with_view(|view| view.fail("runtime-crashed", "Browser page crashed. Reload to recover."));
+        }
+    }
+
+    unsafe impl WKUIDelegate for NavigationDelegate {
+        #[unsafe(method_id(webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:))]
+        fn create_web_view(
+            &self,
+            _web_view: &WKWebView,
+            _configuration: &WKWebViewConfiguration,
+            action: &WKNavigationAction,
+            features: &WKWindowFeatures,
+        ) -> Option<Retained<WKWebView>> {
+            let popup = unsafe {
+                protocol::popup_window(
+                    features.width().is_some() || features.height().is_some(),
+                    features.x().is_some() || features.y().is_some(),
+                    features.toolbarsVisibility().map(|visible| visible.boolValue()),
+                )
+            };
+            // Popup windows are not hosted yet; WebKit treats None as a blocked window.
+            if !popup {
+                let url = url_string(unsafe { action.request() }.URL().as_deref());
+                self.with_view(|view| view.new_tab(&url));
+            }
+            None
         }
     }
 
@@ -254,12 +307,16 @@ struct View {
     history: RefCell<HistoryNavigation>,
     /// WKNavigation objects in flight, mapped to the ids HistoryNavigation tracks.
     navigations: RefCell<Vec<(Retained<WKNavigation>, u64)>>,
+    /// Navigations cut off by `stop`; WebKit can still report their start afterwards.
+    stopped: RefCell<Vec<Retained<WKNavigation>>>,
     next_navigation: Cell<u64>,
     /// Last URL main or the page asked for; shown while the document is failed.
     requested: RefCell<String>,
     error: RefCell<Option<(String, String)>>,
     /// Last state sent to main; KVO and delegate callbacks often repeat it.
     pushed: RefCell<Option<serde_json::Value>>,
+    tab_shortcuts: Cell<bool>,
+    tab_modifier_held: Cell<bool>,
 }
 
 thread_local! {
@@ -345,6 +402,7 @@ impl View {
         }
         unsafe {
             self.webview.setNavigationDelegate(None);
+            self.webview.setUIDelegate(None);
             for key in OBSERVED_KEYS {
                 self.webview.removeObserver_forKeyPath(&self.delegate, &NSString::from_str(key));
             }
@@ -376,6 +434,11 @@ impl View {
     }
 
     fn started(&self, navigation: Option<&WKNavigation>) {
+        if navigation.is_some_and(|navigation| {
+            self.stopped.borrow().iter().any(|known| std::ptr::eq(&**known, navigation))
+        }) {
+            return;
+        }
         let id = self.navigation_id(navigation);
         self.history.borrow_mut().started(id);
         let url = url_string(unsafe { self.webview.URL() }.as_deref());
@@ -440,23 +503,37 @@ impl View {
     }
 
     /// Records a request before WebKit reports the provisional navigation.
-    fn navigate(&self, action: impl FnOnce() -> bool) {
+    fn navigate(&self, action: impl FnOnce() -> Option<Retained<WKNavigation>>) {
         self.history.borrow_mut().requested();
-        if !action() {
-            self.history.borrow_mut().invalidate();
+        match action() {
+            // Known up front, so `stop` can drop its late start callback.
+            Some(navigation) => {
+                self.navigation_id(Some(&navigation));
+            }
+            None => self.history.borrow_mut().invalidate(),
         }
         self.push();
     }
 
-    fn load(&self, url: &str) -> bool {
-        let Some(request) = NSURL::URLWithString(&NSString::from_str(url))
-            .map(|url| NSURLRequest::requestWithURL(&url))
-        else {
-            return false;
-        };
+    fn stop(&self) {
+        self.history.borrow_mut().stop();
+        let stopped: Vec<_> =
+            self.navigations.borrow_mut().drain(..).map(|(navigation, _)| navigation).collect();
+        let mut list = self.stopped.borrow_mut();
+        list.extend(stopped);
+        let excess = list.len().saturating_sub(16);
+        list.drain(..excess);
+        drop(list);
+        unsafe { self.webview.stopLoading() };
+        self.push();
+    }
+
+    fn load(&self, url: &str) -> Option<Retained<WKNavigation>> {
+        let request = NSURL::URLWithString(&NSString::from_str(url))
+            .map(|url| NSURLRequest::requestWithURL(&url))?;
         *self.requested.borrow_mut() = url.to_string();
         *self.error.borrow_mut() = None;
-        unsafe { self.webview.loadRequest(&request) }.is_some()
+        unsafe { self.webview.loadRequest(&request) }
     }
 
     fn snapshot(&self) -> serde_json::Value {
@@ -496,6 +573,67 @@ impl View {
             unsafe { self.webview.title() }.map(|title| title.to_string()).unwrap_or_default();
         if let Some(message) = protocol::history_message(&self.id, &self.id, &url, &title, visit) {
             protocol::emit(message);
+        }
+    }
+
+    fn new_tab(&self, url: &str) {
+        if protocol::allowed_url(url, false) {
+            protocol::emit(json!({ "event": "new-tab", "viewId": self.id, "url": url }));
+        }
+    }
+
+    /// Turns browser chords into requests for main; true when the page must not get the key.
+    /// Only placed views report, like WebView2, so a hidden view never switches tabs.
+    fn key_event(&self, event: &NSEvent) -> bool {
+        let kind = event.r#type();
+        if self.closed.get()
+            || self.placement.get().bounds.is_none()
+            || !matches!(kind, NSEventType::KeyDown | NSEventType::FlagsChanged)
+        {
+            return false;
+        }
+        let flags = event.modifierFlags();
+        let keys = protocol::Modifiers {
+            command: flags.contains(NSEventModifierFlags::Command),
+            option: flags.contains(NSEventModifierFlags::Option),
+            control: flags.contains(NSEventModifierFlags::Control),
+            shift: flags.contains(NSEventModifierFlags::Shift),
+        };
+        let shortcut = if kind == NSEventType::KeyDown {
+            let chars =
+                event.charactersIgnoringModifiers().map(|c| c.to_string()).unwrap_or_default();
+            protocol::shortcut(event.keyCode(), &chars, keys, self.tab_shortcuts.get())
+        } else {
+            None
+        };
+        if self.tab_shortcuts.get() && !matches!(shortcut, Some(protocol::Shortcut::Tab(_))) {
+            let modifier_change = kind == NSEventType::FlagsChanged;
+            if let Some(held) = protocol::tab_modifier_report(
+                modifier_change,
+                keys.command,
+                self.tab_modifier_held.get(),
+            ) {
+                self.tab_modifier_held.set(held);
+                protocol::emit(json!({ "event": "tab-modifier", "viewId": self.id, "held": held }));
+            }
+        }
+        let Some(shortcut) = shortcut else {
+            return false;
+        };
+        if !event.isARepeat() {
+            let mut message = json!({ "event": shortcut.event(), "viewId": self.id });
+            if let protocol::Shortcut::Tab(digit) = shortcut {
+                message["digit"] = json!(digit);
+            }
+            protocol::emit(message);
+        }
+        true
+    }
+
+    fn set_tab_shortcuts(&self, enabled: bool) {
+        self.tab_shortcuts.set(enabled);
+        if !enabled && self.tab_modifier_held.replace(false) {
+            protocol::emit(json!({ "event": "tab-modifier", "viewId": self.id, "held": false }));
         }
     }
 
@@ -627,15 +765,20 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         closed: Cell::new(false),
         history: RefCell::new(HistoryNavigation::default()),
         navigations: RefCell::new(Vec::new()),
+        stopped: RefCell::new(Vec::new()),
         next_navigation: Cell::new(0),
         requested: RefCell::new(url.to_string()),
         error: RefCell::new(None),
         pushed: RefCell::new(None),
+        tab_shortcuts: Cell::new(command.tab_shortcuts == Some(true)),
+        tab_modifier_held: Cell::new(false),
     });
+    let _ = view.panel.ivars().view_id.set(id.to_string());
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
     unsafe {
         view.webview.setPageZoom(zoom / 100.0);
         view.webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
+        view.webview.setUIDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
         for key in OBSERVED_KEYS {
             view.webview.addObserver_forKeyPath_options_context(
                 &view.delegate,
@@ -684,6 +827,11 @@ fn view_command(
             view.panel.makeFirstResponder(Some(&view.webview));
             return Ok(None);
         }
+        "tab-shortcuts" => {
+            let enabled = command.tab_shortcuts.ok_or("Tab shortcut state is required.")?;
+            view.set_tab_shortcuts(enabled);
+            return Ok(None);
+        }
         "view-state" => {
             view.apply(mtm);
             let mut state = view.state(mtm);
@@ -703,25 +851,20 @@ fn view_command(
             let webview = &view.webview;
             match command.action.as_deref() {
                 Some("back") if unsafe { webview.canGoBack() } => {
-                    view.navigate(|| unsafe { webview.goBack() }.is_some())
+                    view.navigate(|| unsafe { webview.goBack() })
                 }
                 Some("forward") if unsafe { webview.canGoForward() } => {
-                    view.navigate(|| unsafe { webview.goForward() }.is_some())
+                    view.navigate(|| unsafe { webview.goForward() })
                 }
                 Some("back" | "forward") => {}
-                Some("stop") => {
-                    view.history.borrow_mut().stop();
-                    view.navigations.borrow_mut().clear();
-                    unsafe { webview.stopLoading() };
-                    view.push();
-                }
+                Some("stop") => view.stop(),
                 Some("reload") => {
                     // A failed or crashed document reloads the URL main last asked for.
                     if view.error.borrow().is_some() {
                         let url = view.requested.borrow().clone();
                         view.navigate(|| view.load(&url));
                     } else {
-                        view.navigate(|| unsafe { webview.reload() }.is_some());
+                        view.navigate(|| unsafe { webview.reload() });
                     }
                 }
                 _ => return Err("Unsupported navigation action."),
