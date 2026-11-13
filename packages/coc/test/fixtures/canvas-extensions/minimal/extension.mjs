@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { joinSession, createCanvas, CanvasError } from '@github/copilot-sdk/extension';
 import { createCanvas as rootCreateCanvas } from '@github/copilot-sdk';
 
@@ -49,6 +51,12 @@ session = await joinSession({
                 return bridge.runScript('console.log("owner script"); return 7;');
             } },
             { name: 'ping', handler: () => session.connection.sendRequest('ping', {}) },
+            { name: 'workspace-write', async handler(ctx) {
+                await writeFile(join(session.workspacePath, 'state.txt'), ctx.input.value);
+                return true;
+            } },
+            { name: 'workspace-read', handler: () => readFile(join(session.workspacePath, 'state.txt'), 'utf8') },
+            { name: 'workspace-path', handler: () => session.workspacePath },
             { name: 'environment', handler: () => ({
                 sessionId: process.env.SESSION_ID, home: process.env.COPILOT_HOME,
                 electron: process.env.ELECTRON_RUN_AS_NODE, cwd: process.cwd(), pid: process.pid,

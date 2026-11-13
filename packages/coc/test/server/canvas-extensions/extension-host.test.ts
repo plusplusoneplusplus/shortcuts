@@ -30,7 +30,7 @@ describe('CanvasExtensionHost with the installed SDK', () => {
             config: { canvasExtensions: { enabled: true } },
             extension: { extensionKey: 'member:counter', name: 'counter', ownerWorkspaceId: 'member',
                 extensionPath, cwd, contentHash: 'fixture' },
-            processId: 'conversation-1', dataDir: path.join(root, 'data'), log: vi.fn(),
+            workspaceId: 'member', processId: 'conversation-1', dataDir: path.join(root, 'data'), log: vi.fn(),
             send: vi.fn(async () => ({ messageId: 'follow-up-1' })),
             ephemeralQuery: vi.fn(async () => ({ answer: 'One' })), timeoutMs: 10_000,
         };
@@ -73,6 +73,11 @@ describe('CanvasExtensionHost with the installed SDK', () => {
             cwd: options.extension.cwd, pid: expect.any(Number), rootImport: 'function',
         });
         expect(await host.invoke({ ...instance, actionName: 'ping' })).toEqual({ protocolVersion: expect.any(Number) });
+    });
+
+    it('fails startup when the session workspace cannot be created', async () => {
+        await fs.writeFile(options.dataDir, 'not a directory');
+        await expect(start()).rejects.toThrow();
     });
 
     it('adds ELECTRON_RUN_AS_NODE under Electron', async () => {

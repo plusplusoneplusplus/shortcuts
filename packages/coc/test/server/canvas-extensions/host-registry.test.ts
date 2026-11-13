@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { CanvasExtensionHostRegistry, type CanvasExtensionRegistryOptions } from '../../../src/server/canvas-extensions/host-registry';
 import { CanvasExtensionHost } from '../../../src/server/canvas-extensions/extension-host';
+import { listSessionWorkspaceOwners, sessionWorkspacePath } from '../../../src/server/canvas-extensions/session-workspace';
 
 const owner = { workspaceId: 'workspace-1', processId: 'conversation-1' };
 const extension = { extensionKey: 'member:counter', ownerWorkspaceId: 'member', name: 'counter',
@@ -232,18 +233,19 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
     });
 
     it('handles archive/remove store events and deletes only the target session state', async () => {
-        const stateRoot = path.join(root, 'canvas-ext', 'home', 'session-state');
-        await fs.mkdir(path.join(stateRoot, owner.processId), { recursive: true });
-        await fs.mkdir(path.join(stateRoot, 'sibling'), { recursive: true });
+        const target = sessionWorkspacePath(root, owner);
+        const sibling = sessionWorkspacePath(root, { ...owner, processId: 'sibling' });
+        await fs.mkdir(target, { recursive: true });
+        await fs.mkdir(sibling, { recursive: true });
         await registry.open(owner, extension, instance);
         registry.onProcessChange({ type: 'process-updated', process: { id: owner.processId, archived: true, metadata: { workspaceId: owner.workspaceId } } } as never);
         await registry.stopConversation(owner);
         expect(host.running).toBe(false);
-        expect(await fs.stat(path.join(stateRoot, owner.processId))).toBeDefined();
+        expect(await fs.stat(target)).toBeDefined();
         registry.onProcessChange({ type: 'process-removed', process: { id: owner.processId, metadata: { workspaceId: owner.workspaceId } } } as never);
         await registry.dispose();
-        await expect(fs.stat(path.join(stateRoot, owner.processId))).rejects.toThrow();
-        expect(await fs.stat(path.join(stateRoot, 'sibling'))).toBeDefined();
+        await expect(fs.stat(target)).rejects.toThrow();
+        expect(await fs.stat(sibling)).toBeDefined();
     });
 
     it('reconciles filtered clear events without stopping sibling workspace runtimes', async () => {
@@ -283,7 +285,7 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         await expect(registry.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'increment' })).resolves.toBe(6);
     });
 
-    it('uses the default TTL for invalid env values and refuses unsafe session-state deletion', async () => {
+    it('uses the default TTL for invalid env values and refuses unsafe workspace IDs', async () => {
         vi.useFakeTimers();
         vi.stubEnv('COC_CANVAS_EXT_IDLE_TTL_MS', 'invalid');
         await registry.dispose();
@@ -293,11 +295,89 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         expect(host.running).toBe(true);
         await vi.advanceTimersByTimeAsync(1);
         expect(host.running).toBe(false);
-        await expect(registry.stopConversation({ ...owner, processId: '..' }, true)).rejects.toThrow('Invalid');
+        await expect(registry.stopConversation({ ...owner, workspaceId: '..' }, true)).rejects.toThrow('Invalid');
+    });
+
+    it('encodes conversation IDs safely and enumerates them without case collisions', async () => {
+        const values = ['../other', 'Chat', 'chat', 'chat-\u00e9'];
+        const paths = values.map(processId => sessionWorkspacePath(root, { ...owner, processId }));
+        expect(new Set(paths.map(value => value.toLowerCase())).size).toBe(values.length);
+        for (const directory of paths) await fs.mkdir(directory, { recursive: true });
+        expect(await listSessionWorkspaceOwners(root)).toEqual(expect.arrayContaining(
+            values.map(processId => ({ ...owner, processId })),
+        ));
+        await registry.stopConversation({ ...owner, processId: '../other' }, true);
+        await expect(fs.stat(paths[0])).rejects.toMatchObject({ code: 'ENOENT' });
+        expect((await fs.stat(paths[1])).isDirectory()).toBe(true);
     });
 });
 
 describe('registry with real SDK children', () => {
+    it('persists writable SDK session workspaces by owner and cleans stopped owners on deletion and clear', async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'coc registry storage '));
+        const registries: CanvasExtensionHostRegistry[] = [];
+        try {
+            const extensionPath = path.join(root, 'extension.mjs');
+            await fs.copyFile(path.resolve('test/fixtures/canvas-extensions/minimal/extension.mjs'), extensionPath);
+            const discovered = { ...extension, extensionPath, cwd: root };
+            const sibling = { ...owner, processId: 'conversation-2' };
+            const otherWorkspace = { ...owner, workspaceId: 'workspace-2' };
+            const owners = [owner, sibling, otherWorkspace];
+            const existing = new Set(owners.map(value => JSON.stringify(value)));
+            const createRegistry = () => {
+                const registry = new CanvasExtensionHostRegistry({
+                    config: () => ({ canvasExtensions: { enabled: true } }), dataDir: root, log: () => {},
+                    store: { getProcess: async (id, workspaceId) => existing.has(JSON.stringify({ workspaceId, processId: id }))
+                        ? { id, metadata: { workspaceId } } : undefined } as Pick<ProcessStore, 'getProcess'>,
+                });
+                registries.push(registry);
+                return registry;
+            };
+            let registry = createRegistry();
+            const invoke = (target: typeof owner, actionName: string, input?: Record<string, unknown>) =>
+                registry.invoke(target, discovered, { instanceId: instance.instanceId, actionName, input });
+            const paths: string[] = [];
+            for (const [index, target] of owners.entries()) {
+                await registry.open(target, discovered, instance);
+                const workspacePath = await invoke(target, 'workspace-path') as string;
+                expect(path.isAbsolute(workspacePath)).toBe(true);
+                expect(workspacePath).not.toBe(discovered.cwd);
+                expect((await fs.stat(workspacePath)).isDirectory()).toBe(true);
+                expect(await invoke(target, 'workspace-write', { value: `value-${index}` })).toBe(true);
+                paths.push(workspacePath);
+            }
+            expect(new Set(paths).size).toBe(3);
+            const secondExtension = { ...discovered, extensionKey: 'member:second' };
+            await registry.open(owner, secondExtension, instance);
+            expect(await registry.invoke(owner, secondExtension, {
+                instanceId: instance.instanceId, actionName: 'workspace-read',
+            })).toBe('value-0');
+            await registry.dispose();
+            registry = createRegistry();
+            for (const [index, target] of owners.entries()) {
+                await registry.open(target, discovered, instance);
+                expect(await invoke(target, 'workspace-path')).toBe(paths[index]);
+                expect(await invoke(target, 'workspace-read')).toBe(`value-${index}`);
+            }
+            await registry.stopConversation(owner);
+            existing.delete(JSON.stringify(owner));
+            registry.onProcessChange({ type: 'process-removed', process: {
+                id: owner.processId, metadata: { workspaceId: owner.workspaceId },
+            } } as never);
+            await vi.waitFor(async () => { await expect(fs.stat(paths[0])).rejects.toMatchObject({ code: 'ENOENT' }); });
+            expect(await invoke(sibling, 'workspace-read')).toBe('value-1');
+            expect(await invoke(otherWorkspace, 'workspace-read')).toBe('value-2');
+            await registry.stopConversation(sibling);
+            existing.delete(JSON.stringify(sibling));
+            registry.onProcessChange({ type: 'processes-cleared' });
+            await vi.waitFor(async () => { await expect(fs.stat(paths[1])).rejects.toMatchObject({ code: 'ENOENT' }); });
+            expect(await invoke(otherWorkspace, 'workspace-read')).toBe('value-2');
+        } finally {
+            await Promise.all(registries.map(registry => registry.dispose()));
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30_000);
+
     it('isolates conversations, restarts and reopens after a real crash, and leaves no child after deletion/shutdown', async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), 'coc registry real '));
         const registries: CanvasExtensionHostRegistry[] = [];

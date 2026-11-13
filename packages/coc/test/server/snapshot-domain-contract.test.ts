@@ -117,6 +117,9 @@ async function seedFixture(dataDir: string, store: SqliteProcessStore): Promise<
     const screenshot = path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     fs.writeFileSync(screenshot, 'machine-local screenshot');
+    const canvasState = path.join(dataDir, 'repos', 'repo-1', 'canvas-ext', 'session-state', 'p-7031', 'state.txt');
+    fs.mkdirSync(path.dirname(canvasState), { recursive: true });
+    fs.writeFileSync(canvasState, 'machine-local canvas state');
     writeJSON(path.join(dataDir, TEAMS_CHANNEL_BINDINGS_FILE), [{ accountKey: 'fixture', teamId: 'team',
         channelId: 'channel', workspaceId: 'ws1', processId: 'p1' }]);
 
@@ -147,7 +150,7 @@ describe('snapshot domain contract harness', () => {
     it('registers every storage domain once', () => {
         expect(createSnapshotDomains().map(domain => domain.id)).toEqual([
             'core-store', 'queue', 'image-blobs', 'preferences', 'schedules', 'git-ops',
-            'browser-screenshots', 'delegated-jobs', 'sentinel-todos', 'sentinel-mirror-outbox', 'teams-channel-bindings',
+            'browser-screenshots', 'canvas-session-workspaces', 'delegated-jobs', 'sentinel-todos', 'sentinel-mirror-outbox', 'teams-channel-bindings',
         ]);
     });
 
@@ -469,6 +472,24 @@ describe('snapshot domain behavior', () => {
         expect(snapshot).not.toContain('machine-local screenshot');
         expect(fs.readFileSync(path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png'), 'utf-8'))
             .toBe('machine-local screenshot');
+    });
+
+    it('canvas session workspaces stay machine-local and are removed by wipe', async () => {
+        const directory = path.join(dataDir, 'repos', 'repo-1', 'canvas-ext', 'session-state');
+        const file = path.join(directory, 'p-7031', 'state.txt');
+        const ctx = { dataDir, store };
+        expect(JSON.stringify(await collectStorageSnapshot(ctx))).not.toContain('machine-local canvas state');
+        const result = createImportResult();
+        await restoreStorageSnapshotReplace(emptyPayload(), ctx, result);
+        await restoreStorageSnapshotMerge(emptyPayload(), ctx, result);
+        expect(result.errors).toEqual([]);
+        expect(fs.readFileSync(file, 'utf8')).toBe('machine-local canvas state');
+        const plan = await buildStorageWipePlan(ctx);
+        expect(plan.domainPlans.get('canvas-session-workspaces')).toEqual([directory]);
+        const wiped = { errors: [] as string[] };
+        await executeStorageWipePlan(ctx, plan, wiped);
+        expect(wiped.errors).toEqual([]);
+        expect(fs.existsSync(directory)).toBe(false);
     });
 
     it('Teams channel bindings remain machine-local and are removed by wipe', async () => {
