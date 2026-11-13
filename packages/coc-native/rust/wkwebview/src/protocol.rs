@@ -94,6 +94,12 @@ pub struct Command {
     pub format: Option<String>,
     /// `screenshot`: JPEG quality 0–100.
     pub quality: Option<f64>,
+    /// `open`/`navigation-gate`: hold agent-driven cross-host navigations for site approval.
+    pub navigation_gate: Option<bool>,
+    /// `navigation-decision`: the held navigation main answers.
+    pub gate_id: Option<u64>,
+    /// `navigation-decision`: let the held navigation load or cancel it.
+    pub allow: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -289,6 +295,52 @@ pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
     }
     value.len() <= 8192
         && url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
+}
+
+/// While a control turn drives the view, a new document on another host must wait for site
+/// approval. Same-host loads stay on an already-shown site; back/forward and reload are not
+/// new pages unless they redirect. Non-HTTP(S) targets are never asked about. Same rule as
+/// the WebView2 helper.
+pub fn gate_navigation(current: &str, target: &str, new_document: bool) -> bool {
+    if !new_document || !allowed_url(target, false) {
+        return false;
+    }
+    let host = |value: &str| {
+        url::Url::parse(value)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+    };
+    host(current).is_none() || host(current) != host(target)
+}
+
+/// Exact origins approved for one view's active control lease, never shared across views.
+#[derive(Default)]
+pub struct NavigationApprovals(std::collections::HashSet<String>);
+
+impl NavigationApprovals {
+    fn origin(value: &str) -> Option<String> {
+        url::Url::parse(value)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .map(|url| url.origin().ascii_serialization())
+    }
+
+    pub fn allow(&mut self, value: &str) {
+        if let Some(origin) = Self::origin(value) {
+            if self.0.len() < 256 {
+                self.0.insert(origin);
+            }
+        }
+    }
+
+    pub fn contains(&self, value: &str) -> bool {
+        Self::origin(value).is_some_and(|origin| self.0.contains(&origin))
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 pub fn annotation_preview_size_allowed(width: i64, height: i64) -> bool {
@@ -802,5 +854,54 @@ mod tests {
         assert_eq!(screenshot_pixels(&Bounds { width: 0.0, ..rect }, 2.0, 1.0), None);
         let huge = Bounds { x: 0.0, y: 0.0, width: 8000.0, height: 8000.0 };
         assert_eq!(screenshot_pixels(&huge, 1.0, 1.0), None);
+    }
+
+    #[test]
+    fn gates_new_documents_on_another_host_only() {
+        assert!(gate_navigation("about:blank", "https://example.com/", true));
+        assert!(gate_navigation("", "https://example.com/", true));
+        assert!(gate_navigation("https://google.com/", "https://mail.google.com/", true));
+        assert!(gate_navigation("https://a.test/", "http://b.test/form", true));
+        assert!(!gate_navigation("https://a.test/x", "https://A.test:8443/y", true));
+        assert!(!gate_navigation("https://a.test/", "https://b.test/", false));
+        assert!(!gate_navigation("https://a.test/", "about:blank", true));
+        assert!(!gate_navigation("https://a.test/", "data:text/html,x", true));
+    }
+
+    #[test]
+    fn navigation_approvals_match_exact_origins_and_stay_bounded() {
+        let mut approvals = NavigationApprovals::default();
+        approvals.allow("https://portal.test/start?query=value");
+        assert!(approvals.contains("https://PORTAL.test:443/return"));
+        for target in [
+            "http://portal.test/",
+            "https://portal.test:8443/",
+            "https://child.portal.test/",
+            "about:blank",
+        ] {
+            assert!(!approvals.contains(target));
+        }
+        approvals.allow("about:blank");
+        for index in 0..300 {
+            approvals.allow(&format!("https://site{index}.test/"));
+        }
+        assert!(approvals.contains("https://site254.test/"));
+        assert!(!approvals.contains("https://site255.test/"));
+        approvals.clear();
+        assert!(!approvals.contains("https://portal.test/"));
+    }
+
+    #[test]
+    fn gate_commands_parse() {
+        let open: Command = serde_json::from_str(
+            r#"{"id":1,"op":"open","viewId":"7:tab:1","url":"https://a.test/","navigationGate":true}"#,
+        )
+        .unwrap();
+        assert_eq!(open.navigation_gate, Some(true));
+        let decision: Command = serde_json::from_str(
+            r#"{"id":2,"op":"navigation-decision","viewId":"7:tab:1","gateId":3,"allow":false}"#,
+        )
+        .unwrap();
+        assert_eq!((decision.gate_id, decision.allow), (Some(3), Some(false)));
     }
 }

@@ -232,6 +232,128 @@ describe('desktop native WKWebView packaging contract', () => {
         }
     }, 30_000);
 
+    it.skipIf(!supportedMacos || !helper)('holds gated cross-host navigations until main allows or denies them', async () => {
+        let port = 0;
+        const server = http.createServer((request, response) => {
+            if (request.url === '/to-ip') {
+                response.writeHead(302, { location: `http://127.0.0.1:${port}/c` });
+                response.end();
+                return;
+            }
+            response.writeHead(200, { 'content-type': 'text/html' });
+            response.end(`<title>${request.url}</title>`);
+        });
+        // Both 127.0.0.1 and localhost reach the server; they are different hosts to the gate.
+        await new Promise<void>(resolve => server.listen(0, resolve));
+        port = (server.address() as AddressInfo).port;
+        const ip = `http://127.0.0.1:${port}`;
+        const named = `http://localhost:${port}`;
+        const loopback = `http://[::1]:${port}`;
+        const helperRun = runHelper(`coc-wkwebview-gate-${process.pid}`);
+        const { events, send, waitFor } = helperRun;
+        const page = async () => (await send({ op: 'view-state', viewId: 'v1' })).result.page;
+        const go = (url: string) => send({ op: 'evaluate', viewId: 'v1', expression: `location.href = ${JSON.stringify(url)}` });
+        try {
+            await helperRun.ready;
+            await send({ op: 'open', viewId: 'v1', url: `${ip}/a` });
+            await waitFor(event => event.event === 'visited' && event.url === `${ip}/a`);
+            expect(await send({ op: 'navigation-gate', viewId: 'v1' })).toMatchObject({ ok: false, reason: 'invalid' });
+            expect(await send({ op: 'navigation-gate', viewId: 'v1', navigationGate: true })).toMatchObject({ ok: true });
+
+            // Same host is never asked about.
+            let from = events.length;
+            await go(`${ip}/same`);
+            await waitFor(event => event.event === 'visited' && event.url === `${ip}/same`, from);
+            expect(events.slice(from).some(event => event.event === 'navigation-gate')).toBe(false);
+
+            // A cross-host page load waits for main; a denial cancels it.
+            from = events.length;
+            await go(`${named}/b`);
+            const denied = await waitFor(event => event.event === 'navigation-gate', from);
+            expect(denied).toMatchObject({ viewId: 'v1', url: `${named}/b`, gateId: expect.any(Number) });
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(await page()).toMatchObject({ url: `${ip}/same`, loading: false });
+            expect(await send({ op: 'navigation-decision', viewId: 'v1', gateId: denied.gateId, allow: false })).toMatchObject({ ok: true });
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(await page()).toMatchObject({ url: `${ip}/same` });
+            expect(events.slice(from).some(event => event.event === 'visited')).toBe(false);
+            // A stale or repeated decision is ignored.
+            expect(await send({ op: 'navigation-decision', viewId: 'v1', gateId: denied.gateId, allow: true })).toMatchObject({ ok: true });
+            expect(await send({ op: 'navigation-decision', viewId: 'v1', gateId: denied.gateId })).toMatchObject({ ok: false, reason: 'invalid' });
+
+            // Allow lets the held load continue, and the approved origin is not asked about again.
+            from = events.length;
+            await go(`${named}/b`);
+            const allowed = await waitFor(event => event.event === 'navigation-gate', from);
+            const approving = events.length;
+            await send({ op: 'navigation-decision', viewId: 'v1', gateId: allowed.gateId, allow: true });
+            // The approved load is published as loading before the reply.
+            expect(events.slice(approving).some(event => event.event === 'state' && event.state.loading)).toBe(true);
+            await waitFor(event => event.event === 'visited' && event.url === `${named}/b`, from);
+
+            // A same-host load that redirects to another host is held at the redirect.
+            from = events.length;
+            await go(`${named}/to-ip`);
+            const redirect = await waitFor(event => event.event === 'navigation-gate', from);
+            expect(redirect.url).toBe(`${ip}/c`);
+            const decided = events.length;
+            await send({ op: 'navigation-decision', viewId: 'v1', gateId: redirect.gateId, allow: false });
+            await waitFor(event => event.event === 'state' && !event.state.loading, decided);
+            expect(events.slice(from).some(event => event.event === 'visited')).toBe(false);
+            expect(await page()).toMatchObject({ url: `${named}/b`, loading: false });
+            expect((await page()).errorCode).toBeUndefined();
+
+            // Back/forward is not a new page.
+            from = events.length;
+            await send({ op: 'nav', viewId: 'v1', action: 'back' });
+            await waitFor(event => event.event === 'visited' && event.url === `${ip}/same`, from);
+            expect(events.slice(from).some(event => event.event === 'navigation-gate')).toBe(false);
+
+            // Main's own navigation replaces a held one; turning the gate off forgets approvals.
+            from = events.length;
+            await go(`${loopback}/b`);
+            const superseded = await waitFor(event => event.event === 'navigation-gate', from);
+            await send({ op: 'navigate', viewId: 'v1', url: `${ip}/main` });
+            await waitFor(event => event.event === 'visited' && event.url === `${ip}/main`, from);
+            await send({ op: 'navigation-decision', viewId: 'v1', gateId: superseded.gateId, allow: true });
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(await page()).toMatchObject({ url: `${ip}/main` });
+
+            // Closing a view with a held load cancels it cleanly; the helper keeps serving.
+            from = events.length;
+            await go(`${loopback}/b`);
+            await waitFor(event => event.event === 'navigation-gate', from);
+            await send({ op: 'close', viewId: 'v1' });
+            expect(await send({ op: 'view-state', viewId: 'v1' })).toMatchObject({ ok: false, reason: 'not-found' });
+
+            // A view opened with the gate holds its first cross-host document too.
+            from = events.length;
+            await send({ op: 'open', viewId: 'v2', url: `${named}/first`, navigationGate: true });
+            const first = await waitFor(event => event.event === 'navigation-gate' && event.viewId === 'v2', from);
+            await send({ op: 'navigation-gate', viewId: 'v2', navigationGate: false });
+            await send({ op: 'navigation-decision', viewId: 'v2', gateId: first.gateId, allow: true });
+            await waitFor(event => event.event === 'visited' && event.viewId === 'v2', from);
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v2', expression: `location.href = ${JSON.stringify(`${ip}/free`)}` });
+            await waitFor(event => event.event === 'visited' && event.url === `${ip}/free`, from);
+            expect(events.slice(from).some(event => event.event === 'navigation-gate')).toBe(false);
+
+            // A popup of a gated tab holds its first document under the popup's own id.
+            await send({ op: 'navigation-gate', viewId: 'v2', navigationGate: true });
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v2', expression: `String(window.open(${JSON.stringify(`${ip}/pop`)}, "pop", "width=300,height=300"))` });
+            const opened = await waitFor(event => event.event === 'popup-opened', from);
+            const popupGate = await waitFor(event => event.event === 'navigation-gate' && event.viewId === opened.viewId, from);
+            expect(popupGate.url).toBe(`${ip}/pop`);
+            await send({ op: 'navigation-decision', viewId: opened.viewId, gateId: popupGate.gateId, allow: true });
+            await waitFor(event => event.event === 'visited' && event.sourceViewId === opened.viewId, from);
+            await send({ op: 'quit' });
+        } finally {
+            helperRun.child.kill();
+            server.close();
+        }
+    }, 30_000);
+
     it.skipIf(!supportedMacos || !helper)('hosts page-opened popups under their root tab and closes them with it', async () => {
         const pages: Record<string, string> = {
             '/opener': '<title>Opener</title>',

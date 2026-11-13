@@ -214,6 +214,16 @@ define_class!(
                 handler.call((WKNavigationActionPolicy::Cancel,));
                 return;
             }
+                if allowed && main_frame {
+                let Some(view) = self.view() else {
+                    handler.call((WKNavigationActionPolicy::Cancel,));
+                    return;
+                };
+                if view.hold_for_gate(&url, action, handler) {
+                    return;
+                }
+                *view.policy_url.borrow_mut() = url.clone();
+            }
             handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
         }
 
@@ -230,6 +240,8 @@ define_class!(
         #[unsafe(method(webView:didCommitNavigation:))]
         fn did_commit(&self, _web_view: &WKWebView, _navigation: Option<&WKNavigation>) {
             self.with_view(|view| {
+                view.provisional.set(false);
+                *view.committed_url.borrow_mut() = url_string(unsafe { view.webview.URL() }.as_deref());
                 view.history.borrow_mut().source_changed(true);
                 view.push();
             });
@@ -384,12 +396,34 @@ struct View {
     tab_modifier_held: Cell<bool>,
     /// A synthesized left button press is down; moves become drags.
     mouse_pressed: Cell<bool>,
+    /// A provisional load is in flight; a policy check now is for its redirect.
+    provisional: Cell<bool>,
+    /// The gate compares against these, not the web view URL: WebKit already reports a
+    /// pending load's (or redirect's) target as the URL when it asks for a policy.
+    /// Last main-frame request let through, and the URL of the last committed document.
+    policy_url: RefCell<String>,
+    committed_url: RefCell<String>,
+    /// A control turn drives this view (or its root): cross-host loads wait for approval.
+    navigation_gate: Cell<bool>,
+    gate_approvals: RefCell<protocol::NavigationApprovals>,
+    /// Policy decisions WebKit is waiting on while main asks for site approval.
+    held_gates: RefCell<Vec<HeldGate>>,
 }
+
+struct HeldGate {
+    id: u64,
+    url: String,
+    handler: RcBlock<dyn Fn(WKNavigationActionPolicy)>,
+}
+
+/// Held navigations per view; older ones are cancelled past this.
+const MAX_HELD_GATES: usize = 16;
 
 thread_local! {
     static DATA_STORE: OnceCell<String> = const { OnceCell::new() };
     static VIEWS: RefCell<HashMap<String, Rc<View>>> = RefCell::new(HashMap::new());
     static NEXT_POPUP: Cell<u64> = const { Cell::new(0) };
+    static NEXT_GATE: Cell<u64> = const { Cell::new(0) };
     /// Timestamps of recent synthesized key events. WebKit can hand an unhandled key back
     /// to the window; agent keys must never trigger browser chords.
     static SYNTHESIZED_KEYS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
@@ -503,6 +537,8 @@ impl View {
         if self.closed.replace(true) {
             return;
         }
+        // WebKit requires every policy handler to be called.
+        self.cancel_held_gates();
         if self.popup {
             protocol::emit(
                 json!({ "event": "popup-closed", "viewId": self.id, "rootId": self.root_id }),
@@ -560,6 +596,7 @@ impl View {
             return;
         }
         let id = self.navigation_id(navigation);
+        self.provisional.set(true);
         self.history.borrow_mut().started(id);
         let url = url_string(unsafe { self.webview.URL() }.as_deref());
         if protocol::allowed_url(&url, true) {
@@ -570,6 +607,7 @@ impl View {
     }
 
     fn completed(&self, navigation: Option<&WKNavigation>, error: Option<&NSError>) {
+        self.provisional.set(false);
         let Some(navigation) = navigation else {
             self.push();
             return;
@@ -629,6 +667,8 @@ impl View {
 
     /// Records a request before WebKit reports the provisional navigation.
     fn navigate(&self, action: impl FnOnce() -> Option<Retained<WKNavigation>>) {
+        // Main's own navigation replaces any load still waiting for approval.
+        self.cancel_held_gates();
         self.history.borrow_mut().requested();
         match action() {
             // Known up front, so `stop` can drop its late start callback.
@@ -641,6 +681,8 @@ impl View {
     }
 
     fn stop(&self) {
+        self.cancel_held_gates();
+        self.provisional.set(false);
         self.history.borrow_mut().stop();
         let stopped: Vec<_> =
             self.navigations.borrow_mut().drain(..).map(|(navigation, _)| navigation).collect();
@@ -700,6 +742,87 @@ impl View {
             protocol::history_message(&self.root_id, &self.id, &url, &title, visit)
         {
             protocol::emit(message);
+        }
+    }
+
+    /// Holds a gated main-frame load until main answers `navigation-decision`; true when held.
+    fn hold_for_gate(
+        &self,
+        url: &str,
+        action: &WKNavigationAction,
+        handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>,
+    ) -> bool {
+        if self.closed.get()
+            || !self.navigation_gate.get()
+            || self.gate_approvals.borrow().contains(url)
+        {
+            return false;
+        }
+        let kind = unsafe { action.navigationType() };
+        let new_document = self.provisional.get()
+            || !matches!(kind, WKNavigationType::BackForward | WKNavigationType::Reload);
+        let current = if self.provisional.get() {
+            self.policy_url.borrow().clone()
+        } else {
+            self.committed_url.borrow().clone()
+        };
+        if !protocol::gate_navigation(&current, url, new_document) {
+            return false;
+        }
+        let id = NEXT_GATE.with(|next| {
+            next.set(next.get() + 1);
+            next.get()
+        });
+        let oldest = {
+            let mut held = self.held_gates.borrow_mut();
+            held.push(HeldGate { id, url: url.to_string(), handler: handler.copy() });
+            (held.len() > MAX_HELD_GATES).then(|| held.remove(0))
+        };
+        if let Some(oldest) = oldest {
+            oldest.handler.call((WKNavigationActionPolicy::Cancel,));
+        }
+        protocol::emit(
+            json!({ "event": "navigation-gate", "viewId": self.id, "url": url, "gateId": id }),
+        );
+        true
+    }
+
+    /// Releases a held load. An unknown id was already superseded or cancelled.
+    fn decide_gate(&self, id: u64, allow: bool) {
+        let gate = {
+            let mut held = self.held_gates.borrow_mut();
+            held.iter().position(|gate| gate.id == id).map(|index| held.remove(index))
+        };
+        let Some(gate) = gate else { return };
+        if allow {
+            // The same origin is not asked about again during this control turn.
+            self.gate_approvals.borrow_mut().allow(&gate.url);
+            *self.policy_url.borrow_mut() = gate.url.clone();
+            // Main sees the approved load as loading before the reply, so control readiness
+            // never settles in the gap before WebKit starts it. A redirect is already loading.
+            if !self.provisional.get() {
+                self.history.borrow_mut().requested();
+                self.push();
+            }
+        }
+        gate.handler.call((if allow {
+            WKNavigationActionPolicy::Allow
+        } else {
+            WKNavigationActionPolicy::Cancel
+        },));
+    }
+
+    fn cancel_held_gates(&self) {
+        let held: Vec<_> = self.held_gates.borrow_mut().drain(..).collect();
+        for gate in held {
+            gate.handler.call((WKNavigationActionPolicy::Cancel,));
+        }
+    }
+
+    fn set_navigation_gate(&self, enabled: bool) {
+        self.navigation_gate.set(enabled);
+        if !enabled {
+            self.gate_approvals.borrow_mut().clear();
         }
     }
 
@@ -1064,6 +1187,7 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         ..Placement::default()
     });
     view.tab_shortcuts.set(command.tab_shortcuts == Some(true));
+    view.navigation_gate.set(command.navigation_gate == Some(true));
     unsafe { view.webview.setPageZoom(zoom / 100.0) };
     view.apply(mtm);
     view.navigate(|| view.load(url));
@@ -1126,6 +1250,12 @@ fn register_view(
         tab_shortcuts: Cell::new(false),
         tab_modifier_held: Cell::new(false),
         mouse_pressed: Cell::new(false),
+        provisional: Cell::new(false),
+        policy_url: RefCell::new(String::new()),
+        committed_url: RefCell::new(String::new()),
+        navigation_gate: Cell::new(false),
+        gate_approvals: RefCell::new(protocol::NavigationApprovals::default()),
+        held_gates: RefCell::new(Vec::new()),
     });
     let _ = view.panel.ivars().view_id.set(id.to_string());
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
@@ -1199,6 +1329,8 @@ fn open_popup(
     };
     let url = if protocol::allowed_url(url, false) { url } else { "about:blank" };
     let view = register_view(&id, &root.id, panel, webview, url, mtm);
+    // WebKit loads the popup's first document right away; it is gated like its root.
+    view.navigation_gate.set(root.navigation_gate.get());
     view.panel.setDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
     // The initial document is pending until WebKit starts loading it.
     view.history.borrow_mut().requested();
@@ -1255,6 +1387,18 @@ fn view_command(
         "focus-emulation" => {
             let enabled = command.enabled.ok_or("Focus emulation state is required.")?;
             view.set_focus_emulation(enabled);
+            return Ok(None);
+        }
+        "navigation-gate" => {
+            let enabled = command.navigation_gate.ok_or("Navigation gate state is required.")?;
+            view.set_navigation_gate(enabled);
+            return Ok(None);
+        }
+        "navigation-decision" => {
+            let (Some(id), Some(allow)) = (command.gate_id, command.allow) else {
+                return Err("A gate id and decision are required.");
+            };
+            view.decide_gate(id, allow);
             return Ok(None);
         }
         "tab-shortcuts" => {

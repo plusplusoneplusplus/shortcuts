@@ -1,6 +1,7 @@
 import { BrowserWindow, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
@@ -24,6 +25,11 @@ interface NativeEntry {
     window: BrowserWindow;
     pageZoom: number;
     tabShortcuts?: boolean;
+    /** This view's own control turn gate; a popup is also gated while its root is. */
+    navigationGate: boolean;
+    /** Loads the helper holds until main answers `navigation-decision`. */
+    pendingGates: Set<number>;
+    navigationError?: Error;
     /** Replaced when a crashed view is reopened; the old one stays failed. */
     control: WkWebViewBrowserControl;
     /** Pushes placement and parent visibility after window move/resize/minimize/hide/fullscreen. */
@@ -104,6 +110,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         return {
             viewId: entry.nativeId, url: entry.request.url, parentWindow: entry.parentWindow, visible: this.parentVisible(entry),
             pageZoomPercent: entry.pageZoom, ...(bounds ? { bounds } : {}), ...(entry.tabShortcuts ? { tabShortcuts: true } : {}),
+            ...(this.gated(entry) ? { navigationGate: true } : {}),
         };
     }
 
@@ -116,6 +123,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         const failed = (error: unknown) => this.viewFailure(entry, error);
         const entry: NativeEntry = {
             nativeId: id, request, sink, window, parentWindow, bounds: null, background: false, pageZoom: request.pageZoomPercent ?? 100,
+            navigationGate: request.navigationGate === true, pendingGates: new Set(),
             state: { viewId: request.viewId, engine: 'wkwebview', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             control: this.control(id),
             reposition: () => {
@@ -145,16 +153,39 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         const live = () => {
             if (this.views.get(id) !== entry || entry.window.isDestroyed()) throw new BrowserHostError('not-found', 'Browser tab is closed.');
         };
+        /** Main's own navigation replaces loads the helper still holds; it cancels them natively. */
+        const retireGates = () => {
+            entry.pendingGates.clear();
+            entry.navigationError = undefined;
+        };
         return {
             get control() { return entry.control; },
+            waitForControlReady: async signal => {
+                for (;;) {
+                    signal.throwIfAborted();
+                    live();
+                    if (entry.navigationError) throw entry.navigationError;
+                    if (entry.state.error) throw new BrowserHostError(entry.state.errorCode ?? 'navigation-failed', entry.state.error);
+                    if (!entry.pendingGates.size && !entry.state.loading) return;
+                    await delay(25, undefined, { signal });
+                }
+            },
+            setNavigationGate: async enabled => {
+                if (this.views.get(id) !== entry || entry.navigationGate === enabled) { return; }
+                entry.navigationGate = enabled;
+                const views = entry.root ? [entry] : [entry, ...[...this.views.values()].filter(view => view.root === entry)];
+                await Promise.all(views.map(view => this.process.request('navigation-gate', { viewId: view.nativeId, navigationGate: this.gated(view) })));
+            },
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 live();
+                retireGates();
                 entry.request.url = url;
                 await this.process.request('navigate', { viewId: id, url });
             },
             nav: async action => {
                 live();
+                retireGates();
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed' && !entry.root) {
                     // A crashed or lost helper view is reopened in place with its last placement.
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
@@ -198,6 +229,30 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 if (this.process.running) { await this.process.request('close', { viewId: id }); }
             },
         };
+    }
+
+    private gated(entry: NativeEntry): boolean {
+        return entry.navigationGate || !!entry.root?.navigationGate;
+    }
+
+    /**
+     * The helper holds the load in WebKit's policy check; the sink decides (an agent turn waits
+     * for the user) and main releases or cancels it. Closing the view cancels it natively.
+     */
+    private navigationGate(entry: NativeEntry, url: string, gateId: number): void {
+        entry.pendingGates.add(gateId);
+        entry.navigationError = undefined;
+        const decision = entry.root
+            ? entry.root.sink.navigationGate?.(url, entry.request.viewId)
+            : entry.sink.navigationGate?.(url);
+        void Promise.resolve(decision ?? true).then(allow => {
+            if (this.views.get(entry.nativeId) !== entry || !entry.pendingGates.has(gateId) || !this.process.running) { return; }
+            if (!allow) entry.navigationError = new BrowserHostError('navigation-failed', 'Browser navigation was denied.');
+            return this.process.request('navigation-decision', { viewId: entry.nativeId, gateId, allow });
+        }).catch(error => {
+            if (entry.pendingGates.has(gateId)) entry.navigationError = error instanceof Error ? error : new Error(String(error));
+            console.error('[coc-desktop] WKWebView navigation decision failed:', error);
+        }).finally(() => entry.pendingGates.delete(gateId));
     }
 
     private remove(id: string, entry: NativeEntry): void {
@@ -254,6 +309,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 request: { ...root.request, viewId, url: message.url },
                 state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
                 bounds: null, background: false, control: this.control(message.viewId),
+                navigationGate: false, pendingGates: new Set(), navigationError: undefined,
             };
             this.views.set(message.viewId, popup);
             root.sink.controlPopoutOpened?.(viewId, this.hosted(popup));
@@ -261,6 +317,16 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         }
         const entry = this.views.get(message.viewId);
         if (!entry) { return; }
+        if (message.event === 'navigation-gate') {
+            const gateId = message.gateId;
+            if (typeof gateId !== 'number' || !Number.isSafeInteger(gateId) || gateId <= 0) { return; }
+            if (typeof message.url === 'string' && validateBrowserUrl(message.url).ok) { this.navigationGate(entry, message.url, gateId); }
+            else {
+                void this.process.request('navigation-decision', { viewId: entry.nativeId, gateId, allow: false })
+                    .catch(error => console.error('[coc-desktop] WKWebView navigation decision failed:', error));
+            }
+            return;
+        }
         if (message.event === 'popup-closed') {
             if (entry.root) { this.remove(message.viewId, entry); }
         } else if (message.event === 'control-focused') {
