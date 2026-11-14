@@ -102,7 +102,7 @@ test("macOS CI builds, tests and runs the real WKWebView helper", () => {
     const chmod = desktop.indexOf("chmod +x packages/coc-native/coc-wkwebview.darwin-*");
     assert.ok(chmod > desktop.indexOf("name: coc-native-") && chmod < desktop.indexOf("npm run test:run"),
         "coc-desktop-test must restore the helper's executable bit before the tests");
-    assert.match(desktop, /if: matrix\.os != 'ubuntu-latest'\n.*browser-engines\.e2e\.test\.ts.*browser-annotation-capture-wkwebview\.e2e\.test\.ts/);
+    assert.match(desktop, /if: matrix\.os != 'ubuntu-latest'\n.*browser-engines\.e2e\.test\.ts.*browser-annotation-capture-wkwebview\.e2e\.test\.ts.*wkwebview-approval\.e2e\.test\.ts/);
 });
 
 test("the cross-platform coc suite uses its matching addon", () => {

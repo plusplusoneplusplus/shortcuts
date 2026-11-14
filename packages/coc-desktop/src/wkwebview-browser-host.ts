@@ -58,10 +58,19 @@ interface NativeEntry {
     documentGeneration: number;
     favicon?: string;
     faviconRequest?: AbortController;
+    /** When the last load stopped (performance.now()). */
+    loadStoppedAt?: number;
     /** Pushes placement and parent visibility after window move/resize/minimize/hide/fullscreen. */
     reposition(): void;
     parentChanged(): void;
 }
+
+/**
+ * WebKit runs navigations a page schedules while loading (an inline `form.submit()`,
+ * `location` assignments) only after it reports the load finished, so control readiness
+ * waits this long after a load stops before treating the page as settled.
+ */
+export const WKWEBVIEW_LOAD_SETTLE_MS = 150;
 
 const WINDOW_PLACEMENT_EVENTS = ['move', 'resize', 'enter-full-screen', 'leave-full-screen'] as const;
 const WINDOW_VISIBILITY_EVENTS = ['minimize', 'restore', 'hide', 'show'] as const;
@@ -206,7 +215,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                     live();
                     if (entry.navigationError) throw entry.navigationError;
                     if (entry.state.error) throw new BrowserHostError(entry.state.errorCode ?? 'navigation-failed', entry.state.error);
-                    if (!entry.pendingGates.size && !entry.state.loading) return;
+                    if (!entry.pendingGates.size && !entry.state.loading
+                        && performance.now() - (entry.loadStoppedAt ?? -Infinity) >= WKWEBVIEW_LOAD_SETTLE_MS) return;
                     await delay(25, undefined, { signal });
                 }
             },
@@ -484,6 +494,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 return;
             }
             const finished = entry.state.loading && !state.loading;
+            if (finished) entry.loadStoppedAt = performance.now();
             if (!entry.root && state.loading && !entry.state.loading) entry.sink.navigationStarted?.();
             if (state.loading || state.url !== entry.state.url) entry.documentGeneration++;
             entry.state = {

@@ -3,7 +3,11 @@ const { app, BrowserWindow } = require('electron');
 const { createServer } = require('node:http');
 const path = require('node:path');
 const { BrowserHostManager } = require('../../dist/browser-host-manager');
-const { WebView2BrowserHost } = require('../../dist/webview2-browser-host');
+// The same flow runs on WebView2 (Windows) and WKWebView (macOS).
+const engine = process.env.COC_APPROVAL_ENGINE || 'webview2';
+const BrowserHost = engine === 'wkwebview'
+    ? require('../../dist/wkwebview-browser-host').WkWebViewBrowserHost
+    : require('../../dist/webview2-browser-host').WebView2BrowserHost;
 
 app.setPath('userData', process.env.COC_APPROVAL_TEST_DATA);
 app.whenReady().then(async () => {
@@ -31,16 +35,16 @@ app.whenReady().then(async () => {
         }
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const host = new WebView2BrowserHost(path.join(process.env.COC_APPROVAL_TEST_DATA, 'profile'));
+    const host = new BrowserHost(path.join(process.env.COC_APPROVAL_TEST_DATA, 'profile'));
     let manager;
     let checks = 0;
     let premature = false;
     let completed = false;
     manager = new BrowserHostManager({
         history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
-        hosts: { webview2: host, electron: host },
+        hosts: { [engine]: host, electron: host },
         fileHost: { create: async () => { throw new Error('No file previews'); }, dispose: async () => {} },
-        getDefault: () => 'webview2', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {},
+        getDefault: () => engine, saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {},
         changed: () => {},
         send: (_owner, _channel, event) => {
             if (!event.checkId) return;

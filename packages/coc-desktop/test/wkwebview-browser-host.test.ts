@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserDownloadStore } from '../src/browser-downloads';
-import { WKWEBVIEW_FAVICON_LINKS, WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
+import { WKWEBVIEW_FAVICON_LINKS, WKWEBVIEW_LOAD_SETTLE_MS, WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 import { captureWebView2Annotation } from '../src/webview2-annotation-capture';
 
@@ -702,6 +702,34 @@ describe('WKWebView agent navigation approval gate', () => {
             pageState(false, 'https://other.test/home');
             await waiting;
             expect(ready).toBe(true);
+        } finally {
+            controller.abort();
+            await h.host.dispose();
+        }
+    });
+
+    it('waits for a navigation the page schedules right after its load stops', async () => {
+        const h = await opened();
+        const controller = new AbortController();
+        try {
+            pageState(true, 'https://tab.test/login');
+            let ready = false;
+            const waiting = h.root.waitForControlReady!(controller.signal).then(() => { ready = true; });
+            // WebKit reports the load finished, then starts the page's scripted form submit.
+            pageState(false, 'https://tab.test/login');
+            await new Promise(resolve => setTimeout(resolve, WKWEBVIEW_LOAD_SETTLE_MS / 3));
+            expect(ready).toBe(false);
+            pageState(true, 'https://tab.test/login');
+            await new Promise(resolve => setTimeout(resolve, WKWEBVIEW_LOAD_SETTLE_MS * 1.5));
+            expect(ready).toBe(false);
+            const stopped = performance.now();
+            pageState(false, 'https://tab.test/home');
+            await waiting;
+            expect(performance.now() - stopped).toBeGreaterThanOrEqual(WKWEBVIEW_LOAD_SETTLE_MS - 5);
+            // A page that settled long ago is ready at once.
+            const start = performance.now();
+            await h.root.waitForControlReady!(controller.signal);
+            expect(performance.now() - start).toBeLessThan(WKWEBVIEW_LOAD_SETTLE_MS);
         } finally {
             controller.abort();
             await h.host.dispose();
