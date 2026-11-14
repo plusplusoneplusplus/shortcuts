@@ -419,6 +419,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             if (entry.root) { this.remove(message.viewId, entry); }
         } else if (message.event === 'control-focused') {
             entry.sink.controlFocused?.();
+        } else if (message.event === 'frame-navigated' || message.event === 'frame-detached') {
+            entry.control.frameEvent(message.event, message);
         } else if (message.event === 'state') {
             const state = browserMessage(message.state);
             if (!state || typeof state.url !== 'string' || typeof state.title !== 'string'

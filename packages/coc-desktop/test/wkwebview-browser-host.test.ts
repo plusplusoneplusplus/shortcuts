@@ -302,6 +302,20 @@ describe('WKWebView navigation and page state', () => {
         await host.dispose();
     });
 
+    it('routes helper frame events to the exact view control', async () => {
+        const { host, view } = await open();
+        const events: unknown[] = [];
+        view.control!.onEvent(event => events.push(event));
+        await view.control!.enableFrameEvents();
+        const frame = { frameId: 'main/1', parentFrameId: 'main', owner: 1, token: 'a'.repeat(32), url: 'https://child.test/', origin: 'https://child.test' };
+        mocks.onEvent({ event: 'frame-navigated', viewId: '9:other:1', ...frame });
+        expect(events).toEqual([]);
+        mocks.onEvent({ event: 'frame-navigated', viewId: '7:tab:1', ...frame });
+        mocks.onEvent({ event: 'frame-detached', viewId: '7:tab:1', frameId: 'main/1' });
+        expect(events.map(event => (event as { type: string }).type)).toEqual(['frame-attached', 'frame-navigated', 'frame-detached']);
+        await host.dispose();
+    });
+
     it('marks every tab failed when the helper process fails', async () => {
         const { host, view, sink } = await open();
         mocks.onFailure(new BrowserHostError('runtime-crashed', 'WKWebView host stopped.'));
