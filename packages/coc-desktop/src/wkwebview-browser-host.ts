@@ -1,4 +1,4 @@
-import { BrowserWindow, webContents } from 'electron';
+import { BrowserWindow, session, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import type { BrowserImportCookie } from './browser-cookie-import';
 import { downloadSource, type BrowserDownloadStore } from './browser-downloads';
+import { loadBrowserFavicon } from './browser-favicon';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserSiteCertificate, type BrowserViewState } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { captureWebView2Annotation } from './webview2-annotation-capture';
@@ -15,6 +16,14 @@ import { WkWebViewBrowserControl } from './wkwebview-browser-control';
 import { WkWebViewProcess } from './wkwebview-process';
 
 const execFileAsync = promisify(execFile);
+
+/** Page-declared icons plus the site's default `/favicon.ico`, read in the control world after a load finishes. */
+export const WKWEBVIEW_FAVICON_LINKS = `(() => {
+    const links = [...document.querySelectorAll('link[rel~="icon" i][href]')].map(link => link.href);
+    return /^https?:$/.test(location.protocol) ? [...links, new URL('/favicon.ico', location.href).href] : links;
+})()`;
+/** In-memory Electron session for icon fetches: no page cookies, but the system proxy like other app traffic. */
+const WKWEBVIEW_FAVICON_PARTITION = 'coc-wkwebview-favicons';
 
 /** The helper's server-certificate summary (display names, Unix-second validity), or undefined if malformed. */
 export function wkWebViewCertificate(value: unknown): BrowserSiteCertificate | undefined {
@@ -47,6 +56,8 @@ interface NativeEntry {
     control: WkWebViewBrowserControl;
     /** Bumped on every navigation main or the page starts and every committed document. */
     documentGeneration: number;
+    favicon?: string;
+    faviconRequest?: AbortController;
     /** Pushes placement and parent visibility after window move/resize/minimize/hide/fullscreen. */
     reposition(): void;
     parentChanged(): void;
@@ -335,6 +346,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         this.views.delete(id);
         this.process.rejectView(id);
         this.downloads?.revokeView(id);
+        entry.faviconRequest?.abort();
         entry.control.close('detached');
         if (entry.root) {
             entry.root.sink.controlPopoutClosed?.(entry.request.viewId);
@@ -358,6 +370,41 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             entry.window.focus();
             entry.window.webContents.focus();
         }
+    }
+
+    private clearFavicon(entry: NativeEntry): void {
+        entry.faviconRequest?.abort();
+        entry.faviconRequest = undefined;
+        entry.favicon = undefined;
+        if (entry.state.favicon) {
+            entry.state = { ...entry.state, favicon: undefined };
+            if (!entry.root) entry.sink.state(entry.state);
+        }
+    }
+
+    /** Tabs only (popups have no tab header). A later load, document or close drops the result. */
+    private loadFavicon(entry: NativeEntry): void {
+        entry.faviconRequest?.abort();
+        const request = entry.faviconRequest = new AbortController();
+        const { documentGeneration } = entry;
+        const current = () => this.views.get(entry.nativeId) === entry && entry.faviconRequest === request
+            && !request.signal.aborted && entry.documentGeneration === documentGeneration;
+        void (async () => {
+            const result = await this.process.request('evaluate', { viewId: entry.nativeId, expression: WKWEBVIEW_FAVICON_LINKS, world: 'coc-control' }) as { value?: unknown } | undefined;
+            const urls = Array.isArray(result?.value) ? result.value : [];
+            if (!current()) return;
+            const favicons = session.fromPartition(WKWEBVIEW_FAVICON_PARTITION);
+            const favicon = await loadBrowserFavicon((url, init) => favicons.fetch(url, init), urls, request.signal);
+            if (!current()) return;
+            entry.faviconRequest = undefined;
+            if (favicon === entry.favicon) return;
+            entry.favicon = favicon;
+            entry.state = { ...entry.state, favicon };
+            entry.sink.state(entry.state);
+        })().catch(() => {
+            // Missing icons keep the tab's globe; evaluation failures are not view failures.
+            if (entry.faviconRequest === request) entry.faviconRequest = undefined;
+        });
     }
 
     private viewFailure(entry: NativeEntry, error: unknown): void {
@@ -385,8 +432,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             const popup: NativeEntry = {
                 ...root, root, nativeId: message.viewId, tabShortcuts: false,
                 request: { ...root.request, viewId, url: message.url },
-                state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
-                bounds: null, background: false, control: this.control(message.viewId),
+                state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined, favicon: undefined },
+                bounds: null, background: false, control: this.control(message.viewId), favicon: undefined, faviconRequest: undefined,
                 navigationGate: false, pendingGates: new Set(), navigationError: undefined,
             };
             this.views.set(message.viewId, popup);
@@ -420,6 +467,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         } else if (message.event === 'control-focused') {
             entry.sink.controlFocused?.();
         } else if (message.event === 'frame-navigated' || message.event === 'frame-detached') {
+            // A new document never inherits the previous site's icon.
+            if (message.event === 'frame-navigated' && message.frameId === 'main') this.clearFavicon(entry);
             entry.control.frameEvent(message.event, message);
         } else if (message.event === 'state') {
             const state = browserMessage(message.state);
@@ -428,6 +477,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 this.viewFailure(entry, new Error('WKWebView returned invalid navigation state.'));
                 return;
             }
+            const finished = entry.state.loading && !state.loading;
             if (!entry.root && state.loading && !entry.state.loading) entry.sink.navigationStarted?.();
             if (state.loading || state.url !== entry.state.url) entry.documentGeneration++;
             entry.state = {
@@ -435,7 +485,9 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 url: state.url, title: state.title, canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading,
                 ...(typeof state.error === 'string' ? { error: state.error } : {}),
                 ...(state.errorCode === 'runtime-crashed' || state.errorCode === 'navigation-failed' ? { errorCode: state.errorCode } : {}),
+                ...(entry.favicon && typeof state.error !== 'string' ? { favicon: entry.favicon } : {}),
             };
+            if (!entry.root && finished && !entry.state.error) this.loadFavicon(entry);
             if (!entry.state.error && validateBrowserUrl(entry.state.url).ok) { entry.request.url = entry.state.url; }
             entry.control.stateChanged(entry.state);
             if (entry.root) {

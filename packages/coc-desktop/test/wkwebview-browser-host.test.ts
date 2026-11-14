@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserDownloadStore } from '../src/browser-downloads';
-import { WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
+import { WKWEBVIEW_FAVICON_LINKS, WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 import { captureWebView2Annotation } from '../src/webview2-annotation-capture';
 
@@ -38,12 +38,15 @@ const mocks = vi.hoisted(() => {
         profile: '',
         window,
         owner: { focus: vi.fn() },
+        fetch: vi.fn<(url: string, init: RequestInit) => Promise<Response>>(),
+        partitions: [] as string[],
     };
 });
 
 vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => Object.assign(mocks.window, { webContents: mocks.owner }) },
     webContents: { fromId: () => mocks.owner },
+    session: { fromPartition: (partition: string) => { mocks.partitions.push(partition); return { fetch: mocks.fetch }; } },
 }));
 
 vi.mock('../src/webview2-annotation-capture', () => ({
@@ -260,6 +263,79 @@ describe('WKWebView navigation and page state', () => {
         mocks.onEvent({ event: 'state', viewId: '9:other:1', state });
         expect(view.snapshot()).toMatchObject({ errorCode: 'runtime-crashed' });
         await host.dispose();
+    });
+
+    describe('favicons', () => {
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+        const icon = `data:image/png;base64,${png.toString('base64')}`;
+        const links = ['https://tab.test/icon.png', 'https://tab.test/favicon.ico'];
+
+        beforeEach(() => {
+            mocks.partitions.length = 0;
+            mocks.fetch.mockReset().mockImplementation(async () => new Response(png));
+            mocks.request.mockImplementation(async (op: string, payload: { expression?: string }) =>
+                op === 'evaluate' && payload.expression === WKWEBVIEW_FAVICON_LINKS ? { value: links } : undefined);
+        });
+
+        it('loads the page icon in the control world when a load finishes and keeps it until the next document', async () => {
+            const { host, view, sink } = await open();
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            await vi.waitFor(() => expect(view.snapshot().favicon).toBe(icon));
+            expect(mocks.request).toHaveBeenCalledWith('evaluate', { viewId: '7:tab:1', expression: WKWEBVIEW_FAVICON_LINKS, world: 'coc-control' });
+            expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(links[0], expect.objectContaining({ redirect: 'follow' }));
+            expect(mocks.partitions).toEqual(['coc-wkwebview-favicons']);
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ favicon: icon }));
+            // Later state keeps the icon; an error page hides it; a new main document drops it.
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, title: 'Renamed' } });
+            expect(view.snapshot()).toMatchObject({ title: 'Renamed', favicon: icon });
+            mocks.onEvent({ event: 'frame-navigated', viewId: '7:tab:1', frameId: 'main', parentFrameId: null, owner: null, token: 'a'.repeat(32), url: 'https://tab.test/next', origin: 'https://tab.test' });
+            expect(view.snapshot().favicon).toBeUndefined();
+            expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ favicon: undefined }));
+            await host.dispose();
+        });
+
+        it('drops an icon whose document changed or whose tab closed before it arrived', async () => {
+            let release!: () => void;
+            mocks.fetch.mockImplementation(() => new Promise(resolve => { release = () => resolve(new Response(png)); }));
+            const { host, view } = await open();
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledOnce());
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+            release();
+            await new Promise(resolve => setTimeout(resolve, 10));
+            expect(view.snapshot().favicon).toBeUndefined();
+            const signal = mocks.fetch.mock.calls[0][1].signal!;
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2));
+            await view.close();
+            release();
+            await new Promise(resolve => setTimeout(resolve, 10));
+            expect(signal.aborted).toBe(true);
+            expect(mocks.fetch.mock.calls[1][1].signal!.aborted).toBe(true);
+            await host.dispose();
+        });
+
+        it('skips error pages, failed evaluations and popups', async () => {
+            const sink = makeSink({ controlPopoutOpened: vi.fn() });
+            const { host, view } = await open(sink);
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, errorCode: 'navigation-failed', error: 'Navigation failed.' } });
+            mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'about:blank' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1:popup:1', state: { ...state, loading: true } });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1:popup:1', state });
+            mocks.request.mockRejectedValueOnce(new Error('evaluation-failed'));
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            await new Promise(resolve => setTimeout(resolve, 10));
+            expect(mocks.request.mock.calls.filter(([op]) => op === 'evaluate')).toEqual([
+                ['evaluate', { viewId: '7:tab:1', expression: WKWEBVIEW_FAVICON_LINKS, world: 'coc-control' }],
+            ]);
+            expect(mocks.fetch).not.toHaveBeenCalled();
+            expect(view.snapshot()).toEqual({ viewId: 'tab', engine: 'wkwebview', ...state });
+            await host.dispose();
+        });
     });
 
     it('reopens a crashed tab in place with its placement, zoom, shortcuts and background control', async () => {
