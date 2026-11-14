@@ -225,7 +225,12 @@ define_class!(
                 handler.call((WKNavigationActionPolicy::Cancel,));
                 return;
             }
-                if allowed && main_frame {
+            if allowed && main_frame && protocol::restricted_port(&url) {
+                handler.call((WKNavigationActionPolicy::Cancel,));
+                self.with_view(|view| view.refuse(&url, protocol::RESTRICTED_PORT_ERROR));
+                return;
+            }
+            if allowed && main_frame {
                 let Some(view) = self.view() else {
                     handler.call((WKNavigationActionPolicy::Cancel,));
                     return;
@@ -404,6 +409,22 @@ fn frame_message(message: &WKScriptMessage) {
 
 thread_local! {
     static FRAME_MESSAGES: OnceCell<Retained<FrameMessages>> = const { OnceCell::new() };
+}
+
+/// WebKit never answers a geolocation request in this helper (the permission it would need
+/// is private API), so pages would wait forever; fail it like Chromium's denial instead.
+/// Popups inherit the script from WebKit's copy of the configuration.
+fn deny_geolocation(configuration: &WKWebViewConfiguration, mtm: MainThreadMarker) {
+    unsafe {
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly_inContentWorld(
+            WKUserScript::alloc(mtm),
+            &NSString::from_str(protocol::GEOLOCATION_SCRIPT),
+            WKUserScriptInjectionTime::AtDocumentStart,
+            false,
+            &WKContentWorld::pageWorld(mtm),
+        );
+        configuration.userContentController().addUserScript(&script);
+    }
 }
 
 /// Adds frame tracking to a tab's configuration; popups inherit it from WebKit's copy.
@@ -924,6 +945,18 @@ impl View {
         self.push();
     }
 
+    /// WebKit sends no failure callback for a load its policy handler cancelled, so a
+    /// refused main-frame load ends here as a failed navigation on `url`.
+    fn refuse(&self, url: &str, message: &str) {
+        self.provisional.set(false);
+        self.history.borrow_mut().invalidate();
+        self.navigations.borrow_mut().clear();
+        *self.requested.borrow_mut() = url.to_string();
+        *self.error.borrow_mut() = Some(("navigation-failed".into(), message.into()));
+        self.certificate_error.set(false);
+        self.push();
+    }
+
     fn load(&self, url: &str) -> Option<Retained<WKNavigation>> {
         let request = NSURL::URLWithString(&NSString::from_str(url))
             .map(|url| NSURLRequest::requestWithURL(&url))?;
@@ -1427,6 +1460,7 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
         let configuration = WKWebViewConfiguration::new(mtm);
         configuration.setWebsiteDataStore(&store);
         track_frames(&configuration, mtm);
+        deny_geolocation(&configuration, mtm);
         WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), rect, &configuration)
     };
     panel.setHasShadow(false);

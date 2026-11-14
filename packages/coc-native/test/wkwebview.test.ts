@@ -223,6 +223,23 @@ describe('desktop native WKWebView packaging contract', () => {
             await send({ op: 'nav', viewId: 'v1', action: 'stop' });
             expect((await send({ op: 'view-state', viewId: 'v1' })).result.page).toMatchObject({ loading: false });
 
+            // WebKit loads a blank page for its blocked ports and reports success; the helper
+            // fails them like Chromium's ERR_UNSAFE_PORT, without a visit.
+            const blocked = 'http://127.0.0.1:1/failed';
+            const beforeBlocked = events.length;
+            await send({ op: 'navigate', viewId: 'v1', url: blocked });
+            expect((await waitFor(event => event.event === 'state' && event.state.errorCode === 'navigation-failed', beforeBlocked)).state)
+                .toMatchObject({ url: blocked, title: '', loading: false });
+            await send({ op: 'navigate', viewId: 'v1', url: `${origin}/a` });
+            await waitFor(event => event.event === 'state' && event.state.title === 'Page A' && !event.state.error, beforeBlocked);
+            expect(events.some(event => event.event === 'visited' && event.url === blocked)).toBe(false);
+            // WebKit would never answer a location request here; it fails like Chromium's denial.
+            expect((await send({ op: 'evaluate', viewId: 'v1', world: 'page', expression: `new Promise(resolve => {
+                setTimeout(() => resolve('unanswered'), 3000);
+                navigator.geolocation.getCurrentPosition(() => resolve('allowed'),
+                    error => resolve([error instanceof GeolocationPositionError, error.code, error.PERMISSION_DENIED]));
+            })` })).result.value).toEqual([true, 1, 1]);
+
             await send({ op: 'close', viewId: 'v1' });
             const count = events.length;
             await send({ op: 'quit' });

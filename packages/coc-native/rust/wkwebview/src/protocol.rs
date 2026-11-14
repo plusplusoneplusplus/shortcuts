@@ -371,6 +371,45 @@ pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
         && url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
+/// Ports the Fetch standard calls bad (Chromium refuses them with ERR_UNSAFE_PORT).
+/// WebKit silently commits an empty document for its own blocked ports instead of
+/// failing, so the helper refuses these main-frame loads itself.
+const BAD_PORTS: &[u16] = &[
+    0, 1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101,
+    102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427,
+    465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990,
+    993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667,
+    6668, 6669, 6679, 6697, 10080,
+];
+
+/// Page-world document-start script: geolocation requests fail with PERMISSION_DENIED,
+/// asynchronously, as they do under the other engines' deny-all permission policy.
+pub const GEOLOCATION_SCRIPT: &str = r#"(() => {
+if (typeof Geolocation !== 'function') return;
+const proto = typeof GeolocationPositionError === 'function' ? GeolocationPositionError.prototype : Object.prototype;
+const denied = () => Object.create(proto, {
+    code: { value: 1, enumerable: true }, message: { value: 'User denied Geolocation', enumerable: true },
+});
+const fail = error => { if (typeof error === 'function') setTimeout(() => error(denied()), 0); };
+let watches = 0;
+const method = value => ({ value, writable: true, configurable: true });
+Object.defineProperties(Geolocation.prototype, {
+    getCurrentPosition: method(function getCurrentPosition(success, error) { fail(error); }),
+    watchPosition: method(function watchPosition(success, error) { fail(error); return ++watches; }),
+    clearWatch: method(function clearWatch() {}),
+});
+})();"#;
+
+pub const RESTRICTED_PORT_ERROR: &str = "Navigation failed: this address uses a restricted port.";
+
+/// An HTTP(S) URL on a bad port; the scheme's default port is always allowed.
+pub fn restricted_port(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.port().is_some_and(|port| BAD_PORTS.contains(&port))
+    })
+}
+
 /// Same rule as WebView2: a turn id main can show and send back in `control-stop`.
 pub fn allowed_control_turn(turn: Option<&str>) -> bool {
     turn.is_none_or(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
@@ -682,6 +721,20 @@ pub fn availability(macos_major: Option<u64>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restricted_ports_follow_the_fetch_bad_port_list() {
+        assert!(restricted_port("http://127.0.0.1:1/failed"));
+        assert!(restricted_port("https://example.com:6667/"));
+        assert!(restricted_port("http://localhost:10080"));
+        assert!(!restricted_port("http://127.0.0.1:2/"));
+        assert!(!restricted_port("http://127.0.0.1:8080/"));
+        // The scheme's own default port is never written out, even when spelled.
+        assert!(!restricted_port("http://example.com:80/"));
+        assert!(!restricted_port("https://example.com/"));
+        assert!(!restricted_port("about:blank"));
+        assert!(!restricted_port("ftp://example.com:21/"));
+    }
 
     #[test]
     fn control_activity_turns_and_bar_height() {
