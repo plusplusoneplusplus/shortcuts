@@ -8,9 +8,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// The real helper: an explicit path, else the local debug build (`cargo build -p coc-wkwebview`).
-const helper = process.env.COC_WKWEBVIEW_PATH
-    || path.join(here, '../../../coc-native/rust/target/debug/coc-wkwebview');
+// The real helper: an explicit path, else the local debug build (`cargo build -p coc-wkwebview`),
+// else the binary `build:native` stages (CI's artifact).
+const helper = process.env.COC_WKWEBVIEW_PATH || [
+    path.join(here, '../../../coc-native/rust/target/debug/coc-wkwebview'),
+    path.join(here, `../../../coc-native/coc-wkwebview.darwin-${process.arch}`),
+].find(file => existsSync(file)) || '';
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || process.platform !== 'darwin' || Number(release().split('.')[0]) < 23
     || !existsSync(helper) || !existsSync(path.join(here, '../../dist/wkwebview-browser-host.js'));

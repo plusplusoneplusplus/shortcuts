@@ -9,8 +9,11 @@ import { BrowserControlPage } from '../src/browser-control-page';
 import { WkWebViewBrowserControl } from '../src/wkwebview-browser-control';
 import { WkWebViewProcess } from '../src/wkwebview-process';
 
-// Built by `cargo build -p coc-wkwebview` in packages/coc-native/rust.
-const binary = path.resolve(__dirname, '../../coc-native/rust/target/debug/coc-wkwebview');
+// An explicit path, else `cargo build -p coc-wkwebview`, else the binary `build:native` stages (CI's artifact).
+const binary = process.env.COC_WKWEBVIEW_PATH || [
+    path.resolve(__dirname, '../../coc-native/rust/target/debug/coc-wkwebview'),
+    path.resolve(__dirname, `../../coc-native/coc-wkwebview.darwin-${process.arch}`),
+].find(file => fs.existsSync(file)) || '';
 const available = process.platform === 'darwin' && fs.existsSync(binary);
 
 describe.skipIf(!available)('WKWebView helper transport (real helper)', () => {
