@@ -103,6 +103,8 @@ test("macOS CI builds, tests and runs the real WKWebView helper", () => {
     assert.ok(chmod > desktop.indexOf("name: coc-native-") && chmod < desktop.indexOf("npm run test:run"),
         "coc-desktop-test must restore the helper's executable bit before the tests");
     assert.match(desktop, /if: matrix\.os != 'ubuntu-latest'\n.*browser-engines\.e2e\.test\.ts.*browser-control-workflow\.e2e\.test\.ts.*browser-annotation-capture-wkwebview\.e2e\.test\.ts.*wkwebview-approval\.e2e\.test\.ts.*wkwebview-window\.e2e\.test\.ts/);
+    assert.match(desktop, /if: runner\.os == 'macOS'\n\s+run: npm run test:run -- test\/e2e\/browser-frame-control\.e2e\.test\.ts\n(?:.*\n){2}\s+COC_DESKTOP_E2E: '1'\n\s+COC_BROWSER_FRAME_ENGINES: wkwebview\n/,
+        "macOS CI must run the frame-control e2e on the real WKWebView helper");
 });
 
 test("the cross-platform coc suite uses its matching addon", () => {

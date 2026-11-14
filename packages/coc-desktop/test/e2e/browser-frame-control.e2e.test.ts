@@ -16,8 +16,10 @@ const wkWebViewHelper = process.env.COC_WKWEBVIEW_PATH || [
     path.join(here, `../../../coc-native/coc-wkwebview.darwin-${process.arch}`),
 ].find(file => existsSync(file));
 const wkWebView = process.platform === 'darwin' && Number(release().split('.')[0]) >= 23 && !!wkWebViewHelper;
-const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2']
-    : wkWebView ? ['electron', 'wkwebview'] : ['electron'];
+// COC_BROWSER_FRAME_ENGINES (comma list) narrows the run, e.g. macOS CI runs only wkwebview.
+const only = process.env.COC_BROWSER_FRAME_ENGINES?.split(',').map(value => value.trim()).filter(Boolean);
+const engines = (process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2']
+    : wkWebView ? ['electron', 'wkwebview'] : ['electron']).filter(engine => !only?.length || only.includes(engine));
 
 describe.skipIf(skip).each(engines)('%s isolated cross-site frame control', engine => {
     it('uses real OOPIF sessions for bounded reading, trusted nested input and fail-closed lifecycle', async () => {

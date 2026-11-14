@@ -913,6 +913,16 @@ jobs:
         env:
           COC_DESKTOP_E2E: '1'
 
+      # Frame control on the real WKWebView helper (cross-origin frames come
+      # from the helper's frame tracking instead of OOPIF sessions).
+      - name: Run live WKWebView frame-control contract
+        if: runner.os == 'macOS'
+        run: npm run test:run -- test/e2e/browser-frame-control.e2e.test.ts
+        working-directory: packages/coc-desktop
+        env:
+          COC_DESKTOP_E2E: '1'
+          COC_BROWSER_FRAME_ENGINES: wkwebview
+
       - name: Run live Electron browser contracts on headless Linux
         if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts --fileParallelism=false
