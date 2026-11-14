@@ -119,6 +119,41 @@ describe.skipIf(!available)('WKWebView native browser control (real helper)', ()
         await transport.request('close', { viewId: 'tab' });
     }, 90_000);
 
+    it('clicks in a hidden view, where WebKit runs no animation frames', async () => {
+        const server = http.createServer((_request, response) => {
+            response.setHeader('content-type', 'text/html');
+            response.end(`<title>Hidden</title><button id="go" onclick="document.title='clicked'">Go</button>`);
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+        const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+        const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-hidden-'));
+        cleanup.push(() => fs.rmSync(profile, { recursive: true, force: true }));
+        let control: WkWebViewBrowserControl | undefined;
+        let loaded = false;
+        const transport = new WkWebViewProcess(() => binary, profile, message => {
+            if (message.event !== 'state' || message.viewId !== 'hidden') return;
+            const state = message.state as { loading: boolean; url: string };
+            loaded = !state.loading && state.url === url;
+            control?.stateChanged(state);
+        }, () => {});
+        cleanup.push(() => transport.dispose());
+        control = new WkWebViewBrowserControl((op, payload) => transport.request(op as 'evaluate', { ...payload, viewId: 'hidden' }));
+
+        await transport.request('open', { viewId: 'hidden', url, visible: false, bounds: { x: 40, y: 40, width: 640, height: 480 } });
+        await vi.waitFor(() => expect(loaded).toBe(true), { timeout: 20_000 });
+        const page = new BrowserControlPage(control, 'darwin');
+        await page.configureFrames(true);
+        const button = (await page.snapshot()).elements.find(element => element.name === 'Go')!;
+        // Frame-aware targeting waits for frames to settle; without frames it must not wait for the command deadline.
+        const started = Date.now();
+        await page.click(button.ref);
+        expect(Date.now() - started).toBeLessThan(10_000);
+        await vi.waitFor(async () => expect(await page.evaluate('document.title')).toBe('clicked'));
+        await page.configureFrames(false);
+        await transport.request('close', { viewId: 'hidden' });
+    }, 60_000);
+
     it('runs the shared annotation overlay in its own world and ends it on navigation', async () => {
         const server = http.createServer((request, response) => {
             response.setHeader('content-type', 'text/html');

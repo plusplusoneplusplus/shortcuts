@@ -9,6 +9,12 @@ import { randomUUID } from 'node:crypto';
 import { BROWSER_CURSOR_TAG, buildBrowserCursorExpression, type BrowserCursorCommand, type BrowserCursorPoint } from './browser-control-cursor';
 
 export type BrowserScrollDirection = 'up' | 'down' | 'left' | 'right';
+/**
+ * Two animation frames let scrolling settle before measuring. Engines pause animation frames in
+ * occluded windows (WebKit does even for a background view), and layout reads stay current without
+ * them, so a short timer ends the wait instead of the command deadline.
+ */
+export const SETTLE_GEOMETRY = 'new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))); setTimeout(() => resolve(true), 150); })';
 let nextFrameRef = 1;
 
 /** One instance per owner-qualified URL view, retained across its navigations. */
@@ -598,7 +604,7 @@ export class BrowserControlPage {
 
     private async settleGeometry(frame: string): Promise<void> {
         for (const handle of [...this.ancestors(frame), frame]) {
-            await this.frames!.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))', handle, true);
+            await this.frames!.evaluate(SETTLE_GEOMETRY, handle, true);
         }
     }
 
