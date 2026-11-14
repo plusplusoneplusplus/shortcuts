@@ -1,4 +1,4 @@
-use crate::frames::{self, FrameMessage, FrameTracker};
+use crate::frames::{self, FrameEvent, FrameMessage, FrameTracker};
 use crate::history::HistoryNavigation;
 use crate::overlay::{self, Frame, PanelMode, Placement};
 use crate::protocol::{self, Command};
@@ -1355,6 +1355,29 @@ impl View {
                     .postNotificationName_object(name, Some(&*self.panel));
             }
         }
+        if enabled {
+            self.restore_frame_focus();
+        }
+    }
+
+    /// WebKit leaves no focused frame when the focused iframe goes away, so a focused
+    /// view's document reports `hasFocus()` false until a click; Chromium moves focus
+    /// back to the main frame. `window.focus()` does the same here without making the
+    /// panel key (the UI delegate has no focus handler).
+    fn restore_frame_focus(&self) {
+        if !self.panel.isKeyWindow() {
+            return;
+        }
+        let mtm = MainThreadMarker::from(&*self.panel);
+        let Ok(world) = content_world(Some(frames::FRAME_WORLD), mtm) else { return };
+        unsafe {
+            self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str("document.hasFocus() || window.focus()"),
+                None,
+                &world,
+                None,
+            )
+        };
     }
 
     fn set_tab_shortcuts(&self, enabled: bool) {
@@ -1687,6 +1710,7 @@ fn view_command(
             NSApplication::sharedApplication(mtm).activate();
             view.panel.makeKeyAndOrderFront(None);
             view.panel.makeFirstResponder(Some(&view.webview));
+            view.restore_frame_focus();
             return Ok(None);
         }
         "focus-emulation" => {

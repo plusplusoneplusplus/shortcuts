@@ -891,6 +891,41 @@ describe('desktop native WKWebView packaging contract', () => {
             await waitFor(event => event.event === 'frame-detached' && event.frameId === same.frameId, from);
             expect((await send({ op: 'frames', viewId: 'v1' })).result.frames.map((frame: any) => frame.frameId).sort())
                 .toEqual([child.frameId, 'main'].sort());
+
+            // Removing the focused frame hands focus back to the main frame, as Chromium does.
+            // WebKit applies activity-state changes asynchronously.
+            const hasFocus = async () => {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    if ((await send({ op: 'evaluate', viewId: 'v1', expression: 'document.hasFocus()', world: 'page' })).result.value) {return true;}
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                return false;
+            };
+            await send({ op: 'background', viewId: 'v1', enabled: true });
+            await send({ op: 'focus-emulation', viewId: 'v1', enabled: true });
+            await send({ op: 'evaluate', viewId: 'v1', frame: (await navigated(`${cross}/next`)).frameId, expression: "document.body.tabIndex = 0; document.body.focus(); document.hasFocus()", world: 'page' });
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: "document.activeElement.id", world: 'page' }))
+                .toMatchObject({ ok: true, result: { value: 'x' } });
+            expect(await hasFocus()).toBe(true);
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: "document.getElementById('x').remove()", world: 'page' });
+            await waitFor(event => event.event === 'frame-detached' && event.frameId === child.frameId, from);
+            expect(await hasFocus()).toBe(true);
+            // Same when the frame went away while the view was unfocused.
+            await send({ op: 'focus-emulation', viewId: 'v1', enabled: false });
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: "const z = document.createElement('iframe'); z.id = 'z'; z.src = '/same'; document.body.append(z)", world: 'page' });
+            const late = await navigated(`${origin}/same`, from);
+            await send({ op: 'evaluate', viewId: 'v1', frame: late.frameId, expression: 'document.body.tabIndex = 0; document.body.focus()', world: 'page' });
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'document.activeElement.id', world: 'page' }))
+                .toMatchObject({ ok: true, result: { value: 'z' } });
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: "document.getElementById('z').remove()", world: 'page' });
+            await waitFor(event => event.event === 'frame-detached' && event.frameId === late.frameId, from);
+            await send({ op: 'focus-emulation', viewId: 'v1', enabled: true });
+            expect(await hasFocus()).toBe(true);
+            // Restoring frame focus never makes the panel key.
+            expect((await send({ op: 'view-state', viewId: 'v1' })).result).toMatchObject({ key: false });
             await send({ op: 'quit' });
         } finally {
             helperRun.child.kill();
