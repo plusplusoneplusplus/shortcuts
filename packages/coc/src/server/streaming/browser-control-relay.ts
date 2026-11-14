@@ -461,7 +461,7 @@ function isResult(value: unknown): value is BrowserCommandResult {
         }
     }
     if ('tabs' in result && (!Array.isArray(result.tabs) || result.tabs.some(tab => !tab || typeof tab !== 'object' || Array.isArray(tab) || typeof tab.id !== 'string'
-        || typeof tab.title !== 'string' || typeof tab.url !== 'string' || !['electron', 'webview2'].includes(tab.engine)))) return false;
+        || typeof tab.title !== 'string' || typeof tab.url !== 'string' || !['electron', 'webview2', 'wkwebview'].includes(tab.engine)))) return false;
     for (const key of ['elements', 'interactiveElements']) {
         if (key in result && (!Array.isArray(result[key]) || result[key].some(element => !element
             || typeof element !== 'object' || Array.isArray(element)

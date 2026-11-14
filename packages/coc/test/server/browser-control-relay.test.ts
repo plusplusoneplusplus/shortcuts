@@ -226,6 +226,17 @@ describe('browser control relay', () => {
         await expect(second).resolves.toEqual({ tabs: [] });
     });
 
+    it('accepts tabs from every desktop browser engine and rejects unknown engines', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        const tabs = ['electron', 'webview2', 'wkwebview'].map(engine => ({ id: `t1:${engine}`, title: engine, url: 'https://fixture.test/', engine }));
+        const result = relay.execute('w', 'p', { action: 'tabs' });
+        const id = request(a).id;
+        relay.reply(a, { id, ok: true, result: { tabs: [{ ...tabs[0], engine: 'chrome' }] } });
+        relay.reply(a, { id, ok: true, result: { tabs } });
+        await expect(result).resolves.toEqual({ tabs });
+    });
+
     it('ignores malformed, foreign and stale replies; propagates valid error replies', async () => {
         const relay = enabled(), a = client('a'), b = client('b');
         relay.advertise(a, 'w', true);
