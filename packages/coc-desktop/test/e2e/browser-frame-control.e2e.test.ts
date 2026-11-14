@@ -3,13 +3,21 @@ import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { release } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || (process.platform === 'linux' && !process.env.DISPLAY);
-const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
+// macOS 14+ also runs the real WKWebView helper when it is built or staged.
+const wkWebViewHelper = process.env.COC_WKWEBVIEW_PATH || [
+    path.join(here, '../../../coc-native/rust/target/debug/coc-wkwebview'),
+    path.join(here, `../../../coc-native/coc-wkwebview.darwin-${process.arch}`),
+].find(file => existsSync(file));
+const wkWebView = process.platform === 'darwin' && Number(release().split('.')[0]) >= 23 && !!wkWebViewHelper;
+const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2']
+    : wkWebView ? ['electron', 'wkwebview'] : ['electron'];
 
 describe.skipIf(skip).each(engines)('%s isolated cross-site frame control', engine => {
     it('uses real OOPIF sessions for bounded reading, trusted nested input and fail-closed lifecycle', async () => {
@@ -20,6 +28,7 @@ describe.skipIf(skip).each(engines)('%s isolated cross-site frame control', engi
         try {
             const env = { ...process.env, COC_BROWSER_FRAME_DATA: directory, COC_BROWSER_E2E_ENGINE: engine };
             delete env.ELECTRON_RUN_AS_NODE;
+            if (engine === 'wkwebview') env.COC_WKWEBVIEW_PATH = wkWebViewHelper;
             if (engine === 'webview2') {
                 const helper = path.join(here, '../../../coc-native/rust/target/release/coc-webview2.exe');
                 expect(existsSync(helper), 'Compile the current Windows helper before running frame e2e').toBe(true);
@@ -46,7 +55,8 @@ describe.skipIf(skip).each(engines)('%s isolated cross-site frame control', engi
                 });
             });
             expect(result).toMatchObject({
-                engine, oopif: true, contextAssociation: true, automaticSnapshot: true,
+                // WebKit keeps cross-origin frames in process; the helper's frame tracking replaces OOPIF sessions.
+                engine, oopif: engine !== 'wkwebview', contextAssociation: true, automaticSnapshot: true,
                 explicitReadEval: true, uniqueSameOrigin: true, boundaries: true,
                 trustedNestedInput: true, nestedScroll: true, keyboardFocus: true,
                 scaledBorderGeometry: true, pageZoom: true, occlusionRejected: true, conflictRejected: true,
@@ -57,7 +67,8 @@ describe.skipIf(skip).each(engines)('%s isolated cross-site frame control', engi
                 richPaste: process.env.COC_DESKTOP_RICH_CLIPBOARD_E2E === '1', absoluteClipping: true,
                 containingBlockClipping: true, clippedKeysRejected: true, focusedSelectionPreserved: true,
             });
-            expect(result.iframeSessions).toBeGreaterThanOrEqual(2);
+            if (engine === 'wkwebview') expect(result.childFrames).toBeGreaterThanOrEqual(3);
+            else expect(result.iframeSessions).toBeGreaterThanOrEqual(2);
             expect(result.sessionEvaluations).toBeGreaterThan(0);
             expect(result.maxProtocolBytes).toBeLessThanOrEqual(900_000);
         } finally {
