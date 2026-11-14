@@ -315,9 +315,11 @@ app.whenReady().then(async () => {
     assert(zoomed.ok, 'Actual page-zoom IPC failed');
     // 200% zoom halves the 1600 DIP panel to 800 CSS pixels; at least 2 device pixels each exceed the
     // 1280 px budget. Measure the width: WebKit before macOS 26 leaves page zoom out of devicePixelRatio.
+    // Only a width just under 800 means both applied: the old view is at most 640 (100%) or 320 (200%)
+    // CSS pixels, the resized one about 1600 before the zoom lands.
     const highDpiViewport = await until(async () => {
         const viewport = JSON.parse(await call({ action: 'eval', js: '({width:innerWidth})' }));
-        return viewport.width <= 800 ? viewport : false;
+        return viewport.width > 700 && viewport.width <= 800 ? viewport : false;
     }, 'high-DPI viewport exceeding the unscaled screenshot budget');
     const browserTool = context.tools.find(tool => tool.name === 'browser');
     // Screenshots always save to a workspace-scoped file; pixels attach only on request.
