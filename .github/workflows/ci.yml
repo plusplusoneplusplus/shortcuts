@@ -908,7 +908,7 @@ jobs:
 
       - name: Run live browser engine contracts
         if: matrix.os != 'ubuntu-latest'
-        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts test/e2e/browser-annotation-capture-wkwebview.e2e.test.ts test/e2e/wkwebview-approval.e2e.test.ts --fileParallelism=false
+        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts test/e2e/browser-annotation-capture-wkwebview.e2e.test.ts test/e2e/wkwebview-approval.e2e.test.ts test/e2e/wkwebview-window.e2e.test.ts --fileParallelism=false
         working-directory: packages/coc-desktop
         env:
           COC_DESKTOP_E2E: '1'
