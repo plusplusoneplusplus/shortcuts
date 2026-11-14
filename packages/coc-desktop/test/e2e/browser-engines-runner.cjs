@@ -137,7 +137,7 @@ app.whenReady().then(async () => {
         .map(({ name, domain, session: sessionOnly, expirationDate }) => ({ name, domain, sessionOnly, expirationDate }));
     const settled = (win, id, predicate) => waitFor(async () => { const current = await state(win, id); return current && !current.loading && predicate(current) ? current : null; }, `${id} state`);
     const pref = await call(main, 'getPreferences');
-    if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
+    if (engine !== 'electron' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error(`Required real ${engine} capability is unavailable: ` + JSON.stringify(pref));
     await call(main, 'setDefaultEngine', engine);
     if (clickOnceCheck) {
         if (pref.clickOnce?.enabled !== false) throw new Error('ClickOnce must default off.');
