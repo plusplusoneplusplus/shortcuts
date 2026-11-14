@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserHostError } from '../src/browser-host-contract';
+import { BROWSER_ANNOTATION_WORLD, BrowserAnnotationTab } from '../src/browser-annotation-tab';
 import { BrowserControlPage } from '../src/browser-control-page';
 import { WkWebViewBrowserControl } from '../src/wkwebview-browser-control';
 import { WkWebViewProcess } from '../src/wkwebview-process';
@@ -115,6 +116,59 @@ describe.skipIf(!available)('WKWebView native browser control (real helper)', ()
         await control.setFocusEmulation(false);
         await vi.waitFor(async () => expect(await page.evaluate('document.hasFocus()')).toBe(false));
         await page.configureFrames(false);
+        await transport.request('close', { viewId: 'tab' });
+    }, 90_000);
+
+    it('runs the shared annotation overlay in its own world and ends it on navigation', async () => {
+        const server = http.createServer((request, response) => {
+            response.setHeader('content-type', 'text/html');
+            response.end(`<title>${request.url === '/next' ? 'Next' : 'Notes'}</title><p>annotate me</p>`);
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+        const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+        const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-annotation-'));
+        cleanup.push(() => fs.rmSync(profile, { recursive: true, force: true }));
+        let control: WkWebViewBrowserControl | undefined;
+        const states: Record<string, unknown>[] = [];
+        const transport = new WkWebViewProcess(() => binary, profile, message => {
+            if (message.viewId !== 'tab') return;
+            if (message.event === 'frame-navigated' || message.event === 'frame-detached') {
+                control?.frameEvent(message as never, message);
+                return;
+            }
+            if (message.event !== 'state') return;
+            const state = message.state as { loading: boolean; url: string };
+            states.push(state);
+            control?.stateChanged(state);
+        }, () => {});
+        cleanup.push(() => transport.dispose());
+        control = new WkWebViewBrowserControl((op, payload) => transport.request(op as 'evaluate', { ...payload, viewId: 'tab' }));
+        await transport.request('open', { viewId: 'tab', url, visible: false });
+        await vi.waitFor(() => expect(states.at(-1)).toMatchObject({ url, loading: false }), { timeout: 20_000 });
+        const overlays = async () => (await transport.request('evaluate', {
+            viewId: 'tab', world: 'page', expression: `document.querySelectorAll('iframe[title="Page annotation"]').length`,
+        }) as { value: number }).value;
+
+        const first = { events: vi.fn(), ended: vi.fn() };
+        const tab = new BrowserAnnotationTab({ control }, first, 50);
+        await expect(tab.start()).resolves.toBe(true);
+        expect(await overlays()).toBe(1);
+        // The overlay's state lives only in the annotation world, never in the page world.
+        const mode = `typeof window.__cocBrowserAnnotation`;
+        expect(await transport.request('evaluate', { viewId: 'tab', world: BROWSER_ANNOTATION_WORLD, expression: mode })).toEqual({ value: 'object' });
+        expect(await transport.request('evaluate', { viewId: 'tab', world: 'page', expression: mode })).toEqual({ value: 'undefined' });
+        await tab.stop();
+        expect(first.ended).toHaveBeenCalledExactlyOnceWith('stop', undefined);
+        expect(await overlays()).toBe(0);
+
+        const second = { events: vi.fn(), ended: vi.fn() };
+        await expect(new BrowserAnnotationTab({ control }, second, 50).start()).resolves.toBe(true);
+        expect(await overlays()).toBe(1);
+        await transport.request('navigate', { viewId: 'tab', url: `${url}next` });
+        await vi.waitFor(() => expect(second.ended).toHaveBeenCalledExactlyOnceWith('navigation', undefined), { timeout: 20_000 });
+        await vi.waitFor(() => expect(states.at(-1)).toMatchObject({ url: `${url}next`, loading: false }), { timeout: 20_000 });
+        expect(await overlays()).toBe(0);
         await transport.request('close', { viewId: 'tab' });
     }, 90_000);
 });
