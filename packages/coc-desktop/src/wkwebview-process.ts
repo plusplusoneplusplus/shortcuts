@@ -10,7 +10,9 @@ export class WkWebViewProcess extends WebView2Process {
         onEvent: (message: Record<string, unknown>) => void,
         onFailure: (error: BrowserHostError) => void) {
         super(binary, profile, onEvent, onFailure, {
-            name: 'WKWebView', viewOps: ['evaluate', 'input', 'screenshot', 'focus-emulation', 'navigation-decision', 'site-info', 'capture-annotation', 'control-activity'], captureOps: ['screenshot', 'capture-annotation'],
+            name: 'WKWebView', viewOps: ['evaluate', 'input', 'screenshot', 'focus-emulation', 'navigation-decision', 'site-info', 'capture-annotation', 'control-activity', 'pixel-ratio'], captureOps: ['screenshot', 'capture-annotation'],
+            // A page exception or lost result; the control maps it, the process stays healthy.
+            reasons: ['evaluation-failed'],
         });
     }
 }

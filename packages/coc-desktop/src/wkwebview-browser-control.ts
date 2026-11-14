@@ -393,6 +393,13 @@ return view ? { clientWidth: view.width, clientHeight: view.height, pageX: view.
         return viewport;
     }
 
+    /** From the helper: the page's devicePixelRatio leaves page zoom out before macOS 26. */
+    async pixelRatio(): Promise<number> {
+        const result = await this.request('pixel-ratio', {}) as { value?: unknown } | undefined;
+        if (typeof result?.value !== 'number' || !Number.isFinite(result.value) || result.value <= 0) throw new Error('Browser pixel ratio unavailable');
+        return result.value;
+    }
+
     async screenshot({ format, quality, clip }: Parameters<BrowserControl['screenshot']>[0]): Promise<string> {
         // CDP clips are page coordinates; the helper captures viewport coordinates.
         const { pageX, pageY } = await this.layoutMetrics();

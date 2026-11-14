@@ -264,11 +264,15 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                         || entry.state.url !== url) throw new BrowserHostError('invalid', 'Annotation document became unavailable.');
                 };
                 check();
+                // The preview is in device pixels; before macOS 26 the page's devicePixelRatio leaves page zoom out.
+                const ratio = await this.process.request('pixel-ratio', { viewId: id }) as { value?: unknown } | undefined;
+                check();
+                if (typeof ratio?.value !== 'number') throw new BrowserHostError('invalid', 'Annotation document became unavailable.');
                 const image = await captureWebView2Annotation(async () => {
                     const preview = await this.process.request('capture-annotation', { viewId: id });
                     check();
                     return preview;
-                }, rect, viewport);
+                }, rect, { ...viewport, devicePixelRatio: ratio.value });
                 check();
                 return image;
             } } satisfies Pick<BrowserHostedView, 'captureAnnotation'> : {}),

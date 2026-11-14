@@ -341,7 +341,7 @@ export class BrowserControlPage {
         const clip = target
             ? { x: target.x + origin.pageX, y: target.y + origin.pageY, width: target.width, height: target.height }
             : { x: viewport.pageX, y: viewport.pageY, width: viewport.clientWidth, height: viewport.clientHeight };
-        const pixelRatio = await this.evaluate('window.devicePixelRatio');
+        const pixelRatio = await this.control.pixelRatio?.() ?? await this.evaluate('window.devicePixelRatio');
         if (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0) throw new Error('Browser pixel ratio unavailable');
         // The agent never sees its own cursor or effects (a first key chip has no point yet); a slow hide must not hold the capture.
         const hidden = this.cursorDrawn;

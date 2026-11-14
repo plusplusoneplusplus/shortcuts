@@ -1845,6 +1845,12 @@ fn view_command(
             unsafe { view.webview.setPageZoom(percent / 100.0) };
             return Ok(None);
         }
+        // Device pixels per CSS pixel. WebKit before macOS 26 leaves page zoom out of the
+        // page's devicePixelRatio, so crops and screenshot budgets use this instead.
+        "pixel-ratio" => {
+            let zoom = unsafe { view.webview.pageZoom() };
+            return Ok(Some(json!({ "value": view.panel.backingScaleFactor() * zoom })));
+        }
         _ => return Err("Unsupported WKWebView command."),
     }
     view.apply(mtm);
@@ -1984,6 +1990,20 @@ impl Evaluation {
                 .objectForKey(&NSString::from_str("WKJavaScriptExceptionMessage"))
                 .and_then(|value| value.downcast::<NSString>().ok())
                 .map(|value| value.to_string());
+            if exception.is_none() {
+                // WebKit-level failures differ across macOS releases; page text is never logged.
+                eprintln!(
+                    "WKWebView evaluation failed ({} {}): {}",
+                    error.domain(),
+                    error.code(),
+                    error.localizedDescription()
+                );
+                if !matches!(stage, EvaluationStage::Script)
+                    && protocol::async_result_lost(&error.domain().to_string(), error.code() as i64)
+                {
+                    return self.fail(protocol::RESULT_LOST);
+                }
+            }
             let message = exception.unwrap_or_else(|| error.localizedDescription().to_string());
             if matches!(stage, EvaluationStage::Expression) && protocol::compile_failed(&message) {
                 return self.run(EvaluationStage::Script, None);

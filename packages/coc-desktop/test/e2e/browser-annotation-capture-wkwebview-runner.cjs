@@ -13,7 +13,8 @@ app.setPath('userData', userData);
 // Seeded noise per device pixel; the runner regenerates it, so the reference never comes from a capture.
 const SEED = 0x9e3779b9;
 const page = `<!doctype html><body style="margin:0;overflow:hidden"><script>
-window.paint = () => new Promise(resolve => {
+// ratio is the true device ratio: before macOS 26 WebKit leaves page zoom out of devicePixelRatio.
+window.paint = ratio => new Promise(resolve => {
     let canvas = document.querySelector('canvas');
     if (!canvas) {
         canvas = document.createElement('canvas');
@@ -22,8 +23,8 @@ window.paint = () => new Promise(resolve => {
     }
     canvas.style.width = innerWidth + 'px';
     canvas.style.height = innerHeight + 'px';
-    canvas.width = Math.round(innerWidth * devicePixelRatio);
-    canvas.height = Math.round(innerHeight * devicePixelRatio);
+    canvas.width = Math.round(innerWidth * ratio);
+    canvas.height = Math.round(innerHeight * ratio);
     const context = canvas.getContext('2d');
     const image = context.createImageData(canvas.width, canvas.height);
     let seed = ${SEED};
@@ -94,13 +95,15 @@ function difference(bitmap, crop, origin, reference, referenceWidth, referenceHe
         return result.value;
     };
     const results = [];
-    const base = (await evaluate('paint()')).devicePixelRatio;
     for (const zoom of [100, 75, 125, 150]) {
         await view.setPageZoom(zoom);
+        // The 600 DIP wide view is 60000 / zoom CSS pixels once the zoom lays out.
         for (const started = Date.now(); Date.now() - started < 5000; await delay(25)) {
-            if (Math.abs(await evaluate('devicePixelRatio') - base * zoom / 100) < 1e-3) break;
+            if (Math.abs(await evaluate('innerWidth') - 60000 / zoom) < 1) break;
         }
-        const painted = await evaluate('paint()');
+        const ratio = await view.control.pixelRatio();
+        const painted = await evaluate(`paint(${ratio})`);
+        // What the page reports, as the annotation snapshot sends it; the host supplies the device ratio.
         const viewport = { width: painted.width, height: painted.height, devicePixelRatio: painted.devicePixelRatio };
         const [referenceWidth, referenceHeight] = painted.canvas;
         const reference = noise(referenceWidth, referenceHeight);
@@ -114,7 +117,7 @@ function difference(bitmap, crop, origin, reference, referenceWidth, referenceHe
             viewport: { x: 0, y: 0, width: w, height: h },
         };
         for (const [name, rect] of Object.entries(rects)) {
-            const expected = expectedCrop(rect, viewport.devicePixelRatio);
+            const expected = expectedCrop(rect, ratio);
             try {
                 const image = await view.captureAnnotation(rect, viewport);
                 const pixels = nativeImage.createFromDataURL(image.dataUrl);
@@ -124,9 +127,9 @@ function difference(bitmap, crop, origin, reference, referenceWidth, referenceHe
                 const diff = difference(bitmap, crop, expected, reference, referenceWidth, referenceHeight);
                 // One device pixel off must look like unrelated noise.
                 const shifted = difference(bitmap, crop, { x: expected.x + (expected.x > 0 ? -1 : 1), y: expected.y }, reference, referenceWidth, referenceHeight);
-                results.push({ zoom, case: name, viewport, expected, width: image.width, height: image.height, pngSize: size, diff, shifted });
+                results.push({ zoom, ratio, case: name, viewport, expected, width: image.width, height: image.height, pngSize: size, diff, shifted });
             } catch (error) {
-                results.push({ zoom, case: name, viewport, expected, error: String(error?.message ?? error) });
+                results.push({ zoom, ratio, case: name, viewport, expected, error: String(error?.message ?? error) });
             }
         }
     }

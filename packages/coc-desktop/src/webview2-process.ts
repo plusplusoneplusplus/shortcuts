@@ -28,6 +28,8 @@ export interface NativeBrowserProcessOptions {
     viewOps?: readonly string[];
     /** Ops whose replies may carry an image up to the capture budget. */
     captureOps?: readonly string[];
+    /** Helper-specific failure reasons kept as-is; other unknown reasons become `runtime-crashed`. */
+    reasons?: readonly string[];
 }
 
 /** Stdio JSON-line transport to a native browser helper (WebView2 or WKWebView). */
@@ -35,6 +37,7 @@ export class WebView2Process {
     private readonly name: string;
     private readonly viewOps: ReadonlySet<string>;
     private readonly captureOps: ReadonlySet<string>;
+    private readonly reasons: ReadonlySet<string>;
     private child?: ChildProcessWithoutNullStreams;
     private starting?: Promise<void>;
     private sequence = 0;
@@ -57,6 +60,7 @@ export class WebView2Process {
         this.name = options.name ?? 'WebView2';
         this.viewOps = new Set(options.viewOps ?? ['cdp', 'cdp-subscribe', 'capture-annotation']);
         this.captureOps = new Set(options.captureOps ?? ['capture-annotation']);
+        this.reasons = new Set(options.reasons ?? []);
     }
 
     get running(): boolean { return Boolean(this.child && !this.closing); }
@@ -175,7 +179,8 @@ export class WebView2Process {
 
     private error(message: Record<string, unknown>): BrowserHostError {
         const reasons: BrowserFailureReason[] = ['missing-runtime', 'native-unavailable', 'profile-locked', 'startup-failed', 'runtime-crashed', 'cleanup-failed', 'not-found', 'no-window', 'invalid'];
-        const reason = reasons.find(reason => reason === message.reason) ?? 'runtime-crashed';
+        const reason = reasons.find(reason => reason === message.reason)
+            ?? (typeof message.reason === 'string' && this.reasons.has(message.reason) ? message.reason as BrowserFailureReason : 'runtime-crashed');
         return new BrowserHostError(reason, typeof message.message === 'string' ? message.message : `${this.name} request failed.`);
     }
 

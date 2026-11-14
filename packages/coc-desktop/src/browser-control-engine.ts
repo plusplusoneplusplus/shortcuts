@@ -125,6 +125,11 @@ export interface BrowserControl {
 
     /** CSS visual viewport of the top-level document. */
     layoutMetrics(): Promise<BrowserControlViewport>;
+    /**
+     * Device pixels per CSS pixel, page zoom included. Omitted, or resolves undefined, when the
+     * page's `devicePixelRatio` already is that (Chromium); WebKit before macOS 26 leaves zoom out.
+     */
+    pixelRatio?(): Promise<number | undefined>;
     /** Base64 image data. */
     screenshot(request: BrowserControlScreenshotRequest): Promise<string>;
     /** Pages behave as focused while background control drives them. */
@@ -157,6 +162,11 @@ export function lazyBrowserControl(resolve: () => BrowserControl, before?: (call
         const target = resolve();
         return (target[call] as (...values: unknown[]) => Promise<unknown>).apply(target, args);
     }])) as unknown as BrowserControl;
+    control.pixelRatio = async () => {
+        before?.('pixelRatio', []);
+        const target = resolve();
+        return target.pixelRatio?.();
+    };
     control.onEvent = listener => resolve().onEvent(listener);
     control.waitForEvents = async () => {
         const target = resolve();

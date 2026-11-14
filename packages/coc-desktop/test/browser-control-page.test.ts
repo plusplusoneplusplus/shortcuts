@@ -145,6 +145,17 @@ describe('engine-neutral trusted CDP actions', () => {
         if (format === 'png') expect(send.mock.calls[2][1]).not.toHaveProperty('quality');
     });
 
+    it('bounds screenshots by the engine pixel ratio when the page ratio leaves page zoom out', async () => {
+        const { send } = fixture();
+        // WebKit before macOS 26: page devicePixelRatio 1 at 200% zoom, 2 device pixels per CSS pixel.
+        const page = new BrowserControlPage({ ...createCdpBrowserControl({ cdp: send }), pixelRatio: async () => 2 }, 'linux');
+        send.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 800, clientHeight: 500, pageX: 0, pageY: 0 } })
+            .mockResolvedValueOnce({ data: '/9j/fixture==' });
+        await page.screenshot();
+        expect(send.mock.calls.map(([method]) => method)).toEqual(['Page.getLayoutMetrics', 'Page.captureScreenshot']);
+        expect(send.mock.calls[1][1]?.clip).toMatchObject({ width: 800, scale: 1280 / 1600 });
+    });
+
     it.each(['jpeg', 'png'] as const)('crops %s screenshot refs in document coordinates after scrolling and reports missing images', async format => {
         const { send, page } = fixture();
         const metrics = { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 5, pageY: 200 } };

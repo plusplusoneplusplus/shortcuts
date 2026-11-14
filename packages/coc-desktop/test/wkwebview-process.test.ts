@@ -43,6 +43,14 @@ describe.skipIf(!available)('WKWebView helper transport (real helper)', () => {
             event: 'state', viewId: 'tab', state: expect.objectContaining({ engine: 'wkwebview', url, loading: false }),
         })), { timeout: 20_000 });
         await expect(transport.request('evaluate', { viewId: 'tab', expression: 'document.title' })).resolves.toEqual({ value: 'Fixture' });
+        // A page exception is an evaluation failure the control maps, not a crashed helper.
+        await expect(transport.request('evaluate', { viewId: 'tab', expression: 'null.x' })).rejects.toMatchObject({ reason: 'evaluation-failed' });
+        // Results JSON cannot hold come back null; WebKit before macOS 26 fails an undefined async result.
+        await expect(transport.request('evaluate', { viewId: 'tab', expression: '(function () {})' })).resolves.toEqual({ value: null });
+        const ratio = await transport.request('pixel-ratio', { viewId: 'tab' }) as { value: number };
+        await transport.request('page-zoom', { viewId: 'tab', pageZoomPercent: 150 });
+        await expect(transport.request('pixel-ratio', { viewId: 'tab' })).resolves.toEqual({ value: ratio.value * 1.5 });
+        await transport.request('page-zoom', { viewId: 'tab', pageZoomPercent: 100 });
         await expect(transport.request('navigate', { viewId: 'missing', url })).rejects.toMatchObject({ reason: 'not-found' });
         await transport.request('close', { viewId: 'tab' });
         await transport.dispose();

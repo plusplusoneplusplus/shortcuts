@@ -43,7 +43,7 @@ describe.skipIf(skip)('annotation crops from a real WKWebView view', () => {
             const { results, lateError } = JSON.parse(output) as { results: Array<Record<string, any>>; lateError: string | null };
             expect(results).toHaveLength(4 * 6);
             // Fractional device pixel ratios (page zoom 75% and 125%) are covered.
-            expect(results.some(result => !Number.isInteger(result.viewport.devicePixelRatio))).toBe(true);
+            expect(results.some(result => !Number.isInteger(result.ratio))).toBe(true);
             for (const result of results) {
                 const label = `${result.case} at zoom ${result.zoom}`;
                 expect(result, label).toMatchObject({

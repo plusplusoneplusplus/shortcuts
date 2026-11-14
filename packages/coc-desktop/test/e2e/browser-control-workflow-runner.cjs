@@ -237,8 +237,11 @@ app.whenReady().then(async () => {
         await call({ action: 'eval', js: `document.body.insertAdjacentHTML('beforeend',${JSON.stringify(
             `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/route-frame" name="route-child" style="width:500px;height:200px;border:5px solid teal"></iframe>`)})` });
         const frameSnapshot = await until(async () => {
-            const value = await call({ action: 'snapshot' });
-            return value.includes('Route frame input') && value;
+            // A frame committing during the snapshot asks for a re-snapshot, as the agent would retry.
+            const result = await context.tools.find(tool => tool.name === 'browser').handler({ action: 'snapshot' });
+            if (result.resultType !== 'success' && result.textResultForLlm.includes('re-snapshot')) return false;
+            assert(result.resultType === 'success', `snapshot: ${result.textResultForLlm}`);
+            return result.textResultForLlm.includes('Route frame input') && result.textResultForLlm;
         }, 'frame-enabled cross-site relay snapshot');
         const frameInput = frameSnapshot.match(/^\s*(e\d+) textbox "Route frame input"/m)?.[1];
         const frameSave = frameSnapshot.match(/^\s*(e\d+) button "Route frame save"/m)?.[1];
@@ -310,10 +313,11 @@ app.whenReady().then(async () => {
     await until(() => owner.js(`document.getElementById('panel').getBoundingClientRect().width === 1600`), 'expanded browser panel');
     const zoomed = await owner.js('window.cocDesktop.browser.setPageZoom(200)');
     assert(zoomed.ok, 'Actual page-zoom IPC failed');
+    // 200% zoom halves the 1600 DIP panel to 800 CSS pixels; at least 2 device pixels each exceed the
+    // 1280 px budget. Measure the width: WebKit before macOS 26 leaves page zoom out of devicePixelRatio.
     const highDpiViewport = await until(async () => {
-        const viewport = JSON.parse(await call({ action: 'eval',
-            js: '({width:innerWidth, pixelRatio:devicePixelRatio, physicalWidth:innerWidth * devicePixelRatio})' }));
-        return viewport.pixelRatio >= 2 && viewport.physicalWidth > 1280 ? viewport : false;
+        const viewport = JSON.parse(await call({ action: 'eval', js: '({width:innerWidth})' }));
+        return viewport.width <= 800 ? viewport : false;
     }, 'high-DPI viewport exceeding the unscaled screenshot budget');
     const browserTool = context.tools.find(tool => tool.name === 'browser');
     // Screenshots always save to a workspace-scoped file; pixels attach only on request.

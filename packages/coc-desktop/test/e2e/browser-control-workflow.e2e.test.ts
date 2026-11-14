@@ -111,8 +111,8 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
                 report: { bridge: 'undefined', require: 'undefined' },
             });
             expect(result.actions.slice(0, 5)).toEqual(['open', 'snapshot', 'type', 'click', 'read']);
-            expect(result.highDpiViewport.pixelRatio).toBeGreaterThanOrEqual(2);
-            expect(result.highDpiViewport.physicalWidth).toBeGreaterThan(1280);
+            // 200% zoom of the 1600 DIP panel: at least 1600 device pixels, past the 1280 px budget.
+            expect(result.highDpiViewport.width).toBeLessThanOrEqual(800);
             expect(result.screenshot.width).toBeGreaterThan(0);
             expect(result.screenshot.width).toBeLessThanOrEqual(1280);
             expect(result.report.events).toContainEqual({ type: 'input', trusted: true });

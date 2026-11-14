@@ -451,10 +451,12 @@ describe('WKWebView annotation capture', () => {
 
     it('captures the exact native root through the shared crop', async () => {
         const h = await placedTab();
-        mocks.request.mockResolvedValueOnce('native preview');
+        mocks.request.mockResolvedValueOnce({ value: 3 }).mockResolvedValueOnce('native preview');
         expect(await h.view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.request).toHaveBeenCalledWith('pixel-ratio', { viewId: '7:tab:1' });
         expect(mocks.request).toHaveBeenCalledWith('capture-annotation', { viewId: '7:tab:1' });
-        expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, viewport);
+        // The helper's device scale wins: before macOS 26 the page's devicePixelRatio leaves page zoom out.
+        expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, { ...viewport, devicePixelRatio: 3 });
     });
 
     it.each(['loading', 'hidden', 'minimized', 'closed', 'crashed'])('refuses %s views before capture dispatch', async reason => {
@@ -473,8 +475,9 @@ describe('WKWebView annotation capture', () => {
         'rejects late %s captures', async reason => {
             const h = await placedTab();
             let release!: (result: unknown) => void;
-            mocks.request.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+            mocks.request.mockResolvedValueOnce({ value: 2 }).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
             const capture = h.view.captureAnnotation!(rect, viewport);
+            await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledWith('capture-annotation', { viewId: '7:tab:1' }));
             const rejected = expect(capture).rejects.toThrow();
             if (reason === 'navigation') {
                 mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });

@@ -604,11 +604,13 @@ impl Evaluation<'_> {
     }
 
     /// Runs the expression through `eval`, as CDP does, so its awaited result comes back
-    /// as JSON text (null for `undefined`), independent of WebKit's object bridging.
+    /// as JSON text (null when JSON has no text for it, as for `undefined` and functions),
+    /// independent of WebKit's object bridging. WebKit before macOS 26 fails an `undefined`
+    /// result as an unsupported type, so the body never returns one.
     pub fn eval_body(&self) -> String {
         format!(
             "{}try {{ (0, eval)('0'); }} catch (error) {{ if (error instanceof EvalError) return {}; throw error; }}\n\
-             let value = await (0, eval)({});\n{}return value === undefined ? null : JSON.stringify(value);",
+             let value = await (0, eval)({});\n{}return JSON.stringify(value) ?? null;",
             self.guard(),
             serde_json::to_string(EVAL_BLOCKED).unwrap_or_default(),
             serde_json::to_string(self.expression).unwrap_or_default(),
@@ -637,7 +639,7 @@ impl Evaluation<'_> {
     /// Applies `then` to a script's completion value, passed in as `input`.
     pub fn then_body(&self) -> Option<String> {
         self.then.map(|then| {
-            format!("const value = await ({then})(input);\nreturn value === undefined ? null : JSON.stringify(value);")
+            format!("const value = await ({then})(input);\nreturn JSON.stringify(value) ?? null;")
         })
     }
 }
@@ -650,6 +652,17 @@ pub const EVAL_BLOCKED: &str = "\u{0}coc:eval-blocked";
 /// completion value WebKit returns (promises are not awaited there).
 pub fn compile_failed(message: &str) -> bool {
     message.contains("SyntaxError")
+}
+
+/// Evaluation failure text when WebKit lost an async result because the document went
+/// away (WebKit before macOS 26 reports that as an unsupported result type). It carries
+/// the desktop's stale-context marker, so the desktop treats it as a destroyed context.
+pub const RESULT_LOST: &str = "coc-stale-context: the document changed before the result arrived.";
+
+/// `WKErrorJavaScriptResultTypeIsUnsupported` or `WKErrorJavaScriptAsyncFunctionResultUnreachable`
+/// from an async evaluation, whose body only returns JSON text or null.
+pub fn async_result_lost(domain: &str, code: i64) -> bool {
+    domain == "WKErrorDomain" && (code == 5 || code == 7)
 }
 
 /// Error text for a failed main-frame load, or None when the load was cancelled
@@ -986,7 +999,7 @@ mod tests {
         ));
         assert!(body
             .contains("let value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");\nreturn"));
-        assert!(body.ends_with("return value === undefined ? null : JSON.stringify(value);"));
+        assert!(body.ends_with("return JSON.stringify(value) ?? null;"));
         assert!(serde_json::from_str::<serde_json::Value>(EVAL_BLOCKED).is_err());
         assert_eq!(plain.script(), plain.expression);
         assert!(plain.then_body().is_none());
@@ -1003,7 +1016,12 @@ mod tests {
         assert!(body.contains("return JSON.stringify({ thrown: String(error) });"));
         assert_eq!(full.script(), "check();\n1 // trailing comment");
         assert!(full.then_body().unwrap().starts_with("const value = await (v => v)(input);"));
+        assert!(full.then_body().unwrap().ends_with("return JSON.stringify(value) ?? null;"));
         assert!(compile_failed("SyntaxError: Unexpected token ';'"));
+        assert!(async_result_lost("WKErrorDomain", 5) && async_result_lost("WKErrorDomain", 7));
+        assert!(
+            !async_result_lost("WKErrorDomain", 4) && !async_result_lost("NSURLErrorDomain", 5)
+        );
         assert!(!compile_failed("TypeError: undefined is not an object"));
     }
 
