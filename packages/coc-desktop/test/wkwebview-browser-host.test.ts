@@ -543,6 +543,32 @@ describe('WKWebView native popups', () => {
         await h.host.dispose();
     });
 
+    it('shows control activity only on popups and forwards their native Stop with the public popup id', async () => {
+        const popups = new Map<string, BrowserHostedView>();
+        const sink = makeSink({ controlPopoutOpened: vi.fn((id, popup) => popups.set(id, popup)), controlStopRequested: vi.fn() });
+        const { host, view } = await open(sink);
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'about:blank' });
+        const [id, popup] = [...popups][0];
+        await popup.setControlActivity!('turn');
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(sink.controlStopRequested).toHaveBeenCalledExactlyOnceWith(id, 'turn');
+        await popup.setControlActivity!(null);
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: null });
+        mocks.request.mockClear();
+        await view.setControlActivity!('turn');
+        expect(mocks.request).not.toHaveBeenCalled();
+        // A tab's Stop event, a malformed turn and a closed popup's late Stop are ignored.
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1', turnId: 'turn' });
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 7 });
+        await popup.close();
+        await popup.setControlActivity!('turn');
+        expect(mocks.request).not.toHaveBeenCalledWith('control-activity', expect.anything());
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(sink.controlStopRequested).toHaveBeenCalledOnce();
+        await host.dispose();
+    });
+
     it('ignores duplicate, foreign and invalid popup events', async () => {
         const h = await opened();
         for (const message of [

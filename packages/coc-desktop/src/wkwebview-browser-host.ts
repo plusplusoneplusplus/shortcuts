@@ -210,6 +210,10 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                     await delay(25, undefined, { signal });
                 }
             },
+            // Popups show a native "AI controlling" bar with Stop; tabs use main's own chrome.
+            setControlActivity: turnId => entry.root && this.views.get(id) === entry
+                ? this.process.request('control-activity', { viewId: entry.nativeId, turnId })
+                : undefined,
             setNavigationGate: async enabled => {
                 if (this.views.get(id) !== entry || entry.navigationGate === enabled) { return; }
                 entry.navigationGate = enabled;
@@ -464,6 +468,8 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
         }
         if (message.event === 'popup-closed') {
             if (entry.root) { this.remove(message.viewId, entry); }
+        } else if (message.event === 'control-stop') {
+            if (entry.root && typeof message.turnId === 'string') { entry.root.sink.controlStopRequested?.(entry.request.viewId, message.turnId); }
         } else if (message.event === 'control-focused') {
             entry.sink.controlFocused?.();
         } else if (message.event === 'frame-navigated' || message.event === 'frame-detached') {

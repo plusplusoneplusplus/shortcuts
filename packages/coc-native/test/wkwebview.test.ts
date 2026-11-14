@@ -397,6 +397,19 @@ describe('desktop native WKWebView packaging contract', () => {
             // Background work opened the popup, so it appears without taking the keyboard.
             expect(popupState.key).toBe(false);
 
+            // A control turn shows the native "AI controlling" bar above the page; tabs have none.
+            expect(popupState.controlBar).toBe(false);
+            const fullHeight = popupState.pageHeight as number;
+            expect(await send({ op: 'control-activity', viewId: 'v1', turnId: 'turn-1' })).toMatchObject({ ok: false });
+            expect(await send({ op: 'control-activity', viewId: popupId, turnId: '' })).toMatchObject({ ok: false });
+            expect(await send({ op: 'control-activity', viewId: popupId, turnId: 'turn-1' })).toMatchObject({ ok: true });
+            expect((await send({ op: 'view-state', viewId: popupId })).result).toMatchObject({ controlBar: true, pageHeight: fullHeight - 40 });
+            const innerHeight = async () => (await send({ op: 'evaluate', viewId: popupId, expression: 'innerHeight' })).result.value;
+            for (let i = 0; i < 50 && await innerHeight() !== fullHeight - 40; i++) await new Promise(resolve => setTimeout(resolve, 50));
+            expect(await innerHeight()).toBe(fullHeight - 40);
+            expect(await send({ op: 'control-activity', viewId: popupId, turnId: null })).toMatchObject({ ok: true });
+            expect((await send({ op: 'view-state', viewId: popupId })).result).toMatchObject({ controlBar: false, pageHeight: fullHeight });
+
             // The page closing its own window closes the popup.
             await send({ op: 'evaluate', viewId: popupId, expression: 'window.close()' });
             expect(await waitFor(event => event.event === 'popup-closed')).toEqual({ event: 'popup-closed', viewId: popupId, rootId: 'v1' });

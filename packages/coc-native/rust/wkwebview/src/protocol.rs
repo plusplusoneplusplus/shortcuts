@@ -108,6 +108,8 @@ pub struct Command {
     pub download_id: Option<String>,
     /// `download-decide` approve: absolute path from main's native Save dialog.
     pub destination: Option<String>,
+    /// `control-activity`: the control turn driving a popup, or null when it ends.
+    pub turn_id: Option<String>,
 }
 
 /// Same shape as WebView2's import (`BrowserImportCookie` in coc-desktop).
@@ -367,6 +369,21 @@ pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
     }
     value.len() <= 8192
         && url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
+}
+
+/// Same rule as WebView2: a turn id main can show and send back in `control-stop`.
+pub fn allowed_control_turn(turn: Option<&str>) -> bool {
+    turn.is_none_or(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
+}
+
+/// Height in points of the popup's "AI controlling" bar above its page; never taller
+/// than the window content.
+pub fn control_bar_height(content_height: f64, active: bool) -> f64 {
+    if active {
+        40.0_f64.min(content_height.max(0.0))
+    } else {
+        0.0
+    }
 }
 
 /// While a control turn drives the view, a new document on another host must wait for site
@@ -665,6 +682,29 @@ pub fn availability(macos_major: Option<u64>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn control_activity_turns_and_bar_height() {
+        let command =
+            read(b"{\"id\":1,\"op\":\"control-activity\",\"viewId\":\"7:tab:1:popup:1\",\"turnId\":\"turn\"}\n")
+                .unwrap()
+                .unwrap();
+        assert_eq!(command.turn_id.as_deref(), Some("turn"));
+        let command =
+            read(b"{\"id\":2,\"op\":\"control-activity\",\"viewId\":\"7:tab:1:popup:1\",\"turnId\":null}\n")
+                .unwrap()
+                .unwrap();
+        assert!(command.turn_id.is_none());
+        assert!(allowed_control_turn(None));
+        assert!(allowed_control_turn(Some("turn-1")));
+        assert!(!allowed_control_turn(Some("")));
+        assert!(!allowed_control_turn(Some("a\nb")));
+        assert!(!allowed_control_turn(Some(&"x".repeat(513))));
+        assert_eq!(control_bar_height(600.0, true), 40.0);
+        assert_eq!(control_bar_height(600.0, false), 0.0);
+        assert_eq!(control_bar_height(25.0, true), 25.0);
+        assert_eq!(control_bar_height(-1.0, true), 0.0);
+    }
 
     #[test]
     fn import_cookies_parse_and_validate() {

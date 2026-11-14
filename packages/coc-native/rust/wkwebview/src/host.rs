@@ -7,17 +7,17 @@ use block2::RcBlock;
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
+use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy,
     NSApplicationDidChangeScreenParametersNotification, NSAutoresizingMaskOptions,
-    NSBackingStoreType, NSBitmapImageFileType, NSBitmapImageRep, NSDeviceRGBColorSpace, NSEvent,
-    NSEventModifierFlags, NSEventType, NSFloatingWindowLevel, NSGraphicsContext, NSImage,
-    NSImageCompressionFactor, NSNormalWindowLevel, NSPanel, NSResponder, NSScreen, NSWindow,
-    NSWindowCollectionBehavior, NSWindowDelegate, NSWindowDidBecomeKeyNotification,
-    NSWindowDidResignKeyNotification, NSWindowNumberListOptions, NSWindowOrderingMode,
-    NSWindowStyleMask, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
-    NSWorkspaceDidActivateApplicationNotification,
+    NSBackingStoreType, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSDeviceRGBColorSpace,
+    NSEvent, NSEventModifierFlags, NSEventType, NSFloatingWindowLevel, NSGraphicsContext, NSImage,
+    NSImageCompressionFactor, NSNormalWindowLevel, NSPanel, NSResponder, NSScreen, NSTextField,
+    NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate,
+    NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification, NSWindowNumberListOptions,
+    NSWindowOrderingMode, NSWindowStyleMask, NSWorkspace,
+    NSWorkspaceActiveSpaceDidChangeNotification, NSWorkspaceDidActivateApplicationNotification,
 };
 use objc2_core_foundation::CGPoint;
 use objc2_core_graphics::{CGEvent, CGScrollEventUnit};
@@ -348,6 +348,12 @@ define_class!(
             let key = key_path.map(|key| key.to_string()).unwrap_or_default();
             self.with_view(|view| view.observed(&key));
         }
+
+        /// The popup's native Stop button.
+        #[unsafe(method(controlStop:))]
+        fn control_stop(&self, _sender: Option<&AnyObject>) {
+            self.with_view(|view| view.control_stop());
+        }
     }
 );
 
@@ -529,6 +535,9 @@ struct View {
     held_gates: RefCell<Vec<HeldGate>>,
     /// Frames reported by the tracking script, with their `WKFrameInfo` for evaluation.
     frames: RefCell<FrameTracker<Retained<WKFrameInfo>>>,
+    /// The control turn driving this popup; its "AI controlling" bar shows while set.
+    control_turn: RefCell<Option<String>>,
+    control_bar: RefCell<Option<Retained<NSView>>>,
 }
 
 struct HeldGate {
@@ -665,7 +674,83 @@ impl View {
             "frame": { "x": frame.x, "y": frame.y, "width": frame.width, "height": frame.height },
             "windowNumber": self.panel.windowNumber(),
             "parentOnActiveSpace": self.placement.get().parent_on_active_space,
+            "controlBar": self.control_bar.borrow().as_ref().is_some_and(|bar| !bar.isHidden()),
+            "pageHeight": self.webview.frame().size.height,
         })
+    }
+
+    /// Shows or hides the popup's native "AI controlling" bar and Stop button above the
+    /// page, like WebView2's popup chrome. Tabs show control activity in main's own UI.
+    fn control_activity(
+        &self,
+        turn: Option<String>,
+        mtm: MainThreadMarker,
+    ) -> Result<(), &'static str> {
+        if !self.popup {
+            return Err("Control activity is shown only in popup windows.");
+        }
+        if !protocol::allowed_control_turn(turn.as_deref()) {
+            return Err("Invalid control turn.");
+        }
+        let content = self.panel.contentView().ok_or("Popup window has no content.")?;
+        if turn.is_some() && self.control_bar.borrow().is_none() {
+            let bar = NSView::initWithFrame(NSView::alloc(mtm), NSRect::ZERO);
+            bar.setAutoresizingMask(
+                NSAutoresizingMaskOptions::ViewWidthSizable
+                    | NSAutoresizingMaskOptions::ViewMinYMargin,
+            );
+            let label = NSTextField::labelWithString(&NSString::from_str("AI controlling"), mtm);
+            label.setFrame(NSRect::new(NSPoint::new(12.0, 11.0), NSSize::new(180.0, 18.0)));
+            let button = unsafe {
+                NSButton::buttonWithTitle_target_action(
+                    &NSString::from_str("Stop"),
+                    Some(&self.delegate),
+                    Some(sel!(controlStop:)),
+                    mtm,
+                )
+            };
+            button.setFrame(NSRect::new(NSPoint::new(0.0, 6.0), NSSize::new(72.0, 28.0)));
+            button.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
+            bar.addSubview(&label);
+            bar.addSubview(&button);
+            content.addSubview(&bar);
+            *self.control_bar.borrow_mut() = Some(bar);
+        }
+        *self.control_turn.borrow_mut() = turn;
+        self.layout_control_bar(&content);
+        Ok(())
+    }
+
+    fn layout_control_bar(&self, content: &NSView) {
+        let size = content.bounds().size;
+        let active = self.control_turn.borrow().is_some();
+        let height = protocol::control_bar_height(size.height, active);
+        if let Some(bar) = self.control_bar.borrow().as_ref() {
+            bar.setFrame(NSRect::new(
+                NSPoint::new(0.0, size.height - height),
+                NSSize::new(size.width, height),
+            ));
+            if let Some(button) = bar.subviews().lastObject() {
+                let x = (size.width - 84.0).max(0.0);
+                button.setFrameOrigin(NSPoint::new(x, 6.0));
+            }
+            bar.setHidden(!active);
+            // A hidden Stop button gives the keyboard back to the page.
+            let focused = self.panel.firstResponder().is_some_and(|responder| {
+                responder.downcast_ref::<NSView>().is_some_and(|view| view.isDescendantOf(bar))
+            });
+            if !active && focused {
+                self.panel.makeFirstResponder(Some(&self.webview));
+            }
+        }
+        self.webview
+            .setFrame(NSRect::new(NSPoint::ZERO, NSSize::new(size.width, size.height - height)));
+    }
+
+    fn control_stop(&self) {
+        if let Some(turn) = self.control_turn.borrow().as_ref() {
+            protocol::emit(json!({ "event": "control-stop", "viewId": self.id, "turnId": turn }));
+        }
     }
 
     fn close(&self) {
@@ -1430,6 +1515,8 @@ fn register_view(
         gate_approvals: RefCell::new(protocol::NavigationApprovals::default()),
         held_gates: RefCell::new(Vec::new()),
         frames: RefCell::new(FrameTracker::default()),
+        control_turn: RefCell::new(None),
+        control_bar: RefCell::new(None),
     });
     let _ = view.panel.ivars().view_id.set(id.to_string());
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
@@ -1503,6 +1590,11 @@ fn open_popup(
     };
     let url = if protocol::allowed_url(url, false) { url } else { "about:blank" };
     let view = register_view(&id, &root.id, panel, webview, url, mtm);
+    // The page sits in a container so the control bar can take the top of the window.
+    let container = NSView::initWithFrame(NSView::alloc(mtm), view.webview.frame());
+    view.panel.setContentView(Some(&container));
+    container.addSubview(&view.webview);
+    view.webview.setFrame(container.bounds());
     // WebKit loads the popup's first document right away; it is gated like its root.
     view.navigation_gate.set(root.navigation_gate.get());
     view.panel.setDelegate(Some(ProtocolObject::from_ref(&*view.delegate)));
@@ -1544,6 +1636,10 @@ fn view_command(
         "background" => {
             let enabled = command.enabled.ok_or("Background state is required.")?;
             view.placement.set(Placement { background: enabled, ..view.placement.get() });
+        }
+        "control-activity" => {
+            view.control_activity(command.turn_id.clone(), mtm)?;
+            return Ok(None);
         }
         "focus" => {
             view.apply(mtm);
