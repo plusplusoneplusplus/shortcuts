@@ -9,6 +9,7 @@ import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
 import { BROWSER_ANNOTATION_COMMAND_CHANNEL, BROWSER_ANNOTATION_EVENT_CHANNEL } from '../src/browser-annotation-bridge';
 import { BROWSER_DEMO_COMMAND_CHANNEL } from '../src/browser-demo-recorder';
 import { withCdpControl } from '../src/browser-cdp-control';
+import { writeBrowserEngine } from '../src/browser-preferences';
 import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_REMOVE_CURSORS_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
@@ -83,6 +84,8 @@ beforeEach(async () => {
     mocks.clearData.mockResolvedValue(); mocks.dialog.mockResolvedValue({ response: 0 });
     mocks.confirm.mockReturnValue(0);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-history-ipc-'));
+    // These suites drive the mocked Electron/WebView2 hosts; macOS 14+ would otherwise default to the real WKWebView.
+    writeBrowserEngine(dir, 'electron');
     host = await import('../src/browser-view-host');
     host.registerBrowserViewIpc(dir);
 });
