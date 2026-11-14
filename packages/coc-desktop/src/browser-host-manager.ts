@@ -83,6 +83,10 @@ interface TakeoverTurn {
 
 export const BROWSER_DEMO_RECORDING_ERROR = 'recording-active: the user is recording a browser demo for this chat';
 export const BROWSER_ANNOTATION_ACTIVE_ERROR = 'annotation-active: the user is annotating this browser tab';
+/** The document went away under an evaluation (engine context loss or a frame-registry change). */
+const DOCUMENT_GONE = /cannot find context with specified id|execution context was destroyed|stale browser frame context/i;
+/** Post-action snapshots read again after a late navigation at most this many times in total. */
+const SETTLE_SNAPSHOT_ATTEMPTS = 3;
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
@@ -717,14 +721,22 @@ export class BrowserHostManager {
                 case 'navigate': await view.nav(command.direction as 'back' | 'forward' | 'reload'); break;
                 case 'wait': await page.wait(command.text ?? command.ms!, activeSignal, command.frame); break;
             }
-            activeSignal.throwIfAborted();
-            await view.waitForControlReady?.(activeSignal);
-            while (view.snapshot().loading) {
-                await delay(25, undefined, { signal: activeSignal });
+            // A navigation can still start after readiness (WebKit runs a form.submit() scheduled during load
+            // late); when it takes the document mid-snapshot, the page is settling, so wait and read again.
+            for (let attempt = 1; ; attempt++) {
                 activeSignal.throwIfAborted();
+                await view.waitForControlReady?.(activeSignal);
+                while (view.snapshot().loading) {
+                    await delay(25, undefined, { signal: activeSignal });
+                    activeSignal.throwIfAborted();
+                }
+                try {
+                    const snapshot = await page.snapshot();
+                    return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
+                } catch (error) {
+                    if (attempt >= SETTLE_SNAPSHOT_ATTEMPTS || !(error instanceof Error) || !DOCUMENT_GONE.test(error.message)) throw error;
+                }
             }
-            const snapshot = await page.snapshot();
-            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
         }, signal);
     }
 
