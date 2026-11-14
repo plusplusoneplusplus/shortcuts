@@ -43,8 +43,8 @@ function fakeHelper() {
             return { value: frame.owned.has(owner) ? { owned: true, value: value(expression, world, frameId) } : { owned: false } };
         }
         if (expression.includes('visualViewport')) return { value: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 300 } };
-        if (expression.includes('coc-stale-context')) {
-            const expected = JSON.parse(/!== ("[^"]*")\) throw/.exec(expression)![1]);
+        if (typeof payload.guard === 'string') {
+            const expected = JSON.parse(/!== ("[^"]*")\) throw/.exec(payload.guard)![1]);
             if (token(frame, world) !== expected) throw new BrowserHostError('evaluation-failed' as never, 'Error: coc-stale-context');
         }
         return { value: value(expression, world, frameId) };
@@ -119,6 +119,22 @@ describe('WkWebViewBrowserControl', () => {
         await expect(control.evaluate('x')).rejects.toMatchObject({ reason: 'not-found' });
         await expect(control.evaluate('x', { target: 'child' })).rejects.toThrow('No target');
         await expect(control.evaluate('x', { context: 99 })).rejects.toThrow('Cannot find context');
+    });
+
+    it('hands user source, its post-processing and the context check to the helper apart, so page CSP never sees eval', async () => {
+        const helper = fakeHelper();
+        const control = new WkWebViewBrowserControl(helper.request);
+        await control.evaluate('value => value', { source: 'document.title', awaitPromise: true });
+        expect(helper.calls.at(-1)).toEqual(['evaluate', { expression: 'document.title', world: 'page', then: 'value => value' }]);
+        await control.enableContextEvents();
+        await control.evaluate('value => value', { source: 'a = 1; a', context: 1 });
+        const [, payload] = helper.calls.at(-1)!;
+        expect(payload).toMatchObject({ expression: 'a = 1; a', world: 'page', then: 'value => value' });
+        expect(payload.guard).toContain('coc-stale-context');
+        for (const [, sent] of helper.calls) expect(JSON.stringify(sent)).not.toContain('eval');
+        await control.evaluate('document.title', { context: 1 });
+        expect(helper.calls.at(-1)?.[1]).toMatchObject({ expression: 'document.title', guard: expect.stringContaining('coc-stale-context') });
+        expect(helper.calls.at(-1)?.[1]).not.toHaveProperty('then');
     });
 
     it('reports the main frame tree and the default context, and retires contexts on navigation', async () => {

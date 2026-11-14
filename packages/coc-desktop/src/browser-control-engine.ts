@@ -51,6 +51,12 @@ export interface BrowserControlEvaluateOptions {
     context?: number;
     target?: string;
     awaitPromise?: boolean;
+    /**
+     * User script run with CDP evaluate semantics: its completion value (awaited) is passed to
+     * `expression`, a function expression whose result becomes the evaluation result. The page's
+     * CSP never blocks it, as with `Runtime.evaluate`.
+     */
+    source?: string;
 }
 
 export interface BrowserControlMouseInput {

@@ -53,6 +53,14 @@ describe('CDP browser control adapter', () => {
         expect(t.cdp.mock.calls[1]).toEqual(['Runtime.evaluate', { expression: 'x', returnByValue: true }]);
     });
 
+    it('runs user source through page eval exactly as the shared page used to build it', async () => {
+        const t = transport(() => ({ result: { value: 1 } }));
+        const control = createCdpBrowserControl(t);
+        await control.evaluate('value => value', { source: 'a = "x"; a', context: 3, awaitPromise: true });
+        expect(t.cdp.mock.calls[0]).toEqual(['Runtime.evaluate', { expression: 'Promise.resolve((0, eval)("a = \\"x\\"; a")).then(value => value)',
+            contextId: 3, returnByValue: true, awaitPromise: true }]);
+    });
+
     it('calls on a frame owner and always releases the resolved object', async () => {
         const t = transport(method => method === 'DOM.getFrameOwner' ? { backendNodeId: 9 }
             : method === 'DOM.resolveNode' ? { object: { objectId: 'obj' } }

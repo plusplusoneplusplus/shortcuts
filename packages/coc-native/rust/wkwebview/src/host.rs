@@ -24,7 +24,7 @@ use objc2_core_graphics::{CGEvent, CGScrollEventUnit};
 use objc2_foundation::{
     NSDataBase64EncodingOptions, NSDictionary, NSError, NSHTTPURLResponse, NSJSONSerialization,
     NSJSONWritingOptions, NSKeyValueChangeKey, NSKeyValueObservingOptions, NSNotification,
-    NSNotificationCenter, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
+    NSNotificationCenter, NSNull, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
     NSObjectProtocol, NSOperationQueue, NSPoint, NSProcessInfo, NSRect, NSSize, NSString,
     NSURLRequest, NSURL, NSUUID,
 };
@@ -1759,7 +1759,12 @@ fn view_command(
                     Some(view.frames.borrow().info(id).ok_or("No frame for given id found.")?)
                 }
             };
-            evaluate(view, command.id, expression, frame.as_deref(), &world);
+            let program = protocol::Evaluation {
+                expression,
+                guard: command.guard.as_deref(),
+                then: command.then.as_deref(),
+            };
+            evaluate(view, command.id, program, frame.as_deref(), &world);
             return Err(DEFERRED);
         }
         "frames" => return Ok(Some(json!({ "frames": view.frames.borrow().snapshot() }))),
@@ -1822,28 +1827,32 @@ fn content_world(
 fn evaluate(
     view: &View,
     id: u64,
-    expression: &str,
+    program: protocol::Evaluation,
     frame: Option<&WKFrameInfo>,
     world: &WKContentWorld,
 ) {
     let evaluation = Evaluation {
         webview: view.webview.clone(),
         id,
-        expression: Rc::from(expression),
+        expression: Rc::from(program.expression),
+        guard: program.guard.map(Rc::from),
+        then: program.then.map(Rc::from),
         frame: frame.map(|frame| frame.retain()),
         world: world.retain(),
     };
-    evaluation.run(EvaluationStage::Eval);
+    evaluation.run(EvaluationStage::Eval, None);
 }
 
 /// `eval` keeps CDP's statement semantics and awaits promises. A page whose CSP refuses
 /// it gets the expression compiled into the body instead, then a plain script for a
-/// statement list; WebKit runs both without consulting the page's CSP, like CDP does.
+/// statement list (its value then goes through `then` in a second call); WebKit runs
+/// all of them without consulting the page's CSP, like CDP does.
 #[derive(Clone, Copy)]
 enum EvaluationStage {
     Eval,
     Expression,
     Script,
+    Then,
 }
 
 #[derive(Clone)]
@@ -1851,43 +1860,60 @@ struct Evaluation {
     webview: Retained<WKWebView>,
     id: u64,
     expression: Rc<str>,
+    guard: Option<Rc<str>>,
+    then: Option<Rc<str>>,
     frame: Option<Retained<WKFrameInfo>>,
     world: Retained<WKContentWorld>,
 }
 
 impl Evaluation {
-    fn run(&self, stage: EvaluationStage) {
+    fn program(&self) -> protocol::Evaluation<'_> {
+        protocol::Evaluation {
+            expression: &self.expression,
+            guard: self.guard.as_deref(),
+            then: self.then.as_deref(),
+        }
+    }
+
+    /// `input` is the script's completion value for the `Then` stage.
+    fn run(&self, stage: EvaluationStage, input: Option<&AnyObject>) {
         let evaluation = self.clone();
         let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
             evaluation.complete(stage, unsafe { result.as_ref() }, unsafe { error.as_ref() });
         });
-        let frame = self.frame.as_deref();
-        unsafe {
-            match stage {
-                EvaluationStage::Script => {
+        let program = self.program();
+        let (body, arguments) = match stage {
+            EvaluationStage::Script => {
+                unsafe {
                     self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
-                        &NSString::from_str(&self.expression),
-                        frame,
+                        &NSString::from_str(&program.script()),
+                        self.frame.as_deref(),
                         &self.world,
                         Some(&completion),
                     )
-                }
-                EvaluationStage::Eval | EvaluationStage::Expression => {
-                    let body = match stage {
-                        EvaluationStage::Eval => protocol::evaluation_body(&self.expression),
-                        _ => protocol::expression_body(&self.expression),
-                    };
-                    self.webview
-                        .callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
-                            &NSString::from_str(&body),
-                            None,
-                            frame,
-                            &self.world,
-                            Some(&completion),
-                        )
-                }
+                };
+                return;
             }
-        }
+            EvaluationStage::Eval => (program.eval_body(), None),
+            EvaluationStage::Expression => (program.expression_body(), None),
+            EvaluationStage::Then => {
+                let input = input
+                    .map(|input| input.retain())
+                    .unwrap_or_else(|| Retained::into_super(Retained::into_super(NSNull::null())));
+                let arguments =
+                    NSDictionary::from_retained_objects(&[&*NSString::from_str("input")], &[input]);
+                (program.then_body().unwrap_or_default(), Some(arguments))
+            }
+        };
+        unsafe {
+            self.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str(&body),
+                arguments.as_deref(),
+                self.frame.as_deref(),
+                &self.world,
+                Some(&completion),
+            )
+        };
     }
 
     fn complete(
@@ -1905,11 +1931,14 @@ impl Evaluation {
                 .map(|value| value.to_string());
             let message = exception.unwrap_or_else(|| error.localizedDescription().to_string());
             if matches!(stage, EvaluationStage::Expression) && protocol::compile_failed(&message) {
-                return self.run(EvaluationStage::Script);
+                return self.run(EvaluationStage::Script, None);
             }
             return self.fail(&message);
         }
         if matches!(stage, EvaluationStage::Script) {
+            if self.then.is_some() {
+                return self.run(EvaluationStage::Then, result);
+            }
             return protocol::reply(self.id, Some(json!({ "value": script_value(result) })));
         }
         let text = result
@@ -1917,7 +1946,7 @@ impl Evaluation {
             .map(|text| text.to_string());
         if matches!(stage, EvaluationStage::Eval) && text.as_deref() == Some(protocol::EVAL_BLOCKED)
         {
-            return self.run(EvaluationStage::Expression);
+            return self.run(EvaluationStage::Expression, None);
         }
         let mut value = match text {
             Some(text) => serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),

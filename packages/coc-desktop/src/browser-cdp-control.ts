@@ -86,6 +86,7 @@ export function createCdpBrowserControl(transport: BrowserCdpTransport): Browser
         },
         async insertText(value) { await send('Input.insertText', { text: value }); },
         async evaluate(expression, options = {}) {
+            if (options.source !== undefined) expression = `Promise.resolve((0, eval)(${JSON.stringify(options.source)})).then(${expression})`;
             return evaluation(await send('Runtime.evaluate', defined({ expression, contextId: options.context, returnByValue: true,
                 awaitPromise: options.awaitPromise }), options.target));
         },

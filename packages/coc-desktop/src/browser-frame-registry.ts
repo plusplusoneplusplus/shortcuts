@@ -248,10 +248,11 @@ export class BrowserFrameRegistry {
         if (this.revision !== revision) throw new Error('stale browser frame context, re-snapshot');
     }
 
-    async evaluate<T>(expression: string, handle?: string, awaitPromise = false): Promise<T> {
+    /** `source`: see BrowserControlEvaluateOptions. */
+    async evaluate<T>(expression: string, handle?: string, awaitPromise = false, source?: string): Promise<T> {
         const frame = this.resolve(handle);
         const { document, context, session, rawId, id } = frame;
-        const reply = await this.control.evaluate(expression, { context: frame.context, target: frame.session, awaitPromise });
+        const reply = await this.control.evaluate(expression, { context: frame.context, target: frame.session, awaitPromise, ...(source === undefined ? {} : { source }) });
         if (this.failure) throw this.failure;
         const current = this.entries.get(rawId);
         if (!current || current.id !== id || current.document !== document || current.context !== context || current.session !== session) {

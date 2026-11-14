@@ -402,6 +402,18 @@ describe('desktop native WKWebView packaging contract', () => {
                 expect(await evaluate('(globalThis.tries = (globalThis.tries || 0) + 1, JSON.parse("{"))', world))
                     .toMatchObject({ ok: false, reason: 'evaluation-failed', message: expect.stringContaining('SyntaxError') });
                 expect((await evaluate('globalThis.tries', world)).result.value).toBe(1);
+                // Main's document guard runs first and its post-processing applies in every path.
+                const extra = (expression: string, fields: Record<string, string>) => send({ op: 'evaluate', viewId: 'v1', expression, ...(world ? { world } : {}), ...fields });
+                const then = 'value => ({ got: value })';
+                expect(await extra('Promise.resolve(4)', { then })).toMatchObject({ ok: true, result: { value: { got: 4 } } });
+                expect(await extra('globalThis.n = 2; globalThis.n * 3', { then })).toMatchObject({ ok: true, result: { value: { got: 6 } } });
+                expect(await extra('undefined', { then: 'value => [value]' })).toMatchObject({ ok: true, result: { value: [null] } });
+                for (const expression of ['globalThis.guarded = 1', 'globalThis.guarded = 1; 2']) {
+                    expect(await extra(expression, { guard: 'throw new Error("coc-stale-context");', then }))
+                        .toMatchObject({ ok: false, reason: 'evaluation-failed', message: expect.stringContaining('coc-stale-context') });
+                }
+                expect((await evaluate('typeof globalThis.guarded', world)).result.value).toBe('undefined');
+                expect(await extra('globalThis.n', { guard: 'if (false) throw 0;', then })).toMatchObject({ ok: true, result: { value: { got: 2 } } });
             }
         } finally {
             helperRun.child.kill();

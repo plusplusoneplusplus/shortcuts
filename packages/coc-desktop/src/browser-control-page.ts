@@ -303,21 +303,21 @@ export class BrowserControlPage {
 
     async evaluateForTool(js: string, frame?: string): Promise<{ valueJson: string; valueTruncated: boolean }> {
         // Serialize and cap in the page before CDP can copy a large object into native transport.
-        const expression = `Promise.resolve((0, eval)(${JSON.stringify(js)})).then(value => {
+        const expression = `value => {
             if (typeof value === 'bigint') value = value.toString() + 'n';
             else if (typeof value === 'number' && !Number.isFinite(value)) value = String(value);
             const json = JSON.stringify(value) ?? 'null';
             return { valueJson: json.slice(0, 4000), valueTruncated: json.length > 4000 };
-        })`;
+        }`;
         if (this.frames) {
-            const result = await this.frames.evaluate<{ valueJson: string; valueTruncated: boolean }>(expression, this.frameFor(undefined, frame), true);
+            const result = await this.frames.evaluate<{ valueJson: string; valueTruncated: boolean }>(expression, this.frameFor(undefined, frame), true, js);
             if (!result || typeof result.valueJson !== 'string' || typeof result.valueTruncated !== 'boolean' || result.valueJson.length > 4000) {
                 throw new Error('Browser frame returned no valid evaluation result');
             }
             return result;
         }
         this.frameFor(undefined, frame);
-        const reply = await this.control.evaluate(expression, { awaitPromise: true });
+        const reply = await this.control.evaluate(expression, { awaitPromise: true, source: js });
         if (reply.exception !== undefined) throw new Error(reply.exception || 'Browser page evaluation failed');
         const result = reply.value as { valueJson: string; valueTruncated: boolean } | undefined;
         if (!result || typeof result.valueJson !== 'string' || typeof result.valueTruncated !== 'boolean' || result.valueJson.length > 4000) {

@@ -86,6 +86,10 @@ pub struct Command {
     pub world: Option<String>,
     /// `evaluate`: frame id from `frame-navigated`; absent means the top-level frame.
     pub frame: Option<String>,
+    /// `evaluate`: statements run first in the same call (main's document check).
+    pub guard: Option<String>,
+    /// `evaluate`: function expression applied to the expression's awaited value.
+    pub then: Option<String>,
     /// `input`: one synthesized event for the web view.
     pub input: Option<Input>,
     /// `screenshot`: viewport rect in CSS pixels.
@@ -581,31 +585,66 @@ pub fn popup_window(has_size: bool, has_position: bool, toolbars: Option<bool>) 
     has_size || has_position || toolbars == Some(false)
 }
 
-/// Wraps an expression so its awaited result comes back as JSON text (null for
-/// `undefined`), which keeps the reply independent of WebKit's object bridging.
-pub fn evaluation_body(expression: &str) -> String {
-    format!(
-        "try {{ (0, eval)('0'); }} catch (error) {{ if (error instanceof EvalError) return {}; throw error; }}\n\
-         const value = await (0, eval)({});\nreturn value === undefined ? null : JSON.stringify(value);",
-        serde_json::to_string(EVAL_BLOCKED).unwrap_or_default(),
-        serde_json::to_string(expression).unwrap_or_default()
-    )
+/// One `evaluate` request: `guard` runs first in the same call (a document check),
+/// `then` is a function expression applied to the expression's awaited value.
+#[derive(Clone, Copy)]
+pub struct Evaluation<'a> {
+    pub expression: &'a str,
+    pub guard: Option<&'a str>,
+    pub then: Option<&'a str>,
 }
 
-/// What `evaluation_body` returns, before running anything, when the page's CSP or
-/// Trusted Types refuse `eval` (which also applies in isolated worlds). Never valid JSON.
+impl Evaluation<'_> {
+    fn guard(&self) -> String {
+        self.guard.map(|guard| format!("{guard}\n")).unwrap_or_default()
+    }
+
+    fn then(&self) -> String {
+        self.then.map(|then| format!("value = await ({then})(value);\n")).unwrap_or_default()
+    }
+
+    /// Runs the expression through `eval`, as CDP does, so its awaited result comes back
+    /// as JSON text (null for `undefined`), independent of WebKit's object bridging.
+    pub fn eval_body(&self) -> String {
+        format!(
+            "{}try {{ (0, eval)('0'); }} catch (error) {{ if (error instanceof EvalError) return {}; throw error; }}\n\
+             let value = await (0, eval)({});\n{}return value === undefined ? null : JSON.stringify(value);",
+            self.guard(),
+            serde_json::to_string(EVAL_BLOCKED).unwrap_or_default(),
+            serde_json::to_string(self.expression).unwrap_or_default(),
+            self.then(),
+        )
+    }
+
+    /// The CSP-proof form of `eval_body`: WebKit compiles the function body itself, so no
+    /// string is evaluated. A page exception comes back in-band as `{thrown}`, so an error
+    /// reply means the body did not compile (a statement list), and nothing ran.
+    pub fn expression_body(&self) -> String {
+        format!(
+            "let value;\ntry {{ {}value = await (\n{}\n);\n{}}} catch (error) {{ return JSON.stringify({{ thrown: String(error) }}); }}\n\
+             return JSON.stringify({{ value: value === undefined ? null : value }});",
+            self.guard(),
+            self.expression,
+            self.then(),
+        )
+    }
+
+    /// A statement list for `evaluateJavaScript`, which returns its completion value.
+    pub fn script(&self) -> String {
+        format!("{}{}", self.guard(), self.expression)
+    }
+
+    /// Applies `then` to a script's completion value, passed in as `input`.
+    pub fn then_body(&self) -> Option<String> {
+        self.then.map(|then| {
+            format!("const value = await ({then})(input);\nreturn value === undefined ? null : JSON.stringify(value);")
+        })
+    }
+}
+
+/// What `eval_body` returns, before running anything, when the page's CSP or Trusted
+/// Types refuse `eval` (page world only; isolated worlds allow it). Never valid JSON.
 pub const EVAL_BLOCKED: &str = "\u{0}coc:eval-blocked";
-
-/// The CSP-proof form of `evaluation_body` for one expression: WebKit compiles the
-/// function body itself, so no string is evaluated. A page exception comes back in-band
-/// as `{thrown}`, so an error reply means the body did not compile (a statement list),
-/// and nothing ran.
-pub fn expression_body(expression: &str) -> String {
-    format!(
-        "let value;\ntry {{ value = await (\n{expression}\n); }} catch (error) {{ return JSON.stringify({{ thrown: String(error) }}); }}\n\
-         return JSON.stringify({{ value: value === undefined ? null : value }});"
-    )
-}
 
 /// An `expression_body` that failed to compile is retried as a plain script, whose
 /// completion value WebKit returns (promises are not awaited there).
@@ -939,21 +978,31 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_body_quotes_the_expression() {
-        let body = evaluation_body("document.title + \"\\n\"");
+    fn evaluation_bodies_quote_guard_and_post_process() {
+        let plain = Evaluation { expression: "document.title + \"\\n\"", guard: None, then: None };
+        let body = plain.eval_body();
         assert!(body.starts_with(
             "try { (0, eval)('0'); } catch (error) { if (error instanceof EvalError) return \"\\u0000coc:eval-blocked\"; throw error; }\n"
         ));
-        assert!(body.contains("const value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");"));
+        assert!(body
+            .contains("let value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");\nreturn"));
         assert!(body.ends_with("return value === undefined ? null : JSON.stringify(value);"));
         assert!(serde_json::from_str::<serde_json::Value>(EVAL_BLOCKED).is_err());
-    }
+        assert_eq!(plain.script(), plain.expression);
+        assert!(plain.then_body().is_none());
 
-    #[test]
-    fn expression_body_compiles_the_expression_on_its_own_lines() {
-        let body = expression_body("1 // trailing comment");
-        assert!(body.contains("value = await (\n1 // trailing comment\n);"));
+        let full = Evaluation {
+            expression: "1 // trailing comment",
+            guard: Some("check();"),
+            then: Some("v => v"),
+        };
+        assert!(full.eval_body().starts_with("check();\ntry {"));
+        assert!(full.eval_body().contains("value = await (v => v)(value);\nreturn"));
+        let body = full.expression_body();
+        assert!(body.contains("try { check();\nvalue = await (\n1 // trailing comment\n);\nvalue = await (v => v)(value);\n}"));
         assert!(body.contains("return JSON.stringify({ thrown: String(error) });"));
+        assert_eq!(full.script(), "check();\n1 // trailing comment");
+        assert!(full.then_body().unwrap().starts_with("const value = await (v => v)(input);"));
         assert!(compile_failed("SyntaxError: Unexpected token ';'"));
         assert!(!compile_failed("TypeError: undefined is not an object"));
     }

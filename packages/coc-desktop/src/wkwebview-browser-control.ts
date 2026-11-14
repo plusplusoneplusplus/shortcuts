@@ -83,10 +83,11 @@ export class WkWebViewBrowserControl implements BrowserControl {
         for (const listener of [...this.listeners]) listener(event);
     }
 
-    private async evaluateIn(world: string, expression: string, frame = WKWEBVIEW_MAIN_FRAME): Promise<BrowserControlEvaluation> {
+    /** `then` post-processes the expression's value; `guard` runs first in the same call. Both are helper-side, so no page `eval` is involved. */
+    private async evaluateIn(world: string, expression: string, frame = WKWEBVIEW_MAIN_FRAME, extra: { then?: string; guard?: string } = {}): Promise<BrowserControlEvaluation> {
         if (this.closed) throw new BrowserHostError('not-found', 'Browser tab is closed.');
         try {
-            const result = await this.request('evaluate', { expression, world, ...(frame === WKWEBVIEW_MAIN_FRAME ? {} : { frame }) }) as { value?: unknown } | undefined;
+            const result = await this.request('evaluate', { expression, world, ...(frame === WKWEBVIEW_MAIN_FRAME ? {} : { frame }), ...defined(extra) }) as { value?: unknown } | undefined;
             return { value: result?.value ?? null };
         } catch (error) {
             // The frame's owner element is gone, and with it every context in the frame.
@@ -255,12 +256,14 @@ export class WkWebViewBrowserControl implements BrowserControl {
 
     async evaluate(expression: string, options: Parameters<BrowserControl['evaluate']>[1] = {}): Promise<BrowserControlEvaluation> {
         if (options.target !== undefined) throw new Error('No target with given id found');
-        if (options.context === undefined) return this.evaluateIn(PAGE, expression);
+        // The page world's CSP may refuse `eval`, so user source and the context check go to the helper apart.
+        const [script, then] = options.source === undefined ? [expression, undefined] : [options.source, expression];
+        if (options.context === undefined) return this.evaluateIn(PAGE, script, WKWEBVIEW_MAIN_FRAME, { then });
         const context = this.contexts.get(options.context);
         if (!context) throw new Error('Cannot find context with specified id');
         // Checked in the same call, so a navigation between check and run cannot redirect it.
-        return this.evaluateIn(context.world, `(() => { if (${TOKEN} !== ${JSON.stringify(context.token)}) throw new Error(${JSON.stringify(STALE)}); })();
-(0, eval)(${JSON.stringify(expression)})`, context.frame);
+        return this.evaluateIn(context.world, script, context.frame,
+            { then, guard: `if (${TOKEN} !== ${JSON.stringify(context.token)}) throw new Error(${JSON.stringify(STALE)});` });
     }
 
     private child(frameId: string): ChildFrame | undefined {
