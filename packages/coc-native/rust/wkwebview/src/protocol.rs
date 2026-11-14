@@ -84,6 +84,8 @@ pub struct Command {
     pub expression: Option<String>,
     /// `evaluate`: `page` for the page's own world or a named isolated world.
     pub world: Option<String>,
+    /// `evaluate`: frame id from `frame-navigated`; absent means the top-level frame.
+    pub frame: Option<String>,
     /// `input`: one synthesized event for the web view.
     pub input: Option<Input>,
     /// `screenshot`: viewport rect in CSS pixels.

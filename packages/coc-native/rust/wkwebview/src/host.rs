@@ -1,3 +1,4 @@
+use crate::frames::{self, FrameMessage, FrameTracker};
 use crate::history::HistoryNavigation;
 use crate::overlay::{self, Frame, PanelMode, Placement};
 use crate::protocol::{self, Command};
@@ -27,9 +28,11 @@ use objc2_foundation::{
     NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
 };
 use objc2_web_kit::{
-    WKContentWorld, WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy,
-    WKNavigationDelegate, WKNavigationResponse, WKNavigationResponsePolicy, WKNavigationType,
-    WKSnapshotConfiguration, WKUIDelegate, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKContentWorld, WKDownload, WKFrameInfo, WKNavigation, WKNavigationAction,
+    WKNavigationActionPolicy, WKNavigationDelegate, WKNavigationResponse,
+    WKNavigationResponsePolicy, WKNavigationType, WKScriptMessage, WKScriptMessageHandler,
+    WKSnapshotConfiguration, WKUIDelegate, WKUserContentController, WKUserScript,
+    WKUserScriptInjectionTime, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
     WKWindowFeatures,
 };
 use serde_json::json;
@@ -348,6 +351,79 @@ define_class!(
     }
 );
 
+define_class!(
+    /// Receives the frame tracking script's reports for every view. It is registered for
+    /// the frame world only, so page scripts cannot post to it; the view is resolved from
+    /// the message's web view (popups share their opener's content controller).
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "CocBrowserFrameMessages"]
+    struct FrameMessages;
+
+    unsafe impl NSObjectProtocol for FrameMessages {}
+
+    unsafe impl WKScriptMessageHandler for FrameMessages {
+        #[unsafe(method(userContentController:didReceiveScriptMessage:))]
+        fn did_receive(&self, _controller: &WKUserContentController, message: &WKScriptMessage) {
+            frame_message(message);
+        }
+    }
+);
+
+fn frame_message(message: &WKScriptMessage) {
+    let Some(webview) = (unsafe { message.webView() }) else { return };
+    let view = VIEWS.with(|views| {
+        views.borrow().values().find(|view| std::ptr::eq(&*view.webview, &*webview)).cloned()
+    });
+    let Some(view) = view.filter(|view| !view.closed.get()) else { return };
+    let body = unsafe { message.body() };
+    let Some(body) = body.downcast_ref::<NSString>().map(|body| body.to_string()) else { return };
+    let Some(parsed) = frames::frame_message(&body) else { return };
+    let info = unsafe { message.frameInfo() };
+    let events = {
+        let mut tracker = view.frames.borrow_mut();
+        match parsed {
+            FrameMessage::Document { token, url, origin } => {
+                let main = unsafe { info.isMainFrame() };
+                tracker.document(&token, info, &url, &origin, main)
+            }
+            FrameMessage::Child { token, child, owner } => tracker.link(&token, &child, owner),
+            FrameMessage::Gone { token } => tracker.gone(&token),
+        }
+    };
+    for event in events {
+        protocol::emit(event.to_json(&view.id));
+    }
+}
+
+thread_local! {
+    static FRAME_MESSAGES: OnceCell<Retained<FrameMessages>> = const { OnceCell::new() };
+}
+
+/// Adds frame tracking to a tab's configuration; popups inherit it from WebKit's copy.
+fn track_frames(configuration: &WKWebViewConfiguration, mtm: MainThreadMarker) {
+    let handler = FRAME_MESSAGES.with(|cell| {
+        cell.get_or_init(|| unsafe { msg_send![FrameMessages::alloc(mtm), init] }).clone()
+    });
+    let world = content_world(Some(frames::FRAME_WORLD), mtm).expect("frame world name is valid");
+    unsafe {
+        let controller = configuration.userContentController();
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly_inContentWorld(
+            WKUserScript::alloc(mtm),
+            &NSString::from_str(frames::FRAME_SCRIPT),
+            WKUserScriptInjectionTime::AtDocumentStart,
+            false,
+            &world,
+        );
+        controller.addUserScript(&script);
+        controller.addScriptMessageHandler_contentWorld_name(
+            ProtocolObject::from_ref(&*handler),
+            &world,
+            &NSString::from_str(frames::FRAME_HANDLER),
+        );
+    }
+}
+
 impl NavigationDelegate {
     fn new(view_id: &str, mtm: MainThreadMarker) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(DelegateIvars { view_id: view_id.to_string() });
@@ -451,6 +527,8 @@ struct View {
     gate_approvals: RefCell<protocol::NavigationApprovals>,
     /// Policy decisions WebKit is waiting on while main asks for site approval.
     held_gates: RefCell<Vec<HeldGate>>,
+    /// Frames reported by the tracking script, with their `WKFrameInfo` for evaluation.
+    frames: RefCell<FrameTracker<Retained<WKFrameInfo>>>,
 }
 
 struct HeldGate {
@@ -1263,6 +1341,7 @@ fn open(command: &Command, mtm: MainThreadMarker) -> Result<(), &'static str> {
     let webview = unsafe {
         let configuration = WKWebViewConfiguration::new(mtm);
         configuration.setWebsiteDataStore(&store);
+        track_frames(&configuration, mtm);
         WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), rect, &configuration)
     };
     panel.setHasShadow(false);
@@ -1350,6 +1429,7 @@ fn register_view(
         navigation_gate: Cell::new(false),
         gate_approvals: RefCell::new(protocol::NavigationApprovals::default()),
         held_gates: RefCell::new(Vec::new()),
+        frames: RefCell::new(FrameTracker::default()),
     });
     let _ = view.panel.ivars().view_id.set(id.to_string());
     VIEWS.with(|views| views.borrow_mut().insert(id.to_string(), view.clone()));
@@ -1542,9 +1622,16 @@ fn view_command(
         "evaluate" => {
             let expression = command.expression.as_deref().ok_or("An expression is required.")?;
             let world = content_world(command.world.as_deref(), mtm)?;
-            evaluate(view, command.id, expression, &world);
+            let frame = match command.frame.as_deref() {
+                None | Some(frames::MAIN_FRAME) => None,
+                Some(id) => {
+                    Some(view.frames.borrow().info(id).ok_or("No frame for given id found.")?)
+                }
+            };
+            evaluate(view, command.id, expression, frame.as_deref(), &world);
             return Err(DEFERRED);
         }
+        "frames" => return Ok(Some(json!({ "frames": view.frames.borrow().snapshot() }))),
         "input" => {
             let input = command.input.as_ref().ok_or("Input is required.")?;
             view.input(input, mtm)?;
@@ -1601,7 +1688,13 @@ fn content_world(
     })
 }
 
-fn evaluate(view: &View, id: u64, expression: &str, world: &WKContentWorld) {
+fn evaluate(
+    view: &View,
+    id: u64,
+    expression: &str,
+    frame: Option<&WKFrameInfo>,
+    world: &WKContentWorld,
+) {
     let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
         if let Some(error) = unsafe { error.as_ref() } {
             // A page exception carries its own text; localizedDescription is generic.
@@ -1631,7 +1724,7 @@ fn evaluate(view: &View, id: u64, expression: &str, world: &WKContentWorld) {
         view.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
             &NSString::from_str(&protocol::evaluation_body(expression)),
             None,
-            None,
+            frame,
             world,
             Some(&completion),
         );

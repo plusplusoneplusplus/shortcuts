@@ -743,6 +743,82 @@ describe('desktop native WKWebView packaging contract', () => {
             server.close();
         }
     }, 30_000);
+
+    it.skipIf(!supportedMacos || !helper)('tracks child frames across origins and evaluates inside one frame', async () => {
+        const serve = (pages: Record<string, string>) => http.createServer((request, response) => {
+            const page = pages[request.url ?? ''];
+            response.writeHead(page ? 200 : 404, { 'content-type': 'text/html' });
+            response.end(page ?? 'missing');
+        });
+        const other = serve({
+            '/child': '<p>child</p><iframe src="/leaf"></iframe>',
+            '/leaf': '<p>leaf</p>',
+            '/next': '<p>next</p>',
+        });
+        await new Promise<void>(resolve => other.listen(0, '127.0.0.1', resolve));
+        // A different host name is a different origin (and process-separable site).
+        const cross = `http://localhost:${(other.address() as AddressInfo).port}`;
+        const server = serve({
+            '/top': `<iframe id="x" src="${cross}/child"></iframe><iframe id="y" src="/same"></iframe>`,
+            '/same': '<p>same</p>',
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const helperRun = runHelper(`coc-wkwebview-frames-${process.pid}`);
+        const { events, send, waitFor } = helperRun;
+        const navigated = (url: string, from = 0) => waitFor(event => event.event === 'frame-navigated' && event.url === url, from);
+        try {
+            await helperRun.ready;
+            await send({ op: 'open', viewId: 'v1', url: `${origin}/top` });
+            const main = await navigated(`${origin}/top`);
+            expect(main).toMatchObject({ viewId: 'v1', frameId: 'main', parentFrameId: null, origin });
+            const child = await navigated(`${cross}/child`);
+            const same = await navigated(`${origin}/same`);
+            const leaf = await navigated(`${cross}/leaf`);
+            expect(child).toMatchObject({ parentFrameId: 'main', origin: cross, frameId: `main/${child.owner}` });
+            expect(same).toMatchObject({ parentFrameId: 'main', frameId: `main/${same.owner}` });
+            expect(leaf).toMatchObject({ parentFrameId: child.frameId, frameId: `${child.frameId}/1` });
+            expect((await send({ op: 'frames', viewId: 'v1' })).result.frames.map((frame: any) => frame.frameId).sort())
+                .toEqual([child.frameId, leaf.frameId, 'main', same.frameId].sort());
+
+            // Evaluation runs in the chosen frame, in any world.
+            expect(await send({ op: 'evaluate', viewId: 'v1', frame: leaf.frameId, expression: 'location.href', world: 'page' }))
+                .toMatchObject({ ok: true, result: { value: `${cross}/leaf` } });
+            expect(await send({ op: 'evaluate', viewId: 'v1', frame: child.frameId, expression: "globalThis[Symbol.for('coc.frame')].token", world: 'coc-frames' }))
+                .toMatchObject({ ok: true, result: { value: child.token } });
+            expect(await send({ op: 'evaluate', viewId: 'v1', frame: 'main', expression: 'location.href' }))
+                .toMatchObject({ ok: true, result: { value: `${origin}/top` } });
+            // The parent document resolves the owner element of its child frames.
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: `globalThis[Symbol.for('coc.frame')].owner(${child.owner}).id`, world: 'coc-frames' }))
+                .toMatchObject({ ok: true, result: { value: 'x' } });
+            // Page scripts cannot reach the tracking handler or the frame world's globals.
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: "[typeof window.webkit?.messageHandlers?.cocFrames, typeof globalThis[Symbol.for('coc.frame')]]", world: 'page' }))
+                .toMatchObject({ ok: true, result: { value: ['undefined', 'undefined'] } });
+            expect(await send({ op: 'evaluate', viewId: 'v1', frame: 'main/99', expression: '1' }))
+                .toMatchObject({ ok: false, message: 'No frame for given id found.' });
+
+            // A child frame navigation keeps its frame id and drops its descendants.
+            let from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: `document.getElementById('x').src = ${JSON.stringify(`${cross}/next`)}`, world: 'page' });
+            const next = await navigated(`${cross}/next`, from);
+            expect(next).toMatchObject({ frameId: child.frameId, parentFrameId: 'main' });
+            expect(next.token).not.toBe(child.token);
+            expect(events.slice(from).some(event => event.event === 'frame-detached' && event.frameId === leaf.frameId)).toBe(true);
+            expect(await send({ op: 'evaluate', viewId: 'v1', frame: leaf.frameId, expression: '1' })).toMatchObject({ ok: false });
+
+            // Removing a frame element detaches the frame.
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: "document.getElementById('y').remove()", world: 'page' });
+            await waitFor(event => event.event === 'frame-detached' && event.frameId === same.frameId, from);
+            expect((await send({ op: 'frames', viewId: 'v1' })).result.frames.map((frame: any) => frame.frameId).sort())
+                .toEqual([child.frameId, 'main'].sort());
+            await send({ op: 'quit' });
+        } finally {
+            helperRun.child.kill();
+            server.close();
+            other.close();
+        }
+    }, 30_000);
 });
 
 function pngSize(base64: string): { width: number; height: number } {

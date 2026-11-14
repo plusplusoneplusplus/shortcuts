@@ -4,6 +4,8 @@ mod certificate;
 #[path = "../../webview2/src/download.rs"]
 #[allow(dead_code)]
 mod download;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod frames;
 #[path = "../../webview2/src/history.rs"]
 #[allow(dead_code)]
 mod history;
