@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { release } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,7 +11,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || (process.platform === 'linux' && !process.env.DISPLAY);
 // Windows x64 runs the identical relay workflow through the live native CDP helper.
-const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
+// macOS 14+ runs it through the real WKWebView helper when it is built or staged.
+const wkWebViewHelper = process.env.COC_WKWEBVIEW_PATH || [
+    path.join(here, '../../../coc-native/rust/target/debug/coc-wkwebview'),
+    path.join(here, `../../../coc-native/coc-wkwebview.darwin-${process.arch}`),
+].find(file => existsSync(file));
+const wkWebView = process.platform === 'darwin' && Number(release().split('.')[0]) >= 23 && !!wkWebViewHelper;
+const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2']
+    : wkWebView ? ['electron', 'wkwebview'] : ['electron'];
 // A local cargo build, else the platform binary `build:native` stages (and CI ships as an artifact).
 const webview2Helpers = ['../../../coc-native/rust/target/release/coc-webview2.exe',
     '../../../coc-native/coc-webview2.win32-x64-msvc.exe'].map(file => path.join(here, file));
@@ -23,6 +31,7 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
             const env = { ...process.env, COC_BROWSER_WORKFLOW_DATA: directory, COC_BROWSER_E2E_ENGINE: engine,
                 COC_BROWSER_E2E_FRAMES: '1' };
             delete env.ELECTRON_RUN_AS_NODE;
+            if (engine === 'wkwebview') env.COC_WKWEBVIEW_PATH = wkWebViewHelper;
             if (engine === 'webview2') {
                 const helper = findWebview2Helper();
                 expect(helper, 'Compile the current Windows helper before frame relay e2e').toBeDefined();
@@ -66,6 +75,7 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
             const result = await new Promise<Record<string, any>>((resolve, reject) => {
                 const env = { ...process.env, COC_BROWSER_WORKFLOW_DATA: directory, COC_BROWSER_E2E_ENGINE: engine };
                 delete env.ELECTRON_RUN_AS_NODE;
+                if (engine === 'wkwebview') env.COC_WKWEBVIEW_PATH = wkWebViewHelper;
                 if (engine === 'webview2') {
                     const helper = findWebview2Helper();
                     expect(helper, 'Compile the current Windows helper before relay e2e').toBeDefined();

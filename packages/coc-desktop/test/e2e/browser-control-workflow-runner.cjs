@@ -17,14 +17,49 @@ process.on('uncaughtException', error => {
 const data = process.env.COC_BROWSER_WORKFLOW_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE;
 const frameWorkflow = process.env.COC_BROWSER_E2E_FRAMES === '1';
-const nativeBinary = engine === 'webview2' ? require('@plusplusoneplusplus/coc-native').loadWebView2Binary() : undefined;
+const coc = require('@plusplusoneplusplus/coc-native');
+const nativeBinary = engine === 'webview2' ? coc.loadWebView2Binary() : engine === 'wkwebview' ? coc.loadWkWebViewBinary() : undefined;
 let nativeHelperPid;
+// macOS has no UI Automation peer for the helper's native chrome, so the runner reads it from
+// the real helper over the same stdio: it taps main's `control-activity` writes and the
+// helper's `popup-opened` events, and sends its own `view-state` requests with ids far above
+// main's sequence (main ignores replies it never asked for).
+const wkWebView = { child: undefined, popups: [], activity: new Map(), replies: new Map(), sequence: 2 ** 40 };
 const spawn = childProcess.spawn;
 childProcess.spawn = function (binary, ...args) {
     const child = spawn.call(this, binary, ...args);
     if (nativeBinary && binary === nativeBinary) nativeHelperPid = child.pid;
+    if (engine === 'wkwebview' && binary === nativeBinary) tapWkWebView(child);
     return child;
 };
+function tapWkWebView(child) {
+    wkWebView.child = child;
+    const write = child.stdin.write;
+    child.stdin.write = function (chunk, ...rest) {
+        for (const line of String(chunk).split('\n')) {
+            const command = line ? JSON.parse(line) : undefined;
+            if (command?.op === 'control-activity') wkWebView.activity.set(command.viewId, command.turnId);
+        }
+        return write.call(this, chunk, ...rest);
+    };
+    let buffer = '';
+    child.stdout.on('data', chunk => {
+        buffer += chunk;
+        for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
+            const message = JSON.parse(buffer.slice(0, end));
+            buffer = buffer.slice(end + 1);
+            if (message.event === 'popup-opened') wkWebView.popups.push(message);
+            wkWebView.replies.get(message.id)?.(message);
+        }
+    });
+}
+function wkWebViewState(viewId) {
+    const id = ++wkWebView.sequence;
+    return new Promise(resolve => {
+        wkWebView.replies.set(id, message => { wkWebView.replies.delete(id); resolve(message.result); });
+        wkWebView.child.stdin.write(JSON.stringify({ id, op: 'view-state', viewId }) + '\n');
+    });
+}
 app.setPath('userData', data);
 if (frameWorkflow) {
     app.commandLine.appendSwitch('site-per-process');
@@ -478,6 +513,29 @@ app.whenReady().then(async () => {
         chrome.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...stopBounds });
         await until(() => cancellations.filter(value => value.processId === 'conversation-visible').length === 2, 'native trusted Stop cancellation');
         await until(() => !chrome.getVisible() && popup.contentView.children[0].getBounds().y === 0, 'native terminal chrome cleanup');
+    } else if (engine === 'wkwebview') {
+        const popupView = wkWebView.popups.filter(popup => popup.url.includes('native=popup')).at(-1)?.viewId;
+        assert(popupView, 'Helper reported no native popup');
+        const bar = async () => (await wkWebViewState(popupView)).controlBar;
+        const shown = await until(async () => { const state = await wkWebViewState(popupView); return state.controlBar && state; },
+            'macOS native controlling bar and Stop button');
+        await owner.js('window.workflow.setBrowserEnabled(false)');
+        await routing.js('window.workflow.setBrowserEnabled(false)');
+        await until(async () => !await bar(), 'macOS live-disable hides native chrome');
+        await owner.js('window.workflow.setBrowserEnabled(true)');
+        await routing.js('window.workflow.setBrowserEnabled(true)');
+        await until(bar, 'macOS live-enable restores native chrome');
+        await routing.js('window.workflow.exerciseInactiveCloneRelay()');
+        assert(await bar(), 'Inactive clone relay hid another source popup chrome');
+        await beginNativeWait();
+        // A click on the Stop NSButton needs Accessibility permission, which CI lacks; the helper
+        // test covers the button, so this delivers the exact event its action emits.
+        const turnId = wkWebView.activity.get(popupView);
+        assert(typeof turnId === 'string', 'Main did not send the popup its control turn');
+        wkWebView.child.stdout.emit('data', JSON.stringify({ event: 'control-stop', viewId: popupView, turnId }) + '\n');
+        await until(() => cancellations.filter(value => value.processId === 'conversation-visible').length === 2, 'macOS native Stop cancellation');
+        await until(async () => { const state = await wkWebViewState(popupView); return !state.controlBar && state.pageHeight === shown.pageHeight + 40; },
+            'macOS terminal clears native chrome');
     } else {
         const { inspectNativeChrome } = require('./browser-control-native-chrome.cjs');
         await until(async () => {
