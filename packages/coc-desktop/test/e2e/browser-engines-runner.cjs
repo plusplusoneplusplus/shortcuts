@@ -216,7 +216,8 @@ app.whenReady().then(async () => {
         await settled(main, 'new', s => s.title === 'Home');
         await call(main, 'hide', 'main');
         await call(main, 'setBounds', 'new', { x: 350, y: 70, width: 420, height: 320 });
-        const created = await ratio('new', baseline, 1.5, 420);
+        // Bounds set after the 125% shell zoom are 420 renderer pixels, 525 DIPs.
+        const created = await ratio('new', baseline, 1.5, 420 * 1.25);
         await call(main, 'navigate', 'main', base.replace('127.0.0.1', 'localhost') + '/second?tab=main');
         await settled(main, 'main', s => s.title === 'Second');
         const navigated = await ratio('main', baseline, 1.5);
@@ -229,7 +230,7 @@ app.whenReady().then(async () => {
         await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
         main.focus();
         const reset = await call(other, 'setPageZoom', 100);
-        const resetActive = await ratio('main', baseline, 1, 420);
+        const resetActive = await ratio('main', baseline, 1, 420 * 1.25);
         const resetInactive = await ratio('other', otherBaseline, 1);
         const resetNew = await ratio('new', baseline, 1);
         emit('zoom', {
