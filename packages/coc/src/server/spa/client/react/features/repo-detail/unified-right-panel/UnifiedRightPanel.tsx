@@ -2565,6 +2565,9 @@ export function UnifiedRightPanel({
                                     ...(pane === 'left' ? { order: 0, flex: `0 0 ${splitLeftBasis}` } : {}),
                                     ...(pane === 'right' ? { order: 2 } : {}),
                                 }}
+                                // Native pointer focus on rendered file content stays in this
+                                // panel; nested editors and controls keep their own focus.
+                                tabIndex={tab.kind === 'file' ? -1 : undefined}
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
                                 data-split-pane={pane ?? undefined}

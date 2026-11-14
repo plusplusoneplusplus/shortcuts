@@ -1400,8 +1400,9 @@ guards as their close buttons. Desktop menus leave Ctrl/Cmd+W unbound to window
 close, including Linux; explicit Close and Quit retain their native actions.
 Electron URL/HTML guests and Windows WebView2 forward native close requests to
 the owning renderer, which accepts only the matching active, visible view.
-Git's portal host takes focus on clicks in nonfocusable diff content; editor and
-control focus stay intact. Plain Ctrl+W in the active terminal keeps its shell
+File-view containers accept native pointer focus on rendered content without
+adding Tab stops. Git's portal host takes focus on nonfocusable diff content;
+nested editors and controls keep their own focus. Plain Ctrl+W in the active terminal keeps its shell
 binding. The tab strip's accessible context menu provides
 preview promotion, visible-strip bulk close commands, path copy for files and
 Markdown notes, and file-only Explorer reveal. Bulk close targets span the tools/resources divider in

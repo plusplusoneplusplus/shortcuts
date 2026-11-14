@@ -20,6 +20,7 @@
  *
  * @vitest-environment jsdom
  */
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
@@ -165,6 +166,90 @@ afterEach(() => {
     clearUnifiedPanelState();
     noteSeams = {};
     canvasSeams = {};
+});
+
+function pressClose(modifiers: KeyboardEventInit = { ctrlKey: true }) {
+    const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true, ...modifiers });
+    act(() => { document.activeElement!.dispatchEvent(event); });
+    return event;
+}
+
+function exposePanels() {
+    for (const panel of screen.getAllByTestId('unified-right-panel')) {
+        Object.defineProperty(panel, 'offsetParent', { get: () => panel.style.display === 'none' ? null : document.body });
+    }
+}
+
+describe('file view close shortcut focus', () => {
+    it.each([{ ctrlKey: true }, { metaKey: true }])('closes rendered Markdown after clicking its text (%o)', async modifiers => {
+        const backgroundId = openFile({ path: 'background.ts' });
+        const tabId = openFile({ path: 'AGENTS.md' });
+        render(<><textarea aria-label="Chat composer" /><UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} /></>);
+        exposePanels();
+        const markdown = await screen.findByTestId('preview-markdown');
+        await userEvent.click(screen.getByRole('textbox', { name: 'Chat composer' }));
+        expect(pressClose(modifiers).defaultPrevented).toBe(false);
+        await userEvent.click(markdown);
+        expect(pressClose(modifiers).defaultPrevented).toBe(true);
+        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
+        expect(screen.getByTestId(`unified-panel-tab-${backgroundId}`)).toBeTruthy();
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
+    it('preserves a dirty Markdown buffer when closing from rendered view', async () => {
+        const tabId = openFile({ path: 'AGENTS.md' });
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        exposePanels();
+        await screen.findByTestId('preview-markdown');
+        await userEvent.click(screen.getByRole('button', { name: 'Raw', exact: true }));
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        await userEvent.click(editor);
+        expect(document.activeElement).toBe(editor);
+        fireEvent.change(editor, { target: { value: 'unsaved Markdown' } });
+        await userEvent.click(screen.getByRole('button', { name: 'Rendered', exact: true }));
+        await userEvent.click(await screen.findByTestId('preview-markdown'));
+        expect(pressClose().defaultPrevented).toBe(true);
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(screen.getByTestId('preview-markdown').textContent).toContain('unsaved Markdown');
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByTestId('preview-markdown'));
+        expect(pressClose({ metaKey: true }).defaultPrevented).toBe(true);
+        mockExplorerApi.writeBlob.mockRejectedValueOnce(new Error('save failed'));
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await screen.findByTestId('explorer-close-tabs-error');
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(mockExplorerApi.writeBlob).toHaveBeenLastCalledWith(WS, 'AGENTS.md', 'unsaved Markdown');
+    });
+
+    it('targets only the focused workspace and yields to the composer or a collapsed panel', async () => {
+        const first = openFile({ path: 'AGENTS.md' });
+        const second = openUnifiedPanelTab('ws-2', {
+            kind: 'file', ownerWorkspaceId: 'member-2', ownerRoutingRef: null,
+            chatId: CHAT, resourceId: 'AGENTS.md', label: 'AGENTS.md',
+        });
+        const panels = (isOpen: boolean) => <>
+            <textarea aria-label="Chat composer" />
+            <UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />
+            <UnifiedRightPanel workspaceId="ws-2" chatId={CHAT} dock={dockStub({ isOpen, target: 'member-2' })} />
+        </>;
+        const rendered = render(panels(true));
+        exposePanels();
+        await waitFor(() => expect(screen.getAllByTestId('preview-markdown')).toHaveLength(2));
+        await userEvent.click(screen.getAllByTestId('preview-markdown')[1]);
+        await userEvent.click(screen.getByRole('textbox', { name: 'Chat composer' }));
+        expect(pressClose().defaultPrevented).toBe(false);
+        expect(screen.getByTestId(`unified-panel-tab-${second}`)).toBeTruthy();
+        await userEvent.click(screen.getAllByTestId('preview-markdown')[1]);
+        rendered.rerender(panels(false));
+        expect(pressClose().defaultPrevented).toBe(false);
+        rendered.rerender(panels(true));
+        await userEvent.click(screen.getAllByTestId('preview-markdown')[1]);
+        expect(pressClose().defaultPrevented).toBe(true);
+        expect(screen.queryByTestId(`unified-panel-tab-${second}`)).toBeNull();
+        expect(screen.getByTestId(`unified-panel-tab-${first}`)).toBeTruthy();
+    });
 });
 
 describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
