@@ -4,7 +4,7 @@ use crate::overlay::{self, Frame, PanelMode, Placement};
 use crate::protocol::{self, Command};
 use crate::{profile, protocol::availability};
 use block2::RcBlock;
-use dispatch2::DispatchQueue;
+use dispatch2::{DispatchQueue, DispatchTime};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
@@ -43,6 +43,7 @@ use std::ffi::c_void;
 use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Duration;
 
 mod downloads;
 
@@ -97,7 +98,7 @@ pub fn run() -> HostResult<()> {
             }
         }
         // The desktop closed stdin: stop on the main thread like an explicit quit.
-        DispatchQueue::main().exec_async(|| std::process::exit(0));
+        DispatchQueue::main().exec_async(|| exit_after_cookie_flush(None));
     });
     let _observers = observe_window_environment();
     protocol::emit(json!({ "event": "ready" }));
@@ -613,6 +614,32 @@ fn data_store(mtm: MainThreadMarker) -> Result<Retained<WKWebsiteDataStore>, &'s
         cell.get_or_init(|| unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&uuid, mtm) })
             .clone()
     }))
+}
+
+/// Bounds the cookie flush on quit; the desktop waits longer before it kills the helper.
+const QUIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// WebKit's network process saves cookies to disk lazily, so exiting right after a
+/// cookie change drops it from the persistent profile. Flush first, then exit.
+fn exit_after_cookie_flush(id: Option<u64>) {
+    let exit = move || {
+        if let Some(id) = id {
+            protocol::success(id);
+        }
+        std::process::exit(0);
+    };
+    let flush = sel!(_flushCookiesToDiskWithCompletionHandler:);
+    let Some(cookie_store) = STORE
+        .with(|cell| cell.get().map(|store| unsafe { store.httpCookieStore() }))
+        .filter(|cookie_store| cookie_store.respondsToSelector(flush))
+    else {
+        return exit();
+    };
+    let done = RcBlock::new(exit);
+    let _: () =
+        unsafe { msg_send![&*cookie_store, _flushCookiesToDiskWithCompletionHandler: &*done] };
+    let when = DispatchTime::try_from(QUIT_FLUSH_TIMEOUT).unwrap_or(DispatchTime::NOW);
+    let _ = DispatchQueue::main().after(when, exit);
 }
 
 fn main_thread() -> MainThreadMarker {
@@ -2270,10 +2297,7 @@ fn dispatch(command: Command) {
         std::process::exit(1);
     }
     match command.op.as_str() {
-        "quit" => {
-            protocol::success(command.id);
-            std::process::exit(0);
-        }
+        "quit" => exit_after_cookie_flush(Some(command.id)),
         "open" => match open(&command, main_thread()) {
             Ok(()) => protocol::success(command.id),
             Err(message) => protocol::failure(command.id, "invalid", message),

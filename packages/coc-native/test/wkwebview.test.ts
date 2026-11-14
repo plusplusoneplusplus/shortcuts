@@ -546,6 +546,38 @@ describe('desktop native WKWebView packaging contract', () => {
         }
     }, 60_000);
 
+    it.skipIf(!supportedMacos || !helper)('keeps cookies imported right before quit in the persistent profile store', async () => {
+        const seen: string[] = [];
+        const server = http.createServer((request, response) => {
+            seen.push(request.headers.cookie ?? '');
+            response.end('<title>cookies</title>');
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const name = `coc-wkwebview-cookie-quit-${process.pid}`;
+        rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true });
+        let run = runHelper(name);
+        try {
+            await run.ready;
+            expect(await run.send({ op: 'import-profile-cookies', cookies: [{ url: `${origin}/`, name: 'kept', value: 'token', path: '/',
+                secure: false, httpOnly: true, sameSite: 'lax', expirationDate: Math.floor(Date.now() / 1000) + 3600 }] })).toEqual({ id: 1, ok: true });
+            // WebKit saves cookies lazily; quit must write them before the helper exits.
+            const exited = new Promise(resolve => run.child.once('exit', resolve));
+            expect(await run.send({ op: 'quit' })).toEqual({ id: 2, ok: true });
+            expect(await exited).toBe(0);
+            run = runHelper(name);
+            await run.ready;
+            expect(await run.send({ op: 'open', viewId: 'cookies', url: `${origin}/` })).toMatchObject({ ok: true });
+            await run.waitFor(event => event.event === 'visited' && event.viewId === 'cookies');
+            expect(seen.at(-1)).toBe('kept=token');
+            await run.send({ op: 'quit' });
+        }
+        finally {
+            run.child.kill();
+            server.close();
+        }
+    }, 30_000);
+
     it.skipIf(!supportedMacos || !helper)('reports certificate rejections and no certificate for plain HTTP in site info', async () => {
         // A throwaway self-signed certificate; macOS ships openssl (LibreSSL).
         const dir = mkdtempSync(path.join(os.tmpdir(), 'coc-wkwebview-tls-'));
@@ -778,7 +810,9 @@ describe('desktop native WKWebView packaging contract', () => {
             await evaluate('window.scrollTo(0, 0)');
             expect(await mouse({ type: 'wheel', x: Number.MAX_VALUE, y: 0 })).toMatchObject({ ok: false });
 
-            // Points stay in CSS pixels under page zoom.
+            // Points stay in CSS pixels under page zoom. Measure the backing scale first:
+            // macOS 15 WebKit leaves devicePixelRatio out of page zoom, later releases fold it in.
+            const backingScale = await evaluate('window.devicePixelRatio') as number;
             await send({ op: 'page-zoom', viewId: 'v1', pageZoomPercent: 150 });
             await evaluate('log.length = 0');
             for (const type of ['move', 'down', 'up']) {await mouse({ type, x: 70, y: 220, clickCount: 1 });}
@@ -786,7 +820,7 @@ describe('desktop native WKWebView packaging contract', () => {
             expect(await evaluate('log.find(entry => entry[0] === "click")')).toEqual(['click', true, 70, 220]);
 
             // Screenshots cover a viewport rect at device pixels times scale.
-            const ratio = await evaluate('window.devicePixelRatio') as number;
+            const ratio = backingScale * 1.5;
             const red = await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 100, height: 100 }, format: 'png' });
             expect(red).toMatchObject({ ok: true });
             expect(pngSize(red.result.data)).toEqual({ width: Math.round(100 * ratio), height: Math.round(100 * ratio) });
