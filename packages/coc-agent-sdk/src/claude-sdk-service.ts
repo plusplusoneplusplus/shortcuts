@@ -382,10 +382,8 @@ type ClaudeMcpServerConfig =
     | { type: 'sse'; url: string; headers?: Record<string, string> };
 
 /**
- * Minimal shape of a Claude Code lifecycle hook callback. The compaction path
- * (`compactSession`) registers a single `PostCompact` hook to capture the
- * generated summary; only its input (which carries `compact_summary`) is read,
- * so the return type is a permissive object. Mirrors the SDK's
+ * Minimal shape of a Claude Code lifecycle hook callback. The return type is a
+ * permissive object (e.g. `{ continue: false }` to end the turn). Mirrors the SDK's
  * `HookCallback` / `HookCallbackMatcher`.
  */
 type ClaudeHookCallback = (input: unknown, toolUseId?: string, options?: unknown) => Promise<Record<string, unknown>>;
@@ -445,9 +443,10 @@ interface ClaudeQueryOptions {
          */
         pathToClaudeCodeExecutable?: string;
         /**
-         * Lifecycle hooks keyed by event name. CoC registers only `PostCompact`
-         * (to capture the summary generated during a `/compact` turn — see
-         * {@link ClaudeSDKService.compactSession}).
+         * Lifecycle hooks keyed by event name. Chat turns register
+         * `PostToolUse` ({@link stopAfterClaudeFollowUps}); compaction registers
+         * `PostCompact` to capture the summary generated during a `/compact`
+         * turn — see {@link ClaudeSDKService.compactSession}.
          */
         hooks?: Partial<Record<string, ClaudeHookCallbackMatcher[]>>;
         /**
@@ -1279,6 +1278,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...(canUseTool ? { canUseTool } : {}),
+                    hooks: { PostToolUse: [{ hooks: [stopAfterClaudeFollowUps] }] },
                     ...permissionOptions,
                 },
             };
@@ -2799,6 +2799,21 @@ export function createClaudeAnswerFallback() {
             return recovered;
         },
     };
+}
+
+/**
+ * `PostToolUse` hook that ends the turn once the main agent calls
+ * `suggest_follow_ups`. That tool is the last step and allows no text after
+ * it, but Claude Code nudges a final step with no visible text ("Your previous
+ * response had no visible output…"), and the model then writes its answer a
+ * second time. Stopping here skips that extra model call.
+ */
+export async function stopAfterClaudeFollowUps(input: unknown): Promise<Record<string, unknown>> {
+    const hookInput = input as { tool_name?: unknown; agent_id?: unknown } | null;
+    if (hookInput?.agent_id || typeof hookInput?.tool_name !== 'string') return {};
+    return normalizeClaudeToolName(hookInput.tool_name) === 'suggest_follow_ups'
+        ? { continue: false, stopReason: 'Follow-up suggestions sent.' }
+        : {};
 }
 
 function normalizeClaudeToolName(name: string): string {

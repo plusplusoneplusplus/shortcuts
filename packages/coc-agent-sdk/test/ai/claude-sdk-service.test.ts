@@ -745,6 +745,57 @@ describe('ClaudeSDKService.sendMessage', () => {
         });
     });
 
+    // Regression: after suggest_follow_ups the model writes no text, Claude Code
+    // nudges "Your previous response had no visible output", and the model
+    // repeats the whole answer. A PostToolUse hook ends the turn at that tool.
+    describe('turn ends after suggest_follow_ups', () => {
+        const sendAndGetHook = async () => {
+            queryFn.mockReturnValueOnce(makeMessages([
+                { type: 'result', subtype: 'success', result: 'ok' },
+            ]));
+            await svc.sendMessage({ prompt: 'q' });
+            const hooks = queryFn.mock.calls[0][0].options?.hooks;
+            expect(hooks?.PostToolUse).toHaveLength(1);
+            return hooks.PostToolUse[0].hooks[0] as (input: unknown) => Promise<Record<string, unknown>>;
+        };
+
+        it('stops the turn when the main agent calls suggest_follow_ups', async () => {
+            const hook = await sendAndGetHook();
+            for (const toolName of ['mcp__coc_llm_tools__suggest_follow_ups', 'suggest_follow_ups']) {
+                expect(await hook({ hook_event_name: 'PostToolUse', tool_name: toolName }))
+                    .toEqual({ continue: false, stopReason: expect.any(String) });
+            }
+        });
+
+        it('lets the turn continue after other tools, subagent calls and malformed input', async () => {
+            const hook = await sendAndGetHook();
+            expect(await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash' })).toEqual({});
+            expect(await hook({ hook_event_name: 'PostToolUse', tool_name: 'mcp__coc_llm_tools__ask_user' })).toEqual({});
+            expect(await hook({
+                hook_event_name: 'PostToolUse', tool_name: 'mcp__coc_llm_tools__suggest_follow_ups', agent_id: 'sub-1',
+            })).toEqual({});
+            expect(await hook(null)).toEqual({});
+            expect(await hook({ hook_event_name: 'PostToolUse' })).toEqual({});
+        });
+
+        it('keeps a single copy of the answer when the turn stops at the tool result', async () => {
+            queryFn.mockReturnValueOnce(makeMessages([
+                { type: 'assistant', message: { content: [{ type: 'text', text: 'The answer.' }] } },
+                {
+                    type: 'assistant',
+                    message: { content: [{ type: 'tool_use', id: 'f1', name: 'mcp__coc_llm_tools__suggest_follow_ups', input: { suggestions: ['a', 'b', 'c'] } }] },
+                },
+                { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'f1', content: '{"suggestions":["a","b","c"]}' }] } },
+                { type: 'result', subtype: 'success', result: '' },
+            ]));
+            const chunks: string[] = [];
+            const result = await svc.sendMessage({ prompt: 'q', onStreamingChunk: (c) => { if (c) chunks.push(c); } });
+            expect(result.success).toBe(true);
+            expect(chunks).toEqual(['The answer.']);
+            expect(result.response).toBe('The answer.');
+        });
+    });
+
     it('maps append systemMessage to the claude_code preset systemPrompt without mutating the prompt', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success', result: 'ok' },
