@@ -372,6 +372,43 @@ describe('desktop native WKWebView packaging contract', () => {
         }
     }, 30_000);
 
+    it.skipIf(!supportedMacos || !helper)('evaluates on pages whose CSP and Trusted Types refuse eval, like CDP', async () => {
+        const server = http.createServer((_request, response) => {
+            response.writeHead(200, { 'content-type': 'text/html',
+                'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; require-trusted-types-for 'script'" });
+            response.end('<title>Strict</title><script>window.marks = 0;</script>');
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const helperRun = runHelper(`coc-wkwebview-csp-${process.pid}`);
+        const { send, waitFor } = helperRun;
+        const evaluate = (expression: string, world?: string) => send({ op: 'evaluate', viewId: 'v1', expression, ...(world ? { world } : {}) });
+        try {
+            await helperRun.ready;
+            await send({ op: 'open', viewId: 'v1', url: `${origin}/` });
+            await waitFor(event => event.event === 'visited' && event.viewId === 'v1');
+            // The page itself really refuses eval.
+            expect((await evaluate('(() => { try { eval("1"); return "allowed"; } catch (error) { return error.name; } })()', 'page')).result.value)
+                .toBe('EvalError');
+            for (const world of ['page', 'coc-test', undefined]) {
+                expect(await evaluate('({ title: document.title, n: 1 + 1 })', world)).toMatchObject({ ok: true, result: { value: { title: 'Strict', n: 2 } } });
+                expect(await evaluate('new Promise(resolve => setTimeout(() => resolve("later"), 10))', world)).toMatchObject({ result: { value: 'later' } });
+                expect(await evaluate('undefined', world)).toMatchObject({ ok: true, result: { value: null } });
+                // Statement lists keep their completion value; each statement runs once.
+                expect(await evaluate('globalThis.runs = (globalThis.runs || 0) + 1; document.title = "Strict"; [globalThis.runs, 1]', world))
+                    .toMatchObject({ ok: true, result: { value: [1, 1] } });
+                expect(await evaluate('throw new Error("boom")', world)).toMatchObject({ ok: false, reason: 'evaluation-failed', message: expect.stringContaining('boom') });
+                // A page exception from an expression is reported once, not retried as a script.
+                expect(await evaluate('(globalThis.tries = (globalThis.tries || 0) + 1, JSON.parse("{"))', world))
+                    .toMatchObject({ ok: false, reason: 'evaluation-failed', message: expect.stringContaining('SyntaxError') });
+                expect((await evaluate('globalThis.tries', world)).result.value).toBe(1);
+            }
+        } finally {
+            helperRun.child.kill();
+            server.close();
+        }
+    }, 30_000);
+
     it.skipIf(!supportedMacos || !helper)('hosts page-opened popups under their root tab and closes them with it', async () => {
         const pages: Record<string, string> = {
             '/opener': '<title>Opener</title>',

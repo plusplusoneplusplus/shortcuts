@@ -585,9 +585,32 @@ pub fn popup_window(has_size: bool, has_position: bool, toolbars: Option<bool>) 
 /// `undefined`), which keeps the reply independent of WebKit's object bridging.
 pub fn evaluation_body(expression: &str) -> String {
     format!(
-        "const value = await (0, eval)({});\nreturn value === undefined ? null : JSON.stringify(value);",
+        "try {{ (0, eval)('0'); }} catch (error) {{ if (error instanceof EvalError) return {}; throw error; }}\n\
+         const value = await (0, eval)({});\nreturn value === undefined ? null : JSON.stringify(value);",
+        serde_json::to_string(EVAL_BLOCKED).unwrap_or_default(),
         serde_json::to_string(expression).unwrap_or_default()
     )
+}
+
+/// What `evaluation_body` returns, before running anything, when the page's CSP or
+/// Trusted Types refuse `eval` (which also applies in isolated worlds). Never valid JSON.
+pub const EVAL_BLOCKED: &str = "\u{0}coc:eval-blocked";
+
+/// The CSP-proof form of `evaluation_body` for one expression: WebKit compiles the
+/// function body itself, so no string is evaluated. A page exception comes back in-band
+/// as `{thrown}`, so an error reply means the body did not compile (a statement list),
+/// and nothing ran.
+pub fn expression_body(expression: &str) -> String {
+    format!(
+        "let value;\ntry {{ value = await (\n{expression}\n); }} catch (error) {{ return JSON.stringify({{ thrown: String(error) }}); }}\n\
+         return JSON.stringify({{ value: value === undefined ? null : value }});"
+    )
+}
+
+/// An `expression_body` that failed to compile is retried as a plain script, whose
+/// completion value WebKit returns (promises are not awaited there).
+pub fn compile_failed(message: &str) -> bool {
+    message.contains("SyntaxError")
 }
 
 /// Error text for a failed main-frame load, or None when the load was cancelled
@@ -918,10 +941,21 @@ mod tests {
     #[test]
     fn evaluation_body_quotes_the_expression() {
         let body = evaluation_body("document.title + \"\\n\"");
-        assert!(
-            body.starts_with("const value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");")
-        );
+        assert!(body.starts_with(
+            "try { (0, eval)('0'); } catch (error) { if (error instanceof EvalError) return \"\\u0000coc:eval-blocked\"; throw error; }\n"
+        ));
+        assert!(body.contains("const value = await (0, eval)(\"document.title + \\\"\\\\n\\\"\");"));
         assert!(body.ends_with("return value === undefined ? null : JSON.stringify(value);"));
+        assert!(serde_json::from_str::<serde_json::Value>(EVAL_BLOCKED).is_err());
+    }
+
+    #[test]
+    fn expression_body_compiles_the_expression_on_its_own_lines() {
+        let body = expression_body("1 // trailing comment");
+        assert!(body.contains("value = await (\n1 // trailing comment\n);"));
+        assert!(body.contains("return JSON.stringify({ thrown: String(error) });"));
+        assert!(compile_failed("SyntaxError: Unexpected token ';'"));
+        assert!(!compile_failed("TypeError: undefined is not an object"));
     }
 
     #[test]

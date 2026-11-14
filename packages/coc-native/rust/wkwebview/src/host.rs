@@ -22,10 +22,11 @@ use objc2_app_kit::{
 use objc2_core_foundation::CGPoint;
 use objc2_core_graphics::{CGEvent, CGScrollEventUnit};
 use objc2_foundation::{
-    NSDataBase64EncodingOptions, NSDictionary, NSError, NSHTTPURLResponse, NSKeyValueChangeKey,
-    NSKeyValueObservingOptions, NSNotification, NSNotificationCenter, NSNumber, NSObject,
-    NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSOperationQueue, NSPoint,
-    NSProcessInfo, NSRect, NSSize, NSString, NSURLRequest, NSURL, NSUUID,
+    NSDataBase64EncodingOptions, NSDictionary, NSError, NSHTTPURLResponse, NSJSONSerialization,
+    NSJSONWritingOptions, NSKeyValueChangeKey, NSKeyValueObservingOptions, NSNotification,
+    NSNotificationCenter, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
+    NSObjectProtocol, NSOperationQueue, NSPoint, NSProcessInfo, NSRect, NSSize, NSString,
+    NSURLRequest, NSURL, NSUUID,
 };
 use objc2_web_kit::{
     WKContentWorld, WKDownload, WKFrameInfo, WKNavigation, WKNavigationAction,
@@ -1825,8 +1826,77 @@ fn evaluate(
     frame: Option<&WKFrameInfo>,
     world: &WKContentWorld,
 ) {
-    let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
-        if let Some(error) = unsafe { error.as_ref() } {
+    let evaluation = Evaluation {
+        webview: view.webview.clone(),
+        id,
+        expression: Rc::from(expression),
+        frame: frame.map(|frame| frame.retain()),
+        world: world.retain(),
+    };
+    evaluation.run(EvaluationStage::Eval);
+}
+
+/// `eval` keeps CDP's statement semantics and awaits promises. A page whose CSP refuses
+/// it gets the expression compiled into the body instead, then a plain script for a
+/// statement list; WebKit runs both without consulting the page's CSP, like CDP does.
+#[derive(Clone, Copy)]
+enum EvaluationStage {
+    Eval,
+    Expression,
+    Script,
+}
+
+#[derive(Clone)]
+struct Evaluation {
+    webview: Retained<WKWebView>,
+    id: u64,
+    expression: Rc<str>,
+    frame: Option<Retained<WKFrameInfo>>,
+    world: Retained<WKContentWorld>,
+}
+
+impl Evaluation {
+    fn run(&self, stage: EvaluationStage) {
+        let evaluation = self.clone();
+        let completion = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+            evaluation.complete(stage, unsafe { result.as_ref() }, unsafe { error.as_ref() });
+        });
+        let frame = self.frame.as_deref();
+        unsafe {
+            match stage {
+                EvaluationStage::Script => {
+                    self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
+                        &NSString::from_str(&self.expression),
+                        frame,
+                        &self.world,
+                        Some(&completion),
+                    )
+                }
+                EvaluationStage::Eval | EvaluationStage::Expression => {
+                    let body = match stage {
+                        EvaluationStage::Eval => protocol::evaluation_body(&self.expression),
+                        _ => protocol::expression_body(&self.expression),
+                    };
+                    self.webview
+                        .callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
+                            &NSString::from_str(&body),
+                            None,
+                            frame,
+                            &self.world,
+                            Some(&completion),
+                        )
+                }
+            }
+        }
+    }
+
+    fn complete(
+        &self,
+        stage: EvaluationStage,
+        result: Option<&AnyObject>,
+        error: Option<&NSError>,
+    ) {
+        if let Some(error) = error {
             // A page exception carries its own text; localizedDescription is generic.
             let exception = error
                 .userInfo()
@@ -1834,31 +1904,55 @@ fn evaluate(
                 .and_then(|value| value.downcast::<NSString>().ok())
                 .map(|value| value.to_string());
             let message = exception.unwrap_or_else(|| error.localizedDescription().to_string());
-            protocol::failure(
-                id,
-                "evaluation-failed",
-                message.chars().take(1024).collect::<String>(),
-            );
-            return;
+            if matches!(stage, EvaluationStage::Expression) && protocol::compile_failed(&message) {
+                return self.run(EvaluationStage::Script);
+            }
+            return self.fail(&message);
         }
-        let text = unsafe { result.as_ref() }
+        if matches!(stage, EvaluationStage::Script) {
+            return protocol::reply(self.id, Some(json!({ "value": script_value(result) })));
+        }
+        let text = result
             .and_then(|result| result.downcast_ref::<NSString>())
             .map(|text| text.to_string());
-        let value = match text {
+        if matches!(stage, EvaluationStage::Eval) && text.as_deref() == Some(protocol::EVAL_BLOCKED)
+        {
+            return self.run(EvaluationStage::Expression);
+        }
+        let mut value = match text {
             Some(text) => serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
             None => serde_json::Value::Null,
         };
-        protocol::reply(id, Some(json!({ "value": value })));
-    });
-    unsafe {
-        view.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
-            &NSString::from_str(&protocol::evaluation_body(expression)),
-            None,
-            frame,
-            world,
-            Some(&completion),
+        if matches!(stage, EvaluationStage::Expression) {
+            if let Some(thrown) = value.get("thrown").and_then(|thrown| thrown.as_str()) {
+                return self.fail(thrown);
+            }
+            value = value.get_mut("value").map(serde_json::Value::take).unwrap_or_default();
+        }
+        protocol::reply(self.id, Some(json!({ "value": value })));
+    }
+
+    fn fail(&self, message: &str) {
+        protocol::failure(
+            self.id,
+            "evaluation-failed",
+            message.chars().take(1024).collect::<String>(),
         );
     }
+}
+
+/// A script's completion value as JSON; values JSON can't hold (dates) become null.
+fn script_value(result: Option<&AnyObject>) -> serde_json::Value {
+    let Some(result) = result else { return serde_json::Value::Null };
+    unsafe {
+        NSJSONSerialization::dataWithJSONObject_options_error(
+            result,
+            NSJSONWritingOptions::FragmentsAllowed,
+        )
+    }
+    .ok()
+    .and_then(|data| serde_json::from_slice(&data.to_vec()).ok())
+    .unwrap_or(serde_json::Value::Null)
 }
 
 fn modifier_flags(mask: u32) -> NSEventModifierFlags {
