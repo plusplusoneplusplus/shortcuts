@@ -8,8 +8,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub const MAIN_FRAME: &str = "main";
-/// Frames deeper than this are not tracked; the desktop reports them as truncated.
-const MAX_DEPTH: usize = 8;
+/// Frames deeper than this are not tracked. It is one level past the desktop's depth-8
+/// frame limit, so the desktop still sees (and reports) a truncated tree.
+const MAX_DEPTH: usize = 9;
 const MAX_DOCUMENTS: usize = 512;
 
 /// Content world the tracking script runs in; page scripts cannot reach it.
@@ -29,7 +30,7 @@ const ids = new WeakMap();
 let next = 0;
 const post = message => { try { window.webkit.messageHandlers.cocFrames.postMessage(JSON.stringify(message)); } catch {} };
 Object.defineProperty(globalThis, key, { value: Object.freeze({ token, owner: id => owners.get(id)?.deref() }) });
-post({ kind: 'document', token, url: location.href, origin: location.origin });
+post({ kind: 'document', token, url: location.href, origin: location.origin, name: String(window.name).slice(0, 1024) });
 addEventListener('message', event => {
   const data = event.data;
   if (!data || typeof data !== 'object' || typeof data.cocFrameChild !== 'string' || !event.source) return;
@@ -50,9 +51,22 @@ if (window.parent !== window) window.parent.postMessage({ cocFrameChild: token }
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum FrameMessage {
-    Document { token: String, url: String, origin: String },
-    Child { token: String, child: String, owner: u32 },
-    Gone { token: String },
+    Document {
+        token: String,
+        url: String,
+        origin: String,
+        /// The frame's name (`window.name`) when the document started, like CDP's `Frame.name`.
+        #[serde(default)]
+        name: String,
+    },
+    Child {
+        token: String,
+        child: String,
+        owner: u32,
+    },
+    Gone {
+        token: String,
+    },
 }
 
 fn valid_token(token: &str) -> bool {
@@ -66,8 +80,8 @@ pub fn frame_message(body: &str) -> Option<FrameMessage> {
     }
     let message: FrameMessage = serde_json::from_str(body).ok()?;
     let ok = match &message {
-        FrameMessage::Document { token, url, origin } => {
-            valid_token(token) && url.len() <= 8192 && origin.len() <= 1024
+        FrameMessage::Document { token, url, origin, name } => {
+            valid_token(token) && url.len() <= 8192 && origin.len() <= 1024 && name.len() <= 4096
         }
         FrameMessage::Child { token, child, owner } => {
             valid_token(token) && valid_token(child) && token != child && *owner > 0
@@ -86,6 +100,7 @@ pub enum FrameEvent {
         token: String,
         url: String,
         origin: String,
+        name: String,
     },
     Detached {
         frame_id: String,
@@ -95,10 +110,13 @@ pub enum FrameEvent {
 impl FrameEvent {
     pub fn to_json(&self, view_id: &str) -> Value {
         match self {
-            FrameEvent::Navigated { frame_id, parent_id, owner, token, url, origin } => json!({
-                "event": "frame-navigated", "viewId": view_id, "frameId": frame_id,
-                "parentFrameId": parent_id, "owner": owner, "token": token, "url": url, "origin": origin,
-            }),
+            FrameEvent::Navigated { frame_id, parent_id, owner, token, url, origin, name } => {
+                json!({
+                    "event": "frame-navigated", "viewId": view_id, "frameId": frame_id,
+                    "parentFrameId": parent_id, "owner": owner, "token": token, "url": url, "origin": origin,
+                    "name": name,
+                })
+            }
             FrameEvent::Detached { frame_id } => {
                 json!({ "event": "frame-detached", "viewId": view_id, "frameId": frame_id })
             }
@@ -110,6 +128,7 @@ struct Document<T> {
     info: T,
     url: String,
     origin: String,
+    name: String,
     main: bool,
 }
 
@@ -142,6 +161,7 @@ impl<T: Clone> FrameTracker<T> {
         info: T,
         url: &str,
         origin: &str,
+        name: &str,
         main: bool,
     ) -> Vec<FrameEvent> {
         if self.documents.contains_key(token) {
@@ -155,7 +175,13 @@ impl<T: Clone> FrameTracker<T> {
         }
         self.documents.insert(
             token.to_string(),
-            Document { info, url: url.to_string(), origin: origin.to_string(), main },
+            Document {
+                info,
+                url: url.to_string(),
+                origin: origin.to_string(),
+                name: name.to_string(),
+                main,
+            },
         );
         let mut events = Vec::new();
         if main {
@@ -205,6 +231,7 @@ impl<T: Clone> FrameTracker<T> {
                 Some(json!({
                     "frameId": id, "parentFrameId": frame.parent, "owner": frame.owner,
                     "token": frame.token, "url": document.url, "origin": document.origin,
+                    "name": document.name,
                 }))
             })
             .collect()
@@ -255,6 +282,7 @@ impl<T: Clone> FrameTracker<T> {
             token: token.to_string(),
             url: document.url.clone(),
             origin: document.origin.clone(),
+            name: document.name.clone(),
         });
         self.frames.insert(id.clone(), Frame { token: token.to_string(), parent, owner, depth });
         // Children that reported before this document was placed.
@@ -323,6 +351,13 @@ mod tests {
             token(1)
         );
         assert!(matches!(frame_message(&document), Some(FrameMessage::Document { .. })));
+        let named = format!(
+            r#"{{"kind":"document","token":"{}","url":"https://a/","origin":"https://a","name":"x"}}"#,
+            token(1)
+        );
+        assert!(
+            matches!(frame_message(&named), Some(FrameMessage::Document { name, .. }) if name == "x")
+        );
         let child = format!(
             r#"{{"kind":"child","token":"{}","child":"{}","owner":2}}"#,
             token(1),
@@ -352,16 +387,19 @@ mod tests {
     #[test]
     fn builds_tree_in_any_report_order() {
         let mut frames = FrameTracker::<u8>::default();
-        assert_eq!(ids(&frames.document(&token(1), 1, "https://a/", "https://a", true)), ["+main"]);
+        assert_eq!(
+            ids(&frames.document(&token(1), 1, "https://a/", "https://a", "", true)),
+            ["+main"]
+        );
         // Link before the child's own report.
         assert!(frames.link(&token(1), &token(2), 1).is_empty());
         assert_eq!(
-            ids(&frames.document(&token(2), 2, "https://b/", "https://b", false)),
+            ids(&frames.document(&token(2), 2, "https://b/", "https://b", "named", false)),
             ["+main/1"]
         );
         // Grandchild report before its parent's link.
-        assert!(frames.document(&token(4), 4, "https://d/", "https://d", false).is_empty());
-        assert!(frames.document(&token(3), 3, "https://c/", "https://c", false).is_empty());
+        assert!(frames.document(&token(4), 4, "https://d/", "https://d", "", false).is_empty());
+        assert!(frames.document(&token(3), 3, "https://c/", "https://c", "", false).is_empty());
         assert!(frames.link(&token(3), &token(4), 1).is_empty());
         assert_eq!(ids(&frames.link(&token(1), &token(3), 2)), ["+main/2", "+main/2/1"]);
         assert_eq!(frames.info("main/2/1"), Some(4));
@@ -369,18 +407,20 @@ mod tests {
         assert_eq!(snapshot.len(), 4);
         assert_eq!(snapshot[3]["parentFrameId"], "main/2");
         assert_eq!(snapshot[3]["origin"], "https://d");
+        assert_eq!(snapshot[1]["name"], "named");
+        assert_eq!(snapshot[3]["name"], "");
     }
 
     #[test]
     fn navigation_and_removal_detach_descendants() {
         let mut frames = FrameTracker::<u8>::default();
-        frames.document(&token(1), 1, "https://a/", "https://a", true);
-        frames.document(&token(2), 2, "https://b/", "https://b", false);
+        frames.document(&token(1), 1, "https://a/", "https://a", "", true);
+        frames.document(&token(2), 2, "https://b/", "https://b", "", false);
         frames.link(&token(1), &token(2), 1);
-        frames.document(&token(3), 3, "https://c/", "https://c", false);
+        frames.document(&token(3), 3, "https://c/", "https://c", "", false);
         frames.link(&token(2), &token(3), 1);
         // The child frame navigates: same frame id, new document, grandchild gone.
-        frames.document(&token(4), 4, "https://e/", "https://e", false);
+        frames.document(&token(4), 4, "https://e/", "https://e", "", false);
         assert_eq!(ids(&frames.link(&token(1), &token(4), 1)), ["-main/1/1", "+main/1"]);
         assert_eq!(frames.info("main/1"), Some(4));
         // A late pagehide from the replaced document changes nothing.
@@ -388,11 +428,11 @@ mod tests {
         assert_eq!(ids(&frames.gone(&token(4))), ["-main/1"]);
         assert_eq!(frames.info("main/1"), None);
         // A main navigation drops every child; main pagehide alone does not.
-        frames.document(&token(5), 5, "https://b/", "https://b", false);
+        frames.document(&token(5), 5, "https://b/", "https://b", "", false);
         frames.link(&token(1), &token(5), 3);
         assert!(frames.gone(&token(1)).is_empty());
         assert_eq!(
-            ids(&frames.document(&token(6), 6, "https://z/", "https://z", true)),
+            ids(&frames.document(&token(6), 6, "https://z/", "https://z", "", true)),
             ["-main/3", "+main"]
         );
     }
@@ -400,8 +440,8 @@ mod tests {
     #[test]
     fn first_link_wins_and_main_documents_never_link() {
         let mut frames = FrameTracker::<u8>::default();
-        frames.document(&token(1), 1, "https://a/", "https://a", true);
-        frames.document(&token(2), 2, "https://b/", "https://b", false);
+        frames.document(&token(1), 1, "https://a/", "https://a", "", true);
+        frames.document(&token(2), 2, "https://b/", "https://b", "", false);
         assert_eq!(ids(&frames.link(&token(1), &token(2), 1)), ["+main/1"]);
         assert!(frames.link(&token(1), &token(2), 7).is_empty());
         assert_eq!(frames.info("main/7"), None);
@@ -413,9 +453,9 @@ mod tests {
     #[test]
     fn depth_is_bounded() {
         let mut frames = FrameTracker::<u8>::default();
-        frames.document(&token(0), 0, "https://a/", "https://a", true);
+        frames.document(&token(0), 0, "https://a/", "https://a", "", true);
         for n in 1..=10u8 {
-            frames.document(&token(n), n, "https://a/", "https://a", false);
+            frames.document(&token(n), n, "https://a/", "https://a", "", false);
             frames.link(&token(n - 1), &token(n), 1);
         }
         assert_eq!(frames.snapshot().len(), 1 + MAX_DEPTH);

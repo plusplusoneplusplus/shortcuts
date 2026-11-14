@@ -30,10 +30,10 @@ const DOCUMENT = `({ token: ${TOKEN}, url: location.href, origin: location.origi
 interface Context { id: number; world: string; token: string; frame: string }
 interface Document { token: string; url: string; origin: string; main: number }
 /** A child frame's current document; replaced (never mutated) when the frame commits a new one. */
-interface ChildFrame { id: string; parentId: string; owner: number; token: string; url: string; origin: string }
+interface ChildFrame { id: string; parentId: string; owner: number; token: string; url: string; origin: string; name: string }
 
 /** A `frame-navigated` event or `frames` entry from the helper. */
-export interface WkWebViewFrameMessage { frameId?: unknown; parentFrameId?: unknown; owner?: unknown; token?: unknown; url?: unknown; origin?: unknown }
+export interface WkWebViewFrameMessage { frameId?: unknown; parentFrameId?: unknown; owner?: unknown; token?: unknown; url?: unknown; origin?: unknown; name?: unknown }
 
 function opaque(origin: string): string {
     return origin === 'null' ? 'opaque' : origin;
@@ -44,20 +44,22 @@ function frameInfo(document: Document): BrowserControlFrameInfo {
 }
 
 function childInfo(frame: ChildFrame): BrowserControlFrameInfo {
-    return { id: frame.id, parentId: frame.parentId, loaderId: frame.token, url: frame.url, origin: opaque(frame.origin) };
+    return { id: frame.id, parentId: frame.parentId, loaderId: frame.token, url: frame.url, origin: opaque(frame.origin), name: frame.name };
 }
 
 function childFrame(message: WkWebViewFrameMessage): ChildFrame | undefined {
-    const { frameId, parentFrameId, owner, token, url, origin } = message;
+    const { frameId, parentFrameId, owner, token, url, origin, name } = message;
     if (typeof frameId !== 'string' || frameId === WKWEBVIEW_MAIN_FRAME || frameId.length > 512 || typeof parentFrameId !== 'string'
         || typeof owner !== 'number' || !Number.isSafeInteger(owner) || owner <= 0 || typeof token !== 'string' || !/^[0-9a-f]{32}$/.test(token)
         || typeof url !== 'string' || typeof origin !== 'string') return undefined;
-    return { id: frameId, parentId: parentFrameId, owner, token, url: url.slice(0, 8192), origin: origin.slice(0, 256) };
+    return { id: frameId, parentId: parentFrameId, owner, token, url: url.slice(0, 8192), origin: origin.slice(0, 256), name: typeof name === 'string' ? name.slice(0, 1024) : '' };
 }
 
 function unavailable(): Error {
     return new Error('Isolated world is unavailable.');
 }
+
+type HeldFrameEvent = [event: 'frame-navigated' | 'frame-detached', message: WkWebViewFrameMessage];
 
 /**
  * `BrowserControl` for a WKWebView view, over the helper's `input`, content-world `evaluate`
@@ -75,6 +77,8 @@ export class WkWebViewBrowserControl implements BrowserControl {
     private contextEvents = false;
     private loading = false;
     private syncing?: Promise<Document>;
+    /** Frame events that arrived while a new top-level document was being synced. */
+    private heldFrameEvents?: HeldFrameEvent[];
     private closed?: 'detached' | 'crashed';
 
     constructor(private readonly request: WkWebViewControlRequest) {}
@@ -144,12 +148,36 @@ export class WkWebViewBrowserControl implements BrowserControl {
     /** Called by the host for the helper's `frame-navigated` and `frame-detached` events of this view. */
     frameEvent(event: 'frame-navigated' | 'frame-detached', message: WkWebViewFrameMessage): void {
         if (this.closed) return;
+        if (this.heldFrameEvents) {
+            this.heldFrameEvents.push([event, message]);
+            return;
+        }
         if (event === 'frame-detached') {
             if (typeof message.frameId === 'string') this.detach(message.frameId);
             return;
         }
         if (message.frameId === WKWEBVIEW_MAIN_FRAME) {
-            if (typeof message.token === 'string') this.mainFrameToken = message.token;
+            if (typeof message.token !== 'string' || message.token === this.mainFrameToken) return;
+            const previous = this.mainFrameToken;
+            this.mainFrameToken = message.token;
+            // CDP reports a top-level navigation before the new document's child frames, and the
+            // frame registry retires all children on it; hold child events until it is reported.
+            if (previous === undefined || !(this.frameEvents || this.contextEvents)) return;
+            const held: HeldFrameEvent[] = [];
+            this.heldFrameEvents = held;
+            void this.sync().catch(() => undefined).then(() => {
+                if (this.heldFrameEvents !== held) return;
+                this.heldFrameEvents = undefined;
+                for (const [index, [heldEvent, heldMessage]] of held.entries()) {
+                    this.frameEvent(heldEvent, heldMessage);
+                    // A held top-level navigation starts holding again; keep the rest in order.
+                    const holding = this.heldFrameEvents as HeldFrameEvent[] | undefined;
+                    if (holding) {
+                        holding.push(...held.slice(index + 1));
+                        return;
+                    }
+                }
+            });
             return;
         }
         const frame = childFrame(message);

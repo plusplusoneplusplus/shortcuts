@@ -395,16 +395,20 @@ fn frame_message(message: &WKScriptMessage) {
     let events = {
         let mut tracker = view.frames.borrow_mut();
         match parsed {
-            FrameMessage::Document { token, url, origin } => {
+            FrameMessage::Document { token, url, origin, name } => {
                 let main = unsafe { info.isMainFrame() };
-                tracker.document(&token, info, &url, &origin, main)
+                tracker.document(&token, info, &url, &origin, &name, main)
             }
             FrameMessage::Child { token, child, owner } => tracker.link(&token, &child, owner),
             FrameMessage::Gone { token } => tracker.gone(&token),
         }
     };
+    let detached = events.iter().any(|event| matches!(event, FrameEvent::Detached { .. }));
     for event in events {
         protocol::emit(event.to_json(&view.id));
+    }
+    if detached {
+        view.restore_frame_focus();
     }
 }
 

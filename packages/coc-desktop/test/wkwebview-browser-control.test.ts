@@ -4,7 +4,7 @@ import type { BrowserControlEvent } from '../src/browser-control-engine';
 import { BrowserFrameRegistry } from '../src/browser-frame-registry';
 import { WkWebViewBrowserControl } from '../src/wkwebview-browser-control';
 
-interface FakeFrame { parent: string | null; owner: number | null; token: string; url: string; worlds: Map<string, string>; owned: Set<number> }
+interface FakeFrame { parent: string | null; owner: number | null; token: string; url: string; name?: string; worlds: Map<string, string>; owned: Set<number> }
 
 /** A fake helper: per-frame documents, each world with its own per-document token, plus the coc-frames world. */
 function fakeHelper() {
@@ -19,7 +19,7 @@ function fakeHelper() {
         if (!frame.worlds.has(world)) frame.worlds.set(world, `${world}#${frame.token}`);
         return frame.worlds.get(world)!;
     };
-    const info = (id: string, frame: FakeFrame) => ({ frameId: id, parentFrameId: frame.parent, owner: frame.owner, token: frame.token, url: frame.url, origin: new URL(frame.url).origin });
+    const info = (id: string, frame: FakeFrame) => ({ frameId: id, parentFrameId: frame.parent, owner: frame.owner, token: frame.token, url: frame.url, origin: new URL(frame.url).origin, name: frame.name ?? '' });
     let value: (expression: string, world: string, frame: string) => unknown = () => 'value';
     const request = vi.fn(async (op: string, payload: Record<string, unknown>) => {
         calls.push([op, payload]);
@@ -66,11 +66,11 @@ function fakeHelper() {
             return events;
         },
         /** Loads a new document into a child frame (adding it when new); returns the helper's events. */
-        child(id: string, parent: string, owner: number, url: string) {
+        child(id: string, parent: string, owner: number, url: string, name?: string) {
             const events: [string, Record<string, unknown>][] = [];
             for (const [child, frame] of [...frames]) if (frame.parent === id) detach(child, events);
             frames.get(parent)!.owned.add(owner);
-            frames.set(id, { parent, owner, token: frameToken(), url, worlds: new Map(), owned: new Set() });
+            frames.set(id, { parent, owner, token: frameToken(), url, name, worlds: new Map(), owned: new Set() });
             events.push(['frame-navigated', info(id, frames.get(id)!)]);
             return events;
         },
@@ -225,7 +225,7 @@ describe('WkWebViewBrowserControl', () => {
         await vi.waitFor(() => expect(events.filter(event => event.type === 'context-created')).toHaveLength(2));
         expect(events).toEqual([
             { type: 'frame-attached', frameId: 'main/1', parentFrameId: 'main' },
-            { type: 'frame-navigated', frame: { id: 'main/1', parentId: 'main', loaderId: childToken, url: 'https://child.test/a', origin: 'https://child.test' } },
+            { type: 'frame-navigated', frame: { id: 'main/1', parentId: 'main', loaderId: childToken, url: 'https://child.test/a', origin: 'https://child.test', name: '' } },
             { type: 'frame-attached', frameId: 'main/1/1', parentFrameId: 'main/1' },
             expect.objectContaining({ type: 'frame-navigated', frame: expect.objectContaining({ id: 'main/1/1', parentId: 'main/1' }) }),
             { type: 'context-created', context: expect.any(Number), frameId: 'main/1', origin: 'https://child.test', isDefault: true },
@@ -340,13 +340,13 @@ describe('WkWebViewBrowserControl', () => {
         const helper = fakeHelper();
         const control = new WkWebViewBrowserControl(helper.request);
         const registry = new BrowserFrameRegistry(control, vi.fn());
-        deliver(control, helper.child('main/1', 'main', 1, 'https://child.test/'));
+        deliver(control, helper.child('main/1', 'main', 1, 'https://child.test/', 'named-child'));
         helper.setValue((expression, _world, frame) => expression.includes('readyState') ? true : `title@${frame}`);
         await registry.start();
         const frames = registry.list();
         expect(frames).toEqual([
             expect.objectContaining({ rawId: 'main', depth: 0, status: 'ready' }),
-            expect.objectContaining({ rawId: 'main/1', depth: 1, status: 'ready', origin: 'https://child.test' }),
+            expect.objectContaining({ rawId: 'main/1', depth: 1, status: 'ready', origin: 'https://child.test', name: 'named-child' }),
         ]);
         const handle = frames[1]!.id;
         await expect(registry.evaluate('document.title', handle)).resolves.toBe('title@main/1');
@@ -360,6 +360,28 @@ describe('WkWebViewBrowserControl', () => {
         expect(() => registry.assert(revision)).toThrow('stale');
         await expect(registry.evaluate('1', handle)).rejects.toThrow('stale');
         expect(registry.list().map(frame => frame.rawId)).toEqual(['main', 'main/2']);
+        await registry.stop();
+    });
+
+    it('reports a top-level navigation before the new document\'s child frames', async () => {
+        const helper = fakeHelper();
+        const control = new WkWebViewBrowserControl(helper.request);
+        const registry = new BrowserFrameRegistry(control, vi.fn());
+        deliver(control, helper.navigate('https://example.test/'));
+        deliver(control, helper.child('main/1', 'main', 1, 'https://child.test/a'));
+        helper.setValue(expression => expression.includes('readyState') ? true : 'title');
+        await registry.start();
+        const events: BrowserControlEvent['type'][] = [];
+        control.onEvent(event => { events.push(event.type); });
+
+        // The helper reports the new main document, then its child, before main reads the main document.
+        deliver(control, helper.navigate('https://example.test/next'));
+        deliver(control, helper.child('main/1', 'main', 1, 'https://child.test/b'));
+        await vi.waitFor(() => expect(registry.list().find(frame => frame.rawId === 'main/1')?.status).toBe('ready'));
+        expect(registry.list().map(frame => frame.rawId)).toEqual(['main', 'main/1']);
+        const mainNavigated = events.indexOf('frame-navigated');
+        expect(events.indexOf('frame-attached')).toBeGreaterThan(mainNavigated);
+        expect(mainNavigated).toBeGreaterThan(events.indexOf('frame-detached'));
         await registry.stop();
     });
 
