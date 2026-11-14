@@ -8,6 +8,7 @@ import type { BrowserImportCookie } from './browser-cookie-import';
 import { downloadSource, type BrowserDownloadStore } from './browser-downloads';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserSiteCertificate, type BrowserViewState } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
+import { captureWebView2Annotation } from './webview2-annotation-capture';
 import { WebView2Downloads, supportedWebView2Download, validWebView2DownloadId } from './webview2-downloads';
 import { browserMessage } from './webview2-process';
 import { WkWebViewBrowserControl } from './wkwebview-browser-control';
@@ -44,6 +45,8 @@ interface NativeEntry {
     navigationError?: Error;
     /** Replaced when a crashed view is reopened; the old one stays failed. */
     control: WkWebViewBrowserControl;
+    /** Bumped on every navigation main or the page starts and every committed document. */
+    documentGeneration: number;
     /** Pushes placement and parent visibility after window move/resize/minimize/hide/fullscreen. */
     reposition(): void;
     parentChanged(): void;
@@ -151,7 +154,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             nativeId: id, request, sink, window, parentWindow, bounds: null, background: false, pageZoom: request.pageZoomPercent ?? 100,
             navigationGate: request.navigationGate === true, pendingGates: new Set(),
             state: { viewId: request.viewId, engine: 'wkwebview', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
-            control: this.control(id),
+            control: this.control(id), documentGeneration: 0,
             reposition: () => {
                 if (entry.bounds && this.views.get(id) === entry) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(failed); }
             },
@@ -225,10 +228,30 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 }
                 return facts;
             },
+            ...(!entry.root ? { captureAnnotation: async (rect, viewport) => {
+                const { documentGeneration, pageZoom, control } = entry;
+                const url = entry.state.url;
+                // A capture finishing after close, crash, navigation, hide or a zoom change is rejected.
+                const check = () => {
+                    live();
+                    if (entry.state.loading || entry.state.errorCode || entry.state.error || !entry.bounds || !this.parentVisible(entry)
+                        || entry.documentGeneration !== documentGeneration || entry.pageZoom !== pageZoom || entry.control !== control
+                        || entry.state.url !== url) throw new BrowserHostError('invalid', 'Annotation document became unavailable.');
+                };
+                check();
+                const image = await captureWebView2Annotation(async () => {
+                    const preview = await this.process.request('capture-annotation', { viewId: id });
+                    check();
+                    return preview;
+                }, rect, viewport);
+                check();
+                return image;
+            } } satisfies Pick<BrowserHostedView, 'captureAnnotation'> : {}),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 live();
                 retireGates();
+                entry.documentGeneration++;
                 this.downloads?.revokeView(id);
                 entry.request.url = url;
                 await this.process.request('navigate', { viewId: id, url });
@@ -236,7 +259,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
             nav: async action => {
                 live();
                 retireGates();
-                if (action !== 'stop') this.downloads?.revokeView(id);
+                if (action !== 'stop') { this.downloads?.revokeView(id); entry.documentGeneration++; }
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed' && !entry.root) {
                     // A crashed or lost helper view is reopened in place with its last placement.
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
@@ -248,6 +271,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 } else { await this.process.request('nav', { viewId: id, action }); }
             },
             setPageZoom: async percent => {
+                entry.documentGeneration++;
                 await this.process.request('page-zoom', { viewId: id, pageZoomPercent: percent });
                 entry.pageZoom = percent;
             },
@@ -403,6 +427,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 return;
             }
             if (!entry.root && state.loading && !entry.state.loading) entry.sink.navigationStarted?.();
+            if (state.loading || state.url !== entry.state.url) entry.documentGeneration++;
             entry.state = {
                 viewId: entry.request.viewId, engine: 'wkwebview',
                 url: state.url, title: state.title, canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading,
@@ -424,7 +449,7 @@ export class WkWebViewBrowserHost implements BrowserEngineHost {
                 if (message.event === 'visited') entry.sink.documentCommitted?.(message.url, message.title);
                 else entry.sink.documentTitleUpdated?.(message.url, message.title);
             }
-            if (message.event === 'visited') { entry.sink.visited?.(message.url, message.title); }
+            if (message.event === 'visited') { entry.documentGeneration++; entry.sink.visited?.(message.url, message.title); }
             else { entry.sink.titleUpdated?.(message.url, message.title); }
         } else if (message.event === 'new-tab' && typeof message.url === 'string') {
             (entry.root ?? entry).sink.newTab(message.url);

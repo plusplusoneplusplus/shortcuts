@@ -722,6 +722,19 @@ describe('desktop native WKWebView packaging contract', () => {
             expect(await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 0, height: 10 } })).toMatchObject({ ok: false, reason: 'invalid' });
             expect(await send({ op: 'screenshot', viewId: 'v1', rect: { x: 0, y: 0, width: 10, height: 10 }, format: 'gif' })).toMatchObject({ ok: false, reason: 'invalid' });
 
+            // Annotation previews are the whole viewport at device pixels, as a PNG data URL.
+            const preview = await send({ op: 'capture-annotation', viewId: 'v1' });
+            expect(preview).toMatchObject({ ok: true });
+            expect(preview.result.startsWith('data:image/png;base64,')).toBe(true);
+            const previewData = preview.result.slice('data:image/png;base64,'.length);
+            const [innerWidth, innerHeight] = await evaluate('[innerWidth, innerHeight]') as number[];
+            const previewSize = pngSize(previewData);
+            expect(Math.abs(previewSize.width - innerWidth * ratio)).toBeLessThanOrEqual(Math.ceil(2 * ratio) + 1);
+            expect(Math.abs(previewSize.height - innerHeight * ratio)).toBeLessThanOrEqual(Math.ceil(2 * ratio) + 1);
+            const [pr, pg, pb] = pngFirstPixel(previewData);
+            expect(pr).toBeGreaterThan(200); expect(pg).toBeLessThan(80); expect(pb).toBeLessThan(80);
+            expect(await send({ op: 'capture-annotation', viewId: 'missing' })).toMatchObject({ ok: false, reason: 'not-found' });
+
             // None of it showed the panel or took the keyboard.
             expect((await send({ op: 'view-state', viewId: 'v1' })).result).toMatchObject({ mode: 'background', transparent: true, key: false });
             await send({ op: 'quit' });

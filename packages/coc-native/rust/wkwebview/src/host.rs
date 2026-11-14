@@ -1555,6 +1555,10 @@ fn view_command(
             screenshot(view, command, mtm)?;
             return Err(DEFERRED);
         }
+        "capture-annotation" => {
+            capture_annotation(view, command.id, mtm)?;
+            return Err(DEFERRED);
+        }
         "page-zoom" => {
             let percent = command
                 .page_zoom_percent
@@ -1687,6 +1691,43 @@ fn screenshot(view: &View, command: &Command, mtm: MainThreadMarker) -> Result<(
                 protocol::emit_capture(json!({ "id": id, "ok": true, "result": { "data": data } }))
             }
             None => protocol::failure(id, "capture-failed", "Browser screenshot failed."),
+        }
+    });
+    unsafe {
+        view.webview
+            .takeSnapshotWithConfiguration_completionHandler(Some(&configuration), &completion)
+    };
+    Ok(())
+}
+
+/// Captures the whole viewport at device pixels (backing scale times page zoom) as a PNG
+/// data URL, like WebView2's CapturePreview. Main crops the selection from it.
+fn capture_annotation(view: &View, id: u64, mtm: MainThreadMarker) -> Result<(), &'static str> {
+    if view.popup {
+        return Err("Annotation capture requires a root tab.");
+    }
+    if view.error.borrow().as_ref().is_some_and(|(code, _)| code == "runtime-crashed") {
+        return Err("Browser page crashed.");
+    }
+    let size = view.webview.bounds().size;
+    let scale = view.panel.backingScaleFactor();
+    let (width, height) = ((size.width * scale).round(), (size.height * scale).round());
+    if !protocol::annotation_preview_size_allowed(width as i64, height as i64) {
+        return Err("Annotation preview is too large.");
+    }
+    let configuration = unsafe { WKSnapshotConfiguration::new(mtm) };
+    unsafe { configuration.setAfterScreenUpdates(true) };
+    let completion = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
+        let data_url = match (unsafe { image.as_ref() }, unsafe { error.as_ref() }) {
+            (Some(image), None) => encode_image(image, width as usize, height as usize, true, 1.0)
+                .and_then(|data| protocol::annotation_data_url(&data)),
+            _ => None,
+        };
+        match data_url {
+            Some(data_url) => {
+                protocol::emit_capture(json!({ "id": id, "ok": true, "result": data_url }))
+            }
+            None => protocol::failure(id, "invalid", "Annotation preview capture failed."),
         }
     });
     unsafe {

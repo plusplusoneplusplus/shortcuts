@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserDownloadStore } from '../src/browser-downloads';
 import { WkWebViewBrowserHost, wkWebViewCertificate, wkWebViewParentWindow } from '../src/wkwebview-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
+import { captureWebView2Annotation } from '../src/webview2-annotation-capture';
 
 const mocks = vi.hoisted(() => {
     const listeners = new Map<string, Set<() => void>>();
@@ -43,6 +44,13 @@ const mocks = vi.hoisted(() => {
 vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => Object.assign(mocks.window, { webContents: mocks.owner }) },
     webContents: { fromId: () => mocks.owner },
+}));
+
+vi.mock('../src/webview2-annotation-capture', () => ({
+    captureWebView2Annotation: vi.fn(async (capture: () => Promise<unknown>) => {
+        await capture();
+        return { dataUrl: 'data:image/png;base64,', width: 30, height: 40 };
+    }),
 }));
 
 vi.mock('../src/wkwebview-process', () => ({
@@ -336,6 +344,74 @@ describe('WKWebView explicit history events', () => {
         await view.close();
         mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url: state.url, title: 'Late' });
         expect(sink.visited).not.toHaveBeenCalled();
+    });
+});
+
+describe('WKWebView annotation capture', () => {
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    const viewport = { width: 300, height: 200, devicePixelRatio: 2 };
+
+    async function placedTab() {
+        const h = await open();
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        await h.view.setBounds(bounds);
+        mocks.request.mockClear();
+        return h;
+    }
+
+    it('captures the exact native root through the shared crop', async () => {
+        const h = await placedTab();
+        mocks.request.mockResolvedValueOnce('native preview');
+        expect(await h.view.captureAnnotation!(rect, viewport)).toMatchObject({ width: 30, height: 40 });
+        expect(mocks.request).toHaveBeenCalledWith('capture-annotation', { viewId: '7:tab:1' });
+        expect(captureWebView2Annotation).toHaveBeenCalledWith(expect.any(Function), rect, viewport);
+    });
+
+    it.each(['loading', 'hidden', 'minimized', 'closed', 'crashed'])('refuses %s views before capture dispatch', async reason => {
+        const h = await placedTab();
+        if (reason === 'loading') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+        if (reason === 'hidden') await h.view.setBounds(null);
+        if (reason === 'minimized') mocks.window.minimized = true;
+        if (reason === 'closed') await h.view.close();
+        if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, error: 'Crash', errorCode: 'runtime-crashed' } });
+        mocks.request.mockClear();
+        await expect(h.view.captureAnnotation!(rect, viewport)).rejects.toThrow();
+        expect(mocks.request).not.toHaveBeenCalledWith('capture-annotation', expect.anything());
+    });
+
+    it.each(['navigation', 'committed document', 'same-document URL', 'main navigation', 'zoom', 'hidden', 'closed', 'crashed', 'crash reopen'])(
+        'rejects late %s captures', async reason => {
+            const h = await placedTab();
+            let release!: (result: unknown) => void;
+            mocks.request.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+            const capture = h.view.captureAnnotation!(rect, viewport);
+            const rejected = expect(capture).rejects.toThrow();
+            if (reason === 'navigation') {
+                mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+                mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            }
+            if (reason === 'committed document') mocks.onEvent({ event: 'visited', viewId: '7:tab:1', sourceViewId: '7:tab:1', url: state.url, title: 'Tab' });
+            if (reason === 'same-document URL') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, url: 'https://tab.test/#next' } });
+            if (reason === 'main navigation') await h.view.navigate(state.url);
+            if (reason === 'zoom') await h.view.setPageZoom!(125);
+            if (reason === 'hidden') await h.view.setBounds(null);
+            if (reason === 'closed') await h.view.close();
+            if (reason === 'crashed') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, error: 'Crash', errorCode: 'runtime-crashed' } });
+            if (reason === 'crash reopen') {
+                mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, error: 'Crash', errorCode: 'runtime-crashed' } });
+                await h.view.nav('reload');
+                mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            }
+            release('native preview');
+            await rejected;
+        });
+
+    it('keeps popup capture unavailable', async () => {
+        const popups: BrowserHostedView[] = [];
+        await open(makeSink({ controlPopoutOpened: vi.fn((_id, popup) => { popups.push(popup); }) }));
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'about:blank' });
+        expect(popups).toHaveLength(1);
+        expect(popups[0].captureAnnotation).toBeUndefined();
     });
 });
 

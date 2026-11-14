@@ -419,6 +419,14 @@ pub fn annotation_preview_size_allowed(width: i64, height: i64) -> bool {
         && width.checked_mul(height).is_some_and(|pixels| pixels <= MAX_ANNOTATION_PIXELS as i64)
 }
 
+/// Base64 PNG data as a `data:` URL when the decoded PNG fits the annotation limit.
+pub fn annotation_data_url(base64: &str) -> Option<String> {
+    let padding = base64.bytes().rev().take_while(|byte| *byte == b'=').count();
+    let decoded = (base64.len() / 4 * 3).checked_sub(padding)?;
+    (!base64.is_empty() && base64.len().is_multiple_of(4) && decoded <= MAX_ANNOTATION_PNG_BYTES)
+        .then(|| format!("data:image/png;base64,{base64}"))
+}
+
 pub fn allowed_page_zoom(percent: f64) -> bool {
     percent.is_finite() && (50.0..=200.0).contains(&percent) && (percent - 50.0) % 25.0 == 0.0
 }
@@ -919,6 +927,18 @@ mod tests {
         assert!(!annotation_preview_size_allowed(4097, 4096));
         assert!(!annotation_preview_size_allowed(0, 10));
         assert!(!annotation_preview_size_allowed(i64::MAX, 2));
+    }
+
+    #[test]
+    fn annotation_data_urls_are_byte_bounded_base64() {
+        assert_eq!(annotation_data_url("iVBO").as_deref(), Some("data:image/png;base64,iVBO"));
+        assert!(annotation_data_url("").is_none());
+        assert!(annotation_data_url("iVB").is_none());
+        let limit = MAX_ANNOTATION_PNG_BYTES / 3 * 4;
+        assert!(annotation_data_url(&"A".repeat(limit)).is_some());
+        // `limit` chars decode to MAX - 2 bytes; each padded tail adds one or two more.
+        assert!(annotation_data_url(&format!("{}AAA=", "A".repeat(limit))).is_some());
+        assert!(annotation_data_url(&format!("{}AAAA", "A".repeat(limit))).is_none());
     }
 
     #[test]
