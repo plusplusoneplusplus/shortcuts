@@ -567,6 +567,8 @@ async function cleanup() {
         const selectionBefore = await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame);
         await view.focus();
+        // WebKit applies the refocused window's active state asynchronously (macOS 15 visibly so).
+        await until(() => evaluate('document.hasFocus()', editor.frame), 'refocused view keeps frame focus');
         await escape('after script focus');
         assert.deepEqual(await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame), selectionBefore);
