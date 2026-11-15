@@ -350,6 +350,8 @@ async function cleanup() {
                 && [...childFrames.keys()].every(frame => [...contexts.values()].some(context => context.frame === frame));
         }, 'helper-reported cross-origin child frames and default contexts');
     }
+    // Later navigations retire these frames; report what discovery found.
+    const discoveredChildFrames = childFrames.size;
     if (engine === 'webview2') {
         const other = new BrowserWindow({ width: 240, height: 160, show: true,
             webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
@@ -668,7 +670,7 @@ async function cleanup() {
     assert.equal((await metadata()).frames, undefined);
     assert(!commands.slice(beforeDisabled).some(command => ['Page.enable', 'Runtime.enable', 'Target.setAutoAttach'].includes(command.method)));
     const result = {
-        engine, oopif: cdpEngine, contextAssociation: true, iframeSessions: sessions.size, childFrames: childFrames.size,
+        engine, oopif: cdpEngine, contextAssociation: true, iframeSessions: sessions.size, childFrames: discoveredChildFrames,
         sessionEvaluations, maxProtocolBytes,
         automaticSnapshot: true, explicitReadEval: true, uniqueSameOrigin: true, boundaries: true,
         trustedNestedInput: true, nestedScroll: true, keyboardFocus: true, scaledBorderGeometry: true, pageZoom: true,
