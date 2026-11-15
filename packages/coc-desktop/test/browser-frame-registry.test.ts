@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BrowserFrameRegistry, type BrowserCdpListener } from '../src/browser-frame-registry';
+import { BrowserFrameRegistry } from '../src/browser-frame-registry';
+import { createCdpBrowserControl } from '../src/browser-cdp-control';
+import type { BrowserCdpEventListener as BrowserCdpListener } from '../src/browser-host-contract';
 
 function fixture() {
     let event!: BrowserCdpListener;
@@ -14,9 +16,9 @@ function fixture() {
         if (method === 'Runtime.evaluate') return { result: { value: String(_params?.expression).includes('document.readyState') ? true : 'fixture' } };
         return {};
     });
-    const registry = new BrowserFrameRegistry(send, changed);
     const off = vi.fn();
-    const start = () => registry.start(listener => { event = listener; return off; });
+    const registry = new BrowserFrameRegistry(createCdpBrowserControl({ cdp: send, onCdpEvent: listener => { event = listener; return off; } }), changed);
+    const start = () => registry.start();
     return { registry, send, changed, off, start, event: (...args: Parameters<BrowserCdpListener>) => event(...args) };
 }
 
@@ -43,7 +45,7 @@ describe('view-private browser frame contexts', () => {
         expect(await h.registry.evaluate('42', frames[0].id)).toBe('fixture');
         expect(h.send).toHaveBeenLastCalledWith('Runtime.evaluate', {
             expression: '42', contextId: 1, returnByValue: true, awaitPromise: false,
-        }, undefined);
+        });
     });
 
     it('initializes only owned related iframe sessions and routes OOPIF execution privately', async () => {
@@ -82,7 +84,7 @@ describe('view-private browser frame contexts', () => {
         const childEnable = h.send.mock.calls.findIndex(call => call[0] === 'Runtime.enable' && call[2] === 'private-session');
         expect(proof).toBeGreaterThan(-1);
         expect(childEnable).toBeGreaterThan(proof);
-        expect(h.send).toHaveBeenCalledWith('Runtime.releaseObject', { objectId: 'private-owner-object' }, undefined);
+        expect(h.send).toHaveBeenCalledWith('Runtime.releaseObject', { objectId: 'private-owner-object' });
     });
 
     it('retires nested sessions when the parent detaches without child events', async () => {

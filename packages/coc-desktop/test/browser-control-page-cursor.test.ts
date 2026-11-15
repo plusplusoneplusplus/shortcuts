@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserControlPage } from '../src/browser-control-page';
+import { createCdpBrowserControl } from '../src/browser-cdp-control';
 import type { BrowserCursorCommand } from '../src/browser-control-cursor';
-import type { BrowserCdpListener } from '../src/browser-frame-registry';
+import type { BrowserCdpEventListener as BrowserCdpListener } from '../src/browser-host-contract';
 
 interface Overlay { layer: HTMLElement; cursor: HTMLElement }
 const overlay = () => (window as Window & { __cocCursorOverlay?: Overlay }).__cocCursorOverlay;
@@ -26,7 +27,7 @@ function fixture() {
         if (method === 'Runtime.evaluate' && expression.includes('valueJson')) return { result: { value: { valueJson: '1', valueTruncated: false } } };
         return method === 'Runtime.evaluate' ? { result: { value: target } } : {};
     });
-    return { send, events, page: new BrowserControlPage(send, 'linux') };
+    return { send, events, page: new BrowserControlPage(createCdpBrowserControl({ cdp: send }), 'linux') };
 }
 
 function drawn(send: ReturnType<typeof fixture>['send']): BrowserCursorCommand[] {
@@ -91,8 +92,8 @@ describe('browser control cursor overlay wiring', () => {
             }
             return {};
         });
-        const page = new BrowserControlPage(send, 'linux');
-        await page.configureFrames(true, callback => { listener = callback; return () => {}; });
+        const page = new BrowserControlPage(createCdpBrowserControl({ cdp: send, onCdpEvent: callback => { listener = callback; return () => {}; } }), 'linux');
+        await page.configureFrames(true);
         await page.snapshot();
         const field = document.getElementById('field')!;
         vi.spyOn(field, 'getBoundingClientRect').mockReturnValue({ x: 100, y: 200, width: 40, height: 20 } as DOMRect);
@@ -156,15 +157,15 @@ describe('browser control cursor overlay wiring', () => {
     it('removes the overlay through an out-of-queue sender and redraws on the next action', async () => {
         const { send, page } = fixture();
         const raw = vi.fn((method: string, params?: Record<string, unknown>) => send(method, params));
-        page.removeCursor(raw);
+        page.removeCursor(createCdpBrowserControl({ cdp: raw }));
         expect(raw).not.toHaveBeenCalled();
         page.setCursorOverlay(true);
         await page.click('e1');
-        page.removeCursor(raw);
+        page.removeCursor(createCdpBrowserControl({ cdp: raw }));
         await vi.waitFor(() => expect(overlay()).toBeUndefined());
         expect(raw).toHaveBeenCalledOnce();
         expect(document.querySelector('coc-ai-cursor')).toBeNull();
-        page.removeCursor(raw);
+        page.removeCursor(createCdpBrowserControl({ cdp: raw }));
         expect(raw).toHaveBeenCalledOnce();
         await page.press('Enter');
         expect(drawn(send).at(-1)).toEqual({ op: 'key', key: 'Enter' });
@@ -176,7 +177,7 @@ describe('browser control cursor overlay wiring', () => {
         const raw = vi.fn((method: string, params?: Record<string, unknown>) => send(method, params));
         page.setCursorOverlay(true);
         await page.click('e1');
-        page.setCursorOverlay(false, raw);
+        page.setCursorOverlay(false, createCdpBrowserControl({ cdp: raw }));
         expect(raw).toHaveBeenCalledOnce();
         await vi.waitFor(() => expect(overlay()).toBeUndefined());
         expect(drawn(send).at(-1)).toEqual({ op: 'remove' });
@@ -193,7 +194,7 @@ describe('browser control cursor overlay wiring', () => {
         const { page } = fixture();
         page.setCursorOverlay(true);
         await page.click('e1');
-        page.removeCursor(() => { throw new Error('Synthetic detached view'); });
+        page.removeCursor(createCdpBrowserControl({ cdp: () => { throw new Error('Synthetic detached view'); } }));
         await vi.waitFor(() => expect(console.warn).toHaveBeenCalledWith('[coc-desktop] Browser cursor overlay failed:', 'Synthetic detached view'));
     });
 
@@ -221,7 +222,7 @@ describe('browser control cursor overlay wiring', () => {
         await page.click('e1');
         expect(document.querySelector('coc-ai-cursor')).not.toBeNull();
         expect(await page.continuationStamp()).toBe(before);
-        page.removeCursor(send);
+        page.removeCursor(createCdpBrowserControl({ cdp: send }));
         await vi.waitFor(() => expect(document.querySelector('coc-ai-cursor')).toBeNull());
         expect(await page.continuationStamp()).toBe(before);
         document.body.append(document.createElement('p'));

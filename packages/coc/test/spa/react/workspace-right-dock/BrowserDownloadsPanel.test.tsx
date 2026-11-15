@@ -10,7 +10,8 @@ const row = (state: BrowserManagedDownload['state'] = 'downloading', patch = {})
     state, received: 512, total: 1024, active: ['downloading', 'paused'].includes(state), canPause: state === 'downloading', canResume: state === 'paused', fileAvailable: state === 'completed', ...patch,
 });
 const reply = (entries = [row()]): BrowserDownloadsResult => ({ ok: true, entries, storageError: null,
-    engines: { electron: { managed: true, message: 'Native Save dialog' }, webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' } } });
+    engines: { electron: { managed: true, message: 'Native Save dialog' }, webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' },
+        wkwebview: { managed: true, message: 'WebKit downloads use a native Save dialog. They can be cancelled but not paused.' } } });
 function setup(value = reply()) {
     const listeners = new Set<() => void>();
     const downloads: DesktopBrowserDownloads = { query: vi.fn(async () => value), action: vi.fn(async () => ({ ok: true })),
@@ -99,5 +100,15 @@ describe('Downloads panel', () => {
         expect(screen.getByText('a'.repeat(180))).toHaveClass('break-words');
         expect(screen.getByRole('group')).toHaveClass('flex-wrap');
         expect(screen.getByRole('dialog')).toHaveClass('max-w-[640px]');
+    });
+
+    it('explains that WebKit downloads can be cancelled but not paused', async () => {
+        const { downloads, rerender } = setup(reply([row('downloading', { engine: 'wkwebview', canPause: false })]));
+        rerender(<BrowserDownloadsPanel downloads={downloads} engine="wkwebview" desktop onClose={vi.fn()} />);
+        await screen.findByText('downloading.zip');
+        expect(screen.getByText(/WebKit downloads use a native Save dialog/)).toHaveTextContent('They can be cancelled but not paused.');
+        expect(screen.getByText('WebKit (WKWebView)')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
     });
 });

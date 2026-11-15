@@ -7,12 +7,16 @@ const path = require('node:path');
 const { app, BrowserWindow, Menu, clipboard } = require('electron');
 const { withRichClipboard } = require('../../dist/browser-rich-clipboard.js');
 const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
+const { createCdpBrowserControl } = require('../../dist/browser-cdp-control.js');
 const { registerBrowserEmbedder } = require('../../dist/browser-webview-guard.js');
 const { ElectronBrowserHost } = require('../../dist/electron-browser-host.js');
 const { WebView2BrowserHost } = require('../../dist/webview2-browser-host.js');
+const { WkWebViewBrowserHost } = require('../../dist/wkwebview-browser-host.js');
 
 const data = process.env.COC_BROWSER_FRAME_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE;
+// WKWebView has no CDP: its BrowserControl calls are traced under the CDP names the assertions count.
+const cdpEngine = engine !== 'wkwebview';
 const richClipboardEnabled = process.env.COC_DESKTOP_RICH_CLIPBOARD_E2E === '1';
 assert(data && path.basename(data).startsWith('.e2e-browser-frames-'));
 app.setPath('userData', data);
@@ -35,6 +39,7 @@ const contexts = new Map();
 const sessions = new Map();
 const commands = [];
 const ancestryProbes = new Map();
+const childFrames = new Map();
 let maxProtocolBytes = 0;
 let sessionEvaluations = 0;
 let abortMouse;
@@ -159,7 +164,7 @@ async function until(check, label, timeout = 8000) {
     throw new Error(`Timed out: ${label}${last ? ': ' + last.message : ''}`);
 }
 const run = operation => queue.run(operation);
-const configure = page => page.configureFrames(true, listener => view.onCdpEvent(listener), () => view.waitForCdpEvents?.());
+const configure = page => page.configureFrames(true);
 const evaluate = (js, frame) => run(async page => JSON.parse((await page.evaluateForTool(js, frame)).valueJson));
 const metadata = () => run(async page => page.frameMetadata());
 const snapshot = () => run(page => page.snapshot());
@@ -207,6 +212,51 @@ function trace(method, params, session) {
         events.push({ method, session: params.sessionId || session, reason: params.reason });
     }
 }
+function traceControl(event) {
+    if (event.type === 'frame-navigated' && event.frame.parentId) childFrames.set(event.frame.id, event.frame.origin);
+    if (event.type === 'frame-detached') childFrames.delete(event.frameId);
+    if (event.type === 'context-created') contexts.set(String(event.context), { frame: event.frameId });
+    if (event.type === 'context-destroyed') contexts.delete(String(event.context));
+}
+const mouseTypes = { move: 'mouseMoved', down: 'mousePressed', up: 'mouseReleased', wheel: 'mouseWheel' };
+const keyTypes = { down: 'keyDown', up: 'keyUp', char: 'char' };
+/** The view's native control, recording each call like the CDP transport records its commands. */
+function tracedControl() {
+    const control = () => view.control;
+    const record = async (entry, call) => {
+        commands.push(entry);
+        const result = await call();
+        maxProtocolBytes = Math.max(maxProtocolBytes, Buffer.byteLength(JSON.stringify(result) || '', 'utf8'));
+        return result;
+    };
+    const tracked = {
+        mouse: async input => {
+            const result = await record({ method: 'Input.dispatchMouseEvent', type: mouseTypes[input.type], x: input.x, y: input.y },
+                () => control().mouse(input));
+            if (abortMouse && input.type === 'down') { abortMouse.abort(new Error('Synthetic input cancelled')); abortMouse = undefined; }
+            return result;
+        },
+        key: input => record({ method: 'Input.dispatchKeyEvent', type: keyTypes[input.type] }, () => control().key(input)),
+        insertText: text => record({ method: 'Input.insertText' }, () => control().insertText(text)),
+        evaluate: (expression, options = {}) => {
+            // Only contexts the control reported for a child frame count; discovery proved each child has one.
+            const frame = options.context !== undefined && contexts.get(String(options.context))?.frame;
+            if (frame && frame !== 'main') sessionEvaluations++;
+            if (evalDispatched && (options.source ?? expression).includes('synthetic-delayed-eval')) {
+                evalDispatched(); evalDispatched = undefined;
+            }
+            return record({ method: 'Runtime.evaluate' }, () => control().evaluate(expression, options));
+        },
+        enableFrameEvents: target => record({ method: 'Page.enable' }, () => control().enableFrameEvents(target)),
+        enableContextEvents: target => record({ method: 'Runtime.enable' }, () => control().enableContextEvents(target)),
+        setChildFrameAttach: (enabled, target) => record({ method: enabled ? 'Target.setAutoAttach' : 'Target.detach' },
+            () => control().setChildFrameAttach(enabled, target)),
+        onEvent: listener => control().onEvent(listener),
+        waitForEvents: () => control().waitForEvents?.(),
+    };
+    return new Proxy(tracked, { get: (target, call) => target[call]
+        ?? ((...args) => record({ method: String(call) }, () => control()[call](...args))) });
+}
 async function cleanup() {
     unsubscribe?.();
     queue?.cancel(new Error('Synthetic fixture closed'));
@@ -228,7 +278,8 @@ async function cleanup() {
     registerBrowserEmbedder(window, origin + '/shell');
     await window.loadURL(origin + '/shell');
     host = engine === 'electron' ? new ElectronBrowserHost(path.join(data, 'profile'))
-        : new WebView2BrowserHost(path.join(data, 'profile'));
+        : engine === 'wkwebview' ? new WkWebViewBrowserHost(path.join(data, 'profile'))
+            : new WebView2BrowserHost(path.join(data, 'profile'));
     const availability = await host.availability();
     assert.equal(availability.available, true, 'Required real engine unavailable: ' + JSON.stringify(availability));
     const sink = { state() {}, newTab() { throw new Error('Fixture unexpectedly opened a tab'); },
@@ -249,7 +300,7 @@ async function cleanup() {
     await view.setBounds({ x: 0, y: 0, width: 950, height: 850 });
     await until(() => !view.snapshot().loading, 'initial document');
     await view.focus();
-    queue = new BrowserControlQueue(async (method, params, session) => {
+    queue = new BrowserControlQueue(!cdpEngine ? tracedControl() : createCdpBrowserControl({ onCdpEvent: listener => view.onCdpEvent(listener), waitForCdpEvents: () => view.waitForCdpEvents?.(), cdp: async (method, params, session) => {
         commands.push({ method, type: params?.type, session, x: params?.x, y: params?.y });
         if (session && method === 'Runtime.evaluate') {
             sessionEvaluations++;
@@ -264,12 +315,13 @@ async function cleanup() {
             abortMouse.abort(new Error('Synthetic input cancelled')); abortMouse = undefined;
         }
         return result;
-    });
+    } }));
     step('enable real frame discovery');
-    unsubscribe = view.onCdpEvent(trace);
+    unsubscribe = cdpEngine ? view.onCdpEvent(trace) : view.control.onEvent(traceControl);
     try {
         await run(configure);
     } catch (error) {
+        if (!cdpEngine) throw error;
         const tree = await view.cdp('Page.getFrameTree');
         const bounded = node => node && ({ id: node.frame.id, parent: node.frame.parentId,
             origin: node.frame.securityOrigin, children: node.childFrames?.slice(0, 8).map(bounded) });
@@ -280,10 +332,26 @@ async function cleanup() {
         }));
         throw error;
     }
-    await until(async () => {
-        await run(configure);
-        return sessions.size >= 2 && [...contexts.values()].some(context => context.session && sessions.get(context.session) === context.frame);
-    }, 'actual nested Target.attachedToTarget iframe sessions and default contexts');
+    if (cdpEngine) {
+        await until(async () => {
+            await run(configure);
+            return sessions.size >= 2 && [...contexts.values()].some(context => context.session && sessions.get(context.session) === context.frame);
+        }, 'actual nested Target.attachedToTarget iframe sessions and default contexts');
+    } else {
+        // WebKit keeps cross-origin frames in process; prove the helper reports each one with its own default context.
+        await until(async () => {
+            await run(configure);
+            const collect = node => {
+                if (node.frame.parentId) childFrames.set(node.frame.id, node.frame.origin);
+                node.children?.forEach(collect);
+            };
+            collect(await view.control.frameTree());
+            return childFrames.size >= 3 && new Set(childFrames.values()).size >= 2
+                && [...childFrames.keys()].every(frame => [...contexts.values()].some(context => context.frame === frame));
+        }, 'helper-reported cross-origin child frames and default contexts');
+    }
+    // Later navigations retire these frames; report what discovery found.
+    const discoveredChildFrames = childFrames.size;
     if (engine === 'webview2') {
         const other = new BrowserWindow({ width: 240, height: 160, show: true,
             webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
@@ -298,7 +366,7 @@ async function cleanup() {
         }
     }
     // This proof precedes all frame reads and input assertions, not just their final report.
-    assert(sessions.size >= 2, 'Distinct origins without real iframe sessions are insufficient');
+    assert(!cdpEngine || sessions.size >= 2, 'Distinct origins without real iframe sessions are insufficient');
     step('automatic snapshot and explicit frame reading');
     let current = await settledSnapshot('Nested input');
     const input = find(current, 'Nested input');
@@ -487,7 +555,12 @@ async function cleanup() {
         await run(page => page.click(find(current, 'Focus sentinel').ref));
         const editor = find(current, 'Rich editor');
         await until(() => evaluate('window.richClicked===true', editor.frame), 'visible absolute-frame click');
-        await run(page => page.press('Escape', editor.frame));
+        const escape = label => run(page => page.press('Escape', editor.frame)).catch(async error => {
+            const focus = '({focus:document.hasFocus(),active:document.activeElement?.id||document.activeElement?.localName})';
+            console.error('Absolute-frame focus:', JSON.stringify({ clip, label, main: await evaluate(focus), child: await evaluate(focus, editor.frame) }));
+            throw error;
+        });
+        await escape('after click');
         assert.equal(await evaluate('document.hasFocus()', editor.frame), true);
         await evaluate(`(() => {
             const editor=document.getElementById('editor');editor.focus();
@@ -496,7 +569,9 @@ async function cleanup() {
         const selectionBefore = await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame);
         await view.focus();
-        await run(page => page.press('Escape', editor.frame));
+        // WebKit applies the refocused window's active state asynchronously (macOS 15 visibly so).
+        await until(() => evaluate('document.hasFocus()', editor.frame), 'refocused view keeps frame focus');
+        await escape('after script focus');
         assert.deepEqual(await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame), selectionBefore);
         if (clip === 'static-hidden') {
@@ -595,7 +670,8 @@ async function cleanup() {
     assert.equal((await metadata()).frames, undefined);
     assert(!commands.slice(beforeDisabled).some(command => ['Page.enable', 'Runtime.enable', 'Target.setAutoAttach'].includes(command.method)));
     const result = {
-        engine, oopif: true, contextAssociation: true, iframeSessions: sessions.size, sessionEvaluations, maxProtocolBytes,
+        engine, oopif: cdpEngine, contextAssociation: true, iframeSessions: sessions.size, childFrames: discoveredChildFrames,
+        sessionEvaluations, maxProtocolBytes,
         automaticSnapshot: true, explicitReadEval: true, uniqueSameOrigin: true, boundaries: true,
         trustedNestedInput: true, nestedScroll: true, keyboardFocus: true, scaledBorderGeometry: true, pageZoom: true,
         occlusionRejected: true, conflictRejected: true, processSwapStale: true, detachStale: true,

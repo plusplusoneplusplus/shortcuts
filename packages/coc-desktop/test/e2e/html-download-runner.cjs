@@ -57,6 +57,8 @@ function installExport(spec) {
 }
 
 app.whenReady().then(async () => {
+    // These cases cover Electron tabs; macOS otherwise defaults new installs to WKWebView.
+    require('../../dist/browser-preferences').writeBrowserEngine(path.join(root, 'desktop'), 'electron');
     registerBrowserViewIpc(path.join(root, 'desktop'));
     const file = path.join(root, 'export.html');
     fs.writeFileSync(file, '<!doctype html><title>Local export</title><body>Ready</body>');

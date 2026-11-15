@@ -46,6 +46,7 @@
       "**/*.node",
       "**/coc-symbols-lsp*",
       "**/coc-webview2*",
+      "**/coc-wkwebview*",
       "**/@esbuild/**",
       "**/@anthropic-ai/claude-agent-sdk-*/**",
       "**/@openai/codex-*/**",

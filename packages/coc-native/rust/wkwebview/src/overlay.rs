@@ -1,0 +1,234 @@
+use crate::protocol::Bounds;
+
+/// Largest panel edge main may place, in points. Larger requests are rejected.
+pub const MAX_PANEL_EDGE: f64 = 16_384.0;
+
+/// A rectangle in AppKit screen coordinates (bottom-left origin of the primary display).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+pub fn valid_bounds(bounds: &Bounds) -> bool {
+    [bounds.x, bounds.y, bounds.width, bounds.height].iter().all(|value| value.is_finite())
+        && bounds.width >= 1.0
+        && bounds.height >= 1.0
+        && bounds.width <= MAX_PANEL_EDGE
+        && bounds.height <= MAX_PANEL_EDGE
+        && bounds.x.abs() <= 1_000_000.0
+        && bounds.y.abs() <= 1_000_000.0
+}
+
+/// Electron screen bounds use a top-left origin on the primary display; AppKit flips y.
+pub fn to_appkit(bounds: &Bounds, primary_height: f64) -> Frame {
+    Frame {
+        x: bounds.x,
+        y: primary_height - bounds.y - bounds.height,
+        width: bounds.width,
+        height: bounds.height,
+    }
+}
+
+pub fn from_appkit(frame: &Frame, primary_height: f64) -> Bounds {
+    Bounds {
+        x: frame.x,
+        y: primary_height - frame.y - frame.height,
+        width: frame.width,
+        height: frame.height,
+    }
+}
+
+/// Content bounds (Electron screen coordinates) for a page-opened popup window: the
+/// requested size clamped to 100–8192 points (480x560 by default), at the requested
+/// position or centered on the opener.
+pub fn popup_bounds(
+    size: (Option<f64>, Option<f64>),
+    position: (Option<f64>, Option<f64>),
+    opener: &Bounds,
+) -> Bounds {
+    let edge = |value: Option<f64>, default: f64| {
+        value
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .map_or(default, |value| value.clamp(100.0, 8192.0))
+    };
+    let (width, height) = (edge(size.0, 480.0), edge(size.1, 560.0));
+    let coordinate = |value: Option<f64>, centered: f64| {
+        value
+            .filter(|value| value.is_finite())
+            .map_or(centered, |value| value.clamp(-1_000_000.0, 1_000_000.0))
+    };
+    Bounds {
+        x: coordinate(position.0, opener.x + (opener.width - width) / 2.0),
+        y: coordinate(position.1, opener.y + (opener.height - height) / 2.0),
+        width,
+        height,
+    }
+}
+
+/// What main last told the helper about one view.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Placement {
+    /// Screen bounds of the view's slot; `None` while the view is unplaced.
+    pub bounds: Option<Bounds>,
+    /// Size the page last rendered at, kept for background rendering.
+    pub last_size: Option<(f64, f64)>,
+    /// Main's view of the parent window: shown, not minimized/hidden/occluded.
+    pub parent_shown: bool,
+    /// Whether the parent window is on the active Space (helper-observed).
+    pub parent_on_active_space: bool,
+    /// Background control is running and needs the page to keep rendering.
+    pub background: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PanelMode {
+    /// Ordered in above the parent at this frame.
+    Shown(Frame),
+    /// Ordered in on a display but fully transparent and click-through, at the view's
+    /// slot or the primary display's corner. WebKit throttles rendering (no animation
+    /// frames) for windows on no display or occluded, so the panel stays on-screen and
+    /// unoccluded; it is never seen, never clicked and never key.
+    Background(Frame),
+    /// Ordered out.
+    Hidden,
+}
+
+impl PanelMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            PanelMode::Shown(_) => "shown",
+            PanelMode::Background(_) => "background",
+            PanelMode::Hidden => "hidden",
+        }
+    }
+}
+
+/// The panel is visible only while it is placed and its parent is visible on the
+/// active Space. Otherwise background control keeps it rendering off-screen.
+pub fn panel_mode(placement: &Placement, primary_height: f64) -> PanelMode {
+    let parent_visible = placement.parent_shown && placement.parent_on_active_space;
+    if let (Some(bounds), true) = (placement.bounds, parent_visible) {
+        return PanelMode::Shown(to_appkit(&bounds, primary_height));
+    }
+    if placement.background {
+        if let Some(bounds) = placement.bounds {
+            return PanelMode::Background(to_appkit(&bounds, primary_height));
+        }
+        let (width, height) = placement.last_size.unwrap_or((1024.0, 768.0));
+        return PanelMode::Background(Frame { x: 0.0, y: 0.0, width, height });
+    }
+    PanelMode::Hidden
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bounds(x: f64, y: f64, width: f64, height: f64) -> Bounds {
+        Bounds { x, y, width, height }
+    }
+
+    #[test]
+    fn popups_center_on_the_opener_with_clamped_requested_sizes() {
+        let opener = bounds(100.0, 50.0, 800.0, 600.0);
+        assert_eq!(
+            popup_bounds((None, None), (None, None), &opener),
+            bounds(260.0, 70.0, 480.0, 560.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(20.0), Some(9000.0)), (None, None), &opener),
+            bounds(450.0, -3746.0, 100.0, 8192.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(f64::NAN), Some(-1.0)), (Some(10.0), Some(f64::INFINITY)), &opener),
+            bounds(10.0, 70.0, 480.0, 560.0)
+        );
+        assert_eq!(
+            popup_bounds((Some(300.0), Some(200.0)), (Some(-50.0), Some(40.0)), &opener),
+            bounds(-50.0, 40.0, 300.0, 200.0)
+        );
+    }
+
+    fn placed() -> Placement {
+        Placement {
+            bounds: Some(bounds(100.0, 50.0, 800.0, 600.0)),
+            last_size: None,
+            parent_shown: true,
+            parent_on_active_space: true,
+            background: false,
+        }
+    }
+
+    #[test]
+    fn bounds_flip_between_electron_and_appkit_coordinates() {
+        let frame = to_appkit(&bounds(100.0, 50.0, 800.0, 600.0), 1000.0);
+        assert_eq!(frame, Frame { x: 100.0, y: 350.0, width: 800.0, height: 600.0 });
+        assert_eq!(from_appkit(&frame, 1000.0), bounds(100.0, 50.0, 800.0, 600.0));
+        // Displays above or left of the primary have negative Electron coordinates.
+        let above = to_appkit(&bounds(-1920.0, -1080.0, 300.0, 200.0), 1000.0);
+        assert_eq!((above.x, above.y), (-1920.0, 1880.0));
+    }
+
+    #[test]
+    fn invalid_bounds_are_rejected() {
+        assert!(valid_bounds(&bounds(0.0, 0.0, 1.0, 1.0)));
+        assert!(valid_bounds(&bounds(-5000.0, -5000.0, MAX_PANEL_EDGE, 10.0)));
+        for invalid in [
+            bounds(0.0, 0.0, 0.0, 10.0),
+            bounds(0.0, 0.0, 10.0, 0.5),
+            bounds(0.0, 0.0, MAX_PANEL_EDGE + 1.0, 10.0),
+            bounds(f64::NAN, 0.0, 10.0, 10.0),
+            bounds(0.0, f64::INFINITY, 10.0, 10.0),
+            bounds(2_000_000.0, 0.0, 10.0, 10.0),
+        ] {
+            assert!(!valid_bounds(&invalid), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn placed_views_with_a_visible_parent_are_shown() {
+        assert_eq!(
+            panel_mode(&placed(), 1000.0),
+            PanelMode::Shown(Frame { x: 100.0, y: 350.0, width: 800.0, height: 600.0 })
+        );
+    }
+
+    #[test]
+    fn hidden_minimized_or_other_space_parents_and_unplaced_views_hide_the_panel() {
+        for placement in [
+            Placement { parent_shown: false, ..placed() },
+            Placement { parent_on_active_space: false, ..placed() },
+            Placement { bounds: None, ..placed() },
+            Placement::default(),
+        ] {
+            assert_eq!(panel_mode(&placement, 1000.0), PanelMode::Hidden, "{placement:?}");
+        }
+    }
+
+    #[test]
+    fn background_control_renders_on_screen_at_the_slot_or_last_size() {
+        let hidden = Placement { parent_shown: false, background: true, ..placed() };
+        assert_eq!(
+            panel_mode(&hidden, 1000.0),
+            PanelMode::Background(Frame { x: 100.0, y: 350.0, width: 800.0, height: 600.0 })
+        );
+        let unplaced = Placement {
+            bounds: None,
+            last_size: Some((640.0, 480.0)),
+            background: true,
+            ..placed()
+        };
+        let PanelMode::Background(frame) = panel_mode(&unplaced, 1000.0) else {
+            panic!("expected background mode");
+        };
+        assert_eq!(frame, Frame { x: 0.0, y: 0.0, width: 640.0, height: 480.0 });
+        // A visible placed view stays where main put it even while control runs.
+        assert!(matches!(
+            panel_mode(&Placement { background: true, ..placed() }, 1000.0),
+            PanelMode::Shown(_)
+        ));
+    }
+}

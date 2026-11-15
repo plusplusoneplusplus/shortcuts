@@ -1,250 +1,42 @@
 # teams-sdk
 
-Unpublished Rust library crate (edition 2021, MIT) in the native Cargo workspace;
-shares `../Cargo.lock`, `../target/` and native CI.
-No npm package, N-API binding, Node dependency, CoC policy, persistence or classification.
+Unpublished Rust crate in the native Cargo workspace. No npm package, N-API, Node, CoC policy, or persistence. Default feature `graph`. MCP, IC3, and Trouter always compile.
 
-- `client.rs` builds clients with trusted token/HTTP providers; `session.rs` pins accounts,
-  routes, references and opaque cursors to a shared revocable lifetime.
-- `constants.rs` centralizes provider endpoints, chat ID markers and Trouter client
-  configuration, with independent OAuth endpoint-value assertions in its unit tests.
-  Auth resource tests use those constants and verify tenant-path escaping.
-  The CLI owns its environment-variable names and help in its own `src/constants.rs`;
-  JSON field names and protocol test fixtures stay inline.
-- `models.rs` separates body-free metadata from transient, untrusted display content.
-  Transient bodies/tokens have no Debug/Serialize implementation and are never logged/cached.
-- The default feature is `graph`; MCP, IC3 and Trouter are always compiled.
-  `azure_cli::AzureCliCredentials` is an always-compiled auth-sdk adapter
-  shared by native Rust hosts and the standalone CLI.
-  Default write routes use Graph.
-  `graph` uses stable Graph v1.0. MCP uses the fixed tenant Teams MCP endpoint,
-  initialization/tool advertisement and bounded JSON/SSE responses. IC3 provides
-  region-pinned private chatsvc APIs and independent Trouter change hints.
-- Graph reads request `include-unknown-enum-members`; only known system events or exact
-  senderless HTML system sentinels are skipped. MCP reply pages use `replies` envelopes.
-  MCP initialization publishes session state only after initialization and all tool pages
-  complete; cancellation or dropped futures leave the shared state uninitialized.
-- No implicit backend fallback, URL overrides, write replay or cross-region retry.
-  Read HTTP 401 refreshes at most once, pinned to the same account; 403 never refreshes.
-  Credential metadata comes from the trusted provider, not unverified JWT parsing.
-- IC3 ordinary writes require `send_to_existing_one_on_one`, an intended recipient and
-  a fresh complete `ChatVerifier` membership result. Generic IC3 chat sends reject.
-  IC3 chat participants read bounded thread rosters; channel participants/history/replies
-  are unsupported. MCP channel detail uses
-  bounded message/reply paging; missing targets fail explicitly.
-- Notifications are bounded hints, never message authority or durable delta. Startup,
-  reconnect, loss and overflow require caller reconciliation. Drop/close revokes ingress.
-  IC3 notifications connect to `wss://go.trouter.teams.microsoft.com/v4/c/`.
-  Self-chat events produce `Changed` hints for `48:notes`; other `48:` activity streams
-  require source-thread evidence or produce gap hints.
-  Network/protocol reconnects reuse valid credentials; authentication failures and
-  token-lease expiry request refresh from the trusted credential provider.
-- Tests inject trusted Rust transports. Production HTTP rejects redirects, caps bodies,
-  never retries transport errors and sanitizes errors without provider payloads.
+Callers own credential-source policy. `azure_cli` adapts auth-sdk to the Teams token provider. A client is immutable config. A session owns account, generation, cancellation, and MCP state. `reconnect` revokes the session and its clones.
 
-## Architecture
+## Rules
 
-### Client and session boundaries
+- No backend fallback, URL override, write replay, or cross-region retry. Read HTTP 401 refreshes once for the same account. HTTP 403 never refreshes. Credential metadata comes from the trusted provider, not JWT parsing.
+- Transient bodies and tokens have no Debug or Serialize impl and are never logged or cached.
+- Graph reads use stable v1.0 and `include-unknown-enum-members`. Skip only known system events or the exact senderless HTML sentinel.
+- MCP tools must be advertised. Initialization publishes session state only after initialize and every tool page. Dropped futures leave state uninitialized. List tools without paging reject incomplete results. SSE is RPC, not a subscription.
+- IC3 ordinary writes require `send_to_existing_one_on_one`, an intended recipient, and a fresh complete `ChatVerifier`. Generic IC3 chat sends reject. Channels, groups, mentions, and replies are unsupported writes. Self send is explicit `48:notes`. History and detail verify exact native type pairs and preserve numeric `root_message_id`. Thread reads use `;messageid=<root>` and cannot cross roots. Roster reads are not write authorization.
+- Notifications are bounded hints, not message authority. Endpoint: `wss://go.trouter.teams.microsoft.com/v4/c/`. Startup, reconnect, loss, and overflow require caller reconciliation. The WebSocket uses patched bundled WebPKI roots and rustls with an explicit ring provider, not the OS trust store.
+- Production HTTP rejects redirects, caps bodies, does not retry transport errors, and sanitizes errors. Tests inject trusted transports.
+- Cursors are opaque and session, backend, and collection scoped. Cursor paths compare decoded segments and reject traversal.
+- `AzureCliCredentials` uses active-account `Refresh::Auto`. Usernames and JWT claims are not Teams identity. Init and acquisition each cap at 30s. No interactive login and no persistence. Protocol detail: [`auth-sdk/README.md`](../auth-sdk/README.md).
 
-The CLI and native hosts consume the same Rust API. Credential-source selection and
-application policy belong to callers; `azure_cli` adapts auth-sdk to the Teams
-token-provider contract. A client shares immutable configuration, while each session
-owns its account binding, generation, cancellation lifetime and MCP protocol state.
+## Capability
 
-```mermaid
-flowchart TD
-    CLI["teams-cli"] --> Client["TeamsClient / builder<br/>client.rs"]
-    Native["Native host"] --> Client
-    Client --> Session["Session<br/>account, generation, cancellation<br/>session.rs"]
-    Session --> Dispatch["Backend dispatch<br/>explicit reads / fixed write Routes"]
-    Dispatch --> Protocol["Graph / MCP / IC3<br/>protocol requests"]
-    Protocol --> Request["Session::request<br/>token validation, bounded read refresh"]
-    Request --> Tokens["Trusted TokenProvider<br/>account + audience<br/>auth.rs"]
-    Request --> HTTP["HttpTransport<br/>ReqwestTransport by default<br/>http.rs"]
-    Dispatch -. "IC3 one-on-one write guard" .-> Verifier["Trusted ChatVerifier<br/>fresh complete membership<br/>ic3.rs"]
-    Protocol --> Normalize["normalize.rs / models.rs<br/>typed results, transient bodies"]
-```
-
-Read backends come from explicit arguments or session-bound references. Write backends come
-from `Routes`; unsupported operations fail without fallback. Close/reconnect revokes the
-session and its clones. Trusted transport injection is a test boundary, not a URL override.
-
-### Backend protocols and notifications
-
-Graph is feature-gated and enabled by default. MCP and experimental IC3 always compile;
-IC3 requires an explicit region. All backend HTTP requests use the shared session request
-and transport boundary. IC3 notifications use a separate WebSocket connection and HTTP
-registration, not the chat-history stream. The WebSocket connector supplies
-patched bundled WebPKI roots directly to a verified rustls client with an
-explicit ring provider; it does not use the operating system trust store.
-
-```mermaid
-flowchart LR
-    Session["Session backend dispatch"] --> Graph["Graph<br/>session.rs<br/>graph feature"]
-    Session --> MCP["Teams MCP<br/>mcp.rs<br/>initialize + advertised tools"]
-    Session --> IC3["Experimental IC3<br/>ic3.rs + session.rs<br/>pinned region"]
-    Graph --> GraphAPI["Graph v1.0<br/>REST / paged JSON"]
-    MCP --> MCPAPI["Tenant Teams MCP endpoint<br/>JSON-RPC / bounded JSON or SSE"]
-    IC3 --> ChatSvc["Regional chatsvc<br/>private REST API"]
-    Session -. "IC3 subscription" .-> Notify["notifications.rs<br/>IC3 credentials + session lifetime"]
-    Notify --> Registrar["Teams registrar<br/>HTTP registration"]
-    Notify <-->|WebSocket| Trouter["Trouter<br/>authenticate, acknowledge frames"]
-    Notify --> Hints["Bounded content-free hints<br/>independent health snapshot"]
-    Hints --> Caller["Caller-owned reconciliation"]
-    Caller -. "history reads" .-> Session
-```
-
-SSE in MCP carries RPC responses, not a change subscription. Trouter hints require
-reconciliation on startup, reconnect, loss or overflow; history/detail reads remain the
-source of message content. The capability table below defines each backend's supported
-operations and write restrictions.
-
-## Public API and backend support
-
-`TeamsClient::builder` accepts a trusted `TokenProvider`, fixed write `Routes`, an optional
-trusted `HttpTransport`, and optional IC3 region/verifier. `session(account)` creates an
-independent lifetime; `reconnect` revokes the old session and all its clones. References
-created with `conversation`/`message_ref` establish session ownership, not membership.
-
-| Capability | Graph | MCP | Experimental IC3 |
+| Capability | Graph | MCP | IC3 |
 |---|---|---|---|
-| Chat discovery (`chats`) | Paged | Bounded `ListChats(fetchAllPages)` | Paged supported chat types |
-| Teams/channels discovery | `teams`/`channels` | `teams_with_backend`/`channels_with_backend` | Unsupported |
-| Chat history/detail | Supported | Supported | Exact direct/group/meeting type verification; reserved `48:notes` self stream |
-| Channel root/reply history | Separate typed collections | Separate typed collections | Unsupported |
-| Channel detail | Direct lookup | Bounded history scan | Unsupported |
-| Chat/channel participants | Actual member pages | Advertised membership tools; channel-root refs | Chat thread roster; channels unsupported |
-| Self send | Unsupported | Advertised self-send tool | Explicit `48:notes` |
-| Ordinary chat send | Existing chat; no mentions | Advertised send tool | Only `send_to_existing_one_on_one` with intended recipient and fresh complete verification |
+| Chat discovery | Paged | Bounded `ListChats` | Paged supported types |
+| Teams/channels | Supported | Advertised tools | Unsupported |
+| Chat history/detail | Supported | Supported | Exact type check; `48:notes` self stream |
+| Channel history | Separate collections | Separate collections | Unsupported |
+| Participants | Member pages | Advertised tools | Chat roster only |
+| Self send | Unsupported | Advertised tool | `48:notes` |
+| Ordinary chat send | Existing chat, no mentions | Advertised tool | Verified existing 1:1 only |
 | Channel send/reply | Supported | Advertised tools | Unsupported |
-| Channel Like | Native `setReaction` | Unsupported | Explicit exact-ID emotions route |
-| Notifications | Unsupported | Unsupported | Independent Trouter hint subscription |
+| Channel Like | `setReaction` | Unsupported | Exact-id emotions route |
+| Notifications | Unsupported | Unsupported | Trouter hints |
 
-`history` returns transient text/untrusted HTML/mention evidence; `messages` immediately
-projects body-free metadata. `detail` returns a single transient message. Message reads
-retain edits and tombstones. `scan_messages` deduplicates by modification time and prefers
-deletion on ties, returning `Scan::Incomplete` on failure/caps rather than partial coverage.
-Ordinary pages are not complete-scan guarantees. Cursors are opaque and session/backend/
-collection scoped. Text is UTF-8 bounded; oversized HTML is omitted rather than sliced.
-IC3 discovery and history/detail share exact native type pairs: `chat` with
-`OneToOneChat`/`Chat`, and `meeting` with `Meeting`. History/detail verifies exact IDs
-through the region-pinned `users/ME` endpoint; channels and unknown pairs reject.
-History/detail expose this verified `chat_kind` on transient message details and
-preserve numeric `root_message_id` values; malformed explicit roots reject the read.
-`ic3_thread_history` reads the exact `;messageid=<root>` collection, validates each
-reply's parent and retains the base chat identity. Its first page fetches the root
-by exact message ID when absent; raw counts include that additional record.
-Thread cursors cannot cross roots or ordinary history. Self-stream thread reads reject.
-Only exact `48:notes` bypasses thread type checks; callers bind this
-account-scoped self stream explicitly, independently of discovery. History skips
-live call-recording/transcript artifacts and system events, retaining raw counts
-and tombstones; unknown message formats fail.
-IC3 participants reject `48:notes` and validate the exact ordinary chat/type before reading the region-pinned
-`threads/{id}?view=msnp24Equivalent` roster. Roster reads accept at most 200 entries,
-reject explicit continuation markers and supplied cursors, and require unique
-`8:orgid:` identities. Other identity types fail explicitly. Returned entries retain
-hidden/historical members and do not establish current or complete membership for
-write authorization; the trusted `ChatVerifier` contract remains separate.
-Cursor paths compare individually decoded segments, allowing equivalent ID escaping while
-rejecting encoded separators, malformed/nested escapes and raw or encoded dot traversal.
+The SDK has no login, profile, chat-title, create, attachment, edit/delete, durable delta, or command admission.
 
-MCP tools must be advertised; absent tools fail explicitly. MCP list tools without paging
-parameters reject incomplete results. The SDK has no OAuth login implementation, profile/
-chat-title APIs, chat creation, attachment/card APIs, edit/delete writes, durable delta,
-incremental timestamp filtering, or command admission. Chat replies/Likes are unsupported.
-IC3 groups, channels, mentions and replies are unsupported write targets. Public-cloud
-provider origins are fixed; sovereign-cloud endpoints and arbitrary server URLs are not
-configurable. Tests use synthetic credentials and trusted injected transports, not live
-Microsoft services.
+## CLI
 
-## Azure CLI credentials
+`../teams-cli/` is read-only: `list`, `view <chat-id>`, `watch --seconds <1-3600>`. Defaults: IC3, region `amer`, watch 60s. Graph rejects `--region`. Help and version exit 0 without auth. Bad args exit 2. Runtime failure exits 1. Output can contain message text and must not enter shared logs. Ctrl+C drops auth and Teams work before token publication.
 
-`azure_cli::AzureCliCredentials::new(tenant, user, audience, ctx)` binds Graph/IC3
-credentials through auth-sdk's active-account `Refresh::Auto` provider.
-`with_dependencies` accepts trusted test dependencies; `account()` exposes the
-immutable binding. `az ad signed-in-user show` establishes object identity,
-bracketed by active-account checks on every acquisition, including cached/forced
-requests. Expected tenant/object IDs constrain discovery; usernames and JWT claims
-are not Teams identity evidence.
+Auth is one source: an explicit expiring token (`TEAMS_GRAPH_TOKEN` or `TEAMS_IC3_TOKEN` plus tenant, user, and expiry) or Azure CLI. `--tenant-id` overrides `TEAMS_TENANT_ID`. Explicit tokens cannot refresh. Invalid values do not fall back. These defaults are CLI-only.
 
-Initialization honors the caller's cancellation/deadline with a 30-second cap;
-acquisitions also have a 30-second aggregate budget. Drop/session cancellation
-revokes CLI work; publication rechecks the deadline. Errors omit provider output.
-Demand renewal, one read-401 retry and notification renewal stay source-pinned,
-without interactive login or persistence. Auth protocol/platform details belong in
-[`auth-sdk/README.md`](../auth-sdk/README.md).
-
-## Teams CLI
-
-`../teams-cli/` is an independent Cargo binary project using this library. Its `teams-cli`
-command is read-only: `list` prints chat IDs/types;
-`view <chat-id>` prints escaped message text and sender names. Both read one page and
-report whether more pages exist. `watch --seconds <1-3600>` verifies IC3 notification
-registration and prints status, escaped chat/message IDs and reconciliation hints,
-without message bodies. It defaults to 60 seconds, rejects Graph, closes the subscription
-on completion and fails if registration does not complete or is inactive at the deadline.
-Hints require history reads
-for reconciliation and are not a complete message stream.
-Clap defines subcommands, typed identifiers and global
-options, accepting options before or after subcommands and `--option=value` syntax.
-Help/version exit successfully without authentication; invalid arguments exit with code
-2, and runtime failures exit with code 1. Output contains transient message content
-and must not enter shared logs. Ctrl+C drops authentication and Teams work; SDK
-CLI process-tree cancellation and provider disposal prevent delayed token publication.
-
-Authentication selects one source: a supplied backend token, or the SDK's optional
-Azure CLI credentials adapter. CLI diagnostics and token payloads are not printed.
-`--tenant-id <tenant-id>` before or after the command overrides `TEAMS_TENANT_ID`.
-Without either setting, Azure CLI's pinned tenant supplies the tenant. `TEAMS_USER_ID`
-is an optional expected object ID for Azure CLI credentials, not an identity override.
-Invalid explicit settings, mismatched tenant/user and failed discovery fail closed.
-
-An explicit token requires `TEAMS_TENANT_ID` (or `--tenant-id`), `TEAMS_USER_ID` and its
-matching expiry setting (Unix seconds), all supplied by a trusted OAuth authority.
-Explicit credentials bypass Azure CLI entirely, remain account/audience pinned and
-cannot refresh. Graph uses `TEAMS_GRAPH_TOKEN` and `TEAMS_GRAPH_TOKEN_EXPIRES_AT`.
-Invalid explicit values fail without fallback. Azure CLI must already be signed in
-as a user; delegated Graph `Chat.Read`, resource permissions and consent remain required.
-`--backend graph|ic3` defaults to IC3. IC3 defaults to region `amer`;
-`--region amer|emea|apac` overrides it. IC3 is always available;
-Graph rejects region arguments. Both commands
-use the selected backend without fallback. IC3 uses `TEAMS_IC3_TOKEN` with
-`TEAMS_IC3_TOKEN_EXPIRES_AT`, or the auth-sdk Azure CLI provider for resource
-`https://ic3.teams.office.com`. Tokens remain audience/account pinned.
-IC3 is a private experimental API; Azure CLI resource authorization may be unavailable.
-Use `--backend graph` for Graph reads. These defaults apply only to the CLI;
-library feature selection and write routes retain their own defaults. CLI tests
-inject Teams transports and explicit credentials for command behavior; shared
-Azure CLI adapter tests live in `teams-sdk/src/azure_cli.rs`.
-Run from the native Rust workspace with `cargo run --locked -p teams-cli -- --help`,
-`cargo run --locked -p teams-cli -- list` or
-`cargo run --locked -p teams-cli -- view <chat-id>`.
-Install from that workspace with `cargo install --locked --path teams-cli`, then run
-`teams-cli list`, `teams-cli view <chat-id>` or `teams-cli --version` from any directory.
-The CLI shares the native lockfile, has no Node dependency, and forwards its
-`graph` Cargo feature to this SDK. CI tests it on Linux, macOS
-and Windows, including builds without Graph using `--no-default-features`.
-
-## Validation
-
-Run from the native Rust workspace (`packages/coc-native/rust/`):
-
-```text
-cargo fmt --all -- --check
-cargo clippy --locked -p teams-sdk --all-targets --all-features -- -D warnings
-cargo build --locked -p teams-sdk --all-features
-cargo test --locked -p teams-sdk
-cargo test --locked -p teams-sdk --no-default-features
-cargo test --locked -p teams-sdk --all-features
-cargo audit
-```
-
-CLI validation from the same workspace:
-
-```text
-cargo build --locked -p teams-cli
-cargo clippy --locked -p teams-cli --all-targets --all-features -- -D warnings
-cargo test --locked -p teams-cli
-cargo test --locked -p teams-cli --no-default-features
-cargo test --locked -p teams-cli --no-default-features --features graph
-```
+From `packages/coc-native/rust/`: `cargo test --locked -p teams-sdk`, with and without default features, and the same for `teams-cli`. Install: `cargo install --locked --path teams-cli`.

@@ -19,7 +19,7 @@ export interface DownloadProgress {
 }
 export interface DownloadRecord extends DownloadProgress {
     id: string;
-    engine: 'electron' | 'webview2';
+    engine: 'electron' | 'webview2' | 'wkwebview';
     filename: string;
     source: string;
     started: number;
@@ -87,7 +87,7 @@ export class BrowserDownloadStore {
             const data = JSON.parse(fs.readFileSync(this.filename, 'utf8'));
             if (data.version !== 1 || !Array.isArray(data.entries) || data.entries.length > MAX_DOWNLOAD_RECORDS) { throw new Error('invalid'); }
             for (const value of data.entries) {
-                if (!value || typeof value.id !== 'string' || !/^[a-f0-9-]{36}$/.test(value.id) || !['electron', 'webview2'].includes(value.engine)
+                if (!value || typeof value.id !== 'string' || !/^[a-f0-9-]{36}$/.test(value.id) || !['electron', 'webview2', 'wkwebview'].includes(value.engine)
                     || !states.includes(value.state) || typeof value.filename !== 'string' || typeof value.source !== 'string'
                     || !Number.isSafeInteger(value.started) || value.started < 0 || !Number.isSafeInteger(value.updated)
                     || value.updated < this.now() - RETENTION_MS || value.started > this.now() + 86400000 || value.updated > this.now() + 86400000) {continue; }
@@ -135,13 +135,13 @@ export class BrowserDownloadStore {
                 if (progress.state === 'completed' && filePath && filePath.length <= 32768 && path.isAbsolute(filePath)) {
                     record.filename = downloadFilename(path.basename(filePath));
                     const completed = identity(filePath);
-                    if (completed && (engine !== 'webview2' || completed.size === record.received
+                    if (completed && (engine === 'electron' || completed.size === record.received
                         && (!record.total || record.total === record.received))) {
                         try { record.filePath = fs.realpathSync(filePath); record.identity = completed; }
                         catch { /* completion remains real, but file actions are unavailable */ }
                     }
                 }
-                if (engine === 'webview2' && progress.state === 'completed' && !record.filePath) record.state = 'failed';
+                if (engine !== 'electron' && progress.state === 'completed' && !record.filePath) record.state = 'failed';
                 record.fileAvailable = !!record.filePath;
             }
             this.schedule(final);
@@ -156,7 +156,8 @@ export class BrowserDownloadStore {
         }));
         return { ok: true as const, entries: entries.filter(record => this.records.get(record.id) === record).map(publicRecord), storageError: this.error,
             engines: { electron: { managed: true, message: 'Downloads use a native Save dialog.' },
-                webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' } } };
+                webview2: { managed: true, message: 'WebView2 downloads use a native Save dialog.' },
+                wkwebview: { managed: true, message: 'WebKit downloads use a native Save dialog. They can be cancelled but not paused.' } } };
     }
 
     async action(id: unknown, action: unknown, files: { open(file: string): Promise<string>; show(file: string): void }, current = () => true) {

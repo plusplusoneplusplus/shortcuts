@@ -75,6 +75,35 @@ describe('desktop browser preferences', () => {
         expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
     });
 
+    it('keeps a saved WKWebView choice on macOS only', () => {
+        const dir = directory();
+        writeBrowserEngine(dir, 'wkwebview');
+        for (const arch of ['x64', 'arm64']) expect(readBrowserEngine(dir, 'darwin', arch)).toBe('wkwebview');
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('electron');
+        expect(readBrowserEngine(dir, 'linux', 'x64')).toBe('electron');
+        expect(browserProfilePath(dir, 'wkwebview')).toBe(path.join(dir, 'browser', 'wkwebview'));
+    });
+
+    it('defaults to WKWebView on macOS 14+ only when no engine was saved', () => {
+        const dir = directory();
+        for (const arch of ['x64', 'arm64']) {
+            expect(readBrowserEngine(dir, 'darwin', arch, '23.0.0')).toBe('wkwebview');
+            expect(readBrowserEngine(dir, 'darwin', arch, '25.6.0')).toBe('wkwebview');
+            expect(readBrowserEngine(dir, 'darwin', arch, '22.6.0')).toBe('electron');
+        }
+        expect(readBrowserEngine(dir, 'darwin', 'arm64', 'garbage')).toBe('electron');
+        expect(readBrowserEngine(dir, 'win32', 'x64', '25.6.0')).toBe('electron');
+        expect(readBrowserEngine(dir, 'linux', 'x64', '25.6.0')).toBe('electron');
+        // Other preferences are not an engine choice.
+        writeBrowserPageZoom(dir, 125);
+        expect(readBrowserEngine(dir, 'darwin', 'arm64', '25.6.0')).toBe('wkwebview');
+        writeBrowserEngine(dir, 'electron');
+        expect(readBrowserEngine(dir, 'darwin', 'arm64', '25.6.0')).toBe('electron');
+        // A saved WKWebView choice is kept below macOS 14; the manager falls back with the availability message.
+        writeBrowserEngine(dir, 'wkwebview');
+        expect(readBrowserEngine(dir, 'darwin', 'arm64', '22.6.0')).toBe('wkwebview');
+    });
+
     it('defaults invalid saved values and malformed JSON to Electron', () => {
         const dir = directory();
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

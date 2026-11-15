@@ -2,6 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomReadPage, type BrowserDomScope, type BrowserDomSnapshot, type BrowserDomSnapshotChunk, type BrowserDomTarget, type BrowserDomTextMatch } from '../src/browser-control-dom';
 import { BrowserControlPage } from '../src/browser-control-page';
+import { createCdpBrowserControl, type BrowserCdpTransport } from '../src/browser-cdp-control';
+
+const cdpPage = (cdp: BrowserCdpTransport['cdp']) => new BrowserControlPage(createCdpBrowserControl({ cdp }));
 
 function geometry(element: Element, x = 10, y = 20, width = 80, height = 30) {
     const rect = { x, y, width, height, top: y, left: x, bottom: y + height, right: x + width, toJSON() {} };
@@ -37,7 +40,7 @@ describe('shared injected DOM snapshot', () => {
         document.querySelector('button')!.setAttribute('aria-label', label);
         layout();
         const sizes: number[] = [];
-        const page = new BrowserControlPage(async (_method, params) => {
+        const page = cdpPage(async (_method, params) => {
             const value = await window.eval(String(params?.expression));
             const response = { result: { value } };
             const size = new TextEncoder().encode(JSON.stringify(response)).length;
@@ -236,7 +239,7 @@ describe('ref resolution before trusted input', () => {
         const button = document.querySelector('button')!;
         button.focus();
         const ref = snapshot().elements.find(element => element.name === 'Message')!.ref;
-        const page = new BrowserControlPage(async (method, params) => {
+        const page = cdpPage(async (method, params) => {
             if (method === 'Runtime.evaluate') return { result: { value: window.eval(String(params?.expression)) } };
             // A native activation click can leave DOM focus unchanged. Insertion
             // must still address the requested field, never the previous control.
@@ -672,7 +675,7 @@ describe('opaque human continuation stamps', () => {
         const old = (window as any).__cocHumanContinuation;
         old?.observer?.disconnect(); Reflect.deleteProperty(window, '__cocHumanContinuation');
         document.body.innerHTML = '<button>Continue</button><input type="password"><input autocomplete="one-time-code">';
-        const page = new BrowserControlPage(async (method, params) => {
+        const page = cdpPage(async (method, params) => {
             expect(method).toBe('Runtime.evaluate');
             expect(String(params?.expression)).not.toContain('.value');
             return { result: { value: window.eval(String(params?.expression)) } };

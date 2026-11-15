@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buildBrowserAnnotationExpression, type BrowserAnnotationCommand, type BrowserAnnotationEvent, type BrowserAnnotationResult, type BrowserAnnotationSelection } from './browser-annotation-dom';
-import type { BrowserHostedView, BrowserCdpEventListener, BrowserAnnotationImage } from './browser-host-contract';
+import type { BrowserHostedView, BrowserAnnotationImage } from './browser-host-contract';
+import type { BrowserControl, BrowserControlEventListener } from './browser-control-engine';
 import { validateBrowserUrl } from './browser-view-policy';
 
 export const BROWSER_ANNOTATION_WORLD = 'coc-browser-annotation';
@@ -14,7 +15,7 @@ export interface BrowserAnnotationTabSink {
     ended(reason: BrowserAnnotationEndReason, error?: unknown): void;
 }
 
-type AnnotationView = Pick<BrowserHostedView, 'cdp' | 'onCdpEvent' | 'waitForCdpEvents' | 'waitForControlReady' | 'captureAnnotation'>;
+type AnnotationView = Pick<BrowserHostedView, 'control' | 'waitForControlReady' | 'captureAnnotation'>;
 
 /**
  * Main-only transport for one admitted URL guest and one document. The caller must resolve
@@ -24,7 +25,7 @@ type AnnotationView = Pick<BrowserHostedView, 'cdp' | 'onCdpEvent' | 'waitForCdp
 export class BrowserAnnotationTab {
     private readonly session = randomUUID();
     private readonly readiness = new AbortController();
-    private readonly cdp: BrowserHostedView['cdp'];
+    private readonly control?: BrowserControl;
     private contextId?: number;
     private frameId?: string;
     private closed = false;
@@ -38,7 +39,7 @@ export class BrowserAnnotationTab {
     constructor(private readonly view: AnnotationView, private readonly sink: BrowserAnnotationTabSink,
         private readonly pollMs = BROWSER_ANNOTATION_POLL_MS,
         private readonly isAppUrl: (url: string) => boolean = () => false) {
-        this.cdp = view.cdp?.bind(view);
+        this.control = view.control;
     }
 
     /** True only after the isolated document confirms installation; false if revoked while starting. */
@@ -46,19 +47,17 @@ export class BrowserAnnotationTab {
         if (this.closed) return Promise.resolve(false);
         if (this.starting) return this.starting;
         this.starting = this.enqueue(async () => {
-            if (!this.cdp || !this.view.onCdpEvent) throw new Error('This view cannot run browser annotation.');
+            const control = this.control;
+            if (!control) throw new Error('This view cannot run browser annotation.');
             await this.view.waitForControlReady?.(this.readiness.signal);
             if (this.closed) return false;
-            this.off = this.view.onCdpEvent(this.onEvent);
-            await this.view.waitForCdpEvents?.();
+            this.off = control.onEvent(this.onEvent);
+            await control.waitForEvents?.();
             if (this.closed) return false;
-            await this.cdp('Page.enable');
+            await control.enableFrameEvents();
             if (this.closed) return false;
-            const tree = await this.cdp('Page.getFrameTree') as {
-                frameTree?: { frame?: { id?: unknown; url?: unknown; mimeType?: unknown } };
-            } | undefined;
+            const { frame } = await control.frameTree();
             if (this.closed) return false;
-            const frame = tree?.frameTree?.frame;
             const frameId = frame?.id;
             if (typeof frameId !== 'string' || !frameId) throw new Error('Annotation page has no main frame.');
             // Engine-owned document facts, never renderer toolbar hints or website DOM metadata.
@@ -69,10 +68,8 @@ export class BrowserAnnotationTab {
                 throw new Error('Browser annotation is unavailable for PDFs, previews or the CoC app.');
             }
             this.frameId = frameId;
-            const world = await this.cdp('Page.createIsolatedWorld', { frameId, worldName: BROWSER_ANNOTATION_WORLD }) as { executionContextId?: unknown } | undefined;
             // Retain the context even when revoked: a delayed installation must be cleaned up there only.
-            if (!Number.isSafeInteger(world?.executionContextId)) throw new Error('Annotation isolated world is unavailable.');
-            this.contextId = world!.executionContextId as number;
+            this.contextId = await control.createIsolatedWorld(frameId, BROWSER_ANNOTATION_WORLD);
             if (this.closed) return false;
             const result = await this.evaluate('start');
             if (this.closed) return false;
@@ -197,12 +194,9 @@ export class BrowserAnnotationTab {
     }
 
     private async evaluateCommand(command: BrowserAnnotationCommand): Promise<BrowserAnnotationResult> {
-        const reply = await this.cdp!('Runtime.evaluate', {
-            expression: buildBrowserAnnotationExpression(command),
-            contextId: this.contextId, returnByValue: true, awaitPromise: true,
-        }) as { result?: { value?: unknown }; exceptionDetails?: unknown } | undefined;
-        if (reply?.exceptionDetails) throw new Error('Annotation script failed in the page.');
-        return parseAnnotationResult(reply?.result?.value);
+        const reply = await this.control!.evaluate(buildBrowserAnnotationExpression(command), { context: this.contextId, awaitPromise: true });
+        if (reply.exception !== undefined) throw new Error('Annotation script failed in the page.');
+        return parseAnnotationResult(reply.value);
     }
 
     private async deliver(result: BrowserAnnotationResult): Promise<void> {
@@ -234,14 +228,13 @@ export class BrowserAnnotationTab {
         }
     }
 
-    private readonly onEvent: BrowserCdpEventListener = (method, params, sessionId) => {
-        if (sessionId || this.closed) return;
-        const frame = params.frame as { id?: unknown; parentId?: unknown } | undefined;
-        const navigation = (method === 'Page.frameNavigated' && frame && !frame.parentId)
-            || ((method === 'Page.frameStartedLoading' || method === 'Page.navigatedWithinDocument' || method === 'Page.frameDetached')
-                && (!this.frameId || params.frameId === this.frameId));
-        const gone = method === 'Runtime.executionContextsCleared' || method === 'Inspector.detached' || method === 'Target.targetCrashed'
-            || (method === 'Runtime.executionContextDestroyed' && this.contextId !== undefined && params.executionContextId === this.contextId);
+    private readonly onEvent: BrowserControlEventListener = event => {
+        if (('target' in event && event.target !== undefined) || this.closed) return;
+        const navigation = (event.type === 'frame-navigated' && !event.frame.parentId)
+            || ((event.type === 'frame-loading' || event.type === 'frame-same-document' || event.type === 'frame-detached')
+                && (!this.frameId || event.frameId === this.frameId));
+        const gone = event.type === 'contexts-cleared' || event.type === 'detached' || event.type === 'crashed'
+            || (event.type === 'context-destroyed' && this.contextId !== undefined && event.context === this.contextId);
         if (navigation || gone) void this.stop(navigation ? 'navigation' : 'unavailable').catch(() => {});
     };
 }

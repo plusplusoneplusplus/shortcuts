@@ -61,6 +61,8 @@ const cookieServer = http.createServer((req, res) => {
 });
 
 app.whenReady().then(async () => {
+    // These cases cover Electron tabs; macOS otherwise defaults new installs to WKWebView.
+    require('../../dist/browser-preferences').writeBrowserEngine(dataDir, 'electron');
     registerBrowserViewIpc(dataDir);
     await new Promise((resolve) => cookieServer.listen(0, '127.0.0.1', resolve));
     const siteUrl = `http://127.0.0.1:${cookieServer.address().port}/`;

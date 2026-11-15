@@ -277,7 +277,7 @@ describe('native build execution', () => {
         });
         const options = {
             packageRoot: root, run, logger: { log: vi.fn() },
-            buildSymbolsLsp: vi.fn(), buildWebView2: vi.fn(),
+            buildSymbolsLsp: vi.fn(), buildWebView2: vi.fn(), buildWkWebView: vi.fn(),
             hostTriple: vi.fn(() => 'x86_64-unknown-linux-gnu'),
         };
         return { generated, options };
@@ -300,6 +300,7 @@ describe('native build execution', () => {
         }
         expect(options.buildSymbolsLsp).toHaveBeenCalledTimes(2);
         expect(options.buildWebView2).toHaveBeenCalledTimes(2);
+        expect(options.buildWkWebView).toHaveBeenCalledTimes(2);
         expect(fs.readdirSync(root).filter(name => name.startsWith('.napi-dts-'))).toEqual([]);
     });
 
@@ -322,6 +323,7 @@ describe('native build execution', () => {
         expect(options.run.mock.calls[0][1]).toEqual(expect.arrayContaining(['--target', 'aarch64-apple-darwin']));
         expect(options.buildSymbolsLsp).toHaveBeenCalledWith(expect.objectContaining({ target: 'aarch64-apple-darwin' }));
         expect(options.buildWebView2).toHaveBeenCalledWith(expect.objectContaining({ target: 'aarch64-apple-darwin' }));
+        expect(options.buildWkWebView).toHaveBeenCalledWith(expect.objectContaining({ target: 'aarch64-apple-darwin' }));
     });
 
     it.each(['owner.json', 'state.json'])('fails before compilation when %s is missing, preserving recovery data', missing => {

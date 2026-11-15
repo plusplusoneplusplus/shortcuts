@@ -15,7 +15,8 @@
     "prebuilt",
     "*.node",
     "coc-symbols-lsp.*",
-    "coc-webview2.*.exe"
+    "coc-webview2.*.exe",
+    "coc-wkwebview.darwin-*"
   ],
   "scripts": {
     "build": "tsc",

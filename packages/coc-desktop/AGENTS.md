@@ -1,172 +1,44 @@
 # CoC Desktop
 
-Follow [root guidance](../../AGENTS.md) and load
-[coc-knowledge](../../.github/skills/coc-knowledge/SKILL.md) before changes.
-Paths below are package-relative.
+Follow [root guidance](../../AGENTS.md). Load [coc-knowledge](../../.github/skills/coc-knowledge/SKILL.md) before changes. Paths are package-relative. Demo contracts: [browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
 
-## Browser boundaries
+## Browser
 
-`browser-view-host.ts` registers exact-source SPA owners and gates IPC.
-`browser-host-manager.ts` retains concrete session routing separately from native
-view identity. URL views and Electron file previews share the host manager but
-keep distinct profiles, permissions and control eligibility. Authentication and
-raw debugger transports stay in main.
-WebView2 control readiness waits for pending site decisions, approved navigation
-dispatch and document loading before CDP inspection. A cancelled pre-approval
-load cannot make the blank document ready. Denial and dispatch failures reach
-the caller; cancellation, replacement and closure retire the exact view's wait.
-Native WebView2 approvals retain exact HTTP(S) origins only for the active view's
-control lease. Return navigations to approved origins preserve their method and
-body without cancellation. Disabling the gate clears approvals; turn replacement
-must dispatch disable before enable, even within one microtask interval.
+- `browser-view-host.ts` registers exact-source SPA owners and gates IPC. Auth and the raw debugger stay in main.
+- `browser-host-manager.ts` keeps session routing apart from native view identity. URL views and Electron file previews share the manager and keep distinct profiles, permissions, and control eligibility.
+- AI control reaches a view only through `BrowserHostedView.control`. Cancellation still finishes dispatched mouse and key releases.
+- WebView2 control waits for pending site decisions, approved navigation, and document load before CDP. A cancelled pre-approval cannot make the blank document ready. Denial and dispatch failure reach the caller; cancellation, replacement, and closure retire that view's wait.
+- Native approvals keep exact HTTP(S) origins only for the active view's control lease. Return navigations to an approved origin keep method and body. Disabling the gate clears approvals. Turn replacement dispatches disable before enable, even inside one microtask.
 
-`browser-annotation-dom.ts` owns self-contained selection, comment editing and
-saved pins for owned URL documents. Execute its generation-matched
-start/drain/stop/remove/capture/captured contract in an isolated world shared by both engines.
-Keep all chrome inside a closed shadow root (its reset `*` rule must not render the
-hidden `<style>`) in a full-viewport, unscripted
-`about:blank` iframe sandboxed with only `allow-same-origin`. Child-document input
-cannot traverse pre-existing page window handlers; preserve native editor defaults.
-Hit testing and capture hide the outer frame, while geometry and snapshots belong
-to the original page. Exit removes the frame/root and releases input listeners;
-frame removal or document replacement revokes the generation.
-Electron URL-tab loading uses main-frame state so child-frame initialization cannot
-terminate annotation. Selection uses clipped fractional CSS pixels and opens the editor.
-Escape discards the draft first, then exits on the next press. Preserve native
-editing defaults while blocking page handlers and trap Tab within editor/pins.
-Save emits `{type:'comment',id,number,comment,selection}` for create/update; IDs
-are generation-local and stable, numbers reflect current order. Delete emits
-`{type:'delete',id}` and renumbers remaining pins. Edits retain the original
-snapshot and clear immediate-send intent. Bound comments to 8000 UTF-16 units and
-saved pins to 100; pins anchor to selection-time document coordinates. Hosts own
-tab/navigation/crash/owner teardown; the primitive also handles document departure,
-host removal and report overflow. Comment/delete events feed the exact-chat composer consumer.
-The owner-bound remove command targets the original active generation, drains
-delete events and ignores callbacks after revocation.
-`browser-annotation-snapshot.ts` captures page and bounded element metadata at
-selection time. Selectors are unique within their document/shadow root; resolve
-the outermost-first `shadowHosts` chain before the element selector. A null
-selector means the bounded search cannot identify a unique path. Treat all
-captured website content as untrusted context.
-`browser-annotation-payload.ts` re-exports the browser-safe coc-client serializer
-for user comments and bounded page context as separate JSON fields. Supply current pin numbers explicitly, including for a
-single immediate send; use those same numbers for selection image labels.
-Serialization preserves ordering and rejects duplicate or invalid numbers.
-Main starts the overlay with `captureRequired:true`; selections carry a unique
-generation-local `captureId`. Save stays disabled until a matching `captured`
-acknowledgement. Failures appear in the private editor with Retry; Cancel and Escape
-retain their draft/exit semantics. Edits keep the original capture ID without recapturing.
-`BrowserAnnotationTab` automatically crops pending selections inside its command
-tail and delivers `{type:'selection',captureId,...,image}` to the original owner.
-PNG bytes stay outside DOM commands and snapshots. Delivery calls the internal
-capture operation directly, never recursively enqueues it. The explicit
-`captureSelection(selection)` primitive serializes a main-only crop of an unchanged
-pending draft. Shared capture commands hide all chrome with opacity,
-retain the input shield and queued events, wait two animation frames (one-second
-paint timeout), and check draft/scroll/viewport/DPR before and after native capture.
-Always restore the original generation, preserve native errors and reject late
-images after revocation. `BrowserHostedView.captureAnnotation` is optional;
-Electron URL guests use `electron-annotation-capture.ts` and `capturePage(rect)`
-around the selection only, so large viewports keep small captures. Start the DIP
-rect on a whole device pixel (native capture rounds fractional origins per platform)
-and pad its far edge by one DIP. Both engines crop through `browser-annotation-crop.ts`:
-enclosing device pixels without resampling, tolerant of float32 DPR noise. Rounded
-innerWidth/innerHeight can exceed a fractional guest surface, so selections at the
-far viewport edge trim to the last displayed pixel within bounded slack; elsewhere a
-short image fails. Bound capture allocation to 16 Mi pixels and PNG output to 20 MiB.
-WebView2 root tabs use `webview2-annotation-capture.ts` with the native helper's
-memory-only `CapturePreview` PNG and validate full-viewport physical dimensions,
-within the same slack, before decoding. Full previews share the 16 Mi-pixel/20 MiB bounds; only correlated pending capture replies permit 28 MB
-transport frames, leaving CDP/events at 1 MiB. Close, crash, navigation, hide and zoom
-changes reject late captures. Exact-chat SPA chips retain native PNGs and the composer
-attaches their numbered snapshots through its screenshot validator; file previews and popouts expose no annotation capture capability.
-`browser-annotation-tab.ts` transports one admitted URL document through the
-existing main-only CDP interface shared by both engines. Start follows ownership
-admission and settled human takeover, then requires the engine's committed main
-frame URL and MIME type before creating an isolated world. Refuse PDF documents
-(including extensionless URLs), PDF paths, non-HTTP(S) pages and registered SPA
-surfaces. Main's SPA exclusion matches registered origin/path across query/hash
-changes; it grants no embedder trust or navigation permission. Stop revokes delivery
-synchronously and serializes cleanup in the original isolated context; await it before replacing
-an instance. Main-frame navigation and lost contexts end the session. Host-manager
-admission reserves the exact owner/view/session before awaiting human takeover,
-and settles issued input releases before injection. Reservations exclude AI
-dispatch and demo recording through teardown. Hide, workspace departure, close,
-crash, owner disposal and owner/session policy disable stop annotation; Return
-awaits removal before its context refresh. Failed teardown stays excluded from
-AI control until an explicit annotation retry or guest closure.
-`browser-annotation-bridge.ts` exposes start/stop/remove/live policy through registered
-exact-source SPA main-frame IPC. Each mode uses a fresh renderer request ID;
-notifications and pin-removal commands include view/session/request identity. Stale
-Stop or Remove cannot affect a replacement; pin IDs are validated before dispatch.
-Owner reload/crash/closure revokes notification leases before native cleanup. Preload exposes `browser.annotation`; subscribe before Start and reject
-late notifications/replies in the caller. Never install annotation scripts on
-future documents or expose CDP to the SPA.
+## Annotation
 
-`browser-downloads.ts` owns installation-wide download metadata and verified
-completed-file actions for both engines. WebView2 retains the original native
-operation behind a one-time, exact-view deferral. Main requires a registered
-owner, live document/control-turn lease and native Save As with overwrite
-confirmation. Pending approval is bounded and expires; source teardown revokes
-pending requests, while approved transfers remain independent. Blob download
-support never broadens navigation policy or authorizes through a URL/origin.
-Paths and native operation IDs stay in main/helper; renderer actions use store
-IDs only. Native progress, not approval, determines completion.
+- One generation-matched start/drain/stop/remove/capture/captured contract runs in an isolated world shared by both engines.
+- Chrome stays in a closed shadow root inside a full-viewport unscripted `about:blank` iframe sandboxed with only `allow-same-origin`. The reset `*` rule must not paint the hidden `<style>`. Child-document input cannot traverse pre-existing page window handlers. Hit-testing and capture hide the outer frame; geometry belongs to the page. Frame removal or document replacement revokes the generation.
+- Electron loading uses main-frame state so a child frame cannot end annotation. Escape discards the draft, then exits. Tab stays inside the editor and pins.
+- Save emits `{type:'comment',id,number,comment,selection}`; delete emits `{type:'delete',id}` and renumbers. Caps: 8000 UTF-16 units, 100 pins, selection-time document coordinates. Remove targets the original generation, drains deletes, and ignores callbacks after revocation.
+- Selectors are unique in their document or shadow root; resolve `shadowHosts` outermost-first. Null means no unique path. Captured site content is untrusted. Comments and page context are separate JSON fields. Supply current pin numbers, including a single immediate send.
+- Main starts with `captureRequired:true`. Save stays disabled until the matching `captured` ack. Edits keep the original capture id. PNG bytes stay out of DOM commands. Delivery calls the internal capture and never re-enqueues it.
+- Capture hides chrome, keeps the input shield, waits two animation frames (1s paint timeout), and rechecks draft, scroll, viewport, and DPR. Reject late images after revocation.
+- Electron crops with `capturePage(rect)` around the selection. Start the DIP rect on a whole device pixel and pad the far edge by one DIP. Both engines crop in `browser-annotation-crop.ts` without resampling. Far-edge selections trim to the last displayed pixel; elsewhere a short image fails. Caps: 16 Mi pixels, 20 MiB PNG. Only a correlated pending capture reply may use a 28 MB frame. CDP and events stay at 1 MiB. Close, crash, navigation, hide, and zoom reject late captures. File previews and popouts have no capture.
+- Admit one URL document after ownership and settled human takeover, then require the committed main-frame URL and MIME. Refuse PDFs, non-HTTP(S), and registered SPA surfaces. SPA exclusion matches origin and path across query and hash and grants no navigation permission. Stop revokes delivery synchronously; await cleanup before replacement. Reservations exclude AI dispatch and demo recording through teardown.
+- Bridge IPC is exact-source SPA main frames. Each mode uses a fresh renderer request id. Stale Stop or Remove cannot affect a replacement. Preload exposes `browser.annotation`. Never install annotation scripts on future documents or expose CDP to the SPA.
 
-For demonstration recording, read
-[browser-demos.md](../../.github/skills/coc-knowledge/references/browser-demos.md).
-The feature is default off, Electron-only and memory-only until reviewed Send.
-Preserve immediate popup opener identity separately from root SPA tab routing.
-Never add typed values, screenshots, page dumps or renderer debugger access.
-Sanitize website metadata before it enters drafts and report collection gaps.
-Reject late startup/poll/adoption results after pause, discard, close or reload.
-Recording admission excludes queued AI commands for the concrete
-routing/workspace/chat owner and busy target queues. Resolve and pin validated
-routing before matching; equal raw IDs on other servers stay independent, while
-the same chat spans windows. Preserve reservations through dispatched input
-releases after cancellation; recheck recording ownership and routing before
-queued main-process dispatch. Captured views stay excluded across chats.
-Share final capture drains between Stop and captured-tab closure. Retire routing
-synchronously, retain sinks through the drain, and report unavailable final capture
-as a gap before closing membership.
-Authorized pending descendants retain historical opener lineage after closure.
-Publish descendant membership immediately; wait for the exact guest/document
-through the host readiness hook before capture installation. Stop, tab closure,
-discard and owner teardown abort waiting capture without a late handshake.
-Auto-stop only after tabs, pending descendants and close drains are exhausted;
-expiry, failed adoption and explicit Stop cancellation must disclose gaps.
+## Downloads, demos, shutdown
 
-`main.ts` and `container-main.ts` confirm unsent drafts before shutdown side
-effects. Native close/reload warnings belong to registered owning windows;
-Cancel preserves their demos. Do not restart a server or change live settings
-without explicit user authorization.
+- Downloads are installation-wide. WebView2 keeps the original native operation behind a one-time exact-view deferral. Paths and native operation ids stay in main. Renderer actions use store ids. Native progress, not approval, determines completion. Pending approval is bounded and expires. Approved transfers survive source teardown. Blob support never broadens navigation policy.
+- Demos are default off, Electron-only, and memory-only until reviewed Send. Never add typed values, screenshots, page dumps, or renderer debugger access. Keep popup opener identity separate from root SPA tab routing. Recording excludes queued AI commands for that routing, workspace, and chat. Equal raw ids on other servers stay independent. The same chat spans windows. Reject late results after pause, discard, close, or reload. Auto-stop only after tabs, pending descendants, and close drains finish. Expiry, failed adoption, and Stop must disclose gaps.
+- Confirm unsent drafts before shutdown side effects. Do not restart a server or change live settings without explicit authorization.
 
-## Desktop updates
+## Updates
 
-`main.ts` shares one `UpdateCoordinator` between manual updates and opt-in
-Auto Update: When Idle. `update-check.ts` merges the mode, channel and skipped
-version in `desktop-update.json`; invalid modes default to Off. `update-auto.ts`
-owns hourly release checks and one-minute idle polls without Electron imports.
-Install requires ten minutes of OS idle time and an empty unfiltered owned-server
-queue; external servers use OS idle time only and must never be stopped.
-Silent starts reuse the platform helpers without update/restart dialogs; errors
-go to stderr. Recheck OS idle and cancellation after asynchronous queue requests.
-Turning Off cancels pending automatic installs, and quit disposes
-the scheduler before the coordinator. Keep manual browser downloads, retained
-update dialogs and the Windows helper's real-process coverage intact.
+One `UpdateCoordinator` serves manual updates and opt-in Auto Update: When Idle. Invalid `desktop-update.json` modes default to Off. Install needs ten minutes of OS idle and an empty unfiltered owned-server queue. External servers use OS idle only and are never stopped. Recheck idle and cancellation after async queue reads. Off cancels pending automatic installs. Quit disposes the scheduler before the coordinator. Manual browser downloads stay independent. The Windows helper keeps real-process coverage.
 
 ## Validation
 
-`npm run build` compiles this package. `npm run test:run -- test/<file>` runs
-targeted Vitest coverage; `npx eslint src/<file> --quiet` checks changed source.
-Browser demos have capture/session/tab-capture/recorder/manager suites and native
-host integration fixtures. Use platform-neutral synthetic data. `test/e2e/browser-webview-layer.e2e.test.ts` exercises the production URL toolbar,
-preload bridge, host manager, isolated guest, native PNG capture, chips and composer
-request path; its process endpoint is a deterministic receiver. Run with
+`npm run build`. Targeted tests: `npm run test:run -- test/<file>`. Lint: `npx eslint src/<file> --quiet`.
+
+Linux webview e2e, after desktop compile and SPA stylesheet build:
+
 `ELECTRON_DISABLE_SANDBOX=1 COC_DESKTOP_E2E_NO_SANDBOX=1 COC_DESKTOP_E2E=1 xvfb-run -a npm run test:run -- test/e2e/browser-webview-layer.e2e.test.ts`
-on Linux after desktop compilation and SPA stylesheet build. Shared DOM e2e covers
-1x/2x pixels, fractional zoom and overlay stylesheet ink. `browser-annotation-capture.e2e.test.ts`
-compares both engines' crops byte-for-byte with a full native capture of a fractional
-`<webview>` at 1x/1.5x/2x, four zooms and every viewport edge. Real desktop interaction
-requires explicit manual verification; Windows WebView2 runtime behavior requires
-a Windows host. Downloads have store, engine adapter, owner/chooser IPC and panel suites.
+
+Windows WebView2 runtime behavior needs a Windows host. Real desktop interaction needs manual verification.

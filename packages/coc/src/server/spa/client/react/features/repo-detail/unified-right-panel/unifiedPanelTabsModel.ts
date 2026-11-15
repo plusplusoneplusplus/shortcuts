@@ -228,7 +228,7 @@ export interface UnifiedPanelTab {
      */
     browserUrl?: string;
     /** A page-requested tab inherits its opener's engine rather than the current default. */
-    browserEngine?: 'electron' | 'webview2';
+    browserEngine?: 'electron' | 'webview2' | 'wkwebview';
     /**
      * The conversation that owns a `browser` tab (`features.chatScopedBrowserTabs`).
      * The tab stays in `workspaceTabs` with its workspace id, but only that
@@ -573,7 +573,7 @@ export interface OpenUnifiedTabInput {
     htmlPageId?: string;
     /** A `browser` tab's initial URL; absent opens a blank tab. */
     browserUrl?: string;
-    browserEngine?: 'electron' | 'webview2';
+    browserEngine?: 'electron' | 'webview2' | 'wkwebview';
     /** The conversation that owns a new `browser` tab; an existing tab keeps its owner. */
     browserChatId?: string;
 }

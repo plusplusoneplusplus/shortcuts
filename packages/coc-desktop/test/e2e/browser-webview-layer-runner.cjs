@@ -142,6 +142,8 @@ function pixel(image, x, y) {
 app.whenReady().then(async () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
+    // These cases cover Electron tabs; macOS otherwise defaults new installs to WKWebView.
+    require('../../dist/browser-preferences').writeBrowserEngine(path.join(process.env.COC_WEBVIEW_LAYER_DATA, 'coc'), 'electron');
     registerBrowserViewIpc(path.join(process.env.COC_WEBVIEW_LAYER_DATA, 'coc'));
     const win = new BrowserWindow({
         width: 900, height: 700, show: true,

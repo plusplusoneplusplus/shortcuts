@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, type BrowserEngine } from './browser-view-policy';
 
@@ -15,7 +16,7 @@ function readPreferences(dataDir: string): Record<string, unknown> {
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') { return {}; }
         if (error instanceof SyntaxError) {
-            console.warn('[coc-desktop] Invalid browser preference; using Electron.');
+            console.warn('[coc-desktop] Invalid browser preference; using the default engine.');
             return {};
         }
         throw error;
@@ -23,9 +24,17 @@ function readPreferences(dataDir: string): Record<string, unknown> {
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 }
 
-export function readBrowserEngine(dataDir: string, platform: string = process.platform, arch: string = process.arch): BrowserEngine {
+/** Darwin kernel 23 is macOS 14, the first release WKWebView is the default on. */
+function wkWebViewDefault(platform: string, release: string): boolean {
+    return platform === 'darwin' && Number.parseInt(release, 10) >= 23;
+}
+
+/** A saved choice wins; with none, macOS 14+ defaults to WKWebView and everything else to Electron. */
+export function readBrowserEngine(dataDir: string, platform: string = process.platform, arch: string = process.arch, release: string = os.release()): BrowserEngine {
     const engine = readPreferences(dataDir).defaultEngine;
-    return isBrowserEngine(engine) && (engine === 'electron' || (platform === 'win32' && arch === 'x64')) ? engine : 'electron';
+    if (!isBrowserEngine(engine)) return wkWebViewDefault(platform, release) ? 'wkwebview' : 'electron';
+    const supported = engine === 'webview2' ? platform === 'win32' && arch === 'x64' : engine === 'wkwebview' ? platform === 'darwin' : true;
+    return isBrowserEngine(engine) && supported ? engine : 'electron';
 }
 
 export function writeBrowserEngine(dataDir: string, engine: BrowserEngine): void {

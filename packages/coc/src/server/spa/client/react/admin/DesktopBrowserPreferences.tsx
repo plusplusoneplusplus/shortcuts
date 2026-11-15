@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, type BrowserEngine, type BrowserPreferences, type DesktopBrowserHistory, type BrowserOperationResult } from '../shared/file-path/browser-bridge';
+import { browserEngineName, desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, type BrowserEngine, type BrowserPreferences, type DesktopBrowserHistory, type BrowserOperationResult } from '../shared/file-path/browser-bridge';
 import { SettingsCard } from './SettingsCard';
 import { useAdminLocalBadge } from './adminTarget';
 import { AdminRow, AdminToggle } from './adminControls';
@@ -123,13 +123,16 @@ export function DesktopBrowserPreferences() {
                                 value={preferences.defaultEngine} disabled={busy !== null}
                                 onChange={event => {
                                     const engine = event.target.value;
-                                    if (engine === 'electron' || engine === 'webview2') { void operate('select', () => bridge.setDefaultEngine(engine), 'Default browser engine saved. Existing tabs are unchanged.'); }
+                                    if (engine === 'electron' || engine === 'webview2' || engine === 'wkwebview') { void operate('select', () => bridge.setDefaultEngine(engine), 'Default browser engine saved. Existing tabs are unchanged.'); }
                                 }}
                             >
                                 {preferences.engines.filter(engine => engine.reason !== 'unsupported-platform').map(engine => (
-                                    <option key={engine.engine} value={engine.engine}>{engine.engine === 'electron' ? 'Electron' : 'WebView2'}{engine.available ? '' : ' (unavailable)'}</option>
+                                    <option key={engine.engine} value={engine.engine}>{browserEngineName(engine.engine)}{engine.available ? '' : ' (unavailable)'}</option>
                                 ))}
                             </select>
+                            {preferences.defaultFallback && (
+                                <p role="status" className="ar-muted" data-testid="desktop-browser-default-fallback">{preferences.defaultFallback}</p>
+                            )}
                         </AdminRow>
                         {preferences.clickOnce && bridge.setClickOnce && (
                             <AdminRow name="Windows ClickOnce" hint="Off by default. Applies to new tabs. HTTPS deployment links activate directly through Windows without a CoC confirmation. Windows may show installation or trust prompts.">
@@ -141,7 +144,7 @@ export function DesktopBrowserPreferences() {
                     </BrowserGroup>
                     <BrowserGroup id="browser-group-profiles" heading="Profiles & sign-ins">
                         {preferences.engines.map(engine => (
-                            <AdminRow key={engine.engine} name={engine.engine === 'electron' ? 'Electron browser data' : 'WebView2 browser data'}
+                            <AdminRow key={engine.engine} name={`${browserEngineName(engine.engine)} browser data`}
                                 hint={engine.message ?? 'Separate persistent cookies, cache and site storage. Clearing data signs you out across all workspaces.'}>
                                 {engine.reason === 'missing-runtime' && (
                                     <button className="ar-btn ar-btn-ghost ar-btn-sm" type="button" onClick={() => {
@@ -151,8 +154,8 @@ export function DesktopBrowserPreferences() {
                                 {engine.reason !== 'unsupported-platform' && (
                                     <button className="ar-btn ar-btn-danger-outline ar-btn-sm" type="button"
                                         disabled={busy !== null || preferences.clearing.includes(engine.engine)}
-                                        onClick={() => { void operate(engine.engine, () => bridge.clearData(engine.engine), `${engine.engine === 'electron' ? 'Electron' : 'WebView2'} browser data cleared across all workspaces.`); }}>
-                                        {busy === engine.engine || preferences.clearing.includes(engine.engine) ? 'Clearing...' : `Clear ${engine.engine === 'electron' ? 'Electron' : 'WebView2'} data...`}
+                                        onClick={() => { void operate(engine.engine, () => bridge.clearData(engine.engine), `${browserEngineName(engine.engine)} browser data cleared across all workspaces.`); }}>
+                                        {busy === engine.engine || preferences.clearing.includes(engine.engine) ? 'Clearing...' : `Clear ${browserEngineName(engine.engine)} data...`}
                                     </button>
                                 )}
                             </AdminRow>

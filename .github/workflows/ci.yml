@@ -265,11 +265,30 @@ jobs:
           cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --no-default-features
           cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --no-default-features --features graph
 
+      # The WKWebView helper only compiles for macOS. Its real-helper vitest
+      # suite spawns the debug build, so build that before the npm tests.
+      - name: Lint, test and build the WKWebView helper
+        if: runner.os == 'macOS'
+        run: |
+          cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-wkwebview --all-targets -- -D warnings
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-wkwebview
+          cargo build --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-wkwebview
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build the addon
         run: npm run build:native -w packages/coc-native
+
+      # build:native makes the helper for the runner's arch (arm64). Desktop
+      # ships both darwin helpers, so cross-build Intel too and check its arch.
+      - name: Build the Intel WKWebView helper
+        if: runner.os == 'macOS'
+        working-directory: packages/coc-native
+        run: |
+          rustup target add x86_64-apple-darwin
+          CARGO_BUILD_TARGET=x86_64-apple-darwin node scripts/build-wkwebview.mjs
+          test "$(lipo -archs coc-wkwebview.darwin-x64)" = x86_64
 
       # src/native-bindings.ts is generated from the `#[napi]` macros but has to
       # be committed, because `npm run build` is plain tsc and must work with no
@@ -300,6 +319,10 @@ jobs:
           if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = X64 ]; then
             test -f packages/coc-native/coc-webview2.win32-x64-msvc.exe
           fi
+          if [ "$RUNNER_OS" = macOS ]; then
+            test -f packages/coc-native/coc-wkwebview.darwin-arm64
+            test -f packages/coc-native/coc-wkwebview.darwin-x64
+          fi
 
       # Both artifacts `build:native` produces, for the same reason release.yml
       # ships both: the addon is dlopen'd and the symbol language server is
@@ -314,6 +337,7 @@ jobs:
             packages/coc-native/*.node
             packages/coc-native/coc-symbols-lsp.*
             packages/coc-native/coc-webview2.*.exe
+            packages/coc-native/coc-wkwebview.darwin-*
           if-no-files-found: error
           retention-days: 1
 
@@ -865,6 +889,12 @@ jobs:
           name: coc-native-${{ matrix.os }}
           path: packages/coc-native
 
+      # Artifact download drops the executable bit; the WKWebView helper is
+      # spawned, so without it the engine reports itself unavailable.
+      - name: Restore the WKWebView helper's executable bit
+        if: runner.os == 'macOS'
+        run: chmod +x packages/coc-native/coc-wkwebview.darwin-*
+
       - name: Build CoC server and SPA browser-control contracts
         run: npm run build -w packages/coc
 
@@ -878,10 +908,20 @@ jobs:
 
       - name: Run live browser engine contracts
         if: matrix.os != 'ubuntu-latest'
-        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts --fileParallelism=false
+        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts test/e2e/browser-annotation-capture-wkwebview.e2e.test.ts test/e2e/wkwebview-approval.e2e.test.ts test/e2e/wkwebview-window.e2e.test.ts --fileParallelism=false
         working-directory: packages/coc-desktop
         env:
           COC_DESKTOP_E2E: '1'
+
+      # Frame control on the real WKWebView helper (cross-origin frames come
+      # from the helper's frame tracking instead of OOPIF sessions).
+      - name: Run live WKWebView frame-control contract
+        if: runner.os == 'macOS'
+        run: npm run test:run -- test/e2e/browser-frame-control.e2e.test.ts
+        working-directory: packages/coc-desktop
+        env:
+          COC_DESKTOP_E2E: '1'
+          COC_BROWSER_FRAME_ENGINES: wkwebview
 
       - name: Run live Electron browser contracts on headless Linux
         if: matrix.os == 'ubuntu-latest'

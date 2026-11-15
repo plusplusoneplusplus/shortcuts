@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BrowserDownloadAction, BrowserDownloadsResult, BrowserEngine, DesktopBrowserDownloads } from '../../../shared/file-path/browser-bridge';
+import { browserEngineName, type BrowserDownloadAction, type BrowserDownloadsResult, type BrowserEngine, type DesktopBrowserDownloads } from '../../../shared/file-path/browser-bridge';
 import { Dialog } from '../../../ui/Dialog';
 
 const button = 'rounded-full px-3 py-1.5 text-xs font-medium hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc] disabled:opacity-40 disabled:cursor-not-allowed dark:hover:bg-white/10';
@@ -54,7 +54,7 @@ export function BrowserDownloadsPanel({ downloads, engine, desktop, onClose }: {
         <div data-native-view-overlay className="flex min-h-0 flex-col gap-3">
             <p className="text-xs text-[#616161] dark:text-[#aaa]">Downloads on this device, shared by all workspaces and desktop windows. Clearing records keeps your files.</p>
             {!downloads ? <p role="status">{desktop ? 'This desktop version does not support download management. Downloads are managed in your system browser.' : 'Download management is available in the CoC desktop app. Web downloads are managed by your browser.'}</p> : <>
-                {engine === 'webview2' && <p role="status" className="rounded-xl bg-black/5 p-3 text-xs dark:bg-white/5">{result?.ok ? result.engines.webview2.message : 'Loading WebView2 download capabilities.'}</p>}
+                {(engine === 'webview2' || engine === 'wkwebview') && <p role="status" className="rounded-xl bg-black/5 p-3 text-xs dark:bg-white/5">{result?.ok && result.engines[engine] ? result.engines[engine].message : `Loading ${browserEngineName(engine)} download capabilities.`}</p>}
                 <div className="flex flex-wrap justify-end gap-1">
                     <button type="button" className={button} disabled={pending} onClick={() => { ++revision.current; setRefresh(value => value + 1); }}>Refresh</button>
                     <button type="button" className={button} disabled={pending || !entries.some(entry => !entry.active)} onClick={() => void action(null, 'clear')}>Clear finished records</button>
@@ -69,7 +69,7 @@ export function BrowserDownloadsPanel({ downloads, engine, desktop, onClose }: {
                         <div className="break-words text-sm font-medium" dir="auto">{entry.filename}</div>
                         <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-[#616161] dark:text-[#aaa]">
                             <span className="break-all">{entry.source}</span>
-                            <span>{entry.engine === 'webview2' ? 'WebView2' : 'Electron'}</span>
+                            <span>{browserEngineName(entry.engine)}</span>
                             <time dateTime={new Date(entry.started).toISOString()}>{new Date(entry.started).toLocaleString()}</time>
                         </div>
                         <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs">

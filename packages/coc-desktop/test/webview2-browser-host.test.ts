@@ -490,7 +490,7 @@ describe('WebView2 owner-scoped native popups', () => {
             mocks.request.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } })
                 .mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } })
                 .mockResolvedValueOnce({ data: 'fixture==' });
-            const page = new BrowserControlPage((method, params) => view.cdp!(method, params));
+            const page = new BrowserControlPage(view.control!);
             expect(await page.screenshot(undefined, format)).toEqual({
                 data: 'fixture==', mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
             });

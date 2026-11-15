@@ -14,6 +14,7 @@
  * guest isolation and restart persistence against local HTTP fixtures.
  */
 
+import { withCdpControl } from './browser-cdp-control';
 import type { BrowserImportCookie } from './browser-cookie-import';
 import { app, BrowserWindow, WebContents, session, webContents } from 'electron';
 import { manageElectronDownload } from './electron-downloads';
@@ -253,7 +254,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
         const setControlActivity = browserPopupChrome(popup, turnId => entry.sink.controlStopRequested?.(viewId, turnId));
         contents.setZoomFactor(entry.pageZoom / 100);
         popup.on('focus', () => entry.sink.controlFocused?.(viewId));
-        entry.sink.controlPopoutOpened?.(viewId, {
+        entry.sink.controlPopoutOpened?.(viewId, withCdpControl({
             snapshot: () => ({
                 viewId, engine: 'electron', url: contents.isDestroyed() ? '' : contents.getURL(),
                 title: contents.isDestroyed() ? '' : contents.getTitle(),
@@ -277,7 +278,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
             setPageZoom: percent => contents.setZoomFactor(percent / 100),
             setBounds: () => {},
             close: () => { if (!popup.isDestroyed()) popup.close(); },
-        }, ...(openerViewId ? [openerViewId] : []));
+        }), ...(openerViewId ? [openerViewId] : []));
         popup.once('closed', () => {
             popoutByContents.delete(contentsId);
             cdp?.dispose();
@@ -623,7 +624,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
         const sender = webContents.fromId(request.ownerId);
         if (!sender) { throw new BrowserHostError('no-window', 'Browser window is closed.'); }
         const entry = openView(sender, request, sink);
-        return {
+        return withCdpControl({
             embed: 'webview',
             src: entry.authorization!.src,
             partition: entry.authorization!.partition,
@@ -692,7 +693,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 entry.contents.focus();
             },
             close: () => destroyEntry(entry),
-        };
+        });
     }
 
     async importCookies(cookies: BrowserImportCookie[]): Promise<void> {

@@ -7,6 +7,7 @@ const { app, BrowserWindow, nativeImage } = require('electron');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
 const { BrowserControlPage } = require('../../dist/browser-control-page.js');
+const { createCdpBrowserControl } = require('../../dist/browser-cdp-control.js');
 let win;
 let cdp;
 
@@ -63,7 +64,7 @@ function pixelDiff(first, second, box) {
 /** The agent's screenshots, snapshots and reads never contain the AI cursor drawn on screen. */
 async function cursorEvidence(queue, ref, baseline) {
     // An overlay-free page with the same capture path shows what is really on screen.
-    const screen = new BrowserControlPage((method, params) => cdp.send(method, params), process.platform);
+    const screen = new BrowserControlPage(createCdpBrowserControl({ cdp: (method, params) => cdp.send(method, params) }), process.platform);
     await queue.run(async page => page.setCursorOverlay(true));
     await queue.run(page => page.type(ref('Name'), 'Ada'));
     const hosts = await evaluate('document.querySelectorAll("coc-ai-cursor").length');
@@ -100,14 +101,14 @@ async function cursorEvidence(queue, ref, baseline) {
     await win.loadURL(url);
     cdp = new ElectronBrowserCdp(win.webContents);
     let stop;
-    const queue = new BrowserControlQueue(async (method, params) => {
+    const queue = new BrowserControlQueue(createCdpBrowserControl({ cdp: async (method, params) => {
         const result = await cdp.send(method, params);
         if (stop && method === 'Input.dispatchMouseEvent' && params?.type === 'mousePressed') {
             stop.abort(new Error('Fixture Stop'));
             stop = undefined;
         }
         return result;
-    });
+    } }));
     const before = await queue.run(page => page.snapshot());
     const ref = name => {
         const entry = before.elements.find(element => element.name === name);
@@ -124,7 +125,7 @@ async function cursorEvidence(queue, ref, baseline) {
     await queue.run(page => page.type(ref('Name'), 'Ada'));
     await queue.run(page => page.click(ref('Save')));
     await queue.run(page => page.selectOption(ref('Plan'), 'c'));
-    const macPage = new BrowserControlPage((method, params) => cdp.send(method, params), 'darwin');
+    const macPage = new BrowserControlPage(createCdpBrowserControl({ cdp: (method, params) => cdp.send(method, params) }), 'darwin');
     const typeAheadSelections = [];
     for (const value of ['c1', 'c', 'c1', 'c']) {
         await macPage.selectOption(ref('Plan'), value);

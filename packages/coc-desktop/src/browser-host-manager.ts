@@ -11,6 +11,7 @@ import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
 import { BrowserHumanTakeover } from './browser-human-takeover';
 import { BrowserControlQueue } from './browser-control-queue';
+import { lazyBrowserControl } from './browser-control-engine';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { BrowserDemoRecorders } from './browser-demo-recorder';
@@ -82,6 +83,10 @@ interface TakeoverTurn {
 
 export const BROWSER_DEMO_RECORDING_ERROR = 'recording-active: the user is recording a browser demo for this chat';
 export const BROWSER_ANNOTATION_ACTIVE_ERROR = 'annotation-active: the user is annotating this browser tab';
+/** The document went away under an evaluation (engine context loss or a frame-registry change). */
+const DOCUMENT_GONE = /cannot find context with specified id|execution context was destroyed|stale browser frame context/i;
+/** Post-action snapshots read again after a late navigation at most this many times in total. */
+const SETTLE_SNAPSHOT_ATTEMPTS = 3;
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
@@ -151,7 +156,7 @@ export class BrowserHostManager {
     async startAnnotation(ownerId: number, viewId: unknown, sessionKey: unknown, sink: BrowserAnnotationTabSink): Promise<boolean> {
         const entry = this.annotationEntry(ownerId, viewId, sessionKey);
         const view = entry.view;
-        if (!view?.cdp || !view.onCdpEvent || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
+        if (!view?.control || entry.popout || entry.sourceKind !== 'url') throw new Error('Browser annotation requires a URL tab.');
         const state = view.snapshot();
         if (!entry.shown || state.loading || state.error || !validateBrowserUrl(state.url).ok) throw new Error('Browser annotation requires a visible, loaded page.');
         if (this.options.isAppUrl?.(state.url)) throw new Error('Browser annotation is unavailable for the CoC app.');
@@ -314,9 +319,9 @@ export class BrowserHostManager {
         const view = entry.view;
         if (!view || entry.closed) return;
         await view.setBackgroundControl?.(enabled);
-        if (!view.cdp || (entry.focusEmulated ?? false) === enabled) return;
+        if (!view.control || (entry.focusEmulated ?? false) === enabled) return;
         entry.focusEmulated = enabled;
-        await view.cdp('Emulation.setFocusEmulationEnabled', { enabled });
+        await view.control.setFocusEmulation(enabled);
     }
 
     /** The SPA has this view off screen: another tab is selected, its panel is hidden, or it never showed. */
@@ -659,9 +664,7 @@ export class BrowserHostManager {
             this.activateControl(selected, ownerId, request, background);
             await this.backgroundControl(selected, background);
             activeSignal.throwIfAborted();
-            await page.configureFrames(request.framesEnabled === true,
-                view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
-                view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
+            await page.configureFrames(request.framesEnabled === true);
             // Also drawn for background tabs, so the last spot shows when the user switches back.
             page.setCursorOverlay(request.cursorOverlayEnabled === true);
             // Background tabs never take focus: input relies on CDP focus emulation instead.
@@ -718,14 +721,22 @@ export class BrowserHostManager {
                 case 'navigate': await view.nav(command.direction as 'back' | 'forward' | 'reload'); break;
                 case 'wait': await page.wait(command.text ?? command.ms!, activeSignal, command.frame); break;
             }
-            activeSignal.throwIfAborted();
-            await view.waitForControlReady?.(activeSignal);
-            while (view.snapshot().loading) {
-                await delay(25, undefined, { signal: activeSignal });
+            // A navigation can still start after readiness (WebKit runs a form.submit() scheduled during load
+            // late); when it takes the document mid-snapshot, the page is settling, so wait and read again.
+            for (let attempt = 1; ; attempt++) {
                 activeSignal.throwIfAborted();
+                await view.waitForControlReady?.(activeSignal);
+                while (view.snapshot().loading) {
+                    await delay(25, undefined, { signal: activeSignal });
+                    activeSignal.throwIfAborted();
+                }
+                try {
+                    const snapshot = await page.snapshot();
+                    return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
+                } catch (error) {
+                    if (attempt >= SETTLE_SNAPSHOT_ATTEMPTS || !(error instanceof Error) || !DOCUMENT_GONE.test(error.message)) throw error;
+                }
             }
-            const snapshot = await page.snapshot();
-            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
         }, signal);
     }
 
@@ -733,10 +744,22 @@ export class BrowserHostManager {
         return isValidBrowserViewId(viewId) ? this.owners.get(ownerId)?.get(viewId) : undefined;
     }
 
+    /** The saved (or platform) default; an unavailable WKWebView falls back to Electron with its availability message. */
+    private async defaultEngine(): Promise<{ engine: BrowserEngine; fallback?: string }> {
+        const engine = this.options.getDefault();
+        if (engine !== 'wkwebview') return { engine };
+        const availability = await this.options.hosts.wkwebview.availability();
+        if (availability.available) return { engine };
+        return { engine: 'electron', fallback: availability.message ?? 'WebKit (WKWebView) is unavailable. Using Electron.' };
+    }
+
     async preferences(): Promise<BrowserPreferences> {
-        const engines = await Promise.all(Object.values(this.options.hosts).map(host => host.availability()));
+        const [engines, current] = await Promise.all([
+            Promise.all(Object.values(this.options.hosts).map(host => host.availability())),
+            this.defaultEngine(),
+        ]);
         return {
-            defaultEngine: this.options.getDefault(), engines, clearing: [...this.clearing],
+            defaultEngine: current.engine, ...(current.fallback ? { defaultFallback: current.fallback } : {}), engines, clearing: [...this.clearing],
             pageZoom: { percent: this.options.getPageZoom(), min: BROWSER_PAGE_ZOOM.min, max: BROWSER_PAGE_ZOOM.max, step: BROWSER_PAGE_ZOOM.step },
         };
     }
@@ -813,6 +836,10 @@ export class BrowserHostManager {
         let engine: BrowserEngine;
         try {
             engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : this.options.getDefault());
+            if (!entry && relatedEngine === undefined && engine === 'wkwebview') {
+                // The WKWebView check is async; reopen with the resolved engine so the entry lookup is current.
+                return this.open(ownerId, viewId, url, sessionKey, (await this.defaultEngine()).engine);
+            }
         } catch (error) {
             return this.failure(error, 'startup-failed');
         }
@@ -857,11 +884,11 @@ export class BrowserHostManager {
         if (entry.sourceKind === 'url') {
             void entry.ready.then(() => this.demos.tabReady(init.ownerId, init.viewId), () => this.demos.tabClosed(init.ownerId, init.viewId))
                 .catch(error => console.error('[coc-desktop] Browser demo tab capture failed:', error));
-            entry.control = new BrowserControlQueue((method, params, sessionId) => {
+            entry.control = new BrowserControlQueue(lazyBrowserControl(() => {
                 if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
-                if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
-                return sessionId === undefined ? entry.view.cdp(method, params) : entry.view.cdp(method, params, sessionId);
-            });
+                if (!entry.view?.control) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+                return entry.view.control;
+            }));
         }
         entries.set(init.viewId, entry);
         return entry;
@@ -1033,7 +1060,7 @@ export class BrowserHostManager {
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
             controlPopoutOpened: (viewId, view, openerViewId) => {
-                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.control) return;
                 const opener = openerViewId ? this.entry(entry.ownerId, openerViewId) : entry;
                 if (!opener || opener.closed || opener.sessionKey !== entry.sessionKey) return;
                 const popout: Entry = {
@@ -1042,10 +1069,10 @@ export class BrowserHostManager {
                 };
                 popout.takeover = entry.takeover;
                 for (const item of this.takeovers.values()) if (item.control === entry.takeover) item.entries.add(popout);
-                popout.control = new BrowserControlQueue((method, params) => {
+                popout.control = new BrowserControlQueue(lazyBrowserControl(() => {
                     if (popout.closed || this.disposed) throw new Error('Browser popout closed');
-                    return view.cdp!(method, params);
-                });
+                    return view.control!;
+                }));
                 this.owners.get(entry.ownerId)?.set(viewId, popout);
                 void this.demos.popupOpened(entry.ownerId, opener.viewId, viewId, view).catch(error => console.error('[coc-desktop] Browser demo popup capture failed:', error));
             },
@@ -1161,7 +1188,7 @@ export class BrowserHostManager {
         if (entry && entry.sourceKind !== 'url') return { ok: false, reason: 'unsupported' };
         if (relatedEngine !== undefined && !isBrowserEngine(relatedEngine)) return { ok: false, reason: 'bad-engine' };
         let engine: BrowserEngine;
-        try { engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : this.options.getDefault()); }
+        try { engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : (await this.defaultEngine()).engine); }
         catch { return { ok: false, reason: 'bad-engine' }; }
         if (this.disposed || this.clearing.has(engine)) return { ok: false, reason: 'busy' };
         let cookies;
@@ -1279,7 +1306,7 @@ export class BrowserHostManager {
         return entry.control.run(async (page, commandSignal) => {
             const view = await entry.ready;
             commandSignal.throwIfAborted();
-            if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+            if (!view.control) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
             if (entry.annotation) throw new Error(BROWSER_ANNOTATION_ACTIVE_ERROR);

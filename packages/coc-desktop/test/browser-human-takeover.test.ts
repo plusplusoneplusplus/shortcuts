@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BrowserHumanTakeover } from '../src/browser-human-takeover';
 import { BrowserControlQueue, ControlDeadline } from '../src/browser-control-queue';
+import { createCdpBrowserControl, type BrowserCdpTransport } from '../src/browser-cdp-control';
+
+const cdpQueue = (cdp: BrowserCdpTransport['cdp']) => new BrowserControlQueue(createCdpBrowserControl({ cdp }));
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 const owner = { workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'clone:w' };
 const make = () => new BrowserHumanTakeover(owner, vi.fn());
@@ -41,7 +44,7 @@ describe('conversation human takeover barrier', () => {
     it('waits for an issued press and its required release before human ownership', async () => {
         const down = deferred<unknown>();
         const send = vi.fn(async (_method: string, _params?: Record<string, unknown>): Promise<unknown> => ({})).mockImplementationOnce(() => down.promise);
-        const queue = new BrowserControlQueue(send), control = make();
+        const queue = cdpQueue(send), control = make();
         const active = control.run(async signal => {
             try { await queue.run(page => page.press('Enter'), signal); }
             finally { await queue.settled(); }

@@ -81,6 +81,8 @@ app.on('window-all-closed', () => {});
     await app.whenReady();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
+    // These cases cover Electron tabs; macOS otherwise defaults new installs to WKWebView.
+    require('../../dist/browser-preferences').writeBrowserEngine(path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'coc'), 'electron');
     registerBrowserViewIpc(path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'coc'));
     win = new BrowserWindow({ width: 1500, height: 800, webPreferences: {
         preload: path.resolve(__dirname, '../../dist/preload.js'), sandbox: true, contextIsolation: true, webviewTag: true,

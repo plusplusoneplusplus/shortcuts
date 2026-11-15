@@ -30,6 +30,7 @@ export type {
     TeamsIc3Chat, TeamsIc3Cursor, TeamsIc3Message, TeamsIc3Page, TeamsIc3ReadOptions,
 } from './teams';
 export { loadWebView2Binary, webview2BinaryCandidates, WEBVIEW2_BINARY_NAME } from './webview2';
+export { loadWkWebViewBinary, wkWebViewBinaryCandidates, wkWebViewBinaryName } from './wkwebview';
 export { acquireClaudeCredential, loadNativeClaudeAuth, ClaudeCredentialError } from './claude-auth';
 export type { ClaudeCredentialOptions, ClaudeCredentialSnapshot } from './claude-auth';
 export { loadNativeGitHubAuth, readGitHubCredential } from './github-auth';

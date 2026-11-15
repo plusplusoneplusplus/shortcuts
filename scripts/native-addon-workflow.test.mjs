@@ -79,6 +79,34 @@ test("every job that spawns the symbols language server restores its executable 
     }
 });
 
+// The WKWebView helper is macOS-only and spawned. CI lints and tests the crate,
+// builds the debug binary the real-helper suite spawns, ships both darwin
+// arches, and runs the real-WKWebView e2e with the helper made executable again.
+test("macOS CI builds, tests and runs the real WKWebView helper", () => {
+    const native = jobBlock(ci, "coc-native");
+    for (const command of ["cargo clippy --locked", "cargo test --locked", "cargo build --locked"]) {
+        assert.match(native, new RegExp(`${command} --manifest-path packages/coc-native/rust/Cargo.toml -p coc-wkwebview`),
+            `coc-native must run ${command} for coc-wkwebview`);
+    }
+    const debugBuild = native.indexOf("-p coc-wkwebview\n");
+    assert.ok(debugBuild >= 0 && debugBuild < native.indexOf("npm run test:run -w packages/coc-native"),
+        "the debug helper must exist before the real-helper suite");
+    assert.match(native, /CARGO_BUILD_TARGET=x86_64-apple-darwin node scripts\/build-wkwebview\.mjs/);
+    for (const arch of ["arm64", "x64"]) {
+        const verify = native.indexOf(`test -f packages/coc-native/coc-wkwebview.darwin-${arch}`);
+        assert.ok(verify > native.indexOf("npm run test:run -w packages/coc-native")
+            && verify < native.indexOf("uses: actions/upload-artifact@v4"), `the ${arch} helper must be verified before upload`);
+    }
+    assert.match(native, /packages\/coc-native\/coc-wkwebview\.darwin-\*/);
+    const desktop = jobBlock(ci, "coc-desktop-test");
+    const chmod = desktop.indexOf("chmod +x packages/coc-native/coc-wkwebview.darwin-*");
+    assert.ok(chmod > desktop.indexOf("name: coc-native-") && chmod < desktop.indexOf("npm run test:run"),
+        "coc-desktop-test must restore the helper's executable bit before the tests");
+    assert.match(desktop, /if: matrix\.os != 'ubuntu-latest'\n.*browser-engines\.e2e\.test\.ts.*browser-control-workflow\.e2e\.test\.ts.*browser-annotation-capture-wkwebview\.e2e\.test\.ts.*wkwebview-approval\.e2e\.test\.ts.*wkwebview-window\.e2e\.test\.ts/);
+    assert.match(desktop, /if: runner\.os == 'macOS'\n\s+run: npm run test:run -- test\/e2e\/browser-frame-control\.e2e\.test\.ts\n(?:.*\n){2}\s+COC_DESKTOP_E2E: '1'\n\s+COC_BROWSER_FRAME_ENGINES: wkwebview\n/,
+        "macOS CI must run the frame-control e2e on the real WKWebView helper");
+});
+
 test("the cross-platform coc suite uses its matching addon", () => {
     const job = jobBlock(ci, "coc-test");
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);

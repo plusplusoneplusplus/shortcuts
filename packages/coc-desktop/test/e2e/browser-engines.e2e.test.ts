@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, existsSync } from 'node:fs';
+import { release } from 'node:os';
 import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
@@ -9,13 +10,22 @@ import { diskCookies } from './browser-cookie-diagnostics';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1') || (process.platform === 'linux' && !process.env.DISPLAY) || !existsSync(path.join(here, '..', '..', 'dist', 'browser-view-host.js'));
-const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
+// The real WKWebView helper: an explicit path, else the local debug build, else the binary
+// `build:native` stages (CI's artifact).
+const wkWebViewHelper = process.env.COC_WKWEBVIEW_PATH || [
+    path.join(here, '../../../coc-native/rust/target/debug/coc-wkwebview'),
+    path.join(here, `../../../coc-native/coc-wkwebview.darwin-${process.arch}`),
+].find(file => existsSync(file));
+const wkWebView = process.platform === 'darwin' && Number(release().split('.')[0]) >= 23 && !!wkWebViewHelper;
+const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2']
+    : wkWebView ? ['electron', 'wkwebview'] : ['electron'];
 const temporary: string[] = [];
 const profileRoot = (prefix: string) => mkdtempSync(path.join(here, '..', '..', `.e2e-${prefix}`));
 
 async function scenario(engine: string, userData: string, ...args: string[]) {
     return new Promise<Map<string, Record<string, any>>>((resolve, reject) => {
-        const env = { ...process.env, COC_BROWSER_E2E_ENGINE: engine, COC_BROWSER_E2E_USER_DATA: userData };
+        const env = { ...process.env, COC_BROWSER_E2E_ENGINE: engine, COC_BROWSER_E2E_USER_DATA: userData,
+            ...(wkWebViewHelper ? { COC_WKWEBVIEW_PATH: wkWebViewHelper } : {}) };
         delete env.ELECTRON_RUN_AS_NODE;
         const electron = createRequire(import.meta.url)('electron') as string;
         const child = spawn(electron, [...(process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : []), path.join(here, 'browser-engines-runner.cjs'), ...args], { env });
@@ -82,8 +92,11 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         const steps = await scenario(engine, directory, '--zoom-check');
         const zoom = steps.get('zoom');
         expect(zoom).toMatchObject({ update: { ok: true }, saved: 150, reset: { ok: true }, shell: 1.25 });
-        for (const key of ['active', 'inactive', 'created', 'navigated', 'restored']) expect(zoom?.[key]).toBeCloseTo(1.5);
-        for (const key of ['earlyResetActive', 'earlyResetInactive', 'resetActive', 'resetInactive', 'resetNew']) expect(zoom?.[key]).toBeCloseTo(1);
+        // WebKit before macOS 26 shows page zoom only in the width of views with known bounds.
+        const measured = (keys: string[]) => zoom?.dprExcludesZoom ? keys.filter(key => ['active', 'created', 'earlyResetActive', 'resetActive'].includes(key)) : keys;
+        if (engine !== 'wkwebview') expect(zoom?.dprExcludesZoom).toBe(false);
+        for (const key of measured(['active', 'inactive', 'created', 'navigated', 'restored'])) expect(zoom?.[key]).toBeCloseTo(1.5);
+        for (const key of measured(['earlyResetActive', 'earlyResetInactive', 'resetActive', 'resetInactive', 'resetNew'])) expect(zoom?.[key]).toBeCloseTo(1);
     }, 90_000);
 
     it.skipIf(engine !== 'webview2')('keeps the page below the address bar with a Windows menu bar and renderer zoom', async () => {
@@ -166,6 +179,8 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         expect(steps.get('sharing')?.foreign).toEqual({ ok: false, reason: 'not-found' });
         if (steps.has('mixed')) {
             expect(steps.get('mixed')?.engine).not.toBe(engine);
+            // macOS switches the default from Electron to WebKit; new tabs follow it, existing ones keep their engine.
+            if (process.platform === 'darwin' && engine === 'electron') expect(steps.get('mixed')?.engine).toBe('wkwebview');
             expect(steps.get('mixed')?.report).toMatchObject({ storage: null, cookie: '' });
             expect(steps.get('mixed')?.existing.engine).toBe(engine);
         }

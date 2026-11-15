@@ -47,6 +47,32 @@ describe('WebView2 UI-process transport', () => {
         expect(failure).not.toHaveBeenCalled();
     });
 
+    it.each([
+        [{}, 'runtime-crashed'],
+        [{ reasons: ['evaluation-failed'] }, 'evaluation-failed'],
+    ])('keeps only the helper reasons it declares (%o)', async (options, expected) => {
+        const native = child();
+        mocks.spawn.mockReturnValue(native);
+        const failure = vi.fn();
+        const transport = new WebView2Process(() => 'native-host', 'profile', vi.fn(), failure, options);
+        const opening = transport.request('open', { viewId: 'owner:tab' });
+        native.stdout.emit('data', '{"event":"ready"}\n');
+        await vi.waitFor(() => expect(native.stdin.write).toHaveBeenCalledTimes(1));
+        native.stdout.emit('data', '{"id":1,"ok":true}\n');
+        await opening;
+        const evaluation = transport.request('evaluate', { viewId: 'owner:tab', expression: 'null.x' });
+        await vi.waitFor(() => expect(native.stdin.write).toHaveBeenCalledTimes(2));
+        native.stdout.emit('data', '{"id":2,"ok":false,"reason":"evaluation-failed","message":"TypeError: null is not an object"}\n');
+        await expect(evaluation).rejects.toMatchObject({ reason: expected, message: 'TypeError: null is not an object' });
+        const unknown = transport.request('evaluate', { viewId: 'owner:tab', expression: '1' });
+        await vi.waitFor(() => expect(native.stdin.write).toHaveBeenCalledTimes(3));
+        native.stdout.emit('data', '{"id":3,"ok":false,"reason":"made-up","message":"Odd"}\n');
+        await expect(unknown).rejects.toMatchObject({ reason: 'runtime-crashed' });
+        // A failed request is not a failed helper.
+        expect(failure).not.toHaveBeenCalled();
+        expect(transport.running).toBe(true);
+    });
+
     it('reports missing runtime without falling back or changing preferences', async () => {
         const native = child();
         mocks.spawn.mockReturnValue(native);

@@ -19,7 +19,7 @@ beforeEach(() => {
     preferences = { defaultEngine: 'electron', engines: [{ engine: 'electron', available: true }, { engine: 'webview2', available: true }], clearing: [] };
     getPreferences = vi.fn(async () => preferences);
     clearData = vi.fn(async () => ({ ok: true }));
-    setDefaultEngine = vi.fn(async (engine: 'electron' | 'webview2') => { preferences = { ...preferences, defaultEngine: engine }; return { ok: true }; });
+    setDefaultEngine = vi.fn(async (engine: 'electron' | 'webview2' | 'wkwebview') => { preferences = { ...preferences, defaultEngine: engine }; return { ok: true }; });
     mocks.bridge = {
         getPreferences, clearData, setDefaultEngine,
         onPreferencesChanged: callback => { changed = callback; return () => { changed = undefined; }; },
@@ -60,6 +60,33 @@ describe('Desktop Preferences browser engines', () => {
         expect(mocks.bridge?.open).not.toHaveBeenCalled();
     });
 
+    it('labels and selects the macOS WebKit engine and its data cleanup', async () => {
+        preferences.engines[1] = { engine: 'wkwebview', available: true };
+        render(<DesktopBrowserPreferences />);
+        const selector = await screen.findByLabelText('Default browser engine');
+        expect(screen.getByRole('option', { name: 'WebKit (WKWebView)' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Clear WebKit (WKWebView) data...' })).toBeTruthy();
+        fireEvent.change(selector, { target: { value: 'wkwebview' } });
+        await screen.findByText('Default browser engine saved. Existing tabs are unchanged.');
+        expect(setDefaultEngine).toHaveBeenCalledWith('wkwebview');
+    });
+    it('shows the macOS WebKit default and its Electron fallback message', async () => {
+        preferences.defaultEngine = 'wkwebview';
+        preferences.engines[1] = { engine: 'wkwebview', available: true };
+        const { unmount } = render(<DesktopBrowserPreferences />);
+        expect(((await screen.findByLabelText('Default browser engine')) as HTMLSelectElement).value).toBe('wkwebview');
+        expect(screen.queryByTestId('desktop-browser-default-fallback')).toBeNull();
+        unmount();
+        const message = 'WebKit (WKWebView) requires macOS 14 or later. Use Electron.';
+        preferences.defaultEngine = 'electron';
+        preferences.defaultFallback = message;
+        preferences.engines[1] = { engine: 'wkwebview', available: false, reason: 'unsupported-platform', message };
+        render(<DesktopBrowserPreferences />);
+        const selector = await screen.findByLabelText('Default browser engine');
+        expect((selector as HTMLSelectElement).value).toBe('electron');
+        expect(selector.querySelectorAll('option')).toHaveLength(1);
+        expect(screen.getByTestId('desktop-browser-default-fallback').textContent).toBe(message);
+    });
     it('shows platform restrictions without offering unsupported selection or cleanup', async () => {
         preferences.engines[1] = { engine: 'webview2', available: false, reason: 'unsupported-platform', message: 'WebView2 is available only on Windows x64.' };
         render(<DesktopBrowserPreferences />);

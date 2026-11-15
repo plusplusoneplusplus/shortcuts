@@ -4,13 +4,18 @@ import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { findLinkHandler } from '../../utils/link-handler';
 
 /** Reply to `browser.open` / `browser.navigate`. */
-export type BrowserEngine = 'electron' | 'webview2';
+export type BrowserEngine = 'electron' | 'webview2' | 'wkwebview';
+/** Display name of a browser engine. */
+export function browserEngineName(engine: BrowserEngine): string {
+    return engine === 'webview2' ? 'WebView2' : engine === 'wkwebview' ? 'WebKit (WKWebView)' : 'Electron';
+}
 /** What `browser.open` loads; a bare string is a `url` source. */
 export type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSource['kind']; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 export interface BrowserPreferences {
     clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
+    defaultFallback?: string;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
     pageZoom?: { percent: number; min: number; max: number; step: number };

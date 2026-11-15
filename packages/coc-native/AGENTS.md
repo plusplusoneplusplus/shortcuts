@@ -1,824 +1,131 @@
 # coc-native
 
-Rust/N-API native capabilities for the CoC server. The package is a home for CPU- or filesystem-bound work worth moving out of Node: one binary, one module per capability on both the Rust and TypeScript sides. It ships the file index behind quick-open search (`Ctrl+P`), the repo content search behind the Explorer's Search view, the bounded content index for Notes search, the `git` runner every git-backed feature goes through, and a general SQLite driver for persistence stores.
-
-The core `symbol_index` module extracts C-family definitions with the bundled
-`tree-sitter-c` and `tree-sitter-cpp` tag queries, plus an appended
-`EXTRA_TAGS_QUERY` that neither grammar ships: `preproc_def` and
-`preproc_function_def` become `kind: "macro"`. Without it a `#define` produces no
-symbol at all, while every invocation of the macro is picked up by
-`(function_declarator declarator: (identifier))` and indexed as a function. That
-same pattern cannot tell a definition from a declaration, so `resolve_kind` walks
-up from the declarator — through `pointer_declarator`, `reference_declarator` and
-`parenthesized_declarator`, since `int *f() {}` nests the declarator — and emits
-`kind: "prototype"` when no `function_definition` ancestor is reached. A macro
-invocation whose last argument is a braced initialiser (`FIELD(T, x, T{})`) still
-parses as a real `function_definition`, so it stays `function`; ranking, not
-extraction, is what keeps it below the `#define`. `kind` is a free-form `TEXT`
-column that flows unchanged through napi, the route types and the SPA, so a new
-kind value needs no type changes on any layer — only a `user_version` bump.
-Two more appended queries, `C_REFERENCE_QUERY` and `CPP_REFERENCE_QUERY`, capture the
-`@reference.*` tags neither grammar ships — call sites and type usages. They feed a
-*filtered* occurrence table: never every identifier token, which would dwarf the definition
-table on a 30M-line repository and answer a reference query mostly with unrelated locals.
-The C++ variant adds the `field_expression` and `qualified_identifier` call shapes, which are
-not nodes in the C grammar and would fail to compile appended to its query. `extract_file`
-returns both halves as an `ExtractedFile`; `extract` is the definitions-only view of it.
-`Occurrence` is an alias of `Symbol` so one range/location path serves both tables — `kind`
-carries the reference kind and `parent`/`docs` are always `None`.
-It filters extensions before
-file reads, processes files through rayon, records per-file failures instead of
-aborting a build, and atomically swaps immutable snapshots on refresh. Parser,
-grammar, and tags crate versions stay pinned as one compatibility set.
-
-`SymbolStore` persists the index in a caller-supplied per-workspace SQLite path.
-**Bump `INDEX_SCHEMA_VERSION` on any change to extraction rules or table shape,
-not just on DDL changes.** Sync is keyed on per-file size/mtime/hash, so a rules
-change alone re-parses nothing and every `symbol-index.sqlite` already on disk
-keeps its stale rows indefinitely. `open` compares `PRAGMA user_version` and, on
-any mismatch (including `0` for pre-versioning databases), drops every table and
-re-stamps the version in one transaction — a crash part-way leaves a database the
-next open still recognises as stale. Dropping beats migrating because the index is
-a derived cache whose rebuild already reports progress through the UI.
-Search orders by a `KIND_PRIORITY` `CASE` before path: `macro`, `class`, `type`,
-`method`, `function`, then `prototype`, then anything unrecognised, with
-`path, line, col` as the tiebreak. This is what makes go-to-definition on a macro
-land on the `#define` rather than on whichever call site sorts first — without it
-the real definition competes with its call sites on path order alone and the
-`LIMIT` decides. Both the exact and prefix branches apply it.
-It uses WAL plus `files(path, size, mtime, hash)`, `symbols` and `occurrences` tables;
-`occurrences(name, limit)` answers `textDocument/references` by bare name, ordered by
-position, and a file's rows in both tables are replaced together on every re-parse. It compares
-size and mtime before reading or hashing, applies a full sync in one atomic transaction,
-extracts changed files in parallel through a bounded producer/consumer pipeline,
-replaces a targeted file's rows transactionally, removes deleted files, and retains
-previous committed rows when a file cannot be read or parsed. A database write
-failure rolls back the full sync transaction.
-`sync_changed_paths(paths)` validates and deduplicates repository-relative
-paths, then reads and updates only those files. The stdio server coalesces saves
-and filesystem-watcher events before calling it.
-`npm run bench:symbol-index -- --repo <path>` runs the production tree-sitter
-extractor without SQLite, reports extraction MB/s in one-core and all-core
-configurations, and uses the ctags baseline's extension set while excluding its
-crashing parser fixture so the corpus policy is directly comparable.
-`--threads 1,4,8`,
-`--extensions c,cpp,h`, `--drop-linux-page-cache`, and `--json` support corpus
-control, scaling, and reproducible reports. A pinned 60,615-file, 688.3 MB LLVM
-corpus on 4-core hosted runners measures 7.33/14.53/16.61 MB/s warm on Linux and
-5.54/10.68/13.55 MB/s warm on Windows at 1/2/4 threads. Linux cold throughput is
-6.41/12.77/16.28 MB/s. Parse deadlines remain isolated per file.
-`npm run bench:symbol-storage` generates 100,000 sharded C-family files, warms
-the production SQLite store, and reports median warm manifest-diff and
-32,000-line targeted-update times. `--files`, `--runs`, `--target-lines`, and
-`--json` support quick harness checks and host-specific measurement runs. On a
-4-core hosted Linux and Windows runs over files containing declarations measure
-428.1 ms and 3,208.0 ms manifest diffs, and 53.1 ms and 78.9 ms targeted
-updates, respectively.
-The manually dispatched `Symbol Index Benchmark` workflow builds and tests the
-native addon on all six release targets, runs real clangd integration tests on
-macOS and Windows, then clones one pinned LLVM revision and runs both benchmarks
-on Linux and Windows. It fixes extraction scaling at 1, 2, and 4 threads,
-performs the Linux cold-cache pass, and retains the JSON reports and exact LLVM
-commit as artifacts.
-
-`repo_files::read_blob` accepts source text through 10 MiB of UTF-8 bytes, inclusive; binary/image reads and content replacement retain the 1 MiB cap. Reads are bounded even when files grow after stat; oversize failures keep the maximum-size error format.
-
-`RepoFiles.deleteEntry(path)` runs core `repo_files::delete_entry(root, relative)` on a libuv worker. It requires a strict relative path, refuses the workspace root, case-insensitive `.git` components and any nested Git metadata, and preflights the full subtree without ignore filtering or following symlinks. It rejects symlinked ancestors and unsupported reparse points, snapshots ancestry/entry metadata and revalidates it before removing each planned entry.
-
-Links are unlinked; only `remove_file`/`remove_dir` are used, never recursive force removal, so newly created children are retained and cause failure. `DeleteEntryError` carries the cause and `removed_entries`; native rejections expose `code`, `partial` and `removedEntries`, with explicit partial-deletion messages and no rollback. Every successful or partial mutation refreshes built index variants before settling. CoC's owning-server DELETE route requires the live default-on `features.explorerDelete` flag and a physical workspace. External-race revalidation is best effort, not atomic protection against hostile filesystem mutation between checks and OS unlink.
-
-**The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Directory listings and subtree file walks come from `repo_files` (`RepoFiles.listDirectory`/`listFiles`) using `walk::ignore_builder`. Listings apply Git ignore rules to directories (ignored directories holding tracked files stay listed, as with `git check-ignore`) and ripgrep rules to files; `.ignore` directory rules cannot hide listing directories or override their Git exclusions. File walkers apply the complete ripgrep ignore policy. A `RepoFiles` handle is one root's lifecycle owner (`repo_files::RepoIndexes`): lazily built index variants shared by concurrent cold callers, background TTL refresh, writes and replaces that re-walk after the mutation queued behind any scan in flight, failed walks that keep the old snapshot and mark it stale for retry on the next read, and `dispose()` that rejects later calls with `Closing`; subtree walks and the index exclude `.git` regardless of `includeIgnored`/`showIgnored`, while flat directory listings still show it. Listing names sort with `feruca` CLDR root collation (non-ignorable), which is what Node's `localeCompare` returns — never byte order. Replace in search results (`RepoFiles.replaceContent`, `repo_files/replace.rs`) matches with `regress` over UTF-16 code units in non-unicode mode, so queries, columns and `$n` expansion keep JavaScript `RegExp` semantics; preserve-case capitalization splits at one UTF-16 unit; casing and expansion keep lone surrogates intact until all spans are spliced and the final line is encoded; `test/repo-files-replace-parity.test.ts` pins that against a JS oracle — never swap in the `regex`/`grep-regex` crates there. Invalid regex diagnostics come from Node’s `RegExp` through the N-API task rejection hook; core matching and file operations run on the worker.
-
-Core `repo_files::tracked_content_candidates` prepares bounded `ls-files` commands, parses NUL-separated paths, and narrows host literals with Git grep plus staged symlinks. Its supplied-output path parses WSL results without running host Git, including empty outputs; `rust/core/tests/repo_files_candidates.rs` covers selection against real Git and composition with the content matcher.
-
-`repo_files::resolve_in_root` strips leading `/` and `\`, folds `.`/`..` lexically and requires the root's components as a prefix. On Windows a drive prefix replaces the root, so a same-drive `C:x` is rejected where Node's `path.resolve` read it against the root; drive letters compare case-insensitively, directory names case-sensitively. `rust/core/tests/repo_files_blob.rs` (`windows_paths`) and the win32-only `test/repo-files-windows-paths.test.ts`, which diffs blob and listing calls against the old Node guard, pin this.
-
-**Required, not optional, with no opt-out.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at first use beats silently serving a slower, subtly different implementation for the life of the process. No environment variable turns the addon off; `COC_NATIVE_PATH` only says *which* binary to load.
-
-The `*Status()` accessors never throw, because `/api/health` reports them and has to be able to describe a failed load rather than become one.
-
-## Authentication capability
-
-`rust/auth-sdk/` is a standalone Node-independent Rust crate. Shared secrets,
-token DTOs, clocks, lifecycle, storage and errors are vendor-neutral;
-`auth_sdk::microsoft` owns Microsoft OAuth and Azure CLI protocols.
-Its `exchange_refresh_token` accepts caller-owned secrets and validated
-`OAuthRefreshOptions`, returns secret-wrapped endpoint fields and safe status/rejection
-diagnostics, and has no storage or verified-account dependency. Scope policy,
-scheduling and cache ownership stay with the caller. Native OAuth acquisition reuses
-the exchange within its existing discovery, identity verification and locked rotation.
-`auth_sdk::claude::acquire_token` coordinates demand refresh in Rust, pins reads
-and writes to one credential source, and persists rotation as compact JSON before
-returning. macOS Claude storage uses `/usr/bin/security` for reads and writes,
-preserving the CLI reader's `apple-tool:` partition rather than a host code hash.
-Writes send one bounded hex command through stdin, never secret arguments;
-oversized commands fail before launch. Reads honor cancellation/deadlines;
-rotation saves finish within a separate five-second bound. Compact JSON keeps
-CLI output parseable.
-Callers sharing credentials must share a private coordination directory; external
-Claude CLI writers do not use these locks. `src/claude-auth.ts` exposes one-shot
-`acquireClaudeCredential(options, signal?)` through `NativeClaudeCredentialRequest`.
-Absolute home, coordination and optional credential-file paths are caller-owned;
-construction validates without I/O. Queued workers are revoked before I/O; running
-workers settle before the promise. Cancellation and a 100..900,000 ms deadline
-(default 30 seconds) cover queueing through Node publication. Refresh secrets stay in Rust. The frozen
-result contains access/expiry/scope/subscription metadata; `ClaudeCredentialError`
-retains only safe SDK codes, HTTP status and allowlisted rejection values.
-`forceRefresh` permits renewal after a consuming API rejects an unexpired token;
-concurrent lock waiters reuse a fresh replacement observed after locking.
-`rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
-exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles and
-one-shot `exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`.
-The exchange wrapper aliases generated DTOs and checks its separate native capability.
-Each request owns cancellation and a 100..900,000 ms timeout (default 30 seconds),
-including dispatch and publication. Cancellation drops HTTP work; completion
-rechecks cancellation/deadline before exposing tokens. Responses report `accessToken`,
-`tokenType`, `expiresIn` seconds and optional `scope`/rotated `refreshToken`, never ID tokens.
-`MicrosoftOAuthRefreshError` preserves safe SDK codes, HTTP `status` and exact
-`rejection` (`invalid_grant`, `interaction_required`, `consent_required`); broader
-SDK codes do not establish cache revocation. Errors retain no provider payload or cause.
-Construction validates immutable configuration only. Kusto, ADO and Teams Azure CLI
-credentials use native authentication with automatic demand renewal. Kusto selects
-active-account mode or a complete explicit host identity and the Kusto SDK's audience.
-Teams connector providers are connection/resource scoped; the standalone Rust Teams
-CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP production
-callers use the connector's native OAuth owner; they do not import Copilot's
-OAuth cache. Copilot/GitHub credential acquisition has separate ownership.
-
-GitHub CLI credential import belongs to
-`auth_sdk::github` and the request-scoped `src/github-auth.ts` boundary.
-
-Microsoft source and refresh policy are required. `never` allows one successful
-noninteractive acquisition; failure leaves the initial attempt retryable.
-Invalidation and credential deletion retain its acquired state. Forced renewal
-under `never` rejects. OAuth sign-in verifies ID-token signatures/issuer/audience,
-tenant/object identity and browser nonce, uses PKCE/state and owns cancellable
-loopback/device deadlines. OAuth scopes require `openid`, `profile` (for the
-verified object-ID claim) and `offline_access`.
-Browser redirects use `http://localhost:<port>/`,
-bind only `127.0.0.1` and accept only the exact root callback path.
-Access tokens stay in memory; only exact SDK-owned
-refresh credentials enter the OS store. Windows uses UTF-8 secret blobs within
-Credential Manager's 2,560-byte limit. Resource providers serialize rotation
-through OS advisory locks; lock-directory identity participates in credential keys.
-Azure CLI token requests select only `--subscription`; account and response tenant
-checks enforce the pinned tenant without the incompatible `--tenant` argument.
-Windows CLI discovery follows [`auth-sdk/README.md`](rust/auth-sdk/README.md).
-`selection: 'active-account'` resolves and pins identity on first token use, checks
-selection before cached returns and after acquisition, and rejects changes with
-`AccountMismatch`. Its token cache is provider-local; discovery stays in Rust.
-See `rust/auth-sdk/README.md` for source selection, storage/timeout boundaries and
-registration/consent constraints. Rust tests inject providers and clocks;
-`test/auth.test.ts` uses the built addon and synthetic CLI executables.
-`test/claude-auth.test.ts` covers isolated-file reads, publication, cancellation,
-capability checks and safe errors; `auth::claude::tests` injects refresh transport.
-`test/oauth-refresh.test.ts` covers built-addon validation and trusted loader
-injection; `auth::refresh::tests` injects Rust HTTP transport for exchange,
-marshalling, safe diagnostics and native cancellation/deadline cleanup.
-
-`rust/auth-cli/` provides a standalone, opt-in `auth-cli microsoft` dispatcher
-over the SDK, independent of Node and runtime consumers. `microsoft login`
-explicitly invokes Azure CLI browser login; `microsoft token --resource ...`
-(`get-access-token` alias) reads its selected user/tenant/subscription and pins
-them into the SDK for verification. Token access never logs in or switches accounts.
-Direct browser/device OAuth sign-in and source-specific `token oauth`/`token azure-cli`
-commands use explicit options.
-JSON Lines output masks secrets to eight leading/trailing characters; secrets
-with at most sixteen characters and URL queries/fragments are fully masked.
-`--show-secrets` explicitly reveals full token and sign-in instructions and warns
-on stderr. Ctrl+C drops SDK handles and closes callback/CLI work. Install from
-`rust/` with `cargo install --locked --path auth-cli`; test with
-`cargo test --locked -p auth-cli`. Usage belongs in `rust/auth-cli/README.md`.
-
-## Teams capability
-
-`src/teams.ts` wraps Tokio-backed `rust/napi/src/teams/` handles with capability
-checks, AbortSignals, frozen results and safe SDK error metadata. Construction
-validates region, optional expected tenant/object IDs and a 100..30,000 ms timeout
-without I/O. One-shot `connect()` binds native Azure CLI credentials; failure
-requires a new session. Tokens stay native. Connection verifies identity, not
-Teams access or server command admission.
-
-`dispose()`/drop revokes the session and pending work. `beginRead()` creates a
-one-shot read whose cancellation is independent of other reads. Deadlines start
-at handle creation and cover dispatch through Node publication. Cursors are
-native-owned and session/collection-bound. The Node API exposes IC3 discovery
-and history only, without writes, notifications, credential callbacks or fallback.
-Discovery preserves direct/group/meeting kinds; history verifies the exact native
-thread type, including `meeting`/`Meeting`, and publishes it as each message's
-`chatKind`. History also preserves validated numeric `rootMessageId` values for
-threaded replies. Callers use this evidence rather than chat-ID patterns or hints
-to select reply routing. The explicit self stream has no ordinary chat kind.
-`readThread(chatId, rootMessageId, options)` reads an exact thread; its first page
-includes the root even when it needs a separate exact-message fetch. Returned
-messages retain base chat identities, and continuations bind the account, session,
-chat and root independently of ordinary history. Native capability checks require
-this method; missing binaries fail with the rebuild instruction.
-Protocol, self-chat, transient-content and credential contracts belong in
-[`teams-sdk/AGENTS.md`](rust/teams-sdk/AGENTS.md). Tests in `rust/napi/src/teams/`
-inject Rust transports; `test/teams.test.ts` covers built-addon and wrapper behavior.
+Rust/N-API capabilities for the CoC server. One binary. One module per capability on both sides. A missing, unloadable, or too-old binary is a hard `NativeAddonLoadError` naming the expected triple, every path tried, and the fix. No environment variable disables the addon. `COC_NATIVE_PATH` only selects which binary. `*Status()` accessors never throw.
 
 ## Layout
 
-- `rust/teams-sdk/` -- pure Rust Teams protocols, independent of Node and CoC policy;
-  shares the native workspace lockfile, target directory, audit and cross-platform CI.
-  MCP and IC3/Trouter are always compiled; Graph is a default feature.
-  Native CI tests builds with and without Graph
-  with `cargo test --locked -p teams-sdk`; its local rustfmt config retains default layout.
-
-- `rust/teams-cli/` -- standalone `teams-cli` binary using `teams-sdk`, sharing the native
-  lockfile and cross-platform CI. Install with `cargo install --locked --path teams-cli`
-  from `rust/`; run with `cargo run --locked -p teams-cli -- list`. Tests include real
-  binary help/version/error handling and mock-backed credential/chat reads. CLI defaults
-  to IC3 in `amer`; `--backend graph` selects Graph. It is independent of Node and is
-  not bundled into the addon or desktop installer.
-
-- `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability. `git` runs `git -C <repo> <args>` with the timeout and buffer caps Node's `execFile` used to enforce. `repo_index` contains the gitignore-aware walker, scorer, immutable file-list snapshot, fuzzy matcher, and atomic refresh state. `content_search` searches file *contents* across the same walk, on ripgrep's `grep-searcher`/`grep-regex`; an optional exact repo-relative candidate set bypasses ignore rejection but prunes traversal to candidate files and their ancestor directories, preserving Git-tracked ignored files without enumerating unrelated ignored trees. Candidates still compose with scope and include/exclude globs. It holds no state, so every query is a fresh parallel walk bounded only by its caps. `notes_index` contains immutable Markdown-content snapshots, JavaScript-compatible lowercase caches, bounded search, full rebuilds, and bounded root-relative incremental upserts/removals under a root-specific symlink policy. Refresh writers serialize per index, build against the last complete snapshot, and atomically swap only on success. `sqlite` owns the general database core: one re-entrant writer per handle, a bounded read pool for typed async operations, cached synchronous writer statements, language-neutral values, and callback transactions. Each read connection limits its SQLite memory map to 64 MiB; the writer retains SQLite's default. Nested transactions use savepoints, and named binding ignores unused object keys so store row objects keep the better-sqlite3-compatible call shape. `dangerous_command` is a hardcoded disallow list of shell-command shapes, holding no state and touching no filesystem. N-API is only behind the optional `napi` feature, which the addon enables so result/DTO structs in `repo_files` and `content_search` derive their JS object shape in place (`#[cfg_attr(feature = "napi", napi_derive::napi(object, ...))]`) instead of being mirrored in the binding crate; add new boundary DTOs the same way. Without the feature (the LSP binary, `cargo test -p coc-native-core`) nothing links Node. All Rust unit tests live here under `tests/`.
-- `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per Node-facing capability registering its own classes and functions (`repo_files.rs` exposes the `RepoFiles` handle over core's `repo_files`, including the whole-root `repo_index` behind quick-open). `RepoFiles.searchFiles()` returns the public match shape; `searchFilesRanked()` returns the same matches with the complete native ordering tuple for server-side cross-repo merges. Filesystem/scanning work returns an `AsyncTask` on libuv; async auth/Teams work runs on Tokio. Pure boundary/lifecycle tests run without a Node environment; actual N-API marshalling is tested through the built addon.
-- `rust/lsp/` — `coc-symbols-lsp`: a plain stdio language-server binary linking
-  `coc-native-core` without Node or N-API. CoC uses the same `/ws/language-server`
-  transport as clangd; `cargo test -p coc-symbols-lsp` needs no built addon.
-  `framing.rs` mirrors the host JSON-RPC byte lengths, case-insensitive headers
-  and declared-length cap. `uri.rs` reads encoded Windows file URIs;
-  `transport.rs` serializes all writes through one mutex; `server.rs` owns lifecycle.
-  Index builds run on a worker with `$/progress` under one reused token, including
-  an end notification on failure. The host supplies `--database <path>` without
-  exposing that resolved path to browser payloads.
-  `positions.rs` and `locations.rs` convert one-based UTF-8 byte coordinates to
-  zero-based UTF-16 through request-local `LineCache` reads.
-  References include declaration rows when `context.includeDeclaration` is set
-  and deduplicate positions. `workspace/symbol` merges prefix-index and
-  `SymbolStore::search_subsequence` candidates before ranking/truncation.
-  `fuzzy.rs` favors word starts and all-word-start acronyms; `cocMatchIndices`
-  carries UTF-16 highlight offsets. Empty queries return `[]`.
-  `textDocument/documentSymbol` returns flat `SymbolInformation` because the index
-  stores definition points rather than enclosing spans.
-  `indexer.rs` serializes saves and native watch batches, deduplicates targeted
-  paths and performs a full sync for rescan. Saves are C-family-filtered by the
-  dispatch loop. `watcher.rs` owns a core watch-service subscription with C-family
-  extensions and Git ignore rules; backend filtering, debounce and recovery live
-  in core. Ordinary startup watch failure is logged through `window/logMessage`.
-  `tests/harness/` spawns the executable over real pipes; handshake, navigation
-  and incremental-save integration tests exercise the server-built index.
-  Real-filesystem watch contracts live in core.
-- `src/loader.ts` — resolves and loads the binary. Deliberately capability-agnostic: it validates only that the module loaded, never which exports it has.
-- `src/symbols-lsp.ts` — resolves the `coc-symbols-lsp` *executable* from disk, by the same precedence the addon uses. Kept apart from `loader.ts` because nothing here is loaded: the path is handed to the language-server manager, which spawns it. A missing executable is a reported reason, not a throw — see "Binary resolution".
-- `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
-- `NativeStatement.allWithStats()` executes diagnostic reads with per-execution
-  SQLite VM-step and full-scan counters, reset even for cached statements. Scheduler
-  workload regressions use these counters with exact production query plans and
-  N-API row projections; returned row count alone does not bound visited work.
-- `src/<capability>.ts` — one module per Node-facing capability (`repo-files.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`. `sqlite.ts` wraps the synchronous `NativeDatabase`/`NativeStatement` API: positional and named parameters, iterators, callback transactions, pragma simple values, and SQLite error codes. `NativeDatabase.searchConversations()`, `getConversationTurns()`, `getAllProcesses()`, `getProcessSummaries()`, and `listRecentProcesses()` dispatch typed Rust `AsyncTask`s over pooled read connections. `getConversationTurns()` serializes ordered turn rows as JSON; `getAllProcesses()` streams each process's ordered turns into grouped JSON buffers across bounded process-ID batches; `getProcessSummaries()` reads the count, page, and chat-folder membership in one snapshot; `listRecentProcesses()` serializes its filtered page. The wrapper restores BLOB and non-finite REAL values in all JSON paths before exposing row objects. `upsertStreamingTurn()` dispatches an atomic `AsyncTask` under the writer lock. All typed process operations reject unsupported schema versions. Forge converts returned rows to its JSON/date-rich `ProcessStore` shapes, maps folder IDs on summaries, and emits process-change events after streaming writes complete.
-- `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
-- `scripts/build-symbols-lsp.mjs` — a plain `cargo build -p coc-symbols-lsp`, no napi involved, renaming the output to the triple-qualified name `src/symbols-lsp.ts` computes. `build-native.mjs` calls it (and the WebView2 helper build) with napi's target triple — `CARGO_BUILD_TARGET` or the `rustc -vV` host — so all three share `rust/target/<triple>/<profile>` instead of compiling every dependency twice, and one `npm run build:native` produces every artifact without one quietly lagging another; `npm run build:symbols-lsp` runs it alone when only the language server changed.
-- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when either built binary — the `.node` or `coc-symbols-lsp` — is missing or older than a file under `rust/`, including `rust/teams-sdk/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
-
-Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
-
-Internal process-summary rows carry `bot_control_json` extracted from process metadata
-within the count/page snapshot. This is authoritative storage data, not a public
-presentation: Forge retains it on index entries and CoC validates, gates, and strips
-private controller identity at its HTTP read boundary.
-Typed process operations accept schema versions 38 through 42. Generic row reads
-retain additive columns, including `turn_source` and private `history_revision`;
-Forge owns migrations, automation serialization, and omission of the revision from
-full process payloads. Bounded history paging uses synchronous writer-handle SQL in
-one transaction; async streaming writes preserve Forge's history revision triggers.
+- `rust/core/` — `coc-native-core`. N-API types are behind the `napi` feature. Unit tests live in `tests/`.
+- `rust/napi/` — thin `cdylib`, one `src/<capability>.rs`. Filesystem work returns an `AsyncTask` on libuv. Auth and Teams run on Tokio.
+- `rust/lsp/` — `coc-symbols-lsp`, stdio, no Node. CoC uses the same `/ws/language-server` transport as clangd.
+- `rust/auth-sdk/`, `rust/auth-cli/`, `rust/teams-sdk/`, `rust/teams-cli/`, `rust/webview2/`, `rust/wkwebview/`.
+- `src/loader.ts` checks that the module loaded, not which exports it has. `src/<capability>.ts` is the type guard and `loadNative<X>()`. `src/native-bindings.ts` is generated. Do not edit it.
+- Adding a capability means `rust/core/src/<name>/`, `rust/napi/src/<name>.rs` registered in `lib.rs`, and `src/<name>.ts` re-exported from `src/index.ts`.
 
 ## Generated types
 
-`src/native-bindings.ts` is derived from the `#[napi]` macros during compilation — the Rust is the single source of truth for the addon's shape. Capability modules alias those generated declarations (`NativeFileMatch = Bindings.FileMatch`, `NativeNotesSearchResponse = Bindings.NotesSearchResponse`) rather than restating them. Repository tree and search result types in the CoC server alias this public type surface; HTTP request options stay in the server.
-
-It is **committed on purpose**: `npm run build` is plain `tsc`, so the TypeScript build must never need cargo. CI regenerates it in the `coc-native` job and fails on a `git diff`, which is what removes the drift risk. After changing any `#[napi]` item, run `npm run build:native -w packages/coc-native` and commit the result.
-
-A `.ts` and not a `.d.ts`: an input `.d.ts` under `src/` is not emitted to `dist/`, which would leave capability declarations importing a module that does not exist for consumers. Declarations only, so it emits no runtime code.
-
-Doc comments flow from the Rust, so write the explanation there. Anything the Rust cannot express — why the `indices` are UTF-16 offsets and what depends on that — belongs on the alias in `repo-files.ts`, and on `NativeContentMatch` in `repo-files.ts` for the same reason.
-
-`build:native` uses napi-rs's per-crate declaration cache and Cargo's incremental
-build without cleaning artifacts. Missing declaration cache entries trigger
-recompilation; `rust/core/build.rs` tracks napi-rs's cache-directory and
-force-build environment variables without adding Node linker configuration.
-The script requires wrapper and core DTO declarations before
-updating bindings and preserves the file's mtime when its contents match.
-Empty napi-rs journal scaffolding (`backups`/`inputs`) is removed non-recursively
-before compilation. Incomplete journals containing recovery data require manual
-inspection with active builds stopped; preserve their contents. Complete journals
-are recovered by napi-rs.
+`native-bindings.ts` is committed so `npm run build` stays plain `tsc`. CI regenerates it and fails on drift. It is `.ts`, not `.d.ts`, so consumers receive the declarations. After any `#[napi]` change, run `npm run build:native -w packages/coc-native` and commit the result. Doc comments belong on the Rust. UTF-16 index notes that Rust cannot express belong on the TypeScript alias.
 
 ## Binary resolution
 
+1. `COC_NATIVE_PATH` or `COC_SYMBOLS_LSP_PATH` or `COC_WEBVIEW2_PATH` / `COC_WKWEBVIEW_PATH`.
+2. The locally built triple-qualified binary.
+3. `prebuilt/<triple>/`.
+4. Addon and WebView helpers throw. `symbolsLspStatus()` reports `loaded: false` until `loadSymbolsLspBinary()`.
+
+Inside `app.asar`, candidates are rewritten to `app.asar.unpacked`. Resolution is cached. `resetNativeAddonCache()` clears it for tests. N-API binaries are ABI-stable across Node 24 and Electron. Release triples: `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`, `win32-arm64-msvc`.
+
 ### Desktop WebView2
 
-`rust/webview2/` ships `coc-webview2.win32-x64-msvc.exe` for the desktop host.
-It uses `webview2-com` with a statically linked loader; the installed Evergreen
-runtime remains required. Its main thread initializes COM as STA and owns all
-windows/controllers. A stdin reader only queues typed JSON commands and wakes
-the UI message pump. COM callbacks and controller operations stay on that
-thread. Typed `cdp` commands target an existing view; private session-qualified
-dispatch uses the runtime's session method and rejects unsupported capabilities.
-Lazy allowlisted native CDP event receivers provide frame/context/target lifecycle
-events, with subscriptions and child sessions owned by that view. These methods
-are desktop-main transports, never renderer APIs. Completion callbacks retain the
-original request id. Method names use `Domain.command` and params are objects.
-Results above 900000 UTF-8 bytes produce a small correlated error before stdout;
-desktop read/eval and staged snapshot chunks bound page-owned serialization before
-CDP. Transport bounds commands and ordinary replies at 1 MiB, drains oversized CDP replies
-independently, and preserves other views. Native state/history titles cap at 4096
-Unicode characters.
-Typed root-tab `capture-annotation` uses `CapturePreview` into a COM memory stream
-on the STA thread, checks controller dimensions against 16 Mi pixels, and returns
-a PNG data URL capped at 20 MiB. Closed/popup/crashed views are refused. Desktop
-main crops the full physical viewport after validating document/zoom ownership.
-Only that pending request admits a 28 MB reply; oversized replies and 60-second
-timeouts retire the request without stopping other views.
-The desktop transport retires CDP requests on tab close, page/helper crash,
-shutdown or a 60-second timeout, ignoring late replies. CDP timeouts preserve
-other tabs and the helper process. The helper-process boundary isolates this lifecycle from Electron's
-Node event loop and from server N-API capabilities.
-Native popups publish correlated `popup-opened`, per-popup `state`,
-`control-focused` and `popup-closed` events. Desktop hosted handles inherit the
-root tab's owner/workspace without replacing its navigation state. Popup startup
-retains the exact opener identity, rejecting completion after close/replacement.
-Closing a popup preserves its root and siblings; root close/crash retires all
-descendants. Popup runtime failures close the controller/window and retire CDP
-work. Cleanup attempts every controller/window and reports the first failure.
-Popups inherit page zoom and retain native top-level bounds across DPI changes.
-Typed `control-activity` sets/clears a bounded turn ID for popup-only native
-badge/Stop controls. DPI-aware layout reserves a 40-DIP strip outside WebView2
-content; keyboard focus can traverse Stop and the page. Button events publish
-`control-stop` with native view/turn identity for owning-conversation cancellation.
-Hosted pages have no access to this chrome or its transport.
-Embedded bounds are renderer-relative DIP plus a physical screen `contentOrigin`
-from Electron's content bounds. The helper maps that origin into the parent HWND's
-client coordinates and DPI-scales only the relative bounds, keeping native views
-aligned below Windows menu bars across owner moves, zoom and fullscreen.
-Visible views raise their child HWND without activation; null bounds hide them
-for inactive tabs and SPA overlays.
-Typed `page-zoom` commands and `open.pageZoomPercent` set controller `ZoomFactor`
-(50-200%, 25-point steps, default/reset 100%). Controllers retain the value across
-navigation; embedded views disable native per-tab keyboard/wheel and pinch zoom.
-Desktop preference IPC coordinates URL views across workspaces/windows; the helper
-does not change Electron shell zoom or local HTML previews.
-Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
-the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
-not transfer keyboard input away from the cross-process WebView2 controller.
-Visible embedded views forward Ctrl+T as `open-menu-requested`, Ctrl+Shift+T as
-`reopen-closed-requested` and Ctrl+L as `focus-address-requested` (excluding Alt,
-popups and repeats; Shift only selects reopen). The desktop host completes
-`focus-host` before the SPA opens the owning panel's add-tab menu, reopens its
-newest closed web tab, or focuses and selects the active owning browser's
-editable address. After the `tab-shortcuts` command enables a view, top-row
-Ctrl+1–9 (no Alt/Shift) is handled as `tab-shortcut-requested { digit }`, routed
-like the shortcuts above, and Ctrl presses/releases (or another Ctrl chord
-cancelling a hold) emit `tab-modifier { held }` without being handled. The flag
-survives a crashed view's reopen through the `open` command.
+Windows x64 helper. COM is STA on the main thread, which owns every window and controller. Stdin only queues commands. CDP is a desktop-main transport, never a renderer API. Method names are `Domain.command`.
 
-`history.rs` owns per-controller loading and successful-document readiness.
-Open, navigate, reload and available back/forward requests mark loading before native
-dispatch and publish state before acknowledgement; asynchronous `NavigationStarting`
-binds the navigation ID. Matching completion clears loading; committed same-document
-source changes settle fragment/history requests. Stop, crash and dispatch failure
-retire readiness. Navigation IDs reject superseded, stopped and repeated completions.
-Native navigation gating retains up to 256 exact HTTP(S) origins per active
-view control lease. An approved `navigate` authorizes its origin; subsequent
-return navigations preserve POST bodies without cancellation. Other origins
-still require approval. Disabling the gate clears this view-local authorization;
-new views and popups start with an empty set.
+- Commands and ordinary replies cap at 1 MiB. A correlated pending annotation reply may be 28 MB. Capture is a PNG data URL, 16 Mi pixels, 20 MiB. CDP requests retire at 60s and on close, crash, or shutdown without stopping other views.
+- Navigation history emits `visited` only from successful completion or a committed same-document source change. Titles emit only after that. Popups keep the root tab's history. Favicons are at most 64 KiB and never on popups or errors.
+- An approved `navigate` authorizes that exact HTTP(S) origin for the active view's control lease, up to 256 origins. Return navigations keep the POST body. New views start empty.
+- Downloads stay in the native operation. No URL replay. Pending approval expires in 60s. Caps: 8 pending, 20 total. `download-decide` accepts only a main-owned absolute Windows path. Approved downloads survive tab close on a hidden controller. Browser-process failure cancels all of them.
+- ClickOnce is an isolated `--clickonce` mode. It accepts one bounded HTTPS URL and never a local executable path. Acceptance does not prove an app opened.
+- Hosted pages get no host objects. Navigation is HTTP(S), plus `about:blank` inside auth popups. SSO uses the OS primary account and does not change organization policy.
+- `build:native` includes this helper only on Windows x64.
 
-`NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
-emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
-completion. Events read the actual final Source/DocumentTitle, filter HTTP(S),
-and route popup documents through their root tab without replacing its state.
-`sourceViewId` retains the emitting controller identity, so desktop committed-page
-copy metadata accepts only the root document while history includes popups.
-Generic snapshots, history-stack notifications and layout never record visits.
-Root tabs add a `favicon` PNG data URL (at most 64 KiB) to state from
-`ICoreWebView2_15::GetFavicon` on `FaviconChanged` and successful completion;
-`NavigationStarting` clears it and a generation counter drops late icons. Popups and
-error states carry none.
+Real contracts need Windows x64, a built addon, `COC_DESKTOP_E2E=1`, and `packages/coc-desktop` `test/e2e/browser-engines.e2e.test.ts`. Missing runtime is a failure, not a skip.
 
-`src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
-Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports
-do not start it. `build:native` and `ensure:native` include it only on Windows
-x64; other targets retain their native server artifacts without WebView2
-initialization. `--check` detects the runtime without opening a view. Hosted
-pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
-`about:blank` allowed inside authentication popups. Default-off `open.clickOnceEnabled`
-intercepts HTTPS `.application` navigation/new windows and deployment MIME downloads
-as source-qualified `application` events. Main owns opt-in and lifecycle policy.
-Redirect recognition retains the original correlated HTTPS activation URL without
-creating successful-document history events. General navigation policy stays HTTP(S)-only.
+### Desktop WKWebView
 
-Managed downloads retain the original browser-native operation and STA deferral;
-they never replay URLs or transfer bytes through HTTP clients/CDP. `DownloadStarting`
-cancels and handles the default UI before holding HTTP(S)/blob downloads. Actual live
-view identity, including announced popups, authorizes the source. Opaque one-time
-GUIDs bind decisions/actions to that view. Pending approval expires after 60 seconds
-on the STA timer; limits are eight pending and twenty total operations. ClickOnce
-deployment handling stays distinct; unsupported schemes emit a bounded URL without
-a download ID. Admission-limit rejection cancels only the new request; native
-retirement failures stop the helper rather than leave an uncontrolled operation.
+macOS 14+ helper, same stdio JSON-line protocol, 1 MiB frames, 28 MB only for a correlated annotation reply. The main thread runs AppKit as an accessory. The profile directory is held with an advisory lock. `build:native` builds it only on darwin arm64/x64. Navigation bookkeeping reuses `webview2/src/history.rs`.
 
-`download-decide` approves only a main-owned native-dialog absolute Windows path or
-cancels the pending deferral. `download-action` cancels pending/approved operations
-and pauses/resumes only approved native operations; resume requires explicit pause,
-never interruption replay. Native progress reports received/total bytes, state,
-capabilities and one terminal event without paths. Completion requires native
-`COMPLETED`. Navigation/source failure/closure cancel pending approvals; approved downloads retain
-hidden detached controllers until settlement and remain actionable after tab closure.
-Browser-process failure, clear and shutdown cancel all operations and retire deferrals/subscriptions.
-Focused policy tests are platform-neutral; `webview2/tests/managed_downloads.rs` has
-opt-in real-runtime Windows HTTP/blob CSV, admission isolation, detached-controller pause/resume and STA
-timeout tests (`cargo test -p coc-webview2 --test managed_downloads -- --ignored`).
+## Authentication capability
 
-Typed `import-cookies` commands
-target an existing view and use its profile cookie manager independently of the
-current page URL. `import-profile-cookies` initializes the helper when needed,
-uses a hidden controller for profile access without navigating or registering a
-page. The helper retains it until a replacement controller exists or shutdown,
-keeping imported session cookies alive before the first page. The desktop main process validates domain, fields and batch
-limits before sending cookies; the helper prepares cookies before adding them
-and returns failures without cookie values.
+`rust/auth-sdk/` is Node-free. Shared secrets, DTOs, clocks, storage, and errors are vendor-neutral. `auth_sdk::microsoft` owns Microsoft OAuth and Azure CLI. Scope policy and cache ownership stay with the caller.
 
-Windows-account SSO is enabled by default. The helper sets
-`AllowSingleSignOnUsingOSPrimaryAccount` before environment creation, without an
-environment flag. Profiles stay app-owned and separate from Edge.
-SSO uses eligible Windows-connected accounts and does not guarantee Conditional
-Access compliance or change organization policy. Clearing browser data does not
-disconnect Windows accounts; SSO can authenticate again.
+- Refresh exchange accepts caller-owned secrets and returns secret-wrapped fields. Responses expose access token, type, `expiresIn`, optional scope, and a rotated refresh token. Never ID tokens. Errors keep safe codes, HTTP status, and allowlisted `rejection` values. No provider payload.
+- Each Node request owns cancellation and a 100..900,000 ms deadline (default 30s). Completion rechecks cancellation before publishing tokens.
+- OAuth verifies ID-token signature, issuer, audience, tenant, object id, and nonce. It uses PKCE and state. The loopback callback is `http://127.0.0.1:<port>/` and the exact root path. Scopes require `openid`, `profile`, and `offline_access`.
+- Access tokens stay in memory. Only SDK-owned refresh credentials enter the OS store. Windows blobs are UTF-8 within Credential Manager's 2,560-byte limit. `selection: 'active-account'` pins identity on first use and fails later changes with `AccountMismatch`. No silent account fallback.
+- `never` allows one successful noninteractive acquisition. Forced renewal under `never` rejects. Azure CLI token requests pass only `--subscription`. Tenant is enforced on the response, not with `--tenant`.
+- Claude acquisition coordinates in Rust, persists compact JSON, and uses `/usr/bin/security` with the CLI reader's `apple-tool:` partition. Writes send one bounded hex command on stdin. Callers that share credentials share one private coordination directory.
+- Kusto, ADO, and Teams Azure CLI credentials renew on demand. Teams MCP production callers use the connector's native OAuth owner and do not import Copilot's cache.
+- `auth-cli` is opt-in and independent of Node. JSON Lines masks secrets to eight leading and trailing characters. Sixteen characters or fewer, and URL queries, are fully masked. `--show-secrets` is explicit. Install: `cargo install --locked --path auth-cli` from `rust/`.
 
-`clickonce.rs` provides isolated `--clickonce` activation and `--clickonce-check`
-capability probing without initializing WebView2. It loads the system32
-`dfshim.dll` and resolves the documented `LaunchApplication` export. Activation
-accepts only a bounded HTTPS URL through a strict stdin JSON object; the helper
-never accepts executable/argument paths, downloads a local manifest, or prints
-URLs/native exception text. Replies distinguish acceptance, Windows cancellation,
-missing handler and failure. Acceptance does not prove an application opened.
-Desktop main validates deployment recognition, installation opt-in and source
-ownership before spawning this mode without a CoC confirmation. Windows deployment
-may show installation or trust prompts. Browser-profile cookies are not transferred.
+### GitHub authentication
 
-Run `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-webview2`
-for ClickOnce URL policy, navigation-history/protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
-WebView2 installed, `npm run build:native -w packages/coc-native`,
-`npm run build -w packages/coc-native`, and
-`npm run build -w packages/coc-desktop`, then set `COC_DESKTOP_E2E=1` and run
-`npm run test:run -w packages/coc-desktop -- test/e2e/browser-engines.e2e.test.ts`.
-The same live suite runs Electron on macOS/Linux; headless Linux needs Xvfb and
-`COC_DESKTOP_E2E_NO_SANDBOX=1`. Missing runtime on Windows is a failed required
-check, not a skip. Live ClickOnce cases stub activation and test real engine
-interception and direct activation routing without installing code. `test/webview2.test.ts`
-probes the debug helper's ClickOnce export and rejects invalid input without
-calling activation.
+`auth_sdk::github` imports the selected CLI credential. It does not log in, refresh, expire, persist, or exchange a service token. The host supplies an absolute config path. Lookup order is `authTokens[host:login:github].token`, `authTokens[host:login].token`, then `copilotTokens[host:login]`. Only an absent or empty file token allows OS lookup. Linux is file-only. Nonempty tokens do not fall across sources. Deadline is 10s. Stream cap is 16 KiB. Cancelling one request cannot dispose another. Copilot RPC and service authorization stay in TypeScript.
 
-### Server artifacts
+## Teams capability
 
-In order, from `loader.ts`:
+`src/teams.ts` is a one-shot Node wrapper. Tokens stay native. `connect()` failure requires a new session. `beginRead()` cancellation is independent of other reads. The Node API exposes IC3 discovery and history only. History verifies the exact native thread type and publishes `chatKind`. It preserves numeric `rootMessageId`. Callers select reply routing from that evidence, not from chat-id patterns. `readThread` includes the root on the first page. Protocol contracts: [`teams-sdk/AGENTS.md`](rust/teams-sdk/AGENTS.md).
 
-1. `COC_NATIVE_PATH` — an explicit path, for tests and unusual packaging.
-2. `packages/coc-native/coc-native.<triple>.node` — a locally built binary.
-3. `packages/coc-native/prebuilt/<triple>/` — injected by CI/release (gitignored).
-4. nothing found — `NativeAddonLoadError`.
+## Repo files
 
-The stdio language server is resolved the same way, from `symbols-lsp.ts`:
+Rust is the only whole-repo walker. `RepoFiles` is one root's index owner. `dispose()` rejects later calls. Listings and walks exclude `.git` from indexes. Flat listings may still show it. Names sort with `feruca` CLDR root collation. Ignore rules match Git for directories and ripgrep for file walks.
 
-1. `COC_SYMBOLS_LSP_PATH`.
-2. `packages/coc-native/coc-symbols-lsp.<triple>[.exe]`.
-3. `packages/coc-native/prebuilt/<triple>/coc-symbols-lsp.<triple>[.exe]`, then the unqualified name.
-4. nothing found — `symbolsLspStatus()` reports `loaded: false` with a reason; only `loadSymbolsLspBinary()` throws.
+- `read_blob` accepts UTF-8 text through 10 MiB inclusive. Binary reads and content replacement stay at 1 MiB.
+- `deleteEntry` refuses the workspace root, `.git`, symlinked ancestors, and unsupported reparse points. It unlinks planned entries and does not force-remove a directory. Partial deletion is reported and not rolled back. Every mutation refreshes indexes before settling. The CoC route also requires a physical workspace and live default-on `features.explorerDelete`.
+- Replace uses `regress` over UTF-16 code units so JavaScript `RegExp` semantics hold. Do not swap in the `regex` crate. Parity: `test/repo-files-replace-parity.test.ts`.
+- `resolve_in_root` is lexical. On Windows a drive prefix replaces the root, so same-drive `C:x` is rejected. Drive letters compare case-insensitively. Directory names compare case-sensitively.
+- Quick-open ranking is basename tier, descending fuzzy score, scored-target length, full-path length, then snapshot index. ASCII-only case folding. Match indexes are UTF-16. Change `repo_index::score` and `packages/coc/test/support/fuzzy-file-score.ts` together.
 
-When the package root sits inside a packaged Electron `app.asar`, candidates 2–3 are rewritten to `app.asar.unpacked`: Electron's `fs` stats a file inside the archive, but nothing can spawn it. The desktop build unpacks `**/coc-symbols-lsp*` for this.
+## Symbol index
 
-The split on failure is deliberate. The addon backs quick-open, notes search and git, so a server without it is dead on the first request and failing at load is the honest outcome. The language server backs one preset, and a workspace with no C code never starts it — so the preset asks for status, and only the code about to spawn the process asks for a path.
-
-Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI builds and publishes both binaries for `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`, and `win32-arm64-msvc`. Desktop packaging downloads only the binary matching the installer's architecture. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
-
-`nativeAddonStatus()` reports whether the *binary* loaded; capability status accessors (`nativeRepoFilesStatus()`, `nativeNotesIndexStatus()`) additionally report `loaded: false` when the binary loaded but lacks their export. They return `{ loaded, binaryPath?, reason? }`, never throw, and cover missing, unloadable and capability-less states.
-
-N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron without an Electron-specific rebuild.
-
-## GitHub authentication
-
-`auth_sdk::github` imports selected CLI credentials without login, refresh,
-expiry, persistence or service-token exchange. `readGitHubCredential` creates
-one native `NativeGitHubCredentialRequest` per call, with read/cancel lifecycle,
-typed redacted errors and a complete capability guard. Each read resolves the
-active account anew or uses the explicit account; CLI metadata is selection,
-not verified identity. The host supplies an absolute config path.
-
-Rust owns bounded JSONC parsing, exact stored account keys, same-account Windows
-`CredReadW` and macOS `/usr/bin/security` reads, and `gh auth token` execution.
-Config snapshots require matching bytes across two bounded reads of one handle
-and matching metadata; same-size rewrites cannot rely on timestamp precision.
-File lookup follows SDK precedence: `authTokens[host:login:github].token`,
-`authTokens[host:login].token`, then `copilotTokens[host:login]`. Malformed
-containers or selected entries fail; only absent/null/empty file tokens allow OS lookup. Linux config reads are
-file-only. Nonempty tokens return for TypeScript's Copilot token policy, with
-no retry or cross-source fallback. Host spelling stays exact for storage keys;
-snapshots lowercase hostnames. Standalone keychain acquisition is not a source.
-
-The ten-second maximum deadline and 16 KiB subprocess stream limits apply per
-request. `auth-sdk/src/process.rs` shares process-tree cleanup with Azure CLI.
-Cancelling one request cannot dispose another caller. Blocking file/Windows
-reads cannot be preempted; checkpoints prevent late publication. Rust secret
-buffers zeroize where feasible; JS strings cannot. Scoped Windows credential
-fixtures, an opt-in macOS Keychain fixture and synthetic CLI addon tests cover
-these boundaries. Copilot RPC, environment/resolver acquisition and service
-authorization remain in TypeScript.
-
-## Dangerous command guard
-
-`dangerous_command::match_command` screens one shell command against a hardcoded disallow list, so ask mode can stop and ask a human before `rm -rf /`, `dd`, `curl … | sh` or `shutdown` — commands ask mode otherwise auto-approves. It is the one capability with **no** filesystem access and no `AsyncTask`: a handful of anchored regexes over a command line costs less than marshalling would.
-
-- **A disallow list, and only that.** There is no allow list and no read-only classifier. `matched: false` means no rule fired; it is not an assertion that the command is safe. The rules are compiled into the crate, with no config surface for adding or editing patterns.
-- **Segments, then rules.** A command is split on `;`, `&&`, `||`, `|` and newlines, because `ls && rm -rf /` is two commands and only the second one matters. Rules are `Scope::Segment` by default. `pipe-to-shell` is `Scope::Whole` because it is defined by the very operator the splitter consumes.
-- **Quoting is not parsed, deliberately.** Every command rule anchors at the start of a segment, so `echo "rm -rf /"` does not match. A quoted string holding a *separator* does split, so `echo "hi; rm -rf /"` prompts. That false prompt is the accepted price of not writing a shell parser; `rust/core/tests/dangerous_command.rs` pins both halves.
-- **Each rule needs its lookalike test.** A guard that fires on `rm -rf ./build` or `git dd` teaches the user to click through, which is worse than no guard. The suite is written in matched pairs — the shape, then the near miss — and a new rule adds both.
-- **`src/dangerous-command.ts` fails open, against the package's own rule.** `tryMatchDangerousCommand()` returns `null` when the addon is missing, unloadable, or predates the capability, and a caller reads `null` as "run it as before". This feature defaults off and ships dark, so it must never be the reason a turn breaks on a platform where the binary did not ship. `loadNativeDangerousCommandGuard()` still throws, for a caller that wants the escalation.
-
-## Scorer parity
-
-The Rust scorer (`repo_index::score`) is checked against the TypeScript reference in `packages/coc/test/support/fuzzy-file-score.ts`. The reference stays outside production source and emission; `test/parity.test.ts` checks both scorers over random paths and queries. Native order is lexicographic: basename tier, descending fuzzy score, scored-target length, full-path length, then snapshot index. `searchRanked()` exposes those keys under `ranking`; `search()` omits them so the existing single-repo REST shape stays stable.
-
-Two deliberate deviations from plain JavaScript semantics, matched on both sides:
-
-- **ASCII-only case folding**, not `toLowerCase()`. Full Unicode folding can change a string's length (`'İ'.toLowerCase()` is two code units), which would misalign the match indices used for highlighting. Non-ASCII characters match case-sensitively.
-- **Match positions are UTF-16 offsets** — what a JavaScript string index means — so the client can use them directly.
-
-Changing either scorer means changing both, and the parity test is what tells you that you did not.
+Bump `INDEX_SCHEMA_VERSION` on any extraction or table change, not only DDL. Sync keys are size, mtime, and hash, so a rules change otherwise leaves stale rows forever. `open` drops every table on `user_version` mismatch. Search orders `KIND_PRIORITY` before path: macro, class, type, method, function, prototype. `kind` is free-form text. Reference queries use the filtered occurrence table, not every identifier. A file's definition and occurrence rows are replaced together. Unreadable files keep their previous rows.
 
 ## Content search
 
-`RepoFiles.searchContent` composes `repo_files::search_content` root validation, scope normalization and the 1..500 result limit with `content_search::search`, which answers one query with one fresh parallel walk. Tracked eligibility comes from Rust Git candidate selection. `prepareContentCandidates` returns argv and limits for the TS WSL adapter; supplied NUL-delimited output, including an empty string, suppresses host Git. Tracked enumeration errors carry `[repo-files:tracked-unavailable]` for the application adapter to strip and map. Both handle operations reject after disposal; command preparation validates root existence on a worker before WSL Git runs. `RepoTreeService` uses the handle for content search and maps tracked enumeration errors to the REST contract. `repo_files.rs` owns the optional search option bag and converts it to core defaults. `repo-files.ts` aliases the generated match, option and result shapes; its capability guard covers every handle method. Health preserves `nativeFileIndex` and `nativeContentSearch`, both using the complete repository-file capability status. There is no index to keep warm, nothing incremental, and no cancellation — the caps below are the entire bound on what a single query can cost, which is why they are conservative and why the server clamps rather than honours a larger request.
+One fresh parallel walk. Caps: 500 matches, 20 per file, files over 1 MiB skipped, 1 line of context. `truncated` covers all of those. Binary files are skipped by NUL detection. `startColumn` and `endColumn` are UTF-16 offsets into the returned `text` and stay valid when the line is truncated. A bad regex or path is `InvalidArg` (HTTP 400). There is no cancellation.
 
-- **500** matches total, **20** per file, files over **1 MiB** skipped, **1** line of context each side.
-- `truncated` is one flag for all three caps plus the size skip: a caller can do nothing different about any of them beyond telling the user the list is partial.
-- Binary files are skipped by the searcher's own NUL detection, not by extension.
+## Dangerous command guard
 
-The walk comes from `repo_index::walk::walk_builder`, shared with the path walk on purpose: "the files this repo has" has to mean one thing across the tree, quick-open and content search, or the Explorer shows a file that search cannot find. `showIgnored` and the `.git` exclusion therefore behave identically in all three. An exact candidate set replaces normal ignore pruning with candidate-ancestor pruning, so forced-tracked ignored files remain reachable without walking unrelated ignored directories.
-
-`startColumn`/`endColumn` are UTF-16 offsets into the returned `text`, built by decoding the line in three pieces around the match, so they stay exact even for a line holding bytes that are not UTF-8. A very long line is truncated, but never before `endColumn` — the columns are always valid indices into the text that ships.
-
-`SearchError` splits by cause because the server maps it: a bad regex or a bad `path` crosses the N-API boundary as `InvalidArg` (a 400), anything else as a generic failure (a 500).
+A hardcoded disallow list. `matched: false` is not a safety claim. Commands split on `;`, `&&`, `||`, `|`, and newlines. Quoting is not parsed. Each rule needs a lookalike test that must not match. `tryMatchDangerousCommand()` returns `null` when the capability is missing, and callers treat null as "run it". `loadNativeDangerousCommandGuard()` still throws.
 
 ## Git
 
-Core `git::patch_store::PatchStore` owns exact workspace/root/execution/source scopes, bounded LRU snapshots and shared in-flight computations. Keys contain resolved SHA pairs or supplied-byte fingerprints. Allocation accounting includes string/vector capacity; oversized results bypass retention. Refresh/disposal revoke generations and signal host Git cancellation, including queued dispatches and unresolved-ref fallback. The runner rejects revoked work before spawn and kills/reaps running Git, including timeout-free calls. Direct Git children, not descendant process trees, are terminated. Capacity remains held until computation finishes.
+Reads use `gix` (`=0.87.0`). Mutations, `git status`, unified diffs, and network operations (`push`, `pull`, `fetch`, `clone`) shell out to `git` from Rust. Credential helpers and SSH keep working. No Node `git` spawn remains on request paths. WSL routing stays in Forge. Rust executes host Git only.
 
-`openGitPatchStore(workspaceId, root, distro?)` opens a local host/WSL store. `openRemoteGitPatchStore(workspaceId, root, source, distro?)` requires provider, host, provider-qualified repository and sourceId; optional baseIteration requires iteration. Remote handles accept supplied transport only. Roots must be absolute; WSL requires an explicit distro and Linux root. Core host admission binds execution options to generation/request cancellation flags. Host revisions and supplied snapshots share scoped computation, per-read truncation and final ticket validation; typed core errors preserve Git diagnostics at the N-API boundary.
-
-`beginTransport()` captures a single-use handle-bound request before I/O or host dispatch. Request `revisionPatch`/`workingTreePatch` execute host-local Git; store convenience methods use the same submission boundary. `cancel()` stops direct host Git independently of generation revocation and rejects queued/cache-hit results and Node-thread delivery. An independent waiter retries a cancelled owner's failed Git computation under the same scoped key. Descendant helpers and authenticated I/O remain outside request cancellation.
-
-Worker `process(raw, maxLines?)` fingerprints/parses supplied bytes; `processWorkingTree(outputs, maxLines?, headings?)` composes local batches. Both share bounded snapshots. Cancelled waiters leave independently owned flights intact; cancelled owners finish successful parsing for other waiters without retaining their result. Running parsing retains capacity until completion. `checkActive()` validates an unsent ticket without consuming it. Forge polls it during WSL I/O to abort Node children on revocation; batch failures abort siblings. Every WSL outcome retires tickets/timers. External I/O occupies no Rust worker/cache slot; authentication stays in TypeScript.
-
-`git::patch` owns unified-patch parsing, summaries and display truncation. `parseGitPatch` returns per-file metadata/raw chunks in source order; `processGitPatch` also returns combined content and summary. Both run on libuv workers, preserve supplied line endings, decode Git C quoting and count hunk content. Binary classification requires explicit markers; empty-file and mode-only changes remain text. Forge's `nativePatchToDiff` converts DTOs to public files and a content Map with localeCompare presentation order.
-
-`GitPatchStore.revisionPatch` captures its generation before worker dispatch. Modes: `comparison` executes direct PR base/head comparisons; `range` executes three-dot ranges; `commit` executes first-parent/root `diff-tree`; `show` preserves production git-show merge behavior. Core `revision_patch_args` selects and validates modes for host execution and worker `prepareGitRevisionPatch(mode, base, head?, path?, context?)`. Commit/show require an absent head; range/comparison require a head. All modes share one bounded, cancellable runner with caller-supplied execution options. Explicit-distro WSL revision output uses scoped transport continuations; unresolved default distros use stateless `processGitPatch`. Commands use literal pathspecs, explicit prefix/color settings, rename/copy detection and a revision option boundary. Forge providers delegate all five operations through `diff/local-patch.ts`; production range/commit/working-tree patch consumers share this boundary. Forge keeps 16 recent handles keyed by workspace root, distro and Linux root; Rust owns snapshots.
-
-`GitPatchStore.workingTreePatch(scope, path?, context?, maxLines?, headings?)` captures the generation before host worker dispatch, executes fresh Git batches and retains complete composed snapshots under length-framed output fingerprints. WSL captures `beginTransport()` before `prepareGitWorkingTreePatch` and child I/O, then calls `processWorkingTree`; every outcome retires the continuation. Unresolved-distro WSL uses guarded `composeGitWorkingTreePatch`. Staged compares HEAD to index, unstaged compares index to disk, and all concatenates both with unstaged metadata overriding shared paths. Headings are a separate cache variant; empty comparisons omit headings. Truncation is per read. Combined conflict headers and staged unmerged markers produce file entries; either command failure rejects the batch. Remote stores reject local composition. WorkingTreeService per-file patches and GitLogService pending/staged patches share this backend.
-
-Commit metadata uses `loadCommitFiles`: Rust shares commit comparison options, executes/joins NUL-delimited name-status and numstat output plus ordered parents, and exposes `prepareGitCommitFiles`/`processGitCommitMetadata` for WSL transport. Root metadata lists additions and merge metadata compares the first parent; binary counts stay absent and Git ordering is preserved. ADO transport supplies explicit existence and before/after content to worker `buildRemoteGitPatch`; `git::remote_patch` constructs metadata and shares the no-index renderer. Authentication remains in Forge. Core `git_patch`/`git_patch_store` and Forge local native/WSL tests cover these contracts.
-
-`git::run_git` executes host Git on a libuv worker with argv, timeout, output caps and inherited environment overrides. Forge owns execution-context routing and `safe.directory` checks. `execGitAsync` returns text with one trailing newline removed; `readGitBlob(repoRoot, sha, { maxBytes, timeout })` returns raw bytes through `gitReadBlob` on host repositories and streaming `runGitViaWslBytes` on WSL repositories. Rust never handles WSL paths.
-
-- **Reads use `gix`, mutations shell out.** `git::log` reads commit history, `git::commit` reads a commit's parent, its blobs and its refs, `git::range` resolves base refs, merge bases and ahead counts, `git::branch` reads HEAD, upstream tracking, raw upstream config and the branch list, `git::repo` finds the work tree root and the git directory, and `git::remote` reads remote URLs — all through gitoxide, spawning nothing. The diff-backed reads and `git status` still shell out. create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements. **A *rendering* is the third shape and it shells out too** — `git::diff` asks git to draw a unified diff of two contents, which is a format git owns rather than a fact a library can look up.
-- **Network and credential operations always shell out** — `push`, `pull`, `fetch`, `clone` — so credential helpers, SSH agents and 2FA keep working exactly as they do for a human at a terminal. Never through a Rust git library. Shelling out from *Rust* is still the point: `POST /api/git/clone` and the notes `resetFromOrigin` both run `git clone` through `execGitAsync` with `timeout: 0`, since a clone is bounded by repository size and network speed and no wall-clock cap is right for both a 2 MB repo and a 2 GB one. The Work Item PR submission passes `timeout: 0` for the same reason — its `fetch` and its `push` are network operations, and the 30 s default would kill either one mid-transfer.
-- **The git-spawn inventory takes three greps, and it has to be run over `packages/*/src` — not over `coc` and `forge`.** Grep for the *command*, not for the API, because a runner's own file names neither:
-  ```
-  grep -rnE "(execFile|execFileSync|exec|execSync|spawn|spawnSync)(Async)?\(\s*'git'" packages/*/src
-  grep -rn "('git'," packages/*/src
-  grep -rnE "(exec|execSync|execAsync)\(\s*['\"\`]\s*git\b" packages/*/src
-  ```
-  The second catches an injected runner's call sites (`forge/src/templates/replicate-service.ts` is a false positive — a progress label). The third catches a **shell string**, which puts the command inside the first argument where neither of the other two can see it.
-  
-  Across `packages/*/src` the third grep is empty and the other two leave two hits, neither of them a git command Node still runs on the host: `work-items/work-item-pr-submission-command.ts`, whose commands (run by the shared `git/create-pull-request-service.ts`) go through an injected runner whose default sends `git` to `execGitAsync` and only `gh`/`az` to `execFile`; `forge/src/templates/replicate-service.ts`, twice, for a progress label. Three `wsl.exe` children run git and are the exempted dispatch: `forge/src/git/exec.ts` (`runGitViaWsl`), `forge/src/git/branch-service.ts` (its one shell pipeline), and `coc/src/server/git/repo-utils.ts` (`rev-parse --show-toplevel`). The other `wsl.exe` calls — `coc/src/server/routes/api-fs-routes.ts` reading `$HOME`, `forge/src/utils/workspace-execution.ts` listing distros — are not git. **No synchronous git spawn remains anywhere.**
-  
-  **No `packages/*/src` file spawns git from Node any more.** The last one was `runGitDiffNoIndex` in `coc-agent-sdk/src/codex-sdk-service.ts`; it is `git::diff` now (see below). Scripts are deliberately exempt: `coc-native/scripts/bench-git.mjs` forks children on purpose — its `legacy` halves are the baseline — and `coc/scripts/prebuild.mjs` and `scripts/skillopt/rollout.ts` are build tooling, not a request path.
-  
-  **An injected runner is how a git spawn hid for five slices:** an `execFile` grep finds the runner and not its callers, so `work-item-execution-shared.ts` read as "runs `gh`", which is what it does for one call in nine. **A package the grep never covered is how the next ones hid:** the inventory was written as two paths, so five spawns in `coc-agent-sdk` were never in scope to be found. When you add a git call, reach for `execGitAsync`.
-- **REST history uses the lightweight CLI contract.** Forge `git/git-history.ts`
-  delegates host reads to `gitHistory` and WSL reads to `prepareGitHistory`,
-  `execGitAsync` and `processGitHistory`. Rust owns the command plan and NUL-record
-  parser. Routes convert the shared commit DTO to `author` and array-valued parents.
-  The plan omits decoration and the unpushed set; hash lookups select `<hash>^!`,
-  while message search retains Git's case-insensitive grep semantics.
-- **Argv call sites move onto capabilities that already exist, one branch at a time.** The rule everywhere a service carries `if (wsl) { …argv… } else { …native… }`: only the `else` changes, and no `parseGit*` export is ever removed, because those are the WSL path's entry points. Converted so far — `api-git-commit-routes.ts`'s commit-files route to Forge `loadCommitFiles` (host execution and WSL batches share Rust planning and NUL metadata joins), `readGitFileAtCommit` and `GitRangeService.getFileAtRef` to `gitFileContentAtCommit`, `GitLogService.hasPendingChanges` to `gitRepositoryStatus().dirty`, `gitHeadSha`/`work-item` HEAD capture and `createCommitDiffProvider`'s parent lookup to `gitValidateRef`, `pr-routes.ts`'s `isGitRepo` to `gitResolvedGitDir`. The routes' WSL guard is `resolveWorkspaceExecutionContext(rootPath).kind === 'wsl'`, the same check `forge/src/git/exec.ts` makes — `coc/test/server/git-commit-edge-cases.test.ts` pins both branches, and a test that exercises only the native one will not catch a broken WSL one.
-- **Before converting a `log`-shaped call site, check whether the capability builds `%D`.** Decoration is the fixed cost of a commit-log read, charged whether the caller wants it or not; it is what sank both measured rejections above.
-- **Three more call sites were looked at and left alone**, and converting them is a regression rather than a cleanup. `codex-sdk-service.ts`'s dirty-path snapshot needs `--porcelain -z`, and `gitStatusEntries` runs without `-z`, so every non-ASCII path would arrive as its quoted C-string and silently lose its baseline. `GitLogService.hasMoreCommits` asks for `rev-list --count HEAD`, and `gitRangeCountAhead` needs both ends of a `<base>..<head>` range to resolve. `worktree-service.ts` and `work-item-pr-submission-command.ts` route every git call through an injected runner that is the testing seam and the remote-execution seam both — and `worktree-service`'s base-ref probe asks for `<ref>^{commit}`, which peels where `validate_ref` does not.
-- **`gix`, not `git2`**: the addon stays pure Rust across all four release triples, with no C build dependency. Pinned to `=0.87.0` — 0.87.1 depends on a `gix-worktree-stream` that was never published, so it cannot be resolved at all.
-- **WSL routing stays in Forge.** `forge/src/git/exec.ts` selects `runGitViaWsl` for text and `runGitViaWslBytes` for bounded raw bytes. Rust executes host Git only. `translateWslArgs` translates path-shaped arguments for service callers; blob reads translate only the repository root. The text runner removes one trailing newline, while the byte runner preserves all output.
-- **The error text is a contract.** Failures cross the boundary as `git <args> failed: <stderr>`, because routes and the UI show that string to users verbatim. A non-zero exit, a timeout and a buffer overflow all render the same way, matching what `execFile` handed back.
-- Defaults match the helper this replaced: a 30 s timeout, a 50 MiB cap on each captured stream, and exactly one trailing line ending stripped from stdout — one, because a `git show` body can legitimately end in a blank line.
-- No shell is involved, so arguments holding spaces need no quoting and cannot be re-split.
-- **A capability guard checks every export, not one marker.** `src/git.ts` derives
-  the `NativeGitAddon` type and runtime guard from one function-name tuple. Add each
-  new `#[napi]` git function there; stale binaries fail with rebuild instructions.
-- **Paths stay repository-relative across the boundary.** `gitStatusEntries` returns git's own spelling of a path; `path.join` and `path.basename` build the absolute path and the repository name in `working-tree-service.ts`, because their Windows separator handling is what shaped every path the Git tab has ever shown. Rust never joins a path for the UI.
-- **The working tree uses shared native execution.** `stageFile`/`stageFiles`, `unstageFile`/`unstageFiles` and `discardChanges`/`discardAll` build argv for `execGit`; `deleteUntrackedFile` uses `fs`. `getFileDiff` delegates to `diff/local-patch.ts` with full context and native host/TypeScript WSL execution. Git patch output strips one trailing line ending at the runner boundary.
-
-- **One parser, two callers.** `git::status::parse_porcelain` is the only porcelain parser in the codebase. A repo inside WSL runs `git status` through `wsl.exe` in TypeScript and then hands the text to `parseGitStatusPorcelain`, so the two paths cannot drift.
-- Porcelain v1 C-quotes any path holding a space or a non-ASCII byte, and nothing unquotes it — carried over verbatim from the TypeScript parser, because unquoting would change what the Git tab renders.
-
-### Reading history
-
-`git::log` replaces the three child processes a single page of commits used to cost — `git log`, `git rev-parse --abbrev-ref @{upstream}`, and a second `git log` for the unpushed set — with one opened repository.
-
-- **`--pretty=format:` is gone, so its placeholders are reimplemented.** `%aI` delegates to `gix`; `%ar` is a literal port of git's `show_date_relative`, rounding steps included; `%D` is built from the ref database. Each is easy to get *nearly* right, which is why `rust/core/tests/git_log.rs` is a differential suite: it asks the real `git log` for the same page and compares field by field. Extend that suite rather than asserting fixed strings.
-- **Decoration order is reverse ref-name order.** git prepends each ref as `for_each_ref` yields it, so it prints `origin/main` before `origin/HEAD`, and a remote branch before the local branch of the same name. `HEAD` is added last and therefore prints first, as `HEAD -> <branch>`.
-- **`%D` is the fixed cost of a commit-log read, not `%h`.** Building the decoration map reads every ref in the repository, and it is charged once per call whether the caller wants one commit or two hundred. Measured on this repo (569 refs — 183 heads, 294 remotes, 91 tags — 7 packs, 97 MB of objects, 2-core arm64): iterating the refs for their names alone is 0.75 ms, and resolving each one with `Reference::peel_to_id()` was **4.70 ms**. `decorated_id` takes it to **1.97 ms** by reading the object's *kind* (`find_header`, the cheap `cat-file -t`) and only peeling the refs that really are tags — peeling stops at the first non-tag, so a ref pointing straight at a commit already holds the answer. Check the kind rather than the namespace: `refs/remotes/` may point at a tag object and git decorates the commit beneath it (0.35 ms cheaper, and wrong). **This was misattributed to `%h` until AC-08b8.** The abbreviation is real but small — opening alone is 0.34 ms, opening plus `head_id` plus one `%h` is 0.81 ms, and each hash after the first ~0.07 ms — so it scales with the page while `%D` does not. `core.abbrev` does not remove it, the lookup serialises internally (a `rayon` fan-out measured within noise and was removed), and trusting git's auto length is unsafe: 9-hex collisions genuinely exist at this repo's object count.
-- **The net effect depends on how many children the path it replaces spawned.** Against the old `GitLogService`, which spawned three, native wins at every page size the UI uses. Against a path that spawns *one* `git log` — the commits route — it is closer than it looks; count the children before assuming a port is a speed-up. Current numbers on a 2-core box against this repo, core-side: `get_commit` 2.44 ms (the CLI's `git log -1 --format=%H%n%h%n%D` is 3.24 ms), `get_commits` 2.95 ms at 1 commit, 6.10 at 50, 15.28 at 200.
-- **Caching an opened `gix::Repository` per path is the remaining idea here, and it is smaller than it sounds.** Opening costs 0.34 ms and a cached `ThreadSafeRepository` saves that plus ~0.4 ms on the first object touch. It also needs its own staleness work before it can ship: refs and new objects are re-read per `to_thread_local()` (a new commit, a new branch, a `git gc` repack were all measured visible), but **the config is snapshotted at open and never refreshes** — a `git remote add` after the handle was cached is invisible to `git::remote`, `git::range` and `git::branch` forever.
-- **`%b` is a field, not a second call.** A commit carries `body` — everything after the blank line that ends the title, trimmed. `gix`'s `MessageRef` splits it off already, so it costs nothing beyond the message decode the summary needed anyway. The trim matches the `.trim()` the commits route applies to `%b`, which means it eats a body's leading indentation; that is what the UI has always rendered, so it is ported rather than fixed.
-- **The page size is not an allocation size.** Callers spell "everything" as a huge number; reserving for it aborts the process.
-- Repository paths are resolved by discovery, so a path inside a working tree finds the tree that contains it — the same thing `git -C` does.
-
-### Commit detail
-
-`git::commit` supplies commit metadata, first-parent patches, blobs and ref validation. `gitCommitFiles` and `gitCommitDiff` share the first-parent/root comparison options in `git::patch`. Core commit DTOs expose `GitCommitFile`/`GitCommitFiles` through feature-gated N-API objects; typed `ChangeStatus` serializes through its shared string mapping. Metadata commands use NUL delimiters and ordered parents; batch failures propagate. Forge `loadCommitMetadata` owns host/WSL transport for GitLogService file details; `loadCommitFiles` selects rows, and CoC converts statuses without a metadata-result cache.
-
-- **Raw blob reads preserve bytes.** `gitFileBytesAtCommit` walks the commit tree with `gix`. `gitReadBlob` reads an object ID with bounded `cat-file blob`, including index-only blobs. Core `GitErrorKind::BlobTooLarge` becomes native error code `GIT_BLOB_TOO_LARGE`; Forge exposes `GitBlobTooLargeError` on host and WSL. The inclusive cap permits empty blobs at zero and stops reading after the first excess byte, killing the child. Binary detection stays in TypeScript.
-- **There are two views of that blob, and they are not interchangeable.** `gitFileContentAtCommit` decodes lossily to a string, which is right for a review UI. `gitFileBytesAtCommit` returns a `Buffer` and is the one to reach for when the caller writes the result back to disk — the notes sync mirror does, and a lossy decode turns every byte sequence that is not valid UTF-8 into U+FFFD with no way back, so a synced image would come back corrupted. Same lookup underneath; the string view is built from the bytes.
-- **`name-status` drives the file list, `numstat` only decorates it.** That is the opposite of `git::range`, where numstat drives — so a file missing from numstat keeps its real status here instead of falling back to `modified`, and a binary file keeps `additions`/`deletions` **absent** rather than zero. The absent `Option`s arrive in JavaScript as missing properties, which is what leaves the column blank.
-- **Commit metadata uses NUL-delimited destinations.** Rename/copy entries carry source and destination separately; literal arrows, braces, tabs and newlines do not require heuristics.
-- **`validate_ref` does not peel, because neither command it replaces did.** `rev-parse --verify` on an annotated tag yields the tag object and `cat-file -t` reads it back as `tag`, so an annotated tag has always failed validation while a lightweight one passes. Pinned in `rust/core/tests/git_commit.rs`.
-- **Root metadata compares against the empty tree.** The shared `--root` plan reports initial files as additions; merges use `--first-parent -m`. `process_commit_metadata` selects the first supplied parent or the empty-tree fallback.
-- `file_exists_at_commit` answers **true for a directory**, because the `git cat-file -e` it replaces asks whether the object exists and a tree is an object. `file_content_at_commit` answers `None` there, matching the fact that `git show`'s tree listing was never file content.
-- **`git::branch::local_branch_names` is deliberately not `list_branches`.** The bare list costs a ref walk; the full one costs a commit lookup and a date format per branch. The `HEAD` filter and the ten-name cap stay in the TypeScript caller — they are what that one list chose to show.
-
-### Commit ranges
-
-`git::range` resolves default branches, upstream refs, merge bases and ahead counts through `gix`. `GitRangeService` obtains file lists and statistics from the shared `git::patch` boundary described above. Its TypeScript adapter adds repository roots and maps original paths to `oldPath`.
-
-- **Base-mode fallback is explicit.** An `upstream` request without a configured upstream resolves to the default branch and sets `baseModeFallback`.
-- **Presentation order uses `localeCompare`.** Forge's shared native DTO adapter sorts files for the range view.
-- **Default-branch caching is remote-only.** `from_remote` identifies remote-derived answers; local `main`/`master` fallback answers are read fresh.
-- **Range metadata shares patch processing.** `GitPatchStore.revisionPatch('range', …)` returns files and statistics; supplied transport output uses `processGitPatch`. Ref resolution and ahead counts remain separate capabilities.
-
-### Branches
-
-`git::branch` answers what the Git tab asks on every render: which branch is checked out, what it tracks, how far the two have drifted, and what the branch list holds. `getBranchStatus` cost five child processes and a paginated branch list cost two plus a shell pipeline; both are one opened repository now. On this repo (183 local branches, 2-core arm64): branch status 17.8 ms → 1.0 ms, a 100-branch page 13.1 ms → 3.7 ms. The two cheap reads alongside them measure 10.0x (`current_branch_name`, 1 → 0 spawns) and 42.7x (`upstream_config`, 3 → 0).
-
-- **`repository_status` is the one read here that still spawns.** Its answer includes whether the working tree is dirty, and deciding that means the index refresh and `.gitignore` walk git already does — `gix` would be reimplementing `git status`, not replacing a `rev-parse`. Everything else in the module is `gix`.
-- **The branch list is sorted by full refname bytes**, which is what git's own `refname` ordering does, and is done explicitly rather than by trusting the ref iterator — so a loose ref and a packed ref land in the same place. This is not the `localeCompare` exception the range file list is: git sorts refs by bytes, so Rust does too.
-- **`origin/HEAD` is dropped by name, and that is a behaviour fix.** git's `%(refname:short)` shortens `refs/remotes/origin/HEAD` to `origin`, so the TypeScript's "drop any line containing HEAD" filter never caught it and the branch list carried a phantom row called `origin` — one the branch *count* (which read `git branch -r --list`, where the line does say `HEAD`) always excluded. Rust shortens by stripping `refs/remotes/`, so the name still says `HEAD` and page and total finally agree.
-- **Search matches the branch name only.** The old Unix path piped the whole formatted line through `grep -i`, so a commit subject or a relative date could match while the count — name-only, like Windows' `findstr` half — did not. One rule now, on every platform.
-- **A `limit` of zero is the count-only question.** `getLocalBranchCount` and its remote twin ask for the total with no rows rather than describing every branch to throw the descriptions away.
-- **One parser, two callers**, again: the WSL path runs `git status --porcelain=v2 --branch` through `wsl.exe` and hands the text to `parseGitBranchStatus`.
-- **An upstream is only an upstream if its ref exists.** `rev-parse --abbrev-ref <branch>@{upstream}` exits non-zero for a branch configured to track a ref that was never fetched, and the caller read that as "no tracking branch". `find_upstream` checks the ref before reporting it, or a never-fetched upstream would start showing up with zero drift.
-- **`upstream_config` is the deliberate opposite, and must never be routed through `find_upstream`.** It reads the raw `branch.<n>.remote` / `branch.<n>.merge` values and never touches the ref database, because it runs immediately *before* a `fetch` or a `pull` — the never-fetched upstream is precisely the case that has to work there. It also uses `head_name` rather than `head_ref`, so an unborn branch is named (matching `symbolic-ref`) and the caller reports "no upstream configured" instead of "detached HEAD". Section and subsection are looked up separately, since `branch.release.1.0.remote` has no unambiguous dotted split. Whether the values add up to a usable upstream, and which of the four user-facing messages a failure gets, stays in TypeScript.
-- **`current_branch_name` is deliberately not `branch_status`**, the same split as `local_branch_names` against `list_branches`: the bare question skips the upstream resolution and the two `rev_walk`s. It answers `None` for a detached HEAD, for an unborn branch and for a branch literally named `HEAD` — the CLI reported the first and third as the bare string `HEAD` and the second as a non-zero exit, and all three became `null`. The `head_id` guard is what reproduces the unborn case, where `gix` would otherwise happily name the ref.
-
-### Repository discovery
-
-`git::repo` answers the two questions about where a repository *is*: `discover_workdir` replaces `rev-parse --show-toplevel` (15.7x) and `resolved_git_dir` replaces `rev-parse --git-dir` (15.2x). Both check `fs::metadata` before discovering, because discovery walks *upward* — without it, `<repo>/does/not/exist` would report the repository above a path that is not there.
-
-- **`resolved_git_dir` returns `git_dir()`, never `common_dir()`.** In a linked worktree those differ: the common dir is the main repository's `.git`, while `git_dir()` is `.git/worktrees/<name>` — and that is where `rebase-merge`, `rebase-apply`, `MERGE_HEAD` and `CHERRY_PICK_HEAD` live, which is the only reason `getRepoState` opens this directory. Reading the common dir compiles, passes in a plain clone, and silently reports "no operation in progress" for every rebase or cherry-pick run in a worktree. `rust/core/tests/git_repo.rs` covers a real linked worktree for exactly this.
-- **The answer is absolute**, so the `path.isAbsolute`/`path.join` the caller wrapped the CLI in is gone: git prints a bare `.git` from the work tree root, `gix` reports the resolved directory.
-
-### Remotes
-
-`git::remote` answers "where does this repository point" — `git remote get-url <name>` and the primary-remote lookup behind `detectRemoteUrl`. Both are configuration reads with no history walk behind them, so `gix` answers them out of the repository it opens and spawns nothing. That matters because `detectRemoteUrl` runs on workspace discovery, on every batch git-info refresh, and on every patch transfer. On this repo (2-core arm64): 2.63 ms → 0.45 ms with an `origin` configured (**5.9x**), and 6.13 ms → 0.14 ms without one (**43.6x**), where the CLI path needed three children to reach the same answer.
-
-- **The configured bytes win over the parsed URL.** `gix` lowercases a host when it renders a parsed URL back to a string, so `https://Org.visualstudio.com/…` would come back reshaped. The hashes would not notice — `computeRemoteHash` and `resolveCanonicalOrigin` lowercase first — but the repo sidebar's grouping key is built from this string with its casing intact, so a clone re-read after the move would group apart from one read before it. `configured_url` therefore parses the raw `remote.<name>.url` value and hands the raw bytes back whenever they resolve to the same URL the remote did.
-- **When they disagree, the resolved URL wins.** A `url.<base>.insteadOf` rewrite, or a remote carrying more than one URL, makes the raw value the wrong answer — `git remote get-url` expands rewrites and uses the *first* of several URLs, while a config lookup resolves to the last. The comparison catches both, and the resolved URL gets rendered instead.
-- **The fallback only runs when `origin` is absent.** A configured `origin` with an empty URL answers the question with "none"; it does not send the lookup on to a second remote. That is the nesting the TypeScript had, and callers depend on it.
-- **`git remote get-url`'s two failures are one answer.** A missing remote and a remote with no URL both exited non-zero, and the caller turned both into a single absent value — so `remote_url` returns `Ok(None)` for either. Only a path that is not a repository is an error.
-- **Round-trip fidelity is what `rust/core/tests/git_remote.rs` is for.** Every URL form is asserted twice: against the literal that was configured, and differentially against what the real `git remote get-url` prints. Add a form there rather than trusting the parser.
-
-### Global configuration, and `safe.directory`
-
-`git::config` reads and appends to the user's **global** config. One caller needs it: Git for Windows refuses to open a repository reached over the WSL UNC share unless its path is listed in `safe.directory`, so forge checks the list and appends to it before the first command against such a repo. Both calls used to bypass the git runner entirely, going straight to Node's `execFile`. On this repo (2-core arm64) the read costs 1.79 ms as a Node child and 0.97 ms through the addon (**1.8x**). The sync twin — which cost 1.69 ms with the event loop stopped for every one of them — is gone: `ensureGitSafeDirectorySync` went with `execGit`, so the ensure is async-only.
-
-- **`run_git_global` exists because `run_git` prepends `-C <repo_root>`.** A `--global` read has no repository to be pointed at, and naming one would change which files git consults — a repository-local `safe.directory` is not the entry Git for Windows checks before it agrees to open the repository in the first place. The two runners share everything else: timeout, buffer cap, and the `git <args> failed: <stderr>` text.
-- **Deciding *what* the entry says stays in TypeScript.** `resolveGitSafeDirectory` is built entirely out of WSL UNC path parsing, which is the one thing this crate is deliberately kept ignorant of. Only the two child processes moved. The dedupe cache and the in-flight map stayed in `forge/src/git/safe-directory.ts` too — the whole path is a no-op off win32, so the addon is never even loaded there.
-- **`--add`, never a set.** `safe.directory` is the list of every repository the user has already approved; replacing it would revoke the rest. git appends unconditionally, which is exactly why the caller reads the list first.
-- **An unset key is an error, and the caller reads it as "not configured".** `--get-all` exits 1 both for a key with no values and for a global config file that does not exist yet, and the two are indistinguishable from outside. Values are trimmed and blank lines dropped in Rust, because membership is decided by exact string equality — a stray `\r` from a Windows-written config would answer "not configured" forever and append a duplicate on every start.
-- **The values are shell-hostile and never see a shell.** A real entry is `%(prefix)///wsl$/Ubuntu-24.04/home/me/repo`; the `$` and the `%(…)` sigil cross to git verbatim through argv.
-- **`rust/core/tests/git_config.rs` points `GIT_CONFIG_GLOBAL` at a temp file through per-command environment overrides**, not through the process environment, so the suite never touches the developer's real `~/.gitconfig` and stays safe to run in parallel. Do the same for anything added there.
-
-### Repository discovery
-
-`git::repo::discover_workdir` answers `git rev-parse --show-toplevel` — the working-tree root containing a path — through `gix::discover`, which walks up looking for a `.git` exactly as git does. It backs `findGitRoot` in `coc/src/server/git/repo-utils.ts`, which was the last `git` child process in that directory and the only *synchronous* one anywhere in the move: it ran through `execFileSync`, so every lookup froze the event loop for a whole spawn. On this repo (2-core arm64) 40 sequential lookups cost 111 ms across 40 children and 23 ms native (**4.8x**), and a 1 ms timer that fired **0 times during 30 blocking calls (77 ms)** fires 17 times during 30 native ones (18 ms).
-
-- **The existence check is load-bearing, not defensive.** Discovery walks *upward*, so handing it `<repo>/does/not/exist` finds the repository above the missing path and reports a root for something that is not there. The `fs.statSync` this replaced threw and answered "no root", so the Rust stats the path first and returns `None` when it is gone.
-- **Three different misses are one answer.** A missing path, a path outside any repository, and a bare repository (where `--show-toplevel` fails, because there is no work tree) all resolve to `null`. The caller has always read every failure as "not a git repo", and an `Err` is kept for a repository that exists and could not be read.
-- **`path.resolve` stays in Node.** A relative path means whatever the process's own working directory says it means, and that is Node's to decide — the addon takes an absolute path. This is the same rule the rest of the capability follows: paths cross the boundary as the caller's own values.
-- **`rust/core/tests/git_repo.rs` compares canonicalised paths.** git prints the physical path and `gix` reports the path discovery walked, which differ wherever a symlink is involved (`/tmp` on macOS is the everyday case). The TypeScript caller normalises with `fs.realpath` before comparing too, so the difference is invisible in production — but a differential test that skips the canonicalisation is a macOS-only red.
-- **`gitLogCommit` is not a cheaper `rev-parse HEAD` on a real repository.** It was measured for `getRepoHeadHash` and rejected: 0.26 ms against the passthrough's 1.06 ms on a 250-commit fixture, but **2.52 ms against 1.49 ms on this repository**, because it builds the `%D` decoration map over all 569 refs and this caller throws it away. Same shape as the commits-route ruling above. Reach for the gix commit reader when the caller wants what it builds.
-
-- **The `gix`/git symlink difference is a feature for the second caller.** `CodexFileChangeDiffTracker` in `coc-agent-sdk/src/codex-sdk-service.ts` needs *both* spellings of the repository root, because Codex reports absolute file paths and can use either. It used to buy them with two children — `rev-parse --show-toplevel` for the physical one and `rev-parse --show-cdup` resolved against the working directory for the other. `gitDiscoverRepoRoot` answers the second one directly (it reports the path the walk took, symlinks intact) and `fs.realpath` answers the first, so two spawns became one `gix` call and one `stat`. On macOS this is not an exotic case: `os.tmpdir()` is `/var/...`, which resolves to `/private/var/...`, so every temp-repo test exercises it.
-
-
-### Diffing two contents with no repository
-
-`git::diff::diff_no_index` renders a unified diff of two strings that are already in Node's memory. It is the last git child process the move took, and it is the odd one out twice over.
-
-- **It is a rendering, not a read, so `gix` is the wrong tool.** What the caller wants back is git's own output — hunk headers, context width, `\ No newline at end of file`, binary detection — and reimplementing that would be a second implementation of a format rather than a faster route to the same bytes. So it shells out, from Rust.
-- **`--no-index` exits 1 to say "the files differ", which is the answer and not a failure.** That is what `GitCommandOptions::success_exit_codes` exists for: extra exit codes to accept, empty by default so every other command keeps the non-zero-is-a-failure rule. It is deliberately **not** on `GitExecOptions` — which codes mean success is a property of the command, so `diff_no_index` sets it and no JavaScript caller can. `rust/core/tests/git_exec.rs` pins both halves: the same invocation rejected by the plain runner, and a code the caller did not name still failing.
-- **The whole dance crosses once.** The TypeScript spent an `fs.mkdtemp`, two `fs.writeFile`s, a `spawn` and an `fs.rm` per changed file; the Rust does all five on one libuv worker. The temp directory is a `tempfile` RAII guard, so the cleanup that used to be a `finally` happens on every path out, `?` included — and both the Rust suite and the boundary suite assert that no `codex-file-diff-*` directory survives a success *or* a failure.
-- **The two paths reach git as `OsStr`.** `run_command` takes a prepared `Command` and its arguments separately, and `diff.rs` uses that split: git gets the real bytes of the temp paths, and only the `git <args> failed:` text renders them lossily. A `TMPDIR` that is not UTF-8 still names the right files.
-- **The labels are the caller's, like every other path in this capability.** `rewrite_no_index_headers` points the first `diff --git`, `---` and `+++` lines at strings the caller chose — `a/<path>`, `b/<path>` or `/dev/null` — because deciding what a diff header says about a file is not Rust's call. *First* is load-bearing: a removed line whose content begins `-- ` reaches the hunk body as `--- signature` at column zero, and rewriting it would corrupt the hunk.
-- **Two ported quirks, both pinned rather than fixed.** Lines are split on `\r?\n` and rejoined with `\n`, so a CRLF file's content loses its `\r` in the rendered diff. And a binary input — a NUL byte in the first 8000 — makes git answer `Binary files <a> and <b> differ`, which is not a header, so it keeps naming the two temp files. Both are what the TypeScript did, and the result is display metadata attached to a Codex tool event.
-- **One trailing line ending is lost, as everywhere.** Here it is provably invisible: the one caller `.trimEnd()`s each part before joining them.
-- The one caller is `CodexFileChangeDiffTracker` in `coc-agent-sdk/src/codex-sdk-service.ts`, and it swallows every failure — a broken addon turns the diff off rather than failing the turn, exactly as a missing `git` on PATH always did. That is not a fallback: there is no second implementation.
-
-
-### Mutations, and the environment they run in
-
-Everything `BranchService` writes — create, delete, rename, checkout, merge, rebase, cherry-pick, `am`, stash, push, pull, fetch — runs through `git::run_git` from Rust. There is no second runner: the service builds an argv array, and `execGit` spawns it. What went away is the string-building, the hand-rolled `quoteShellArg`, the `/bin/sh` and `cmd.exe` that ran each command, and the `execSync` calls that blocked the event loop while git worked. Measured on this repo (2-core arm64): a `rev-parse` that cost 2.91 ms as a blocking `execSync` costs 1.54 ms through the addon, and a 1 ms timer keeps firing throughout — 30 sequential `execSync` calls let **0** timer ticks through in 90 ms; 30 `getRepoState` calls let 45 through in 47 ms.
-
-- **`GitCommandOptions::env` layers, it does not replace.** Callers set `GIT_TERMINAL_PROMPT=0` so a push fails instead of blocking a request thread on a prompt nobody can answer, and `GIT_EDITOR` / `GIT_SEQUENCE_EDITOR` so a rebase, an amend or an `am` takes a pre-written message and todo list. Everything else — `PATH`, `HOME`, `SSH_AUTH_SOCK`, the credential helper's own configuration — is inherited, and that inheritance is the whole reason network operations shell out. Never build the child's environment from scratch.
-- **Argv, not a command string.** A branch called `feature/$(touch-pwned)&|;` and a stash message holding quotes both round-trip untouched, because no shell ever sees them. This is why the service no longer needs a platform-specific quoting helper.
-- **The long timeout is 600 s and is part of the contract.** merge, rebase, `am`, `format-patch`, push, pull and fetch carry it; everything else takes the 30 s default. A rebase of a long branch over a slow link is a slow command, not a hung one.
-- **`format-patch` output is normalised to one trailing newline.** The runner strips exactly one line ending, and `format-patch` ends with a blank line; `exportCommitPatch` re-adds one so every payload ends in exactly one `\n`, which is also the separator `exportCommitPatches` joins entries with.
-
-### Benchmarking against the TypeScript it replaced
-
-`npm run bench:git -w packages/coc-native` is the evidence for the whole move. Each case pairs a `legacy` implementation — the child processes the deleted TypeScript forked, the same argv in the same order, through the same Node API (`exec` behind a shell where the service used `execAsync`, `execFileSync` where it blocked) and parsed the way the service parsed it — against the shipped addon export. The legacy halves are reimplementations, because the originals were deleted, so `test/bench-git.test.ts` runs **both sides against a real repository and compares their answers** case by case. That suite is the load-bearing part: a baseline that quietly does less work reads as a speed-up, and four seeded perturbations (drop the untracked rows, ask for one commit fewer, skip the `--name-status` child, return a wrong root) were each confirmed to fail it.
-
-- `npm run bench:git -w packages/coc-native` — a generated 250-commit fixture and the repository the script lives in.
-- `-- --check` exits non-zero when a *gated* case is more than `--tolerance` (5% by default) slower than legacy. The tolerance is the width of the measurement, not slack in the bar: back-to-back runs of the same implementation differ by a few percent on a loaded box.
-- `-- --only <ids>`, `--repo <path>`, `--iterations <n>`, `--json`, `--no-small`/`--no-large`, `--help`.
-- An **ungated** case is measured and printed but excluded from the verdict, and the test suite requires every one of them to carry a `note` saying why — otherwise a regression could be silenced by flipping one boolean.
-
-Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git children the legacy path forked, and it is the number that predicts the result.
-
-| operation | spawns | small fixture (14 refs, 250 commits) | this repo (569 refs, 8143 commits) |
-|-----------|--------|--------------------------------------|------------------------------------|
-| working-tree status | 1 | 2.46 → 1.62 ms (1.52x) | 15.28 → 14.26 ms (1.07x) |
-| repository status | 1 | 3.57 → 2.72 ms (1.31x) | 16.06 → 15.18 ms (1.06x) |
-| branch status | 5 | 14.20 → 1.36 ms (**10.45x**) | 17.81 → 1.09 ms (**16.30x**) |
-| branch list, 100 rows | 2 | 5.58 → 0.30 ms (**18.32x**) | 12.67 → 3.27 ms (3.88x) |
-| commit log, 1 | 3 | 9.59 → 1.62 ms (5.92x) | 13.09 → 3.10 ms (4.22x) |
-| commit log, 50 | 3 | 10.75 → 3.07 ms (3.50x) | 15.03 → 6.64 ms (2.27x) |
-| commit log, 200 (the route's clamp) | 3 | 19.97 → 6.93 ms (2.88x) | 18.43 → 17.09 ms (1.08x) |
-| commit log, 500 — *ungated* | 3 | 14.92 → 8.50 ms (1.76x) | 24.54 → 37.53 ms (**0.65x**) |
-| commit detail, file list | 3 | 9.00 → 2.87 ms (3.14x) | 14.45 → 7.19 ms (2.01x) |
-| commit range, refs only | 4 | 11.08 → 2.74 ms (4.04x) | 14.61 → 2.48 ms (5.88x) |
-| commit range, whole detect | 7 | 23.19 → 7.43 ms (3.12x) | 106.04 → 55.52 ms (1.91x) |
-| primary remote URL | 2 | 2.15 → 0.14 ms (**15.18x**) | 3.34 → 0.47 ms (7.15x) |
-| unified diff of two contents | 1 | 4.09 → 2.30 ms (1.77x) | 4.64 → 2.25 ms (2.07x) |
-| repository discovery | 1 | 2.22 → 0.13 ms (**16.95x**) | 3.19 → 0.46 ms (6.91x) |
-
-**Read it by the spawn count, not by the operation.** Removing several children is worth multiples and the effect grows with the repository — branch status forked five and is 16x here. Removing *none* — moving the one fork from Node to Rust, which is all `git status` can do, since deciding whether the tree is dirty means the index refresh git already does — is worth 6–11%, and that is the honest floor of this move rather than a disappointment. Replacing a spawn with `gix` is worth the most on the small repository, where the spawn was the whole bill; on this one a fixed per-ref cost partly eats it back.
-
-**The `--no-index` diff is the exception to reading by the spawn count, and it is worth understanding.** It forks one child on both sides and still wins ~1.8x, because the child is not what moved: the `fs.mkdtemp`, the two `fs.writeFile`s and the `fs.rm` around it did. It is also the only row whose two columns agree, because nothing it does touches a repository — the case is a synthetic 200-line file with three lines edited, and the columns agreeing is the finding rather than a fixture problem.
-
-**The one place native loses is a 500-commit page, and it is ungated on purpose.** `gix` pays ~0.07 ms per commit to abbreviate `%h` where `git log` pays it in C, so the per-commit cost eventually overtakes the two spawns saved. The crossover is between 200 and 500 on this repository — and `api-git-commit-routes.ts` clamps `limit` to 200, so no route can ask for the losing side. The row is measured and printed anyway, because a benchmark that only runs the cases it wins is not evidence.
-
-**The clock is not the whole claim.** Four legacy paths blocked the event loop, and the script counts 1 ms timer ticks during 20 sequential calls to show it. On this repo: repository discovery let **0** ticks through in 63 ms and now lets 12 through in 12 ms; the branch list **0** in 255 ms against 62 in 67 ms; the whole range detection 43 in 2123 ms against **1034** in 1143 ms. A server that spends 2 seconds forking children from Node has stopped; the same wall clock on a libuv worker has not.
+- Failures cross the boundary as `git <args> failed: <stderr>`. Default timeout is 30s. Each stream caps at 50 MiB. Exactly one trailing newline is stripped.
+- Network operations and unbounded work pass `timeout: 0`. Merge, rebase, `am`, `format-patch`, push, pull, and fetch use 600s.
+- `GitCommandOptions::env` layers on the inherited environment. Never replace it. `GIT_TERMINAL_PROMPT=0` on network commands.
+- Paths stay repository-relative. The UI joins them in TypeScript.
+- `src/git.ts` guards every export. Add each new `#[napi]` function to that tuple.
+- One porcelain parser. WSL runs git in TypeScript and hands the text to `parseGitStatusPorcelain` / `parseGitBranchStatus`. Do not unquote C-quoted paths.
+- `resolved_git_dir` returns `git_dir()`, never `common_dir()`, so worktree rebase state stays visible.
+- `discover_workdir` stats the path first. A missing path, a non-repo, and a bare repo are `null`. The addon takes an absolute path. `path.resolve` stays in Node.
+- `upstream_config` reads raw branch config and must not go through `find_upstream`. It has to work for a never-fetched upstream.
+- `safe.directory` uses `run_git_global` because `run_git` prepends `-C`. Append with `--add`. Never replace the list. What the entry says stays in TypeScript.
+- Patch stores are scoped by workspace, root, execution, and source. Refresh and disposal revoke generations and kill the direct Git child. Authentication stays in TypeScript. `git diff --no-index` exits 1 when files differ. That success code is set in Rust, not by a JavaScript caller.
+- Commit-log decoration (`%D`) reads every ref and is the expensive part. Do not port a one-child `git log` onto `git::log` without counting that cost. Do not cache `gix::Repository`: config is snapshotted at open.
 
 ## Notes filesystem
 
-`notes_fs` is the filesystem core behind the Notes API: the tree scan, content read and autosave, entry create/rename/delete, `.order.json` persistence, and the path containment check every route makes before touching a file. Notes has no JavaScript fallback for any of it — the TypeScript implementations were deleted, not flagged.
+No JavaScript fallback. Root resolution and `localeCompare` sorting stay in Node. `notesTree` returns raw readdir order and `.order.json`.
 
-- **The split with Node is deliberate and narrow.** Root resolution (preferences, task-derived roots, opaque identity hashing) stays in Node, so Rust always receives a resolved root plus which regime it is. Sibling sorting stays in Node too: it is `localeCompare`, which is ICU, and reimplementing it here would change an order the SPA has always shown. So `notesTree` returns raw readdir order and each directory's `.order.json`, and Node applies dirs-first + `localeCompare` + `applyOrder`. The SQLite chat-binding cascade also stays in Node, which is why `renameNotesEntry`/`deleteNotesEntry` return the entry kind and both root-relative paths rather than doing it themselves.
-- **Two regimes, one resolver.** The managed default root keeps its historic contract — `path.resolve` plus a containment check, an absolute-path escape hatch for content, and system-folder protection. Every selected root goes through `path_safety::resolve_safe_notes_path`, which checks containment lexically first and only then canonicalizes the *existing* prefix of the path, so a dangling symlink is rejected rather than treated as a missing component. The default root's allow-list (`wsDataDir`, `~/.copilot`, the workspace git root) is computed in Node and passed in — Rust does not know where any of those are.
-- **`resolveSafeNotesPath` is exported on its own because four modules outside the port consume it** — paper ingest, paper text read, the image handler, the sidecar resolver. They are rewired to the native export rather than keeping a TypeScript copy alive "for them", which is exactly how two implementations of a containment check drift apart. It resolves the union (`{ absolutePath, relativePath }` or `{ error, statusCode }`) instead of rejecting, because its callers branch on the result.
-- **Error strings and status codes are the contract.** The 403 refusals, the 404s, the 409 collision and the five 500 prefixes are user-visible API bodies, some of which the SPA matches on. N-API carries only a `Status` and a reason, so `notes_fs.rs` prefixes the reason with `[notes-fs:<code>] ` and `toNotesFsError()` in `src/notes-fs.ts` parses it back. An unprefixed failure decodes as a 500 with its message intact, so a marshalling bug cannot masquerade as a 404.
-- **A conflict is a result, not an error.** `writeNote` answers `{ status: 'conflict', currentMtime, currentContent }` so the SPA can offer a merge. The rule is `Math.round(current) !== Math.round(expected)` — the rounding is part of the contract, because the client got its mtime as a JSON number and filesystems disagree about sub-millisecond precision. A missing file is never a conflict; that is the first save of a new note.
-- **Autosave is atomic.** The write goes to a `.tmp` sibling and is renamed into place, so the search indexer, the git autocommit and another tab never observe a half-written note. On a selected root the tmp path is containment-checked too.
-- **Writes update the live search index in Rust, not across a second N-API crossing.** `notes_index` keeps a registry of live indexes keyed by canonical root path, and a successful write, create, rename or delete upserts or removes the affected paths in that snapshot. A root with no live index is a no-op because the index builds lazily on first search. `NotesSearchService` consumes shared native watch batches for external edits and performs full refreshes for rescan; duplicate incremental refreshes are idempotent.
-- **A directory rename is a bounded prefix re-scan, and it degrades rather than lies.** Above the changed-path bound, or when the incremental path refuses a batch, it falls back to a full `refresh()`. `apply_changes` never fails the caller: the file is already on disk, and failing a save because the index could not be updated would be a lie the watcher repairs a second later anyway.
-- **The capability guard lists every export.** `src/notes-fs.ts` requires all eight, so a binary from before a later slice fails at load with the rebuild instruction rather than at the first call with `undefined is not a function`. Add each new `#[napi]` function in `notes_fs.rs` to that list.
+- Selected roots use `resolve_safe_notes_path`: lexical containment, then canonicalize the existing prefix. A dangling symlink is rejected. The default-root allow-list is computed in Node and passed in.
+- `resolveSafeNotesPath` is the shared export. Do not keep a TypeScript copy.
+- Error text is `[notes-fs:<code>] ` plus the reason. Status codes are the HTTP contract.
+- A conflict is `{ status: 'conflict', currentMtime, currentContent }`, compared after `Math.round`. A missing file is not a conflict.
+- Writes are atomic via a containment-checked `.tmp` rename. A successful write updates the live Rust search index in process. Index failure does not fail the save. A directory rename that exceeds the bound falls back to full `refresh()`.
+- The capability guard in `src/notes-fs.ts` lists every export.
 
 ## Filesystem watch batching
 
-`rust/core/src/watch/` defines `WatchBatch` and the subscription-local
-`PendingBatch` state machine, composed by `WatchService`. Canonical real-root
-keys share one native watcher across workspace-owned subscriptions; removing
-the last subscription closes it. Recursive subscriptions upgrade shared
-backends while shallow deliveries stay non-recursive. Filters apply extensions,
-ignored directory names/root-relative prefixes and cached nested Git ignore
-rules; `.git` paths are excluded. Input paths are root-relative and
-forward-slashed. Trailing-edge debounce uses an explicit monotonic clock;
-`deadline()` lets a backend wait for the next flush without polling. Batches
-deduplicate and sort paths, retaining at most 4,096 paths and 1 MiB of UTF-8
-path bytes. The bounded 1,024-event ingress escalates overflow to rescan.
-Backend errors, root lifecycle changes and structural directory events clear
-partial paths and require full reload. A 100 ms native health check discovers
-missing/replaced roots and retries failed watches without postponing pending
-rescan deadlines. Windows UNC roots use native polling at one-second intervals.
-Operational failures are logged; missing/stale addons remain broken installs.
+`rust/core/src/watch/` is the subscription state machine. One native watcher per canonical root. The last unsubscribe closes it. Filters use extensions, ignored prefixes, and cached nested Git ignore rules. `.git` is excluded. Paths are root-relative and forward-slashed.
 
-`rust/napi/src/watch.rs` exposes `NativeWatchService` through one unreferenced
-TSFN wake token and bounded, coalesced per-subscription delivery. Its active-ID
-gates discard callbacks after removal/disposal. Blocking core commands never
-hold the delivery mutex. `src/watch.ts` aliases generated DTOs and checks every
-required method. Server consumers share the process owner through
-`shared/native-watch-service.ts`, with scoped server lifetimes that isolate
-equal workspace IDs across local servers. Folder layout stays in TypeScript.
-Consumer tests inject batch delivery; real-filesystem watch tests live in core
-and wait on channels. Pure batch tests use an explicit clock.
+Batches dedupe and sort, at most 4,096 paths and 1 MiB of path bytes. Ingress overflow at 1,024 events becomes a rescan. Backend errors, root changes, and structural directory events clear partial paths and require a full reload. Windows UNC roots poll once a second. A 100 ms health check discovers missing roots.
+
+`NativeWatchService` delivers through one unreferenced TSFN. Active-id gates drop callbacks after disposal. Server consumers share `shared/native-watch-service.ts`. Equal workspace ids on different local servers stay isolated. Tests inject batches. Real filesystem watches live in core.
 
 ## Build / test
 
-- `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
-- `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; only this and `ensure:native` do.
-- `npm run ensure:native` (root) / `-w packages/coc-native` — the same build, but only when the addon is behind `rust/`. Free on a fresh tree, so it is safe on every serve-loop restart. Deliberately **not** wired into `build`, which must stay plain `tsc`.
-- `npm run bench:git -w packages/coc-native` — the git benchmark above. Needs a built binary and a built `dist`, not a Rust toolchain; takes ~23 s at the default 20 iterations (the table above is 25). Add `-- --check` to have it fail on a regression.
-- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-symbols-lsp` — the language server, unit tests plus the spawned-binary handshake, navigation and incremental suites.
-- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status`, `git_log`, `git_commit`, `git_range`, `git_branch`, `git_remote`, `git_config` and `git_diff` suites drive a real `git`, so it has to be on PATH; `git_log`, `git_commit`, `git_diff`, parts of `git_range` and parts of `git_branch` additionally compare their output against the real CLI.
-- `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
-- `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.
+- `npm run build -w packages/coc-native` — `tsc` only. Required before `coc` compiles.
+- `npm run build:native -w packages/coc-native` — addon, bindings, symbols LSP, and the platform webview helper.
+- `npm run ensure:native` — rebuilds when `rust/` is newer. Not part of `build`.
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core`
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-symbols-lsp`
+- `npm run test:run -w packages/coc-native` — binary-backed suites fail when the addon is not built. There is no skip.

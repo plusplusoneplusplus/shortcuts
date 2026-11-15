@@ -137,7 +137,7 @@ app.whenReady().then(async () => {
         .map(({ name, domain, session: sessionOnly, expirationDate }) => ({ name, domain, sessionOnly, expirationDate }));
     const settled = (win, id, predicate) => waitFor(async () => { const current = await state(win, id); return current && !current.loading && predicate(current) ? current : null; }, `${id} state`);
     const pref = await call(main, 'getPreferences');
-    if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
+    if (engine !== 'electron' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error(`Required real ${engine} capability is unavailable: ` + JSON.stringify(pref));
     await call(main, 'setDefaultEngine', engine);
     if (clickOnceCheck) {
         if (pref.clickOnce?.enabled !== false) throw new Error('ClickOnce must default off.');
@@ -175,13 +175,18 @@ app.whenReady().then(async () => {
             newTabs: await spa('window.newTabs'), downloads: await spa('window.downloads'),
         });
     } else if (zoomCheck) {
-        const ratio = async (key, baseline = 1, expected) => {
+        // WebKit before macOS 26 leaves page zoom out of devicePixelRatio; there the page sees zoom only
+        // as a narrower viewport, which is measurable for views of a known DIP width (`width`).
+        let dprExcludesZoom = false;
+        const ratio = async (key, baseline = 1, expected, width) => {
+            if (dprExcludesZoom && !width) return null;
+            const scale = report => dprExcludesZoom ? width / report.viewportWidth : report.pixelRatio / baseline;
             reports.delete(key);
-            return (await waitFor(() => {
+            return scale(await waitFor(() => {
                 command(key, 'report');
                 const report = reports.get(key);
-                return report && (expected === undefined || Math.abs(report.pixelRatio / baseline - expected) < 0.005) ? report : null;
-            }, key + ' zoom report')).pixelRatio / baseline;
+                return report && (expected === undefined || Math.abs(scale(report) - expected) < 0.005) ? report : null;
+            }, key + ' zoom report'));
         };
         const baseline = await ratio('main');
         const other = await makeWindow();
@@ -191,17 +196,28 @@ app.whenReady().then(async () => {
         const otherBaseline = await ratio('other');
         main.webContents.setZoomFactor(1.25);
         const update = await call(main, 'setPageZoom', 150);
-        const active = await ratio('main', baseline, 1.5);
+        if (engine === 'wkwebview') {
+            // `main` is 420 DIPs wide: 280 CSS pixels at 150%.
+            reports.delete('main');
+            const zoomed = await waitFor(() => {
+                command('main', 'report');
+                const report = reports.get('main');
+                return report && report.viewportWidth === 280 ? report : null;
+            }, 'main zoomed viewport');
+            dprExcludesZoom = Math.abs(zoomed.pixelRatio / baseline - 1) < 0.005;
+        }
+        const active = await ratio('main', baseline, 1.5, 420);
         const inactive = await ratio('other', otherBaseline, 1.5);
         await call(main, 'setPageZoom', 100);
-        const earlyResetActive = await ratio('main', baseline, 1);
+        const earlyResetActive = await ratio('main', baseline, 1, 420);
         const earlyResetInactive = await ratio('other', otherBaseline, 1);
         await call(main, 'setPageZoom', 150);
         await call(main, 'open', 'new', base + '/?tab=new', 'workspace-b');
         await settled(main, 'new', s => s.title === 'Home');
         await call(main, 'hide', 'main');
         await call(main, 'setBounds', 'new', { x: 350, y: 70, width: 420, height: 320 });
-        const created = await ratio('new', baseline, 1.5);
+        // Bounds set after the 125% shell zoom are 420 renderer pixels, 525 DIPs.
+        const created = await ratio('new', baseline, 1.5, 420 * 1.25);
         await call(main, 'navigate', 'main', base.replace('127.0.0.1', 'localhost') + '/second?tab=main');
         await settled(main, 'main', s => s.title === 'Second');
         const navigated = await ratio('main', baseline, 1.5);
@@ -214,11 +230,11 @@ app.whenReady().then(async () => {
         await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
         main.focus();
         const reset = await call(other, 'setPageZoom', 100);
-        const resetActive = await ratio('main', baseline, 1);
+        const resetActive = await ratio('main', baseline, 1, 420 * 1.25);
         const resetInactive = await ratio('other', otherBaseline, 1);
         const resetNew = await ratio('new', baseline, 1);
         emit('zoom', {
-            update, active, inactive, created, navigated, restored,
+            dprExcludesZoom, update, active, inactive, created, navigated, restored,
             saved: saved.pageZoomPercent, reset, earlyResetActive, earlyResetInactive, resetActive, resetInactive, resetNew, shell: main.webContents.getZoomFactor(),
         });
     } else if (blankImportCheck) {
@@ -423,7 +439,7 @@ app.whenReady().then(async () => {
         await settled(secondWindow, 'other', s => s.title === 'Home');
         await waitFor(() => reports.get('other'), 'second workspace report');
         emit('sharing', { report: reports.get('other'), foreign: await call(secondWindow, 'navigate', 'main', base + '/second') });
-        const otherEngine = engine === 'electron' ? 'webview2' : 'electron';
+        const otherEngine = engine !== 'electron' ? 'electron' : process.platform === 'darwin' ? 'wkwebview' : 'webview2';
         const canMix = pref.engines.find(e => e.engine === otherEngine)?.available;
         if (canMix) {
             await call(main, 'setDefaultEngine', otherEngine);

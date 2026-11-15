@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserControlPage } from '../src/browser-control-page';
+import { cdpBacked } from './cdp-backed-view';
 import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
 import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink, BrowserViewRequest } from '../src/browser-host-contract';
@@ -47,7 +48,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
                     return {};
                 }),
             };
-            views.push(view);
+            views.push(cdpBacked(view));
             return view;
         },
     };
@@ -71,6 +72,36 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
 }
 
 describe('main browser control scope and selection', () => {
+    it('reads the post-action snapshot again when a late navigation takes the document', async () => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            const base = cdp.getMockImplementation()!;
+            const isSnapshot = (method: string, params?: Record<string, unknown>) => method === 'Runtime.evaluate' && String(params?.expression).includes('"action":"snapshot"');
+            let failures: Error[] = [];
+            cdp.mockImplementation(async (method, params) => {
+                if (isSnapshot(method, params) && failures.length) throw failures.shift()!;
+                return base(method, params);
+            });
+            const snapshots = () => cdp.mock.calls.filter(([method, params]) => isSnapshot(method, params)).length;
+            // WebKit runs a form.submit() scheduled during load after readiness; the document goes mid-snapshot.
+            cdp.mockClear();
+            failures = [new Error('Cannot find context with specified id')];
+            await expect(h.run({ action: 'press', key: 'Enter' }, opened.tab)).resolves.toMatchObject({ title: 'Fixture' });
+            expect(snapshots()).toBe(2);
+            // Bounded: a document that keeps going away fails the action.
+            cdp.mockClear();
+            failures = Array.from({ length: 5 }, () => new Error('Execution context was destroyed.'));
+            await expect(h.run({ action: 'press', key: 'Enter' }, opened.tab)).rejects.toThrow('Execution context was destroyed.');
+            expect(snapshots()).toBe(3);
+            // Other failures are not retried.
+            cdp.mockClear();
+            failures = [new Error('Browser page returned no snapshot')];
+            await expect(h.run({ action: 'press', key: 'Enter' }, opened.tab)).rejects.toThrow('no snapshot');
+            expect(snapshots()).toBe(1);
+        } finally { await h.manager.dispose(); }
+    });
     it('disables the native navigation gate before a replacement control turn enables it', async () => {
         const h = harness();
         try {
