@@ -553,7 +553,12 @@ async function cleanup() {
         await run(page => page.click(find(current, 'Focus sentinel').ref));
         const editor = find(current, 'Rich editor');
         await until(() => evaluate('window.richClicked===true', editor.frame), 'visible absolute-frame click');
-        await run(page => page.press('Escape', editor.frame));
+        const escape = label => run(page => page.press('Escape', editor.frame)).catch(async error => {
+            const focus = '({focus:document.hasFocus(),active:document.activeElement?.id||document.activeElement?.localName})';
+            console.error('Absolute-frame focus:', JSON.stringify({ clip, label, main: await evaluate(focus), child: await evaluate(focus, editor.frame) }));
+            throw error;
+        });
+        await escape('after click');
         assert.equal(await evaluate('document.hasFocus()', editor.frame), true);
         await evaluate(`(() => {
             const editor=document.getElementById('editor');editor.focus();
@@ -562,7 +567,7 @@ async function cleanup() {
         const selectionBefore = await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame);
         await view.focus();
-        await run(page => page.press('Escape', editor.frame));
+        await escape('after script focus');
         assert.deepEqual(await evaluate(`({active:document.activeElement.id,
             text:getSelection().toString(),anchor:getSelection().anchorOffset,focus:getSelection().focusOffset})`, editor.frame), selectionBefore);
         if (clip === 'static-hidden') {

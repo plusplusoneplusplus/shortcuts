@@ -1394,7 +1394,10 @@ impl View {
     /// WebKit leaves no focused frame when the focused iframe goes away, so a focused
     /// view's document reports `hasFocus()` false until a click; Chromium moves focus
     /// back to the main frame. `window.focus()` does the same here without making the
-    /// panel key (the UI delegate has no focus handler).
+    /// panel key (the UI delegate has no focus handler). A child frame that still has
+    /// focus is its owner `<iframe>` as the active element; `hasFocus()` can read false
+    /// then (macOS 15 WebKit, before the window's active state arrives), and moving
+    /// focus would take it from that frame.
     fn restore_frame_focus(&self) {
         if !self.panel.isKeyWindow() {
             return;
@@ -1403,7 +1406,7 @@ impl View {
         let Ok(world) = content_world(Some(frames::FRAME_WORLD), mtm) else { return };
         unsafe {
             self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
-                &NSString::from_str("document.hasFocus() || window.focus()"),
+                &NSString::from_str(protocol::RESTORE_FRAME_FOCUS),
                 None,
                 &world,
                 None,

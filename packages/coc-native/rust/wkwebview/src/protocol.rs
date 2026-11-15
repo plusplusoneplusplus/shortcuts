@@ -654,6 +654,11 @@ pub fn compile_failed(message: &str) -> bool {
     message.contains("SyntaxError")
 }
 
+/// Moves focus back to the main frame when no frame has it; a focused child frame
+/// keeps it (its owner is the active element).
+pub const RESTORE_FRAME_FOCUS: &str =
+    "document.hasFocus() || !!document.activeElement?.matches('iframe,frame') || window.focus()";
+
 /// Evaluation failure text when WebKit lost an async result because the document went
 /// away (WebKit before macOS 26 reports that as an unsupported result type). It carries
 /// the desktop's stale-context marker, so the desktop treats it as a destroyed context.

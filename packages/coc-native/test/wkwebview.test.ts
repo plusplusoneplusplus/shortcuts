@@ -958,6 +958,24 @@ describe('desktop native WKWebView packaging contract', () => {
             await waitFor(event => event.event === 'frame-detached' && event.frameId === late.frameId, from);
             await send({ op: 'focus-emulation', viewId: 'v1', enabled: true });
             expect(await hasFocus()).toBe(true);
+            // A child frame that has focus keeps it: the restore runs before WebKit applies the
+            // new active state, while hasFocus() still reads false.
+            await send({ op: 'focus-emulation', viewId: 'v1', enabled: false });
+            from = events.length;
+            await send({ op: 'evaluate', viewId: 'v1', expression: "const k = document.createElement('iframe'); k.id = 'k'; k.src = '/same'; document.body.append(k)", world: 'page' });
+            const kept = await navigated(`${origin}/same`, from);
+            await send({ op: 'evaluate', viewId: 'v1', frame: kept.frameId, expression: 'document.body.tabIndex = 0; document.body.focus()', world: 'page' });
+            await send({ op: 'focus-emulation', viewId: 'v1', enabled: true });
+            const childFocused = async () => {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    if ((await send({ op: 'evaluate', viewId: 'v1', frame: kept.frameId, expression: 'document.hasFocus()', world: 'page' })).result.value) {return true;}
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                return false;
+            };
+            expect(await childFocused()).toBe(true);
+            expect(await send({ op: 'evaluate', viewId: 'v1', expression: 'document.activeElement.id', world: 'page' }))
+                .toMatchObject({ ok: true, result: { value: 'k' } });
             // Restoring frame focus never makes the panel key.
             expect((await send({ op: 'view-state', viewId: 'v1' })).result).toMatchObject({ key: false });
             await send({ op: 'quit' });
