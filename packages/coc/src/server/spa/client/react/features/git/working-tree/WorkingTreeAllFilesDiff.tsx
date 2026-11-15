@@ -70,10 +70,13 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
         guard.onRegisterSave(save);
         props.onRegisterSave?.(save);
     }, [guard.onRegisterSave, props.onRegisterSave]);
+    const [mountRefreshKey] = useState(refreshKey);
     useEffect(() => {
         let cancelled = false;
         setError(undefined);
-        client.git.getWorkingTreeChanges(workspaceId)
+        // A refresh or Retry reads strictly, so a failed status shows as an error, not "no changes".
+        const strict = refreshKey !== mountRefreshKey || attempt > 0;
+        (strict ? client.git.getWorkingTreeChanges(workspaceId, { refresh: true }) : client.git.getWorkingTreeChanges(workspaceId))
             .then(data => { if (!cancelled) { setChanges(data.changes ?? []); setLoaded(true); } })
             .catch(err => { if (!cancelled) setError(err.message || 'Failed to load changes'); });
         return () => { cancelled = true; };

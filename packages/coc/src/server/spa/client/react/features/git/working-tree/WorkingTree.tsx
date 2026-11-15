@@ -359,16 +359,20 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     // remote clone hits its own origin; a local/unknown id resolves to the default.
     const cloneClient = useCocClient(workspaceId);
 
+    // Only the newest read may paint: a refresh can overlap a slower earlier read.
+    const changesRequestRef = useRef(0);
     const fetchChanges = useCallback(() => {
+        const request = ++changesRequestRef.current;
         return cloneClient.git.getWorkingTreeChanges(workspaceId)
             .then(data => {
+                if (request !== changesRequestRef.current) return;
                 setChanges(data.changes ?? []);
                 setChangesLoaded(Array.isArray(data.changes));
                 setError(null);
                 setUntrackedTruncated(data.untrackedTruncated ?? false);
                 setUntrackedTotal(data.untrackedTotal ?? 0);
             })
-            .catch(err => setError(err.message || 'Failed to load changes'));
+            .catch(err => { if (request === changesRequestRef.current) setError(err.message || 'Failed to load changes'); });
     }, [workspaceId, cloneClient]);
 
     useEffect(() => {

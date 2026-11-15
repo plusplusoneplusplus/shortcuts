@@ -223,8 +223,27 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         h.client.git.getWorkingTreeChanges.mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ changes: [] });
         render(<WorkingTreeAllFilesDiff {...props} />);
         expect((await screen.findByRole('alert')).textContent).toContain('boom');
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1');
         fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
         expect(await screen.findByTestId('working-tree-all-files-empty')).toBeTruthy();
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1', { refresh: true });
+    });
+    it('reads strictly on refresh, adds and drops files, and keeps the last list beside a failed refresh', async () => {
+        const view = render(<WorkingTreeAllFilesDiff {...props} refreshKey={2} />);
+        await screen.findByTestId('full-working-diff');
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1');
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('a.ts', 'staged'), change('added.ts', 'untracked', '?')] });
+        view.rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={3} />);
+        await waitFor(() => expect(within(nav()).getByRole('button', { name: /added\.ts/ })).toBeTruthy());
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1', { refresh: true });
+        expect(within(nav()).queryByRole('button', { name: /new\.txt/ })).toBeNull();
+        expect(current()).toMatchObject({ filePath: '/repo/a.ts', stage: 'staged', refreshKey: 3 });
+
+        h.client.git.getWorkingTreeChanges.mockRejectedValueOnce(new Error('status failed'));
+        view.rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={4} />);
+        expect((await screen.findByRole('alert')).textContent).toContain('status failed');
+        expect(within(nav()).getByRole('button', { name: /added\.ts/ })).toBeTruthy();
+        expect(screen.queryByTestId('working-tree-all-files-empty')).toBeNull();
     });
 });
 

@@ -70,6 +70,34 @@ describe('unifiedGitTab host store', () => {
         expect(dirtyA).toHaveBeenCalledTimes(1);
     });
 
+    it('turns the Git page Reload into one reload request for the same scope only', () => {
+        const seen: Record<string, Array<number | undefined>> = { 'ws-a': [], 'ws-b': [] };
+        function Probe({ scope }: { scope: string }) {
+            seen[scope].push(useSplitGitPanel({ scopeWorkspaceId: scope, enabled: true }).reloadRequest);
+            return null;
+        }
+        const tree = (nonce: number) => <>
+            <Probe scope="ws-a" />
+            <Probe scope="ws-b" />
+            <UnifiedGitTab scopeWorkspaceId="ws-a" reloadNonce={nonce} />
+        </>;
+        const { rerender, unmount } = render(tree(3));
+        // Mounting with an existing nonce is not a reload.
+        const startA = seen['ws-a'].at(-1)!;
+        const startB = seen['ws-b'].at(-1)!;
+        rerender(tree(4));
+        expect(seen['ws-a'].at(-1)).toBe(startA + 1);
+        rerender(tree(4));
+        expect(seen['ws-a'].at(-1)).toBe(startA + 1);
+        rerender(tree(5));
+        expect(seen['ws-a'].at(-1)).toBe(startA + 2);
+        expect(seen['ws-b'].at(-1)).toBe(startB);
+        unmount();
+        // A remounted page keeps its toolbar nonce without replaying a reload.
+        render(tree(5));
+        expect(seen['ws-a'].at(-1)).toBe(startA + 2);
+    });
+
     it('a disabled split panel exposes no dirty seams', () => {
         let panel: ReturnType<typeof useSplitGitPanel> | null = null;
         function Probe() {
@@ -79,6 +107,7 @@ describe('unifiedGitTab host store', () => {
         render(<Probe />);
         expect(panel!.onDetailDirtyChange).toBeUndefined();
         expect(panel!.onDetailRegisterSave).toBeUndefined();
+        expect(panel!.reloadRequest).toBeUndefined();
     });
 
     it('a stale clear does not erase a newer node', () => {

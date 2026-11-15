@@ -48,7 +48,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab', () => ({
-    UnifiedGitTab: () => <div data-testid="mock-git" />,
+    UnifiedGitTab: ({ reloadNonce = 0 }: { reloadNonce?: number }) => <div data-testid="mock-git" data-reload={reloadNonce} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedCanvasTab', () => ({
     UnifiedCanvasTab: ({ canvasId, chatId }: { canvasId: string; chatId: string }) => (
@@ -229,6 +229,20 @@ describe('UnifiedRightPanel coc:// pages in web tabs', () => {
         expect(address().value).toBe('coc://git/abc1234');
         expect(screen.getByTestId('mock-git')).toBeTruthy();
         expect(browserTabs()).toHaveLength(1);
+    });
+
+    // Regression: Reload on the Git page reached no view, so working changes never re-read.
+    it('reloads the Git page in place from the toolbar button and Ctrl+R', () => {
+        seed(WS, gitPageInput({ ownerWorkspaceId: WS, chatId: 'chat-1' }, { view: { type: 'working-tree-all' } }));
+        renderPanel();
+        const page = screen.getByTestId('mock-git');
+        expect(page.getAttribute('data-reload')).toBe('0');
+        click('browser-reload');
+        expect(page.getAttribute('data-reload')).toBe('1');
+        fireEvent.keyDown(address(), { key: 'r', ctrlKey: true, metaKey: true });
+        expect(screen.getByTestId('mock-git')).toBe(page);
+        expect(page.getAttribute('data-reload')).toBe('2');
+        expect(address().value).toBe('coc://git/working-changes');
     });
 
     it('steps back and forward through Git commits and files without remounting the page', () => {

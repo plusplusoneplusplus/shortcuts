@@ -1346,7 +1346,8 @@ Terminal, Settings, To-do and Canvas exist only as `coc://settings`, `coc://term
 `coc://todo[/<itemId>]` and `coc://canvas/<canvasId>` pages in web tabs, like `chrome://` pages: the same
 toolbar, the existing view in place of the web content, and back/forward across
 web and `coc://` steps. Toolbar reload remounts Terminal; Settings rebuilds its
-form and re-reads git info, To-do refreshes its ledger, and Canvas re-reads its record. The owner comes from the panel (the text never names
+form and re-reads git info, To-do refreshes its ledger, Canvas re-reads its record, and
+Git runs its detail owner's `refreshAll`. The owner comes from the panel (the text never names
 one); the `+` menu and outside links open or focus a web tab at the address.
 Web tabs persist only while they show a `coc://` page. `coc://` never reaches
 the engine; see `unified-right-panel/AGENTS.md`.

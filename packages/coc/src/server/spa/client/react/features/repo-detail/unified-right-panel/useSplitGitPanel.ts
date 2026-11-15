@@ -7,7 +7,7 @@ import { openPanelWorkspaceResource } from './unifiedPanelWorkspaceResources';
 import { findTab, unifiedTabId, updateBrowserTab } from './unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { useUnifiedPanelState } from './unifiedPanelStore';
-import { useUnifiedGitTabHost } from './unifiedGitTabHost';
+import { useUnifiedGitTabHost, useUnifiedGitTabReloadRequest } from './unifiedGitTabHost';
 
 interface SplitGitPanelOptions {
     scopeWorkspaceId: string;
@@ -70,6 +70,7 @@ export function useSplitGitPanel({
     scopeWorkspaceId, ownerRoutingRef, memberId, enabled,
 }: SplitGitPanelOptions) {
     const host = useUnifiedGitTabHost(scopeWorkspaceId);
+    const reloadRequest = useUnifiedGitTabReloadRequest(scopeWorkspaceId);
     const [state] = useUnifiedPanelState(scopeWorkspaceId);
     const tabId = gitPageTabId(scopeWorkspaceId, ownerRoutingRef);
     const tab = findTab(state, tabId);
@@ -128,6 +129,8 @@ export function useSplitGitPanel({
          */
         revealView: enabled ? revealView : undefined,
         detailOpen: enabled ? !!tab && memberMatches : undefined,
+        /** The Git page's Reload count; `RepoGitTab` refreshes on each change while its detail is open. */
+        reloadRequest: enabled ? reloadRequest : undefined,
         restoreView: enabled && memberMatches ? address?.view : undefined,
         /**
          * Changes only when the tab's address changed for a reason other than
