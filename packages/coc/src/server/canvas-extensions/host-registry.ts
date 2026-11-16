@@ -8,6 +8,7 @@ import { runOwnerToolScript } from '../canvas/owner-tool-script-service';
 import { CanvasExtensionHost, type CanvasInstanceRequest, type CanvasExtensionHostOptions } from './extension-host';
 import { listSessionWorkspaceOwners, sessionWorkspacePath } from './session-workspace';
 import type { CanvasMcpServerList } from './mcp-server-list';
+import type { CanvasToolMetadataResult } from './tool-metadata';
 
 export interface CanvasExtensionOwner {
     workspaceId: string;
@@ -23,6 +24,7 @@ export interface CanvasExtensionRegistryOptions {
     ephemeralQuery?: (owner: CanvasExtensionOwner, extensionKey: string, question: string) => Promise<{ answer: string }>;
     getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;
     listMcpServers?: (owner: CanvasExtensionOwner) => Promise<CanvasMcpServerList>;
+    getToolMetadata?: (owner: CanvasExtensionOwner) => CanvasToolMetadataResult;
     /** Open persisted instances, read once when a conversation runtime is first used. */
     loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
@@ -233,6 +235,13 @@ export class CanvasExtensionHostRegistry {
                 this.assertActive(entry);
                 if (!this.options.listMcpServers) throw new Error('Canvas extension MCP server list is unavailable');
                 return this.options.listMcpServers(entry.owner);
+            },
+            getToolMetadata: async () => {
+                this.assertActive(entry);
+                await this.assertOwner(entry.owner);
+                this.assertActive(entry);
+                if (!this.options.getToolMetadata) throw new Error('Canvas extension tool metadata is unavailable');
+                return this.options.getToolMetadata(entry.owner);
             },
             ephemeralQuery: question => {
                 this.assertActive(entry);

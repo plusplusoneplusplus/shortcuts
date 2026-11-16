@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { CanvasExtensionHostRegistry } from './canvas-extensions/host-registry';
 import { listCanvasMcpServers } from './canvas-extensions/mcp-server-list';
+import { getCanvasToolMetadata } from './canvas-extensions/tool-metadata';
 import { getServerLogger } from './logging/server-logger';
 import { createRequestHandler } from './router';
 import { getOrCreateServerIdentity } from './servers/server-identity';
@@ -464,6 +465,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const canvasExtensionHosts = new CanvasExtensionHostRegistry({
         getOwnerScriptRunner: () => bridge.runOwnerScript,
         listMcpServers: owner => listCanvasMcpServers({ store, dataDir, workspaceId: owner.workspaceId }),
+        getToolMetadata: owner => toolInventoryStore ? getCanvasToolMetadata(toolInventoryStore, owner) : { tools: null },
         loadInstances: (owner, key) => loadCanvasExtensionInstances(extensionCanvasStore, owner, key),
         config: () => runtimeConfigService.config, store, dataDir,
         log: message => getServerLogger().warn(message),
