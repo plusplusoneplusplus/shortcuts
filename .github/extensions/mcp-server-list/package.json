@@ -1,0 +1,6 @@
+{
+  "name": "mcp-server-list",
+  "private": true,
+  "type": "module",
+  "description": "List the session's MCP servers and their status through session.rpc.mcp.list."
+}

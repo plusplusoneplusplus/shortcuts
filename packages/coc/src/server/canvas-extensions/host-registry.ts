@@ -7,6 +7,7 @@ import type { OwnerScriptRunner } from '../executors/owner-script-runner';
 import { runOwnerToolScript } from '../canvas/owner-tool-script-service';
 import { CanvasExtensionHost, type CanvasInstanceRequest, type CanvasExtensionHostOptions } from './extension-host';
 import { listSessionWorkspaceOwners, sessionWorkspacePath } from './session-workspace';
+import type { CanvasMcpServerList } from './mcp-server-list';
 
 export interface CanvasExtensionOwner {
     workspaceId: string;
@@ -21,6 +22,7 @@ export interface CanvasExtensionRegistryOptions {
     send?: (owner: CanvasExtensionOwner, extensionKey: string, prompt: string) => Promise<{ messageId: string }>;
     ephemeralQuery?: (owner: CanvasExtensionOwner, extensionKey: string, question: string) => Promise<{ answer: string }>;
     getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;
+    listMcpServers?: (owner: CanvasExtensionOwner) => Promise<CanvasMcpServerList>;
     /** Open persisted instances, read once when a conversation runtime is first used. */
     loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
@@ -224,6 +226,13 @@ export class CanvasExtensionHostRegistry {
                 await this.assertOwner(entry.owner);
                 this.assertActive(entry);
                 return result;
+            },
+            listMcpServers: async () => {
+                this.assertActive(entry);
+                await this.assertOwner(entry.owner);
+                this.assertActive(entry);
+                if (!this.options.listMcpServers) throw new Error('Canvas extension MCP server list is unavailable');
+                return this.options.listMcpServers(entry.owner);
             },
             ephemeralQuery: question => {
                 this.assertActive(entry);
