@@ -31,9 +31,9 @@ export function gitFileContextKey(source: Pick<GitFileContextDragPayload, 'sourc
     return JSON.stringify(['git-file', remote?.serverId ?? null, source.sourceWorkspaceId, source.revision ?? null, source.filePath]);
 }
 
-/** The open source-tab file a right-panel tab drag carries, or null when its owner is unknown or the path is not repo-relative. */
+/** Current workspace-file pointer; an explicit null owner pins page origin despite remote ID collisions. */
 export function createWorkingTreeFileContextPayload(tab: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; resourceId: string }): GitFileContextDragPayload | null {
-    const ownerKnown = tab.ownerRoutingRef != null || resolveCloneRoute(tab.ownerWorkspaceId).kind === 'local';
+    const ownerKnown = tab.ownerRoutingRef !== undefined || resolveCloneRoute(tab.ownerWorkspaceId).kind === 'local';
     return ownerKnown ? createGitFileContextPayload({
         kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1, sourceWorkspaceId: tab.ownerWorkspaceId,
         sourceRoutingRef: tab.ownerRoutingRef ?? null, filePath: tab.resourceId, side: 'working-tree',

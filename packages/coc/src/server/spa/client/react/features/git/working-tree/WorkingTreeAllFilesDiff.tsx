@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCocClient, useCloneBaseUrl } from '../../../repos/cloneRouting';
+import { useCommitContextOwner } from '../../chat/gitCommitContext';
 import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { ReviewFiles } from '../diff/ReviewFiles';
@@ -7,7 +8,7 @@ import { reviewFileKey } from '../diff/gitReviewFiles';
 import { useDirtyDetailGuard } from '../repoGitTab/useDirtyDetailGuard';
 import { WorkingTreeFileDiff, type WorkingTreeFileDiffProps } from './WorkingTreeFileDiff';
 import { workingTreeCommentContext } from './workingTreeCommentContext';
-import { hasMultipleRepos, relDisplayPath, repoRelative, type WorkingTreeChange } from './WorkingTree';
+import { hasMultipleRepos, relDisplayPath, repoRelative, workingChangeContextPayload, type WorkingTreeChange } from './WorkingTree';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
 import { useFileCommentComposer } from '../diff/fileCommentComposer';
@@ -60,6 +61,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const [dirty, setDirty] = useState(false);
     const guard = useDirtyDetailGuard(selected?.filePath ?? null);
     const panelHost = useUnifiedPanelHost();
+    const sourceOwner = useCommitContextOwner(workspaceId, attachmentDestinationId);
     const fileComment = useFileCommentComposer();
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
@@ -122,6 +124,12 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
             header={{ identity: <ReviewViewIdentity title="Uncommitted changes" viewId="working-changes" picker={props.switcher} />,
                 below: loaded && error
                 ? <div role="alert">{error} <button type="button" onClick={retry}>Retry</button></div> : undefined }}
+            rowDrag={file => {
+                const change = byKey.get(reviewFileKey(file));
+                // A retained dirty editor may outlive its entry in the refreshed status.
+                return change && changes.some(current => changeKey(current) === changeKey(change))
+                    ? workingChangeContextPayload(change, workspaceId, sourceOwner, props.repoRoot) : null;
+            }}
             rowDetails={file => <span className="git-review-muted">{file.label}</span>}
             rowMenu={(file, anchor) => {
                 const change = byKey.get(reviewFileKey(file));

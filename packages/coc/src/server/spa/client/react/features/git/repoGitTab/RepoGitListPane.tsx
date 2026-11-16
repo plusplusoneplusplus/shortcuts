@@ -302,6 +302,8 @@ export function RepoGitListPane(props: RepoGitListPaneProps) {
                 />
                 <WorkingTree
                     workspaceId={props.workspaceId}
+                    attachmentDestinationId={props.sourceSelectionId}
+                    repoRoot={props.repoRoot}
                     onRefresh={props.onRefresh}
                     onFileSelect={props.onWorkingTreeFileSelect}
                     selectedFilePath={props.selectedWorkingTreeFile}
