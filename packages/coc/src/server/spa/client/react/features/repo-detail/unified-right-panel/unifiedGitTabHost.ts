@@ -12,8 +12,8 @@
  * two sit in unrelated subtrees, so this is a tiny cross-tree store rather than
  * React context — the same reason the tab state itself is a store. The tab's
  * own *identity and address* are workspace-scoped `coc://git` page concerns
- * (`useSplitGitPanel`, `unifiedPanelWorkspaceResources.ts`); only this DOM-host
- * and dirty-bridge seam lives here.
+ * (`useSplitGitPanel`, `unifiedPanelWorkspaceResources.ts`); only this DOM-host,
+ * dirty-bridge and reload-request seam lives here.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -47,23 +47,46 @@ export function getUnifiedGitTabHost(scopeWorkspaceId: string): HTMLElement | nu
     return hosts.get(scopeWorkspaceId) ?? null;
 }
 
+function subscribe(scopeWorkspaceId: string, listener: () => void): () => void {
+    let set = listeners.get(scopeWorkspaceId);
+    if (!set) {
+        set = new Set();
+        listeners.set(scopeWorkspaceId, set);
+    }
+    set.add(listener);
+    return () => {
+        set!.delete(listener);
+        if (set!.size === 0) listeners.delete(scopeWorkspaceId);
+    };
+}
+
 /** Subscribe to a panel scope's Git tab body. Null while no Git tab is mounted. */
 export function useUnifiedGitTabHost(scopeWorkspaceId: string): HTMLElement | null {
     return useSyncExternalStore(
-        listener => {
-            let set = listeners.get(scopeWorkspaceId);
-            if (!set) {
-                set = new Set();
-                listeners.set(scopeWorkspaceId, set);
-            }
-            set.add(listener);
-            return () => {
-                set!.delete(listener);
-                if (set!.size === 0) listeners.delete(scopeWorkspaceId);
-            };
-        },
+        listener => subscribe(scopeWorkspaceId, listener),
         () => getUnifiedGitTabHost(scopeWorkspaceId),
         () => null,
+    );
+}
+
+/**
+ * The Git page's toolbar Reload. The tab body bumps its panel scope's request
+ * here; the `RepoGitTab` whose detail the page shows runs its own refresh.
+ */
+const reloadRequests = new Map<string, number>();
+
+/** Ask the panel scope's Git detail owner to refresh. */
+export function requestUnifiedGitTabReload(scopeWorkspaceId: string): void {
+    reloadRequests.set(scopeWorkspaceId, (reloadRequests.get(scopeWorkspaceId) ?? 0) + 1);
+    notify(scopeWorkspaceId);
+}
+
+/** A panel scope's reload request count; each change is one Reload. */
+export function useUnifiedGitTabReloadRequest(scopeWorkspaceId: string): number {
+    return useSyncExternalStore(
+        listener => subscribe(scopeWorkspaceId, listener),
+        () => reloadRequests.get(scopeWorkspaceId) ?? 0,
+        () => 0,
     );
 }
 

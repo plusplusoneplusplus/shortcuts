@@ -6,6 +6,10 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
+import { useCommitContextOwner } from '../../chat/gitCommitContext';
+import { createWorkingTreeFileContextPayload, gitFileContextScopeError } from '../../chat/gitFileContext';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner } from '../../../ui';
 import { copyToClipboard } from '../../../utils/format';
@@ -36,6 +40,8 @@ export interface WorkingTreeChange {
 
 interface WorkingTreeProps {
     workspaceId: string;
+    attachmentDestinationId?: string;
+    repoRoot?: string;
     /** Callback to trigger a full git data refresh in the parent. */
     onRefresh?: () => void;
     /** Callback when a file row is clicked — opens it in the right panel. */
@@ -68,6 +74,17 @@ export function repoRelative(absPath: string, repositoryRoot: string): string {
     const root = repositoryRoot.replace(/\\/g, '/').replace(/\/$/, '');
     const abs = absPath.replace(/\\/g, '/');
     return abs.startsWith(root + '/') ? abs.slice(root.length + 1) : abs;
+}
+
+/** Working changes attach the current disk file, never an index or historical substitute. */
+export function workingChangeContextPayload(change: WorkingTreeChange | undefined, workspaceId: string,
+    ownerRoutingRef: string | null | undefined, workspaceRoot?: string) {
+    if (!isSessionContextAttachmentsEnabled() || !change || normalizeStatus(change.status) === 'D') return null;
+    const payload = createWorkingTreeFileContextPayload({
+        ownerWorkspaceId: workspaceId, ownerRoutingRef,
+        resourceId: workspaceRoot ? repoRelative(change.filePath, workspaceRoot) : change.filePath,
+    });
+    return payload && !gitFileContextScopeError(payload, ownerRoutingRef) ? payload : null;
 }
 
 /**
@@ -339,7 +356,7 @@ export function CompactWorkingTreeSummary({ staged, modified, untracked }: { sta
     );
 }
 
-export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, onAllChangesClick, compact }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, attachmentDestinationId, repoRoot, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, onAllChangesClick, compact }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [changesLoaded, setChangesLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -357,18 +374,24 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     // Route every working-tree call to the selected clone's server (AC-07): a
     // remote clone hits its own origin; a local/unknown id resolves to the default.
-    const cloneClient = useCocClient(workspaceId);
+    const owner = useWorkspaceOwner(workspaceId);
+    const sourceOwner = useCommitContextOwner(workspaceId, attachmentDestinationId);
+    const cloneClient = useCocClient(owner?.selectionId ?? (attachmentDestinationId === workspaceId ? undefined : attachmentDestinationId ?? workspaceId));
 
+    // Only the newest read may paint: a refresh can overlap a slower earlier read.
+    const changesRequestRef = useRef(0);
     const fetchChanges = useCallback(() => {
+        const request = ++changesRequestRef.current;
         return cloneClient.git.getWorkingTreeChanges(workspaceId)
             .then(data => {
+                if (request !== changesRequestRef.current) return;
                 setChanges(data.changes ?? []);
                 setChangesLoaded(Array.isArray(data.changes));
                 setError(null);
                 setUntrackedTruncated(data.untrackedTruncated ?? false);
                 setUntrackedTotal(data.untrackedTotal ?? 0);
             })
-            .catch(err => setError(err.message || 'Failed to load changes'));
+            .catch(err => { if (request === changesRequestRef.current) setError(err.message || 'Failed to load changes'); });
     }, [workspaceId, cloneClient]);
 
     useEffect(() => {
@@ -520,6 +543,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         const fileChanges = toFileChanges(sectionChanges, multiRepo);
         // A partially staged path occurs in both sections with different actions.
         const changeLookup = new Map(sectionChanges.map(c => [relDisplayPath(c, multiRepo), c]));
+        const rowDrag = (file: FileChange) => workingChangeContextPayload(changeLookup.get(file.path), workspaceId, sourceOwner, repoRoot ?? owner?.rootPath);
         const handleSelect = (filePath: string) => {
             const change = changeLookup.get(filePath);
             if (change && onFileSelect) onFileSelect(change.filePath, change.stage);
@@ -543,6 +567,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
             return (
                 <FileTreeView
                     nodes={compactFolders(buildFileTree(fileChanges))}
+                    rowDrag={rowDrag}
                     onFileSelectSimple={onFileSelect ? handleSelect : undefined}
                     selectedFilePath={selectedDisplayPath}
                     fileCommentMap={new Map()}
@@ -555,6 +580,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         return (
             <FlatFileList
                 files={fileChanges}
+                rowDrag={rowDrag}
                 onFileSelect={onFileSelect ? handleSelect : () => {}}
                 selectedFilePath={selectedDisplayPath}
                 fileTestIdPrefix="working-tree-file-row"

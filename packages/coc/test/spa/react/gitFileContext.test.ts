@@ -86,6 +86,14 @@ describe('open source-tab file context (working tree)', () => {
         });
     });
 
+    it('keeps an explicit local owner when the same workspace ID exists remotely', () => {
+        registerCloneBaseUrls([{ workspaceId: 'member', serverId: 'remote', baseUrl: 'https://remote.example' }]);
+        expect(createWorkingTreeFileContextPayload(tab())).toBeNull();
+        expect(createWorkingTreeFileContextPayload(tab({ ownerRoutingRef: null }))).toMatchObject({
+            sourceWorkspaceId: 'member', sourceRoutingRef: null, side: 'working-tree',
+        });
+    });
+
     it('keeps the remote owner and rejects unknown owners or non-repo-relative paths', () => {
         const remoteRef = buildRemoteCloneKey('server-a', 'member');
         expect(createWorkingTreeFileContextPayload(tab({ ownerRoutingRef: remoteRef }))?.sourceRoutingRef).toBe(remoteRef);

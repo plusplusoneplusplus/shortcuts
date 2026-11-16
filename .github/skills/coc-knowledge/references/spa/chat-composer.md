@@ -490,17 +490,26 @@ and rename destination. Unknown owners and mutable refs disable dragging.
 Instructions require whole-file Git retrieval and prohibit working-tree or
 repository substitution; Explorer `FILE_PATH` drops retain plain-text insertion.
 
-### Source-tab file pointers
+### Working-tree file pointers
 
-`UnifiedPanelTabStrip.contextDragPayload` lets a tab drag also write the pointer
-MIME (no `text/plain`, so editors ignore it) with `copyMove`; reorder and split
-docking keep reading the tab id. `UnifiedRightPanel` supplies
-`createWorkingTreeFileContextPayload` for `file` tabs (including Markdown
-previews) while the attachments flag is on: a `git-file` pointer with
-`side: 'working-tree'`, no revision, the tab's owner workspace and
-`ownerRoutingRef`. Unknown owners and non-repo-relative paths disable it. The
-key's null revision keeps it distinct from reviewed snapshots; its instruction
-reads the current working-tree file in that concrete repository.
+`createWorkingTreeFileContextPayload` builds `git-file` pointers with
+`side: 'working-tree'`, no revision, and the concrete workspace/server owner.
+Explicit `null` pins page origin despite remote workspace-ID collisions;
+unknown owners and non-repo-relative paths disable dragging. Null revision
+separates current-file references from reviewed snapshots. Initial and follow-up
+composers share gating, limits and deduplication. Retrieval reads the current
+working file in its source repository and reports unavailable files without
+substituting another path, repository or snapshot.
+
+`UnifiedPanelTabStrip.contextDragPayload` adds that pointer MIME to `file` tab
+drags, including Markdown previews, while attachments are enabled. Its
+`copyMove` and omitted `text/plain` preserve tab reorder and split docking.
+`WorkingTree` flat/tree rows and `WorkingTreeAllFilesDiff` review rows use
+copy-only drags through `workingChangeContextPayload`. Paths are relative to
+the owning workspace root, including nested repositories; rename destinations
+are retained. Deleted files, paths outside the owner root and removed status
+entries retained for dirty editors cannot be dragged. Staged rows reference
+the current disk file, not index content.
 
 `ConversationTurnBubble` parses persisted blocks on user turns and renders collapsed cards
 showing pointer metadata plus a raw-block copy affordance; raw mode exposes the exact

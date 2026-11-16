@@ -18,7 +18,7 @@ export function UnifiedCocPage({ page, active, terminalOpenRequest, selectItemRe
     terminalOpenRequest: number;
     /** A `coc://todo/<itemId>` selection; see `UnifiedTodoTab`. */
     selectItemRequest: { id: string; nonce: number } | null;
-    /** Toolbar reload. Settings rebuilds its form; To-do and Canvas re-read. */
+    /** Toolbar reload. Settings rebuilds its form; To-do and Canvas re-read; Git refreshes its detail's repo. */
     reloadNonce?: number;
     onTodoSelectionChange(itemId: string | null): void;
     /** Live terminal sessions, so the panel can confirm before a close kills them. */
@@ -73,6 +73,7 @@ export function UnifiedCocPage({ page, active, terminalOpenRequest, selectItemRe
                 scopeWorkspaceId={page.ownerWorkspaceId}
                 onDirtyChange={onDirtyChange}
                 onRegisterSave={onRegisterSave}
+                reloadNonce={reloadNonce}
             />;
     }
 }

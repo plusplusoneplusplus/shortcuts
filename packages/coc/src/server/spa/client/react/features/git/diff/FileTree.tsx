@@ -14,6 +14,7 @@ import { TruncatedPath } from '../../../ui';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { copyToClipboard } from '../../../utils/format';
+import { writePointerContextDragData, type GitFileContextDragPayload } from '../../chat/sessionContextDrag';
 import type { HunkCategory } from '../../pull-requests/classification-types';
 import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
 
@@ -235,6 +236,8 @@ export interface FlatFileListProps {
     fileTestIdPrefix?: string;
     /** Render extra content below a file entry (e.g. inline diff). */
     renderFileExtra?: (file: FileChange) => React.ReactNode;
+    /** Optional file-context copy drag, supplied by the owning view. */
+    rowDrag?: (file: FileChange) => GitFileContextDragPayload | null;
     /** Trailing content per row — used by WorkingTree for action buttons. */
     renderActions?: (file: FileChange) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
@@ -328,6 +331,7 @@ export function FlatFileList({
     fileTestIdPrefix = 'flat-file-row',
     renderFileExtra,
     renderActions,
+    rowDrag,
     repoRoot,
     isFileDimmed,
     getFileBadge,
@@ -339,6 +343,7 @@ export function FlatFileList({
     return (
         <div className="flex flex-col gap-0.5" data-testid="flat-file-list">
             {files.map((file, i) => {
+                const payload = rowDrag?.(file);
                 const displayStatus = normalizeStatus(file.status);
                 const count = fileCommentMap.get(file.path) ?? 0;
                 const dimmed = isFileDimmed?.(file.path) ?? false;
@@ -351,6 +356,10 @@ export function FlatFileList({
                             className={`group w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
                                 selectedFilePath === file.path ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10' : ''
                             }`}
+                            draggable={!!payload}
+                            data-session-context-kind={payload ? 'git-file' : undefined}
+                            style={payload ? { cursor: 'copy' } : undefined}
+                            onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
                             onClick={() => onFileSelect(file.path)}
                             onContextMenu={(e) => {
                                 e.preventDefault();
@@ -440,6 +449,8 @@ interface FileTreeViewProps {
     fileTestIdPrefix?: string;
     /** Render extra content below a file entry (e.g. inline diff). */
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    /** Optional file-context copy drag, supplied by the owning view. */
+    rowDrag?: (file: FileChange) => GitFileContextDragPayload | null;
     /** Trailing content per row — used by WorkingTree for action buttons. */
     renderActions?: (node: FileNode) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
@@ -467,6 +478,7 @@ export function FileTreeView({
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
     renderActions,
+    rowDrag,
     repoRoot,
     isFileDimmed,
     getFileBadge,
@@ -491,6 +503,7 @@ export function FileTreeView({
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
+                        rowDrag={rowDrag}
                         repoRoot={repoRoot}
                         isFileDimmed={isFileDimmed}
                         getFileBadge={getFileBadge}
@@ -512,6 +525,7 @@ export function FileTreeView({
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
+                        rowDrag={rowDrag}
                         repoRoot={repoRoot}
                         isFileDimmed={isFileDimmed}
                         getFileBadge={getFileBadge}
@@ -537,6 +551,7 @@ function DirEntry({
     fileTestIdPrefix,
     renderFileExtra,
     renderActions,
+    rowDrag,
     repoRoot,
     isFileDimmed,
     getFileBadge,
@@ -554,6 +569,7 @@ function DirEntry({
     commentBadgeTestIdPrefix?: string;
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    rowDrag?: (file: FileChange) => GitFileContextDragPayload | null;
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
     isFileDimmed?: (filePath: string) => boolean;
@@ -592,6 +608,7 @@ function DirEntry({
                     fileTestIdPrefix={fileTestIdPrefix}
                     renderFileExtra={renderFileExtra}
                     renderActions={renderActions}
+                    rowDrag={rowDrag}
                     repoRoot={repoRoot}
                     isFileDimmed={isFileDimmed}
                     getFileBadge={getFileBadge}
@@ -616,6 +633,7 @@ function FileEntry({
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
     renderActions,
+    rowDrag,
     repoRoot,
     isFileDimmed,
     getFileBadge,
@@ -633,6 +651,7 @@ function FileEntry({
     commentBadgeTestIdPrefix?: string;
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    rowDrag?: (file: FileChange) => GitFileContextDragPayload | null;
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
     isFileDimmed?: (filePath: string) => boolean;
@@ -643,6 +662,7 @@ function FileEntry({
     const isActiveFile = onFileSelectSimple
         ? selectedFilePath === node.path
         : (selectedFile?.hash === commitHash && selectedFile?.filePath === node.path);
+    const payload = rowDrag?.(node);
     const count = fileCommentMap.get(node.path) ?? 0;
     const displayStatus = normalizeStatus(node.status);
     const dimmed = isFileDimmed?.(node.path) ?? false;
@@ -659,7 +679,10 @@ function FileEntry({
                         ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
                         : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
                 }`}
-                style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: dimmed ? 0.4 : 1 }}
+                style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: dimmed ? 0.4 : 1, cursor: payload ? 'copy' : undefined }}
+                draggable={!!payload}
+                data-session-context-kind={payload ? 'git-file' : undefined}
+                onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
                 onClick={(e) => {
                     e.stopPropagation();
                     if (onFileSelectSimple) {

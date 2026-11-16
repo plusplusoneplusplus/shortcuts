@@ -8,9 +8,10 @@ import '../language-servers/fileIdentityMock';
  *
  * @vitest-environment jsdom
  */
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -272,6 +273,25 @@ describe('source tab drag to chat context', () => {
 });
 
 describe('source split creation (AC-01)', () => {
+    it('closes the rendered file pane clicked most recently, leaving its peer open', async () => {
+        applyRuntimeConfigPatch({ markdownPanelPreviewEnabled: true });
+        const a = openFile('AGENTS.md');
+        const b = openFile('README.md');
+        renderPanel();
+        Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+        await screen.findByTestId('preview-markdown');
+        openToRightFromMenu(a);
+        await waitFor(() => expect(screen.getAllByTestId('preview-markdown')).toHaveLength(2));
+        expect(readSourceSplit(splitKey)?.focus).toBe('right');
+        await userEvent.click(within(view(b)).getByTestId('preview-markdown'));
+        expect(readSourceSplit(splitKey)?.focus).toBe('left');
+        const event = new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true, cancelable: true });
+        act(() => { document.activeElement!.dispatchEvent(event); });
+        expect(event.defaultPrevented).toBe(true);
+        expect(screen.queryByTestId(`unified-panel-tab-${b}`)).toBeNull();
+        expect(screen.getByTestId(`unified-panel-tab-${a}`)).toBeTruthy();
+    });
+
     it('drags a file tab to the right edge to show two panes with a divider', async () => {
         const a = openFile('src/a.ts');
         const b = openFile('src/b.ts');

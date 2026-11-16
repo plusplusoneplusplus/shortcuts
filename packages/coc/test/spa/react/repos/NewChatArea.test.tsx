@@ -161,6 +161,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
     const makeClient = (baseUrl?: string) => ({
         options: { baseUrl: baseUrl ?? '', apiBasePath: '/api' },
+        git: { getWorkingTreeChanges: async () => ({ changes: workingChangesDrag.changes }), listDiffComments: async () => ({ comments: [] }) },
         health: { get: async () => (await mockFetch(`${baseUrl ?? ''}/api/health`)).json() },
         request: async (path: string) => (await mockFetch(`${baseUrl ?? ''}/api${path}`)).json(),
         queue: {
@@ -3851,5 +3852,64 @@ describe('Changed-files sidebar → initial chat', () => {
         });
         expect(prompt).toContain('Read the entire file at the exact revision and path');
         expect(mockEnqueueBaseUrls.at(-1)).toBe(remote ? 'https://files.example' : undefined);
+    });
+});
+
+const { workingChangesDrag } = vi.hoisted(() => ({ workingChangesDrag: { changes: [] as any[] } }));
+vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({ WorkingTreeFileDiff: () => null }));
+import { WorkingTree } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTree';
+import { WorkingTreeAllFilesDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff';
+
+describe.each(['all', 'sidebar'] as const)('working changes %s → initial composer', view => {
+    it.each([false, true])('sends the renamed member working file with exact owner (remote=%s)', async remote => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const member = 'ws-member';
+        const owner = remote ? buildRemoteCloneKey('working-server', member) : member;
+        const destination = remote ? buildRemoteCloneKey('working-server', 'ws-1') : 'ws-1';
+        // Colliding remote IDs must not steal an explicitly local source or destination.
+        registerCloneBaseUrls([member, 'ws-1'].map(workspaceId => ({ workspaceId, serverId: 'working-server', baseUrl: 'https://working.example' })));
+        workingChangesDrag.changes = [{ filePath: '/member/src/renamed.ts', oldPath: '/member/src/old.ts',
+            repositoryRoot: '/member', repositoryName: 'member', status: 'R100', stage: 'staged' }];
+        await act(async () => { render(<>
+            {view === 'all'
+                ? <WorkingTreeAllFilesDiff workspaceId={member} attachmentDestinationId={owner} repoRoot="/member" />
+                : <WorkingTree workspaceId={member} attachmentDestinationId={owner} repoRoot="/member" />}
+            <WorkspaceOwnerContext.Provider value={{ workspaceId: 'ws-1', selectionId: destination, baseUrl: remote ? 'https://working.example' : undefined }}>
+                <NewChatArea workspaceId="ws-1" sourceSelectionId={destination} />
+            </WorkspaceOwnerContext.Provider>
+        </>); });
+        const row = view === 'all'
+            ? screen.getByRole('complementary', { name: 'Changed files' }).querySelector('[data-file-path]')!
+            : screen.getByTestId('working-tree-file-row-src/renamed.ts');
+        const store = new Map<string, string>();
+        const dataTransfer = {
+            effectAllowed: 'none', dropEffect: 'none',
+            setData: (key: string, value: string) => store.set(key, value),
+            getData: (key: string) => store.get(key) ?? '',
+            get types() { return [...store.keys()]; },
+        };
+        fireEvent.dragStart(row, { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        const target = screen.getByTestId('chat-input-stack');
+        fireEvent.dragOver(target, { dataTransfer });
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+        fireEvent.drop(target, { dataTransfer });
+        expect(await screen.findByTestId('attached-git-file-context-chip')).toBeTruthy();
+        fireEvent.drop(target, { dataTransfer });
+        expect(screen.getAllByTestId('attached-git-file-context-chip')).toHaveLength(1);
+        expect(screen.getByTestId('new-chat-session-context-error').textContent).toContain('already attached');
+        fireEvent.click(screen.getByTestId('attached-context-remove'));
+        fireEvent.drop(target, { dataTransfer });
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Explain this working file' } });
+        fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalled());
+        const prompt = mockEnqueueTask.mock.calls.at(-1)![0].payload.prompt;
+        const pointer = parseAttachedSessionContextBlocks(prompt).pointerContexts[0];
+        expect(pointer).toMatchObject({ kind: 'git-file', sourceWorkspaceId: member,
+            sourceRoutingRef: remote ? owner : null, filePath: 'src/renamed.ts', side: 'working-tree' });
+        expect(pointer.revision).toBeUndefined();
+        expect(prompt).toContain('read the current file at path');
+        expect(prompt).toContain('If unavailable, report it.');
+        expect(mockEnqueueBaseUrls.at(-1)).toBe(remote ? 'https://working.example' : undefined);
     });
 });

@@ -89,6 +89,16 @@ address, else the remembered per-group pick; `RepoGroupGitTab` writes that pick
 into an already open page in place (`setGitPageMember`) and never opens,
 focuses or reveals the page just because the group is shown.
 
+### Refresh and panel Reload
+
+`refreshAll`'s in-progress guard covers history and branch range only; every call
+still re-reads working changes and repo state, whose readers drop superseded
+replies. The panel's `coc://git` Reload bumps a per-scope request in
+`unifiedGitTabHost`; `useSplitGitPanel.reloadRequest` makes the `RepoGitTab` whose
+detail the page shows (`detailOpen`) run `refreshAll`. A refreshed or retried
+working-changes review reads with `refresh: true`, so a failed status shows an
+error beside the last list instead of an empty review.
+
 ### Commit review lifetime
 
 `RepoGitDetailPane` keys its review host by concrete clone owner and commit, owns shared

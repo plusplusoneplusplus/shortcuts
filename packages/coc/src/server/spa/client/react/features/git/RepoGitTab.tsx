@@ -121,6 +121,12 @@ interface RepoGitTabProps {
      */
     viewScopeKey?: string | null;
     /**
+     * The host's reload request (the right panel Git page's Reload). Each change
+     * runs `refreshAll` while the host shows this detail (`detailOpen`); the
+     * value seen at mount never does.
+     */
+    reloadRequest?: number;
+    /**
      * Portal target inside the split panel's "Git" section header. When set
      * (split-workspace only), the compact `GitPanelHeader` toolbar renders
      * there instead of as its own row, saving the toolbar's full height.
@@ -150,7 +156,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, reloadRequest, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -303,6 +309,16 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
         wasDetailOpenRef.current = detailOpen;
         if (wasOpen === true && detailOpen === false) clearSelection();
     }, [detailOpen, clearSelection]);
+
+    // The host's Reload refreshes the repo whose detail it shows: the same local
+    // reads as the toolbar refresh, which re-read the list and the open diff.
+    const appliedReloadRef = useRef(reloadRequest);
+    const refreshAll = data.refreshAll;
+    useEffect(() => {
+        if (appliedReloadRef.current === reloadRequest) return;
+        appliedReloadRef.current = reloadRequest;
+        if (detailOpen) refreshAll();
+    }, [reloadRequest, detailOpen, refreshAll]);
 
     const sourceWorkspace = useMemo(
         () => state.workspaces.find((w: any) => w.id === workspaceId),

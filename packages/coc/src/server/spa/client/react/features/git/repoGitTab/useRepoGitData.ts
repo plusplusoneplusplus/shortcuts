@@ -323,6 +323,10 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     searchQueryRef.current = searchQuery;
 
     const refreshAll = useCallback((options?: RefreshSelectionOptions) => {
+        // Working-tree and repo-state reads drop superseded replies, so every
+        // refresh re-reads them, even while a history refresh is in flight.
+        bumpWorkingChanges();
+        fetchRepoState();
         if (refreshingRef.current) return;
         refreshingRef.current = true;
         const ownerGeneration = ownerGenerationRef.current;
@@ -333,8 +337,6 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
             searchDebounceRef.current = null;
         }
         setSkip(0);
-        bumpWorkingChanges();
-        fetchRepoState();
         const viewBeforeRefresh = selection.getView();
         const prevSelectedHash = selectedCommitHashOf(viewBeforeRefresh);
         if (prevSelectedHash) {

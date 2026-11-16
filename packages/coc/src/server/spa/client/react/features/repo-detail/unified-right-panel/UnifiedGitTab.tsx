@@ -11,8 +11,8 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import {
-    clearUnifiedGitTabDirtyBridge, clearUnifiedGitTabHost, setUnifiedGitTabDirtyBridge, setUnifiedGitTabHost,
-    type UnifiedGitTabDirtyBridge,
+    clearUnifiedGitTabDirtyBridge, clearUnifiedGitTabHost, requestUnifiedGitTabReload, setUnifiedGitTabDirtyBridge,
+    setUnifiedGitTabHost, type UnifiedGitTabDirtyBridge,
 } from './unifiedGitTabHost';
 
 export interface UnifiedGitTabProps {
@@ -22,9 +22,17 @@ export interface UnifiedGitTabProps {
     onDirtyChange?: (isDirty: boolean) => void;
     /** The panel's save registration for this tab (bound to its id). */
     onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    /** The page toolbar's Reload; each change refreshes the portaled detail's owner. */
+    reloadNonce?: number;
 }
 
-export function UnifiedGitTab({ scopeWorkspaceId, onDirtyChange, onRegisterSave }: UnifiedGitTabProps) {
+export function UnifiedGitTab({ scopeWorkspaceId, onDirtyChange, onRegisterSave, reloadNonce = 0 }: UnifiedGitTabProps) {
+    const appliedReload = useRef(reloadNonce);
+    useEffect(() => {
+        if (appliedReload.current === reloadNonce) return;
+        appliedReload.current = reloadNonce;
+        requestUnifiedGitTabReload(scopeWorkspaceId);
+    }, [reloadNonce, scopeWorkspaceId]);
     const callbacksRef = useRef({ onDirtyChange, onRegisterSave });
     callbacksRef.current = { onDirtyChange, onRegisterSave };
     const nodeRef = useRef<HTMLDivElement | null>(null);

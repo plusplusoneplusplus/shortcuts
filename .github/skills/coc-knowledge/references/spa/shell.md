@@ -1346,7 +1346,8 @@ Terminal, Settings, To-do and Canvas exist only as `coc://settings`, `coc://term
 `coc://todo[/<itemId>]` and `coc://canvas/<canvasId>` pages in web tabs, like `chrome://` pages: the same
 toolbar, the existing view in place of the web content, and back/forward across
 web and `coc://` steps. Toolbar reload remounts Terminal; Settings rebuilds its
-form and re-reads git info, To-do refreshes its ledger, and Canvas re-reads its record. The owner comes from the panel (the text never names
+form and re-reads git info, To-do refreshes its ledger, Canvas re-reads its record, and
+Git runs its detail owner's `refreshAll`. The owner comes from the panel (the text never names
 one); the `+` menu and outside links open or focus a web tab at the address.
 Web tabs persist only while they show a `coc://` page. `coc://` never reaches
 the engine; see `unified-right-panel/AGENTS.md`.
@@ -1400,8 +1401,9 @@ guards as their close buttons. Desktop menus leave Ctrl/Cmd+W unbound to window
 close, including Linux; explicit Close and Quit retain their native actions.
 Electron URL/HTML guests and Windows WebView2 forward native close requests to
 the owning renderer, which accepts only the matching active, visible view.
-Git's portal host takes focus on clicks in nonfocusable diff content; editor and
-control focus stay intact. Plain Ctrl+W in the active terminal keeps its shell
+File-view containers accept native pointer focus on rendered content without
+adding Tab stops. Git's portal host takes focus on nonfocusable diff content;
+nested editors and controls keep their own focus. Plain Ctrl+W in the active terminal keeps its shell
 binding. The tab strip's accessible context menu provides
 preview promotion, visible-strip bulk close commands, path copy for files and
 Markdown notes, and file-only Explorer reveal. Bulk close targets span the tools/resources divider in

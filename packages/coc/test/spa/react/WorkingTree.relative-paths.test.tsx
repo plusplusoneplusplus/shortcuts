@@ -200,4 +200,27 @@ describe('WorkingTree relative-path rows', () => {
         expect(await screen.findByRole('img', { name: 'unstaged: 5 lines added, 1 lines deleted' })).toBeTruthy();
     });
 
+    it('paints only the newest read when refreshes overlap, including a late failure', async () => {
+        h.getWorkingTreeChanges.mockResolvedValue({ changes: [change({ filePath: '/repo/first' })], repoState: {} });
+        const { rerender } = render(<WorkingTree workspaceId="ws-1" refreshKey={0} />);
+        await screen.findByTestId('working-tree-file-row-first');
+        let resolveOld!: (value: unknown) => void;
+        let rejectOld!: (error: Error) => void;
+        h.getWorkingTreeChanges
+            .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }))
+            .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }))
+            .mockResolvedValueOnce({ changes: [change({ filePath: '/repo/newest' })], repoState: {} });
+        rerender(<WorkingTree workspaceId="ws-1" refreshKey={1} />);
+        rerender(<WorkingTree workspaceId="ws-1" refreshKey={2} />);
+        rerender(<WorkingTree workspaceId="ws-1" refreshKey={3} />);
+        await screen.findByTestId('working-tree-file-row-newest');
+        await act(async () => {
+            resolveOld({ changes: [change({ filePath: '/repo/stale' })], repoState: {} });
+            rejectOld(new Error('stale failure'));
+        });
+        expect(screen.queryByTestId('working-tree-file-row-stale')).toBeNull();
+        expect(screen.queryByText('stale failure')).toBeNull();
+        expect(screen.getByTestId('working-tree-file-row-newest')).toBeTruthy();
+    });
+
 });
