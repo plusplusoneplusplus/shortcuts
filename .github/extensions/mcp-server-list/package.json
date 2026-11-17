@@ -1,0 +1,6 @@
+{
+  "name": "mcp-server-list",
+  "private": true,
+  "type": "module",
+  "description": "List the session MCP servers and tools (grouped into built-in and MCP) through the Copilot SDK session RPCs."
+}

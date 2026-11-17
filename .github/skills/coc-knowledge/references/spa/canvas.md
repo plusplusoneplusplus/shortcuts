@@ -156,6 +156,10 @@ the content hash covers only `extension.mjs` and `package.json`.
 `.github/extensions/coc-chat-viewer` shows a transcript by process ID through the
 tool-script bridge calling `get_conversation` (marked `readOnly` for this);
 `coc-chat-viewer.test.ts` runs it through the real host and owner runtime.
+`.github/extensions/mcp-server-list` uses only the Copilot SDK: `session.rpc.mcp.list()`
+for servers and `session.rpc.tools.getCurrentMetadata()` for tools, grouped into
+built-in and per-server MCP by `mcpServerName`; `mcp-server-list.test.ts` runs it under
+a fake Copilot CLI parent and the real host.
 
 `extension-host.ts` provides the flag-gated stdio runtime. It starts
 `process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
@@ -170,8 +174,19 @@ The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It capt
 open/action/close requests. The encoded conversation directory is shared by its
 extensions and persists across runtime restarts. Session workspace files remain
 machine-local, excluded from snapshots and included in data wipe.
-`session.send` and ephemeral queries use required conversation-bound callbacks;
-session IDs are checked before dispatch. Session logs and stderr carry the extension
+`session.send`, ephemeral queries and `session.mcp.list` use conversation-bound
+callbacks; session IDs are checked before dispatch. `canvas-extensions/mcp-server-list.ts`
+answers `session.mcp.list` from `resolveWorkspaceMcp` for the owner workspace (group
+member union included): `{ servers: [{ name, status, source }] }`, with `global` as
+`user` and workspace/member as `workspace`. CoC holds no live MCP connections, so
+enabled servers are `pending` and ones outside `enabledMcpServers` are `disabled`.
+No config, env, headers or Copilot `host` field is returned.
+`canvas-extensions/tool-metadata.ts` answers `session.tools.getCurrentMetadata` from
+the conversation's latest captured `ConversationToolInventoryStore` snapshot (queue
+ids fall back to the task id): `{ name, description, mcpServerName? }`, with
+`mcpServerName` only on MCP tools, so CoC tools group with built-ins. No capture yet
+gives `{ tools: null }`; schemas are not sent. `session.tools.initializeAndValidate`
+is a no-op because inventories are captured only when a provider turn starts. Session logs and stderr carry the extension
 key. Unsupported methods return MethodNotFound and log once per extension/method.
 Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
 terminate the child; idempotent disposal waits for exit with forced termination

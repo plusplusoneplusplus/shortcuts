@@ -13,6 +13,8 @@ import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
 import { validateCanvasManifestTools } from '../canvas/canvas-script-bridge';
 import type { OwnerToolScriptRequest, OwnerToolScriptOutcome } from '../canvas/owner-tool-script-service';
+import type { CanvasMcpServerList } from './mcp-server-list';
+import type { CanvasToolMetadataResult } from './tool-metadata';
 import { sessionWorkspacePath } from './session-workspace';
 
 const bundledRequire = createRequire(__filename);
@@ -29,6 +31,10 @@ export interface CanvasExtensionHostOptions {
     send: (prompt: string) => Promise<{ messageId: string }>;
     ephemeralQuery: (question: string) => Promise<{ answer: string }>;
     runScript?: (request: OwnerToolScriptRequest, tools: readonly string[], signal: AbortSignal) => Promise<OwnerToolScriptOutcome>;
+    /** Bound by the registry to the owning workspace's MCP configuration. */
+    listMcpServers?: () => Promise<CanvasMcpServerList>;
+    /** Bound by the registry to the owning conversation's captured tool inventory. */
+    getToolMetadata?: () => Promise<CanvasToolMetadataResult>;
     timeoutMs?: number;
 }
 
@@ -165,7 +171,8 @@ export class CanvasExtensionHost {
             return { protocolVersion: getSdkProtocolVersion() };
         }
         if (method.startsWith('coc.toolScripts.v1.')) return this.handleToolScript(method, raw);
-        const supported = ['session.resume', 'session.log', 'session.send', 'session.ui.ephemeralQuery'];
+        const supported = ['session.resume', 'session.log', 'session.send', 'session.ui.ephemeralQuery', 'session.mcp.list',
+            'session.tools.getCurrentMetadata', 'session.tools.initializeAndValidate'];
         if (!supported.includes(method)) {
             const key = `${this.options.extension.extensionKey}\0${method}`;
             if (!loggedUnknownMethods.has(key)) {
@@ -196,6 +203,16 @@ export class CanvasExtensionHost {
                 this.rejectReady(error instanceof Error ? error : new Error(String(error)));
                 throw error;
             }
+        }
+        if (method === 'session.mcp.list') {
+            if (!this.options.listMcpServers) throw new Error('Canvas extension MCP server list is unavailable');
+            return this.options.listMcpServers();
+        }
+        // CoC captures tools when a provider turn starts; it cannot build them on demand.
+        if (method === 'session.tools.initializeAndValidate') return {};
+        if (method === 'session.tools.getCurrentMetadata') {
+            if (!this.options.getToolMetadata) throw new Error('Canvas extension tool metadata is unavailable');
+            return this.options.getToolMetadata();
         }
         const field = method === 'session.log' ? 'message' : method === 'session.send' ? 'prompt' : 'question';
         if (typeof params[field] !== 'string') {
