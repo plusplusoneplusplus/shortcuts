@@ -57,6 +57,7 @@ case "$STUB_MODE" in
         ;;
     vuln)
         if [[ "$*" == *--json* ]]; then
+            [[ "$STUB_WARN" == "1" ]] && echo "npm warn install-scripts 1 package has install scripts" >&2
             cat "$STUB_JSON"
         else
             echo "# npm audit report"
@@ -72,6 +73,7 @@ function auditJson(...ghsaIds) {
     const via = ghsaIds.map((id, i) => ({
         source: 1000 + i,
         severity: "high",
+        title: "Unhandled `ECONNRESET` on a network socket returns 503 ",
         url: `https://github.com/advisories/${id}`,
     }));
     return JSON.stringify({ vulnerabilities: { "some-pkg": { severity: "high", via } } });
@@ -124,7 +126,7 @@ test("fails on an unreviewed blocking advisory", { skip }, () => {
     assert.notEqual(status, 0);
 });
 
-const reviewedAdvisories = ["GHSA-vfj7-8cjw-p6xm"];
+const reviewedAdvisories = ["GHSA-vfj7-8cjw-p6xm", "GHSA-fc5q-39xc-vjpf"];
 
 test("uses the same JSON report for the gate and reviewed exceptions without another endpoint request", { skip }, () => {
     const { status, calls } = runAudit({
@@ -166,6 +168,20 @@ test("locks http-cache-semantics outside the affected range", () => {
     assert.ok(found);
 });
 
+// GHSA-fc5q-39xc-vjpf has no patched picomatch, so it may only be accepted
+// while picomatch stays development-only.
+test("keeps unpatched picomatch out of the production lock graph", () => {
+    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+    for (const [path, pkg] of Object.entries(lock.packages)) {
+        if (/(^|\/)node_modules\/picomatch$/.test(path)) assert.equal(pkg.dev, true, `${path}: production picomatch`);
+        if (/(^|\/)node_modules\/sass$/.test(path)) assert.equal(pkg.optionalDependencies?.["@parcel/watcher"], undefined, path);
+        if (/(^|\/)node_modules\/immutable$/.test(path)) {
+            const [major, minor, patch] = pkg.version.split(".").map(Number);
+            assert.ok(major > 5 || (major === 5 && (minor > 1 || patch >= 8)) || (major === 4 && (minor > 3 || patch >= 9)), `${path}: prototype pollution`);
+        }
+    }
+});
+
 test("accepts only the reviewed development advisories by default", { skip }, () => {
     assert.equal(runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories }).status, 0);
     assert.notEqual(runAudit({
@@ -203,6 +219,24 @@ test("passes only when every blocking advisory is allowlisted", { skip }, () => 
         env: { AUDIT_ALLOWLIST: "GHSA-aaaa-bbbb-cccc" },
     });
     assert.notEqual(partial.status, 0);
+});
+
+// Regression: advisory titles naming network errors made real reports look
+// like endpoint outages, so the gate passed without classifying them.
+test("never treats an audit report as an endpoint outage", { skip }, () => {
+    const { status, output } = runAudit({ mode: "vuln", ghsaIds: ["GHSA-aaaa-bbbb-cccc"] });
+    assert.notEqual(status, 0);
+    assert.doesNotMatch(output, /advisory endpoint/);
+});
+
+test("ignores npm warnings on stderr when classifying the report", { skip }, () => {
+    const { status, output } = runAudit({
+        mode: "vuln", ghsaIds: ["GHSA-aaaa-bbbb-cccc"],
+        env: { AUDIT_ALLOWLIST: "GHSA-aaaa-bbbb-cccc", STUB_WARN: "1" },
+    });
+    assert.equal(status, 0);
+    assert.match(output, /reviewed allowlist/);
+    assert.match(output, /npm warn install-scripts/);
 });
 
 test("treats an advisory-endpoint outage as a transient failure, not a vulnerability", { skip }, () => {

@@ -45,8 +45,13 @@ endpoint_error_re='audit endpoint returned an error|Service Unavailable|Internal
 # - GHSA-vfj7-8cjw-p6xm (braces): dev glob tooling consumes repository patterns,
 #   not untrusted runtime requests. Excalidraw uses a Sass override that removes
 #   braces from the production graph.
+# Reviewed 2026-11-18; this advisory covers every picomatch release (<= 4.0.7):
+# - GHSA-fc5q-39xc-vjpf (picomatch): dev glob tooling (Vite, Vitest, chokidar)
+#   compiles repository patterns, not untrusted input. Excalidraw's Sass override
+#   (1.79.4, before the optional @parcel/watcher) keeps picomatch out of the
+#   production graph.
 # Advisory details: https://github.com/advisories/<GHSA-ID>.
-AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-vfj7-8cjw-p6xm}"
+AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-vfj7-8cjw-p6xm GHSA-fc5q-39xc-vjpf}"
 
 # Exit 0 iff `npm audit` reports at least one blocking (>= high) advisory AND
 # every blocking advisory is in AUDIT_ALLOWLIST. Any non-allowlisted blocking
@@ -89,17 +94,38 @@ blocking_advisories_all_allowlisted() {
     '
 }
 
+# Exit 0 iff stdout is a parsed audit report. Advisory titles can mention
+# network errors (e.g. "Unhandled `ECONNRESET`"), so a report is never an outage.
+is_audit_report() {
+    printf '%s' "$1" | node -e '
+        let raw = "";
+        process.stdin.on("data", d => (raw += d));
+        process.stdin.on("end", () => {
+            try {
+                const data = JSON.parse(raw);
+                process.exit(data && typeof data.vulnerabilities === "object" && !data.error ? 0 : 1);
+            } catch { process.exit(1); }
+        });
+    '
+}
+
+errfile="$(mktemp)"
+trap 'rm -f "$errfile"' EXIT
+
 for i in $(seq 1 "$attempts"); do
     # Use one snapshot for retry classification and the reviewed exceptions.
-    out="$(npm audit --json --audit-level=high "$@" 2>&1)"
+    # stderr stays separate so npm warnings cannot corrupt the JSON report.
+    out="$(npm audit --json --audit-level=high "$@" 2>"$errfile")"
     code=$?
+    err="$(cat "$errfile")"
     printf '%s\n' "$out"
+    [ -z "$err" ] || printf '%s\n' "$err" >&2
 
     if [ "$code" -eq 0 ]; then
         exit 0
     fi
 
-    if printf '%s' "$out" | grep -qiE "$endpoint_error_re"; then
+    if ! is_audit_report "$out" && printf '%s\n%s' "$out" "$err" | grep -qiE "$endpoint_error_re"; then
         echo "::warning::npm audit advisory endpoint error (attempt ${i}/${attempts})."
         if [ "$i" -lt "$attempts" ]; then
             sleep "$delay"

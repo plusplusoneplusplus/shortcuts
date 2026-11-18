@@ -61,7 +61,9 @@ configured worker limits.
 CI audits production, full npm, SkillOpt and Rust dependency graphs.
 `scripts/ci-npm-audit.sh` retries npm advisory endpoint failures and permits only
 reviewed development advisories without patched releases; production audits
-cannot use its allowlist. Regression tests live in `scripts/ci-npm-audit.test.mjs`.
+cannot use its allowlist. A parsed audit report is never treated as an endpoint
+outage, and stderr stays out of the JSON it classifies. Regression tests live in
+`scripts/ci-npm-audit.test.mjs`.
 
 ### Dependency order
 
