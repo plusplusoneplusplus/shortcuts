@@ -56,6 +56,7 @@ import type { OwnerScriptRunner } from './owner-script-runner';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import type { ConversationToolInventoryStore } from '../storage/conversation-tool-inventory-store';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Feature dependency bundles
@@ -116,6 +117,8 @@ export interface InFlightTurn {
     readonly controller: AbortController;
     /** Session this turn runs in, set as soon as the provider reports it. */
     sessionId?: string;
+    /** Captures and commits a rendering boundary in the executor owning this turn. */
+    steer?: (steeringId: string, dispatch: () => Promise<boolean>) => Promise<SteeringBoundary | false>;
 }
 
 export interface ExecutorRuntimeCapabilities {

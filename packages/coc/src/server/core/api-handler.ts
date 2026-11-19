@@ -36,6 +36,7 @@ import { registerNoteChatBindingRoutes } from '../notes/note-chat-bindings-handl
 import type { ApiRouteContext } from '../routes/api-shared';
 import { GIT_MAX_BUFFER } from '../routes/api-shared';
 import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -60,7 +61,7 @@ export interface QueueExecutorBridge {
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
     /** Steer a running process by injecting an immediate message into its SDK session. */
-    steerProcess?(processId: string, message: string): Promise<boolean>;
+    steerProcess?(processId: string, message: string, steeringId?: string): Promise<boolean | SteeringBoundary>;
     /** Update the displayName of a queue task associated with a process. */
     updateTaskDisplayName?(processId: string, displayName: string, extras?: { customTitle?: string; lastMessagePreview?: string }): boolean;
     /** Subscribe to queue change events (e.g. task completed/failed) for task monitoring. */

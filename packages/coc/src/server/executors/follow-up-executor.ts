@@ -54,7 +54,6 @@ import { buildConversationHandoff, conversationHandoffOmittedHistory } from './c
 import { resolveContinuationMode } from './continuation-mode';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
-import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { resolveAdditionalInstructionsBlock, withAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import {
@@ -816,11 +815,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             let result: SDKInvocationResult;
             result = await followUpAiService.sendMessage(sendOptions)
                 .finally(() => inventoryCapture?.dispose()) as SDKInvocationResult;
-
-            if (resolvedDeliveryMode === 'immediate') {
-                const turnIndex = process.conversationTurns?.length ?? 0;
-                emitMessageSteering(this.store, processId, { turnIndex: turnIndex - 1 });
-            }
+            await this.settleSteering(processId);
 
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
@@ -961,6 +956,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             this.onTitleNeeded?.(processId, allTurns);
 
         } catch (error) {
+            await this.settleSteering(processId);
             const errorMsg = error instanceof Error ? error.message : String(error);
             const duration = Date.now() - startTime;
             const failedAt = new Date();

@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'crypto';
 import type {
-    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata, TurnSource,
+    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata, TurnSource, ConversationTurn,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -35,6 +35,7 @@ import type { FileAttachmentMeta } from '../core/attachment-utils';
 import type { SentinelMirrorService } from '../messaging/sentinel-mirror-service';
 import type { SentinelMirrorEntry } from '../messaging/sentinel-mirror-outbox';
 import type { MirrorUploadSource } from '../messaging/sentinel-mirror-attachments';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 
 /** Non-terminal statuses where a task may still be executing (mirrors the route). */
 const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
@@ -288,7 +289,7 @@ export type DeliveryPath = 'steered' | 'buffered' | 'enqueued' | 'direct-execute
 export type DeliveryEvent =
     | { kind: 'pending-message-added'; pendingMessage: PendingMessage }
     | { kind: 'message-queued'; turnIndex: number; deliveryMode: 'immediate' | 'enqueue'; delivered: 'steered' | 'queued'; queuePosition: number; optimisticId?: string }
-    | { kind: 'message-steering'; turnIndex: number; optimisticId?: string };
+    | { kind: 'message-steering'; turnIndex: number; optimisticId?: string; boundary?: SteeringBoundary; userTurn?: ConversationTurn };
 
 export interface DeliveryResult {
     path: DeliveryPath;
@@ -302,6 +303,8 @@ export interface DeliveryResult {
     taskId?: string;
     pasteExternalized: boolean;
     events: DeliveryEvent[];
+    boundary?: SteeringBoundary;
+    userTurn?: ConversationTurn;
 }
 
 /** Emit accepted admission intents; reused receipts contain no intents. */
@@ -681,6 +684,9 @@ export class ProcessMessageDeliveryService {
         let pendingMessageId: string | undefined;
         let taskId: string | undefined;
         let steerSucceeded = false;
+        let steeringId: string | undefined;
+        let steeringBoundary: SteeringBoundary | undefined;
+        let steeredUserTurn: ConversationTurn | undefined;
 
         // Buffer a follow-up as a pending message for server-side drain. The user
         // turn is NOT appended here — it is deferred until drainPendingMessages
@@ -736,13 +742,15 @@ export class ProcessMessageDeliveryService {
                     // A steer joins the running turn and carries no style block;
                     // the selection rides metadataUpdate, so the next real turn
                     // applies it.
-                    const steered = await this.bridge.steerProcess(id, input.content);
+                    steeringId = input.optimisticId ?? this.newId();
+                    const steered = await this.bridge.steerProcess(id, input.content, steeringId);
                     if (!steered) {
                         // No live turn accepted it (ended, settling, or provider
                         // cannot steer); buffer for server-side drain.
                         await bufferAsPendingMessage();
                     } else {
                         steerSucceeded = true;
+                        if (typeof steered === 'object') steeringBoundary = steered;
                         path = 'steered';
                     }
                 } else if (
@@ -833,7 +841,17 @@ export class ProcessMessageDeliveryService {
                     turnIndex: idx,
                     ...requestCorrelation,
                     ...(input.turnSource ? { turnSource: input.turnSource } : {}),
-                    timeline: [],
+                    timeline: steerSucceeded ? [{
+                        type: 'steering' as const,
+                        steeringId,
+                        ...(steeringBoundary ? {
+                            contentOffset: steeringBoundary.contentOffset,
+                            timelineIndex: steeringBoundary.timelineIndex,
+                            eventOffset: steeringBoundary.eventOffset,
+                        } : {}),
+                        timestamp: steeringBoundary ? new Date(steeringBoundary.timestamp) : this.now(),
+                    }] : [],
+                    ...(steerSucceeded ? { optimisticId: steeringId, steered: true } : {}),
                     images: input.images,
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                     ...(input.model ? { model: input.model } : {}),
@@ -847,9 +865,10 @@ export class ProcessMessageDeliveryService {
                         input.provider === activeBinding.provider ? activeBinding.segmentId : undefined,
                     ),
                 }),
-                { additionalUpdates: { status: 'running' } },
+                steerSucceeded ? undefined : { additionalUpdates: { status: 'running' } },
             );
             turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
+            if (steerSucceeded) steeredUserTurn = appendResult?.turn;
             if (mirror && appendResult) this.sentinelMirror!.accepted(mirror);
         }
         if (path === 'direct-executed') {
@@ -879,11 +898,15 @@ export class ProcessMessageDeliveryService {
             events.push({
                 kind: 'message-steering',
                 turnIndex,
-                ...(input.optimisticId !== undefined ? { optimisticId: input.optimisticId } : {}),
+                optimisticId: steeringId,
+                ...(steeringBoundary ? { boundary: steeringBoundary } : {}),
+                ...(steeredUserTurn ? { userTurn: steeredUserTurn } : {}),
             });
         }
 
         return { path, turnIndex, ...(pendingMessageId ? { pendingMessageId } : {}),
+            ...(steeringBoundary ? { boundary: steeringBoundary } : {}),
+            ...(steeredUserTurn ? { userTurn: steeredUserTurn } : {}),
             ...(taskId ? { taskId } : {}), pasteExternalized: input.pasteExternalized, events };
     }
 }

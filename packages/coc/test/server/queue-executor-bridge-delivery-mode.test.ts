@@ -128,22 +128,21 @@ describe('executeFollowUp — deliveryMode', () => {
         expect(opts.deliveryMode).toBe('enqueue');
     });
 
-    it('emits message-steering SSE event for immediate mode', async () => {
+    it('does NOT emit a late message-steering event after an immediate-mode turn', async () => {
+        // The delivery service emits message-steering when the steer is
+        // accepted, carrying the rendering boundary. A second event from the
+        // executor after the turn finishes would land out of order and break
+        // chronological steered sections.
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         await store.addProcess(proc);
 
         await executor.executeFollowUp('proc-1', 'steer', undefined, undefined, 'immediate');
 
-        // Check that emitProcessEvent was called with a message-steering event
         const steeringCalls = vi.mocked(store.emitProcessEvent).mock.calls.filter(
             ([, event]) => event.type === 'message-steering',
         );
-        expect(steeringCalls.length).toBe(1);
-        expect(steeringCalls[0][0]).toBe('proc-1');
-        expect(steeringCalls[0][1]).toMatchObject({
-            type: 'message-steering',
-        });
+        expect(steeringCalls.length).toBe(0);
     });
 
     it('does NOT emit message-steering for enqueue mode', async () => {

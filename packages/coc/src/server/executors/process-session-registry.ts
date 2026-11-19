@@ -12,6 +12,9 @@ export interface StreamingTurnState {
     timelineBuffer: TimelineItem[];
     throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
     turnFinalized: boolean;
+    steeringClosed?: boolean;
+    pendingSteering: Set<Promise<unknown>>;
+    pendingSteeringMarkers: Set<TimelineItem>;
     /** Approval-gate outcomes for this turn's tool calls, keyed by toolCallId. */
     toolApprovalOutcomes: Map<string, ToolCallApprovalOutcome>;
 }
@@ -61,6 +64,8 @@ function createStreamingTurnState(): StreamingTurnState {
         timelineBuffer: [],
         throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
         turnFinalized: false,
+        pendingSteering: new Set(),
+        pendingSteeringMarkers: new Set(),
         toolApprovalOutcomes: new Map(),
     };
 }

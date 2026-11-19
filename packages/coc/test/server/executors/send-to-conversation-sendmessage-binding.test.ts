@@ -147,7 +147,9 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
         expect(result.error).toBeUndefined();
         expect(result.turnIndex).toBe(0);
         // Steered, not enqueued.
-        expect(bridge.steerProcess).toHaveBeenCalledWith('queue_run', 'steer me');
+        // The delivery service mints a steering id so the executor can record
+        // the rendering boundary for this steer.
+        expect(bridge.steerProcess).toHaveBeenCalledWith('queue_run', 'steer me', expect.any(String));
         expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 

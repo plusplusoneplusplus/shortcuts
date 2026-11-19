@@ -1497,6 +1497,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 processId: id,
                 turnIndex: result.turnIndex,
                 delivery: result.path === 'steered' ? 'steered' : 'queued',
+                ...(result.boundary ? { boundary: result.boundary } : {}),
+                ...(result.userTurn ? { userTurn: result.userTurn } : {}),
                 ...(result.pasteExternalized ? { pasteExternalized: true } : {}),
             });
         },

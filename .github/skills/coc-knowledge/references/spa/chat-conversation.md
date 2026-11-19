@@ -60,6 +60,13 @@ conversation provider only for unattributed records. `ConversationArea` derives 
 non-persisted `Continued with <Provider>` separator before the first assistant response
 of each provable provider segment. Error and script-output turns keep their own palettes.
 
+`steeringSections.ts` projects accepted `steering` timeline markers into chronological
+assistant sections interleaved with their correlated user turns. Sections retain the canonical
+turn index and provider; copy/raw and turn actions use the full logical response. Each tool's
+start, progress and completion stay with its original card, including nested task output.
+Only the final section shows live/completion state. Pending or failed sends have no accepted
+marker. Persisted markers reproduce the same sections on history hydration and reload.
+
 `AssistantStatsBadge` reads per-turn token usage and elapsed time in the shared bubble
 across chat modes and pop-outs. It reuses `ContextUsagePopover`'s token formatter and
 button reset, retains exact cache/total/time details, and exposes disclosure state to

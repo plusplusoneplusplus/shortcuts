@@ -89,6 +89,23 @@ describe('SSE message-queued events', () => {
         expect(payload.optimisticId).toBe('opt-abc-123');
     });
 
+    it('relays authoritative steering boundaries and user turns after intervening chunks', async () => {
+        const proc = createProcessFixture({ id: 'steering-live', status: 'running' });
+        store.processes.set(proc.id, proc);
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, proc.id, store);
+        const boundary = { steeringId: 'steer-id', contentOffset: 6, timelineIndex: 2, timestamp: new Date().toISOString() };
+        const userTurn = { role: 'user' as const, turnIndex: 2, content: 'change direction',
+            timestamp: new Date(), timeline: [], optimisticId: 'steer-id', steered: true };
+        outputCallback!({ type: 'chunk', content: 'during provider acknowledgement' });
+        outputCallback!({ type: 'message-steering', turnIndex: 2, optimisticId: 'steer-id', boundary, userTurn });
+        const frame = parseSSEFrames(res._chunks).find(frame => frame.event === 'message-steering')!;
+        expect(frame.data).toMatchObject({ turnIndex: 2, optimisticId: 'steer-id', boundary,
+            userTurn: { content: 'change direction', steered: true } });
+        req.emit('close');
+    });
+
     it('omits optimisticId in message-queued event when not present', async () => {
         const proc = createProcessFixture({ id: 'p-mq-2', status: 'running' });
         store.processes.set(proc.id, proc);

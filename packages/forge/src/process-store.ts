@@ -160,6 +160,9 @@ export interface ProcessOutputEvent {
     queuePosition?: number;
     /** Client-provided optimistic ID echoed back for reconciliation (for 'message-queued' / 'message-steering' events). */
     optimisticId?: string;
+    /** Authoritative rendering boundary for an accepted steer. */
+    boundary?: { steeringId: string; contentOffset: number; timelineIndex: number; eventOffset?: number; timestamp: string };
+    userTurn?: ConversationTurn;
     /** Hook step event data (for 'hook-step' events). */
     hookStep?: HookStepEvent;
     /** Active background agents (for 'background-tasks' events). */

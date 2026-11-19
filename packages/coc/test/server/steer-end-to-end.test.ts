@@ -56,6 +56,158 @@ describe('steer end to end (mock Copilot)', () => {
         } as any);
     });
 
+    it.each([true, false])('keeps dispatch-time boundaries through streaming, multiple steers and settlement (success=%s)', async success => {
+        const id = 'proc-boundaries';
+        await store.addProcess(createProcessFixture({ id, status: 'running', conversationTurns: [
+            { role: 'user', content: 'first', timestamp: new Date(), turnIndex: 0, timeline: [] },
+        ] }));
+        const task = { id: 'boundary-task', type: 'chat', priority: 'normal', status: 'running',
+            createdAt: Date.now(), processId: id,
+            payload: { kind: 'chat', processId: id, prompt: 'first' }, config: {},
+        } as unknown as QueuedTask;
+        let options: any;
+        let finish!: () => void;
+        const started = new Promise<void>(resolve => {
+            sdkMocks.mockSendMessage.mockImplementation(async opts => {
+                options = opts;
+                opts.onSessionCreated!('boundary-session');
+                opts.onStreamingChunk!('before');
+                opts.onToolEvent!({ type: 'tool-start', toolCallId: 'tool-1', toolName: 'view', parameters: {} });
+                resolve();
+                await new Promise<void>(done => { finish = done; });
+                return { success, response: 'beforeduringafter', sessionId: 'boundary-session',
+                    ...(success ? {} : { error: 'provider failed' }) };
+            });
+        });
+        const running = executor.execute(task);
+        await started;
+        const service = new ProcessMessageDeliveryService({ store, bridge: {
+            enqueue: vi.fn(), findTaskByProcessId: () => task,
+            steerProcess: (pid, message, steeringId) => executor.steerProcess(pid, message, steeringId),
+        } as unknown as QueueExecutorBridge });
+
+        sdkMocks.mockSteerSession.mockImplementation(async () => {
+            options.onStreamingChunk('during');
+            options.onToolEvent({ type: 'tool-complete', toolCallId: 'tool-1', toolName: 'view', result: 'ok' });
+            return true;
+        });
+        const first = await service.deliver((await store.getProcess(id))!, {
+            ...input('change one', 'immediate'), optimisticId: 'steer-one',
+        });
+        expect(first.events.find(event => event.kind === 'message-steering')).toMatchObject({
+            boundary: { steeringId: 'steer-one', contentOffset: 6, timelineIndex: 2, eventOffset: 1 },
+            userTurn: { content: 'change one', optimisticId: 'steer-one', steered: true },
+        });
+        const streamed = (await store.getProcess(id))!.conversationTurns!.find(turn => turn.streaming)!;
+        expect(streamed.timeline.map(item => item.type)).toEqual(['content', 'tool-start', 'steering', 'content', 'tool-complete']);
+
+        let acknowledge!: (accepted: boolean) => void;
+        const dispatched = new Promise<void>(resolve => {
+            sdkMocks.mockSteerSession.mockImplementation(async () => {
+                options.onStreamingChunk('after');
+                resolve();
+                return new Promise<boolean>(done => { acknowledge = done; });
+            });
+        });
+        const second = service.deliver((await store.getProcess(id))!, {
+            ...input('change two', 'immediate'), optimisticId: 'steer-two',
+        });
+        await dispatched;
+        finish();
+        await new Promise(resolve => setImmediate(resolve));
+        expect(store.completions.has(id)).toBe(false);
+        // A reconnect while the provider acknowledgement is pending cannot see a successful marker.
+        await (executor as any).executors.followUpExecutor.flushConversationTurn(id, true);
+        const pending = (await store.getProcess(id))!.conversationTurns!.find(turn => turn.streaming)!;
+        expect(pending.timeline.filter(item => item.type === 'steering')).toHaveLength(1);
+        acknowledge(true);
+        expect(await second).toMatchObject({ path: 'steered',
+            boundary: { contentOffset: 12, timelineIndex: 5, eventOffset: 2 } });
+        await running;
+
+        const done = (await store.getProcess(id))!;
+        const assistants = done.conversationTurns!.filter(turn => turn.role === 'assistant');
+        expect(assistants).toHaveLength(1);
+        expect(assistants[0].timeline.filter(item => item.type === 'steering').map(item =>
+            [item.steeringId, item.contentOffset])).toEqual([['steer-one', 6], ['steer-two', 12]]);
+        expect(assistants[0].timeline.filter(item => item.type === 'content').map(item => item.content))
+            .toEqual(['before', 'during', 'after']);
+        expect(assistants[0].timeline.filter(item => item.toolCall?.id === 'tool-1')).toHaveLength(2);
+        expect(done.status).toBe(success ? 'completed' : 'failed');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        expect(enqueued).toHaveLength(0);
+    });
+
+    it.each([false, 'throw'])('does not retain a rendering split when steering fails (%s)', async outcome => {
+        const id = 'proc-refused';
+        await store.addProcess(createProcessFixture({ id, status: 'running', conversationTurns: [
+            { role: 'user', content: 'first', timestamp: new Date(), turnIndex: 0, timeline: [] },
+        ] }));
+        const task = { id: 'refused-task', type: 'chat', priority: 'normal', status: 'running',
+            createdAt: Date.now(), processId: id,
+            payload: { kind: 'chat', processId: id, prompt: 'first' }, config: {},
+        } as unknown as QueuedTask;
+        let finish!: () => void;
+        const started = new Promise<void>(resolve => {
+            sdkMocks.mockSendMessage.mockImplementation(async opts => {
+                opts.onSessionCreated!('refused-session');
+                opts.onStreamingChunk!('before');
+                sdkMocks.mockSteerSession.mockImplementation(async () => {
+                    opts.onStreamingChunk!('after');
+                    if (outcome === 'throw') throw new Error('not accepted');
+                    return false;
+                });
+                resolve();
+                await new Promise<void>(done => { finish = done; });
+                return { success: true, response: 'beforeafter', sessionId: 'refused-session' };
+            });
+        });
+        const running = executor.execute(task);
+        await started;
+        const service = new ProcessMessageDeliveryService({ store, bridge: {
+            enqueue: vi.fn(), findTaskByProcessId: () => task,
+            steerProcess: (pid, message, steeringId) => executor.steerProcess(pid, message, steeringId),
+        } as unknown as QueueExecutorBridge });
+        const result = await service.deliver((await store.getProcess(id))!, input('not steered', 'immediate'));
+        expect(result.path).toBe('buffered');
+        expect(result.events.some(event => event.kind === 'message-steering')).toBe(false);
+        finish();
+        await running;
+        const assistant = (await store.getProcess(id))!.conversationTurns!.find(turn => turn.role === 'assistant')!;
+        expect(assistant.timeline.map(item => [item.type, item.content])).toEqual([['content', 'beforeafter']]);
+    });
+
+    it('records steering in the initial chat executor rather than the bridge session', async () => {
+        const id = 'queue_initial-steer';
+        const task = { id: 'initial-steer', type: 'chat', priority: 'normal', status: 'running',
+            createdAt: Date.now(), payload: { kind: 'chat', prompt: 'first', mode: 'ask' }, config: {},
+        } as unknown as QueuedTask;
+        let finish!: () => void;
+        const started = new Promise<void>(resolve => {
+            sdkMocks.mockSendMessage.mockImplementation(async opts => {
+                opts.onSessionCreated!('initial-session');
+                opts.onStreamingChunk!('one');
+                sdkMocks.mockSteerSession.mockImplementation(async () => {
+                    opts.onStreamingChunk!('two');
+                    return true;
+                });
+                resolve();
+                await new Promise<void>(done => { finish = done; });
+                return { success: true, response: 'onetwo', sessionId: 'initial-session' };
+            });
+        });
+        const running = executor.execute(task);
+        await started;
+        const result = await executor.steerProcess(id, 'change', 'initial-marker');
+        expect(result).toMatchObject({ contentOffset: 3, timelineIndex: 1 });
+        finish();
+        await running;
+        const turns = (await store.getProcess(id))!.conversationTurns!;
+        const assistant = turns.find(turn => turn.role === 'assistant')!;
+        expect(assistant.timeline.map(item => [item.type, item.content ?? item.steeringId]))
+            .toEqual([['content', 'one'], ['steering', 'initial-marker'], ['content', 'two']]);
+    });
+
     it('steers into the running turn and runs the queued message only after it ends', async () => {
         const proc = createProcessFixture({ id: 'proc-e2e', status: 'running', conversationTurns: [
             { role: 'user', content: 'first', timestamp: new Date(), turnIndex: 0, timeline: [] },
@@ -89,7 +241,7 @@ describe('steer end to end (mock Copilot)', () => {
         const bridge = {
             enqueue: vi.fn(),
             findTaskByProcessId: () => task,
-            steerProcess: (id: string, message: string) => executor.steerProcess(id, message),
+            steerProcess: (id: string, message: string, steeringId?: string) => executor.steerProcess(id, message, steeringId),
         } as unknown as QueueExecutorBridge;
         const delivery = new ProcessMessageDeliveryService({ store, bridge });
 

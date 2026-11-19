@@ -9,6 +9,7 @@ import { readBotControl } from '../../../utils/botControl';
 import type { ConversationSnapshotPayload, ProviderSessionPayload } from '@plusplusoneplusplus/coc-client';
 import type { ChatHistoryPage } from './useChatHistoryPaging';
 import { finishBrowserControlActivity } from '../../../shared/file-path/browser-control-activity';
+import { applyAcceptedSteering, reconcileSteering } from '../conversation/reconcileSteering';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
@@ -248,21 +249,27 @@ export function useChatSSE({
 
         const findAssistantIndex = (turns: ClientConversationTurn[]): number => {
             const activeTurn = runningTurn;
-            return activeTurn
-                ? turns.findIndex(turn => turn.role === 'assistant' && turn.turnIndex === activeTurn.turnIndex)
-                : turns.at(-1)?.role === 'assistant' ? turns.length - 1 : -1;
+            if (!activeTurn) return turns.at(-1)?.role === 'assistant' ? turns.length - 1 : -1;
+            const exact = turns.findIndex(turn => turn.role === 'assistant' && turn.turnIndex === activeTurn.turnIndex);
+            if (exact !== -1) return exact;
+            // A persisted streaming row can move past an accepted user turn.
+            const streaming = turns.findIndex(turn => turn.role === 'assistant' && turn.streaming);
+            if (streaming !== -1 && turns[streaming].turnIndex != null) {
+                runningTurn = { ...activeTurn, turnIndex: turns[streaming].turnIndex! };
+            }
+            return streaming;
         };
 
         const ensureAssistantTurn = (prev: ClientConversationTurn[]): { turns: ClientConversationTurn[]; assistantIndex: number } => {
             const assistantIndex = findAssistantIndex(prev);
             if (assistantIndex !== -1) {
                 const turns = [...prev];
-                turns[assistantIndex] = attributeStreamingTurn(turns[assistantIndex]);
+                turns[assistantIndex] = applyAcceptedSteering(attributeStreamingTurn(turns[assistantIndex]), prev);
                 return { turns, assistantIndex };
             }
             const last = prev[prev.length - 1];
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-            return { assistantIndex: prev.length, turns: [...prev, {
+            return { assistantIndex: prev.length, turns: [...prev, applyAcceptedSteering({
                 role: 'assistant',
                 content: '',
                 streaming: true,
@@ -270,7 +277,7 @@ export function useChatSSE({
                 turnIndex: runningTurn?.turnIndex ?? nextIdx,
                 provider: runningTurn?.provider ?? last?.provider,
                 segmentId: runningTurn ? runningTurn.segmentId : last?.segmentId,
-            }] };
+            }, prev)] };
         };
 
         es.addEventListener('conversation-snapshot', (event: Event) => {
@@ -335,6 +342,7 @@ export function useChatSSE({
                             return [...tl, { type: 'content' as const, timestamp: new Date().toISOString(), content: chunk }];
                         })(),
                     };
+                    turns[assistantIndex] = applyAcceptedSteering(turns[assistantIndex], prev);
                     return [...turns];
                 });
             } catch { /* ignore */ }
@@ -361,6 +369,7 @@ export function useChatSSE({
                         streaming: true,
                         timeline: [...(last.timeline || []), { type: eventType, timestamp: new Date().toISOString(), toolCall }],
                     };
+                    turns[assistantIndex] = applyAcceptedSteering(turns[assistantIndex], prev);
                     return [...turns];
                 });
             } catch { /* ignore */ }
@@ -406,12 +415,10 @@ export function useChatSSE({
         });
 
         es.addEventListener('message-steering', (event: Event) => {
-            // The message joined the running turn: label the matching user turn.
+            if (eventSourceRef.current !== es) return;
             try {
-                const { optimisticId, turnIndex } = JSON.parse((event as MessageEvent).data);
-                setTurnsAndRef(prev => prev.map(t => t.role === 'user'
-                    && ((optimisticId && t.optimisticId === optimisticId) || t.turnIndex === turnIndex)
-                    ? { ...t, steered: true } : t));
+                const payload = JSON.parse((event as MessageEvent).data);
+                setTurnsAndRef(prev => reconcileSteering(prev, payload, runningTurn?.turnIndex));
             } catch { /* ignore */ }
         });
 
