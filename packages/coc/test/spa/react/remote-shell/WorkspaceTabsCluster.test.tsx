@@ -75,15 +75,37 @@ describe('WorkspaceTabsCluster', () => {
         expect(cloneTabs).not.toContain('pull-requests');
     });
 
-    it('opens the clone popover and selects another clone', () => {
+    it('lists every clone inline and selects another clone in one click', () => {
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        fireEvent.click(screen.getByTestId('clone-switch'));
-        const items = screen.getAllByTestId('clone-popover-item');
-        expect(items).toHaveLength(2);
-        fireEvent.click(items[1]);
+        expect(screen.queryByTestId('clone-switch')).toBeNull();
+        expect(screen.queryByTestId('clone-popover')).toBeNull();
+        const pills = screen.getAllByTestId('clone-pill');
+        expect(pills.map(p => p.getAttribute('data-selection-id'))).toEqual(['a', 'b']);
+        expect(pills[0].getAttribute('data-active')).toBe('true');
+        expect(pills[0].getAttribute('aria-current')).toBe('true');
+        expect(pills[1].getAttribute('data-active')).toBe('false');
+        expect(pills[1].hasAttribute('aria-current')).toBe(false);
+        fireEvent.click(pills[1]);
         expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('re-selects the active clone so it navigates back from top-level pages', () => {
+        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'chats' };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+        fireEvent.click(screen.getAllByTestId('clone-pill')[0]);
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
+    });
+
+    it('shows a single clone as one active pill', () => {
+        const selected = repo('a', 'shortcuts');
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+        const pills = screen.getAllByTestId('clone-pill');
+        expect(pills).toHaveLength(1);
+        expect(pills[0].getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('clone-pill-machine').textContent).toBe('Local');
     });
 
     it('switches clone-scoped tabs through shell navigation', () => {
@@ -227,9 +249,8 @@ describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
 
     const openRemoveItem = (repos: any[], target: any) => {
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
-        fireEvent.click(screen.getByTestId('clone-switch'));
-        const row = screen.getAllByTestId('clone-popover-item')
-            .find(el => el.textContent?.includes(target.workspace.name))!;
+        const row = screen.getAllByTestId('clone-pill')
+            .find(el => el.querySelector('[data-testid="clone-pill-name"]')?.textContent === target.workspace.name)!;
         fireEvent.contextMenu(row);
         return screen.getAllByRole('menuitem').find(el => el.textContent?.includes('Remove from CoC'))!;
     };
@@ -302,54 +323,131 @@ describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
 });
 
 
-describe('selected clone machine identity', () => {
-    it('follows exact clone ownership when identical workspace IDs switch servers', async () => {
+describe('flat clone strip identity', () => {
+    const remote = (base: any, serverId: string, serverLabel: string, connection = 'online') => ({
+        ...base,
+        workspace: { ...base.workspace, baseUrl: `https://${serverId}.example`, remote: { serverId, serverLabel, connection, queue: 'idle' } },
+    });
+
+    it('follows exact clone ownership when identical workspace IDs live on several servers', () => {
         const local = repo('shared', 'shortcuts');
-        const remote = (serverId: string, serverLabel: string) => ({
-            ...local,
-            workspace: { ...local.workspace, baseUrl: `https://${serverId}.example`, remote: { serverId, serverLabel, connection: 'online' } },
-        });
-        const ubuntu = remote('ubuntu', 'ubuntu-arm');
-        const other = remote('other', 'other-machine');
+        const ubuntu = remote(local, 'ubuntu', 'ubuntu-arm');
+        const other = remote(local, 'other', 'other-machine');
         const repos = [local, other, ubuntu];
         mockUnseenCounts = { shared: 5, 'remote:ubuntu:shared': 16 };
         const { rerender } = render(<WorkspaceTabsCluster repo={ubuntu} repos={repos} />);
-        const trigger = () => screen.getByTestId('clone-switch');
-        await waitFor(() => expect(trigger().getAttribute('aria-label')).toBe('shortcuts / ubuntu-arm'));
-        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('ubuntu-arm');
-        expect(screen.getByTestId('clone-switch-unseen-badge').textContent).toBe('21');
-        expect(trigger().textContent).toContain('· 3');
-        fireEvent.click(trigger());
-        fireEvent.click(screen.getAllByTestId('clone-popover-item')[0]);
+
+        const pills = () => screen.getAllByTestId('clone-pill');
+        expect(pills().map(p => p.getAttribute('data-selection-id')))
+            .toEqual(['shared', 'remote:other:shared', 'remote:ubuntu:shared']);
+        expect(pills().map(p => p.getAttribute('aria-label')?.split(',')[0]))
+            .toEqual(['shortcuts / Local', 'shortcuts / other-machine', 'shortcuts / ubuntu-arm']);
+        expect(pills()[2].getAttribute('data-active')).toBe('true');
+        const unread = (pill: HTMLElement) => pill.querySelector('[data-testid="clone-pill-unseen-badge"]')?.textContent;
+        expect(unread(pills()[0])).toBe('5');
+        expect(unread(pills()[1])).toBeUndefined();
+        expect(unread(pills()[2])).toBe('16');
+        expect(pills()[2].getAttribute('aria-label')).toContain('16 needing attention');
+
+        fireEvent.click(pills()[0]);
         expect(mockSelectClone).toHaveBeenCalledWith('shared');
         rerender(<WorkspaceTabsCluster repo={local} repos={repos} />);
-        expect(trigger().getAttribute('aria-label')).toBe('shortcuts / Local');
-        rerender(<WorkspaceTabsCluster repo={other} repos={repos} />);
-        expect(trigger().getAttribute('title')).toBe('shortcuts / other-machine');
-        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('other-machine');
+        expect(pills()[0].getAttribute('data-active')).toBe('true');
+        expect(pills()[2].getAttribute('data-active')).toBe('false');
     });
 
-    it('bounds long labels while preserving full accessible identity and focus help', async () => {
-        const name = 'very-long-repository-'.repeat(20);
-        const machine = 'very-long-machine-'.repeat(20);
-        const selected = { ...repo('long', name), workspace: {
-            ...repo('long', name).workspace, baseUrl: 'https://long.example', remote: { serverId: 'long', serverLabel: machine },
-        } };
+    it('shows local running and queued counts on each clone', () => {
+        mockQueueState = { repoQueueMap: { a: { running: [{ id: 1 }, { id: 2 }], queued: [{ id: 3 }] } } };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[1] as any} repos={repos as any} />);
+        const [a, b] = screen.getAllByTestId('clone-pill');
+        expect(a.getAttribute('data-clone-status')).toBe('running');
+        expect(a.querySelector('[data-testid="clone-pill-running"]')?.textContent).toContain('2');
+        expect(a.querySelector('[data-testid="clone-pill-queued"]')?.textContent).toContain('1');
+        expect(a.getAttribute('aria-label')).toBe('shortcuts / Local, 2 running, 1 queued');
+        expect(b.querySelector('[data-testid="clone-pill-running"]')).toBeNull();
+    });
+
+    it('disables an offline remote clone but keeps the selected offline clone reachable', () => {
+        const local = repo('a', 'shortcuts');
+        const offline = remote(repo('r', 'shortcuts'), 'srv', 'devbox', 'offline');
+        const { rerender } = render(<WorkspaceTabsCluster repo={local as any} repos={[local, offline] as any} />);
+        let pill = screen.getAllByTestId('clone-pill')[1];
+        expect(pill.getAttribute('data-offline')).toBe('true');
+        expect(pill.hasAttribute('disabled')).toBe(true);
+        expect(pill.querySelector('[data-testid="clone-offline-badge"]')).toBeTruthy();
+        fireEvent.click(pill);
+        expect(mockSelectClone).not.toHaveBeenCalled();
+
+        rerender(<WorkspaceTabsCluster repo={offline as any} repos={[local, offline] as any} />);
+        pill = screen.getAllByTestId('clone-pill')[1];
+        expect(pill.getAttribute('data-active')).toBe('true');
+        expect(pill.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('adds the short path only when clone labels collide', () => {
+        const a = { ...repo('a', 'shortcuts'), workspace: { ...repo('a', 'shortcuts').workspace, rootPath: '/home/me/work/shortcuts' } };
+        const b = { ...repo('b', 'shortcuts'), workspace: { ...repo('b', 'shortcuts').workspace, rootPath: '/home/me/review/shortcuts' } };
+        const c = repo('c', 'shortcuts-3');
+        render(<WorkspaceTabsCluster repo={a as any} repos={[a, b, c] as any} />);
+        const pills = screen.getAllByTestId('clone-pill');
+        expect(pills[0].querySelector('[data-testid="clone-pill-path"]')?.textContent).toBe('work/shortcuts');
+        expect(pills[1].querySelector('[data-testid="clone-pill-path"]')?.textContent).toBe('review/shortcuts');
+        expect(pills[2].querySelector('[data-testid="clone-pill-path"]')).toBeNull();
+    });
+
+    it('shows the full identity and path on hover and focus', () => {
+        const name = 'very-long-repository-'.repeat(10);
+        const selected = remote(repo('long', name), 'long', 'very-long-machine');
         render(<WorkspaceTabsCluster repo={selected} repos={[selected]} />);
-        const trigger = screen.getByTestId('clone-switch');
-        await waitFor(() => expect(trigger.getAttribute('aria-label')).toBe(`${name} / ${machine}`));
-        expect(trigger.className).toContain('max-w-');
-        expect(screen.getByTestId('workspace-clone-label').className).toContain('min-w-0');
-        expect(screen.getByTestId('workspace-repo-name').className).toContain('truncate');
-        const machineNode = screen.getByTestId('workspace-machine-name');
-        expect(machineNode.className).toContain('shrink-0');
-        expect(machineNode.className).toContain('max-w-[60%]');
-        expect(machineNode.className).toContain('truncate');
-        const tooltip = screen.getByRole('tooltip', { hidden: true });
-        expect(tooltip.textContent).toBe(`${name} / ${machine}`);
-        expect(tooltip.className).toContain('group-hover/identity:block');
-        expect(tooltip.className).toContain('group-focus-visible/identity:block');
-        trigger.focus();
-        expect(document.activeElement).toBe(trigger);
+        const pill = screen.getByTestId('clone-pill');
+        expect(screen.getByTestId('clone-pill-name').className).toContain('truncate');
+        expect(screen.queryByTestId('clone-pill-tooltip')).toBeNull();
+
+        fireEvent.focus(pill);
+        const tooltip = screen.getByTestId('clone-pill-tooltip');
+        expect(tooltip.textContent).toContain(`${name} / very-long-machine`);
+        expect(tooltip.textContent).toContain('/r/long');
+        expect(pill.getAttribute('aria-describedby')).toBe(tooltip.id);
+        fireEvent.blur(pill);
+        expect(screen.queryByTestId('clone-pill-tooltip')).toBeNull();
+
+        fireEvent.mouseEnter(pill);
+        expect(screen.getByTestId('clone-pill-tooltip')).toBeTruthy();
+        fireEvent.mouseLeave(pill);
+        expect(screen.queryByTestId('clone-pill-tooltip')).toBeNull();
+    });
+
+    it('moves focus with arrow keys, skipping offline clones, and opens the menu from the keyboard', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2'), remote(repo('r', 'shortcuts'), 'srv', 'devbox', 'offline'), repo('c', 'shortcuts-3')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+        const byId = new Map(screen.getAllByTestId('clone-pill').map(p => [p.getAttribute('data-selection-id'), p]));
+        // Local clones sort first; the offline remote is last and skipped.
+        const pills = [byId.get('a')!, byId.get('b')!, byId.get('c')!];
+        expect(byId.get('remote:srv:r')!.hasAttribute('disabled')).toBe(true);
+        pills[0].focus();
+        fireEvent.keyDown(pills[0], { key: 'ArrowRight' });
+        expect(document.activeElement).toBe(pills[1]);
+        fireEvent.keyDown(pills[1], { key: 'ArrowRight' });
+        expect(document.activeElement).toBe(pills[2]);
+        fireEvent.keyDown(pills[2], { key: 'ArrowRight' });
+        expect(document.activeElement).toBe(pills[2]);
+        fireEvent.keyDown(pills[2], { key: 'Home' });
+        expect(document.activeElement).toBe(pills[0]);
+        fireEvent.keyDown(pills[0], { key: 'End' });
+        expect(document.activeElement).toBe(pills[2]);
+
+        fireEvent.keyDown(pills[2], { key: 'F10', shiftKey: true });
+        expect(screen.getAllByRole('menuitem').some(el => el.textContent?.includes('Repo info'))).toBe(true);
+    });
+
+    it('keeps many clones in one horizontally scrolling group', () => {
+        const repos = Array.from({ length: 12 }, (_, i) => repo(`c${i}`, `shortcuts-${i}`));
+        render(<WorkspaceTabsCluster repo={repos[11] as any} repos={repos as any} />);
+        const strip = screen.getByTestId('clone-strip');
+        expect(strip.getAttribute('role')).toBe('group');
+        expect(strip.className).toContain('overflow-x-auto');
+        expect(strip.className).toContain('max-w-');
+        expect(screen.getAllByTestId('clone-pill')).toHaveLength(12);
     });
 });
