@@ -1260,10 +1260,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
+    padding: 2px 8px;
     border-bottom: 1px solid #e0e0e0;
     background: #f8f8f8;
     font-size: 11px;
+    line-height: 16px;
 }
 
 .dark .markdown-body .code-block-header {
@@ -1283,7 +1284,7 @@
 
 .markdown-body .code-block-copy {
     min-width: 7.5em;
-    min-height: 32px;
+    min-height: 24px;
     flex-shrink: 0;
     white-space: nowrap;
 }

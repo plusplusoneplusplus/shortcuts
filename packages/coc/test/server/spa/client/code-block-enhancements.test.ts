@@ -284,9 +284,45 @@ describe('code block Copy all CSS', () => {
         expect(css).toMatch(/\.markdown-body \.code-block-header\s*\{[^}]*display: flex/s);
         const copy = css.match(/\.markdown-body \.code-block-copy\s*\{([^}]+)\}/)?.[1] ?? '';
         expect(copy).toContain('min-width: 7.5em');
-        expect(copy).toContain('min-height: 32px');
+        expect(copy).toContain('min-height: 24px');
         expect(copy).toContain('flex-shrink: 0');
         expect(copy).not.toMatch(/opacity:\s*0|display:\s*none|position:\s*absolute/);
         expect(css).toMatch(/\.code-block-copy:focus-visible\s*\{[^}]*outline:/s);
+    });
+});
+
+
+describe('compact shared code block toolbar', () => {
+    const css = readFileSync(resolve(__dirname, '../../../../src/server/spa/client/tailwind.css'), 'utf-8');
+    const rule = (selector: string) => {
+        const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return css.match(new RegExp(escaped + '\\s*\\{([^}]+)\\}'))?.[1] ?? '';
+    };
+
+    it('uses a slim toolbar with a readable line height and a 24px touch target', () => {
+        const header = rule('.markdown-body .code-block-header');
+        const copy = rule('.markdown-body .code-block-copy');
+        expect(header).toContain('padding: 2px 8px');
+        expect(header).toContain('align-items: center');
+        expect(header).toContain('font-size: 11px');
+        expect(header).toContain('line-height: 16px');
+        expect(copy).toContain('min-height: 24px');
+        expect(copy).toContain('white-space: nowrap');
+        // The button + padding + divider occupy 29px rather than 45px.
+        const verticalPadding = Number(header.match(/padding: (\d+)px/)?.[1]);
+        const buttonHeight = Number(copy.match(/min-height: (\d+)px/)?.[1]);
+        expect(buttonHeight + 2 * verticalPadding + 1).toBe(29);
+    });
+
+    it('preserves file-preview language, line counts and collapse controls', () => {
+        const html = renderMarkdownToHtml(codeBlock('ts', lines(20)));
+        expect(html).toContain('class="code-block-header"');
+        expect(html).toContain('class="code-block-language">TypeScript</span>');
+        expect(html).toContain('(20 lines)');
+        expect(html).toContain('class="code-block-copy"');
+        expect(html).toContain('class="code-block-collapse"');
+        expect(rule('.markdown-body .code-block-content')).toContain('overflow-x: auto');
+        expect(rule('.markdown-body .code-block-content code')).toContain('white-space: pre');
+        expect(rule('.markdown-body .code-block-content code')).toContain('word-break: normal');
     });
 });
