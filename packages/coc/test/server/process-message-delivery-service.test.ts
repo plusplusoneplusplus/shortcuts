@@ -460,13 +460,73 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         const result = await service.deliver(makeProc({ status: 'running' }), makeInput({ deliveryMode: 'immediate', optimisticId: 'opt-1' }));
 
         expect(result.path).toBe('steered');
-        expect(steerProcess).toHaveBeenCalledWith('proc-1', 'hello');
+        expect(steerProcess).toHaveBeenCalledWith('proc-1', 'hello', 'opt-1');
         expect(bridge.enqueue).not.toHaveBeenCalled();
         expect(store.appendPendingMessage).not.toHaveBeenCalled();
         // A user turn is appended (not buffered), and both queued + steering events fire.
         expect(store.appendConversationTurn).toHaveBeenCalledOnce();
         expect(result.turnIndex).toBe(0);
         expect(result.events.map(e => e.kind)).toEqual(['message-queued', 'message-steering']);
+        expect(store.turns[0]).toMatchObject({ optimisticId: 'opt-1', steered: true,
+            timeline: [{ type: 'steering', steeringId: 'opt-1' }] });
+    });
+
+    it('assigns a durable correlation when the sender has no optimistic id and preserves a settled status', async () => {
+        const store = makeStore();
+        const proc = makeProc({ status: 'running' });
+        store.setCurrentProcess(proc);
+        const boundary = { steeringId: 'server-steer', contentOffset: 5, timelineIndex: 1, timestamp: '2026-01-01T00:00:00.000Z' };
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: () => ({ id: 'task', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn(async () => {
+                store.setCurrentProcess({ ...proc, status: 'completed' });
+                return boundary;
+            }),
+        };
+        const result = await makeService(store, bridge, { newId: () => 'server-steer' })
+            .deliver(proc, makeInput({ deliveryMode: 'immediate' }));
+        expect(bridge.steerProcess).toHaveBeenCalledWith('proc-1', 'hello', 'server-steer');
+        expect(store.turns[0]).toMatchObject({ optimisticId: 'server-steer', steered: true,
+            timeline: [{ type: 'steering', steeringId: 'server-steer', contentOffset: 5 }] });
+        expect(store.appendConversationTurn.mock.calls[0][2]).toBeUndefined();
+        expect(result.events.find(event => event.kind === 'message-steering')).toMatchObject({
+            optimisticId: 'server-steer', boundary, userTurn: store.turns[0],
+        });
+    });
+
+    it('serializes concurrent steers through persistence before dispatching the next boundary', async () => {
+        const store = makeStore();
+        const proc = makeProc({ status: 'running' });
+        store.setCurrentProcess(proc);
+        let release!: () => void;
+        let entered!: () => void;
+        const started = new Promise<void>(resolve => { entered = resolve; });
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        const steerProcess = vi.fn(async (_id: string, _message: string, steeringId?: string) => {
+            if (steeringId === 'first') {
+                entered();
+                await pending;
+            } else {
+                expect(store.turns).toHaveLength(1);
+                expect(store.turns[0].optimisticId).toBe('first');
+            }
+            return { steeringId: steeringId!, contentOffset: 0, eventOffset: 0,
+                timelineIndex: steeringId === 'first' ? 0 : 1, timestamp: '2026-01-01T00:00:00Z' };
+        });
+        const service = makeService(store, {
+            enqueue: vi.fn(),
+            findTaskByProcessId: () => ({ id: 'task', type: 'chat', status: 'running' }),
+            steerProcess,
+        });
+        const first = service.deliver(proc, makeInput({ deliveryMode: 'immediate', optimisticId: 'first' }));
+        await started;
+        const second = service.deliver(proc, makeInput({ deliveryMode: 'immediate', optimisticId: 'second' }));
+        expect(steerProcess).toHaveBeenCalledOnce();
+        release();
+        const results = await Promise.all([first, second]);
+        expect(results.map(result => result.boundary?.timelineIndex)).toEqual([0, 1]);
+        expect(store.turns.map(turn => turn.optimisticId)).toEqual(['first', 'second']);
     });
 
     // Regression: a non-default or changed chat style used to turn every steer
@@ -481,7 +541,7 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         const proc = makeProc({ status: 'running', metadata: { chatStyle: 'direct' } });
         const result = await makeService(store, bridge).deliver(proc, makeInput({ deliveryMode: 'immediate', chatStyle }));
         expect(result.path).toBe('steered');
-        expect(bridge.steerProcess).toHaveBeenCalledWith('proc-1', 'hello');
+        expect(bridge.steerProcess).toHaveBeenCalledWith('proc-1', 'hello', expect.any(String));
         expect(store.appendPendingMessage).not.toHaveBeenCalled();
     });
 

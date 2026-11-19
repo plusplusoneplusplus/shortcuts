@@ -426,6 +426,15 @@ describe('FollowUpExecutor', () => {
         expect(updated?.status).toBe('completed');
     });
 
+    it.each([true, false])('does not acknowledge queued immediate follow-ups as live steering (success=%s)', async success => {
+        sdkMocks.mockSendMessage.mockResolvedValue({ success, response: 'reply', error: success ? undefined : 'failed' });
+        await store.addProcess(makeProcess());
+        await makeExecutor(store).executeFollowUp('proc-1', 'next turn', undefined, undefined, 'immediate');
+        expect(mockEmitMessageSteering).not.toHaveBeenCalled();
+        const assistant = store.processes.get('proc-1')?.conversationTurns?.find(turn => turn.role === 'assistant');
+        expect(assistant?.timeline.some(item => item.type === 'steering')).toBe(false);
+    });
+
     it('appends assistant turn to conversationTurns', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,

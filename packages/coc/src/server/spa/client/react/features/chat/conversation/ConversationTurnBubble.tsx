@@ -85,6 +85,8 @@ function escapeAttr(value: string): string {
 
 interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
+    /** Full canonical response when this bubble displays one steering section. */
+    logicalTurn?: ClientConversationTurn;
     /** Queue task ID — when provided, enables lazy image fetching for turns with imagesCount */
     taskId?: string;
     /** Called when the user clicks the Retry button on an error assistant bubble. */
@@ -1372,7 +1374,7 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, conversationMode, conversationOwnerKey, turnIndex, onGoToTurnReference, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, conversationMode, conversationOwnerKey, turnIndex, onGoToTurnReference, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
@@ -1524,7 +1526,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 onClick: () => {
                     const selection = window.getSelection();
                     const selectedText = selection && selection.toString().trim();
-                    const snippet = selectedText || turn.content || '';
+                    const snippet = selectedText || logicalTurn.content || '';
                     if (snippet) {
                         onAttachContext(turnIndex, turn.role as 'user' | 'assistant', snippet);
                     }
@@ -1536,7 +1538,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             label: 'Copy',
             icon: '📋',
             onClick: async () => {
-                const text = showRaw ? buildRawContent(turn) : (turn.content || '');
+                const text = showRaw ? buildRawContent(logicalTurn) : (logicalTurn.content || '');
                 try { await copyToClipboard(text); } catch {}
             },
         });
@@ -1545,8 +1547,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             icon: '📄',
             onClick: async () => {
                 try {
-                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
-                    await copyHtmlToClipboard(embedMathCssForCopy(html), turn.content || '');
+                    const html = chatMarkdownToHtml(logicalTurn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
+                    await copyHtmlToClipboard(embedMathCssForCopy(html), logicalTurn.content || '');
                 } catch {}
             },
         });
@@ -1605,7 +1607,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             }
         }
         return items;
-    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, rewindCapability]);
+    }, [linkHref, onAttachContext, turnIndex, turn, logicalTurn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, rewindCapability]);
 
     // "Edit message" pencil in the user-turn hover strip. Same gating as the
     // rewind menu item (saving an edit *is* a rewind + resend), so the capability
@@ -1882,7 +1884,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px]"
                         title="Copy to clipboard"
                         onClick={async () => {
-                            const text = showRaw ? buildRawContent(turn) : (turn.content || '');
+                            const text = showRaw ? buildRawContent(logicalTurn) : (logicalTurn.content || '');
                             try {
                                 await copyToClipboard(text);
                                 showCopied();
@@ -1899,8 +1901,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
-                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
-                                    await copyHtmlToClipboard(embedMathCssForCopy(html), turn.content || '');
+                                    const html = chatMarkdownToHtml(logicalTurn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
+                                    await copyHtmlToClipboard(embedMathCssForCopy(html), logicalTurn.content || '');
                                     showCopiedHtml();
                                 } catch (e) {
                                     console.error('Copy HTML failed:', e);
@@ -2127,7 +2129,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     {!isUser && !turn.isError && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
                             <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
-                                <code>{buildRawContent(turn)}</code>
+                                <code>{buildRawContent(logicalTurn)}</code>
                             </pre>
                         </div>
                     )}

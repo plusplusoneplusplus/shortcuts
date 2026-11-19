@@ -312,6 +312,10 @@ function serializeTimelineItem(item: TimelineItem): Record<string, unknown> {
         type: item.type,
         timestamp: item.timestamp.toISOString(),
         content: item.content,
+        steeringId: item.steeringId,
+        contentOffset: item.contentOffset,
+        timelineIndex: item.timelineIndex,
+        eventOffset: item.eventOffset,
         toolCall: item.toolCall ? serializeToolCall(item.toolCall) : undefined,
     };
 }
@@ -322,6 +326,10 @@ function deserializeTimelineItem(raw: Record<string, unknown>): TimelineItem {
         type: raw.type as TimelineItem['type'],
         timestamp: safeDate(raw.timestamp),
         content: raw.content as string | undefined,
+        steeringId: raw.steeringId as string | undefined,
+        contentOffset: raw.contentOffset as number | undefined,
+        timelineIndex: raw.timelineIndex as number | undefined,
+        eventOffset: raw.eventOffset as number | undefined,
         toolCall: raw.toolCall ? deserializeToolCall(raw.toolCall as Record<string, unknown>) : undefined,
     };
 }
@@ -522,6 +530,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         }
     }
 
+    const steering = row.role === 'user' ? timeline.find(item => item.type === 'steering' && item.steeringId) : undefined;
     return {
         role: row.role as ConversationTurn['role'],
         content: row.content ?? '',
@@ -532,6 +541,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         interruptionReason: row.interruption_reason ?? undefined,
         toolCalls,
         timeline,
+        ...(steering ? { optimisticId: steering.steeringId, steered: true } : {}),
         images: jsonParse<string[]>(row.images),
         historical: intToBool(row.historical),
         suggestions: jsonParse<string[]>(row.suggestions),

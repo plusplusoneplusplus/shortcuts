@@ -65,6 +65,21 @@ Snapshots include available context totals/breakdown for reconnect indicators.
 flush. With bot identification enabled, snapshots include safe `botControl` or explicit null,
 including processes with empty turns.
 
+### Steering rendering boundaries
+
+Accepted steering keeps one logical assistant turn and inserts a `steering` timeline marker
+with `steeringId`, UTF-16 `contentOffset`, `timelineIndex`, `eventOffset`, and timestamp. The owning executor
+reserves its position before provider dispatch, exposes it only on success, and waits for
+pending acknowledgements before its final snapshot. Queued and rejected steering adds no marker.
+
+The steered user turn carries the same marker, `optimisticId`, and `steered: true`; SQLite
+derives the latter fields from that user marker without schema changes. HTTP acknowledgements
+and `message-steering` SSE carry `{turnIndex, boundary, userTurn}` for idempotent reconciliation
+when chunks or reconnect snapshots arrive first. These boundaries change presentation only.
+`timelineIndex` includes earlier accepted markers; `eventOffset` counts preceding entries
+excluding content and steering, so clients can insert out-of-order acknowledgements using
+`contentOffset` and `eventOffset` without requiring earlier markers.
+
 ### Paged conversation snapshots
 
 The default-on live `features.chatHistoryPaging` gate selects bounded

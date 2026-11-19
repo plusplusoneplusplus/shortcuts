@@ -90,8 +90,13 @@ export type ToolCallApprovalOutcome = 'approve-once' | 'approve-session' | 'deny
 
 /** Timeline event for the SPA client (timestamps are ISO strings) */
 export interface ClientTimelineItem {
-    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'steering';
     timestamp: string;
+    /** Accepted steering user turn correlation; a display boundary within one response. */
+    steeringId?: string;
+    contentOffset?: number;
+    timelineIndex?: number;
+    eventOffset?: number;
     content?: string;
     toolCall?: ClientToolCall;
 }

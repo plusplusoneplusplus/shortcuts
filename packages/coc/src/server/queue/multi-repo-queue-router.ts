@@ -430,7 +430,11 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Steer a running process by injecting an immediate message.
      * Searches across all per-repo bridges for the process.
      */
-    async steerProcess(processId: string, message: string): Promise<boolean> {
+    async steerProcess(processId: string, message: string, steeringId?: string): Promise<boolean | import('@plusplusoneplusplus/coc-client').SteeringBoundary> {
+        if (steeringId !== undefined) {
+            return await this.withOwnerBridge(processId, async bridge =>
+                bridge.steerProcess?.(processId, message, steeringId) ?? false) ?? false;
+        }
         const handled = await this.dispatchToOwnerBridge(
             async (bridge) => await bridge.steerProcess?.(processId, message) === true,
             async () => true,

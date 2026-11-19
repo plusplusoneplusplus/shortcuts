@@ -9,6 +9,7 @@ import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
 import { buildToolCallRenderModel } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolCallRenderModel';
 import { RALPH_GRILL_MAX_ROUNDS } from '../../../../src/server/ralph/grill-planning';
+import { projectSteeringSections } from '../../../../src/server/spa/client/react/features/chat/conversation/steeringSections';
 import { clearBrowserControlActivities, getBrowserControlActivity, startBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 
 // ── Minimal EventSource mock ──────────────────────────────────────────
@@ -86,6 +87,62 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it('keeps streaming on the refreshed canonical response when persistence moved its index after a steer', () => {
+        let turns: ClientConversationTurn[] = [];
+        renderHook(() => useChatSSE(makeOptions({
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        act(() => MockEventSource.last._emit('provider-session', {
+            activeProviderSession: { provider: 'copilot', segmentId: 'current', firstTurnIndex: 0 },
+            turnIndex: 1,
+        }));
+        turns = [{
+            role: 'user', content: 'Change', turnIndex: 2, optimisticId: 'steer-1', steered: true,
+            timeline: [{
+                type: 'steering', steeringId: 'steer-1', contentOffset: 7, timelineIndex: 1,
+                eventOffset: 0, timestamp: '2026-01-01T00:00:01Z',
+            }],
+        }, {
+            role: 'assistant', content: 'Before.After.', turnIndex: 3, provider: 'copilot', streaming: true,
+            timeline: [
+                { type: 'content', content: 'Before.', timestamp: '2026-01-01T00:00:00Z' },
+                { type: 'content', content: 'After.', timestamp: '2026-01-01T00:00:01Z' },
+            ],
+        }];
+        act(() => MockEventSource.last._emit('chunk', { content: ' More.' }));
+        expect(turns.filter(turn => turn.role === 'assistant')).toHaveLength(1);
+        expect(turns[1]).toMatchObject({ turnIndex: 3, content: 'Before.After. More.' });
+        expect(projectSteeringSections(turns).map(section => section.turn.content))
+            .toEqual(['Before.', 'Change', 'After. More.']);
+    });
+
+    it('renders raced output below an accepted steer while retaining the canonical assistant', () => {
+        let turns: ClientConversationTurn[] = [{
+            role: 'assistant', content: 'Before.', turnIndex: 1, provider: 'copilot', streaming: true,
+            timeline: [{ type: 'content', content: 'Before.', timestamp: '2026-01-01T00:00:00Z' }],
+        }, { role: 'user', content: 'Change direction', turnIndex: 2, optimisticId: 'steer-1', timeline: [] }];
+        renderHook(() => useChatSSE(makeOptions({
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        act(() => MockEventSource.last._emit('provider-session', {
+            activeProviderSession: { provider: 'copilot', segmentId: 'current', firstTurnIndex: 0 },
+            turnIndex: 1,
+        }));
+        act(() => MockEventSource.last._emit('chunk', { content: 'After.' }));
+        const acknowledgement = {
+            turnIndex: 2, optimisticId: 'steer-1',
+            boundary: { steeringId: 'steer-1', contentOffset: 7, timelineIndex: 1, timestamp: '2026-01-01T00:00:01Z' },
+        };
+        act(() => MockEventSource.last._emit('message-steering', acknowledgement));
+        act(() => MockEventSource.last._emit('message-steering', acknowledgement));
+        act(() => MockEventSource.last._emit('chunk', { content: ' More.' }));
+
+        expect(turns.filter(turn => turn.role === 'assistant')).toHaveLength(1);
+        expect(turns[0]).toMatchObject({ content: 'Before.After. More.', turnIndex: 1, provider: 'copilot' });
+        expect(projectSteeringSections(turns).map(section => section.turn.content))
+            .toEqual(['Before.', 'Change direction', 'After. More.']);
+    });
+
     it('refreshes MCP callbacks when the hydrated chat owner changes', () => {
         const initial = vi.fn();
         const hydrated = vi.fn();

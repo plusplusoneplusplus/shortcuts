@@ -163,23 +163,35 @@ export interface CompleteGroupOptions {
  */
 export interface TimelineItem {
     /** Event type */
-    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'steering';
     /** When the event occurred */
     timestamp: Date;
     /** Text content (for 'content' events) */
     content?: string;
     /** Associated tool call (for tool events) */
     toolCall?: ToolCall;
+    /** Successful steer, correlated with the steered user turn's optimisticId. */
+    steeringId?: string;
+    /** Cumulative assistant text length at dispatch, in UTF-16 code units. */
+    contentOffset?: number;
+    /** Marker index in the assistant timeline after splitting contentOffset. */
+    timelineIndex?: number;
+    /** Non-content, non-steering timeline entries before this boundary. */
+    eventOffset?: number;
 }
 
 /**
  * Serialized format of TimelineItem for persistence (Date → ISO string)
  */
 export interface SerializedTimelineItem {
-    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    type: TimelineItem['type'];
     timestamp: string;  // ISO string
     content?: string;
     toolCall?: SerializedToolCall;
+    steeringId?: string;
+    contentOffset?: number;
+    timelineIndex?: number;
+    eventOffset?: number;
 }
 
 export interface ConversationTurn {
@@ -193,6 +205,8 @@ export interface ConversationTurn {
     turnIndex: number;
     /** Opaque origin request identifier for correlating a user follow-up; never sender or message content. */
     relayRequestId?: string;
+    optimisticId?: string;
+    steered?: boolean;
     /** True while the assistant response is still being streamed (ephemeral UI hint) */
     streaming?: boolean;
     /** True when an assistant turn was preserved after the generation failed mid-stream. */
@@ -297,6 +311,8 @@ export interface SerializedConversationTurn {
     timestamp: string;  // ISO string
     turnIndex: number;
     relayRequestId?: string;
+    optimisticId?: string;
+    steered?: boolean;
     streaming?: boolean;
     /** True when an assistant turn was preserved after the generation failed mid-stream. */
     interrupted?: boolean;

@@ -1,4 +1,5 @@
 import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 import type { ChatPayload, ChatMode } from '../tasks/task-types';
 import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProvider, resolveChatProviderOrDefault } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
@@ -123,7 +124,7 @@ export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
-    steerProcess?(processId: string, message: string): Promise<boolean>;
+    steerProcess?(processId: string, message: string, steeringId?: string): Promise<boolean | SteeringBoundary>;
     /** Answer a pending ask-user question. Returns true if the question was found and answered. */
     answerAskUserQuestion?(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
@@ -864,7 +865,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
 
-    async steerProcess(processId: string, message: string): Promise<boolean> {
+    async steerProcess(processId: string, message: string, steeringId?: string): Promise<boolean | SteeringBoundary> {
         try {
             const proc = await this.store.getProcess(processId);
             if (!proc) return false;
@@ -881,7 +882,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ?? (!inFlight || inFlight.provider === binding.provider ? binding.sessionId : undefined);
             if (!sessionId) return false;
             const provider = inFlight?.provider ?? resolveRecordedProvider(proc);
-            return await this.getAiServiceForProvider(provider).steerSession(sessionId, proc.metadata?.mode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(message) : message);
+            const dispatch = () => this.getAiServiceForProvider(provider).steerSession(sessionId, proc.metadata?.mode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(message) : message);
+            if (steeringId !== undefined) {
+                return await inFlight?.steer?.(steeringId, dispatch) ?? false;
+            }
+            return await dispatch();
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;

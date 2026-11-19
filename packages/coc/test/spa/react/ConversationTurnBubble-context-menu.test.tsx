@@ -90,6 +90,22 @@ describe('ConversationTurnBubble — context menu', () => {
         expect(onAttach).toHaveBeenCalledWith(5, 'assistant', 'Test snippet');
     });
 
+    it('keeps section-level context and pin actions on the canonical response', () => {
+        const onAttach = vi.fn();
+        const onPin = vi.fn();
+        const logicalTurn = makeTurn({ role: 'assistant', content: 'Before. After.' });
+        const { container } = render(<ConversationTurnBubble
+            turn={{ ...logicalTurn, content: 'After.' }} logicalTurn={logicalTurn}
+            turnIndex={5} onAttachContext={onAttach} onPinTurn={onPin}
+        />);
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        fireEvent.click(screen.getByText('Attach as context'));
+        expect(onAttach).toHaveBeenCalledWith(5, 'assistant', 'Before. After.');
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        fireEvent.click(screen.getByText('Pin'));
+        expect(onPin).toHaveBeenCalledWith(5, true);
+    });
+
     it('always shows Copy and Copy as HTML items', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn()} turnIndex={0} />,

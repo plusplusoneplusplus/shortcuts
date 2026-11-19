@@ -68,6 +68,7 @@ Product names: **Refrains** (wire `jobs`), **Coda** (wire `scrubber`), **Overtur
 
 ## Chat and tools
 
+- Accepted steering messages split visible sections, not logical assistant turns. The owning executor persists correlated dispatch-time timeline boundaries; retain provider attribution and tool lifecycle ownership. Failed or queued sends do not create boundaries.
 - Tools stay mode-invariant. Gate behavior at call time. Unattended scripts omit questions and deny approval-gated tools before prompts or stored approvals. Approval defaults off, including nested `mcp_call`.
 - Tool-free lookups use `one-shot-ai.ts` and deny permissions and ambient MCP.
 - Copilot decisions have a two-minute deadline. Repair malformed decision text only when `allowOutputRepair` is not false. Transport and usage failures do not trigger another inference. Direct transforms never fall back to the SDK.

@@ -519,6 +519,23 @@ describe('MultiRepoQueueRouter', () => {
             bridge.dispose();
         });
 
+        it('routes correlated steering only to its owner and preserves its authoritative boundary', async () => {
+            const { bridge, store } = createBridge();
+            const foreign = bridge.getOrCreateBridge(path.resolve('foreign-steering-repo'));
+            const root = path.resolve('owner-steering-repo');
+            const owner = bridge.getOrCreateBridge(root);
+            await store.addProcess({ id: 'steering-owner', type: 'chat', status: 'running',
+                startTime: new Date(), promptPreview: '', workingDirectory: root });
+            const boundary = { steeringId: 'steer-id', contentOffset: 3, timelineIndex: 2, timestamp: new Date().toISOString() };
+            const foreignSteer = vi.spyOn(foreign, 'steerProcess').mockResolvedValue(true);
+            const ownerSteer = vi.spyOn(owner, 'steerProcess').mockResolvedValue(boundary);
+            try {
+                await expect(bridge.steerProcess('steering-owner', 'change', 'steer-id')).resolves.toEqual(boundary);
+                expect(ownerSteer).toHaveBeenCalledWith('steering-owner', 'change', 'steer-id');
+                expect(foreignSteer).not.toHaveBeenCalled();
+            } finally { bridge.dispose(); }
+        });
+
         // Ask-user requests are addressed to the process's owning bridge rather
         // than scanned in insertion order: broadcasting an answer lands it in
         // another repo's queue. See ask-user-answer-bridge-ownership.test.ts.

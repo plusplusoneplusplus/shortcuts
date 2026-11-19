@@ -152,4 +152,11 @@ describe('CLITaskExecutor.steerProcess()', () => {
 
         expect(result).toBe(false);
     });
+
+    it('does not accept correlated steering without the actual running executor', async () => {
+        store.processes.set('settled', createCompletedProcessWithSession('settled', 'session'));
+        sdkMocks.mockSteerSession.mockResolvedValue(true);
+        expect(await executor.steerProcess('settled', 'too late', 'steer-id')).toBe(false);
+        expect(sdkMocks.mockSteerSession).not.toHaveBeenCalled();
+    });
 });

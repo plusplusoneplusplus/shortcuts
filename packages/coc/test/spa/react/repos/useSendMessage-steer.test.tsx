@@ -29,6 +29,7 @@ import { useSendMessage } from '../../../../src/server/spa/client/react/features
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import { ChatPreferencesProvider } from '../../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
 import { parseSlashCommands, META_COMMANDS } from '../../../../src/server/spa/client/react/features/chat/slash-command-parser';
+import { projectSteeringSections } from '../../../../src/server/spa/client/react/features/chat/conversation/steeringSections';
 
 const WORKSPACE = 'ws-test';
 const PROCESS = 'proc-1';
@@ -88,6 +89,50 @@ function turnsHolder() {
 }
 
 describe('useSendMessage — steer while running', () => {
+    it('reconciles an accepted HTTP boundary after output and a snapshot raced the response', async () => {
+        const { state, setTurnsAndRef } = turnsHolder();
+        state.turns = [{
+            role: 'assistant', content: 'Before.After.', turnIndex: 1, streaming: true,
+            timeline: [{ type: 'content', content: 'Before.After.', timestamp: '2026-01-01T00:00:00Z' }],
+        }];
+        sendSpy.mockImplementation(async (_process, request) => ({
+            delivery: 'steered', turnIndex: 2,
+            boundary: { steeringId: request.optimisticId, contentOffset: 7, timelineIndex: 1, timestamp: '2026-01-01T00:00:01Z' },
+            userTurn: { role: 'user', content: 'steer me', turnIndex: 2, timestamp: '2026-01-01T00:00:01Z' },
+        }));
+        const { result } = renderHook(
+            () => useSendMessage(makeOptions({ isActiveGeneration: true, setTurnsAndRef })), { wrapper },
+        );
+        await act(async () => { await result.current.sendFollowUp('steer me', 'immediate'); });
+
+        expect(state.turns).toHaveLength(2);
+        expect(projectSteeringSections(state.turns).map(section => section.turn.content))
+            .toEqual(['Before.', 'steer me', 'After.']);
+    });
+
+    it('does not apply an old owner response after switching workspaces', async () => {
+        let resolve!: (response: unknown) => void;
+        sendSpy.mockImplementation(() => new Promise(done => { resolve = done; }));
+        const { setTurnsAndRef } = turnsHolder();
+        const { result, rerender } = renderHook(
+            ({ workspaceId }) => useSendMessage(makeOptions({ workspaceId, isActiveGeneration: true, setTurnsAndRef })),
+            { initialProps: { workspaceId: WORKSPACE }, wrapper },
+        );
+        let send!: Promise<void>;
+        act(() => { send = result.current.sendFollowUp('steer me', 'immediate'); });
+        const optimisticId = sendSpy.mock.calls[0][1].optimisticId;
+        rerender({ workspaceId: 'ws-other' });
+        setTurnsAndRef.mockClear();
+        await act(async () => {
+            resolve({
+                delivery: 'steered', turnIndex: 2,
+                boundary: { steeringId: optimisticId, contentOffset: 0, timelineIndex: 0, timestamp: '2026-01-01T00:00:01Z' },
+            });
+            await send;
+        });
+        expect(setTurnsAndRef).not.toHaveBeenCalled();
+    });
+
     it('removes the optimistic turn and shows a notice when the server queued the steer', async () => {
         sendSpy.mockResolvedValue({ processId: PROCESS, turnIndex: -1, delivery: 'queued' });
         const { state, setTurnsAndRef } = turnsHolder();

@@ -331,7 +331,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      */
     protected registerTurnAbortController(processId: string, provider: ChatProvider): AbortController {
         const controller = new AbortController();
-        this.runtime.inFlightTurns?.set(processId, { provider, controller });
+        this.runtime.inFlightTurns?.set(processId, {
+            provider,
+            controller,
+            steer: (steeringId, dispatch) => controller.signal.aborted
+                ? Promise.resolve(false)
+                : this.steerRunningTurn(processId, steeringId, dispatch),
+        });
         return controller;
     }
 
@@ -1591,6 +1597,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             let result: SDKInvocationResult;
             result = await effectiveAiService.sendMessage(sendOptions)
                 .finally(() => inventoryCapture?.dispose()) as SDKInvocationResult;
+            await this.settleSteering(processId);
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');
@@ -1626,6 +1633,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 ...turnProviderAttribution(taskProvider, turnSegmentId),
             };
         } catch (err) {
+            await this.settleSteering(processId);
             // Settle before the interrupted-turn append below so the ordinal
             // counts only the assistant turns that preceded this response.
             this.settleTurnPerformance(processId, {

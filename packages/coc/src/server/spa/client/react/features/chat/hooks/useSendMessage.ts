@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { targetSpans } from '../../../../../../shared/sentinel-target-reference';
 import { validateSentinelTargetSend } from '../sentinelTargetDiscovery';
 import { clearDraft } from './useDraftStore';
+import { reconcileSteering } from '../conversation/reconcileSteering';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import { formatAttachedContext } from './useAttachedContext';
@@ -610,7 +611,7 @@ export function useSendMessage({
             // away. The response says what really happened: `queued` means the
             // server buffered it, so the queued entry shows it instead.
             const optimisticId = deliveryMode === 'immediate' ? `steer-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined;
-            const dropOptimisticTurn = () => setTurnsAndRef(prev => prev.filter(t => t.optimisticId !== optimisticId));
+            const dropOptimisticTurn = () => setTurnsAndRef(prev => prev.filter(t => t.optimisticId !== optimisticId || t.steered));
             if (optimisticId) {
                 messageRequest = { ...messageRequest, optimisticId };
                 const timestamp = new Date().toISOString();
@@ -632,13 +633,20 @@ export function useSendMessage({
                     messageRequest,
                     ownerQuery,
                 );
+                if (activeTargetCheck.current !== targetCheck || targetCheck.abort.signal.aborted) return;
                 if (optimisticId && response?.delivery === 'queued') {
                     dropOptimisticTurn();
                     notify?.("Couldn't steer — queued for after this turn.", 'info');
                 } else if (optimisticId && response?.delivery === 'steered') {
-                    setTurnsAndRef(prev => prev.map(t => t.optimisticId === optimisticId ? { ...t, steered: true } : t));
+                    setTurnsAndRef(prev => reconcileSteering(prev, {
+                        ...response,
+                        turnIndex: typeof response.turnIndex === 'number' ? response.turnIndex
+                            : prev.find(turn => turn.optimisticId === optimisticId)?.turnIndex ?? -1,
+                        optimisticId,
+                    }));
                 }
             } catch (error) {
+                if (activeTargetCheck.current !== targetCheck || targetCheck.abort.signal.aborted) return;
                 if (optimisticId) dropOptimisticTurn();
                 setError(getSpaCocClientErrorMessage(error, 'Failed to send follow-up message.'));
                 lastFailedMessageRef.current = rawContent;

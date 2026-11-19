@@ -16,6 +16,7 @@
 
 import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import type { MidTurnTokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
 import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
@@ -181,7 +182,66 @@ export abstract class BaseExecutor {
     }
 
     protected getTimelineBuffer(processId: string): TimelineItem[] | undefined {
-        return this.sessions.getStreamingIfPresent(processId)?.timelineBuffer;
+        const state = this.sessions.getStreamingIfPresent(processId);
+        return state?.timelineBuffer.filter(item => !state.pendingSteeringMarkers.has(item));
+    }
+
+    protected async steerRunningTurn(
+        processId: string,
+        steeringId: string,
+        dispatch: () => Promise<boolean>,
+    ): Promise<SteeringBoundary | false> {
+        const state = this.sessions.getStreamingIfPresent(processId);
+        if (!state || state.turnFinalized || state.steeringClosed) return false;
+        const marker: TimelineItem = {
+            type: 'steering', steeringId, contentOffset: state.outputBuffer.length, timestamp: new Date(),
+        };
+        // Reserve before dispatch: providers can emit chunks synchronously or while acknowledging.
+        state.timelineBuffer.push(marker);
+        state.pendingSteeringMarkers.add(marker);
+        const operation = (async () => {
+            let accepted = false;
+            try {
+                accepted = await dispatch();
+            } catch (error) {
+                getLogger().debug(LogCategory.AI, `[Steering] Provider delivery failed for ${processId}: ${error instanceof Error ? error.message : String(error)}`);
+                return false as const;
+            } finally {
+                state.pendingSteeringMarkers.delete(marker);
+                if (!accepted) {
+                    state.timelineBuffer.splice(state.timelineBuffer.indexOf(marker), 1);
+                }
+            }
+            if (!accepted) return false as const;
+            const timeline = mergeConsecutiveContentItems(this.getTimelineBuffer(processId) ?? []);
+            const timelineIndex = timeline.indexOf(marker);
+            const boundary: SteeringBoundary = {
+                steeringId,
+                contentOffset: marker.contentOffset!,
+                timelineIndex,
+                eventOffset: timeline.slice(0, timelineIndex).filter(item =>
+                    item.type !== 'content' && item.type !== 'steering').length,
+                timestamp: marker.timestamp.toISOString(),
+            };
+            marker.timelineIndex = boundary.timelineIndex;
+            marker.eventOffset = boundary.eventOffset;
+            await this.flushConversationTurn(processId, true);
+            return boundary;
+        })();
+        state.pendingSteering.add(operation);
+        try {
+            return await operation;
+        } finally {
+            state.pendingSteering.delete(operation);
+        }
+    }
+
+    /** Stop admitting steers and retain acknowledged boundaries in the final snapshot. */
+    protected async settleSteering(processId: string): Promise<void> {
+        const state = this.sessions.getStreamingIfPresent(processId);
+        if (!state) return;
+        state.steeringClosed = true;
+        await Promise.all(state.pendingSteering);
     }
 
     protected getPendingSuggestions(processId: string): string[] | undefined {
@@ -288,7 +348,9 @@ export abstract class BaseExecutor {
         // Snapshot buffer + timeline synchronously at call time so throttled
         // flushes persist progressively growing content; only the store write
         // itself is serialized through the chain.
-        const timelineSnapshot = mergeConsecutiveContentItems([...streamingState.timelineBuffer]);
+        const timelineSnapshot = mergeConsecutiveContentItems(
+            (this.getTimelineBuffer(processId) ?? []).map(item => ({ ...item })),
+        );
 
         return this.chainTurnWrite(processId, async () => {
             // Re-validate inside the chain: the turn may have been finalized

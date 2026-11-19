@@ -57,7 +57,28 @@ export interface ConversationTurn {
   content: string;
   timestamp: string | Date;
   turnIndex: number;
+  optimisticId?: string;
+  steered?: boolean;
   [key: string]: unknown;
+}
+
+/** Successful steering boundary within one logical assistant response. */
+export interface SteeringBoundary {
+  steeringId: string;
+  /** Cumulative assistant text length at dispatch, in UTF-16 code units. */
+  contentOffset: number;
+  /** Position in the merged server timeline, including earlier accepted steering markers. */
+  timelineIndex: number;
+  /** Tool/lifecycle entries before this boundary, excluding content and steering markers. */
+  eventOffset?: number;
+  timestamp: string;
+}
+
+export interface MessageSteeringPayload {
+  turnIndex: number;
+  optimisticId?: string;
+  boundary?: SteeringBoundary;
+  userTurn?: ConversationTurn;
 }
 
 export interface ConversationSnapshotPayload {
@@ -259,7 +280,7 @@ export interface ProcessMessageRequest {
   [key: string]: unknown;
 }
 
-export interface ProcessMessageResponse extends JsonObject {
+export interface ProcessMessageResponse extends JsonObject, Partial<MessageSteeringPayload> {
   /**
    * What happened to the message. `steered`: it joined the running turn.
    * `queued`: it runs as its own turn (buffered, enqueued or started now).

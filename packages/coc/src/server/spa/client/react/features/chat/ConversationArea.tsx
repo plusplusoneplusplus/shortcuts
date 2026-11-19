@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
+import { projectSteeringSections } from './conversation/steeringSections';
 import { CompactionBubble } from './CompactionBubble';
 import { shouldInjectStreamingPlaceholder } from './streaming-placeholder';
 import { useMessageNavigation } from './hooks/useMessageNavigation';
@@ -485,10 +486,11 @@ export function ConversationArea({
                                         provider: latestTurn?.provider ?? provider,
                                     }]
                                     : turns;
-                            const sortedTurns = [...renderTurns]
+                            const sections = projectSteeringSections([...renderTurns]
                                 .filter(t => !t.deletedAt && (!t.archived || showArchived || !onArchiveTurn))
-                                .sort(compareConversationTurns);
-                            return sortedTurns.map((turn, i) => {
+                                .sort(compareConversationTurns));
+                            const sortedTurns = sections.map(section => section.turn);
+                            return sections.map(({ turn, key, logicalTurn }, i) => {
                                 const idx = turn.turnIndex ?? i;
                                 const isSelected = isSelecting && selectedTurns?.has(idx);
                                 const turnProvider = turn.provider ?? provider;
@@ -572,7 +574,7 @@ export function ConversationArea({
                                 }
 
                                 return (
-                                    <div key={idx}>
+                                    <div key={key} data-conversation-section={key}>
                                         {providerBoundary}
                                         {modelDivider}
                                         {modeDivider}
@@ -602,6 +604,7 @@ export function ConversationArea({
                                                     conversationMode={conversationMode}
                                                     conversationOwnerKey={conversationOwnerKey}
                                                     turn={turn}
+                                                    logicalTurn={logicalTurn}
                                                     taskId={taskId}
                                                     wsId={wsId}
                                                     turnIndex={idx}

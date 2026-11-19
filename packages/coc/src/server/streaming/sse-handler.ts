@@ -16,6 +16,7 @@ import { warmStatusBridge, type WarmStatusBridge } from './warm-status-bridge';
 import { backgroundTasksRegistry, type BackgroundTasksRegistry } from './background-tasks-registry';
 import { readActiveProviderSession } from '../processes/active-provider-session';
 import { projectBotControl } from '../processes/bot-control-read-model';
+import type { SteeringBoundary } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -41,6 +42,8 @@ export interface MessageSteeringPayload {
     turnIndex: number;
     /** Client-provided optimistic ID echoed back for reconciliation. */
     optimisticId?: string;
+    boundary?: SteeringBoundary;
+    userTurn?: import('@plusplusoneplusplus/forge').ConversationTurn;
 }
 
 /** Fired when a pending message is persisted on the process (queued while AI is busy). */
@@ -101,6 +104,8 @@ export function emitMessageSteering(store: ProcessStore, processId: string, payl
         type: 'message-steering',
         turnIndex: payload.turnIndex,
         ...(payload.optimisticId !== undefined ? { optimisticId: payload.optimisticId } : {}),
+        ...(payload.boundary ? { boundary: payload.boundary } : {}),
+        ...(payload.userTurn ? { userTurn: payload.userTurn } : {}),
     } as ProcessOutputEvent);
 }
 
@@ -363,6 +368,8 @@ export async function handleProcessStream(
             writeNamedEvent(res, 'message-steering', {
                 turnIndex: event.turnIndex,
                 ...(event.optimisticId !== undefined ? { optimisticId: event.optimisticId } : {}),
+                ...(event.boundary ? { boundary: event.boundary } : {}),
+                ...(event.userTurn ? { userTurn: event.userTurn } : {}),
             });
         } else if (event.type === 'pending-message-added') {
             writeNamedEvent(res, 'pending-message-added', {

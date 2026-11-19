@@ -139,8 +139,25 @@ describe('POST /api/processes/:id/message — steer running task', () => {
 
         expect(resp.status).toBe(202);
         expect(resp.json().delivery).toBe('steered');
-        expect(steerProcessMock).toHaveBeenCalledWith('proc-running', 'steer this');
+        expect(steerProcessMock).toHaveBeenCalledWith('proc-running', 'steer this', expect.any(String));
         expect(enqueueMock).not.toHaveBeenCalled();
+    });
+
+    it('returns the durable boundary and user turn in the HTTP acknowledgement', async () => {
+        findTaskMock.mockReturnValue({ id: 'task-1', type: 'chat', status: 'running' });
+        const boundary = { steeringId: 'steer-http', contentOffset: 3, timelineIndex: 1, timestamp: new Date().toISOString() };
+        steerProcessMock.mockResolvedValue(boundary);
+        const resp = await request(`${baseUrl}/api/processes/proc-running/message`, {
+            method: 'POST',
+            body: JSON.stringify({ content: 'change', deliveryMode: 'immediate', optimisticId: 'steer-http' }),
+        });
+        expect(resp.status).toBe(202);
+        expect(resp.json()).toMatchObject({ delivery: 'steered', boundary,
+            userTurn: { content: expect.stringContaining('change'), optimisticId: 'steer-http', steered: true,
+                timeline: [{ type: 'steering', contentOffset: 3, timelineIndex: 1 }] } });
+        const emitted = vi.mocked(store.emitProcessEvent).mock.calls
+            .find(([, event]) => event.type === 'message-steering')![1];
+        expect(emitted).toMatchObject({ boundary, userTurn: { optimisticId: 'steer-http' } });
     });
 
     it('falls back to buffering as pending message when steerProcess returns false', async () => {

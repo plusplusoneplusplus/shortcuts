@@ -31,6 +31,16 @@ function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConver
 }
 
 describe('ConversationTurnBubble — raw view toggle', () => {
+    it('renders only the steering section but inspects the full logical response', () => {
+        const logicalTurn = makeTurn({ turnIndex: 1, content: 'Before. After.' });
+        const section = { ...logicalTurn, content: 'After.' };
+        const { container } = render(<ConversationTurnBubble turn={section} logicalTurn={logicalTurn} turnIndex={1} />);
+        expect(container.querySelector('.markdown-body')?.textContent?.trim()).toBe('After.');
+        fireEvent.click(container.querySelector('.bubble-raw-btn')!);
+        expect(container.querySelector('.raw-content-view')?.textContent).toBe('Before. After.');
+        expect(container.querySelector('[data-turn-index]')?.getAttribute('data-turn-index')).toBe('1');
+    });
+
     beforeEach(() => {
         vi.restoreAllMocks();
     });
