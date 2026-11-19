@@ -577,8 +577,8 @@ interface CodexAppServerRpcMessage {
 /**
  * `thread/tokenUsage/updated` notification params. The app-server emits this
  * right after `thread/resume` (the pre-compaction baseline) and again after the
- * compaction turn (the reduced total). `tokenUsage.total.totalTokens` is the
- * figure we diff.
+ * compaction turn (the reduced context). `tokenUsage.last.totalTokens` is the
+ * context occupancy; `total` accumulates usage across the thread.
  */
 interface CodexTokenUsageUpdatedParams {
     threadId?: string;
@@ -592,7 +592,7 @@ interface CodexTokenUsageUpdatedParams {
 
 /**
  * `thread/compacted` notification params (deprecated upstream in favor of a
- * `context_compaction` `item/completed`, but still emitted by 0.153.2).
+ * `contextCompaction` `item/completed`).
  */
 interface CodexThreadCompactedParams {
     threadId?: string;
@@ -2177,8 +2177,8 @@ export class CodexSDKService implements ISDKService {
      * server only knows threads resumed in-process), then `thread/compact/start`,
      * which rewrites the rollout under the same thread id and runs a model
      * summarization turn asynchronously. Completion arrives as a
-     * `thread/compacted` notification (or a forward-compatible
-     * `context_compaction` `item/completed`). The `thread/tokenUsage/updated`
+     * `thread/compacted` notification or a `contextCompaction` `item/completed`
+     * (also accepting the snake-case variant). The `thread/tokenUsage/updated`
      * frames give the totals we diff for `tokensRemoved`: the first (emitted by
      * resume) is the pre-compaction baseline, the last is the reduced total.
      *
@@ -2272,7 +2272,7 @@ export class CodexSDKService implements ISDKService {
                     if (msg.method === 'thread/tokenUsage/updated') {
                         const params = msg.params as CodexTokenUsageUpdatedParams | undefined;
                         if (params?.threadId === sessionId) {
-                            const total = params.tokenUsage?.total?.totalTokens;
+                            const total = params.tokenUsage?.last?.totalTokens ?? params.tokenUsage?.total?.totalTokens;
                             if (typeof total === 'number') {
                                 if (firstTotal == null) firstTotal = total;
                                 latestTotal = total;
@@ -2288,12 +2288,11 @@ export class CodexSDKService implements ISDKService {
                         return;
                     }
 
-                    // Completion — forward-compatible `context_compaction` item, so
-                    // a future codex bump that drops thread/compacted still settles.
+                    // v2 ThreadItem uses camelCase; retain the snake-case variant.
                     if (msg.method === 'item/completed') {
                         const params = msg.params as { threadId?: string; item?: { type?: string; item_type?: string } } | undefined;
                         const itemType = params?.item?.type ?? params?.item?.item_type;
-                        if (itemType === 'context_compaction' && (params?.threadId ?? sessionId) === sessionId) {
+                        if ((itemType === 'contextCompaction' || itemType === 'context_compaction') && params?.threadId === sessionId) {
                             settleSuccess();
                         }
                     }

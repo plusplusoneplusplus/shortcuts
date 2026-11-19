@@ -5,8 +5,9 @@
  * `codex app-server --listen stdio://` directly: `thread/resume` to load the
  * persisted thread into the freshly-spawned app-server, `thread/compact/start`
  * to rewrite the rollout in place, then it waits for a `thread/compacted`
- * notification (or a forward-compatible `context_compaction` `item/completed`)
- * while tracking `thread/tokenUsage/updated` (`tokenUsage.total.totalTokens`).
+ * notification or a `contextCompaction` `item/completed` (also accepting the
+ * snake-case variant), while tracking `thread/tokenUsage/updated` context usage
+ * from `tokenUsage.last.totalTokens` with a total-only compatibility fallback.
  *
  * These tests fake the spawned child so no real binary runs (keeps Windows CI
  * unaffected) and assert the outgoing JSON-RPC frames, not just wrapper args.
@@ -203,10 +204,51 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         expectRpcCleanedUp(child);
     });
 
-    // `settleSuccess` keeps both the first and the LAST observed total
-    // (codex-sdk-service.ts:2148-2163). With more than two usage frames the last
-    // one is the true post-compaction total; today it is used only as the
-    // subtrahend for tokensRemoved and is not surfaced on the CompactResult.
+    it('settles on the bundled protocol contextCompaction item and uses current context rather than cumulative usage', async () => {
+        vi.useFakeTimers();
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+        const svc = makeAvailableService();
+        const settled = vi.fn();
+        const promise = svc.compactSession(THREAD_ID).then(result => {
+            settled(result);
+            return result;
+        });
+        await flushMicrotasks();
+        child.writeStdoutLine(RESUME_ACK);
+        // v2 ThreadTokenUsage has cumulative `total` and context occupancy `last`.
+        child.writeStdoutLine({ method: 'thread/tokenUsage/updated', params: {
+            threadId: THREAD_ID,
+            tokenUsage: { total: { totalTokens: 14_992_467 }, last: { totalTokens: 219_059 } },
+        } });
+        child.writeStdoutLine({ method: 'thread/tokenUsage/updated', params: {
+            threadId: THREAD_ID,
+            tokenUsage: { total: { totalTokens: 15_214_425 }, last: { totalTokens: 26_379 } },
+        } });
+        // Only a completion with the exact owning thread may release this call.
+        for (const threadId of [undefined, 'other-thread']) {
+            child.writeStdoutLine({ method: 'item/completed', params: {
+                ...(threadId ? { threadId } : {}),
+                item: { type: 'contextCompaction', id: 'compact-1' },
+            } });
+        }
+        await flushMicrotasks();
+        expect(settled).not.toHaveBeenCalled();
+        child.writeStdoutLine({ method: 'item/completed', params: {
+            threadId: THREAD_ID, turnId: 'turn-compact',
+            item: { type: 'contextCompaction', id: 'compact-1' },
+        } });
+        await flushMicrotasks();
+        expect(settled).toHaveBeenCalledOnce();
+        expect(await promise).toEqual({
+            success: true, tokensRemoved: 192_680, messagesRemoved: 0,
+            contextUsage: { currentTokens: 26_379 },
+        });
+        expectRpcCleanedUp(child);
+    });
+
+    // With more than two usage frames the last supplies the post-compaction
+    // snapshot and the subtrahend for tokensRemoved.
     it('tracks the LAST tokenUsage frame as the post-compaction total across many frames', async () => {
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
