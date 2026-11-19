@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
     partitionShellTabs,
     computeVisibleTabKeys,
+    computeCloneActivity,
     computeCloneStatusMap,
     cloneStatusColor,
     blendRemoteCloneStatus,
@@ -110,6 +111,27 @@ describe('computeCloneStatusMap', () => {
     it('maps an online remote clone with a paused remote queue to paused', () => {
         const map = computeCloneStatusMap([remoteRepo('p', 'online', 'paused')], {}, noneHidden);
         expect(map.p).toBe('paused');
+    });
+});
+
+describe('computeCloneActivity', () => {
+    const hidden = (t: any) => !!t.hidden;
+
+    it('counts visible local running and queued tasks', () => {
+        const activity = computeCloneActivity(repo('a'), {
+            a: { running: [{}, { hidden: true }, {}], queued: [{}] },
+        }, hidden);
+        expect(activity).toEqual({ status: 'running', running: 2, queued: 1 });
+    });
+
+    it('keeps paused precedence while still reporting counts', () => {
+        const activity = computeCloneActivity(repo('a'), { a: { stats: { isPaused: true }, running: [{}], queued: [] } }, hidden);
+        expect(activity).toEqual({ status: 'paused', running: 1, queued: 0 });
+    });
+
+    it('reads remote clones from their marker and never from the local map', () => {
+        const activity = computeCloneActivity(remoteRepo('r', 'online', 'queued'), { r: { running: [{}], queued: [] } }, hidden);
+        expect(activity).toEqual({ status: 'queued', running: 0, queued: 0 });
     });
 });
 

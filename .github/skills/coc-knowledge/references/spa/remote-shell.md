@@ -26,8 +26,7 @@ clone. That memory is `AppContextState.lastCloneByRemote` — keyed by
 (`coc-last-clone-by-remote`), since which machine's clone you were viewing is
 per-device. `ScopeSlideSwitcher` records it (deciding the cluster needs the full
 repo list and the grouping pass, which the reducer lacks). `WorkspaceTabsCluster` carries the
-clone switcher, clone popover, clone-scoped tabs, overflow menu, and repo info/remove
-dialogs. The right-panel `WorkspaceDockToggle` is the first right-side action; the topbar
+clone strip, clone-scoped tabs, overflow menu, and repo info/remove dialogs. The right-panel `WorkspaceDockToggle` is the first right-side action; the topbar
 has no `+ New` queue button.
 `WorkspaceCloneLabel` presents repository and selected-clone machine identity in
 both selectors and the active repository pin, using `getRemoteCloneKey` and
@@ -120,6 +119,20 @@ so the default clone is local when one exists. `partitionShellTabs` keeps page t
 source order and excludes the workspace aliases. Work Items and Pull Requests use
 owner-qualified right-panel tools, including member targets inside repo groups.
 
+### Clone strip
+
+`WorkspaceTabsCluster` lists every clone of the selected remote inline as
+`clone-pill` buttons in a `role="group"` strip (`clone-strip`) that scrolls
+horizontally and keeps the active pill in view. Pills key on the selection id, so
+equal workspace ids on several servers stay distinct; colliding `name / machine`
+labels add a short path. Each pill shows name, machine (`Local` or server), status
+dot, local running/queued counts, unread count and offline state. Its accessible
+name carries the same facts; a hover/focus tooltip outside the scroll box shows the
+full label and path. Arrow/Home/End move focus; ContextMenu or Shift+F10 open the
+info/copy/remove menu. Clicking any pill, including the active one, calls
+`selectClone`.
+
+`computeCloneActivity` (status + counts per clone) feeds the strip;
 `computeCloneStatusMap` / `cloneStatusColor` drive clone dots: local clones are
 queue-derived; remote clones blend connection-first via `blendRemoteCloneStatus`
 (`offline`/`failed` → offline, `connecting`/not-yet-online → connecting, online → remote

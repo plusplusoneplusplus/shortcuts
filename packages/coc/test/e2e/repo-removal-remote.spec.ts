@@ -12,7 +12,7 @@
  *     tooltip names the offline server, so removal fails up front instead of
  *     after the confirm.
  *
- * Both surfaces (the remotes-picker row menu and the clone-popover context menu)
+ * Both surfaces (the remotes-picker row menu and the clone-strip pill context menu)
  * share `describeRemoveBlock` + `useWorkspaceRemoval`; the row menu is the one
  * reachable without first selecting the clone, so it is what these drive. The
  * per-surface wiring is unit-tested in
