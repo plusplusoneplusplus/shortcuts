@@ -1606,8 +1606,8 @@ test.describe('Explorer language support – direct remote clone', () => {
                 .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('def format_widget');
 
-            await expect(page.locator('[data-testid="clone-switch"]'))
-                .toHaveAttribute('title', 'Remote Python Repo / Remote Host');
+            await expect(page.locator('[data-testid="clone-pill"][data-active="true"]'))
+                .toHaveAttribute('aria-label', /^Remote Python Repo \/ Remote Host/);
             await expect(editorTab(page, PYTHON_APP_TAB).locator('[data-testid^="unified-panel-tab-dirty-"]'))
                 .toHaveCount(1);
 
@@ -1619,8 +1619,8 @@ test.describe('Explorer language support – direct remote clone', () => {
                 .toContain(unsavedMarker);
             await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
                 .toBeVisible();
-            await expect(page.locator('[data-testid="clone-switch"]'))
-                .toHaveAttribute('title', 'Remote Python Repo / Remote Host');
+            await expect(page.locator('[data-testid="clone-pill"][data-active="true"]'))
+                .toHaveAttribute('aria-label', /^Remote Python Repo \/ Remote Host/);
         } finally {
             if (remoteServerId) {
                 await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {

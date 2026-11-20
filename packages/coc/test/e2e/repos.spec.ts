@@ -807,10 +807,10 @@ test.describe('Repo Management Popover', () => {
 // The old RepoTabStrip rendered every workspace as its own tab with a
 // `repo-group-separator` between same-remote clusters. The graduated shell
 // instead collapses clones of the same remote into a single remote-dropdown
-// row (`row.summary.cloneCount` badge) and exposes a `clone-switch` button
-// in the TopBar for toggling between them once one is selected — see
+// row (`row.summary.cloneCount` badge) and lists every clone of the selected
+// remote inline in the TopBar as `clone-pill` buttons — see
 // `WorkspaceIdentityChip.tsx`'s `renderRemoteRow` and
-// `WorkspaceTabsCluster.tsx`'s clone popover.
+// `WorkspaceTabsCluster.tsx`'s clone strip.
 
 test.describe('Remote Clone Grouping', () => {
     test('repos sharing a remote URL collapse into a single picker row', async ({ page, serverUrl }) => {
@@ -836,7 +836,7 @@ test.describe('Remote Clone Grouping', () => {
         await expect(rows).toHaveCount(1, { timeout: 10000 });
     });
 
-    test('selecting a grouped remote exposes a clone-switch for navigating between clones', async ({ page, serverUrl }) => {
+    test('selecting a grouped remote lists its clones inline for one-click switching', async ({ page, serverUrl }) => {
         const remoteUrl = 'https://github.com/test-org/collapse-repo.git';
 
         await request(`${serverUrl}/api/workspaces`, {
@@ -851,22 +851,17 @@ test.describe('Remote Clone Grouping', () => {
         await page.goto(serverUrl);
         await gotoWorkspace(page, serverUrl, 'ws-group-2a');
 
-        // The clone-switch shows the clone count for the active group.
-        const cloneSwitch = page.locator('[data-testid="clone-switch"]');
-        await expect(cloneSwitch).toBeVisible({ timeout: 10000 });
-        await expect(cloneSwitch).toContainText('2');
-
-        // Opening it lists both clones.
-        await cloneSwitch.click();
-        const popoverItems = page.locator('[data-testid="clone-popover-item"]');
-        await expect(popoverItems).toHaveCount(2, { timeout: 10000 });
-        await expect(popoverItems.filter({ hasText: 'collapse-a' })).toBeVisible();
-        await expect(popoverItems.filter({ hasText: 'collapse-b' })).toBeVisible();
+        // Both clones are visible in the top row; the selected one is active.
+        const pills = page.locator('[data-testid="clone-pill"]');
+        await expect(pills).toHaveCount(2, { timeout: 10000 });
+        await expect(pills.filter({ hasText: 'collapse-a' })).toHaveAttribute('data-active', 'true');
+        await expect(pills.filter({ hasText: 'collapse-b' })).toHaveAttribute('data-active', 'false');
 
         // Switching to the other clone navigates to its detail view.
-        await popoverItems.filter({ hasText: 'collapse-b' }).click();
+        await pills.filter({ hasText: 'collapse-b' }).click();
         await expect(page).toHaveURL(/#repos\/ws-group-2b/, { timeout: 10000 });
         await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await expect(pills.filter({ hasText: 'collapse-b' })).toHaveAttribute('data-active', 'true');
     });
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -12,14 +12,15 @@ import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, subTabClickTarget, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { getRepoHashColor, getServerHashColor, groupKey, groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
-import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, describeRemoveBlock, partitionShellTabs, summarizeRemote } from './shellModel';
+import { cloneStatusColor, computeCloneActivity, computeCloneStatusMap, computeVisibleTabKeys, describeRemoveBlock, partitionShellTabs, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useWorkspaceRemoval } from './useWorkspaceRemoval';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
-import { WorkspaceCloneLabel, getWorkspaceCloneLabel } from './WorkspaceCloneLabel';
+import { getWorkspaceCloneLabel, getWorkspaceMachineName } from './WorkspaceCloneLabel';
+import { isRepoOffline, shortPath } from '../../repos/repoPickerModel';
 import { getHostname } from '../../utils/config';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -27,14 +28,6 @@ import type { RepoSubTab } from '../../types/dashboard';
 export interface WorkspaceTabsClusterProps {
     repo: RepoData;
     repos: RepoData[];
-}
-
-function Chevron() {
-    return (
-        <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" />
-        </svg>
-    );
 }
 
 const unreadBadgeClass = 'min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none';
@@ -84,38 +77,40 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
         () => computeCloneStatusMap(repos, queueState.repoQueueMap, isHiddenTask),
         [repos, queueState.repoQueueMap],
     );
-    const remoteColor = getRepoHashColor(clones[0]?.workspace, getHostname() ?? 'local');
     const remoteLabel = group ? summarizeRemote(group, cloneStatus, {}).name : ws.name;
+    // Clones whose "name / machine" text collides also show their short path.
+    const duplicateLabels = useMemo(() => {
+        const seen = new Set<string>();
+        const dup = new Set<string>();
+        for (const c of clones) {
+            const label = getWorkspaceCloneLabel(c);
+            if (seen.has(label)) dup.add(label);
+            seen.add(label);
+        }
+        return dup;
+    }, [clones]);
 
-    const cloneUnreadTotal = useMemo(
-        () => clones.reduce((sum, c) => sum + (unseenCounts[getRepoSelectionId(c)] ?? 0), 0),
-        [clones, unseenCounts],
-    );
-
-    const [cloneOpen, setCloneOpen] = useState(false);
+    const [hoverPill, setHoverPill] = useState<{ id: string; left: number } | null>(null);
+    const pillTooltipId = useId();
     const [ovOpen, setOvOpen] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
     const [infoRepo, setInfoRepo] = useState<RepoData | null>(null);
     const { requestRemove, removeDialog } = useWorkspaceRemoval({ repos, selectedRepo: repo, addToast });
     const [visibleKeys, setVisibleKeys] = useState<Set<string> | null>(null);
-    const cloneRef = useRef<HTMLDivElement>(null);
+    const stripRef = useRef<HTMLDivElement>(null);
     const ovRef = useRef<HTMLDivElement>(null);
     const cloneRegionRef = useRef<HTMLDivElement>(null);
     const measureRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!cloneOpen && !ovOpen) return;
+        if (!ovOpen) return;
         const onDown = (e: MouseEvent) => {
             const target = e.target as Element | null;
             if (target?.closest?.('[data-testid="context-menu"]')) return;
-            if (cloneOpen && cloneRef.current && !cloneRef.current.contains(e.target as Node)) setCloneOpen(false);
-            if (ovOpen && ovRef.current && !ovRef.current.contains(e.target as Node)) setOvOpen(false);
+            if (ovRef.current && !ovRef.current.contains(e.target as Node)) setOvOpen(false);
         };
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                setCloneOpen(false);
-                setOvOpen(false);
-            }
+            if (e.key === 'Escape') setOvOpen(false);
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey);
@@ -123,7 +118,42 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
             document.removeEventListener('mousedown', onDown);
             document.removeEventListener('keydown', onKey);
         };
-    }, [cloneOpen, ovOpen]);
+    }, [ovOpen]);
+
+    // Keep the selected clone visible when the strip scrolls horizontally.
+    useEffect(() => {
+        const pills = stripRef.current?.querySelectorAll<HTMLElement>('[data-testid="clone-pill"]') ?? [];
+        const pill = Array.from(pills).find(el => el.dataset.selectionId === cloneId);
+        pill?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    }, [cloneId, clones.length]);
+
+    const hoverRepo = hoverPill ? clones.find(c => getRepoSelectionId(c) === hoverPill.id) ?? null : null;
+    const showPillTooltip = (id: string, el: HTMLElement) => {
+        const cluster = el.closest('[data-testid="workspace-tabs-cluster"]');
+        setHoverPill({ id, left: el.getBoundingClientRect().left - (cluster?.getBoundingClientRect().left ?? 0) });
+    };
+
+    // Arrow/Home/End move focus across enabled pills; ContextMenu or Shift+F10
+    // opens the clone menu from the keyboard.
+    const onPillKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+            e.preventDefault();
+            const target = clones.find(c => getRepoSelectionId(c) === e.currentTarget.dataset.selectionId);
+            const rect = e.currentTarget.getBoundingClientRect();
+            if (target) setCtxMenu({ repo: target, x: rect.left, y: rect.bottom });
+            return;
+        }
+        const pills = Array.from(stripRef.current?.querySelectorAll<HTMLButtonElement>('[data-testid="clone-pill"]:not(:disabled)') ?? []);
+        const i = pills.indexOf(e.currentTarget);
+        const next = e.key === 'ArrowRight' ? pills[i + 1]
+            : e.key === 'ArrowLeft' ? pills[i - 1]
+            : e.key === 'Home' ? pills[0]
+            : e.key === 'End' ? pills[pills.length - 1]
+            : undefined;
+        if (!next) return;
+        e.preventDefault();
+        next.focus();
+    };
 
     const recomputeOverflow = useCallback(() => {
         const region = cloneRegionRef.current;
@@ -160,10 +190,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
         // is routed there. When that server is unreachable the DELETE cannot land —
         // disable up front rather than failing after the confirm.
         const removeBlock = describeRemoveBlock(menuRepo, cloneStatus[String(menuRepo.workspace.id)]);
-        const close = () => {
-            setCtxMenu(null);
-            setCloneOpen(false);
-        };
+        const close = () => setCtxMenu(null);
         return [
             {
                 label: 'Repo info',
@@ -254,123 +281,108 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                 ))}
             </div>
 
-            <div className="relative flex-shrink-0" ref={cloneRef}>
-                <button
-                    data-testid="clone-switch"
-                    onClick={() => setCloneOpen(o => !o)}
-                    aria-haspopup="menu"
-                    aria-expanded={cloneOpen}
-                    title={getWorkspaceCloneLabel(repo)}
-                    aria-label={getWorkspaceCloneLabel(repo)}
-                    className="group/identity relative inline-flex items-center min-w-0 max-w-[300px] gap-1.5 h-[26px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
-                >
-                    <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(cloneStatus[cloneId], remoteColor) }} aria-hidden />
-                    <WorkspaceCloneLabel repo={repo} />
-                    {clones.length > 1 && <span className="shrink-0 text-[11px] text-[#848484] dark:text-[#777]">· {clones.length}</span>}
-                    {cloneUnreadTotal > 0 && (
-                        <span
-                            className={`absolute -top-0.5 -right-0.5 ${unreadBadgeClass}`}
-                            data-testid="clone-switch-unseen-badge"
-                            aria-label={`${cloneUnreadTotal} conversations needing attention`}
+            <div
+                ref={stripRef}
+                role="group"
+                aria-label={`${remoteLabel} clones`}
+                data-testid="clone-strip"
+                onScroll={() => setHoverPill(null)}
+                className="flex items-center gap-1 min-w-0 max-w-[40%] lg:max-w-[50%] overflow-x-auto overflow-y-hidden py-0.5 [scrollbar-width:thin]"
+            >
+                {clones.map(c => {
+                    const selectionId = getRepoSelectionId(c);
+                    const isSel = selectionId === cloneId;
+                    const { status: st, running, queued } = computeCloneActivity(c, queueState.repoQueueMap, isHiddenTask);
+                    const isRemote = isRemoteRepo(c);
+                    const isOffline = isRemote && st === 'offline';
+                    const machine = getWorkspaceMachineName(c);
+                    const label = getWorkspaceCloneLabel(c);
+                    const cloneUnreadCount = unseenCounts[selectionId] ?? 0;
+                    const activity = [running > 0 && `${running} running`, queued > 0 && `${queued} queued`, cloneUnreadCount > 0 && `${cloneUnreadCount} needing attention`]
+                        .filter(Boolean).join(', ');
+                    return (
+                        <button
+                            key={selectionId}
+                            type="button"
+                            data-testid="clone-pill"
+                            data-selection-id={selectionId}
+                            data-active={isSel ? 'true' : 'false'}
+                            data-remote={isRemote ? 'true' : 'false'}
+                            data-clone-status={st}
+                            data-offline={isOffline ? 'true' : 'false'}
+                            aria-current={isSel ? 'true' : undefined}
+                            aria-label={[label, isOffline && 'offline', activity].filter(Boolean).join(', ')}
+                            aria-describedby={hoverPill?.id === selectionId ? pillTooltipId : undefined}
+                            disabled={isOffline && !isSel}
+                            onMouseEnter={(e) => showPillTooltip(selectionId, e.currentTarget)}
+                            onMouseLeave={() => setHoverPill(null)}
+                            onFocus={(e) => showPillTooltip(selectionId, e.currentTarget)}
+                            onBlur={() => setHoverPill(null)}
+                            onKeyDown={onPillKeyDown}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                setCtxMenu({ repo: c, x: e.clientX, y: e.clientY });
+                            }}
+                            onClick={() => {
+                                if (isOffline && !isSel) return;
+                                if (group) recordRemoteUse(groupKey(group));
+                                selectClone(selectionId);
+                            }}
+                            className={
+                                'inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md border text-[12.5px] whitespace-nowrap shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4] ' +
+                                (isSel
+                                    ? 'border-[#0969da] dark:border-[#3794ff] bg-[#ddf4ff] dark:bg-[#3794ff]/15 text-[#0969da] dark:text-[#79c0ff] font-semibold'
+                                    : isOffline
+                                        ? 'border-[#d0d7de] dark:border-[#3c3c3c] text-[#656d76] dark:text-[#999] opacity-50 grayscale cursor-not-allowed'
+                                        : 'border-[#d0d7de] dark:border-[#3c3c3c] text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]')
+                            }
                         >
-                            {formatUnreadCount(cloneUnreadTotal)}
-                        </span>
-                    )}
-                    <Chevron />
-                </button>
-                {cloneOpen && (
-                    <div
-                        className="absolute z-50 top-full left-0 mt-1 min-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg p-1.5"
-                        role="menu"
-                        data-testid="clone-popover"
-                    >
-                        <div className="flex items-center justify-between px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">
-                            <span className="truncate">{remoteLabel} · clones</span>
-                            <span className="font-mono">{clones.length}</span>
-                        </div>
-                        {clones.map(c => {
-                            const cid = String(c.workspace.id);
-                            const selectionId = getRepoSelectionId(c);
-                            const isSel = selectionId === getRepoSelectionId(repo);
-                            const st = cloneStatus[cid];
-                            const isRemote = isRemoteRepo(c);
-                            const isOffline = isRemote && st === 'offline';
-                            const serverLabel = isRemote
-                                ? String((c.workspace as { remote?: { serverLabel?: unknown } }).remote?.serverLabel ?? 'remote')
-                                : null;
-                            const cloneUnreadCount = unseenCounts[selectionId] ?? 0;
-                            return (
-                                <button
-                                    key={selectionId}
-                                    data-testid="clone-popover-item"
-                                    data-remote={isRemote ? 'true' : 'false'}
-                                    data-clone-status={st ?? 'idle'}
-                                    data-offline={isOffline ? 'true' : 'false'}
-                                    disabled={isOffline}
-                                    aria-disabled={isOffline}
-                                    role="menuitem"
-                                    title={isOffline ? `${c.workspace.name} · offline (server unreachable)` : undefined}
-                                    onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        setCtxMenu({ repo: c, x: e.clientX, y: e.clientY });
-                                    }}
-                                    onClick={() => {
-                                        if (isOffline) return;
-                                        if (group) recordRemoteUse(groupKey(group));
-                                        selectClone(selectionId);
-                                        setCloneOpen(false);
-                                    }}
-                                    className={
-                                        'w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors ' +
-                                        (isOffline
-                                            ? 'opacity-50 grayscale cursor-not-allowed'
-                                            : (isSel ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15' : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'))
-                                    }
+                            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(st, getRepoHashColor(c.workspace, getHostname() ?? 'local')) }} aria-hidden />
+                            <span data-testid="clone-pill-name" className="truncate max-w-[140px]">{c.workspace.name}</span>
+                            <span
+                                data-testid="clone-pill-machine"
+                                aria-hidden
+                                style={isRemote ? { color: getServerHashColor(machine) } : undefined}
+                                className={'truncate max-w-[100px] text-[11px] font-normal ' + (isRemote ? '' : 'text-[#656d76] dark:text-[#999]')}
+                            >
+                                {machine}
+                            </span>
+                            {duplicateLabels.has(label) && (
+                                <span data-testid="clone-pill-path" aria-hidden className="truncate max-w-[110px] font-mono text-[10.5px] font-normal text-[#848484] dark:text-[#777]">{shortPath(c.workspace.rootPath || '')}</span>
+                            )}
+                            {isOffline && (
+                                <span
+                                    data-testid="clone-offline-badge"
+                                    aria-hidden
+                                    className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]"
                                 >
-                                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: cloneStatusColor(st, getRepoHashColor(c.workspace, getHostname() ?? 'local')) }} aria-hidden />
-                                    <span className="flex-1 min-w-0">
-                                        <span className="flex items-center gap-1.5 min-w-0">
-                                            <span className={'min-w-0 text-[12.5px] font-semibold truncate ' + (isSel && !isOffline ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
-                                            {!isRemote && clones.length > 1 && clones.some(cl => isRemoteRepo(cl)) && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">Local</span>}
-                                            {serverLabel && (
-                                                <span
-                                                    data-testid="clone-remote-badge"
-                                                    title={`Remote · ${serverLabel}`}
-                                                    style={{ color: getServerHashColor(serverLabel), backgroundColor: `${getServerHashColor(serverLabel)}1f` }}
-                                                    className="inline-flex items-center max-w-[110px] truncate text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded"
-                                                >
-                                                    {serverLabel}
-                                                </span>
-                                            )}
-                                            {isOffline && (
-                                                <span
-                                                    data-testid="clone-offline-badge"
-                                                    title="Server offline - showing last-known state"
-                                                    className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]"
-                                                >
-                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#8c959f]" aria-hidden />
-                                                    offline
-                                                </span>
-                                            )}
-                                            {!isOffline && st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
-                                            {cloneUnreadCount > 0 && (
-                                                <span
-                                                    className={`${unreadBadgeClass} flex-shrink-0`}
-                                                    data-testid="clone-row-unseen-badge"
-                                                    aria-label={`${cloneUnreadCount} conversations needing attention`}
-                                                >
-                                                    {formatUnreadCount(cloneUnreadCount)}
-                                                </span>
-                                            )}
-                                        </span>
-                                        <span className="block font-mono text-[10.5px] text-[#848484] dark:text-[#777] truncate mt-0.5">{truncatePath(c.workspace.rootPath || '', 36)}</span>
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
+                                    offline
+                                </span>
+                            )}
+                            {!isOffline && running > 0 && <span data-testid="clone-pill-running" aria-hidden className="text-[10px] font-mono font-semibold text-[#16a34a]">▶{running}</span>}
+                            {!isOffline && queued > 0 && <span data-testid="clone-pill-queued" aria-hidden className="text-[10px] font-mono font-semibold text-[#c98410]">⏸{queued}</span>}
+                            {!isOffline && isRemote && st === 'running' && <span data-testid="clone-pill-running" aria-hidden className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
+                            {cloneUnreadCount > 0 && (
+                                <span className={`${unreadBadgeClass} flex-shrink-0`} data-testid="clone-pill-unseen-badge" aria-hidden>
+                                    {formatUnreadCount(cloneUnreadCount)}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
+            {hoverRepo && hoverPill && (
+                <span
+                    id={pillTooltipId}
+                    role="tooltip"
+                    data-testid="clone-pill-tooltip"
+                    style={{ left: hoverPill.left }}
+                    className="absolute z-50 top-full mt-1 pointer-events-none w-max max-w-[min(28rem,80vw)] whitespace-normal break-all rounded border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#1f2328] dark:text-[#cccccc] shadow-lg"
+                >
+                    <span className="block font-semibold">{getWorkspaceCloneLabel(hoverRepo)}{isRepoOffline(hoverRepo) ? ' · offline (server unreachable)' : ''}</span>
+                    <span className="block font-mono text-[11px] text-[#656d76] dark:text-[#999]">{hoverRepo.workspace.rootPath || '-'}</span>
+                </span>
+            )}
 
             <div ref={cloneRegionRef} className="flex items-center gap-0.5 flex-1 min-w-0 overflow-hidden" data-testid="clone-tab-region">
                 {visibleCloneTabs.map(t => renderTab(t, 'clone-scope-tab'))}

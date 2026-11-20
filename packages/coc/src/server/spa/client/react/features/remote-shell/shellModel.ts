@@ -102,13 +102,35 @@ export function blendRemoteCloneStatus(marker: RemoteStatusMarker): CloneStatus 
     return marker.queue ?? 'idle';
 }
 
+/** One clone's status plus its visible running/queued counts (counts are local-only). */
+export interface CloneActivity {
+    status: CloneStatus;
+    running: number;
+    queued: number;
+}
+
 /**
- * Derive per-clone status from the QueueContext repoQueueMap, mirroring
- * RepoTabStrip's logic for LOCAL clones. For REMOTE clones (carrying an AC-01
- * marker), the status is blended from the marker's connection + remote queue
- * (AC-05) instead of the local queue map. `isHiddenTask` is injected to keep
- * this module pure.
+ * Derive one clone's activity. LOCAL clones read the QueueContext repoQueueMap
+ * (hidden tasks excluded). REMOTE clones (carrying an AC-01 marker) blend the
+ * marker's connection + remote queue (AC-05); the marker carries no counts, so
+ * they report zero. `isHiddenTask` is injected to keep this module pure.
  */
+export function computeCloneActivity(
+    repo: RepoData,
+    repoQueueMap: Record<string, any> | undefined,
+    isHiddenTask: (t: any) => boolean,
+): CloneActivity {
+    const marker = remoteMarker(repo.workspace);
+    if (marker) return { status: blendRemoteCloneStatus(marker), running: 0, queued: 0 };
+    const entry = repoQueueMap?.[String(repo.workspace.id)];
+    if (!entry) return { status: 'idle', running: 0, queued: 0 };
+    const running = (entry.running ?? []).filter((t: any) => !isHiddenTask(t)).length;
+    const queued = (entry.queued ?? []).filter((t: any) => !isHiddenTask(t)).length;
+    const status: CloneStatus = entry.stats?.isPaused ? 'paused' : running > 0 ? 'running' : queued > 0 ? 'queued' : 'idle';
+    return { status, running, queued };
+}
+
+/** Per-clone status keyed by raw workspace id (see `computeCloneActivity`). */
 export function computeCloneStatusMap(
     repos: RepoData[],
     repoQueueMap: Record<string, any> | undefined,
@@ -116,16 +138,7 @@ export function computeCloneStatusMap(
 ): Record<string, CloneStatus> {
     const map: Record<string, CloneStatus> = {};
     for (const repo of repos) {
-        const id = String(repo.workspace.id);
-        const marker = remoteMarker(repo.workspace);
-        if (marker) { map[id] = blendRemoteCloneStatus(marker); continue; }
-        const entry = repoQueueMap?.[id];
-        if (!entry) { map[id] = 'idle'; continue; }
-        if (entry.stats?.isPaused) { map[id] = 'paused'; continue; }
-        const running = (entry.running ?? []).filter((t: any) => !isHiddenTask(t)).length;
-        if (running > 0) { map[id] = 'running'; continue; }
-        const queued = (entry.queued ?? []).filter((t: any) => !isHiddenTask(t)).length;
-        map[id] = queued > 0 ? 'queued' : 'idle';
+        map[String(repo.workspace.id)] = computeCloneActivity(repo, repoQueueMap, isHiddenTask).status;
     }
     return map;
 }
