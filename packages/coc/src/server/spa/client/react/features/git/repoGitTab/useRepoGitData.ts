@@ -54,6 +54,12 @@ export interface UseRepoGitDataReturn {
     // Commits
     commits: GitCommitItem[];
     unpushedCount: number;
+    /**
+     * Upstream `commits` was compared against, so its first `unpushedCount`
+     * entries are local and the rest are on it. Null when the comparison is
+     * unknown or `commits` is a filtered (search) list.
+     */
+    commitsUpstream: string | null;
     hasMore: boolean;
     isLoadingMore: boolean;
     loadMore: () => void;
@@ -110,6 +116,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [unpushedCount, setUnpushedCount] = useState(0);
+    const [commitsUpstream, setCommitsUpstream] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -167,6 +174,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
                 if (cached) {
                     setCommits(cached.commits);
                     setUnpushedCount(cached.unpushedCount);
+                    setCommitsUpstream(cached.upstream);
                     setHasMore(cached.hasMore);
                     return Promise.resolve(cached.commits);
                 }
@@ -186,10 +194,14 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
                 } else {
                     setCommits(loaded);
                     setUnpushedCount(data.unpushedCount || 0);
+                    // A search result is not a HEAD prefix, so its rows cannot be split at unpushedCount.
+                    const upstream = !search && data.upstream ? data.upstream : null;
+                    setCommitsUpstream(upstream);
                     if (!search) {
                         setCommitsCache(workspaceId, {
                             commits: loaded,
                             unpushedCount: data.unpushedCount || 0,
+                            upstream,
                             hasMore: loaded.length === COMMIT_PAGE_SIZE,
                         });
                     }
@@ -308,6 +320,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
             searchDebounceRef.current = null;
             setSkip(0);
             setCommits([]);
+            setCommitsUpstream(null);
             fetchCommits(false, 0, searchQuery).catch(() => {});
         }, 300);
         return () => {
@@ -421,7 +434,7 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
     }, [workspaceId, fetchCommits, fetchBranchRange, fetchRepoState, retryKey]);
 
     return {
-        commits, unpushedCount, hasMore, isLoadingMore, loadMore,
+        commits, unpushedCount, commitsUpstream, hasMore, isLoadingMore, loadMore,
         searchQuery, setSearchQuery,
         loading, error, retry, refreshing, refreshError, setRefreshError,
         branchRangeData, branchRangeFiles, resolvedBaseRef, onDefaultBranch,

@@ -46,6 +46,11 @@
 .git-review-commit-picker-list{margin:0;padding:0;list-style:none;max-height:min(320px,60vh);overflow:auto}
 .git-review-commit-picker-list .git-review-menu-item{min-height:28px}
 .git-review-commit-picker-list .git-review-menu-item[aria-current=true]{background:#007acc15}
+.git-review-commit-picker-sync{flex-shrink:0;width:10px;font-size:10px;text-align:center}
+.git-review-commit-picker-list [data-sync=local] :is(.git-review-commit-picker-sync,.git-review-hash){color:#b35900}
+.dark .git-review-commit-picker-list [data-sync=local] :is(.git-review-commit-picker-sync,.git-review-hash){color:#ffb74d}
+.git-review-commit-picker-list [data-sync=pushed] .git-review-commit-picker-sync{color:#1674bd}
+.dark .git-review-commit-picker-list [data-sync=pushed] .git-review-commit-picker-sync{color:#3794ff}
 .git-review-commit-picker-check{display:inline-flex;width:14px;flex-shrink:0;color:#1674bd}
 .git-review-commit-picker-subject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .git-review-commit-picker-list .git-review-muted{flex-shrink:0;white-space:nowrap}

@@ -603,6 +603,14 @@ keep a listed commit, otherwise choose the first commit or clear an empty page.
 Navigation during refresh wins. Request generations discard superseded reads and
 disposed-owner results before state or cache writes.
 
+`GET /git/commits` names `upstream` only when the branch has a resolved tracking
+branch (not detached), so `unpushedCount: 0` alone never means "all pushed".
+`useRepoGitData.commitsUpstream` keeps that name paired with the unfiltered first page
+(null for search results, unknown comparisons and another clone), and the picker's
+`upstream: { name, localCount }` marks the first `localCount` rows local (filled amber
+dot) and the rest pushed (hollow blue dot), each with tooltip and screen-reader text.
+Without it no row is marked.
+
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a
 critical marker, and their selected-file unified diff views render test fidelity

@@ -241,6 +241,31 @@ describe('useRepoGitData', () => {
         expect(clientFor(OTHER_WS).git.listCommits).toHaveBeenCalledWith(OTHER_WS, expect.anything());
     });
 
+    it('pairs commits with their upstream only for unfiltered history with a resolved comparison', async () => {
+        const a = commit('aaaaaaaaaaaa');
+        const git = clientFor(WS).git;
+        git.listCommits.mockResolvedValue({ commits: [a], unpushedCount: 1, upstream: 'origin/main' });
+        const { bridge } = makeBridge();
+        const { result, rerender } = renderHook(({ ws }) => useRepoGitData({ workspaceId: ws, selection: bridge }), { initialProps: { ws: WS } });
+        await waitFor(() => expect(result.current.commitsUpstream).toBe('origin/main'));
+        expect(getCommitsCache(WS)).toMatchObject({ unpushedCount: 1, upstream: 'origin/main' });
+
+        // Search rows are not a HEAD prefix, even though the server still reports the branch's ahead count.
+        git.listCommits.mockResolvedValue({ commits: [a], unpushedCount: 1, upstream: 'origin/main' });
+        act(() => result.current.setSearchQuery('subject'));
+        await waitFor(() => expect(git.listCommits).toHaveBeenLastCalledWith(WS, expect.objectContaining({ search: 'subject' })));
+        await waitFor(() => expect(result.current.commits).toEqual([a]));
+        expect(result.current.commitsUpstream).toBeNull();
+        act(() => result.current.setSearchQuery(''));
+        await waitFor(() => expect(result.current.commitsUpstream).toBe('origin/main'));
+
+        // Another clone without a tracking branch never inherits the first clone's comparison.
+        clientFor(OTHER_WS).git.listCommits.mockResolvedValue({ commits: [commit('bbbbbbbbbbbb')], unpushedCount: 0 });
+        rerender({ ws: OTHER_WS });
+        await waitFor(() => expect(result.current.commits[0]?.hash).toBe('bbbbbbbbbbbb'));
+        expect(result.current.commitsUpstream).toBeNull();
+    });
+
     it('routes every initial read to the selected clone (AC-07)', async () => {
         const { bridge } = makeBridge();
         const { result } = renderHook(() => useRepoGitData({ workspaceId: WS, selection: bridge }));

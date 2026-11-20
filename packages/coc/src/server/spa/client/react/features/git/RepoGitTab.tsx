@@ -708,6 +708,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
             onSelectBranchRange={selection.selectBranchRange}
             onSelectWorkingChanges={selection.selectWorkingTreeAll}
             unpushedCount={data.unpushedCount}
+            commitsUpstream={data.commitsUpstream}
             branchRangeData={data.branchRangeData}
             branchRangeFiles={data.branchRangeFiles}
             baseMode={data.baseMode}
