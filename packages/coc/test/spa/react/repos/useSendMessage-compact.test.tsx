@@ -271,38 +271,105 @@ describe('useSendMessage — /compact interception', () => {
         expect(setCompacting).toHaveBeenLastCalledWith(false);
     });
 
-    it('blocks a second /compact (and normal sends) while one is in flight', async () => {
-        // Hold the first compaction open with a deferred promise so we can fire a
-        // second send while it is still running.
+    it('drops a second /compact but queues normal follow-ups while one is in flight', async () => {
+        // Hold the first compaction open with a deferred promise so we can fire
+        // more sends while it is still running.
         let resolveCompact!: (v: any) => void;
         compactSpy.mockReturnValue(new Promise(r => { resolveCompact = r; }));
         const setCompacting = vi.fn();
-        const { result } = renderHook(() => useSendMessage(makeOptions({ setCompacting })), { wrapper });
+        const options = makeOptions({ setCompacting });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
 
         let firstSend!: Promise<void>;
         await act(async () => {
             firstSend = result.current.sendFollowUp('/compact');
             // The compact branch sets the in-flight ref synchronously before the
-            // (blocking) POST, so by now a re-entry must be rejected.
+            // (blocking) POST, so a second /compact must be dropped...
             await result.current.sendFollowUp('/compact');
-            await result.current.sendFollowUp('a normal follow-up');
+            // ...while normal follow-ups reach the server in send order, which
+            // queues them behind the compaction boundary.
+            await result.current.sendFollowUp('first follow-up');
+            await result.current.sendFollowUp('second follow-up', 'immediate');
         });
 
         expect(compactSpy).toHaveBeenCalledTimes(1);
-        expect(sendSpy).not.toHaveBeenCalled();
+        expect(sendSpy.mock.calls.map(call => [call[0], call[1].content, call[2]])).toEqual([
+            [PROCESS, 'first follow-up', { workspace: WORKSPACE }],
+            [PROCESS, 'second follow-up', { workspace: WORKSPACE }],
+        ]);
+        // Queued, not streamed: no optimistic user/assistant or steer turns and
+        // no follow-up stream; the server-queued entries load via refresh.
+        expect(options.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(options.setSending).not.toHaveBeenCalled();
+        expect(options.queueDispatch).not.toHaveBeenCalled();
+        expect(sendSpy.mock.calls[1][1].optimisticId).toBeUndefined();
+        expect(options.refreshConversation).toHaveBeenCalledTimes(2);
+        expect(options.refreshConversation).toHaveBeenCalledWith(PROCESS);
+        expect(setCompacting).toHaveBeenCalledTimes(1);
 
-        // Resolve the first compaction; the guard lifts afterwards.
+        // Resolve the first compaction; its lifecycle is unchanged.
         await act(async () => {
             resolveCompact({ success: true, messagesRemoved: 1, tokensRemoved: 1 });
             await firstSend;
         });
         expect(setCompacting).toHaveBeenLastCalledWith(false);
+        expect(options.notifyCompact).toHaveBeenCalledWith(expect.stringContaining('Context compacted'), 'success');
 
-        // A fresh send now goes through normally.
+        // A /compact after settle runs again.
+        compactSpy.mockResolvedValue({ success: true, messagesRemoved: 0, tokensRemoved: 0 });
+        await act(async () => { await result.current.sendFollowUp('/compact'); });
+        expect(compactSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['fails', (r: { reject: (e: Error) => void }) => r.reject(new Error('compact failed'))],
+        ['is cancelled', (r: { resolve: (v: any) => void }) => r.resolve({ state: 'cancelled' })],
+    ] as const)('keeps a follow-up queued during compaction when compaction %s', async (_label, settle) => {
+        let handle!: { resolve: (v: any) => void; reject: (e: Error) => void };
+        compactSpy.mockReturnValue(new Promise((resolve, reject) => { handle = { resolve, reject }; }));
+        const setCompacting = vi.fn();
+        const options = makeOptions({ setCompacting });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        let compact!: Promise<void>;
         await act(async () => {
-            await result.current.sendFollowUp('a normal follow-up');
+            compact = result.current.compactNow();
+            await result.current.sendFollowUp('queued during compaction');
         });
         expect(sendSpy).toHaveBeenCalledTimes(1);
+        expect(options.setFollowUpInput).toHaveBeenCalledWith('');
+        await act(async () => { (settle as any)(handle); await compact; });
+        expect(setCompacting).toHaveBeenLastCalledWith(false);
+        // The send is never retried or re-posted by the compaction outcome.
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+        expect(options.setError).not.toHaveBeenCalledWith(expect.stringContaining('follow-up'));
+    });
+
+    it('queues through the server when persisted compaction is pending in an idle chat', async () => {
+        // e.g. a queued auto-compaction: the process status is still idle, so
+        // only `compactionPending` tells the composer not to start a stream.
+        const options = makeOptions({ compactionPending: true, workspaceId: 'ws-b', processId: 'proc-b' });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        await act(async () => { await result.current.sendFollowUp('after auto compaction', 'immediate'); });
+        expect(compactSpy).not.toHaveBeenCalled();
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+        expect(sendSpy.mock.calls[0][0]).toBe('proc-b');
+        expect(sendSpy.mock.calls[0][1].optimisticId).toBeUndefined();
+        expect(sendSpy.mock.calls[0][2]).toEqual({ workspace: 'ws-b' });
+        expect(getClientSpy).toHaveBeenCalledWith('ws-b');
+        expect(options.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(options.queueDispatch).not.toHaveBeenCalled();
+        expect(options.refreshConversation).toHaveBeenCalledWith('proc-b');
+    });
+
+    it('restores the draft and reports an error when a send during compaction is rejected', async () => {
+        sendSpy.mockRejectedValue(new Error('boom'));
+        const options = makeOptions({ compactionPending: true });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        options.followUpInputRef.current = 'draft text';
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(options.setError).toHaveBeenCalledWith(expect.stringContaining('boom'));
+        expect(options.setFollowUpInput).toHaveBeenLastCalledWith('draft text');
+        expect(options.refreshConversation).not.toHaveBeenCalled();
     });
 });
 

@@ -179,6 +179,12 @@ While a turn runs, Stop replaces the Send button, so a `follow-up-delivery-mode-
 next to Stop shows the Enter action: `↵ Queue` by default, orange `⚡ Steer` while Ctrl/Cmd
 is held in the composer.
 
+Compaction (the tab's own `/compact` or Compact now, or persisted `metadata.compaction`
+`queued`/`running` passed as `compactionPending`) takes the same server-decides path: sends
+never steer or add optimistic turns, the server queues them behind the compaction boundary
+in send order, and a refresh loads the queued entry when the chat had no live stream. Only a
+second `/compact` is dropped while one is in flight.
+
 ### Slash commands
 
 `slash-command-parser.ts` owns built-in recognition, while `useSlashCommands`
