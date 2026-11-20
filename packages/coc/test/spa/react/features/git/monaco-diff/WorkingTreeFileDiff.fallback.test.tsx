@@ -5,6 +5,7 @@
  * Monaco is not loaded; the editor is the owned test adapter.
  */
 
+import { enableDiffEngineToggleForEachTest } from '../../../../helpers/diffEngineToggle';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createFakeDiffEditor, type FakeDiffEditor } from './fakeDiffEditorAdapter';
@@ -119,6 +120,9 @@ async function renderDiff(props: Partial<React.ComponentProps<typeof WorkingTree
     await act(async () => {});
     return view;
 }
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     fakes = [];

@@ -2,6 +2,7 @@ import React from 'react';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
 import type { DiffEngine } from '../hooks/useDiffEngine';
 import { useDiffWordWrap } from '../hooks/useDiffWordWrap';
+import { useDiffEngineToggleEnabled } from '../../../hooks/feature-flags/useDiffEngineToggleEnabled';
 import { DIFF_TOOLBAR_NARROW_HIDDEN } from './diffToolbarClasses';
 
 interface ToggleOption<T extends string> {
@@ -84,8 +85,13 @@ const ENGINE_BUTTONS: [ToggleOption<DiffEngine>, ToggleOption<DiffEngine>] = [
     { value: 'monaco', icon: '✎', label: 'Editor', title: 'Editor diff viewer' },
 ];
 
-/** Shared Classic / Editor (Monaco) engine toggle for file diffs. */
+/**
+ * Shared Classic / Editor (Monaco) engine toggle for file diffs. Hidden unless
+ * `features.diffEngineToggle` is on; `useDiffEngine` then reports the Editor.
+ */
 export function DiffEngineToggle({ engine, onChange }: DiffEngineToggleProps) {
+    const enabled = useDiffEngineToggleEnabled();
+    if (!enabled) return null;
     return (
         <DiffToolbarToggle
             value={engine}

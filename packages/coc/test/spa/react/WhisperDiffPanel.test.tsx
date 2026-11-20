@@ -11,6 +11,7 @@
  */
 /* @vitest-environment jsdom */
 
+import { enableDiffEngineToggleForEachTest, setDiffEngineToggleEnabled } from '../helpers/diffEngineToggle';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 
@@ -85,6 +86,9 @@ const fileBody = () => screen.getByTestId('whisper-diff-file');
 function clickRow(path: string) {
     fireEvent.click(nav().querySelector(`[data-file-path="${path}"]`)!);
 }
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     cleanup();
@@ -245,6 +249,20 @@ describe('WhisperDiffPanel — captured snapshot content', () => {
         fireEvent.click(screen.getByTestId('diff-engine-fallback-retry'));
         expect(screen.getByTestId('whisper-diff-editor')).toBeInTheDocument();
         expect(monacoMounts.count).toBe(2);
+    });
+
+    it('hides only the engine switch by default and keeps editor fallback and its Retry', () => {
+        setDiffEngineToggleEnabled(false);
+        renderPanel(stateFrom(BASE_CALLS, { focusPath: `${ROOT}/src/new.ts` }));
+        expect(screen.getByTestId('whisper-diff-editor')).toBeInTheDocument();
+        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
+        expect(screen.getByTestId('diff-view-toggle')).toBeInTheDocument();
+        expect(screen.getByTestId('diff-word-wrap-toggle')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('monaco-fail'));
+        expect(screen.getByTestId('diff-engine-fallback-banner')).toHaveAttribute('data-reason', 'editorFailed');
+        expect(screen.getByTestId('whisper-diff-viewer')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('diff-engine-fallback-retry'));
+        expect(screen.getByTestId('whisper-diff-editor')).toBeInTheDocument();
     });
 
     it('gives different snapshots of one path different editor models', () => {

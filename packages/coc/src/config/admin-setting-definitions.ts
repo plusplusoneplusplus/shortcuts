@@ -1025,6 +1025,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.diffEngineToggle', default: false, runtime: 'live', runtimeFlag: 'diffEngineToggleEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 57, label: 'Diff engine toggle',
+            hint: 'Show the Classic/Editor switch in file diff toolbars. When off, diffs use the Editor and switch to Classic only for content the Editor cannot show.',
+            testId: 'toggle-diff-engine-toggle-enabled',
+        },
+    }),
+    bool({
         key: 'features.sessionContextAttachments', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
         ui: {
             tab: 'chat', group: 'review', order: 30, label: 'Session context attachments', badge: 'experimental',

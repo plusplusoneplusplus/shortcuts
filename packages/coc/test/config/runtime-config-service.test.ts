@@ -235,6 +235,24 @@ describe('RuntimeConfigService', () => {
             expect(new RuntimeConfigService({ configPath }).config.features.diffContentSearch).toBe(false);
         });
 
+        it('keeps the diff engine toggle off by default and applies live updates to the dashboard flag', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.diffEngineToggleEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.config.features.diffEngineToggle).toBe(false);
+            expect(svc.sources['features.diffEngineToggle']).toBe('default');
+
+            const enabled = await svc.updateConfig({ 'features.diffEngineToggle': true });
+            expect(enabled.effects).toContainEqual({
+                field: 'features.diffEngineToggle', runtime: 'live', requiresRestart: false,
+            });
+            expect(runtimeFlag()).toBe(true);
+            expect(new RuntimeConfigService({ configPath }).config.features.diffEngineToggle).toBe(true);
+            await expect(svc.updateConfig({ 'features.diffEngineToggle': 'true' })).rejects.toThrow();
+            await svc.updateConfig({ 'features.diffEngineToggle': false });
+            expect(runtimeFlag()).toBe(false);
+        });
+
         it.each([
             'sentinelNextSteps', 'sentinelTargetAutocomplete', 'sentinelAdditionalInstructions',
             'sentinelTodoDependencies', 'sentinelTodoCategories', 'sentinelTodoDateTimeTriggers',

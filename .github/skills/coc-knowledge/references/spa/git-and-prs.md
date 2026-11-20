@@ -351,10 +351,13 @@ identity. Explicit null selects page origin and unresolved remote owners fail.
 `useFileDiff` aborts superseded reads and rejects delayed generations; patch cache
 keys include owner endpoint, and abandoned requests cannot populate the cache.
 
-`FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
-and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
-mounted file-diff surfaces immediately. `DiffEngineToggle` and `DiffViewToggle` are
-single buttons that show the current choice and flip to the other on click.
+`FileDiffPanel`, `WorkingTreeFileDiff` and `WhisperDiffPanel` share the global
+`useDiffEngine` preference and the same Classic/Editor toggle; the preference defaults
+to Monaco and updates all mounted file-diff surfaces immediately. The toggle is opt-in
+(live `features.diffEngineToggle`, default off): while off, `DiffEngineToggle` renders
+nothing and `useDiffEngine` reports Monaco, so a saved Classic choice cannot strand
+users; the saved value is kept for when the toggle returns. `DiffEngineToggle` and
+`DiffViewToggle` are single buttons that show the current choice and flip on click.
 Editor toolbars share `DiffWordWrapToggle` and `useDiffWordWrap`, backed by the
 global `diffWordWrap` preference (default false). `MonacoFileDiffViewer` observes
 the shared state and updates `wordWrap` and `diffWordWrap` on mounted editors;

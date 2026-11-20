@@ -19,6 +19,7 @@ import {
 } from './fixtures/git-fixtures';
 import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
+import { useClassicDiffEngine } from './fixtures/diff-engine';
 
 // ================================================================
 // Unpushed commits separator
@@ -263,7 +264,7 @@ test.describe('Git advanced — Branch large diff', () => {
             body: JSON.stringify({ diffEngine: 'legacy' }),
         });
         expect(preferences.status).toBe(200);
-        await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
+        await useClassicDiffEngine(page);
 
         // The Git sub-tab is filtered out unless `gitInfo.isGitRepo` is true.
         // Mock the per-workspace and batch git-info endpoints so the SPA

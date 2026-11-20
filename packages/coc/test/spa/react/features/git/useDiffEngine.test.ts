@@ -5,6 +5,7 @@
  * reconciliation, local changes while the read is pending, failed writes and
  * cross-tab storage events.
  */
+import { enableDiffEngineToggleForEachTest, setDiffEngineToggleEnabled } from '../../../helpers/diffEngineToggle';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, renderHook, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
@@ -41,6 +42,9 @@ function memoryStorage(initial: Record<string, string> = {}): DiffEngineStorage 
         setItem: (k, v) => { data[k] = v; },
     };
 }
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     getGlobal.mockReset();
@@ -255,5 +259,37 @@ describe('useDiffEngine', () => {
             window.dispatchEvent(new StorageEvent('storage', { key: 'other-key', newValue: 'legacy' }));
         });
         expect(result.current[0]).toBe('monaco');
+    });
+});
+
+describe('useDiffEngine with the engine switch hidden (default)', () => {
+    beforeEach(() => setDiffEngineToggleEnabled(false));
+
+    it('reports the Editor for a saved Classic choice, keeps that choice, and restores it when the switch returns', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        getGlobal.mockResolvedValue({ diffEngine: 'legacy' });
+        const seen: string[] = [];
+        const { result } = renderHook(() => { const value = useDiffEngine(); seen.push(value[0]); return value; });
+        await act(async () => {});
+        // Never Classic, not even on the first paint from the cache.
+        expect(seen.every(engine => engine === 'monaco')).toBe(true);
+        expect(localStorage.getItem(DIFF_ENGINE_STORAGE_KEY)).toBe('legacy');
+        expect(patchGlobal).not.toHaveBeenCalled();
+
+        act(() => setDiffEngineToggleEnabled(true));
+        expect(result.current[0]).toBe('legacy');
+        act(() => setDiffEngineToggleEnabled(false));
+        expect(result.current[0]).toBe('monaco');
+    });
+
+    it('hides the Classic/Editor switch and shows it live when the setting turns on', () => {
+        const onChange = vi.fn();
+        const view = render(createElement(DiffEngineToggle, { engine: 'monaco', onChange }));
+        expect(view.queryByTestId('diff-engine-toggle')).toBeNull();
+        act(() => setDiffEngineToggleEnabled(true));
+        fireEvent.click(view.getByTestId('diff-engine-toggle'));
+        expect(onChange).toHaveBeenCalledWith('legacy');
+        act(() => setDiffEngineToggleEnabled(false));
+        expect(view.queryByTestId('diff-engine-toggle')).toBeNull();
     });
 });

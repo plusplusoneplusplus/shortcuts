@@ -6,6 +6,7 @@
  * the editor is the owned test adapter.
  */
 
+import { enableDiffEngineToggleForEachTest, setDiffEngineToggleEnabled } from '../../../../helpers/diffEngineToggle';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createFakeDiffEditor, type FakeDiffEditor } from './fakeDiffEditorAdapter';
@@ -129,6 +130,9 @@ async function renderDiff(props: Partial<React.ComponentProps<typeof WorkingTree
     await act(async () => {});
     return view;
 }
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     fakes = [];
@@ -300,6 +304,51 @@ describe('WorkingTreeFileDiff — diff engine', () => {
         });
         fireEvent.click(screen.getByTestId('hunk-next'));
         expect(fakes[0].adapter.revealModifiedLine).toHaveBeenCalled();
+    });
+});
+
+describe('WorkingTreeFileDiff — engine switch hidden (default)', () => {
+    beforeEach(() => setDiffEngineToggleEnabled(false));
+
+    it('renders the Editor for a saved Classic choice and keeps the other toolbar controls', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        getGlobal.mockReset().mockResolvedValue({ diffEngine: 'legacy' });
+        await renderDiff();
+        expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
+        expect(screen.queryByTestId('classic-viewer')).toBeNull();
+        expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'unstaged');
+        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
+        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
+        expect(screen.getByTestId('diff-word-wrap-toggle')).toBeTruthy();
+        expect(screen.getByTestId('hunk-next')).toBeTruthy();
+        expect(screen.queryByTestId('diff-engine-fallback-banner')).toBeNull();
+        // The saved choice is kept, never rewritten by viewing.
+        expect(localStorage.getItem(DIFF_ENGINE_STORAGE_KEY)).toBe('legacy');
+        expect(patchGlobal).not.toHaveBeenCalled();
+    });
+
+    it('still falls back to Classic, with its reason, for binary content and failed loads', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValueOnce(content('', '', { binary: true }));
+        const first = await renderDiff();
+        expect(screen.getByTestId('classic-viewer')).toBeTruthy();
+        expect(screen.getByTestId('diff-engine-fallback-banner')).toBeTruthy();
+        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
+        first.unmount();
+
+        clients['ws-a'].git.getWorkingTreeFileContent.mockRejectedValueOnce(new Error('boom'));
+        await renderDiff();
+        expect(screen.getByTestId('classic-viewer')).toBeTruthy();
+        expect(screen.getByTestId('diff-engine-fallback-banner')).toBeTruthy();
+        expect(fakes).toHaveLength(0);
+    });
+
+    it('shows the switch and the saved Classic choice live when the setting turns on', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        await renderDiff();
+        expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
+        await act(async () => setDiffEngineToggleEnabled(true));
+        expect(screen.getByTestId('classic-viewer')).toBeTruthy();
+        expect(screen.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('legacy');
     });
 });
 

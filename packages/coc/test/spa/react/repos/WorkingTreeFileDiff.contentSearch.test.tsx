@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { enableDiffEngineToggleForEachTest } from '../../helpers/diffEngineToggle';
 import React, { forwardRef, useImperativeHandle } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +71,9 @@ const response = {
     base: { content: 'unchanged needle\nold\n', ref: 'INDEX', exists: true },
     head: { content: 'unchanged needle\nnew\n', ref: 'WORKTREE', exists: true },
 };
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
+
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
