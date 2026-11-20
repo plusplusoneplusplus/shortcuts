@@ -40,6 +40,8 @@ export interface RepoGitDetailPaneProps {
     /** Opens all uncommitted (staged, unstaged and untracked) changes from the commit switcher. */
     onSelectWorkingChanges?: () => void;
     unpushedCount: number;
+    /** Upstream `commits` was compared against; null when unknown or filtered. */
+    commitsUpstream?: string | null;
     branchRangeData: BranchRangeInfo | null;
     branchRangeFiles: any[];
     baseMode: GitRangeBaseMode;
@@ -66,7 +68,7 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, commitsUpstream, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
@@ -75,6 +77,7 @@ export function RepoGitDetailPane({
     // uncommitted changes can always reach each other.
     const switcher: CommitPickerOptions | undefined = onSelectCommit && {
         commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,
+        upstream: commitsUpstream ? { name: commitsUpstream, localCount: unpushedCount } : undefined,
         views: pickerViews(branchRangeData, onSelectBranchRange, onSelectWorkingChanges),
     };
     if (view?.type === 'commit' || view?.type === 'commit-file') {

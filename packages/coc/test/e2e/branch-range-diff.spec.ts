@@ -7,6 +7,7 @@
 import { test, expect, type Page } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
+import { useClassicDiffEngine } from './fixtures/diff-engine';
 
 const DEFAULT_FILES = [
     { path: 'src/feature.ts', status: 'A', additions: 5, deletions: 0 },
@@ -97,7 +98,7 @@ async function mockGitRoutes(page: Page, wsId: string, opts: MockOptions = {}): 
     const branchRange = { ...DEFAULT_BRANCH_RANGE, ...opts.branchRange };
     // The summary, not a separate file-list response, populates the review.
     const files = opts.files ?? branchRange.files;
-    await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
+    await useClassicDiffEngine(page);
 
     // Empty sidebar history deliberately differs from the range's commit scope.
     await page.route(

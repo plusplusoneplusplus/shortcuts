@@ -17,6 +17,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isComposerWordHintEnabled: () => false,
     isDiffFilePickerEnabled: () => true,
     isDiffContentSearchEnabled: () => false,
+    isDiffEngineToggleEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',

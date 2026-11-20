@@ -83,6 +83,8 @@ interface DashboardConfig {
     diffFilePickerEnabled?: boolean;
     /** Full-content search within multi-file reviews (feature flag, default off). */
     diffContentSearchEnabled?: boolean;
+    /** Classic/Editor switch in file diff toolbars (feature flag, default off). */
+    diffEngineToggleEnabled?: boolean;
     /**
      * Whether opt-in Git worktree execution is enabled (feature flag). Doubles
      * as the target-server capability signal exposed via GET /api/config/runtime.
@@ -664,6 +666,11 @@ export function isDiffFilePickerEnabled(): boolean {
 /** Full-content review search is opt-in (`features.diffContentSearch`). */
 export function isDiffContentSearchEnabled(): boolean {
     return getConfig().diffContentSearchEnabled === true;
+}
+
+/** The Classic/Editor diff engine switch is opt-in (`features.diffEngineToggle`). */
+export function isDiffEngineToggleEnabled(): boolean {
+    return getConfig().diffEngineToggleEnabled === true;
 }
 
 /**

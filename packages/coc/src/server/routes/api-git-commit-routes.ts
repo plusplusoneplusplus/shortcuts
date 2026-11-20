@@ -68,7 +68,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             const cacheKey = `${id}:commits:${limit}:${skip}${search ? `:search:${search}` : ''}`;
-            const cached = gitCache.get<{ commits: ReturnType<typeof commitResponse>[]; unpushedCount: number }>(cacheKey);
+            const cached = gitCache.get<{ commits: ReturnType<typeof commitResponse>[]; unpushedCount: number; upstream?: string }>(cacheKey);
             if (cached) {
                 return cached;
             }
@@ -83,8 +83,10 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 if (branchStatus) {
                     unpushedCount = branchStatus.ahead;
                 }
+                // Only a resolved upstream makes `unpushedCount: 0` mean "all pushed".
+                const upstream = branchStatus && !branchStatus.isDetached ? branchStatus.trackingBranch : undefined;
 
-                const result = { commits, unpushedCount };
+                const result = { commits, unpushedCount, ...(upstream ? { upstream } : {}) };
                 gitCache.set(cacheKey, result);
                 return result;
             } catch (err) {

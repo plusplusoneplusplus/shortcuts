@@ -258,6 +258,47 @@ describe('CommitHashPicker', () => {
         expect(onSelect).not.toHaveBeenCalled();
     });
 
+    it('marks local and pushed commits with shape, text and color only when the upstream resolved', async () => {
+        renderPicker({ upstream: { name: 'origin/main', localCount: 1 } });
+        await open();
+        const local = screen.getByTestId(`commit-hash-picker-option-${CURRENT.hash}`);
+        const pushed = screen.getByTestId(`commit-hash-picker-option-${OTHER.hash}`);
+        expect(local.getAttribute('data-sync')).toBe('local');
+        expect(local.querySelector('.git-review-commit-picker-sync')!.textContent).toBe('●');
+        expect(local.querySelector('.sr-only')!.textContent).toContain('Local, not on origin/main');
+        expect(local.getAttribute('title')).toContain('Local, not on origin/main');
+        expect(pushed.getAttribute('data-sync')).toBe('pushed');
+        expect(pushed.querySelector('.git-review-commit-picker-sync')!.textContent).toBe('○');
+        expect(pushed.querySelector('.sr-only')!.textContent).toContain('On origin/main');
+        // Selection marking and choosing are unchanged.
+        expect(local.getAttribute('aria-current')).toBe('true');
+        expect(local.querySelector('svg')).not.toBeNull();
+    });
+
+    it('marks every commit pushed when the resolved upstream has no local commits', async () => {
+        renderPicker({ upstream: { name: 'origin/main', localCount: 0 } });
+        await open();
+        for (const c of [CURRENT, OTHER]) {
+            expect(screen.getByTestId(`commit-hash-picker-option-${c.hash}`).getAttribute('data-sync')).toBe('pushed');
+        }
+    });
+
+    it('marks nothing local or pushed when the comparison is unknown', async () => {
+        renderPicker();
+        await open();
+        const dialog = screen.getByTestId('commit-hash-picker');
+        expect(dialog.querySelector('[data-sync]')).toBeNull();
+        expect(dialog.querySelector('.git-review-commit-picker-sync')).toBeNull();
+        expect(dialog.querySelector('.sr-only')).toBeNull();
+        expect(screen.getByTestId(`commit-hash-picker-option-${OTHER.hash}`).getAttribute('title')).toBe(OTHER.subject);
+    });
+
+    it('gives local commits a light and a dark color distinct from pushed ones', () => {
+        const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
+        expect(css).toMatch(/\n\.git-review-commit-picker-list \[data-sync=local\][^{]*\{color:#b35900\}/);
+        expect(css).toMatch(/\n\.dark \.git-review-commit-picker-list \[data-sync=local\][^{]*\{color:#ffb74d\}/);
+    });
+
     it('keeps compact header targets at least 24px wide', () => {
         const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
         expect(css).toMatch(/\.git-review-tools \.git-review-hash-trigger\{[^}]*min-width:24px/);

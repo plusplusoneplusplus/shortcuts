@@ -114,6 +114,7 @@ export interface AdminResolvedConfig {
     gitCrossCloneCherryPick?: boolean;
     diffFilePicker?: boolean;
     diffContentSearch?: boolean;
+    diffEngineToggle?: boolean;
     sessionContextAttachments?: boolean;
     commitChatLens?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
@@ -223,6 +224,7 @@ export interface AdminConfigUpdate {
   'features.gitCrossCloneCherryPick'?: boolean;
   'features.diffFilePicker'?: boolean;
   'features.diffContentSearch'?: boolean;
+  'features.diffEngineToggle'?: boolean;
   'features.sessionContextAttachments'?: boolean;
   'features.ralphMultiAgentGrill'?: boolean;
   'features.commitChatLens'?: boolean;
@@ -307,6 +309,8 @@ export interface RuntimeDashboardConfig {
     diffFilePickerEnabled: boolean;
     /** Full-content multi-file review search (`features.diffContentSearch`), default off. */
     diffContentSearchEnabled: boolean;
+    /** Classic/Editor switch in file diff toolbars (`features.diffEngineToggle`), default off. */
+    diffEngineToggleEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
     commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';

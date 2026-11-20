@@ -7,6 +7,7 @@
  * not loaded; the editor is the owned test adapter.
  */
 
+import { enableDiffEngineToggleForEachTest } from '../../../../helpers/diffEngineToggle';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { DiffComment } from '../../../../../../src/server/spa/client/comments/diff-comment-types';
@@ -131,6 +132,9 @@ async function renderEditor(host?: UnifiedPanelHost | null) {
 }
 
 const zoneOf = (id: string) => [...fake().zones.values()].find(z => z.domNode.querySelector(`[data-comment-id="${id}"]`));
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     fakes = [];

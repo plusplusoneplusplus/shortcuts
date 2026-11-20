@@ -12,6 +12,8 @@ export interface GitCommit {
 export interface GitCommitListResponse {
   commits: GitCommit[];
   unpushedCount: number;
+  /** Upstream `unpushedCount` was compared against; absent when there is none (detached, untracked, unreadable). */
+  upstream?: string;
 }
 
 export interface GitFileHistoryCommit {

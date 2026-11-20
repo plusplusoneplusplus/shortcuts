@@ -351,10 +351,13 @@ identity. Explicit null selects page origin and unresolved remote owners fail.
 `useFileDiff` aborts superseded reads and rejects delayed generations; patch cache
 keys include owner endpoint, and abandoned requests cannot populate the cache.
 
-`FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
-and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
-mounted file-diff surfaces immediately. `DiffEngineToggle` and `DiffViewToggle` are
-single buttons that show the current choice and flip to the other on click.
+`FileDiffPanel`, `WorkingTreeFileDiff` and `WhisperDiffPanel` share the global
+`useDiffEngine` preference and the same Classic/Editor toggle; the preference defaults
+to Monaco and updates all mounted file-diff surfaces immediately. The toggle is opt-in
+(live `features.diffEngineToggle`, default off): while off, `DiffEngineToggle` renders
+nothing and `useDiffEngine` reports Monaco, so a saved Classic choice cannot strand
+users; the saved value is kept for when the toggle returns. `DiffEngineToggle` and
+`DiffViewToggle` are single buttons that show the current choice and flip on click.
 Editor toolbars share `DiffWordWrapToggle` and `useDiffWordWrap`, backed by the
 global `diffWordWrap` preference (default false). `MonacoFileDiffViewer` observes
 the shared state and updates `wordWrap` and `diffWordWrap` on mounted editors;
@@ -599,6 +602,14 @@ visible alongside retained commits. Selection uses `reconcileSelectionAfterRefre
 keep a listed commit, otherwise choose the first commit or clear an empty page.
 Navigation during refresh wins. Request generations discard superseded reads and
 disposed-owner results before state or cache writes.
+
+`GET /git/commits` names `upstream` only when the branch has a resolved tracking
+branch (not detached), so `unpushedCount: 0` alone never means "all pushed".
+`useRepoGitData.commitsUpstream` keeps that name paired with the unfiltered first page
+(null for search results, unknown comparisons and another clone), and the picker's
+`upstream: { name, localCount }` marks the first `localCount` rows local (filled amber
+dot) and the rest pushed (hollow blue dot), each with tooltip and screen-reader text.
+Without it no row is marked.
 
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a

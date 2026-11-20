@@ -12,6 +12,8 @@ import type { GitCommitItem } from '../commits/CommitList';
 export interface CachedCommits {
     commits: GitCommitItem[];
     unpushedCount: number;
+    /** Upstream the unfiltered first page was compared against; null when unknown. */
+    upstream: string | null;
     hasMore: boolean;
 }
 

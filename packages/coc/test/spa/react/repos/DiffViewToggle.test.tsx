@@ -2,10 +2,14 @@
  * Tests for DiffViewToggle — single toggle buttons for diff view mode and engine.
  */
 
+import { enableDiffEngineToggleForEachTest } from '../../helpers/diffEngineToggle';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { DiffViewToggle, DiffEngineToggle, MarkdownDiffModeToggle, isMarkdownDiffPath } from '../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle';
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 describe('DiffViewToggle', () => {
     it('shows only the current mode as one button', () => {

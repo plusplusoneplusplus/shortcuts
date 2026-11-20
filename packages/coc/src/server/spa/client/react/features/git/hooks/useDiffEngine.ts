@@ -15,11 +15,18 @@
  *   changed the engine while the request was pending.
  * - A failed server write keeps the local choice for the session.
  * - A `storage` event from another tab updates this tab.
+ *
+ * The Classic/Editor switch is opt-in (`features.diffEngineToggle`). While it
+ * is hidden the hook reports the Editor engine, so a saved Classic choice
+ * cannot strand anyone in Classic; the saved value is kept for when the switch
+ * returns. Automatic Classic fallback (`resolveDiffEngineSelection`) applies
+ * either way.
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { GlobalPreferences } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { useDiffEngineToggleEnabled } from '../../../hooks/feature-flags/useDiffEngineToggleEnabled';
 
 export type DiffEngine = 'legacy' | 'monaco';
 
@@ -152,7 +159,8 @@ export function __resetDiffEngineForTesting(): void {
 
 export function useDiffEngine(): [DiffEngine, (engine: DiffEngine) => void] {
     const store = getSharedStore();
-    const engine = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+    const saved = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+    const choosable = useDiffEngineToggleEnabled();
 
     useEffect(() => { void store.reconcile(); }, [store]);
 
@@ -165,5 +173,5 @@ export function useDiffEngine(): [DiffEngine, (engine: DiffEngine) => void] {
         return () => window.removeEventListener('storage', handler);
     }, [store]);
 
-    return [engine, store.set];
+    return [choosable ? saved : DEFAULT_DIFF_ENGINE, store.set];
 }

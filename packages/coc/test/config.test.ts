@@ -1216,6 +1216,7 @@ timeout: 300
                 '  botManagedConversations: true',
                 '  focusedDiff: true',
                 '  diffContentSearch: true',
+                '  diffEngineToggle: true',
                 '  diffFilePicker: false',
                 '  gitCrossCloneCherryPick: true',
                 '  gitWorktreeExecution: true',
@@ -1314,6 +1315,7 @@ timeout: 300
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
             expect(result.resolved.features.diffContentSearch).toBe(true);
+            expect(result.resolved.features.diffEngineToggle).toBe(true);
             expect(result.resolved.canvasExtensions.enabled).toBe(true);
             expect(result.resolved.browserControl.enabled).toBe(true);
             // Saved false overrides the default-on frame, rich paste and background flags.
@@ -1656,6 +1658,7 @@ timeout: 300
                     "composerWordHint": true,
                     "defaultChatStyle": "default",
                     "diffContentSearch": false,
+                    "diffEngineToggle": false,
                     "diffFilePicker": true,
                     "explorerDelete": true,
                     "explorerEditorTabs": true,
@@ -1929,6 +1932,7 @@ timeout: 300
                   "features.composerWordHint": "default",
                   "features.defaultChatStyle": "default",
                   "features.diffContentSearch": "default",
+                  "features.diffEngineToggle": "default",
                   "features.diffFilePicker": "default",
                   "features.explorerDelete": "default",
                   "features.explorerEditorTabs": "default",

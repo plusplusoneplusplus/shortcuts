@@ -21,6 +21,7 @@ import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { gotoGitCommit } from './fixtures/git-fixtures';
+import { useClassicDiffEngine } from './fixtures/diff-engine';
 
 const COMMIT_HASH = 'aabbccdd11223344556677889900aabbccdd1122';
 const FILE_PATH = 'src/index.ts';
@@ -81,7 +82,7 @@ async function setupMocks(
     commitHash: string,
 ): Promise<void> {
     // These assertions cover the classic viewer's DOM scroll container.
-    await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
+    await useClassicDiffEngine(page);
 
     // Mock git commits list
     await page.route(

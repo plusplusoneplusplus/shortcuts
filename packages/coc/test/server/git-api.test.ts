@@ -282,7 +282,24 @@ describe('Git API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`);
             const data = res.json();
             expect(data.unpushedCount).toBe(0);
+            expect(data.upstream).toBeUndefined();
             expect(data.commits).toHaveLength(1);
+        });
+
+        it('names the upstream only when the comparison resolved', async () => {
+            mockForgeExecGit.mockImplementation((args: string[]) => args[0] === 'log'
+                ? 'a1b2c3\na1b2\nCommit\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n' : '');
+            const read = async () => (await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?refresh=true`)).json();
+
+            mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, trackingBranch: 'origin/main', hasUncommittedChanges: false });
+            expect(await read()).toMatchObject({ unpushedCount: 0, upstream: 'origin/main' });
+
+            // No tracking branch: ahead 0 is "unknown", never "all pushed".
+            mockGetBranchStatus.mockReturnValue({ name: 'topic', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
+            expect((await read()).upstream).toBeUndefined();
+
+            mockGetBranchStatus.mockReturnValue({ name: '', isDetached: true, detachedHash: 'a1b2c3', ahead: 0, behind: 0, trackingBranch: 'origin/main', hasUncommittedChanges: false });
+            expect((await read()).upstream).toBeUndefined();
         });
 
         it('respects limit and skip query params', async () => {

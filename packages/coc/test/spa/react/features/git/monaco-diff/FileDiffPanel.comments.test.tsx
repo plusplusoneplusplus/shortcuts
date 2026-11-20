@@ -1,3 +1,4 @@
+import { enableDiffEngineToggleForEachTest, setDiffEngineToggleEnabled } from '../../../../helpers/diffEngineToggle';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../../../src/server/spa/client/comments/diff-comment-types';
@@ -170,6 +171,9 @@ async function toggleEngine(engine: 'legacy' | 'monaco') {
     await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
     if (engine === 'monaco') await act(async () => { fake().finishDiff(CHANGES); });
 }
+
+// Engine switching and saved Classic choices need the opt-in switch.
+enableDiffEngineToggleForEachTest();
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -603,6 +607,23 @@ it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
         expect(classifyHunk).toHaveBeenCalled();
         await toggleEngine('monaco');
         expect(screen.queryByTestId('classify-control')).toBeNull();
+    },
+);
+
+it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
+    '%s shows the Editor for a saved Classic choice while the engine switch is hidden', async kind => {
+        setDiffEngineToggleEnabled(false);
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        __resetDiffEngineForTesting();
+        await act(async () => { render(<ClassifiedPanel source={makeSource(kind)} />); });
+        await act(async () => { fake().finishDiff(CHANGES); });
+        expect(fake().models[0].modified.text).toBe(MODIFIED);
+        expect(screen.queryByTestId('diff-engine-toggle')).toBeNull();
+        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Word wrap' })).toBeTruthy();
+        // Classification follows the engine on screen, not the hidden saved choice.
+        expect(screen.queryByTestId('classify-control')).toBeNull();
+        expect(localStorage.getItem(DIFF_ENGINE_STORAGE_KEY)).toBe('legacy');
     },
 );
 

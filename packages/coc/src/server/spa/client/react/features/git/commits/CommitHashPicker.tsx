@@ -31,6 +31,11 @@ export interface CommitPickerOptions {
     onSelect: (commit: GitCommitItem) => void;
     /** Other views of the same repository, listed above the recent commits. */
     views?: readonly CommitPickerView[];
+    /**
+     * Resolved upstream comparison of `commits` (unfiltered HEAD history): the first `localCount` are
+     * not on `name` yet, the rest are. Absent when unknown, so no commit is marked local or pushed.
+     */
+    upstream?: { name: string; localCount: number };
 }
 
 type LookupState = { status: 'idle' | 'busy' } | { status: 'error'; message: string };
@@ -183,15 +188,22 @@ export function CommitHashPicker({ hash = '', currentViewId, picker }: { hash?: 
                 </button>}
                 {listState}
                 {recent.length > 0 && <ul aria-label="Recent commits" className="git-review-commit-picker-list">
-                    {recent.map(commit => {
+                    {recent.map((commit, index) => {
                         const current = commit.hash === hash;
+                        const upstream = picker.upstream;
+                        const sync = upstream && (index < upstream.localCount ? 'local' : 'pushed');
+                        const syncText = sync && (sync === 'local' ? `Local, not on ${upstream.name}` : `On ${upstream.name}`);
                         return <li key={commit.hash}>
                             <button type="button" data-commit-option aria-current={current ? 'true' : undefined} disabled={busy}
-                                className="git-review-menu-item" onClick={() => choose(commit)} title={commit.subject}
-                                data-testid={`commit-hash-picker-option-${commit.hash}`}>
+                                className="git-review-menu-item" onClick={() => choose(commit)}
+                                title={syncText ? `${commit.subject} · ${syncText}` : commit.subject}
+                                data-sync={sync || undefined} data-testid={`commit-hash-picker-option-${commit.hash}`}>
                                 <span className="git-review-commit-picker-check">{current && <CommitDetailIcon name="check" />}</span>
+                                {/* Filled vs hollow dot matches the Git list; color is never the only cue. */}
+                                {sync && <span aria-hidden="true" className="git-review-commit-picker-sync">{sync === 'local' ? '●' : '○'}</span>}
                                 <span className="git-review-hash">{commit.shortHash || commit.hash.slice(0, 7)}</span>
                                 <span className="git-review-commit-picker-subject">{commit.subject}</span>
+                                {syncText && <span className="sr-only">, {syncText}</span>}
                             </button>
                         </li>;
                     })}

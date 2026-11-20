@@ -1166,6 +1166,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.panelSourceSplit': 'appearance',
         'features.diffFilePicker': 'appearance',
         'features.diffContentSearch': 'appearance',
+        'features.diffEngineToggle': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
