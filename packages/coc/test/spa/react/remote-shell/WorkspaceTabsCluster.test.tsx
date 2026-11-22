@@ -450,4 +450,13 @@ describe('flat clone strip identity', () => {
         expect(strip.className).toContain('max-w-');
         expect(screen.getAllByTestId('clone-pill')).toHaveLength(12);
     });
+
+    it('gives clone pills and their strip room for long names before truncating', () => {
+        const selected = remote(repo('long', 'very-long-repository-name'), 'long', 'very-long-machine');
+        render(<WorkspaceTabsCluster repo={selected} repos={[selected]} />);
+        const strip = screen.getByTestId('clone-strip').className.split(' ');
+        expect(strip).toEqual(expect.arrayContaining(['max-w-[50%]', 'lg:max-w-[60%]']));
+        expect(screen.getByTestId('clone-pill-name').className).toContain('max-w-[200px]');
+        expect(screen.getByTestId('clone-pill-machine').className).toContain('max-w-[140px]');
+    });
 });
