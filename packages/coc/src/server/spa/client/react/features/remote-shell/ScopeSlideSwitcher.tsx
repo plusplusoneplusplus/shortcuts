@@ -383,7 +383,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                         pinMenuContext(pin, index),
                     );
                 }}
-                className={segmentClass(active) + ' group group/identity relative ' + (selectedClone ? 'max-w-[280px]' : 'max-w-[170px]')}
+                className={segmentClass(active) + ' group group/identity relative ' + (selectedClone ? 'max-w-[360px]' : 'max-w-[240px]')}
                 style={active ? { color: accent } : undefined}
             >
                 {pin.ref.kind === 'group' ? (

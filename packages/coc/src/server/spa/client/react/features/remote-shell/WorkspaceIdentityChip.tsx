@@ -307,7 +307,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
             ) : onSwitchBack ? (
                 // Inactive workspace under a virtual scope: identity body switches
                 // back to this workspace, chevron opens the picker. (AC-02)
-                <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[280px]">
+                <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[360px]">
                     <button
                         data-testid="remote-chip"
                         data-remote-key={activeGroupKey ?? ''}
@@ -343,7 +343,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                     title={chipTitle}
                     aria-label={identityLabel}
                     onClick={toggle}
-                    className="group/identity relative inline-flex items-center min-w-0 gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[280px]"
+                    className="group/identity relative inline-flex items-center min-w-0 gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[360px]"
                 >
                     {identityInner}
                     <Chevron />

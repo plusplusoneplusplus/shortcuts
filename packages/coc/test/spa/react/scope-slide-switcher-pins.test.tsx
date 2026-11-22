@@ -159,6 +159,13 @@ describe('pinned segments — rendering and placement', () => {
         expect(screen.getByTestId('scope-pin-strip').className).toContain('lg:flex');
     });
 
+    it('gives pin labels room for long repo and group names before truncating', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        expect(pinSegment(SHORTCUTS_PIN)!.className).toContain('max-w-[240px]');
+        expect(pinSegment(AI_GROUP_PIN)!.className).toContain('max-w-[240px]');
+    });
+
     it('shows an unread badge summed across every clone of a pinned remote', async () => {
         mockUnseenCounts = { a: 2, b: 3, 'group-ai-repos': 7 };
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
@@ -757,6 +764,7 @@ describe('active pinned machine identity', () => {
         const { rerender } = render(<ScopeSlideSwitcher repo={remote} repos={mockRepos} />);
         await waitFor(() => expect(pinSegment(SHORTCUTS_PIN)?.getAttribute('aria-label')).toBe('shortcuts / ubuntu-arm'));
         expect(screen.getByTestId('workspace-machine-name').textContent).toBe('ubuntu-arm');
+        expect(pinSegment(SHORTCUTS_PIN)!.className).toContain('max-w-[360px]');
         expect(screen.getByTestId('remote-chip').getAttribute('data-identity-suppressed')).toBe('true');
         mockAppState.selectedRepoId = 'a';
         rerender(<ScopeSlideSwitcher repo={local} repos={mockRepos} />);

@@ -1649,8 +1649,21 @@ describe('ChatDetail owner WebSocket refresh batching', () => {
         const view = render(fixture.tree());
         await screen.findByText('initial history');
         const scheduled: VoidFunction[] = [];
-        vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(callback => { scheduled.push(callback); });
-        act(() => fixture.notify());
+        // Hold only the refresh that notify() schedules. Every other caller
+        // must still run: Node's bundled undici reads Response bodies through
+        // globalThis.queueMicrotask (Node 24.22.3+), and parking those
+        // callbacks makes it pull forever until the worker runs out of heap.
+        const realQueueMicrotask = globalThis.queueMicrotask.bind(globalThis);
+        let capturing = false;
+        vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(callback => {
+            if (capturing) scheduled.push(callback);
+            else realQueueMicrotask(callback);
+        });
+        const notifyAndCapture = () => {
+            capturing = true;
+            try { fixture.notify(); } finally { capturing = false; }
+        };
+        act(() => notifyAndCapture());
         expect(scheduled).toHaveLength(1);
         if (action === 'unmount') view.unmount();
         else view.rerender(fixture.tree({ ...fixture.owner, selectionId: 'replacement-owner' }));
@@ -1658,7 +1671,8 @@ describe('ChatDetail owner WebSocket refresh batching', () => {
         await act(async () => scheduled.forEach(callback => callback()));
         expect(fixture.reads()).toBe(readsAfterCleanup);
         if (action === 'owner-change') {
-            act(() => fixture.notify());
+            act(() => notifyAndCapture());
+            expect(scheduled).toHaveLength(2);
             await act(async () => scheduled.at(-1)!());
             expect(fixture.reads()).toBe(readsAfterCleanup + 1);
         }

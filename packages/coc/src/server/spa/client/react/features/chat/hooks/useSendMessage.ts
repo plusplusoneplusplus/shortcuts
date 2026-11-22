@@ -157,6 +157,12 @@ export interface UseSendMessageOptions {
     messageClient?: CocClient;
     /** Additional admission gate for the context-popover action. */
     compactDisabled?: boolean;
+    /**
+     * A compaction is queued or running for this conversation (persisted
+     * state, e.g. auto-compaction or another tab). Follow-ups then go to the
+     * server, which queues them after the compaction boundary.
+     */
+    compactionPending?: boolean;
 }
 
 export function useSendMessage({
@@ -205,6 +211,7 @@ export function useSendMessage({
     compactClient,
     messageClient: hydratedMessageClient,
     compactDisabled,
+    compactionPending,
     notifyCompact,
     notify,
     setCompacting,
@@ -416,7 +423,10 @@ export function useSendMessage({
             rejectSend(sessionContextSendError);
             return;
         }
-        if (!processId || inputDisabled || (sending && !isActiveGeneration) || compactingRef.current) {
+        // A second `/compact` is dropped (draft kept) while one is in flight (AC-02);
+        // normal follow-ups continue and the server queues them.
+        if (!processId || inputDisabled || (sending && !isActiveGeneration)
+            || (compactingRef.current && slashCommands.parseAndExtract(userText).metaCommands?.includes('compact'))) {
             if (options.throwOnError) throw new Error('Sending is unavailable in the open chat.');
             return;
         }
@@ -481,10 +491,9 @@ export function useSendMessage({
             ? parseRemoteCloneKey(owner)?.workspaceId ?? owner : undefined;
         const ownerQuery = owningWorkspaceId ? { workspace: owningWorkspaceId } : undefined;
         if (sending && !isActiveGeneration) return;
-        // Block every send — a second `/compact` or a normal follow-up — while a
-        // compaction is still in flight (AC-02). The conversation is not idle
-        // until the blocking POST settles.
-        if (compactingRef.current) return;
+        // While a compaction is in flight, follow-ups still go to the server,
+        // which queues them behind the compaction boundary in send order.
+        const compactionInFlight = compactingRef.current || !!compactionPending;
 
         // ── /compact meta-command branch ──
         // `/compact` is a client-side action (like `/model`), not a message.
@@ -605,12 +614,13 @@ export function useSendMessage({
         slashCommands.dismissMenu();
         setError(null);
 
-        // ── While AI is running: route through /message, let server decide ──
-        if (isActiveGeneration) {
+        // ── While AI is running or compacting: route through /message, let server decide ──
+        if (isActiveGeneration || compactionInFlight) {
             // Immediate steer: add an optimistic user turn so it appears right
             // away. The response says what really happened: `queued` means the
-            // server buffered it, so the queued entry shows it instead.
-            const optimisticId = deliveryMode === 'immediate' ? `steer-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined;
+            // server buffered it, so the queued entry shows it instead. A
+            // compaction cannot be steered, so those sends always queue.
+            const optimisticId = deliveryMode === 'immediate' && !compactionInFlight ? `steer-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined;
             const dropOptimisticTurn = () => setTurnsAndRef(prev => prev.filter(t => t.optimisticId !== optimisticId || t.steered));
             if (optimisticId) {
                 messageRequest = { ...messageRequest, optimisticId };
@@ -662,6 +672,9 @@ export function useSendMessage({
                 clearPaste();
                 clearAttachedContext?.();
             }
+            // No live stream shows the server-queued entry in a chat that was
+            // idle before compaction; load it (and the running status) now.
+            if (!isActiveGeneration) void refreshConversation(processId);
             return;
         }
 
@@ -715,7 +728,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey, targetCheck, browserAnnotationOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, compactionPending, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey, targetCheck, browserAnnotationOwner]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, compactNow, closeFollowUpStream, onSendComplete };
 }

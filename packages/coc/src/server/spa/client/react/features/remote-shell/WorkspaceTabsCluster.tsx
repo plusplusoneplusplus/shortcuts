@@ -287,7 +287,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                 aria-label={`${remoteLabel} clones`}
                 data-testid="clone-strip"
                 onScroll={() => setHoverPill(null)}
-                className="flex items-center gap-1 min-w-0 max-w-[40%] lg:max-w-[50%] overflow-x-auto overflow-y-hidden py-0.5 [scrollbar-width:thin]"
+                className="flex items-center gap-1 min-w-0 max-w-[50%] lg:max-w-[60%] overflow-x-auto overflow-y-hidden py-0.5 [scrollbar-width:thin]"
             >
                 {clones.map(c => {
                     const selectionId = getRepoSelectionId(c);
@@ -338,12 +338,12 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                             }
                         >
                             <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(st, getRepoHashColor(c.workspace, getHostname() ?? 'local')) }} aria-hidden />
-                            <span data-testid="clone-pill-name" className="truncate max-w-[140px]">{c.workspace.name}</span>
+                            <span data-testid="clone-pill-name" className="truncate max-w-[200px]">{c.workspace.name}</span>
                             <span
                                 data-testid="clone-pill-machine"
                                 aria-hidden
                                 style={isRemote ? { color: getServerHashColor(machine) } : undefined}
-                                className={'truncate max-w-[100px] text-[11px] font-normal ' + (isRemote ? '' : 'text-[#656d76] dark:text-[#999]')}
+                                className={'truncate max-w-[140px] text-[11px] font-normal ' + (isRemote ? '' : 'text-[#656d76] dark:text-[#999]')}
                             >
                                 {machine}
                             </span>

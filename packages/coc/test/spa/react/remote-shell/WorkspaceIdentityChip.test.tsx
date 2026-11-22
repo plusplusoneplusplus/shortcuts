@@ -691,6 +691,7 @@ describe('WorkspaceIdentityChip group identity mode', () => {
         expect(chip.textContent).not.toContain('shortcuts');
         expect(screen.getByTestId('remote-chip-group-icon').textContent).toBe('🗂️');
         expect(chip.getAttribute('title')).toBe('ai-repos');
+        expect(chip.className).toContain('max-w-[360px]');
     });
 
     it('suppresses the ⧉N clone badge that belongs to the remembered repo', () => {
