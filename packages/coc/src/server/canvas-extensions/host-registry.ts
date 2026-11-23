@@ -48,6 +48,7 @@ export class CanvasExtensionHostRegistry {
     private readonly entries = new Map<string, Entry>();
     private readonly declarationCache = new Map<string, { contentHash: string; declarations: CanvasDeclaration[] }>();
     private readonly cleanup = new Set<Promise<void>>();
+    private readonly deletions = new Map<string, Promise<void>>();
     private disposed = false;
     private disposePromise?: Promise<void>;
     private readonly idleTtlMs: number;
@@ -98,15 +99,25 @@ export class CanvasExtensionHostRegistry {
 
     /** Called synchronously on store events, revoking queued and starting work immediately. */
     stopConversation(owner: CanvasExtensionOwner, deleted = false): Promise<void> {
+        const key = JSON.stringify([owner.workspaceId, owner.processId]);
+        const pending = this.deletions.get(key);
+        if (pending) return pending;
         const stops = [...this.entries.values()]
             .filter(entry => entry.owner.workspaceId === owner.workspaceId && entry.owner.processId === owner.processId)
             .map(entry => this.retire(entry));
-        return this.track((async () => {
+        const cleanup = this.track((async () => {
             await Promise.all(stops);
             if (deleted) {
                 await fs.rm(sessionWorkspacePath(this.options.dataDir, owner), { recursive: true, force: true });
             }
         })());
+        if (deleted) {
+            // Store events and explicit callers can stop the same owner concurrently.
+            this.deletions.set(key, cleanup);
+            const settled = () => { this.deletions.delete(key); };
+            void cleanup.then(settled, settled);
+        }
+        return cleanup;
     }
 
     onProcessChange(event: Parameters<NonNullable<ProcessStore['onProcessChange']>>[0]): void {

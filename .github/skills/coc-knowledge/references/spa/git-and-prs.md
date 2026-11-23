@@ -210,7 +210,12 @@ menu point and the row for focus return. Commit/branch (`GitFileReview`) and
 working-tree hosts supply **Open file** (`changedFileSource.ts`): the row's
 current working copy as a raw-source file tab for the diff's owner and clone
 route, or the owner's Explorer deep link without a panel. Renames open the new
-path; deletions disable the action. They also supply **Comment**
+path; deletions disable the action. **Copy path** (`copyChangedFilePath.tsx`)
+uses the shared clipboard helper and success/error toasts without selecting the
+row. Commit/branch rows copy their current path; working-tree rows resolve it
+against that change's own `repositoryRoot`, excluding group display prefixes
+and stage IDs. Paths use forward slashes, including renames and deletions.
+The hosts also supply **Comment**
 (`fileCommentComposer.tsx`): the shared `InlineCommentPopup` composes a
 file-level comment on that row's file — the source's `commentContext(path)`
 (working tree: `workingTreeCommentContext`, none for untracked rows) posted

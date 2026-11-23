@@ -154,8 +154,10 @@ invisible provider-side compaction supplies neither signal.
 
 Admission records `metadata.chatStyle` and carries the accepted selection through
 queued/pending messages. The executor rechecks the live gate and compaction at execution,
-then prefixes the outgoing user turn once. Successful delivery decorates the exact stored
-turn and records `metadata.chatStyleContext`: style, resolved block, accepted turn index,
+then prefixes the outgoing user turn once. An enqueued follow-up's accepted index is
+predicted the way stores allocate it (past the highest `turnIndex`, so gaps are safe), and
+`updateTurnContent` addresses turns by `turnIndex`, never array position. Successful delivery
+decorates the exact stored turn (a missing accepted user turn fails the turn) and records `metadata.chatStyleContext`: style, resolved block, accepted turn index,
 observed transcript boundary and injection time, independently of later selector changes.
 Initial lifecycle seeds this context after successful execution. Style changes buffer
 rather than steer in-flight output.

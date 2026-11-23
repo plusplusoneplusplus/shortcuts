@@ -68,6 +68,8 @@ export interface ExtensionCanvasHostController {
     pendingInvokes: number;
     /** The last failure worth showing a human, or null. */
     actionError: string | null;
+    beginReload(): boolean;
+    endReload(): void;
 }
 
 export function useExtensionCanvasHostController({
@@ -78,6 +80,18 @@ export function useExtensionCanvasHostController({
 }: ExtensionCanvasHostControllerOptions): ExtensionCanvasHostController {
     const [actionError, setActionError] = useState<string | null>(null);
     const [pendingInvokes, setPendingInvokes] = useState(0);
+    const pendingMutations = useRef(0);
+    const reloading = useRef(false);
+    const beginReload = useCallback(() => {
+        if (reloading.current) return false;
+        if (pendingMutations.current > 0) {
+            setActionError('Wait for canvas actions and state saves to finish before reloading. Actions will not be replayed.');
+            return false;
+        }
+        reloading.current = true;
+        return true;
+    }, []);
+    const endReload = useCallback(() => { reloading.current = false; }, []);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Read through refs inside the message handler: the listener is bound once
@@ -104,8 +118,11 @@ export function useExtensionCanvasHostController({
     }, [canvas, postState]);
 
     useEffect(() => {
+        let active = true;
         const handleMessage = (event: MessageEvent) => {
             if (event.source !== iframeRef.current?.contentWindow) return;
+            const source = event.source as Window;
+            const current = () => active && source === iframeRef.current?.contentWindow;
             const data = event.data;
             if (!isCanvasHostMessage(data)) return;
 
@@ -113,14 +130,19 @@ export function useExtensionCanvasHostController({
             // before — the reply is simply skipped, never the work.
             const requestId = canvasHostRequestId(data);
             const respond = (payload: CanvasHostResponsePayload) => {
-                if (requestId === null) return;
-                iframeRef.current?.contentWindow?.postMessage(canvasHostResponse(requestId, payload), '*');
+                if (requestId === null || !current()) return;
+                source.postMessage(canvasHostResponse(requestId, payload), '*');
             };
             /** What a settled mutation hands back: the new revision plus the state it produced. */
             const savedResult = (saved: Canvas) => ({
                 revision: saved.revision,
                 state: parseCanvasState(saved.content),
             });
+
+            if (reloading.current) {
+                respond(canvasHostFailure('capability-error', 'Canvas reload in progress. This request was not started.'));
+                return;
+            }
 
             if (data.type === 'ready') {
                 postState(canvasCurrentRef.current);
@@ -142,21 +164,27 @@ export function useExtensionCanvasHostController({
             }
 
             if (data.type === 'invoke-capability' && typeof data.name === 'string') {
+                pendingMutations.current++;
                 setPendingInvokes(n => n + 1);
                 client.canvases.invokeCapability(workspaceId, canvasIdRef.current, data.name, data.params)
                     .then(saved => {
+                        if (!current()) return;
                         setActionError(null);
                         onCanvasSaved(saved);
                         respond(canvasHostSuccess(savedResult(saved)));
                     })
                     .catch(err => {
+                        if (!current()) return;
                         // The banner stays — a human still needs to see the failure —
                         // AND the extension's promise rejects so it can react itself.
                         const message = canvasHostErrorMessage(err, 'Capability failed');
                         setActionError(message);
                         respond(canvasHostFailure('capability-error', message));
                     })
-                    .finally(() => setPendingInvokes(n => Math.max(0, n - 1)));
+                    .finally(() => {
+                        pendingMutations.current--;
+                        if (current()) setPendingInvokes(n => Math.max(0, n - 1));
+                    });
                 return;
             }
 
@@ -192,19 +220,23 @@ export function useExtensionCanvasHostController({
 
             if (data.type === 'set-state') {
                 const content = serializeCanvasState(data.state);
+                pendingMutations.current++;
                 client.canvases.save(workspaceId, canvasIdRef.current, {
                     content,
                     expectedRevision: canvasCurrentRef.current.revision,
                 })
                     .then(saved => {
+                        if (!current()) return;
                         setActionError(null);
                         onCanvasSaved({ ...saved, content });
                         respond(canvasHostSuccess(savedResult({ ...saved, content })));
                     })
                     .catch(() => {
+                        if (!current()) return;
                         setActionError(CANVAS_HOST_REVISION_CONFLICT_MESSAGE);
                         respond(canvasHostFailure('revision-conflict', CANVAS_HOST_REVISION_CONFLICT_MESSAGE));
-                    });
+                    })
+                    .finally(() => { pendingMutations.current--; });
                 return;
             }
 
@@ -214,8 +246,8 @@ export function useExtensionCanvasHostController({
         };
 
         window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
-    }, [client, workspaceId, onCanvasSaved, postState]);
+        return () => { active = false; window.removeEventListener('message', handleMessage); };
+    }, [client, workspaceId, canvas.id, onCanvasSaved, postState]);
 
-    return { iframeRef, pendingInvokes, actionError };
+    return { iframeRef, pendingInvokes, actionError, beginReload, endReload };
 }

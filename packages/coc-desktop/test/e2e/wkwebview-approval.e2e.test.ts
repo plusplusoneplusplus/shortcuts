@@ -39,8 +39,8 @@ it.skipIf(skip)('waits for approval and preserves a cross-host sign-in POST in a
         const line = output.split('\n').find(line => line.startsWith('E2E::'));
         expect(line, output).toBeDefined();
         const result = JSON.parse(line!.slice(5));
-        // WebKit starts the page's scripted POST only after /login reports finished; control
-        // readiness must still wait for it instead of returning on the sign-in page.
+        // The fixture waits for the scripted POST's destination request, then checks
+        // readiness and approval revocation on that committed document.
         expect(result).toMatchObject({ premature: false, title: 'Approved destination', redirected: true,
             postPreserved: true, approvalRevoked: true });
         expect(result.checks).toBe(2);

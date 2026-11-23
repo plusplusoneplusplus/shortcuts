@@ -15,6 +15,7 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from './changedFileSource';
 import { useFileCommentComposer } from './fileCommentComposer';
+import { useCopyChangedFilePath } from './copyChangedFilePath';
 
 type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment' | 'createDiffEditor'> & {
     comparisonKey: string;
@@ -68,6 +69,7 @@ function GitFileReviewContent({ identity, ...props }: Props & { identity: string
     const sourceOwner = useCommitContextOwner(props.workspaceId, props.attachmentDestinationId);
     const panelHost = useUnifiedPanelHost();
     const fileComment = useFileCommentComposer();
+    const copyPath = useCopyChangedFilePath();
     // Same owner route as FileDiffPanel's path link and definition jumps.
     const ownerRoutingRef = props.source.routingTarget === undefined
         ? (props.attachmentDestinationId === props.workspaceId ? null : props.attachmentDestinationId) : props.source.routingTarget;
@@ -91,8 +93,8 @@ function GitFileReviewContent({ identity, ...props }: Props & { identity: string
         })), fileComment.menuItem(anchor, {
             // The same context and owner route FileDiffPanel uses for this file's comments.
             workspaceId: props.workspaceId, routingTarget: props.source.routingTarget, context: props.source.commentContext(file.path),
-        })]}
-        renderFile={context => <GitReviewDiff {...props} context={context} contentSearchTarget={contentSearchTarget} />} />{fileComment.composer}</>;
+        }), copyPath.menuItem(file.path)]}
+        renderFile={context => <GitReviewDiff {...props} context={context} contentSearchTarget={contentSearchTarget} />} />{fileComment.composer}{copyPath.feedback}</>;
 }
 
 function GitReviewDiff({ context, contentSearchTarget, ...props }: Props & { context: ReviewFileRenderContext; contentSearchTarget?: ReviewContentSearchTarget }) {

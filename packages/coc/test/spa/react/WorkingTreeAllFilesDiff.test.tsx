@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React, { useEffect } from 'react';
 
@@ -45,6 +45,7 @@ import { WorkingTree } from '../../../src/server/spa/client/react/features/git/w
 import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 const ROOT = '/repo';
+const writeText = vi.fn();
 function change(rel: string, stage: 'staged' | 'unstaged' | 'untracked', status = 'M') {
     return { filePath: `${ROOT}/${rel}`, status, stage, repositoryRoot: ROOT, repositoryName: 'repo', additions: 1, deletions: 0 };
 }
@@ -54,6 +55,8 @@ const row = (stage: string) => within(nav()).getByRole('button', { name: new Reg
 const current = () => h.panel.mock.calls.at(-1)![0];
 const props = { workspaceId: 'ws-1', attachmentDestinationId: 'ws-1', repoRoot: ROOT, onNavigateToFile: vi.fn() };
 beforeEach(() => {
+    writeText.mockReset().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText }, configurable: true } }));
     vi.clearAllMocks(); h.endpoint = undefined; h.unresolved = false; h.searchEnabled = false;
     h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: CHANGES });
     h.client.git.listDiffComments.mockResolvedValue({ comments: [] });
@@ -64,8 +67,48 @@ beforeEach(() => {
         head: { content: stage === 'staged' ? 'INDEX needle\n' : 'DISK needle\n', ref: stage === 'staged' ? 'INDEX' : 'WORKTREE', exists: true },
     }));
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe('WorkingTreeAllFilesDiff shared review', () => {
+    it('copies a local worktree path against its own root without a workspace root', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            { ...change('new.txt', 'untracked', '?'), filePath: '/worktrees/feature/docs/新 file.txt',
+                repositoryRoot: '/worktrees/feature', repositoryName: 'feature' },
+        ] });
+        render(<WorkingTreeAllFilesDiff {...props} repoRoot={undefined} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.contextMenu(row('Untracked'));
+        await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ })));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('docs/新 file.txt');
+    });
+
+    it.each(['Groups', 'Tree', 'Flat'])('copies each repository-relative path in %s, without repository labels or stage IDs', async mode => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            ...CHANGES, change('gone.ts', 'unstaged', 'D'),
+            { ...change('old.ts', 'staged', 'R100'), filePath: 'C:\\worktrees\\other\\src\\new name.ts',
+                oldPath: 'C:\\worktrees\\other\\old.ts', repositoryRoot: 'C:\\worktrees\\other', repositoryName: 'other' },
+        ] });
+        render(<UnifiedPanelHostProvider host={{ workspaceId: 'group', chatId: null }}>
+            <WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:b:ws-1" />
+        </UnifiedPanelHostProvider>);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByRole('button', { name: mode, exact: true }));
+        const selected = current().filePath;
+        for (const [label, expected] of [
+            [/new name\.ts/, 'src/new name.ts'], [/gone\.ts/, 'gone.ts'], [/Untracked/, 'new.txt'],
+            [/repo\/a\.ts, Staged,/, 'a.ts'], [/repo\/a\.ts, Unstaged,/, 'a.ts'],
+        ] as const) {
+            // Use each row's full accessible name, rather than a truncated visual label.
+            const target = within(nav()).getByRole('button', { name: label });
+            fireEvent.contextMenu(target);
+            await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ })));
+            expect(writeText).toHaveBeenLastCalledWith(expected);
+        }
+        expect(current().filePath).toBe(selected);
+        expect(h.openTab).not.toHaveBeenCalled();
+        expect(screen.getByRole('status')).toHaveTextContent('Path copied.');
+    });
+
     it('uses one full pane, stage labels and shared responsive controls without review-only actions', async () => {
         render(<WorkingTreeAllFilesDiff {...props} />);
         await screen.findByTestId('full-working-diff');

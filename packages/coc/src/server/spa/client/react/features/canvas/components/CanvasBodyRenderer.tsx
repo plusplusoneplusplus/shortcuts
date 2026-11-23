@@ -33,6 +33,7 @@ import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode }
 
 export interface CanvasBodyRendererProps {
     allowDesktopGuest?: boolean;
+    onRegisterExtensionReload?: (reload: (() => void) | null) => void;
     routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
@@ -57,7 +58,7 @@ export interface CanvasBodyRendererProps {
 export function CanvasBodyRenderer({
     workspaceId, routingRef, canvasId, loading, loadError, canvas, kind, viewingVersion, viewingRevision,
     displayedContent, mode, draft, onDraftChange, onCanvasSaved, onSelectionChange, onImageMenu, notify,
-    allowDesktopGuest = false,
+    allowDesktopGuest = false, onRegisterExtensionReload,
 }: CanvasBodyRendererProps) {
     const excalidrawScene = useMemo(
         () => (kind.isExcalidraw ? parseSceneContent(displayedContent) : null),
@@ -172,6 +173,9 @@ export function CanvasBodyRenderer({
     if (!viewingVersion && mode === 'preview' && kind.isExtension && canvas) {
         return (
             <ExtensionCanvasView
+                key={JSON.stringify({ workspaceId, routingRef, canvasId })}
+                routingRef={routingRef}
+                onRegisterReload={onRegisterExtensionReload}
                 workspaceId={workspaceId}
                 canvas={canvas}
                 onCanvasSaved={onCanvasSaved}

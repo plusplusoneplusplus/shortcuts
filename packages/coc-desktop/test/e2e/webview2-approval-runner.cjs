@@ -1,6 +1,7 @@
 'use strict';
 const { app, BrowserWindow } = require('electron');
 const { createServer } = require('node:http');
+const { once } = require('node:events');
 const path = require('node:path');
 const { BrowserHostManager } = require('../../dist/browser-host-manager');
 // The same flow runs on WebView2 (Windows) and WKWebView (macOS).
@@ -20,7 +21,7 @@ app.whenReady().then(async () => {
         } else if (req.url === '/login') {
             res.setHeader('content-type', 'text/html');
             res.end(`<!doctype html><form method="post" action="http://127.0.0.1:${server.address().port}/return">
-                <input name="assertion" value="synthetic-value"></form><script>document.forms[0].submit()</script>`);
+                <input name="assertion" value="synthetic-value"></form><script>setTimeout(() => document.forms[0].submit(), 500)</script>`);
         } else if (req.url === '/return') {
             let body = '';
             req.on('data', chunk => { body += chunk; });
@@ -32,12 +33,14 @@ app.whenReady().then(async () => {
         } else {
             res.setHeader('content-type', 'text/html');
             res.end('<!doctype html><title>Approved destination</title><p>Redirect completed</p>');
+            if (req.url === '/destination') server.emit('destination');
         }
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const host = new BrowserHost(path.join(process.env.COC_APPROVAL_TEST_DATA, 'profile'));
     let manager;
     let checks = 0;
+    let pendingDecisions = 0;
     let premature = false;
     let completed = false;
     manager = new BrowserHostManager({
@@ -49,8 +52,10 @@ app.whenReady().then(async () => {
         send: (_owner, _channel, event) => {
             if (!event.checkId) return;
             checks++;
+            pendingDecisions++;
             setTimeout(() => {
                 premature ||= completed;
+                pendingDecisions--;
                 manager.decideNavigation(window.webContents.id, event.checkId, true);
             }, 200);
         },
@@ -61,10 +66,21 @@ app.whenReady().then(async () => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(new Error('Approval fixture timed out')), 15000);
         try {
-            const result = await manager.executeControl(owner, {
+            // Scripted navigation can start after open returns a settled sign-in page.
+            // Observe the actual destination request rather than a load-settle interval.
+            const destination = once(server, 'destination', { signal: controller.signal });
+            // Attach rejection handling before open, which can itself fail or be cancelled.
+            void destination.catch(() => {});
+            const opened = await manager.executeControl(owner, {
                 id: 'open', processId: 'conversation', workspaceId: 'workspace',
                 framesEnabled: true,
                 command: { action: 'open', url: `http://127.0.0.1:${server.address().port}/start?fixture=%7B%22sample%22%3A%22synthetic%22%7D` },
+            }, controller.signal);
+            if (pendingDecisions) throw new Error('Open returned while navigation approval was pending.');
+            await destination;
+            const result = await manager.executeControl(owner, {
+                id: 'destination', processId: 'conversation', workspaceId: 'workspace',
+                selectedTab: opened.tab, framesEnabled: true, command: { action: 'select', tab: opened.tab },
             }, controller.signal);
             completed = true;
             if (!checks || premature || !postPreserved || result.title !== 'Approved destination' || !result.url.endsWith('/destination')) {
@@ -83,7 +99,7 @@ app.whenReady().then(async () => {
             }
             console.log('E2E::' + JSON.stringify({ checks: firstTurnChecks, premature, title: result.title,
                 redirected: true, postPreserved, approvalRevoked: true }));
-        } finally { clearTimeout(timeout); }
+        } finally { clearTimeout(timeout); controller.abort(); }
     } finally {
         await manager.dispose();
         window.destroy();

@@ -54,7 +54,7 @@ describe('changed-file row Comment', () => {
         expect(selected).not.toBe(target);
         const items = () => within(screen.getByTestId('context-menu')).getAllByRole('menuitem').map(item => item.textContent);
         fireEvent.contextMenu(row(target), { clientX: 40, clientY: 50 });
-        expect(items()).toEqual([expect.stringContaining('Open file'), expect.stringContaining('Comment')]);
+        expect(items()).toEqual([expect.stringContaining('Open file'), expect.stringContaining('Comment'), expect.stringContaining('Copy path')]);
         fireEvent.click(commentItem());
         expect(composer()).toHaveAccessibleName(`Comment on file ${target}`);
         expect(document.activeElement).toBe(textarea());
