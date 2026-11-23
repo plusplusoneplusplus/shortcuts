@@ -232,6 +232,38 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         expect(host.running).toBe(false);
     });
 
+    it('shares deletion cleanup between a store event and an explicit stop', async () => {
+        const target = sessionWorkspacePath(root, owner);
+        await fs.mkdir(target, { recursive: true });
+        const remove = fs.rm.bind(fs);
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        let removals = 0;
+        const spy = vi.spyOn(fs, 'rm').mockImplementation(async (directory, options) => {
+            if (directory === target) {
+                if (++removals > 1) throw Object.assign(new Error('Concurrent removal'), { code: 'EPERM' });
+                await held;
+            }
+            return remove(directory, options);
+        });
+        try {
+            registry.onProcessChange({ type: 'process-removed', process: {
+                id: owner.processId, metadata: { workspaceId: owner.workspaceId },
+            } } as never);
+            await vi.waitFor(() => expect(removals).toBe(1));
+            const stopping = registry.stopConversation(owner, true);
+            const result = Promise.allSettled([stopping]);
+            release();
+            expect(await result).toEqual([{ status: 'fulfilled', value: undefined }]);
+            expect(removals).toBe(1);
+            await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+        } finally {
+            release();
+            await registry.dispose();
+            spy.mockRestore();
+        }
+    });
+
     it('handles archive/remove store events and deletes only the target session state', async () => {
         const target = sessionWorkspacePath(root, owner);
         const sibling = sessionWorkspacePath(root, { ...owner, processId: 'sibling' });
