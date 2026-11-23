@@ -215,6 +215,10 @@ uses the shared clipboard helper and success/error toasts without selecting the
 row. Commit/branch rows copy their current path; working-tree rows resolve it
 against that change's own `repositoryRoot`, excluding group display prefixes
 and stage IDs. Paths use forward slashes, including renames and deletions.
+The same hook's `button(path)` puts a labeled copy icon beside the
+`WorkingTreeFileDiff` header path; it copies the selected change's full
+`filePath` exactly as shown untruncated (not the `…` label), with the same toasts.
+Commit/branch file panes have no path header.
 The hosts also supply **Comment**
 (`fileCommentComposer.tsx`): the shared `InlineCommentPopup` composes a
 file-level comment on that row's file — the source's `commentContext(path)`

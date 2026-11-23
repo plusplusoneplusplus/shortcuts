@@ -67,6 +67,7 @@ import type { DiffCommentSelection, DiffComment } from '../../../../comments/dif
 import { DiffCommentThread } from '../diff/DiffCommentThread';
 import { useDiffPanelComments, useRevealDiffComment } from '../diff/useDiffPanelComments';
 import { useInitialDiffHunk } from '../diff/useInitialDiffHunk';
+import { useCopyChangedFilePath } from '../diff/copyChangedFilePath';
 
 export interface WorkingTreeFileDiffProps {
     workspaceId: string;
@@ -140,6 +141,7 @@ type EditorContentState =
 export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const [untrackedPreviewFallback, setUntrackedPreviewFallback] = useState(false);
     const { dispatch: queueDispatch } = useQueue();
+    const copyPath = useCopyChangedFilePath();
     const [diff, setDiff] = useState<string | null>(null);
     const patchContentKey = JSON.stringify([workspaceId, stage, filePath]);
     const [loadedPatchKey, setLoadedPatchKey] = useState<string>();
@@ -511,7 +513,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">
-                    <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                    <div className="flex items-center gap-1 min-w-0 flex-1">
+                        <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc]" />
+                        {copyPath.button(filePath, 'working-tree-file-diff-copy-path')}
+                    </div>
                     {canSave && isDirty && (
                         <span
                             className="text-xs text-[#0078d4] dark:text-[#3794ff] flex-shrink-0"
@@ -785,6 +790,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
+            {copyPath.feedback}
         </div>
     );
 }
