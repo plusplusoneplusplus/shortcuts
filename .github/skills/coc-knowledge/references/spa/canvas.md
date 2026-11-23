@@ -312,6 +312,13 @@ The host side lives in `useExtensionCanvasHostController`, not the view: it post
 `canvases.invokeCapability`, and services `set-state` via the revision-checked
 `canvases.save`, so human UI actions and AI capability calls share one gate.
 
+The preview header registers the view's reload action. Reload confirms guest input
+loss, refuses pending mutations, freezes bridge admission, reads code and durable
+state through the exact `routingRef`, and replaces only that iframe, even with
+unchanged code. Failed reads preserve the guest and expose an error. Replies bind
+to their original guest; actions are never replayed. Installed Copilot guests use
+the separate desktop/runtime lifecycle.
+
 **Bridge protocol v2.** Constants, the method table, and the error shape live in
 `features/canvas/canvas-host-contract.ts`; `canvas-host-bootstrap.ts` generates both the
 live and the offline in-frame host from that table. `invoke`/`setState` tag each message

@@ -52,7 +52,7 @@
  *     banner and posts `extension-error` here rather than rendering nothing.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Canvas, CanvasExtension } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { buildLiveCanvasHostBootstrap } from './canvas-host-bootstrap';
@@ -62,6 +62,8 @@ import { isCanvasLibraryId } from '../../../../../canvas/canvas-libraries';
 
 export interface ExtensionCanvasViewProps {
     workspaceId: string;
+    routingRef?: string | null;
+    onRegisterReload?: (reload: (() => void) | null) => void;
     canvas: Canvas;
     /** Called whenever a capability/setState produced a new canvas record. */
     onCanvasSaved: (canvas: Canvas) => void;
@@ -109,7 +111,7 @@ export function buildExtensionSrcDoc(source: ExtensionSrcDocSource, assetBase?: 
     return BOOTSTRAP_SCRIPT + '\n' + (source.uiHtml ?? '');
 }
 
-export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: ExtensionCanvasViewProps) {
+export function ExtensionCanvasView({ workspaceId, routingRef, canvas, onCanvasSaved, onRegisterReload }: ExtensionCanvasViewProps) {
     const [extension, setExtension] = useState<CanvasExtension | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -119,16 +121,23 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
     // their canvas (incl. the extension docs) lives only on the remote server —
     // even though the parent CanvasPanel already loads the content via this same
     // clone-aware client, so the frame renders while the extension GET fails.
-    const client = useCocClient(workspaceId);
+    const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
+    const [generation, setGeneration] = useState(0);
+    const [reloading, setReloading] = useState(false);
+    const [reloadError, setReloadError] = useState<string | null>(null);
+    const lifetime = useRef<object>({});
+
+    const documentLoadEpoch = useRef(0);
 
     // (Re)load extension documents when the canvas or its revision changes —
     // the AI may have replaced the UI/capabilities via
     // create_or_update_extension_canvas, which bumps the revision.
     useEffect(() => {
         let cancelled = false;
+        const epoch = ++documentLoadEpoch.current;
         client.canvases.getExtension(workspaceId, canvas.id)
             .then(loaded => {
-                if (cancelled) return;
+                if (cancelled || epoch !== documentLoadEpoch.current) return;
                 setExtension(prev =>
                     prev && prev.uiHtml === loaded.uiHtml && prev.uiJs === loaded.uiJs
                         && prev.capabilitiesJs === loaded.capabilitiesJs
@@ -139,7 +148,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                 setLoadError(null);
             })
             .catch(() => {
-                if (!cancelled) setLoadError('Failed to load canvas extension');
+                if (!cancelled && epoch === documentLoadEpoch.current) setLoadError('Failed to load canvas extension');
             });
         return () => { cancelled = true; };
     }, [client, workspaceId, canvas.id, canvas.revision]);
@@ -147,15 +156,59 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
     // The whole host side of the CanvasHost protocol — request correlation, the
     // canvases REST calls, error-code mapping, and the two bits of UI state
     // those outcomes drive. This component renders; it does not speak protocol.
-    const { iframeRef, pendingInvokes, actionError } = useExtensionCanvasHostController({
+    const { iframeRef, pendingInvokes, actionError, beginReload, endReload } = useExtensionCanvasHostController({
         client,
         workspaceId,
         canvas,
         onCanvasSaved,
     });
 
-    if (loadError) {
-        return <div className="text-xs text-red-500 py-6 text-center" data-testid="extension-canvas-error">{loadError}</div>;
+    useEffect(() => {
+        const token = {};
+        lifetime.current = token;
+        setExtension(null);
+        setReloading(false);
+        setReloadError(null);
+        endReload();
+        return () => { if (lifetime.current === token) lifetime.current = {}; };
+    }, [client, workspaceId, canvas.id, endReload]);
+
+    const reload = useCallback(async () => {
+        if (!beginReload()) return;
+        // Guest input is opaque to the host. Always ask before destroying it.
+        if (!window.confirm('Reload this canvas extension? Unsaved guest input will be lost. Persisted state is kept. Actions are not replayed; a failed action may already have completed.')) {
+            endReload();
+            return;
+        }
+        const token = lifetime.current;
+        documentLoadEpoch.current++;
+        setReloading(true);
+        setReloadError(null);
+        try {
+            const [saved, loaded] = await Promise.all([
+                client.canvases.get(workspaceId, canvas.id),
+                client.canvases.getExtension(workspaceId, canvas.id),
+            ]);
+            if (token !== lifetime.current) return;
+            if (saved.type !== 'extension') throw new Error('This canvas is no longer an extension.');
+            onCanvasSaved(saved);
+            setExtension(loaded);
+            setLoadError(null);
+            setGeneration(n => n + 1);
+        } catch (error) {
+            if (token === lifetime.current) setReloadError(error instanceof Error ? error.message : 'Failed to reload canvas extension');
+        } finally {
+            if (token === lifetime.current) { setReloading(false); endReload(); }
+        }
+    }, [client, workspaceId, canvas.id, onCanvasSaved, beginReload, endReload]);
+
+    useEffect(() => {
+        onRegisterReload?.(() => { void reload(); });
+        return () => onRegisterReload?.(null);
+    }, [onRegisterReload, reload]);
+
+    if (loadError || (!extension && reloadError)) {
+        return <div role="alert" className="text-xs text-red-500 py-6 text-center" data-testid="extension-canvas-error">{reloadError ?? loadError}</div>;
     }
     if (!extension) {
         return <div className="text-xs text-[#848484] py-6 text-center">Loading extension…</div>;
@@ -163,6 +216,8 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
 
     return (
         <div className="flex flex-col h-full min-h-0">
+            {reloading && <div role="status">Reloading canvas extension…</div>}
+            {reloadError && <div role="alert" className="px-3 py-1.5 text-xs text-red-600">{reloadError}</div>}
             {(extension.manifest?.tools?.length ?? 0) > 0 && (
                 <div
                     className="px-3 py-1 text-[11px] text-[#848484] border-b border-[#e5e5e5] dark:border-[#333] truncate"
@@ -185,6 +240,8 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                 </div>
             )}
             <iframe
+                key={generation}
+                hidden={reloading}
                 ref={iframeRef}
                 title={canvas.title}
                 sandbox="allow-scripts"

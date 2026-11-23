@@ -1,11 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
     useCocClient: vi.fn(),
+    get: vi.fn(),
     getExtension: vi.fn(),
     invokeCapability: vi.fn(),
     save: vi.fn(),
@@ -965,5 +966,161 @@ describe('CanvasHost bootstrap — file methods', () => {
         });
 
         await expect(listed).rejects.toMatchObject({ code: 'file-error', message: 'Canvas file not found' });
+    });
+});
+
+
+describe('ExtensionCanvasView — explicit reload', () => {
+    afterEach(() => vi.restoreAllMocks());
+    let reload: (() => void) | null;
+    const register = (action: (() => void) | null) => { reload = action; };
+    const saved = vi.fn();
+    beforeEach(() => {
+        reload = null;
+        saved.mockReset();
+        mocks.get.mockReset().mockResolvedValue(makeCanvas({ revision: 8, content: '{"cards":["durable"]}' }));
+        mocks.getExtension.mockReset().mockResolvedValue(EXTENSION);
+        mocks.save.mockReset();
+        mocks.invokeCapability.mockReset();
+        mocks.useCocClient.mockReset().mockReturnValue({ canvases: {
+            get: mocks.get, getExtension: mocks.getExtension,
+            save: mocks.save, invokeCapability: mocks.invokeCapability,
+        } });
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+    });
+
+    async function mount(routingRef?: string | null) {
+        const view = render(<ExtensionCanvasView workspaceId="ws-1" routingRef={routingRef}
+            canvas={makeCanvas()} onCanvasSaved={saved} onRegisterReload={register} />);
+        const frame = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        return { ...view, frame };
+    }
+
+    it('fetches current code and durable state and replaces even an unchanged guest', async () => {
+        const { frame } = await mount();
+        await act(async () => reload!());
+        const fresh = screen.getByTestId('extension-canvas-iframe');
+        expect(fresh).not.toBe(frame);
+        expect(fresh.getAttribute('sandbox')).toBe('allow-scripts');
+        expect(mocks.get).toHaveBeenCalledExactlyOnceWith('ws-1', 'board-abc123');
+        expect(mocks.getExtension).toHaveBeenCalledTimes(2);
+        expect(saved).toHaveBeenCalledWith(expect.objectContaining({ revision: 8, content: '{"cards":["durable"]}' }));
+        expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Unsaved guest input will be lost'));
+        expect(mocks.save).not.toHaveBeenCalled();
+        expect(mocks.invokeCapability).not.toHaveBeenCalled();
+    });
+
+    it('loads changed UI code and leaves another mounted canvas intact', async () => {
+        const { frame } = await mount();
+        const other = render(<ExtensionCanvasView workspaceId="ws-2" canvas={makeCanvas({ id: 'other' })} onCanvasSaved={vi.fn()} />);
+        await waitFor(() => expect(other.container.querySelector('iframe')).not.toBeNull());
+        const otherFrame = other.container.querySelector('iframe');
+        mocks.getExtension.mockResolvedValue({ ...EXTENSION, uiHtml: '<h1>Fresh code</h1>' });
+        await act(async () => reload!());
+        expect(frame.isConnected).toBe(false);
+        expect(other.container.querySelector('iframe')).toBe(otherFrame);
+        expect(screen.getAllByTestId('extension-canvas-iframe')[0].getAttribute('srcdoc')).toContain('Fresh code');
+    });
+
+    it('keeps the original guest and input when confirmation is canceled', async () => {
+        const { frame } = await mount();
+        vi.mocked(window.confirm).mockReturnValue(false);
+        await act(async () => reload!());
+        expect(screen.getByTestId('extension-canvas-iframe')).toBe(frame);
+        expect(mocks.get).not.toHaveBeenCalled();
+        expect(saved).not.toHaveBeenCalled();
+    });
+
+    it.each(['set-state', 'invoke-capability'])('blocks reload during a pending %s without replay', async type => {
+        let finish!: (value: ReturnType<typeof makeCanvas>) => void;
+        const mutation = type === 'set-state' ? mocks.save : mocks.invokeCapability;
+        mutation.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const { frame } = await mount();
+        postFromIframe(frame, { __canvasHost: true, type, id: 12, name: 'publish', state: { cards: [1] } });
+        await act(async () => reload!());
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(mocks.get).not.toHaveBeenCalled();
+        expect(screen.getByTestId('extension-canvas-action-error').textContent).toContain('Wait for canvas actions');
+        await act(async () => finish(makeCanvas()));
+        await act(async () => reload!());
+        expect(screen.getByTestId('extension-canvas-iframe')).not.toBe(frame);
+        expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects new requests and duplicate reloads while fetching, without dispatching them later', async () => {
+        let finish!: (value: ReturnType<typeof makeCanvas>) => void;
+        mocks.get.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const { frame } = await mount();
+        act(() => reload!());
+        postFromIframe(frame, { __canvasHost: true, type: 'invoke-capability', id: 1, name: 'publish' });
+        postFromIframe(frame, { __canvasHost: true, type: 'set-state', id: 2, state: {} });
+        act(() => reload!());
+        expect(window.confirm).toHaveBeenCalledTimes(1);
+        await act(async () => finish(makeCanvas()));
+        expect(mocks.invokeCapability).not.toHaveBeenCalled();
+        expect(mocks.save).not.toHaveBeenCalled();
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['get', 'getExtension'])('shows %s failure, preserves the guest, and permits a manual retry', async method => {
+        const { frame } = await mount();
+        mocks[method].mockRejectedValueOnce(new Error('Owner unavailable'));
+        await act(async () => reload!());
+        expect(screen.getByRole('alert').textContent).toContain('Owner unavailable');
+        expect(screen.getByTestId('extension-canvas-iframe')).toBe(frame);
+        expect(saved).not.toHaveBeenCalled();
+        await act(async () => reload!());
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.getByTestId('extension-canvas-iframe')).not.toBe(frame);
+    });
+
+    it('discards a reload after unmount and unregisters the header action', async () => {
+        let finish!: (value: ReturnType<typeof makeCanvas>) => void;
+        mocks.get.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const view = await mount();
+        act(() => reload!());
+        view.unmount();
+        expect(reload).toBeNull();
+        await act(async () => finish(makeCanvas()));
+        expect(saved).not.toHaveBeenCalled();
+    });
+
+    it('does not deliver an old guest read reply to the fresh guest', async () => {
+        let finish!: (files: unknown[]) => void;
+        const client = mocks.useCocClient();
+        client.canvases.listFiles = vi.fn().mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const { frame } = await mount();
+        postFromIframe(frame, { __canvasHost: true, type: 'list-files', id: 1 });
+        await act(async () => reload!());
+        const fresh = screen.getByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const post = vi.spyOn(fresh.contentWindow!, 'postMessage');
+        await act(async () => finish([]));
+        expect(post).not.toHaveBeenCalled();
+        postFromIframe(frame, { __canvasHost: true, type: 'invoke-capability', name: 'publish', id: 2 });
+        expect(mocks.invokeCapability).not.toHaveBeenCalled();
+    });
+
+    it('reloads persisted state after an uncertain action failure without replaying it', async () => {
+        mocks.invokeCapability.mockRejectedValue(new Error('Reply lost'));
+        const { frame } = await mount();
+        postFromIframe(frame, { __canvasHost: true, type: 'invoke-capability', name: 'publish', id: 1 });
+        await waitFor(() => expect(screen.getByTestId('extension-canvas-action-error').textContent).toBe('Reply lost'));
+        await act(async () => reload!());
+        expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('may already have completed'));
+        expect(mocks.invokeCapability).toHaveBeenCalledTimes(1);
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([null, 'remote:server:ws-1'])('retains the exact routing ref %s for reload', async routingRef => {
+        const wrong = { canvases: { get: vi.fn(), getExtension: vi.fn() } };
+        const right = { canvases: { get: mocks.get, getExtension: mocks.getExtension } };
+        const expected = routingRef === null ? undefined : routingRef;
+        mocks.useCocClient.mockImplementation(ref => ref === expected ? right : wrong);
+        await mount(routingRef);
+        await act(async () => reload!());
+        expect(mocks.useCocClient).toHaveBeenCalledWith(expected);
+        expect(mocks.get).toHaveBeenCalledExactlyOnceWith('ws-1', 'board-abc123');
+        expect(wrong.canvases.get).not.toHaveBeenCalled();
+        expect(wrong.canvases.getExtension).not.toHaveBeenCalled();
     });
 });

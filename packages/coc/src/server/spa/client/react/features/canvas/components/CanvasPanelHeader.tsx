@@ -34,6 +34,7 @@ export interface CanvasPanelHeaderProps {
     creatingKusto: boolean;
     onCreateKusto: () => void;
     onPopOut?: () => void;
+    onReloadExtension?: () => void;
     isFullscreen: boolean;
     onToggleFullscreen: () => void;
     onClose?: () => void;
@@ -42,7 +43,7 @@ export interface CanvasPanelHeaderProps {
 export function CanvasPanelHeader({
     canvas, canvasId, title, kind, availableCanvases, onSelectCanvas, titleAccessory, versions, exporter,
     saveState, statusLabel, mode, onModeChange, kustoEnabled, creatingKusto, onCreateKusto,
-    onPopOut, isFullscreen, onToggleFullscreen, onClose,
+    onPopOut, onReloadExtension, isFullscreen, onToggleFullscreen, onClose,
 }: CanvasPanelHeaderProps) {
     const [titleSwitcherOpen, setTitleSwitcherOpen] = useState(false);
     const titleSwitcherButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -265,6 +266,15 @@ export function CanvasPanelHeader({
                     data-testid="canvas-panel-new-kusto"
                 >
                     {creatingKusto ? 'Creating…' : 'New Kusto query'}
+                </button>
+            )}
+            {onReloadExtension && (
+                <button type="button" className={ICON_BTN_CLASS} onClick={onReloadExtension}
+                    aria-label="Reload canvas extension" title="Reload canvas extension"
+                    data-testid="canvas-panel-reload-extension">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M13 6a5 5 0 10.1 4M13 2v4H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                 </button>
             )}
             {onPopOut && !isFullscreen && !isCopilotExtension && (
