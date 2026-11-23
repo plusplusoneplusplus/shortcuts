@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { GitFileReview } from '../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import type { DiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 const openTab = vi.hoisted(() => vi.fn(() => 'tab-id'));
+const writeText = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', () => ({
     openUnifiedPanelTab: openTab,
 }));
@@ -31,10 +32,88 @@ function renderInPanel(overrides: Partial<typeof props> = {}) {
 }
 function openFileItem() { return within(screen.getByTestId('context-menu')).getByRole('menuitem', { name: /Open file/ }); }
 
-beforeEach(() => openTab.mockClear());
-afterEach(() => { location.hash = ''; });
+beforeEach(() => {
+    openTab.mockClear();
+    writeText.mockReset().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText }, configurable: true } }));
+});
+afterEach(() => { location.hash = ''; vi.unstubAllGlobals(); });
 
 describe('changed-file row Open file', () => {
+    it.each(['Groups', 'Tree', 'Flat'])('copies the clicked full path in %s without selecting or opening it', async view => {
+        renderInPanel();
+        fireEvent.click(screen.getByRole('button', { name: view, exact: true }));
+        const selected = screen.getByTestId('focused-diff').textContent;
+        const target = files[2].path;
+        fireEvent.contextMenu(row(target), { clientX: 40, clientY: 50 });
+        expect(openFileItem()).toBeEnabled();
+        expect(screen.getByRole('menuitem', { name: /Comment/ })).toBeEnabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ }));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith(target);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+        expect(screen.getByTestId('focused-diff').textContent).toBe(selected);
+        expect(openTab).not.toHaveBeenCalled();
+        expect(await screen.findByRole('status')).toHaveTextContent('Path copied.');
+    });
+
+    it.each(['ws', 'remote:one:ws'])('copies rename destinations and deleted paths with owner %s', async owner => {
+        renderInPanel({ attachmentDestinationId: owner });
+        for (const path of ['src/a.ts', 'docs/README.md']) {
+            fireEvent.contextMenu(row(path));
+            await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ })));
+            expect(writeText).toHaveBeenLastCalledWith(path);
+        }
+        expect(openTab).not.toHaveBeenCalled();
+    });
+
+    it('supports keyboard copy and restores row focus while the clipboard write is pending', async () => {
+        let finish!: () => void;
+        writeText.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+        renderInPanel();
+        const target = row('src/a.ts');
+        target.focus();
+        fireEvent.keyDown(target, { key: 'F10', shiftKey: true });
+        fireEvent.keyDown(openFileItem(), { key: 'ArrowDown' });
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: /Copy path/ }));
+        fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+        expect(writeText).toHaveBeenCalledWith('src/a.ts');
+        expect(document.activeElement).toBe(target);
+        expect(screen.queryByText('Path copied.')).toBeNull();
+        await act(async () => finish());
+        expect(screen.getByRole('status')).toHaveTextContent('Path copied.');
+    });
+
+    it('reports clipboard rejection without success or an unhandled rejection', async () => {
+        writeText.mockRejectedValue(new Error('Permission denied'));
+        renderInPanel();
+        fireEvent.contextMenu(row('src/a.ts'));
+        await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ })));
+        expect(screen.getByRole('status')).toHaveTextContent('Failed to copy file path.');
+        expect(screen.queryByText('Path copied.')).toBeNull();
+    });
+
+    it.each([true, false])('uses the clipboard fallback and reports its result (%s)', async success => {
+        vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: undefined } }));
+        const fallback = vi.fn(() => {
+            expect(document.querySelector('textarea')?.value).toBe('src/a.ts');
+            return success;
+        });
+        const original = Object.getOwnPropertyDescriptor(document, 'execCommand');
+        Object.defineProperty(document, 'execCommand', { value: fallback, configurable: true });
+        try {
+            renderInPanel();
+            fireEvent.contextMenu(row('src/a.ts'));
+            await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: /Copy path/ })));
+            expect(fallback).toHaveBeenCalledWith('copy');
+            expect(screen.getByRole('status')).toHaveTextContent(success ? 'Path copied.' : 'Failed to copy file path.');
+            expect(document.querySelector('textarea')).toBeNull();
+        } finally {
+            if (original) Object.defineProperty(document, 'execCommand', original);
+            else delete (document as any).execCommand;
+        }
+    });
+
     it.each(['Groups', 'Tree', 'Flat'])('opens the right-clicked row as a raw source tab in %s view without changing the diff', view => {
         renderInPanel();
         fireEvent.click(screen.getByRole('button', { name: view, exact: true }));

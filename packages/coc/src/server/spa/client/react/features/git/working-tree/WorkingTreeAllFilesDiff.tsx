@@ -12,6 +12,7 @@ import { hasMultipleRepos, relDisplayPath, repoRelative, workingChangeContextPay
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
 import { useFileCommentComposer } from '../diff/fileCommentComposer';
+import { useCopyChangedFilePath } from '../diff/copyChangedFilePath';
 import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
 import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
@@ -63,6 +64,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const panelHost = useUnifiedPanelHost();
     const sourceOwner = useCommitContextOwner(workspaceId, attachmentDestinationId);
     const fileComment = useFileCommentComposer();
+    const copyPath = useCopyChangedFilePath();
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
         guard.onDirtyChange(value);
@@ -143,7 +145,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     context: workingTreeCommentContext(workspaceId, change.filePath, change.stage),
                     unavailableReason: 'Untracked files have no comments',
                     displayPath: file.path,
-                })] : [];
+                }), copyPath.menuItem(repoRelative(change.filePath, change.repositoryRoot))] : [];
             }}
             renderEmpty={<div className="git-review-empty" data-testid="working-tree-all-files-empty">{files.length ? 'No matching files.' : 'No working-tree changes'}</div>}
             renderFile={({ file, paths, select, target }) => {
@@ -163,6 +165,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
             }}
         />
         {fileComment.composer}
+        {copyPath.feedback}
         {guard.dialog}
     </>;
 }
