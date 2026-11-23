@@ -187,7 +187,7 @@ export async function persistChatStyleOnUserTurn(
     }
     if (index < 0) throw new Error('Chat style user turn is unavailable');
     if (block && !turns[index].content.startsWith(`${block}\n\n`)) {
-        await store.updateTurnContent(processId, index, `${block}\n\n${turns[index].content}`);
+        await store.updateTurnContent(processId, turns[index].turnIndex, `${block}\n\n${turns[index].content}`);
     }
     const current = await store.getProcess(processId);
     if (!current) throw new Error('Chat style process is unavailable');

@@ -107,8 +107,8 @@ export function createStubStore(): ProcessStore {
             const existing = processes.get(processId);
             if (!existing) return;
             const turns = existing.conversationTurns ?? [];
-            if (turnIndex < 0 || turnIndex >= turns.length) return;
-            const updatedTurns = turns.map((turn, i) => i === turnIndex ? { ...turn, content } : turn);
+            if (!turns.some(turn => turn.turnIndex === turnIndex)) return;
+            const updatedTurns = turns.map(turn => turn.turnIndex === turnIndex ? { ...turn, content } : turn);
             const merged = { ...existing, conversationTurns: updatedTurns };
             processes.set(processId, merged, false, true);
             changeCallback?.({ type: 'process-updated', process: merged });

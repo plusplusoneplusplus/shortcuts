@@ -676,8 +676,11 @@ export class ProcessMessageDeliveryService {
         // append so the executor can be told about the message it is running
         // even when the append has not landed yet, and read from the accepted
         // snapshot so it can never overshoot and quote the message back to the
-        // provider as if it were history.
-        const historyCutoffTurnIndex = proc.conversationTurns?.length ?? 0;
+        // provider as if it were history. Stores allocate past the highest
+        // index, so a gap (a replaced streaming placeholder, a purged turn)
+        // must not make the predicted index point at an older turn.
+        const historyCutoffTurnIndex = (proc.conversationTurns ?? [])
+            .reduce((next, turn) => Math.max(next, turn.turnIndex + 1), proc.conversationTurns?.length ?? 0);
 
         let path: DeliveryPath = 'enqueued';
         let buffered = false;

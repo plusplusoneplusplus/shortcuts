@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { CHAT_STYLES } from '@plusplusoneplusplus/coc-client';
-import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, type AIProcess, type ConversationTurn } from '@plusplusoneplusplus/forge';
 
 import {
   buildChatStyleBlock,
@@ -9,7 +12,10 @@ import {
   buildChatStyleContext,
   shouldInjectChatStyle,
   setChatStylePromptOverridesProvider,
+  persistChatStyleOnUserTurn,
 } from '../../../src/server/executors/chat-style-prompt';
+import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
+import type { QueueExecutorBridge } from '../../../src/server/queue/queue-executor-bridge';
 import { CHAT_STYLE_FOCUS_LINES } from '../../../src/config/chat-style-prompts';
 
 describe('buildChatStyleBlock', () => {
@@ -224,5 +230,70 @@ describe('buildChatStyleBlock with admin prompt overrides', () => {
 
     setChatStylePromptOverridesProvider(() => ({ structured: 42 }));
     expect(buildChatStyleBlock('structured')).toContain(CHAT_STYLE_FOCUS_LINES.structured);
+  });
+});
+
+describe('accepted follow-up turn identity with turn-index gaps', () => {
+  let directory: string | undefined;
+  let store: SqliteProcessStore | undefined;
+
+  afterEach(() => {
+    store?.close();
+    if (directory) fs.rmSync(directory, { recursive: true, force: true });
+    store = undefined;
+    directory = undefined;
+  });
+
+  // Regression: the enqueued follow-up predicted its turn as `conversationTurns.length`
+  // while the store appends at MAX(turnIndex) + 1. After a gap (a replaced streaming
+  // placeholder, a purged turn) the finished turn failed with
+  // "Chat style user turn is unavailable" after the assistant had already run.
+  it('records style on the exact user turn the enqueued follow-up was accepted as', async () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-style-gap-'));
+    store = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
+    const turn = (turnIndex: number, role: 'user' | 'assistant', content: string): ConversationTurn =>
+      ({ role, content, turnIndex, timestamp: new Date('2026-01-01T00:00:00Z'), timeline: [] });
+    await store.addProcess({
+      id: 'gap-chat', type: 'chat', status: 'completed', promptPreview: 'first', fullPrompt: 'first',
+      startTime: new Date('2026-01-01T00:00:00Z'), metadata: { type: 'chat', workspaceId: 'owner' },
+      conversationTurns: [turn(0, 'user', 'first'), turn(1, 'assistant', 'one'), turn(3, 'assistant', 'two')],
+    } as AIProcess);
+    const enqueue = vi.fn().mockResolvedValue('task-1');
+    const service = new ProcessMessageDeliveryService({
+      store, bridge: { enqueue, findTaskByProcessId: vi.fn() } as unknown as QueueExecutorBridge,
+    });
+
+    const result = await service.deliver((await store.getProcess('gap-chat'))!, {
+      content: 'next', displayContent: 'next', deliveryMode: 'enqueue', pasteExternalized: false, chatStyle: 'direct',
+    });
+
+    expect(result.path).toBe('enqueued');
+    const accepted = (await store.getProcess('gap-chat'))!.conversationTurns!.at(-1)!;
+    expect(accepted).toMatchObject({ role: 'user', content: 'next', turnIndex: 4 });
+    const cutoff = enqueue.mock.calls[0][0].payload.historyCutoffTurnIndex;
+    expect(cutoff).toBe(accepted.turnIndex);
+
+    const block = buildChatStyleBlock('direct')!;
+    await persistChatStyleOnUserTurn(store, 'gap-chat', 'direct', block, cutoff);
+
+    const after = (await store.getProcess('gap-chat'))!;
+    expect(after.conversationTurns!.map(t => t.content)).toEqual(['first', 'one', 'two', `${block}\n\nnext`]);
+    expect(after.metadata?.chatStyleContext).toMatchObject({ style: 'direct', block, turnIndex: 4, throughTurnIndex: 4 });
+  });
+
+  it('still fails loudly when the accepted turn is not a user turn', async () => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-style-gap-'));
+    store = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
+    await store.addProcess({
+      id: 'gap-chat', type: 'chat', status: 'completed', promptPreview: 'p', fullPrompt: 'p',
+      startTime: new Date(), metadata: { type: 'chat' },
+      conversationTurns: [
+        { role: 'user', content: 'first', turnIndex: 0, timestamp: new Date(), timeline: [] },
+        { role: 'assistant', content: 'two', turnIndex: 2, timestamp: new Date(), timeline: [] },
+      ],
+    } as AIProcess);
+    await expect(persistChatStyleOnUserTurn(store, 'gap-chat', 'direct', buildChatStyleBlock('direct'), 2))
+      .rejects.toThrow('Chat style user turn is unavailable');
+    expect((await store.getProcess('gap-chat'))!.conversationTurns!.map(t => t.content)).toEqual(['first', 'two']);
   });
 });

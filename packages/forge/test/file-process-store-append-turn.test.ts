@@ -59,6 +59,23 @@ describe('FileProcessStore.appendConversationTurn', () => {
         expect(updated!.conversationTurns![0].content).toBe('hello');
     });
 
+    it('appends past the highest turnIndex and edits content by turnIndex after a gap', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const turn = (turnIndex: number, role: 'user' | 'assistant', content: string) =>
+            ({ role, content, turnIndex, timestamp: new Date(), timeline: [] });
+        await store.addProcess(makeProcess('gap', {
+            conversationTurns: [turn(0, 'user', 'first'), turn(2, 'assistant', 'two')],
+        }));
+
+        const appended = await store.appendConversationTurn('gap', idx => turn(idx, 'user', 'next'));
+        expect(appended!.turn.turnIndex).toBe(3);
+
+        await store.updateTurnContent('gap', 3, 'edited');
+        await store.updateTurnContent('gap', 1, 'missing');
+        const turns = (await store.getProcess('gap'))!.conversationTurns!;
+        expect(turns.map(t => [t.turnIndex, t.content])).toEqual([[0, 'first'], [2, 'two'], [3, 'edited']]);
+    });
+
     it('assigns incrementing turnIndex across multiple appends', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p2'));

@@ -449,9 +449,9 @@ export class FileProcessStore implements ProcessStore {
                 }
             }
 
-            const fallbackIndex = options?.filterStreaming
-                ? Math.max(turns.length, Math.max(...turns.map(t => t.turnIndex ?? -1)) + 1)
-                : turns.length;
+            // Same allocation as the SQLite store: past the highest index, so a
+            // gap never yields a duplicate turnIndex.
+            const fallbackIndex = Math.max(turns.length, Math.max(...turns.map(t => t.turnIndex ?? -1)) + 1);
             const turn = makeTurn(stableTurnIndex ?? fallbackIndex);
             const allTurns = [...turns, turn];
 
@@ -635,10 +635,10 @@ export class FileProcessStore implements ProcessStore {
 
             const existing = deserializeProcess(entry.process);
             const turns = existing.conversationTurns ?? [];
-            if (turnIndex < 0 || turnIndex >= turns.length) { return; }
+            if (!turns.some(turn => turn.turnIndex === turnIndex)) { return; }
 
-            const updatedTurns = turns.map((turn, i) =>
-                i === turnIndex ? { ...turn, content } : turn
+            const updatedTurns = turns.map(turn =>
+                turn.turnIndex === turnIndex ? { ...turn, content } : turn
             );
 
             const merged: AIProcess = { ...existing, conversationTurns: updatedTurns };

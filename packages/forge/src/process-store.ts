@@ -541,12 +541,12 @@ export interface ProcessStore {
     ): Promise<void>;
 
     /**
-     * Atomically update the content of a conversation turn at a specific index.
+     * Atomically update the content of the conversation turn with this `turnIndex`.
      * Used for prompt backfill (e.g., enriching the initial user turn content
      * after task generation resolves the full prompt).
      *
      * @param processId - Target process ID.
-     * @param turnIndex - Array index of the turn to update.
+     * @param turnIndex - `turnIndex` of the turn to update (not its array position).
      * @param content - New content for the turn.
      */
     updateTurnContent(
