@@ -80,7 +80,7 @@ app.whenReady().then(async () => {
             await destination;
             const result = await manager.executeControl(owner, {
                 id: 'destination', processId: 'conversation', workspaceId: 'workspace',
-                selectedTab: opened.tab, framesEnabled: true, command: { action: 'select' },
+                selectedTab: opened.tab, framesEnabled: true, command: { action: 'select', tab: opened.tab },
             }, controller.signal);
             completed = true;
             if (!checks || premature || !postPreserved || result.title !== 'Approved destination' || !result.url.endsWith('/destination')) {
