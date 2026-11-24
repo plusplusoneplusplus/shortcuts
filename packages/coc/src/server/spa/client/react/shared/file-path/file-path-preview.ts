@@ -29,6 +29,7 @@ import {
     isSourceCanvasDirectoryPath,
     isSourceCanvasNotePath,
     parseFilePathRef,
+    recoverDashboardFileHref,
 } from '../file-path-utils';
 
 interface WorkspaceInfo {
@@ -997,8 +998,10 @@ function initFilePathPreviewDelegation(): void {
         event.preventDefault();
         event.stopPropagation();
 
-        const href = readMarkdownHref(target);
-        if (!href) return;
+        const rawHref = readMarkdownHref(target);
+        if (!rawHref) return;
+        // A pasted file link may carry the dashboard origin; open it as a file.
+        const href = recoverDashboardFileHref(rawHref) ?? rawHref;
 
         // External URLs — open using link-handler (may redirect to desktop app)
         if (isExternalFileReferenceHref(href)) {

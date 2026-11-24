@@ -67,7 +67,12 @@ Failure text is sanitized before it reaches the browser.
 ### Runtime discovery
 
 Language adapters resolve project-specific runtimes before every start, including
-manual retry. The Rust adapter prefers `rustup which rust-analyzer`, falls back to
+manual retry. Discovery and the spawned process share one effective environment:
+workspace `searchPaths` from `language-servers.json` (absolute or `~` folders on
+the owning host) go before the inherited PATH, and the inherited PATH may be
+missing. `search-paths.ts` validates entries per platform and builds that
+environment; with no paths, processes inherit unchanged. Child tools a server
+runs, such as cargo or rustup proxies, see the same PATH. The Rust adapter prefers `rustup which rust-analyzer`, falls back to
 PATH, and recognizes a PATH entry backed by the rustup proxy. A missing component
 returns the recovery command `rustup component add rust-analyzer`; CoC only offers
 the command for copying and never executes it.
@@ -226,7 +231,10 @@ word spelling, and caps each list at 200 items with incomplete retriggering.
 Cancelled requests and disposed providers publish neither server nor word items.
 
 Language Servers settings provides definition editing, custom definition removal,
-and status/retry without enable controls. It reads live runtime rows from
+executable search paths, and status/retry without enable controls. Search paths
+save through `PATCH` with `searchPaths`; errors anchor on `searchPaths.<index>`.
+Paths are in every session fingerprint, so a save replaces the workspace's
+sessions and open editors reattach; unavailable rows point at the setting. It reads live runtime rows from
 `GET /api/workspaces/:id/language-servers`. Rows are grouped by definition and
 project root, so mixed multi-root outcomes remain visible. Runtime payloads use
 workspace-relative root labels and opaque session IDs; host paths, environment

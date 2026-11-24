@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getRepoDataPath } from '../paths';
 import { validateLanguageServerDefinitions } from './definition-schema';
 import { mergeWithBuiltIns } from './presets';
+import { validateSearchPaths } from './search-paths';
 import type { LanguageServerDefinition, LanguageServerDefinitionError } from './types';
 
 /** Name of the language-server configuration file within a repo's data directory. */
@@ -15,13 +16,18 @@ export const LANGUAGE_SERVERS_FILE_NAME = 'language-servers.json';
 export interface LanguageServerConfig {
     /** Workspace definitions. An entry sharing a preset id overrides that preset. */
     definitions: LanguageServerDefinition[];
+    /**
+     * Extra executable folders placed before the inherited PATH for discovery
+     * and server processes. Omitted when the workspace adds none.
+     */
+    searchPaths?: string[];
 }
 
 export type LanguageServerConfigReadStatus = 'ok' | 'missing' | 'invalid';
 
 export interface LanguageServerConfigWarning {
     filePath: string;
-    kind: 'invalid-json' | 'invalid-shape' | 'invalid-definition';
+    kind: 'invalid-json' | 'invalid-shape' | 'invalid-definition' | 'invalid-search-path';
     message: string;
 }
 
@@ -103,8 +109,21 @@ export function readLanguageServerConfigWithStatus(
             }
         }
 
+        let searchPaths: string[] = [];
+        if (obj.searchPaths !== undefined) {
+            const result = validateSearchPaths(obj.searchPaths);
+            searchPaths = result.searchPaths;
+            for (const error of result.errors) {
+                warnings.push({
+                    filePath,
+                    kind: 'invalid-search-path',
+                    message: `searchPaths${error.field ? `.${error.field}` : ''}: ${error.message}`,
+                });
+            }
+        }
+
         return {
-            value: { definitions },
+            value: withSearchPaths({ definitions }, searchPaths),
             status: 'ok',
             warnings,
         };
@@ -127,11 +146,16 @@ export function writeLanguageServerConfig(
     workspaceId: string,
     config: LanguageServerConfig,
 ): LanguageServerConfigWriteResult {
-    const { definitions, errors } = validateLanguageServerDefinitions(config.definitions ?? []);
+    const { definitions, errors: definitionErrors } = validateLanguageServerDefinitions(config.definitions ?? []);
+    const { searchPaths, errors: searchPathErrors } = validateSearchPaths(config.searchPaths ?? []);
+    const errors = [
+        ...definitionErrors.map((e) => ({ ...e, field: `definitions.${e.field}` })),
+        ...searchPathErrors.map((e) => ({ ...e, field: e.field ? `searchPaths.${e.field}` : 'searchPaths' })),
+    ];
     if (errors.length > 0) {
         return { ok: false, errors };
     }
-    const validated: LanguageServerConfig = { definitions };
+    const validated = withSearchPaths({ definitions }, searchPaths);
     const filePath = getLanguageServerConfigPath(dataDir, workspaceId);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmpPath = `${filePath}.tmp`;
@@ -157,6 +181,10 @@ export function resolveLanguageServerDefinitionsFromConfig(
     config: LanguageServerConfig,
 ): LanguageServerDefinition[] {
     return mergeWithBuiltIns(config.definitions);
+}
+
+function withSearchPaths(config: LanguageServerConfig, searchPaths: string[]): LanguageServerConfig {
+    return searchPaths.length > 0 ? { ...config, searchPaths } : config;
 }
 
 function invalidRead(

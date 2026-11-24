@@ -792,6 +792,23 @@ describe('chatMarkdownToHtml — local file link icons', () => {
         expect(chatMarkdownToHtml('[b](file:///tmp/b.htm)')).toContain('md-local-file-link--html');
     });
 
+    it('renders a pasted dashboard-origin source link as a local file link (regression)', () => {
+        const origin = window.location.origin;
+        const html = chatMarkdownToHtml(`> Find: [billing.rs:316](${origin}/crates/api/src/billing.rs:316)`);
+        expect(html).toContain('<a href="crates/api/src/billing.rs:316" class="md-local-file-link md-local-file-link--source">billing.rs:316</a>');
+        expect(html).not.toContain(origin);
+        expect(html).not.toContain('target="_blank"');
+    });
+
+    it('keeps web links on other origins and dashboard routes external', () => {
+        const origin = window.location.origin;
+        for (const href of ['http://127.0.0.1:1/crates/a.rs:3', `${origin}/#repos/ws-1`]) {
+            const html = chatMarkdownToHtml(`[x](${href})`);
+            expect(html).toContain('target="_blank"');
+            expect(html).not.toContain('md-local-file-link');
+        }
+    });
+
     it('leaves external, in-page, and other-scheme links without the icon class', () => {
         for (const md of ['[x](https://example.com/a.html)', '[x](mailto:a@b.c)', '[x](#section)', '[x](vscode://file/a.ts)']) {
             expect(chatMarkdownToHtml(md)).not.toContain('md-local-file-link');

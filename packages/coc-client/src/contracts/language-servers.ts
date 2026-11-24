@@ -48,7 +48,7 @@ export interface LanguageServerDefinition {
 
 /** A single field-level validation failure, addressed by dotted path. */
 export interface LanguageServerDefinitionError {
-  /** Dotted path anchored on the request body, e.g. `definitions.0.command`. */
+  /** Dotted path anchored on the request body, e.g. `definitions.0.command` or `searchPaths.1`. */
   field: string;
   message: string;
 }
@@ -89,6 +89,11 @@ export interface LanguageServerConfigResponse {
   effective: LanguageServerDefinition[];
   /** Definitions available for lazy activation. */
   startable: LanguageServerDefinition[];
+  /**
+   * Executable folders placed before the owning server's inherited PATH for
+   * discovery and server processes. `~` expands to that host's home folder.
+   */
+  searchPaths: string[];
   status: 'ok' | 'missing' | 'invalid';
   warnings: LanguageServerConfigWarning[];
   /** Live per-project-root sessions. Untested roots are intentionally absent. */
@@ -97,11 +102,13 @@ export interface LanguageServerConfigResponse {
 
 export interface LanguageServerConfigUpdate {
   definitions?: LanguageServerDefinition[];
+  searchPaths?: string[];
 }
 
 /** Stored configuration echoed back with a rejected write. */
 export interface LanguageServerStoredConfig {
   definitions: LanguageServerDefinition[];
+  searchPaths?: string[];
 }
 
 /** Body of a 400 from a language-server config write. */

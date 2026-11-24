@@ -1314,6 +1314,30 @@ describe('CoC note hrefs open the editable note canvas for user + assistant (scr
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
+    it('pasted dashboard-origin source links open the file viewer at the line, with the bubble owner', async () => {
+        const origin = window.location.origin;
+        const { chatMarkdownToHtml } = await import('../../../src/server/spa/client/react/features/chat/conversation/markdownHtml');
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-remote-clone" data-chat-id="chat-a">
+                ${chatMarkdownToHtml(`> [billing.rs:316](${origin}/crates/api/src/billing.rs:316)`)}
+                <span class="md-link" data-href="${origin}/src/a.rs:3-9">a.rs</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('a');
+        clickLink('.md-link');
+
+        const calls = eventCalls(dispatchSpy, 'coc-open-source-canvas');
+        expect(calls[0][0].detail).toMatchObject({
+            filePath: 'crates/api/src/billing.rs', line: 316, wsId: 'ws-remote-clone', chatId: 'chat-a',
+        });
+        expect(calls[1][0].detail).toMatchObject({
+            filePath: 'src/a.rs', line: 3, endLine: 9, wsId: 'ws-remote-clone',
+        });
+        expect(eventCalls(dispatchSpy, 'coc-open-browser-url')).toHaveLength(0);
+    });
+
     it('USER-message external `<a href>` is NOT diverted to the note canvas (external handling unchanged)', async () => {
         document.body.innerHTML = `
             <div class="chat-message user" data-ws-id="ws-hcv3mg">

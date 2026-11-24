@@ -133,7 +133,7 @@ describe('writing configuration', () => {
         });
         expect(write.ok).toBe(false);
         if (!write.ok) {
-            expect(write.errors[0].field).toBe('0.id');
+            expect(write.errors[0].field).toBe('definitions.0.id');
         }
 
         const stored = readLanguageServerConfig(dataDir, 'ws-1');

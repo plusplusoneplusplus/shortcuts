@@ -30,6 +30,8 @@ export interface PythonRuntimeDeps {
     realpath?: (candidate: string) => string | undefined;
     resolveBundled?: (specifier: string) => string | undefined;
     resolveOnPath?: (command: string) => string | undefined;
+    /** Effective environment, including workspace search paths. Defaults to `process.env`. */
+    env?: NodeJS.ProcessEnv;
     nodePath?: string;
     pathApi?: path.PlatformPath;
     platform?: NodeJS.Platform;
@@ -66,7 +68,9 @@ export function resolvePythonRuntime(
         };
     }
 
-    const pathCommand = (deps.resolveOnPath ?? findExecutableOnPath)(definition.command);
+    const pathCommand = (deps.resolveOnPath ?? ((command) => findExecutableOnPath(command, { env: deps.env })))(
+        definition.command,
+    );
     if (pathCommand) {
         return {
             command: pathCommand,

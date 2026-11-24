@@ -4,7 +4,7 @@ import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension
 import { htmlLineBreakMarkedExtension } from '../../../../shared/htmlLineBreaks';
 import { escapeHtmlText as escapeHtml } from '../../../../shared/html';
 import { parseCanvasLink } from '../../../shared/canvasLink';
-import { linkifyFilePaths, parseFilePathRef } from '../../../shared/file-path-utils';
+import { linkifyFilePaths, parseFilePathRef, recoverDashboardFileHref } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
 import { DEFAULT_HTML_EMBED_HEIGHT, isEmbeddableHtmlPath } from '@plusplusoneplusplus/forge/editor/rendering';
@@ -138,6 +138,8 @@ function createChatMarked(
             link(href: string, title: string | null | undefined, text: string): string {
                 if (parseTargetHref(href)) return `<span class="sentinel-target-token" style="border-radius:4px;background:rgba(20,184,166,.16);padding:1px 3px" title="Target context only">${text}</span>`;
                 if (inert) return `${text} (${escapeHtml(href ?? '')})`;
+                // A pasted copy of a rendered file link carries the dashboard origin.
+                href = recoverDashboardFileHref(href ?? '') ?? href;
                 const safeHref = escapeAttr(href ?? '');
                 if (excalidrawEmbedEnabled && href && /^excalidraw:\/\//i.test(href)) {
                     const parsed = parseExcalidrawLink(href);

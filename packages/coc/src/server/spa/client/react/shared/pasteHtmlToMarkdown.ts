@@ -14,6 +14,7 @@
  */
 
 import TurndownService from 'turndown';
+import { recoverDashboardFileHref } from './file-path-utils';
 
 let singleton: TurndownService | null = null;
 
@@ -93,6 +94,20 @@ function getTurndown(): TurndownService {
         filter: ['del', 's'],
         replacement(content) {
             return `~~${content}~~`;
+        },
+    });
+
+    // Copying rendered chat resolves local file hrefs against the dashboard
+    // origin (`src/a.rs:3` → `http://127.0.0.1:4000/src/a.rs:3`). Restore the
+    // file href so the pasted link still opens the source file.
+    turndown.addRule('dashboardFileLink', {
+        filter(node) {
+            return node.nodeName === 'A'
+                && !!recoverDashboardFileHref((node as Element).getAttribute('href') ?? '');
+        },
+        replacement(content, node) {
+            const href = recoverDashboardFileHref((node as Element).getAttribute('href') ?? '');
+            return `[${content}](${href})`;
         },
     });
 

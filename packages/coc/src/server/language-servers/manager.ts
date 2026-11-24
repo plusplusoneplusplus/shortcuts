@@ -16,8 +16,10 @@ import { randomUUID } from 'crypto';
 import type { LanguageServerSessionOptions, LanguageServerSessionState } from './session';
 import {
     onLanguageServerConfigChanged,
-    resolveLanguageServerDefinitions,
+    readLanguageServerConfig,
+    resolveLanguageServerDefinitionsFromConfig,
 } from './repository';
+import { buildLanguageServerEnv } from './search-paths';
 import { detectWorkspaceLanguages } from './detection';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
@@ -98,6 +100,11 @@ export interface LanguageServerManagerOptions {
      * resolve an executable and a toolchain for a project root.
      */
     prepareDeps?: PrepareDefinitionDeps;
+    /**
+     * Inherited environment that workspace search paths extend. Defaults to
+     * `process.env`. Injectable for tests.
+     */
+    env?: NodeJS.ProcessEnv;
 }
 
 const DEFAULT_MAX_SESSIONS = 24;
@@ -155,12 +162,12 @@ export class LanguageServerManager {
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
-        const startable = this.resolveDefinitions(request);
+        const { startable, searchPaths } = this.readWorkspace(request.workspaceId);
         const definition = selectDefinitionForFile(startable, relativePath);
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
-        return this.acquireDefinition({ ...request, relativePath }, definition);
+        return this.acquireDefinition({ ...request, relativePath }, definition, searchPaths);
     }
 
     /**
@@ -173,14 +180,14 @@ export class LanguageServerManager {
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
-        const startable = this.resolveDefinitions(request);
+        const { startable, searchPaths } = this.readWorkspace(request.workspaceId);
         const definitions = selectDefinitionsForFile(startable, relativePath);
         if (definitions.length === 0) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
         const handles: LanguageServerHandle[] = [];
         for (const definition of definitions) {
-            const result = this.acquireDefinition({ ...request, relativePath }, definition);
+            const result = this.acquireDefinition({ ...request, relativePath }, definition, searchPaths);
             if (!result.ok) {
                 for (const handle of handles) {
                     handle.release();
@@ -206,7 +213,7 @@ export class LanguageServerManager {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
         const withRoot: AcquireRequest = { ...request, relativePath: '' };
-        const startable = this.resolveDefinitions(withRoot);
+        const { startable, searchPaths } = this.readWorkspace(request.workspaceId);
         const detected = new Set(detectWorkspaceLanguages(request.workspaceRoot, { definitions: startable }));
         const definitions = selectDefinitionsForWorkspace(startable.filter(definition => detected.has(definition.id)));
         if (definitions.length === 0) {
@@ -214,7 +221,7 @@ export class LanguageServerManager {
         }
         const handles: LanguageServerHandle[] = [];
         for (const definition of definitions) {
-            const result = this.acquireDefinition(withRoot, definition);
+            const result = this.acquireDefinition(withRoot, definition, searchPaths);
             if (!result.ok) {
                 for (const handle of handles) {
                     handle.release();
@@ -226,14 +233,20 @@ export class LanguageServerManager {
         return { ok: true, handles };
     }
 
-    private resolveDefinitions(request: AcquireRequest): LanguageServerDefinition[] {
-        return resolveLanguageServerDefinitions(this.options.dataDir, request.workspaceId);
+    private readWorkspace(workspaceId: string): { startable: LanguageServerDefinition[]; searchPaths: string[] } {
+        const config = readLanguageServerConfig(this.options.dataDir, workspaceId);
+        return {
+            startable: resolveLanguageServerDefinitionsFromConfig(config),
+            searchPaths: config.searchPaths ?? [],
+        };
     }
 
     private acquireDefinition(
         request: AcquireRequest,
         definition: LanguageServerDefinition,
+        searchPaths: string[],
     ): AcquireResult {
+        const fingerprint = fingerprintOf(definition, searchPaths);
         const relativePath = request.relativePath;
         const rootPath = resolveDefinitionRoot(
             definition,
@@ -254,7 +267,7 @@ export class LanguageServerManager {
         );
         let key = sharedKey;
         let entry = this.entries.get(key);
-        if (entry && entry.fingerprint !== fingerprintOf(definition)) {
+        if (entry && entry.fingerprint !== fingerprint) {
             // Configuration moved on while this session was alive.
             this.trackClose(this.closeEntry(entry, 'config-changed'));
             entry = undefined;
@@ -266,7 +279,7 @@ export class LanguageServerManager {
         ) {
             key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
             entry = this.entries.get(key);
-            if (entry && entry.fingerprint !== fingerprintOf(definition)) {
+            if (entry && entry.fingerprint !== fingerprint) {
                 this.trackClose(this.closeEntry(entry, 'config-changed'));
                 entry = undefined;
             }
@@ -280,7 +293,7 @@ export class LanguageServerManager {
                     detail: capacityDetail,
                 };
             }
-            entry = this.createEntry(key, request, definition, rootPath);
+            entry = this.createEntry(key, request, definition, rootPath, searchPaths, fingerprint);
         }
         return { ok: true, handle: this.attach(entry, relativePath, request.editingSessionId) };
     }
@@ -385,13 +398,17 @@ export class LanguageServerManager {
         request: AcquireRequest,
         definition: LanguageServerDefinition,
         rootPath: string,
+        searchPaths: string[],
+        fingerprint: string,
     ): SessionEntry {
         // The workspace identity travels with the deps because one adapter —
         // the symbol index — needs to name a per-workspace file on this host.
+        // `env` carries the workspace search paths into discovery and spawn.
         const prepareDeps = {
             exists: this.options.exists,
             dataDir: this.options.dataDir,
             workspaceId: request.workspaceId,
+            env: buildLanguageServerEnv(searchPaths, { env: this.options.env }),
             ...this.options.prepareDeps,
         };
         const prepared = prepareDefinitionForRoot(definition, rootPath, prepareDeps);
@@ -402,6 +419,7 @@ export class LanguageServerManager {
             commandLabel: prepared.commandLabel,
             unavailableDetail: prepared.notes?.join(' '),
             recoveryCommand: prepared.recoveryCommand,
+            env: prepared.env,
             primeDocument: prepared.primeDocument,
             prepareForStart: () => {
                 const next = prepareDefinitionForRoot(definition, rootPath, prepareDeps);
@@ -411,6 +429,7 @@ export class LanguageServerManager {
                     commandLabel: next.commandLabel,
                     unavailableDetail: next.notes?.join(' '),
                     recoveryCommand: next.recoveryCommand,
+                    env: next.env,
                 };
             },
             clientCapabilities: this.options.clientCapabilities,
@@ -437,7 +456,7 @@ export class LanguageServerManager {
             session,
             references: 0,
             lastUsedAt: ++this.clock,
-            fingerprint: fingerprintOf(definition),
+            fingerprint,
         };
         this.entries.set(key, entry);
         return entry;
@@ -561,7 +580,7 @@ export class LanguageServerManager {
         if (this.disposed) {
             return;
         }
-        const startable = resolveLanguageServerDefinitions(this.options.dataDir, workspaceId);
+        const { startable, searchPaths } = this.readWorkspace(workspaceId);
         const byId = new Map(startable.map((definition) => [definition.id, definition]));
         const doomed: SessionEntry[] = [];
         for (const entry of this.entries.values()) {
@@ -569,7 +588,7 @@ export class LanguageServerManager {
                 continue;
             }
             const next = byId.get(entry.definition.id);
-            if (!next || fingerprintOf(next) !== entry.fingerprint) {
+            if (!next || fingerprintOf(next, searchPaths) !== entry.fingerprint) {
                 doomed.push(entry);
             }
         }
@@ -645,9 +664,14 @@ function sessionKey(
     return [workspaceId, editingSessionId ?? '', definitionId, rootPath].map(encodeURIComponent).join('|');
 }
 
-/** Everything that would change how the process is started or configured. */
-function fingerprintOf(definition: LanguageServerDefinition): string {
+/**
+ * Everything that would change how the process is started or configured.
+ * Search paths change discovery and the process environment, so a change
+ * replaces every session in the workspace.
+ */
+function fingerprintOf(definition: LanguageServerDefinition, searchPaths: readonly string[]): string {
     return JSON.stringify([
+        searchPaths,
         definition.command,
         definition.args,
         definition.initializationOptions ?? null,

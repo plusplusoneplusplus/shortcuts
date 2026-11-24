@@ -197,14 +197,16 @@ export function QuickAskTurnLayer({
         setSelection(null);
     }, []);
 
-    // Attach the selected text as chat context, then dismiss the pill the same
-    // way Ask AI does (drop the DOM selection + clear our state).
+    // Dismiss the pill the same way Ask AI does (drop the DOM selection + clear
+    // our state), then attach. The order matters: the host focuses its composer
+    // and places the caret there, so clearing the selection afterwards would
+    // remove that caret and the user could not type.
     const handleAttach = useCallback(() => {
         const sel = selectionRef.current;
         if (!sel || !onAttachContext) {return;}
-        onAttachContext(turnIndex, 'assistant', sel.selectedText);
         window.getSelection()?.removeAllRanges();
         setSelection(null);
+        onAttachContext(turnIndex, 'assistant', sel.selectedText);
     }, [onAttachContext, turnIndex]);
 
     // Submit the input: pass the typed question through (empty/whitespace →

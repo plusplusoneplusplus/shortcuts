@@ -347,3 +347,64 @@ describe('LanguageServersPanel', () => {
         expect(screen.queryByTestId('server-field-error-id')).toBeNull();
     });
 });
+
+describe('LanguageServersPanel executable search paths', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        parseLanguageServerRejection.mockReturnValue(null);
+    });
+
+    it('loads stored paths, saves edits through the owning workspace, and explains the restart', async () => {
+        await renderPanel(response({ searchPaths: ['/opt/tools/bin'] }));
+        expect((screen.getByLabelText('Search path 1') as HTMLInputElement).value).toBe('/opt/tools/bin');
+        const save = screen.getByTestId('search-path-save') as HTMLButtonElement;
+        expect(save.disabled).toBe(true);
+
+        fireEvent.click(screen.getByTestId('search-path-add'));
+        fireEvent.change(screen.getByLabelText('Search path 2'), { target: { value: ' ~/.cargo/bin ' } });
+        fireEvent.click(screen.getByTestId('search-path-add'));
+        update.mockResolvedValue(response({ searchPaths: ['/opt/tools/bin', '~/.cargo/bin'] }));
+        expect(save.disabled).toBe(false);
+        fireEvent.click(save);
+
+        // The blank third row is dropped, not reported.
+        await waitFor(() => expect(update).toHaveBeenCalledWith(WS, { searchPaths: ['/opt/tools/bin', '~/.cargo/bin'] }));
+        expect((await screen.findByTestId('search-path-message')).textContent).toMatch(/restart with the new paths/);
+        expect(screen.getByRole('status').textContent).toMatch(/Retry/);
+        expect(screen.queryByLabelText('Search path 3')).toBeNull();
+        expect((screen.getByTestId('search-path-save') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('anchors a rejected path on its row and keeps the edit for correction', async () => {
+        await renderPanel(response({ searchPaths: [] }));
+        fireEvent.click(screen.getByTestId('search-path-add'));
+        fireEvent.click(screen.getByTestId('search-path-add'));
+        fireEvent.change(screen.getByLabelText('Search path 2'), { target: { value: 'relative/bin' } });
+        const rejection = { errors: [{ field: 'searchPaths.0', message: 'Search path must be an absolute folder or start with ~' }] };
+        update.mockRejectedValue(new Error('400'));
+        parseLanguageServerRejection.mockReturnValue(rejection);
+        fireEvent.click(screen.getByTestId('search-path-save'));
+
+        // Submitted index 0 came from row 2, because row 1 was blank.
+        expect((await screen.findByTestId('search-path-error-1')).textContent).toMatch(/absolute/);
+        const input = screen.getByLabelText('Search path 2');
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        expect((input as HTMLInputElement).value).toBe('relative/bin');
+        expect(screen.getByTestId('search-path-message').textContent).toMatch(/previous paths are still in use/);
+    });
+
+    it('removes a path and points unavailable servers at the setting', async () => {
+        await renderPanel(response({
+            searchPaths: ['/a', '/b'],
+            runtimes: [{
+                sessionId: 's1', workspaceId: WS, definitionId: 'typescript', displayName: 'TypeScript',
+                projectRoot: '.', status: 'unavailable', detail: 'Executable not found: rust-analyzer',
+            }],
+        }));
+        fireEvent.click(screen.getByRole('button', { name: 'Remove search path 1' }));
+        expect((screen.getByLabelText('Search path 1') as HTMLInputElement).value).toBe('/b');
+
+        fireEvent.click(screen.getByTestId('language-server-runtime-status'));
+        expect(screen.getByTestId('language-server-search-path-hint').textContent).toMatch(/Executable search paths/);
+    });
+});

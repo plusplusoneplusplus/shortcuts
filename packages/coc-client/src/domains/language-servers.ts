@@ -75,7 +75,10 @@ export function parseLanguageServerRejection(error: unknown): LanguageServerConf
   const config = record.config;
   if (config && typeof config === 'object' && Array.isArray((config as { definitions?: unknown }).definitions)) {
     const stored = config as LanguageServerConfigRejection['config'];
-    return { errors, config: { definitions: stored!.definitions } };
+    const searchPaths = Array.isArray(stored!.searchPaths)
+      ? stored!.searchPaths.filter((entry): entry is string => typeof entry === 'string')
+      : undefined;
+    return { errors, config: { definitions: stored!.definitions, ...(searchPaths ? { searchPaths } : {}) } };
   }
   return { errors };
 }

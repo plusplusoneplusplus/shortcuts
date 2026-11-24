@@ -26,6 +26,8 @@ export interface RustRuntimeDeps {
     isRustupProxy?: (candidate: string) => boolean;
     /** Reads a Cargo manifest for workspace-root discovery. */
     readFile?: (file: string) => string | undefined;
+    /** Effective environment, including workspace search paths. Defaults to `process.env`. */
+    env?: NodeJS.ProcessEnv;
 }
 
 export interface PathResolutionOptions {
@@ -39,7 +41,11 @@ export function resolveRustRuntime(
     rootPath: string,
     deps: RustRuntimeDeps = {},
 ): RustRuntime {
-    const rustupPath = (deps.runRustupWhich ?? defaultRunRustupWhich)(rootPath, RUSTUP_RESOLUTION_TIMEOUT_MS);
+    const env = deps.env;
+    const rustupPath = (deps.runRustupWhich ?? ((cwd, timeoutMs) => defaultRunRustupWhich(cwd, timeoutMs, env)))(
+        rootPath,
+        RUSTUP_RESOLUTION_TIMEOUT_MS,
+    );
     if (rustupPath) {
         return {
             command: rustupPath,
@@ -50,9 +56,9 @@ export function resolveRustRuntime(
         };
     }
 
-    const pathCommand = (deps.resolveOnPath ?? findExecutableOnPath)(definition.command);
+    const pathCommand = (deps.resolveOnPath ?? ((command) => findExecutableOnPath(command, { env })))(definition.command);
     if (pathCommand) {
-        const rustupProxy = (deps.isRustupProxy ?? defaultIsRustupProxy)(pathCommand);
+        const rustupProxy = (deps.isRustupProxy ?? ((candidate) => defaultIsRustupProxy(candidate, env)))(pathCommand);
         return {
             command: pathCommand,
             args: definition.args,
@@ -145,9 +151,20 @@ export function findExecutableOnPath(
     return undefined;
 }
 
-function defaultRunRustupWhich(rootPath: string, timeoutMs: number): string | undefined {
-    const result = spawnSync('rustup', ['which', 'rust-analyzer'], {
+function defaultRunRustupWhich(
+    rootPath: string,
+    timeoutMs: number,
+    env?: NodeJS.ProcessEnv,
+): string | undefined {
+    // Resolve rustup against the effective PATH so a workspace search path
+    // finds it even when the inherited PATH does not.
+    const rustup = findExecutableOnPath('rustup', { env });
+    if (!rustup) {
+        return undefined;
+    }
+    const result = spawnSync(rustup, ['which', 'rust-analyzer'], {
         cwd: rootPath,
+        env: env ?? process.env,
         timeout: timeoutMs,
         shell: false,
         encoding: 'utf8',
@@ -208,13 +225,13 @@ function defaultIsExecutable(candidate: string): boolean {
     }
 }
 
-function defaultIsRustupProxy(candidate: string): boolean {
+function defaultIsRustupProxy(candidate: string, env?: NodeJS.ProcessEnv): boolean {
     try {
         const resolved = fs.realpathSync(candidate);
         if (/^rustup(?:\.exe)?$/i.test(path.basename(resolved))) {
             return true;
         }
-        const rustup = findExecutableOnPath('rustup');
+        const rustup = findExecutableOnPath('rustup', { env });
         if (!rustup) {
             return false;
         }

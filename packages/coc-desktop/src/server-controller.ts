@@ -24,6 +24,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { fork, ChildProcess, StdioOptions } from 'child_process';
 import { augmentPathWithBundledAgents } from './agent-bin-path';
+import { appendExecutableSearchPaths, pathEnvKey } from './executable-search-paths';
 
 /** Default loopback bind address — the server is never exposed off-box. */
 export const DEFAULT_HOST = '127.0.0.1';
@@ -83,6 +84,11 @@ export interface AttachOrStartOptions {
      * releases are tagged with.
      */
     appVersion?: string;
+    /**
+     * Installation-wide executable search paths (see `executable-search-paths.ts`)
+     * appended to the forked server's PATH. Never applied to an attached server.
+     */
+    executableSearchPaths?: readonly string[];
     deps?: AttachOrStartDeps;
 }
 
@@ -183,13 +189,26 @@ export function forwardChildOutput(
     wire(child.stderr);
 }
 
+/**
+ * PATH for a server this app forks: bundled agent folders first, then the
+ * inherited PATH, then configured search paths that are not already present.
+ * The PATH key keeps its inherited spelling (`Path` on Windows), so the child
+ * never gets two PATH variables.
+ */
+export function buildServerEnv(
+    baseEnv: NodeJS.ProcessEnv,
+    searchPaths: readonly string[] = [],
+    platform: NodeJS.Platform = process.platform,
+    addBundled: (basePath: string) => string = (basePath) => augmentPathWithBundledAgents({ platform }, basePath),
+): NodeJS.ProcessEnv {
+    const key = pathEnvKey(baseEnv, platform);
+    const withBundled = addBundled(baseEnv[key] ?? '');
+    return { ...baseEnv, [key]: appendExecutableSearchPaths(withBundled, searchPaths, { platform }) };
+}
+
 /** Default fork: spawn `server-entry.js` as Electron's Node (`ELECTRON_RUN_AS_NODE`). */
-function defaultFork(modulePath: string, env: NodeJS.ProcessEnv, capture: boolean): ChildProcess {
-    const merged: NodeJS.ProcessEnv = { ...process.env, ...env };
-    // Prepend the bundled agent-CLI directories so the server resolves the
-    // shipped `copilot`/`codex`/`claude` even when the host PATH lacks them
-    // (best-effort; leaves PATH unchanged when nothing bundled resolves).
-    merged.PATH = augmentPathWithBundledAgents({}, merged.PATH);
+function defaultFork(modulePath: string, env: NodeJS.ProcessEnv, capture: boolean, searchPaths: readonly string[]): ChildProcess {
+    const merged = buildServerEnv({ ...process.env, ...env }, searchPaths);
     // Fix 2: pipe stdout/stderr when capturing (packaged, no TTY) so we can tee
     // them to the log file; otherwise inherit so a terminal dev run is unchanged.
     const stdio: StdioOptions = capture
@@ -256,7 +275,7 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
     // inherit behavior when no sink is provided.
     const wantsSink = typeof options.onServerOutput === 'function';
     const capture = shouldCaptureChildOutput(wantsSink, Boolean(process.stdout.isTTY));
-    const forkFn = deps.fork ?? ((modulePath, env) => defaultFork(modulePath, env, capture));
+    const forkFn = deps.fork ?? ((modulePath, env) => defaultFork(modulePath, env, capture, options.executableSearchPaths ?? []));
 
     // 1) Attach if a healthy server is already listening on the CLI port.
     if (await probe(host, attachPort)) {

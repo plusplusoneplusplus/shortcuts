@@ -48,6 +48,7 @@ import {
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
+import { EXECUTABLE_PATHS_GET_CHANNEL, EXECUTABLE_PATHS_SET_CHANNEL } from '../src/executable-search-paths';
 import { BROWSER_ANNOTATION_COMMAND_CHANNEL, BROWSER_ANNOTATION_EVENT_CHANNEL } from '../src/browser-annotation-bridge';
 import { BROWSER_DEMO_COMMAND_CHANNEL, BROWSER_DEMO_STATE_CHANNEL } from '../src/browser-demo-recorder';
 import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL } from '../src/browser-control-command';
@@ -137,6 +138,18 @@ describe('preload bridge', () => {
         expect(exposeInMainWorld).toHaveBeenCalledWith('cocDesktop', expect.anything());
         return exposeInMainWorld.mock.calls[0][1];
     }
+
+    it('exposes executable search paths over the main-process channels', async () => {
+        const api = exposedApi().executablePaths;
+        invoke.mockResolvedValueOnce({ paths: [] });
+        await api.get();
+        expect(invoke).toHaveBeenLastCalledWith(EXECUTABLE_PATHS_GET_CHANNEL);
+        invoke.mockResolvedValueOnce({ ok: true });
+        await api.set(['/opt/homebrew/bin']);
+        expect(invoke).toHaveBeenLastCalledWith(EXECUTABLE_PATHS_SET_CHANNEL, ['/opt/homebrew/bin']);
+        await api.set(null);
+        expect(invoke).toHaveBeenLastCalledWith(EXECUTABLE_PATHS_SET_CHANNEL, null);
+    });
 
     it('exposes the owner-scoped native address editing menu without clipboard access', async () => {
         invoke.mockResolvedValueOnce({ ok: true });

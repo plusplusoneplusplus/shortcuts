@@ -88,6 +88,44 @@ export function isExternalFileReferenceHref(href: string): boolean {
     return /^https?:\/\/|^mailto:/i.test(href);
 }
 
+/** First path segments that mark a resolved href as an absolute POSIX path. */
+const ABSOLUTE_PATH_ROOTS = new Set([
+    'Users', 'Volumes', 'home', 'root', 'tmp', 'var', 'private', 'opt', 'mnt', 'srv', 'usr', 'etc',
+]);
+
+/**
+ * Recover a local file href that the browser resolved against the dashboard
+ * origin. Copying rendered chat HTML serializes `<a href="src/a.rs:3">` as
+ * `http://127.0.0.1:4000/src/a.rs:3`, and the pasted markdown keeps that URL.
+ *
+ * Returns the file href (line suffix or `#L` hash kept, path still
+ * URL-encoded) for a same-origin URL whose last segment names a file. Returns
+ * null for other origins, query strings, SPA hash routes, `/api/` routes and
+ * directory-like paths, so ordinary web links stay web links.
+ */
+export function recoverDashboardFileHref(
+    href: string,
+    origin: string = typeof window !== 'undefined' ? window.location.origin : '',
+): string | null {
+    if (!origin || origin === 'null' || !/^https?:\/\//i.test(href)) return null;
+    let url: URL;
+    try {
+        url = new URL(href);
+    } catch {
+        return null;
+    }
+    if (url.origin !== origin || url.search || url.username || url.password) return null;
+    if (url.hash && !/^#L\d+(?:-L?\d+)?$/i.test(url.hash)) return null;
+    const relative = url.pathname.replace(/^\/+/, '');
+    if (!relative || /^api(?:\/|$)/i.test(relative)) return null;
+    const ref = parseFilePathRef(safeDecodeURIComponent(relative) + url.hash);
+    const name = ref.path.split('/').pop() ?? '';
+    if (!name.includes('.') && ref.line === undefined) return null;
+    const first = safeDecodeURIComponent(relative.split('/')[0]);
+    const path = first === '~' || !ABSOLUTE_PATH_ROOTS.has(first) ? relative : `/${relative}`;
+    return path + url.hash;
+}
+
 function safeDecodeURIComponent(value: string): string {
     try {
         return decodeURIComponent(value);

@@ -69,7 +69,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read/update/delete one instruction file (`base`\|`ask`\|`autopilot`; `plan` is an Ask alias) |
-| GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge config and sanitized runtime status. PUT defaults omitted fields; PATCH preserves them; invalid definitions → `400`, no write |
+| GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge `definitions`, `searchPaths` and sanitized runtime status. PUT defaults omitted fields; PATCH preserves them; invalid definitions or paths → `400`, no write |
 | POST | `/api/workspaces/:id/language-servers/retry` | Rediscover/retry opaque `sessionId`; unknown or cross-workspace session → `404`. See [language-servers.md](language-servers.md) |
 | GET/PUT | `/api/workspaces/:id/llm-tools-config` | Disabled tools + `conversationRetrievalAvailable`; unknown tool names filtered |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |

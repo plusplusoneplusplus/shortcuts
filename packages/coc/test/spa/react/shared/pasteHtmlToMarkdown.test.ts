@@ -156,4 +156,23 @@ describe('pasteHtmlToMarkdown', () => {
         );
         expect(md).toBe('**bold** text');
     });
+
+    it('restores source links that copying rendered chat resolved against the dashboard origin', () => {
+        const origin = window.location.origin;
+        const md = pasteHtmlToMarkdown(
+            `<blockquote><p>Find the customer: <a href="${origin}/crates/api/src/billing.rs:316" class="md-local-file-link">billing.rs:316</a>, `
+            + `<a href="${origin}/Users/me/repo/a.rs:3-9">a.rs:3-9</a></p></blockquote>`,
+            'Find the customer: billing.rs:316, a.rs:3-9',
+        );
+        expect(md).toBe('> Find the customer: [billing.rs:316](crates/api/src/billing.rs:316), [a.rs:3-9](/Users/me/repo/a.rs:3-9)');
+    });
+
+    it('keeps web links and dashboard routes as web links', () => {
+        const origin = window.location.origin;
+        const md = pasteHtmlToMarkdown(
+            `<p><a href="https://example.com/a.rs:3">ext</a> <a href="${origin}/#repos/ws-1">route</a></p>`,
+            'ext route',
+        );
+        expect(md).toBe(`[ext](https://example.com/a.rs:3) [route](${origin}/#repos/ws-1)`);
+    });
 });
