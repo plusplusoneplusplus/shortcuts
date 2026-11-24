@@ -992,8 +992,6 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'fresh-written',
     'terse-replies',
     'delegate',
-    'for-each',
-    'map-reduce',
     'grill-me',
     'cron',
     'canvas',

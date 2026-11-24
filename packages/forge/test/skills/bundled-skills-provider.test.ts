@@ -61,7 +61,7 @@ describe('getBundledSkills', () => {
 
     it('does not bundle removed skills', () => {
         // Removed skills must stay absent from discovery and packaged resources.
-        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item', 'coc-chat'];
+        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item', 'coc-chat', 'for-each', 'map-reduce'];
         const registryNames = getBundledSkillsRegistry().map(s => s.name);
         for (const removedSkill of removedSkills) {
             expect(registryNames).not.toContain(removedSkill);
@@ -83,10 +83,13 @@ describe('getBundledSkills', () => {
         }
     });
 
-    it('does not expose the removed conversation skill in project skills', () => {
+    it('does not expose removed skills in project skills', () => {
         const projectSkillsPath = path.resolve(__dirname, '../../../../.github/skills');
         // Directory entries also catch a dangling symlink to deleted resources.
-        expect(fs.readdirSync(projectSkillsPath)).not.toContain('coc-chat');
+        const entries = fs.readdirSync(projectSkillsPath);
+        for (const name of ['coc-chat', 'for-each', 'map-reduce']) {
+            expect(entries).not.toContain(name);
+        }
     });
 
     it('marks skills as alreadyExists when they are installed', () => {
@@ -402,6 +405,13 @@ describe('autoInstallDefaultSkills', () => {
         expect(result.errors).toHaveLength(0);
         expect(result.skipped).toContain('non-existent-skill-xyz');
         expect(result.installed).toHaveLength(0);
+    });
+
+    it('skips removed skills requested by stale configuration', async () => {
+        const names = ['for-each', 'map-reduce'];
+        const result = await autoInstallDefaultSkills(installDir, names);
+        expect(result).toEqual({ installed: [], skipped: names, errors: [] });
+        expect(fs.readdirSync(installDir)).toEqual([]);
     });
 
     it('installs a known bundled skill into a fresh directory', async () => {

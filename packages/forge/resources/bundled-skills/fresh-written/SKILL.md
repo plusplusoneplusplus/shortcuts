@@ -1,6 +1,6 @@
 ---
 name: fresh-written
-description: Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version. Use whenever you update an existing document, plan, design note, AGENTS.md, README, MEMORY.md, or any persistent text artifact.
+description: Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state.
 metadata:
   author: Yiheng Tao
   version: "0.0.2"
@@ -9,10 +9,6 @@ metadata:
 # Fresh Written
 
 When updating any persistent text artifact (documents, plans, design notes, READMEs, AGENTS.md, MEMORY.md, comments), produce the **final intended state** as if writing it for the first time. Never layer patches on top of the previous version.
-
-## When to Invoke
-
-Any time you edit an existing document, plan, or note rather than creating one from scratch.
 
 ## Rules
 

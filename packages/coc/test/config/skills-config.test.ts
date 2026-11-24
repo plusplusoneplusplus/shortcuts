@@ -17,12 +17,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('terse-replies');
     });
 
-    it('includes for-each and map-reduce in default bundled skills', () => {
+    it('excludes removed for-each and map-reduce skills from defaults', () => {
         const config = resolveConfig(undefined, undefined);
-        expect(DEFAULT_BUNDLED_SKILLS).toContain('for-each');
-        expect(DEFAULT_BUNDLED_SKILLS).toContain('map-reduce');
-        expect(config.skills.defaultSkills).toContain('for-each');
-        expect(config.skills.defaultSkills).toContain('map-reduce');
+        expect(DEFAULT_BUNDLED_SKILLS).not.toContain('for-each');
+        expect(DEFAULT_BUNDLED_SKILLS).not.toContain('map-reduce');
+        expect(config.skills.defaultSkills).not.toContain('for-each');
+        expect(config.skills.defaultSkills).not.toContain('map-reduce');
     });
 
     it('includes grill-me in default bundled skills', () => {
