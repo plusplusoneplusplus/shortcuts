@@ -20,6 +20,8 @@ const explanationSkills = [
         content: `---
 name: why
 description: Explain the rationale behind a design, decision, or change.
+metadata:
+  version: "0.0.1"
 ---
 Explain the problem, motivation, constraints, alternatives,
 and trade-offs. Ground the rationale in available evidence.
@@ -32,6 +34,8 @@ Do not invent original design intent.
         content: `---
 name: what
 description: Explain what a system, component, or change does.
+metadata:
+  version: "0.0.1"
 ---
 Explain its responsibilities, observable behavior, contracts,
 guarantees, and boundaries. Avoid implementation details.
@@ -43,6 +47,8 @@ guarantees, and boundaries. Avoid implementation details.
         content: `---
 name: how
 description: Explain how something works or can be implemented.
+metadata:
+  version: "0.0.1"
 ---
 Explain the mechanism step by step, covering control flow,
 data flow, state transitions, and key implementation details.
@@ -118,7 +124,7 @@ describe('getBundledSkills', () => {
 });
 
 describe('BundledSkill version field', () => {
-    it('registry entries have versions except the intentionally unversioned explanation skills', () => {
+    it('registry entries have parseable versions', () => {
         // Verify bundled skill versions are accessible through parseBundledSkillVersion
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-check-'));
         try {
@@ -127,11 +133,7 @@ describe('BundledSkill version field', () => {
 
             for (const skill of skills) {
                 const version = parseBundledSkillVersion(skill.name);
-                if (explanationSkills.some(explanation => explanation.name === skill.name)) {
-                    expect(version).toBeUndefined();
-                } else {
-                    expect(version, `${skill.name} should have a parseable version`).toBeDefined();
-                }
+                expect(version, `${skill.name} should have a parseable version`).toBeDefined();
             }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -208,7 +210,7 @@ describe('SKILL.md metadata', () => {
         });
     });
 
-    it('every bundled SKILL.md has valid YAML frontmatter and version metadata where required', () => {
+    it('every bundled SKILL.md has valid YAML frontmatter and version metadata', () => {
         const skillDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()
         );
@@ -225,12 +227,8 @@ describe('SKILL.md metadata', () => {
             const parsed = yaml.parse(fmMatch![1]);
             expect(parsed.name, `${dir}/SKILL.md name`).toBe(dir);
             expect(typeof parsed.description, `${dir}/SKILL.md description`).toBe('string');
-            if (explanationSkills.some(skill => skill.name === dir)) {
-                expect(parsed.metadata).toBeUndefined();
-            } else {
-                expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
-                expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toMatch(/^\d+\.\d+\.\d+$/);
-            }
+            expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
+            expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toMatch(/^\d+\.\d+\.\d+$/);
         }
     });
 

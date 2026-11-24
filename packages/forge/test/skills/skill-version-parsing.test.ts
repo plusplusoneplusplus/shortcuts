@@ -62,6 +62,10 @@ describe('parseVersionFromFrontmatter', () => {
 });
 
 describe('parseBundledSkillVersion', () => {
+    it.each(['why', 'what', 'how'])('returns the initial version for %s', name => {
+        expect(parseBundledSkillVersion(name)).toBe('0.0.1');
+    });
+
     it('returns a version for each real bundled skill', () => {
         const bundledPath = getBundledSkillsPath();
         const dirs = fs.readdirSync(bundledPath).filter(d =>

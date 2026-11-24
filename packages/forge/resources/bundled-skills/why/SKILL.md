@@ -1,6 +1,8 @@
 ---
 name: why
 description: Explain the rationale behind a design, decision, or change.
+metadata:
+  version: "0.0.1"
 ---
 Explain the problem, motivation, constraints, alternatives,
 and trade-offs. Ground the rationale in available evidence.
