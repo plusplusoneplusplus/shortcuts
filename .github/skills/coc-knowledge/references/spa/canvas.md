@@ -519,8 +519,9 @@ URLs, non-HTTP schemes, no hosting panel or no desktop browser view keep the def
 `MarkdownFileLinkScope` claims the bubbling `coc-open-file-reference` event for
 file/canvas previews before the chat fallback. It binds the displayed file directory
 and concrete owner, reads roots on that server, and uses `resolveChatFileLink` plus
-`openUnifiedPanelTab`. Unmount/owner changes cancel pending reads. The tab store
-activates and reveals repeat ranges without replacing buffers. Non-hosted source
+`openUnifiedPanelTab`. Unmount/owner changes cancel pending reads. A single `:line`
+link opens as a one-line highlight range. The tab store activates and reveals repeat
+links and ranges without replacing buffers. Non-hosted source
 docks use their existing navigation callback; standalone canvas previews show
 `PreviewPane` in a floating, read-only workspace preview. Errors stay in that surface.
 A clicked `.md-link` with a `canvas://<id>` href fires `coc-open-canvas-reference`
