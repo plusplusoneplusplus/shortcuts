@@ -71,6 +71,7 @@ const EXT_TO_MONACO_LANG: Record<string, string> = {
     psm1: 'powershell',
     psd1: 'powershell',
     tla: 'tla',
+    lean: 'lean',
     bat: 'bat',
     cmd: 'bat',
 };

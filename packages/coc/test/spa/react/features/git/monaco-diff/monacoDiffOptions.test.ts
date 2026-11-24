@@ -27,6 +27,8 @@ describe('diffLanguageFor', () => {
         ['src/view.tsx', 'typescript'],
         ['lib/x.py', 'python'],
         ['specs/TwoPhase.tla', 'tla'],
+        ['Mathlib/Proof.lean', 'lean'],
+        ['win\\Proof.LEAN', 'lean'],
         ['docs/README.md', 'markdown'],
         ['deploy/Dockerfile', 'dockerfile'],
         ['Makefile', 'makefile'],
@@ -50,6 +52,18 @@ describe('buildDiffModels', () => {
             uri: browserDocumentUri('ws-1', 'src/a b.ts'), text: 'new\n', language: 'typescript', isWorkingCopy: true,
         });
         expect(models.modified.uri).toBe('coc-file://ws-1/src/a%20b.ts');
+    });
+
+    it('uses Lean on both diff sides with separate workspace ownership', () => {
+        const input = { ...base, relativePath: 'Main.lean', stage: 'unstaged' as const };
+        const a = buildDiffModels({ ...input, workspaceId: 'lean-a' });
+        const b = buildDiffModels({ ...input, workspaceId: 'lean-b' });
+        for (const models of [a, b]) {
+            expect(models.original.language).toBe('lean');
+            expect(models.modified.language).toBe('lean');
+        }
+        expect(a.original.uri).not.toBe(b.original.uri);
+        expect(a.modified.uri).not.toBe(b.modified.uri);
     });
 
     it('staged: HEAD → index, both synthetic, neither a working copy', () => {
