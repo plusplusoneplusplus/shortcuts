@@ -20,6 +20,14 @@ the plain flavor modulo escapes and whitespace), absent HTML, or conversion fail
 back to `text/plain`. Chained `onPaste` hooks (attachments, the >16 KB large-paste chip)
 run first and veto via `preventDefault()`.
 
+### RichTextInput focus
+
+`RichTextInputHandle.focus()` focuses the editor and keeps a usable caret: a caret already in
+the editor stays, else the last in-editor caret (saved on `selectionchange`/blur) is restored,
+else the caret goes to the draft end. Disabled editors ignore it. Attach actions (Quick Ask
+"📎 Attach" pill, turn "Attach as context", editor attach pills) add the chip, then call
+`focus()`; callers must clear any page selection *before* that call, or they remove the caret.
+
 ### Large-paste panel snapshots
 
 `useTextPaste` retains the full raw payload separately from truncated preview lines.

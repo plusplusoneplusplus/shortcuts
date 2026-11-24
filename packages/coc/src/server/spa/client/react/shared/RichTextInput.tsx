@@ -64,6 +64,44 @@ const PILL_CLASS = [
 export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>(
     function RichTextInput(props, ref) {
         const divRef = useRef<HTMLDivElement>(null);
+        // Last caret/selection inside the editor, so focus() can put it back
+        // after the page selection moved elsewhere (e.g. a chat bubble).
+        const lastRangeRef = useRef<Range | null>(null);
+        const rememberRange = () => {
+            const div = divRef.current;
+            const sel = window.getSelection?.();
+            if (!div || !sel?.rangeCount) return;
+            const range = sel.getRangeAt(0);
+            if (div.contains(range.startContainer) && div.contains(range.endContainer)) lastRangeRef.current = range.cloneRange();
+        };
+        useEffect(() => {
+            document.addEventListener('selectionchange', rememberRange);
+            return () => document.removeEventListener('selectionchange', rememberRange);
+        }, []);
+
+        const focusEditor = () => {
+            const div = divRef.current;
+            // A disabled editor never takes focus or the page selection.
+            if (!div || props.disabled) return;
+            const sel = window.getSelection?.();
+            const inside = (r: Range | null | undefined): r is Range =>
+                !!r && div.contains(r.startContainer) && div.contains(r.endContainer);
+            // Pick the caret before focusing: focus() may move an outside
+            // selection to the editor start. Keep a caret already in the editor,
+            // else restore the last one, else go to the end of the draft.
+            const current = sel?.rangeCount ? sel.getRangeAt(0) : null;
+            let target = inside(current) ? current.cloneRange()
+                : inside(lastRangeRef.current) ? lastRangeRef.current.cloneRange() : null;
+            if (!target) {
+                target = document.createRange();
+                target.selectNodeContents(div);
+                target.collapse(false);
+            }
+            div.focus();
+            if (!sel || document.activeElement !== div) return;
+            sel.removeAllRanges();
+            sel.addRange(target);
+        };
 
         useImperativeHandle(ref, () => ({
             getValue: () => readValue(),
@@ -114,7 +152,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                 sel.removeAllRanges();
                 sel.addRange(range);
             },
-            focus: () => divRef.current?.focus(),
+            focus: focusEditor,
         }));
 
         useEffect(() => {
@@ -255,6 +293,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                         replaceAtomicRange(divRef.current, selected.start, selected.end, ''); handleInput();
                     }}
                     onPaste={handlePaste}
+                    onBlur={rememberRange}
                     className={cn(
                         'w-full min-h-[34px] max-h-28 overflow-y-auto resize-y rounded border',
                         'whitespace-pre-wrap',

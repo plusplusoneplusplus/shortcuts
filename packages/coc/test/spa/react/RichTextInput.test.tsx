@@ -347,3 +347,103 @@ describe('RichTextInput', () => {
         expect(div.className).toContain('whitespace-pre-wrap');
     });
 });
+
+describe('RichTextInput focus() caret', () => {
+    function selectionOffset(div: HTMLElement): number | null {
+        const sel = window.getSelection()!;
+        if (!sel.rangeCount) return null;
+        const range = sel.getRangeAt(0);
+        if (!div.contains(range.startContainer)) return null;
+        const pre = document.createRange();
+        pre.selectNodeContents(div);
+        pre.setEnd(range.startContainer, range.startOffset);
+        return pre.toString().length;
+    }
+
+    function placeCaret(node: Node, offset: number) {
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.collapse(true);
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+    }
+
+    /** Mimic the user highlighting text in an assistant reply. */
+    function selectOutside(): HTMLElement {
+        const outside = document.createElement('p');
+        outside.textContent = 'assistant reply text';
+        document.body.appendChild(outside);
+        const range = document.createRange();
+        range.selectNodeContents(outside);
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+        return outside;
+    }
+
+    /** jsdom has no layout-backed innerText, so build the draft as a real text node. */
+    function renderDraft(text: string, props: Partial<React.ComponentProps<typeof RichTextInput>> = {}) {
+        const ref = createRef<RichTextInputHandle>();
+        render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich" {...props} />);
+        const div = screen.getByTestId('rich');
+        div.textContent = text;
+        return { ref, div, textNode: div.firstChild! };
+    }
+
+    afterEach(() => {
+        window.getSelection()?.removeAllRanges();
+        document.querySelectorAll('p').forEach(p => p.remove());
+    });
+
+    it('restores the last caret when the page selection moved outside the editor', () => {
+        const { ref, div, textNode } = renderDraft('hello world');
+        placeCaret(textNode, 5);
+        act(() => { document.dispatchEvent(new Event('selectionchange')); });
+
+        selectOutside();
+        act(() => { ref.current!.focus(); });
+
+        expect(document.activeElement).toBe(div);
+        expect(selectionOffset(div)).toBe(5);
+        expect(div.textContent).toBe('hello world');
+    });
+
+    it('remembers the caret on blur too', () => {
+        const { ref, div, textNode } = renderDraft('hello world');
+        placeCaret(textNode, 3);
+        fireEvent.blur(div);
+
+        selectOutside();
+        act(() => { ref.current!.focus(); });
+
+        expect(selectionOffset(div)).toBe(3);
+    });
+
+    it('places the caret at the end of the draft when no caret was saved', () => {
+        const { ref, div } = renderDraft('draft text');
+
+        selectOutside();
+        act(() => { ref.current!.focus(); });
+
+        expect(document.activeElement).toBe(div);
+        expect(selectionOffset(div)).toBe('draft text'.length);
+    });
+
+    it('keeps a caret that is already inside the editor', () => {
+        const { ref, div, textNode } = renderDraft('abcdef');
+        placeCaret(textNode, 2);
+
+        act(() => { ref.current!.focus(); });
+
+        expect(selectionOffset(div)).toBe(2);
+    });
+
+    it('does not take focus or move the page selection when disabled', () => {
+        const { ref, div } = renderDraft('draft', { disabled: true });
+        const outside = selectOutside();
+
+        act(() => { ref.current!.focus(); });
+
+        expect(document.activeElement).not.toBe(div);
+        expect(outside.contains(window.getSelection()!.getRangeAt(0).startContainer)).toBe(true);
+    });
+});

@@ -120,3 +120,33 @@ describe('QuickAskTurnLayer — 📎 Attach split pill', () => {
         expect(onAsk).not.toHaveBeenCalled();
     });
 });
+
+describe('QuickAskTurnLayer — attach focuses the composer', () => {
+    it('regression: the composer keeps focus and a caret after Attach clears the page selection', async () => {
+        const { RichTextInput } = await import('../../../../src/server/spa/client/react/shared/RichTextInput');
+        const composerRef = { current: null as null | { focus(): void } };
+        // Mirrors ChatDetail.handleAttachContext: add the chip, then focus the composer.
+        const onAttachContext = vi.fn(() => composerRef.current?.focus());
+        render(
+            <>
+                <Harness onAttachContext={onAttachContext} />
+                <RichTextInput ref={composerRef as never} value="my draft" onChange={() => {}} data-testid="composer" />
+            </>,
+        );
+        // The user's highlight lives in the assistant turn, not the composer.
+        const range = document.createRange();
+        range.selectNodeContents(screen.getByTestId('turn-content'));
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+        await raisePill();
+
+        fireEvent.click(screen.getByTestId('quick-ask-attach-pill'));
+
+        const composer = screen.getByTestId('composer');
+        expect(onAttachContext).toHaveBeenCalledWith(3, 'assistant', 'GroupedGEMM');
+        expect(document.activeElement).toBe(composer);
+        const sel = window.getSelection()!;
+        expect(sel.rangeCount).toBe(1);
+        expect(composer.contains(sel.getRangeAt(0).startContainer)).toBe(true);
+    });
+});
