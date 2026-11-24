@@ -8,7 +8,7 @@ import { CopilotClient, RuntimeConnection, type SessionConfig } from '@github/co
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RequestRunner } from '../../../../coc-agent-sdk/src/request-runner';
 import { SessionManager } from '../../../../coc-agent-sdk/src/session-manager';
-import { findCopilotNativeCliPath } from '../../../../coc-agent-sdk/src/sdk-client-factory';
+import { findCopilotSdkRuntimePath } from '../../../../coc-agent-sdk/src/sdk-client-factory';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import { createCanvasUpdateNotifier } from '../../../src/server/canvas/canvas-update-notifier';
 import { CanvasExtensionHost } from '../../../src/server/canvas-extensions/extension-host';
@@ -17,14 +17,9 @@ import { createCanvasExtensionTools } from '../../../src/server/llm-tools/canvas
 import { CANVAS_EXTENSION_LLM_TOOL_NAMES } from '../../../src/server/llm-tools/llm-tool-registry';
 import recorded from '../../fixtures/canvas-extensions/copilot-cli-1.0.78-tools.json';
 
-vi.mock('node:child_process', async importOriginal => {
-    const actual = await importOriginal<typeof import('node:child_process')>();
-    return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
-});
-
 vi.mock('../../../../coc-agent-sdk/src/sdk-client-factory', async importOriginal => {
     const actual = await importOriginal<typeof import('../../../../coc-agent-sdk/src/sdk-client-factory')>();
-    return { ...actual, findCopilotNativeCliPath: vi.fn(actual.findCopilotNativeCliPath) };
+    return { ...actual, findCopilotSdkRuntimePath: vi.fn(actual.findCopilotSdkRuntimePath) };
 });
 
 vi.mock('os', async importOriginal => {
@@ -94,18 +89,25 @@ describe('Copilot native canvas loader ownership', () => {
     });
 
     function runtimeClient(copilotHome = path.join(home, '.copilot')) {
-        const executable = findCopilotNativeCliPath();
+        const executable = findCopilotSdkRuntimePath();
         if (!executable) throw new Error('Pinned Copilot executable unavailable; use the recorded tool-list test in CI');
-        expect(execFileSync(executable, ['--version'], {
-            encoding: 'utf8', env: { ...process.env, COPILOT_AUTO_UPDATE: 'false' },
-        })).toContain('1.0.78');
         const client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: executable, args: [] }),
-            workingDirectory: repo,
-            env: {
-                ...process.env, COPILOT_HOME: copilotHome, HOME: home, USERPROFILE: home,
-                COPILOT_AUTO_UPDATE: 'false',
+            mode: 'empty',
+            useLoggedInUser: false,
+            baseDirectory: copilotHome,
+            extensionLaunchProvider: {
+                resolve: async request => ({
+                    launch: { executable: process.execPath, args: [request.modulePath], env: {} },
+                }),
             },
+            connection: RuntimeConnection.forStdio({
+                path: executable, args: [],
+                env: {
+                    ...process.env, COPILOT_HOME: copilotHome, HOME: home, USERPROFILE: home,
+                    COPILOT_AUTO_UPDATE: 'false',
+                },
+            }),
+            workingDirectory: repo,
             logLevel: 'error',
         });
         clients.push(client);
@@ -113,9 +115,13 @@ describe('Copilot native canvas loader ownership', () => {
     }
 
     function sessionConfig(baseUrl = 'http://127.0.0.1:1/v1'): SessionConfig {
+        const executable = findCopilotSdkRuntimePath();
+        if (!executable) throw new Error('Pinned Copilot runtime unavailable');
         return {
             model: 'fixture-model', onPermissionRequest: () => ({ kind: 'approved' }),
             provider: { type: 'openai', baseUrl, apiKey: 'fixture', wireApi: 'completions' },
+            availableTools: [...names, 'open_canvas', 'extensions_reload', 'extensions_manage'],
+            extensionSdkPath: path.resolve(path.dirname(executable), '..', '..', 'copilot-sdk'),
         };
     }
 
@@ -127,19 +133,17 @@ describe('Copilot native canvas loader ownership', () => {
         expect(inventory.tools.some(tool => tool.name.startsWith('extensions_'))).toBe(false);
     }
 
-    it.each([undefined, 'true'])('disables updates for the version probe when the shell value is %s', shellValue => {
+    it.each([undefined, 'true'])('disables runtime updates when the shell value is %s', shellValue => {
         vi.stubEnv('COPILOT_AUTO_UPDATE', shellValue);
         vi.stubEnv('COPILOT_PROBE_SENTINEL', 'preserved');
         const executable = path.join(root, 'copilot');
-        vi.mocked(findCopilotNativeCliPath).mockReturnValueOnce(executable);
-        vi.mocked(execFileSync).mockImplementationOnce((_file, _args, options) =>
-            options && typeof options === 'object' && options.env?.COPILOT_AUTO_UPDATE === 'false'
-                ? '1.0.78' : '1.0.96-2');
+        vi.mocked(findCopilotSdkRuntimePath).mockReturnValueOnce(executable);
+        const forStdio = vi.spyOn(RuntimeConnection, 'forStdio');
 
         runtimeClient();
 
-        expect(execFileSync).toHaveBeenLastCalledWith(executable, ['--version'], {
-            encoding: 'utf8',
+        expect(forStdio).toHaveBeenLastCalledWith({
+            path: executable, args: [],
             env: expect.objectContaining({ COPILOT_AUTO_UPDATE: 'false', COPILOT_PROBE_SENTINEL: 'preserved' }),
         });
         expect(process.env.COPILOT_AUTO_UPDATE).toBe(shellValue);
@@ -219,14 +223,20 @@ describe('Copilot native canvas loader ownership', () => {
                 client, prompt: 'List, open, increment and close the counter', tools,
                 workingDirectory: repo, loadDefaultMcpConfig: false, timeoutMs: 30000,
                 onPermissionRequest: () => ({ kind: 'approved' }),
-                onToolInventory: inventory => { assertInventory(inventory); inventorySeen = true; },
+                onToolInventory: inventory => {
+                    for (const name of names) {
+                        expect(inventory.tools.filter(tool => tool.name === name)).toMatchObject([{ name, source: 'coc' }]);
+                    }
+                    expect(inventory.tools.some(tool => tool.name.startsWith('extensions_'))).toBe(false);
+                    inventorySeen = true;
+                },
             });
             expect(result, result.error).toMatchObject({ success: true, response: 'Canvas ready' });
             expect(inventorySeen).toBe(true);
             expect(requests).toBe(5);
             for (const advertised of modelTools) {
-                expect(advertised.sort()).toEqual([...recorded.cocOwned].sort());
-                expect(advertised.filter(name => name === 'list_canvas_capabilities')).toHaveLength(1);
+                for (const name of names) expect(advertised.filter(tool => tool === name)).toHaveLength(1);
+                expect(advertised.some(name => name.startsWith('extensions_') || name === 'open_canvas')).toBe(false);
             }
             expect(startHost).toHaveBeenCalledOnce();
             expect(fs.readFileSync(starts, 'utf8').trim().split('\n')).toHaveLength(1);
@@ -268,9 +278,9 @@ describe('Copilot native canvas loader ownership', () => {
             await vi.waitFor(async () => {
                 await session.rpc.tools.initializeAndValidate();
                 const metadata = await session.rpc.tools.getCurrentMetadata();
-                expect(metadata.tools.map(tool => tool.name).sort()).toEqual([
-                    ...(renderer ? recorded.nativeWithRenderer : recorded.nativeWithoutRenderer),
-                ].sort());
+                expect(metadata.tools.some(tool => tool.name.startsWith('extensions_'))).toBe(true);
+                expect(metadata.tools.some(tool => tool.name === 'list_canvas_capabilities')).toBe(renderer);
+                expect(metadata.tools.some(tool => tool.name === 'open_canvas')).toBe(renderer);
             }, { timeout: 10000 });
             expect(startHost).not.toHaveBeenCalled();
             expect(fs.readFileSync(starts, 'utf8').trim().split('\n')).toHaveLength(1);

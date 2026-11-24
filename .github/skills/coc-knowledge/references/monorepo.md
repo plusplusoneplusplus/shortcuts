@@ -450,9 +450,11 @@ patch updates to internal dependencies (`.changeset/config.json`).
 `npm run publish-packages` builds its selected packages, then invokes `changeset publish`; it is not the complete root build chain.
 npm publication is manual, separate from installer/image release CI.
 
-Root and consuming manifests pin Copilot SDK `1.0.9`; the root override pins
-Copilot CLI `1.0.78`, with matching platform packages in `package-lock.json`.
-SDK child processes set `COPILOT_AUTO_UPDATE=false`.
+Root and consuming manifests pin the Copilot SDK exactly, including its matching
+platform runtime packages in `package-lock.json`. Runtime selection prefers that
+bundled SDK runtime; child processes set `COPILOT_AUTO_UPDATE=false`.
+The root development-only Copilot CLI pin supplies native vault inspection
+helpers for opt-in MCP authentication tests, not the production SDK runtime.
 CoC build metadata uses the root package version and Git commit, with
 `COC_BUILD_COMMIT` overriding commit discovery; the CoC package version is distinct.
 

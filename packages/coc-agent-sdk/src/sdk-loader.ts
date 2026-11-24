@@ -2,9 +2,8 @@
  * SDK Loader
  *
  * Provides a synchronous availability check for @github/copilot-sdk.
- * The SDK is ESM-only (no `"require"` export condition), so neither
- * `require.resolve('@github/copilot-sdk')` nor subpath resolution works.
- * We walk up from __dirname looking for the package in node_modules.
+ * Walks up from __dirname to locate the package independently of its
+ * conditional exports and module format.
  */
 
 import * as fs from 'fs';

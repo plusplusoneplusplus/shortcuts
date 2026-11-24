@@ -50,7 +50,7 @@ export interface ToolBinaryResult {
  * Per-tool telemetry payload attached to a structured tool result.
  * Matches the Copilot SDK's `ToolTelemetry`.
  */
-export type ToolTelemetry = Record<string, Record<string, unknown> | undefined>;
+export type ToolTelemetry = Record<string, Record<string, JsonValue> | undefined>;
 
 /**
  * Structured tool-handler result. Structurally identical to the Copilot SDK's
@@ -63,6 +63,7 @@ export interface ToolResultObject {
     error?: string;
     sessionLog?: string;
     toolTelemetry?: ToolTelemetry;
+    toolReferences?: string[];
 }
 
 /**
@@ -144,7 +145,7 @@ type _ToolContractGuard = [
  * Local implementation of the SDK's `defineTool` helper.
  * The SDK version is `function defineTool(name, config) { return { name, ...config }; }`
  * — a pure data-merge with no SDK runtime dependency. Re-implemented here so
- * it can be called synchronously without loading the ESM-only SDK module.
+ * it can be called synchronously without loading the provider SDK module.
  */
 export function defineTool<T = unknown>(
     name: string,

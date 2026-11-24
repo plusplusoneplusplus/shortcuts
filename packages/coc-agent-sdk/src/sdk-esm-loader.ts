@@ -1,14 +1,9 @@
 /**
  * Dynamic ESM Loader for @github/copilot-sdk
  *
- * The SDK is ESM-only ("type": "module" with only an "import" export condition).
- * Since this package compiles to CommonJS, static `import ... from '@github/copilot-sdk'`
- * becomes `require()` at runtime, which Node.js rejects with
- * ERR_PACKAGE_PATH_NOT_EXPORTED.
- *
- * TypeScript's CJS emit also transforms `await import(...)` into `require(...)`.
- * We use an indirect dynamic import via `new Function` to preserve the native
- * ESM `import()` at runtime, which works from CJS to load ESM modules.
+ * Uses the SDK's ESM entry consistently from CommonJS builds. TypeScript's
+ * CJS emit transforms `await import(...)` into `require(...)`, so an indirect
+ * dynamic import preserves native module loading.
  */
 
 // Preserve native import() — TypeScript CJS emit would rewrite a bare `import()` to `require()`.
