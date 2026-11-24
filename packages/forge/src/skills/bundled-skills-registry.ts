@@ -51,16 +51,6 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'terse-replies',
     },
     {
-        name: 'for-each',
-        description: 'Process a list of items by dispatching ONE sub-agent per item, strictly sequentially (await each before the next). Same per-item sub-task and final summary contract as map-reduce — only the dispatch order differs',
-        relativePath: 'for-each',
-    },
-    {
-        name: 'map-reduce',
-        description: 'Process a list of items by dispatching one sub-agent per item in parallel (up to max_parallel concurrent), then aggregate results into a final summary. Same per-item sub-task and final summary contract as for-each',
-        relativePath: 'map-reduce',
-    },
-    {
         name: 'cron',
         description: 'Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing',
         relativePath: 'cron',
@@ -114,5 +104,20 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         name: 'todo',
         description: 'Track a task as a To-do item and start it in a tracked conversation. Use when the user runs /todo <task> or asks to track and start a task.',
         relativePath: 'todo',
+    },
+    {
+        name: 'why',
+        description: 'Explain the rationale behind a design, decision, or change.',
+        relativePath: 'why',
+    },
+    {
+        name: 'what',
+        description: 'Explain what a system, component, or change does.',
+        relativePath: 'what',
+    },
+    {
+        name: 'how',
+        description: 'Explain how something works or can be implemented.',
+        relativePath: 'how',
     },
 ];

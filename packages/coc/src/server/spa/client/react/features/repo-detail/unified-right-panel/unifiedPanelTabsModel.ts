@@ -777,8 +777,9 @@ export type OpenUnifiedPreviewTabInput = Omit<OpenUnifiedTabInput, 'kind'>;
  *
  *  1. **The file already has a tab visible here.** Focus it without changing
  *     whether it is permanent or preview. A supplied line refreshes its reveal
- *     position and nonce; without one, the current preview can be re-clicked
- *     without churning its buffer or state reference.
+ *     position and nonce and drops any earlier range; without one, the
+ *     current preview can be re-clicked without churning its buffer or state
+ *     reference.
  *  2. **The section already has a preview.** Reuse the slot: the outgoing
  *     descriptor is replaced *at its own index* by the new one, so the strip
  *     shows one italic tab that changed its resource rather than a tab closing
@@ -812,6 +813,7 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
                 if (tab.id !== id) return tab;
                 const {
                     line: _line,
+                    endLine: _endLine,
                     column: _column,
                     revealNonce: _revealNonce,
                     ...withoutReveal

@@ -95,9 +95,9 @@ export function GitReviewToolbar({ header, progress, children }: {
     return <div className="git-review-header" data-testid="git-review-header">
         <div className="git-review-tools" role="group" aria-label="Review toolbar" data-testid="git-review-toolbar">
             {header?.identity && <div className="git-review-identity">{header.identity}</div>}
-            {header?.classify && <><span aria-hidden="true" className="git-review-sep" />{header.classify}</>}
-            {(header?.identity || header?.classify) && <span aria-hidden="true" className="git-review-sep" />}
+            {header?.identity && <span aria-hidden="true" className="git-review-sep" />}
             {children}
+            {header?.classify && <><span aria-hidden="true" className="git-review-sep" />{header.classify}</>}
             {actions.length > 0 && <span aria-hidden="true" className="git-review-sep git-review-wide" />}
             {actions.map(action => <button type="button" key={action.id} className="git-review-icon git-review-wide"
                 onClick={action.onClick} disabled={action.disabled} aria-pressed={action.pressed}

@@ -477,6 +477,31 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         expect(activeTab(again, CHAT_1)).toMatchObject({ line: 42, column: 8 });
     });
 
+    it('re-highlights an open tab for repeated and changed single-line links', () => {
+        // Links send `endLine === line`; the reused tab keeps its id (and so its
+        // buffer) while each link refreshes the range and mints a new nonce.
+        const link = (line: number, endLine = line) =>
+            ({ kind: 'file' as const, resourceId: 'src/a.ts', chatId: CHAT_1, line, endLine });
+        const first = open(EMPTY_UNIFIED_PANEL, link(12));
+        expect(activeTab(first, CHAT_1)).toMatchObject({ line: 12, endLine: 12 });
+
+        const repeated = open(first, link(12));
+        expect(visibleTabs(repeated, CHAT_1)).toHaveLength(1);
+        expect(activeTab(repeated, CHAT_1)!.id).toBe(activeTab(first, CHAT_1)!.id);
+        expect(activeTab(repeated, CHAT_1)).toMatchObject({ line: 12, endLine: 12 });
+        expect(activeTab(repeated, CHAT_1)!.revealNonce).toBeGreaterThan(activeTab(first, CHAT_1)!.revealNonce!);
+
+        const ranged = open(repeated, link(3, 9));
+        expect(activeTab(ranged, CHAT_1)).toMatchObject({ line: 3, endLine: 9 });
+        const single = open(ranged, link(20));
+        expect(activeTab(single, CHAT_1)).toMatchObject({ line: 20, endLine: 20 });
+
+        // A jump with no range (symbol navigation) clears the old highlight.
+        const jump = open(single, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, line: 30, column: 2 });
+        expect(activeTab(jump, CHAT_1)).toMatchObject({ line: 30, column: 2 });
+        expect(activeTab(jump, CHAT_1)?.endLine).toBeUndefined();
+    });
+
     it('shows candidate provenance until an exact open replaces it', () => {
         let state = open(EMPTY_UNIFIED_PANEL, {
             kind: 'file',
@@ -882,6 +907,15 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         state = preview(state, 'src/a.ts', { line: 42 });
         expect(activeTab(state, null)!.revealNonce).toBeGreaterThan(firstNonce);
         expect(activeTab(state, null)?.preview).toBe(true);
+    });
+
+    it('drops a link highlight when search navigates the same tab to another line', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', line: 8, endLine: 8,
+        });
+        state = preview(state, 'src/a.ts', { line: 42 });
+        expect(activeTab(state, null)).toMatchObject({ resourceId: 'src/a.ts', line: 42 });
+        expect(activeTab(state, null)?.endLine).toBeUndefined();
     });
 
     it('returns the same state when the current preview is clicked again', () => {

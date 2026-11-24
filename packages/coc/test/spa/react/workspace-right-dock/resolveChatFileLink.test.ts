@@ -100,6 +100,21 @@ describe('chat file link resolution', () => {
         }, new AbortController().signal)).toMatchObject({ type: 'tab', input: { kind: 'file' } });
     });
 
+    it('opens a single-line group link on its remote member owner as a one-line range', async () => {
+        request.mockResolvedValue({ type: 'file', path: '/repos/member/src/a.ts', resolvedWorkspaceId: 'ws-member' });
+        const remote = {
+            ...args, sourceSelectionId: 'remote:server-b:group-demo',
+            fileRef: { fullPath: 'src/a.ts', wsId: 'group-demo', line: 17 },
+            workspaces: [...args.workspaces, ...args.workspaces.map(ws => ({
+                ...ws, remote: { cloneKey: `remote:server-b:${ws.id}` },
+            }))],
+        };
+        expect(await resolveChatFileLink(remote, new AbortController().signal)).toMatchObject({
+            type: 'tab',
+            input: { ownerWorkspaceId: 'ws-member', ownerRoutingRef: 'remote:server-b:ws-member', line: 17, endLine: 17 },
+        });
+    });
+
     it('surfaces denied or missing preflights instead of opening a chat-local fallback', async () => {
         request.mockRejectedValue(new Error('Access denied'));
         await expect(resolveChatFileLink(args, new AbortController().signal)).rejects.toThrow('Access denied');

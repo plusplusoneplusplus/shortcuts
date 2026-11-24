@@ -95,7 +95,9 @@ export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTab
         resourceId: readOnlyPreview ? WORKSPACE_PREVIEW_PREFIX + resolved.path : relativePath,
         label: resourcePathName(resolved.path),
         ...(repoLabel === undefined ? {} : { repoLabel }),
-        ...(fileRef.line === undefined ? {} : { line: fileRef.line }),
-        ...(fileRef.endLine === undefined ? {} : { endLine: fileRef.endLine }),
+        // A link names the lines it points at, so a single `:line` highlights
+        // as a one-line range. Search and symbol jumps only scroll; they send
+        // no `endLine`.
+        ...(fileRef.line === undefined ? {} : { line: fileRef.line, endLine: fileRef.endLine ?? fileRef.line }),
     };
 }

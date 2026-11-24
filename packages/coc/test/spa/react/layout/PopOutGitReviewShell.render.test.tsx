@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     useBreakpoint: vi.fn(),
     postMessage: vi.fn(),
     commentCounts: new Map<string, number>(),
+    diffEngine: 'monaco',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', async importOriginal => ({
@@ -240,6 +241,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => [mocks.diffEngine, vi.fn()],
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
     useClassification: () => ({
         state: { status: 'idle', activeFilters: new Set() },
@@ -305,6 +310,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         resetCloneRegistryForTests();
         vi.clearAllMocks();
         localStorage.clear();
+        mocks.diffEngine = 'monaco';
         mocks.isCommitChatLensEnabled.mockReturnValue(false);
         mocks.useBreakpoint.mockReturnValue({
             isMobile: false,
@@ -377,6 +383,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
     );
 
     it('keeps the commit subject, full body and copyable metadata above selected-file diffs', async () => {
+        mocks.diffEngine = 'legacy';
         window.history.pushState({}, '', buildGitReviewPopOutUrl('ws1', 'abc123'));
         mocks.getCommit.mockResolvedValue({
             hash: 'abc123456789', shortHash: 'abc1234', subject: 'Explain the real commit',
@@ -389,6 +396,9 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         for (const id of ['commit-info-summary', 'commit-summary-copy-hash', 'commit-popout-chat-toggle']) {
             expect(toolbar.contains(screen.getByTestId(id))).toBe(true);
         }
+        const classify = screen.getByTestId('commit-popout-classify-split');
+        expect(screen.getByRole('button', { name: 'Mark viewed' }).compareDocumentPosition(classify) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(classify.compareDocumentPosition(screen.getByTestId('commit-popout-chat-toggle')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         fireEvent.click(screen.getByTestId('commit-info-summary'));
         expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Explain the real commit');
         expect(screen.getByTestId('popout-git-review-identifier')).toHaveTextContent('Commit abc123');

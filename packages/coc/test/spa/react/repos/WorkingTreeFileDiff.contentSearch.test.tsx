@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 import { enableDiffEngineToggleForEachTest } from '../../helpers/diffEngineToggle';
 import React, { forwardRef, useImperativeHandle } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => {
     const content = vi.fn(), patch = vi.fn(), changes = vi.fn();
@@ -25,6 +25,9 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => h.client, useCloneBaseUrl: () => undefined,
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<object>(), resolveCloneRoute: () => ({ kind: 'local' }),
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDiffContentSearchEnabled', () => ({
     useDiffContentSearchEnabled: () => true,
@@ -195,5 +198,42 @@ describe('working-tree content search Classic coordinates', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Open in Editor view' }));
         await screen.findByTestId('editor');
         expect(h.monaco.mock.calls.at(-1)![0].revealTarget).toEqual({ side: 'modified', line: 1, column: 3 });
+    });
+});
+
+describe('header copy-path button', () => {
+    const deep = '/Users/me/src/Projects/nightshift/crates/core/Cargo.lock';
+    const writeText = vi.fn();
+    beforeEach(() => {
+        writeText.mockReset().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText }, configurable: true } }));
+        h.changes.mockResolvedValue({ changes: [
+            { filePath: props.filePath, stage: 'unstaged', status: 'M', repositoryRoot: '/repo', repositoryName: 'repo' },
+            { filePath: deep, stage: 'unstaged', status: 'M', repositoryRoot: '/Users/me/src/Projects/nightshift', repositoryName: 'nightshift' },
+        ] });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('copies the full untruncated path of the selected file in a remote multi-repo review', async () => {
+        render(<WorkingTreeAllFilesDiff workspaceId="workspace" attachmentDestinationId="remote:b:workspace"
+            filePath={deep} stage="unstaged" />);
+        await screen.findByTestId('classic');
+        const header = screen.getByTestId('working-tree-file-diff-header');
+        // The visible label is abbreviated; the copy uses the full path.
+        expect(header.textContent).toContain('…');
+        const button = within(header).getByRole('button', { name: 'Copy file path' });
+        expect(button.getAttribute('title')).toBe(`Copy path: ${deep}`);
+        await act(async () => fireEvent.click(button));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith(deep);
+        expect(screen.getByRole('status')).toHaveTextContent('Path copied.');
+    });
+
+    it('reports a clipboard failure', async () => {
+        writeText.mockRejectedValue(new Error('denied'));
+        render(<WorkingTreeFileDiff {...props} />);
+        await screen.findByTestId('classic');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy file path' })));
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('/repo/a.ts');
+        expect(screen.getByRole('status')).toHaveTextContent('Failed to copy file path.');
     });
 });

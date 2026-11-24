@@ -992,8 +992,6 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'fresh-written',
     'terse-replies',
     'delegate',
-    'for-each',
-    'map-reduce',
     'grill-me',
     'cron',
     'canvas',
@@ -1003,6 +1001,9 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'trace-callstack',
     'propose-diff',
     'todo',
+    'why',
+    'what',
+    'how',
 ];
 
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {

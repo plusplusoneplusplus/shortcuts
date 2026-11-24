@@ -32,6 +32,8 @@
 .git-review-popover,.git-review-menu{position:absolute;top:calc(100% + 4px);z-index:40;padding:6px;border:1px solid var(--review-border);border-radius:6px;background:#fff;box-shadow:0 8px 24px #0003;white-space:normal}
 .dark .git-review-popover,.dark .git-review-menu{background:#252526}
 .git-review-popover{left:0;min-width:220px}
+.git-review-menu-layer .git-review-popover{pointer-events:auto;min-width:min(220px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto}
+.git-review-popover [role=listbox]{position:static;min-width:0!important;max-width:100%!important;margin:4px 0 0!important}
 .git-review-menu{right:4px;min-width:200px;display:flex;flex-direction:column}
 .git-review-menu-layer{position:fixed;top:0;left:0;height:0;overflow:visible;z-index:10003;pointer-events:none}
 .git-review-menu-layer .git-review-menu{right:auto;pointer-events:auto;min-width:min(200px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto}

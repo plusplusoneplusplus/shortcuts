@@ -133,4 +133,4 @@ Create the `{taskfolder}/test-gap-analysis/` directory. If the directory already
 - **Check re-exports.** Index files (`index.ts`) that re-export from submodules don't need their own tests, but the submodules do.
 - **Ignore type-only files.** Files that export only TypeScript types/interfaces don't need runtime tests.
 - **Watch for test helpers masking gaps.** A test file that imports a helper and only tests the helper's behavior may not actually cover the source module.
-- **Use sub-agents for large scopes.** When analyzing an entire package, use the `map-reduce` skill (parallel) or `for-each` skill (sequential) to launch sub-agents per subdirectory and keep analysis tractable.
+- **Use sub-agents for large scopes.** When analyzing an entire package, assign a sub-agent to each subdirectory. Run them in parallel for independent areas or sequentially when one analysis depends on another.

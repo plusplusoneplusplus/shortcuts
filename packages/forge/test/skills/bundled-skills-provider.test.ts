@@ -13,6 +13,50 @@ import {
 } from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
+const explanationSkills = [
+    {
+        name: 'why',
+        description: 'Explain the rationale behind a design, decision, or change.',
+        content: `---
+name: why
+description: Explain the rationale behind a design, decision, or change.
+metadata:
+  version: "0.0.1"
+---
+Explain the problem, motivation, constraints, alternatives,
+and trade-offs. Ground the rationale in available evidence.
+Do not invent original design intent.
+`,
+    },
+    {
+        name: 'what',
+        description: 'Explain what a system, component, or change does.',
+        content: `---
+name: what
+description: Explain what a system, component, or change does.
+metadata:
+  version: "0.0.1"
+---
+Explain its responsibilities, observable behavior, contracts,
+guarantees, and boundaries. Avoid implementation details.
+`,
+    },
+    {
+        name: 'how',
+        description: 'Explain how something works or can be implemented.',
+        content: `---
+name: how
+description: Explain how something works or can be implemented.
+metadata:
+  version: "0.0.1"
+---
+Explain the mechanism step by step, covering control flow,
+data flow, state transitions, and key implementation details.
+Reference relevant code when available.
+`,
+    },
+];
+
 describe('getBundledSkills', () => {
     it('returns an array (even if bundled path does not exist in test env)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
@@ -23,7 +67,7 @@ describe('getBundledSkills', () => {
 
     it('does not bundle removed skills', () => {
         // Removed skills must stay absent from discovery and packaged resources.
-        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item', 'coc-chat'];
+        const removedSkills = ['create-work-item', 'create-bug', 'update-work-item', 'coc-chat', 'for-each', 'map-reduce'];
         const registryNames = getBundledSkillsRegistry().map(s => s.name);
         for (const removedSkill of removedSkills) {
             expect(registryNames).not.toContain(removedSkill);
@@ -45,10 +89,13 @@ describe('getBundledSkills', () => {
         }
     });
 
-    it('does not expose the removed conversation skill in project skills', () => {
+    it('does not expose removed skills in project skills', () => {
         const projectSkillsPath = path.resolve(__dirname, '../../../../.github/skills');
         // Directory entries also catch a dangling symlink to deleted resources.
-        expect(fs.readdirSync(projectSkillsPath)).not.toContain('coc-chat');
+        const entries = fs.readdirSync(projectSkillsPath);
+        for (const name of ['coc-chat', 'for-each', 'map-reduce']) {
+            expect(entries).not.toContain(name);
+        }
     });
 
     it('marks skills as alreadyExists when they are installed', () => {
@@ -77,7 +124,7 @@ describe('getBundledSkills', () => {
 });
 
 describe('BundledSkill version field', () => {
-    it('every registry entry has a version in its SKILL.md', () => {
+    it('registry entries have parseable versions', () => {
         // Verify bundled skill versions are accessible through parseBundledSkillVersion
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-check-'));
         try {
@@ -163,7 +210,7 @@ describe('SKILL.md metadata', () => {
         });
     });
 
-    it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {
+    it('every bundled SKILL.md has valid YAML frontmatter and version metadata', () => {
         const skillDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()
         );
@@ -329,6 +376,21 @@ describe('autoInstallDefaultSkills', () => {
         fs.rmSync(installDir, { recursive: true, force: true });
     });
 
+    it.each(explanationSkills)('installs $name with exact content and preserves an existing copy', async ({ name, description, content }) => {
+        expect(getBundledSkills(installDir)).toContainEqual(expect.objectContaining({ name, description }));
+        expect(fs.readFileSync(path.join(getBundledSkillsPath(), name, 'SKILL.md'), 'utf-8').replace(/\r\n/g, '\n')).toBe(content);
+
+        const result = await autoInstallDefaultSkills(installDir, [name]);
+        expect(result).toEqual({ installed: [name], skipped: [], errors: [] });
+        const installedFile = path.join(installDir, name, 'SKILL.md');
+        expect(fs.readFileSync(installedFile, 'utf-8').replace(/\r\n/g, '\n')).toBe(content);
+
+        fs.writeFileSync(installedFile, 'User-customized skill');
+        const secondResult = await autoInstallDefaultSkills(installDir, [name]);
+        expect(secondResult).toEqual({ installed: [], skipped: [name], errors: [] });
+        expect(fs.readFileSync(installedFile, 'utf-8')).toBe('User-customized skill');
+    });
+
     it('returns empty result for empty skill names list', async () => {
         const result = await autoInstallDefaultSkills(installDir, []);
         expect(result.installed).toHaveLength(0);
@@ -341,6 +403,13 @@ describe('autoInstallDefaultSkills', () => {
         expect(result.errors).toHaveLength(0);
         expect(result.skipped).toContain('non-existent-skill-xyz');
         expect(result.installed).toHaveLength(0);
+    });
+
+    it('skips removed skills requested by stale configuration', async () => {
+        const names = ['for-each', 'map-reduce'];
+        const result = await autoInstallDefaultSkills(installDir, names);
+        expect(result).toEqual({ installed: [], skipped: names, errors: [] });
+        expect(fs.readdirSync(installDir)).toEqual([]);
     });
 
     it('installs a known bundled skill into a fresh directory', async () => {

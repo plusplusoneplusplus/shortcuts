@@ -42,6 +42,7 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
             resourceId: 'src/app.ts',
             label: 'app.ts',
             line: 42,
+            endLine: 42,
         });
     });
 
@@ -124,6 +125,27 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
     it('preserves ranges in the right-panel descriptor', () => {
         expect(input({ fullPath: '/outputs/log.txt', wsId: 'ws-1', line: 3, endLine: 7 }))
             .toMatchObject({ line: 3, endLine: 7 });
+    });
+
+    it('turns a single-line link into a one-line highlight range', () => {
+        expect(input({ fullPath: '/repos/main/src/app.ts', wsId: 'ws-1', line: 9 }))
+            .toMatchObject({ line: 9, endLine: 9 });
+        expect(input({ fullPath: '/outputs/log.txt', wsId: 'ws-1', line: 9 }))
+            .toMatchObject({ resourceId: '__workspace_preview__:/outputs/log.txt', line: 9, endLine: 9 });
+        expect(input({ fullPath: '/repos/main/src/app.ts', wsId: 'ws-1' })).not.toHaveProperty('endLine');
+    });
+
+    it('keeps the remote owner route on a single-line link', () => {
+        const tab = sourceLinkTabInput({
+            fileRef: { fullPath: '/repos/member/src/a.ts', wsId: 'ws-2', line: 5 } as never,
+            workspaces: [{ id: 'ws-2', name: 'member', rootPath: '/repos/member', remote: { serverId: 'server-b', cloneKey: 'remote:server-b:ws-2' } }],
+            sourceSelectionId: 'remote:server-b:ws-2',
+            scopeWorkspaceId: 'ws-1',
+            chatId: 'task-A',
+        });
+        expect(tab).toMatchObject({
+            ownerWorkspaceId: 'ws-2', ownerRoutingRef: 'remote:server-b:ws-2', resourceId: 'src/a.ts', line: 5, endLine: 5,
+        });
     });
 
     it('does not resolve a remote path against a same-id local root', () => {

@@ -101,10 +101,10 @@ describe('Markdown preview source links', () => {
     });
 
     it.each([
-        ['repo/path.ts:42', '/repo', 'repo/path.ts', 42, undefined],
+        ['repo/path.ts:42', '/repo', 'repo/path.ts', 42, 42],
         ['path.ts:42-58', '/repo', 'path.ts', 42, 58],
         ['file:///C:/repo/src/a%20file.ts#L42-L58', 'C:/repo', 'src/a file.ts', 42, 58],
-        ['C:/repo/src/main.ts:42', 'C:/repo', 'src/main.ts', 42, undefined],
+        ['C:/repo/src/main.ts:42', 'C:/repo', 'src/main.ts', 42, 42],
     ])('opens supported reference %s through the shared parser', async (href, rootPath, resourceId, line, endLine) => {
         mocks.list.mockResolvedValue({ workspaces: [{ id: 'ws', rootPath }] });
         render(hosted(<MarkdownFileLinkScope workspaceId="ws" routingRef={null}>
