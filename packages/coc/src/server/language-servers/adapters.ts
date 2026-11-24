@@ -38,6 +38,11 @@ export interface PreparedDefinition {
     /** Safe command the user may copy and run themselves. */
     recoveryCommand?: string;
     /**
+     * Environment for the server process when the workspace adds search
+     * paths. Undefined means inherit. Never sent to a browser.
+     */
+    env?: NodeJS.ProcessEnv;
+    /**
      * Resolves a document the session opens itself so the server has a project
      * loaded. Only languages whose servers need one supply it.
      */
@@ -71,12 +76,23 @@ export function resolveDefinitionRoot(
 
 /**
  * Resolves the runtime for one definition and project root. Returns the
- * definition unchanged when no adapter claims it.
+ * definition unchanged when no adapter claims it. `deps.env` is the effective
+ * environment: adapters discover executables with it and the session spawns
+ * with it.
  */
 export function prepareDefinitionForRoot(
     definition: LanguageServerDefinition,
     rootPath: string,
     deps: PrepareDefinitionDeps = {},
+): PreparedDefinition {
+    const prepared = prepareRuntime(definition, rootPath, deps);
+    return deps.env ? { ...prepared, env: deps.env } : prepared;
+}
+
+function prepareRuntime(
+    definition: LanguageServerDefinition,
+    rootPath: string,
+    deps: PrepareDefinitionDeps,
 ): PreparedDefinition {
     if (claimsTypeScript(definition)) {
         const runtime = resolveTypeScriptRuntime(definition, rootPath, deps);

@@ -6,8 +6,13 @@
  * definitions. Nothing here is TypeScript-specific: presets arrive from the
  * server like any other definition.
  *
+ * The executable search paths section edits folders the owning server puts
+ * in front of its inherited PATH. Saving them restarts the workspace's
+ * running servers; editors reattach on their own.
+ *
  * A rejected write returns field-level errors anchored on
- * `definitions.<index>.<field>` plus the untouched on-disk config. The editor
+ * `definitions.<index>.<field>` or `searchPaths.<index>` plus the untouched
+ * on-disk config. The editor
  * stays open with those messages attached to their inputs, and the last valid
  * configuration is restored from the echoed config.
  */
@@ -114,6 +119,26 @@ function fieldErrorsFor(
 const INPUT_CLASS =
     'w-full text-xs font-mono border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-2 py-1 bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] placeholder-[#999]';
 
+/** Errors for submitted search paths, mapped back to the draft row each came from. */
+function searchPathErrorsFor(
+    rejection: { errors: { field: string; message: string }[] },
+    rowIndexes: number[],
+): { rows: Record<number, string>; other: string[] } {
+    const rows: Record<number, string> = {};
+    const other: string[] = [];
+    for (const err of rejection.errors) {
+        const match = /^searchPaths\.(\d+)$/.exec(err.field);
+        const row = match ? rowIndexes[Number(match[1])] : undefined;
+        if (row !== undefined) rows[row] = err.message;
+        else other.push(err.message);
+    }
+    return { rows, other };
+}
+
+function sameList(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 function runtimeSummary(runtimes: LanguageServerRuntimeState[]): string {
     if (runtimes.length === 0) return 'Not started';
     const counts = { ready: 0, starting: 0, setup: 0, failed: 0, notStarted: 0 };
@@ -149,12 +174,18 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
     const [retrying, setRetrying] = useState<Set<string>>(new Set());
+    const [searchPaths, setSearchPaths] = useState<string[]>([]);
+    const [pathDraft, setPathDraft] = useState<string[]>([]);
+    const [pathErrors, setPathErrors] = useState<Record<number, string>>({});
+    const [pathMessage, setPathMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+    const [savingPaths, setSavingPaths] = useState(false);
 
     const applyResponse = useCallback((res: Awaited<ReturnType<typeof languageServersApi.get>>) => {
         setStored(res.definitions);
         setEffective(res.effective);
         setWarnings(res.warnings.map(w => w.message));
         setRuntimes(res.runtimes ?? []);
+        setSearchPaths(res.searchPaths ?? []);
     }, []);
 
     useEffect(() => {
@@ -164,6 +195,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
             .then(res => {
                 if (cancelled) return;
                 applyResponse(res);
+                setPathDraft(res.searchPaths ?? []);
                 setError(null);
             })
             .catch((err: unknown) => {
@@ -265,6 +297,43 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
         }
     }, [applyResponse, workspaceId, api]);
 
+    const savePaths = useCallback(async () => {
+        const rowIndexes: number[] = [];
+        const submitted: string[] = [];
+        pathDraft.forEach((value, index) => {
+            // Blank rows are dropped rather than reported.
+            if (value.trim()) {
+                rowIndexes.push(index);
+                submitted.push(value.trim());
+            }
+        });
+        setSavingPaths(true);
+        setPathErrors({});
+        setPathMessage(null);
+        try {
+            const res = await api.update(workspaceId, { searchPaths: submitted });
+            applyResponse(res);
+            setPathDraft(res.searchPaths ?? []);
+            setPathMessage({
+                tone: 'ok',
+                text: 'Saved. Running language servers in this workspace restart with the new paths. Use Retry on any server that still needs setup.',
+            });
+        } catch (err: unknown) {
+            const rejection = parseLanguageServerRejection(err);
+            if (rejection) {
+                const { rows, other } = searchPathErrorsFor(rejection, rowIndexes);
+                setPathErrors(rows);
+                setPathMessage({ tone: 'error', text: other[0] ?? 'Fix the highlighted paths and save again. The previous paths are still in use.' });
+            } else {
+                setPathMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to save search paths' });
+            }
+        } finally {
+            setSavingPaths(false);
+        }
+    }, [pathDraft, api, workspaceId, applyResponse]);
+
+    const pathsChanged = !sameList(pathDraft.map(value => value.trim()).filter(Boolean), searchPaths);
+
     if (loading) {
         return <div className="text-xs text-[#848484]" data-testid="language-servers-loading">Loading…</div>;
     }
@@ -342,6 +411,11 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                                             {runtime.lastAttemptAt && <div className="text-[10px] text-[#848484]">Last attempt: {new Date(runtime.lastAttemptAt).toLocaleString()}</div>}
                                             {runtime.runtime && <div className="text-[10px] text-[#848484]">{runtime.runtime}</div>}
                                             {runtime.detail && <div className="my-1">{runtime.detail}</div>}
+                                            {runtime.status === 'unavailable' && (
+                                                <div className="text-[10px] text-[#848484] mb-1" data-testid="language-server-search-path-hint">
+                                                    Installed in a folder this server cannot see? Add that folder under Executable search paths, save, then Retry.
+                                                </div>
+                                            )}
                                             {runtime.recoveryCommand && (
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <code className="rounded bg-black/5 dark:bg-white/10 px-1.5 py-0.5">{runtime.recoveryCommand}</code>
@@ -424,6 +498,84 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
             {error && (
                 <div className="text-xs text-[#cc3333] mt-2" data-testid="language-servers-error">{error}</div>
             )}
+
+            <section className="mt-4" aria-labelledby="language-server-search-paths-heading" data-testid="language-server-search-paths">
+                <div id="language-server-search-paths-heading" className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-0.5">
+                    Executable search paths
+                </div>
+                <div id="language-server-search-paths-help" className="text-[10px] text-[#848484] mb-1.5">
+                    Folders searched before this server's own PATH, both to find language servers and for the tools they run (for example cargo). One absolute folder per row, or start with ~ (for example ~/.cargo/bin). Applies to this workspace on the machine that owns it.
+                </div>
+                <div className="flex flex-col gap-1 mb-1.5">
+                    {pathDraft.map((value, index) => (
+                        <div key={index}>
+                            <div className="flex items-center gap-1">
+                                <input
+                                    type="text"
+                                    className={INPUT_CLASS}
+                                    value={value}
+                                    placeholder="~/.cargo/bin"
+                                    disabled={savingPaths}
+                                    spellCheck={false}
+                                    autoComplete="off"
+                                    onChange={e => {
+                                        const next = [...pathDraft];
+                                        next[index] = e.target.value;
+                                        setPathDraft(next);
+                                    }}
+                                    aria-label={`Search path ${index + 1}`}
+                                    aria-describedby="language-server-search-paths-help"
+                                    aria-invalid={pathErrors[index] ? true : undefined}
+                                    aria-errormessage={pathErrors[index] ? `language-server-search-path-error-${index}` : undefined}
+                                    data-testid={`search-path-input-${index}`}
+                                />
+                                <button
+                                    type="button"
+                                    className="text-[#cc3333] hover:text-red-700 px-1 text-xs"
+                                    disabled={savingPaths}
+                                    onClick={() => {
+                                        setPathDraft(pathDraft.filter((_, i) => i !== index));
+                                        setPathErrors({});
+                                    }}
+                                    aria-label={`Remove search path ${index + 1}`}
+                                    data-testid={`search-path-remove-${index}`}
+                                >✕</button>
+                            </div>
+                            {pathErrors[index] && (
+                                <div
+                                    id={`language-server-search-path-error-${index}`}
+                                    className="text-[10px] text-[#cc3333] mt-0.5"
+                                    data-testid={`search-path-error-${index}`}
+                                >{pathErrors[index]}</div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[#0078d4]"
+                        disabled={savingPaths}
+                        onClick={() => setPathDraft([...pathDraft, ''])}
+                        data-testid="search-path-add"
+                    >+ Add path</button>
+                    <button
+                        type="button"
+                        className="text-xs px-2 py-1 rounded border border-[#0078d4] text-[#0078d4] hover:bg-[#0078d4] hover:text-white disabled:opacity-50"
+                        disabled={savingPaths || !pathsChanged}
+                        onClick={() => { void savePaths(); }}
+                        data-testid="search-path-save"
+                    >{savingPaths ? 'Saving…' : 'Save paths'}</button>
+                </div>
+                <div role="status" aria-live="polite" className="text-xs mt-1.5">
+                    {pathMessage && (
+                        <span
+                            className={pathMessage.tone === 'ok' ? 'text-[#848484]' : 'text-[#cc3333]'}
+                            data-testid="search-path-message"
+                        >{pathMessage.text}</span>
+                    )}
+                </div>
+            </section>
         </div>
     );
 }

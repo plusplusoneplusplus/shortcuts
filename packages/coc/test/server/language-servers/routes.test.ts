@@ -246,6 +246,25 @@ describe('registerLanguageServerRoutes', () => {
         expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].command).toBe('node');
     });
 
+    it('PATCH saves search paths without touching definitions and rejects invalid ones by index', async () => {
+        await call('PUT', WORKSPACE, { definitions: [customDefinition()] });
+
+        const saved = await call('PATCH', WORKSPACE, { searchPaths: ['~/.cargo/bin'] });
+        expect(saved.status).toBe(200);
+        expect(saved.json.searchPaths).toEqual(['~/.cargo/bin']);
+        expect(saved.json.definitions).toHaveLength(1);
+
+        const rejected = await call('PATCH', WORKSPACE, { searchPaths: ['~/ok', 'relative/bin'] });
+        expect(rejected.status).toBe(400);
+        expect(rejected.json.errors).toEqual([{ field: 'searchPaths.1', message: expect.any(String) }]);
+        expect(rejected.json.config.searchPaths).toEqual(['~/.cargo/bin']);
+
+        // A definitions-only write keeps stored search paths; a replace clears them.
+        expect((await call('PATCH', WORKSPACE, { definitions: [] })).json.searchPaths).toEqual(['~/.cargo/bin']);
+        expect((await call('PUT', WORKSPACE, {})).json.searchPaths).toEqual([]);
+        expect((await call('PATCH', WORKSPACE, { searchPaths: 'nope' })).status).toBe(400);
+    });
+
     it('rejects a non-array definitions list', async () => {
         const badDefinitions = await call('PUT', WORKSPACE, { definitions: { id: 'fixture' } });
         expect(badDefinitions.status).toBe(400);

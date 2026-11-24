@@ -88,10 +88,15 @@ export interface LanguageServerSessionOptions {
     unavailableDetail?: string;
     /** Safe command the UI may offer to copy. It is never executed by CoC. */
     recoveryCommand?: string;
+    /**
+     * Process environment, set when the workspace adds executable search
+     * paths. Undefined inherits the server's environment. Never reported.
+     */
+    env?: NodeJS.ProcessEnv;
     /** Re-resolves executable and toolchain before every explicit start or retry. */
     prepareForStart?: () => Pick<
         LanguageServerSessionOptions,
-        'definition' | 'runtimeLabel' | 'commandLabel' | 'unavailableDetail' | 'recoveryCommand'
+        'definition' | 'runtimeLabel' | 'commandLabel' | 'unavailableDetail' | 'recoveryCommand' | 'env'
     >;
     /**
      * Resolves a document to open on the session's own behalf before a
@@ -144,6 +149,7 @@ export class LanguageServerSession {
     private commandLabel?: string;
     private unavailableDetail?: string;
     private recoveryCommand?: string;
+    private env?: NodeJS.ProcessEnv;
     private readonly readyHandlers = new Set<(connection: LanguageServerConnection) => void>();
     private readonly stateHandlers = new Set<(state: LanguageServerSessionState) => void>();
     private readonly notificationHandlers = new Map<string, Set<ServerNotificationHandler>>();
@@ -176,6 +182,7 @@ export class LanguageServerSession {
         this.commandLabel = options.commandLabel;
         this.unavailableDetail = options.unavailableDetail;
         this.recoveryCommand = options.recoveryCommand;
+        this.env = options.env;
         this.clientRequests = new LanguageServerClientRequests({
             settings: this.definition.settings,
             workspaceFolders: () => [this.workspaceFolder()],
@@ -529,6 +536,7 @@ export class LanguageServerSession {
             this.commandLabel = prepared.commandLabel;
             this.unavailableDetail = prepared.unavailableDetail;
             this.recoveryCommand = prepared.recoveryCommand;
+            this.env = prepared.env;
             this.state = {
                 ...this.state,
                 runtime: prepared.runtimeLabel,
@@ -548,6 +556,9 @@ export class LanguageServerSession {
         try {
             child = spawn(this.definition.command, this.definition.args, {
                 cwd: this.options.rootPath,
+                // Workspace search paths reach the server and the tools it
+                // runs itself (cargo, rustup proxies). Undefined inherits.
+                env: this.env,
                 stdio: ['pipe', 'pipe', 'pipe'],
                 // Never a shell: the command and arguments stay a structured
                 // vector, so nothing in a repository can be executed as script.

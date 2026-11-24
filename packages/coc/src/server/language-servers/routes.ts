@@ -28,6 +28,8 @@ interface LanguageServerConfigResponse {
     effective: LanguageServerDefinition[];
     /** Definitions available for lazy activation. */
     startable: LanguageServerDefinition[];
+    /** Workspace executable folders placed before the inherited PATH. */
+    searchPaths: string[];
     status: 'ok' | 'missing' | 'invalid';
     warnings: { kind: string; message: string }[];
     runtimes: Array<{
@@ -53,6 +55,7 @@ async function buildResponse(
         definitions: value.definitions,
         effective: mergeWithBuiltIns(value.definitions),
         startable: resolveLanguageServerDefinitionsFromConfig(value),
+        searchPaths: value.searchPaths ?? [],
         status,
         // The on-disk path is a server detail and stays out of the browser payload.
         warnings: warnings.map(({ kind, message }) => ({ kind, message })),
@@ -179,20 +182,24 @@ async function save(
     if (patch.definitions !== undefined && !Array.isArray(patch.definitions)) {
         return fieldError('definitions', 'definitions must be an array');
     }
+    if (patch.searchPaths !== undefined && !Array.isArray(patch.searchPaths)) {
+        return fieldError('searchPaths', 'searchPaths must be an array');
+    }
 
     const stored = readLanguageServerConfigWithStatus(dataDir, workspaceId).value;
     const base: LanguageServerConfig = mode === 'patch' ? stored : { definitions: [] };
     const result = writeLanguageServerConfig(dataDir, workspaceId, {
         definitions: (patch.definitions as LanguageServerDefinition[] | undefined) ?? base.definitions,
+        searchPaths: (patch.searchPaths as string[] | undefined) ?? base.searchPaths,
     });
     if (!result.ok) {
         return sendJSON(res, 400, {
             error: 'Invalid language-server configuration',
-            // Re-anchor field paths on the request body so the UI can address
-            // the offending input directly.
-            errors: result.errors.map((e) => ({ ...e, field: `definitions.${e.field}` })),
+            // Field paths are anchored on the request body so the UI can
+            // address the offending input directly.
+            errors: result.errors,
             // Echo what remains on disk so the UI can restore the last valid state.
-            config: { definitions: stored.definitions },
+            config: { definitions: stored.definitions, searchPaths: stored.searchPaths ?? [] },
         });
     }
     sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager));

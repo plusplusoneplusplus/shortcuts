@@ -28,7 +28,9 @@ export function resolveClangdRuntime(
     definition: LanguageServerDefinition,
     deps: ClangdRuntimeDeps = {},
 ): ClangdRuntime {
-    const pathCommand = (deps.resolveOnPath ?? findExecutableOnPath)(definition.command);
+    const pathCommand = (deps.resolveOnPath ?? ((command) => findExecutableOnPath(command, { env: deps.env })))(
+        definition.command,
+    );
     if (pathCommand) {
         return {
             command: pathCommand,
