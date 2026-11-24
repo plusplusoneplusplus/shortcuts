@@ -243,8 +243,9 @@ context `header` slots (identity, classify, secondary `actions`, overflow-only
 reviewed count with a decorative progress line, and Mark viewed. Marking the focused file advances through the current displayed
 order via existing selection handlers; unmarking and the last file stay in place. `git-file-review.css` container queries compact labels and move
 secondary actions into the accessible More menu, portaled to the body outside
-clipping ancestors. Its overlay retains the source pane's query width and tracks
-the trigger within viewport bounds; core navigation and Mark viewed stay inline.
+clipping ancestors. Overflow and classification settings overlays retain the source pane's query
+width and track their triggers within viewport bounds; nested model choices stay
+inside the scrollable settings panel. Core navigation and Mark viewed stay inline.
 `useCommitReviewFiles` loads metadata rather than a combined
 patch. Owner/workspace/comparison keys isolate transient state. Range sources
 include resolved base/head SHAs in patch URLs and editor keys, preventing

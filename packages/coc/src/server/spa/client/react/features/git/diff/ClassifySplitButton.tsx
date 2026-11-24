@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ClassifyDiffAiControls } from './ClassifyDiffAiControls';
 import { CommitDetailIcon } from '../commits/CommitDetailIcon';
 import type { UseClassificationReturn } from './useClassification';
@@ -24,7 +25,7 @@ export function ClassifySplitButton({ classification, aiSelection, testIdPrefix 
     testIdPrefix: string;
 }) {
     const [open, setOpen] = useState(false);
-    const [shift, setShift] = useState(0);
+    const [position, setPosition] = useState({ width: 0, left: 0, top: 0 });
     const id = useId();
     const rootRef = useRef<HTMLDivElement>(null);
     const caretRef = useRef<HTMLButtonElement>(null);
@@ -38,18 +39,37 @@ export function ClassifySplitButton({ classification, aiSelection, testIdPrefix 
         const close = (event: MouseEvent) => {
             const target = event.target as Element | null;
             // Provider/effort menus portal outside the popover.
-            if (rootRef.current?.contains(target) || target?.closest?.('[role=listbox]')) return;
+            if (rootRef.current?.contains(target) || popoverRef.current?.contains(target) || target?.closest?.('[role=listbox], [aria-label="Effort tier settings"]')) return;
             setOpen(false);
         };
         document.addEventListener('mousedown', close);
         return () => document.removeEventListener('mousedown', close);
     }, [open]);
-    // Keep the popover inside the clipped review container in narrow panes.
+    // Escape clipping ancestors and track the right-hand trigger as the pane resizes.
     useLayoutEffect(() => {
-        if (!open) { setShift(0); return; }
-        const popover = popoverRef.current?.getBoundingClientRect();
-        const bounds = rootRef.current?.closest('.git-file-review')?.getBoundingClientRect();
-        if (popover && bounds && popover.right > bounds.right - 4) setShift(Math.min(popover.left - bounds.left - 4, popover.right - bounds.right + 4));
+        if (!open) return;
+        const review = rootRef.current?.closest('.git-file-review');
+        const update = () => {
+            const anchor = rootRef.current?.getBoundingClientRect();
+            const popover = popoverRef.current?.getBoundingClientRect();
+            if (!anchor || !popover) return;
+            setPosition({
+                width: review?.getBoundingClientRect().width ?? 0,
+                left: Math.max(8, Math.min(anchor.right - popover.width, window.innerWidth - popover.width - 8)),
+                top: Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - popover.height - 8)),
+            });
+        };
+        update();
+        const observer = new ResizeObserver(update);
+        if (review) observer.observe(review);
+        if (popoverRef.current) observer.observe(popoverRef.current);
+        window.addEventListener('resize', update);
+        window.addEventListener('scroll', update, true);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', update);
+            window.removeEventListener('scroll', update, true);
+        };
     }, [open]);
 
     return <div ref={rootRef} className="git-review-split" data-testid={`${testIdPrefix}-classify-split`}>
@@ -65,10 +85,12 @@ export function ClassifySplitButton({ classification, aiSelection, testIdPrefix 
             data-testid={`${testIdPrefix}-classify-settings-toggle`}>
             <CommitDetailIcon name={open ? 'up' : 'down'} />
         </button>
-        {open && <div ref={popoverRef} id={id} role="dialog" aria-label="Classification settings" className="git-review-popover"
-            style={shift ? { transform: `translateX(-${shift}px)` } : undefined} data-testid={`${testIdPrefix}-classify-settings`}
-            onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setOpen(false); caretRef.current?.focus(); } }}>
-            <ClassifyDiffAiControls selection={aiSelection} disabled={loading} testIdPrefix={`${testIdPrefix}-classify`} />
-        </div>}
+        {open && createPortal(<div className="git-file-review git-review-menu-layer" style={{ width: position.width }}>
+            <div ref={popoverRef} id={id} role="dialog" aria-label="Classification settings" className="git-review-popover"
+                style={{ left: position.left, top: position.top }} data-testid={`${testIdPrefix}-classify-settings`}
+                onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setOpen(false); caretRef.current?.focus(); } }}>
+                <ClassifyDiffAiControls selection={aiSelection} disabled={loading} testIdPrefix={`${testIdPrefix}-classify`} />
+            </div>
+        </div>, document.body)}
     </div>;
 }

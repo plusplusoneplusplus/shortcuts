@@ -285,6 +285,11 @@ describe('single-row review toolbar', () => {
         }} />);
         expect(toolbar().contains(screen.getByRole('button', { name: title }))).toBe(true);
         expect(toolbar().firstElementChild!.className).toBe('git-review-identity');
+        const classify = screen.getByRole('button', { name: 'Classify', exact: true });
+        const viewed = screen.getByRole('button', { name: 'Mark viewed' });
+        const chat = screen.getByRole('button', { name: 'Toggle AI chat' });
+        expect(viewed.compareDocumentPosition(classify) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(classify.compareDocumentPosition(chat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Toggle AI chat' }).textContent).toBe('3');
         expect(toolbar().contains(screen.getByTestId('below'))).toBe(false);
         const more = screen.getByRole('button', { name: 'More review actions' });
