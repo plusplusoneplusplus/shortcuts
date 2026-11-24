@@ -25,6 +25,7 @@ import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
 import { BrowserSectionNav, DesktopBrowserPreferences } from './DesktopBrowserPreferences';
+import { DesktopExecutablePaths } from './DesktopExecutablePaths';
 import { BrowserApprovedSites } from './BrowserApprovedSites';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 
@@ -865,6 +866,8 @@ export function AdminPanel() {
                                     handleRestart={serverRuntime.handleRestart}
                                 />
                             )}
+                            {/* Desktop installation setting: renders only with the desktop bridge. */}
+                            {activeTab === 'server' && <DesktopExecutablePaths />}
 
                             {/* ── Prompts tab ── */}
                             {activeTab === 'prompts' && (

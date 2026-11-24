@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain, globalShortcut, powerMonitor } from 'electron';
-import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
+import { attachOrStart, buildServerEnv, defaultDataDir, ServerHandle } from './server-controller';
 import {
     createRotatingFileLogger,
     installConsoleTee,
@@ -26,7 +26,8 @@ import {
 } from './desktop-logging';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
-import { augmentPathWithBundledAgents } from './agent-bin-path';
+import { EXECUTABLE_PATHS_GET_CHANNEL, EXECUTABLE_PATHS_SET_CHANNEL, getExecutablePathsState, pathEnvKey, readExecutableSearchPaths, saveExecutablePaths, type DesktopServerPathsStatus } from './executable-search-paths';
+import { isBrowserEmbedder } from './browser-webview-guard';
 import { shutdownServer, shouldOpenExternally, shouldSurfaceLoadFailure } from './lifecycle';
 import { resolveIconPath, TRAY_ICON_FALLBACK_DATA_URL } from './app-icon';
 import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
@@ -86,6 +87,26 @@ let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 /** The embedded (or attached) CoC server for this app instance. */
 let serverHandle: ServerHandle | null = null;
+/** Executable search paths the owned server started with; see `executable-search-paths.ts`. */
+let serverPathsStatus: DesktopServerPathsStatus = { ownership: 'starting', appliedPaths: null };
+
+/**
+ * Installation-wide executable search paths. Only the exact registered SPA
+ * main document may read or change them. A save applies the next time this
+ * app starts its own server; it never changes an attached or remote server.
+ */
+function registerExecutablePathsIpc(): void {
+    const trustedSender = (event: Electron.IpcMainInvokeEvent) =>
+        event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender);
+    ipcMain.handle(EXECUTABLE_PATHS_GET_CHANNEL, (event) => {
+        if (!trustedSender(event)) { throw new Error('Executable search paths require the CoC desktop window.'); }
+        return getExecutablePathsState(defaultDataDir(), serverPathsStatus);
+    });
+    ipcMain.handle(EXECUTABLE_PATHS_SET_CHANNEL, (event, paths: unknown) => {
+        if (!trustedSender(event)) { return { ok: false, reason: 'no-window', message: 'Executable search paths require the CoC desktop window.' }; }
+        return saveExecutablePaths(defaultDataDir(), paths, serverPathsStatus);
+    });
+}
 /** Set once we begin draining on quit, so `before-quit` only intercepts once. */
 let isQuitting = false;
 /**
@@ -304,7 +325,9 @@ async function showServedSpa(url: string): Promise<void> {
  */
 function runAgentPreflight(): void {
     try {
-        const pathEnv = augmentPathWithBundledAgents();
+        // Same PATH composition as the forked server, including saved search paths.
+        const env = buildServerEnv(process.env, readExecutableSearchPaths(defaultDataDir()).paths);
+        const pathEnv = env[pathEnvKey(env)] ?? '';
         const guidance = runFirstRunPreflight(defaultDataDir(), { pathEnv });
         if (!guidance) {
             return;
@@ -943,6 +966,7 @@ async function bootstrap(): Promise<void> {
 
     // Browser and HTML tabs share owner-validated hosting and guest authorization.
     registerBrowserViewIpc();
+    registerExecutablePathsIpc();
     registerExtensionCanvasIpc(() => serverHandle?.url);
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the
@@ -981,13 +1005,19 @@ async function bootstrap(): Promise<void> {
         // AC-02: attach to an already-running CoC server, or fork our own
         // against the shared ~/.coc data dir. Fix 2: when we start our own server,
         // tee its stdout/stderr into the desktop log (packaged/no-TTY only).
+        // Read once per start: a saved change applies on the next app start.
+        const executableSearchPaths = readExecutableSearchPaths(defaultDataDir()).paths;
         serverHandle = await attachOrStart({
             attachPort: devTunnelPort,
             appVersion: app.getVersion(),
+            executableSearchPaths,
             onServerOutput: desktopLogger
                 ? (chunk) => desktopLogger?.write(chunk)
                 : undefined,
         });
+        serverPathsStatus = serverHandle.started
+            ? { ownership: 'owned', appliedPaths: executableSearchPaths }
+            : { ownership: 'external', appliedPaths: null };
         process.stdout.write(
             `[coc-desktop] server ${serverHandle.started ? 'started (forked)' : 'attached (external)'} at ${serverHandle.url}\n`,
         );

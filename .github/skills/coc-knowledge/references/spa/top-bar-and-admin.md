@@ -209,7 +209,8 @@ Ownership: config/features, preferences, AI provider routing/models/effort tiers
 provider credentials, prompts, Teams/WhatsApp (including OAuth polling), memory,
 skills, Dreams, logs, usage stats, server name/restart, backup/reset, storage and
 the database browser follow the target. Link handlers, Desktop Preferences
-(browser engines/profiles/history) and the welcome tour stay local and are badged
+(browser engines/profiles/history), desktop executable search paths (Server tab,
+`DesktopExecutablePaths`) and the welcome tour stay local and are badged
 "This desktop" while the switch is active. Drafts register through
 `useAdminDirtyGuard`. Switching while dirty offers Save / Discard / Cancel; Save
 switches only once every draft is clean on the original machine; otherwise

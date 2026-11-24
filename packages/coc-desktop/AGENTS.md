@@ -29,6 +29,10 @@ Follow [root guidance](../../AGENTS.md). Load [coc-knowledge](../../.github/skil
 - Demos are default off, Electron-only, and memory-only until reviewed Send. Never add typed values, screenshots, page dumps, or renderer debugger access. Keep popup opener identity separate from root SPA tab routing. Recording excludes queued AI commands for that routing, workspace, and chat. Equal raw ids on other servers stay independent. The same chat spans windows. Reject late results after pause, discard, close, or reload. Auto-stop only after tabs, pending descendants, and close drains finish. Expiry, failed adoption, and Stop must disclose gaps.
 - Confirm unsent drafts before shutdown side effects. Do not restart a server or change live settings without explicit authorization.
 
+## Server environment
+
+`executable-search-paths.ts` owns installation-wide executable search paths (`desktop-executable-paths.json`; absent = OS defaults). `buildServerEnv()` keeps bundled agent folders first, the inherited PATH next, and appends configured folders; the Windows PATH key keeps its inherited spelling. Main reads the list once per start, so saves apply on the next app start; attached external servers are never changed. Only the exact registered SPA main frame may read or write it over `coc-desktop:executable-paths-*`. Never execute shell profiles to discover PATH.
+
 ## Updates
 
 One `UpdateCoordinator` serves manual updates and opt-in Auto Update: When Idle. Invalid `desktop-update.json` modes default to Off. Install needs ten minutes of OS idle and an empty unfiltered owned-server queue. External servers use OS idle only and are never stopped. Recheck idle and cancellation after async queue reads. Off cancels pending automatic installs. Quit disposes the scheduler before the coordinator. Manual browser downloads stay independent. The Windows helper keeps real-process coverage.

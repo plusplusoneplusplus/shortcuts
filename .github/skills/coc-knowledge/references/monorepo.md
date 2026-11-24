@@ -289,6 +289,17 @@ home/log/user-data dir, `COC_DESKTOP_TEST_SERVER_START_DELAY_MS` (read only by
 `server-entry` via `startup-delay.ts`; unset → no delay) holds the real server
 back 45s, and the test requires the seeded server identity, the rendered SPA
 and a clean process-tree kill. Failed runs upload the sandbox.
+
+### Desktop server PATH
+
+A forked server's PATH is `buildServerEnv()` in `server-controller.ts`: bundled
+agent folders, then the inherited PATH (key spelling kept, so Windows gets one
+`Path`), then installation-wide executable search paths not already present.
+`executable-search-paths.ts` owns OS defaults (macOS adds Homebrew and
+`/usr/local`; Linux and Windows add common CLI folders), validation and
+`<dataDir>/desktop-executable-paths.json` (absent = defaults). Main reads it once
+per start; the agent preflight uses the same composition. Shell profiles are
+never run. Attached external and remote servers keep their own environment.
 CoC defaults to 4000; CoCContainer defaults to 5000 and shares `~/.coccontainer`
 with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.

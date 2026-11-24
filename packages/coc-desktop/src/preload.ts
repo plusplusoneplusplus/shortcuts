@@ -116,6 +116,8 @@ const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
 const BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-view-open-external';
+const EXECUTABLE_PATHS_GET_CHANNEL = 'coc-desktop:executable-paths-get';
+const EXECUTABLE_PATHS_SET_CHANNEL = 'coc-desktop:executable-paths-set';
 const BROWSER_SOURCE_KINDS = ['url', 'file'] as const;
 
 // Chromium's DOM focus does not release the separate WebView2 process's native focus.
@@ -417,6 +419,14 @@ const api = {
     /** OS platform string (e.g. "darwin", "win32", "linux") so the SPA can apply
      *  platform-specific layout adjustments such as the macOS traffic-light inset. */
     platform: process.platform as string,
+    /**
+     * Installation-wide executable search paths for the server this app starts.
+     * `set(null)` restores the OS defaults. Saved changes apply on the next app start.
+     */
+    executablePaths: {
+        get: (): Promise<unknown> => ipcRenderer.invoke(EXECUTABLE_PATHS_GET_CHANNEL),
+        set: (paths: string[] | null): Promise<unknown> => ipcRenderer.invoke(EXECUTABLE_PATHS_SET_CHANNEL, paths),
+    },
     versions: {
         electron: process.versions.electron,
         chrome: process.versions.chrome,
