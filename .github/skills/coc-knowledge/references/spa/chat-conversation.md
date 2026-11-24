@@ -135,7 +135,12 @@ before Forge inline formatting; Notes rich editing already parses and saves cell
 breaks. Escapes, code and other raw HTML remain literal in chat and previews, including
 interactive table upgrades. The raw toggle shows literal source. Local markdown anchors
 (relative, absolute, Windows, `file:`) get `md-local-file-link--html|--source`, which CSS
-renders as a trailing browser/code icon; external and other-scheme links stay plain. Turns with
+renders as a trailing browser/code icon; external and other-scheme links stay plain.
+Copying rendered chat resolves those relative hrefs against the dashboard origin, so
+`recoverDashboardFileHref` (`shared/file-path-utils.ts`) maps a same-origin, file-shaped URL
+back to its file href in composer paste (`pasteHtmlToMarkdown`), the chat link renderer and
+the markdown-link click handler. Other origins, query strings, SPA hash routes and `/api/`
+stay web links. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
 in-bubble card, with no extra persisted display state. `LargePasteCard` opens the
 exact payload through `openUnifiedPasteTab` when `useUnifiedPanelHostForChat`

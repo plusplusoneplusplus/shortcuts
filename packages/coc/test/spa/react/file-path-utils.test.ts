@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { shortenFilePath, FILE_PATH_RE, linkifyFilePaths, parseFilePathRef } from '../../../src/server/spa/client/react/shared/file-path-utils';
+import { shortenFilePath, FILE_PATH_RE, linkifyFilePaths, parseFilePathRef, recoverDashboardFileHref } from '../../../src/server/spa/client/react/shared/file-path-utils';
 
 describe('shortenFilePath', () => {
     it('returns empty string for empty input', () => {
@@ -319,5 +319,46 @@ describe('linkifyFilePaths — line/range suffixes (AC-01)', () => {
         const result = linkifyFilePaths(html);
         expect(result).not.toContain('file-path-link');
         expect(result).toBe(html);
+    });
+});
+
+describe('recoverDashboardFileHref', () => {
+    const origin = 'http://127.0.0.1:4000';
+
+    it('restores a relative source link the browser resolved against the dashboard', () => {
+        expect(recoverDashboardFileHref(`${origin}/crates/api/src/billing.rs:316`, origin))
+            .toBe('crates/api/src/billing.rs:316');
+        expect(recoverDashboardFileHref(`${origin}/src/a.ts:10-20`, origin)).toBe('src/a.ts:10-20');
+        expect(recoverDashboardFileHref(`${origin}/src/a.ts#L5-L9`, origin)).toBe('src/a.ts#L5-L9');
+        expect(recoverDashboardFileHref(`${origin}/src/my%20file.ts`, origin)).toBe('src/my%20file.ts');
+    });
+
+    it('keeps absolute paths under known OS roots absolute, and ~ paths home-relative', () => {
+        expect(recoverDashboardFileHref(`${origin}/Users/me/repo/a.rs:3`, origin)).toBe('/Users/me/repo/a.rs:3');
+        expect(recoverDashboardFileHref(`${origin}/home/me/repo/a.rs`, origin)).toBe('/home/me/repo/a.rs');
+        expect(recoverDashboardFileHref(`${origin}/~/.coc/notes/plan.md`, origin)).toBe('~/.coc/notes/plan.md');
+    });
+
+    it('leaves ordinary web links alone', () => {
+        for (const href of [
+            'https://example.com/src/a.rs:3',
+            'http://127.0.0.1:5173/src/a.rs:3',
+            'http://localhost:4000/src/a.rs:3',
+            `${origin}/`,
+            `${origin}/#repos/ws-1/chat`,
+            `${origin}/api/files/report.csv`,
+            `${origin}/src/a.rs?raw=1`,
+            `${origin}/docs/guide`,
+            `${origin}/src/a.rs#section`,
+            'src/a.rs:3',
+            'mailto:a@b.c',
+        ]) {
+            expect(recoverDashboardFileHref(href, origin)).toBeNull();
+        }
+    });
+
+    it('returns null without a usable origin', () => {
+        expect(recoverDashboardFileHref(`${origin}/src/a.rs`, '')).toBeNull();
+        expect(recoverDashboardFileHref('file:///src/a.rs', 'null')).toBeNull();
     });
 });
