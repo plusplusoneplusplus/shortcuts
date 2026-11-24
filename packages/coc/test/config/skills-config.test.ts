@@ -55,6 +55,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('delegate');
     });
 
+    it.each(['why', 'what', 'how'])('includes %s in default bundled skills', (name) => {
+        const config = resolveConfig(undefined, undefined);
+        expect(DEFAULT_BUNDLED_SKILLS).toContain(name);
+        expect(config.skills.defaultSkills).toContain(name);
+    });
+
     it('can be disabled via override', () => {
         const config = mergeConfig(DEFAULT_CONFIG, { skills: { autoUpdate: false } });
         expect(config.skills.autoUpdate).toBe(false);

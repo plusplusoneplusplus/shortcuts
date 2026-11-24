@@ -115,4 +115,19 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Track a task as a To-do item and start it in a tracked conversation. Use when the user runs /todo <task> or asks to track and start a task.',
         relativePath: 'todo',
     },
+    {
+        name: 'why',
+        description: 'Explain the rationale behind a design, decision, or change.',
+        relativePath: 'why',
+    },
+    {
+        name: 'what',
+        description: 'Explain what a system, component, or change does.',
+        relativePath: 'what',
+    },
+    {
+        name: 'how',
+        description: 'Explain how something works or can be implemented.',
+        relativePath: 'how',
+    },
 ];

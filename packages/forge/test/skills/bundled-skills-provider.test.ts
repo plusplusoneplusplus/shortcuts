@@ -13,6 +13,44 @@ import {
 } from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
+const explanationSkills = [
+    {
+        name: 'why',
+        description: 'Explain the rationale behind a design, decision, or change.',
+        content: `---
+name: why
+description: Explain the rationale behind a design, decision, or change.
+---
+Explain the problem, motivation, constraints, alternatives,
+and trade-offs. Ground the rationale in available evidence.
+Do not invent original design intent.
+`,
+    },
+    {
+        name: 'what',
+        description: 'Explain what a system, component, or change does.',
+        content: `---
+name: what
+description: Explain what a system, component, or change does.
+---
+Explain its responsibilities, observable behavior, contracts,
+guarantees, and boundaries. Avoid implementation details.
+`,
+    },
+    {
+        name: 'how',
+        description: 'Explain how something works or can be implemented.',
+        content: `---
+name: how
+description: Explain how something works or can be implemented.
+---
+Explain the mechanism step by step, covering control flow,
+data flow, state transitions, and key implementation details.
+Reference relevant code when available.
+`,
+    },
+];
+
 describe('getBundledSkills', () => {
     it('returns an array (even if bundled path does not exist in test env)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
@@ -77,7 +115,7 @@ describe('getBundledSkills', () => {
 });
 
 describe('BundledSkill version field', () => {
-    it('every registry entry has a version in its SKILL.md', () => {
+    it('registry entries have versions except the intentionally unversioned explanation skills', () => {
         // Verify bundled skill versions are accessible through parseBundledSkillVersion
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-check-'));
         try {
@@ -86,7 +124,11 @@ describe('BundledSkill version field', () => {
 
             for (const skill of skills) {
                 const version = parseBundledSkillVersion(skill.name);
-                expect(version, `${skill.name} should have a parseable version`).toBeDefined();
+                if (explanationSkills.some(explanation => explanation.name === skill.name)) {
+                    expect(version).toBeUndefined();
+                } else {
+                    expect(version, `${skill.name} should have a parseable version`).toBeDefined();
+                }
             }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -163,7 +205,7 @@ describe('SKILL.md metadata', () => {
         });
     });
 
-    it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {
+    it('every bundled SKILL.md has valid YAML frontmatter and version metadata where required', () => {
         const skillDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()
         );
@@ -180,8 +222,12 @@ describe('SKILL.md metadata', () => {
             const parsed = yaml.parse(fmMatch![1]);
             expect(parsed.name, `${dir}/SKILL.md name`).toBe(dir);
             expect(typeof parsed.description, `${dir}/SKILL.md description`).toBe('string');
-            expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
-            expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toMatch(/^\d+\.\d+\.\d+$/);
+            if (explanationSkills.some(skill => skill.name === dir)) {
+                expect(parsed.metadata).toBeUndefined();
+            } else {
+                expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
+                expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toMatch(/^\d+\.\d+\.\d+$/);
+            }
         }
     });
 
@@ -327,6 +373,21 @@ describe('autoInstallDefaultSkills', () => {
 
     afterEach(() => {
         fs.rmSync(installDir, { recursive: true, force: true });
+    });
+
+    it.each(explanationSkills)('installs $name with exact content and preserves an existing copy', async ({ name, description, content }) => {
+        expect(getBundledSkills(installDir)).toContainEqual(expect.objectContaining({ name, description }));
+        expect(fs.readFileSync(path.join(getBundledSkillsPath(), name, 'SKILL.md'), 'utf-8').replace(/\r\n/g, '\n')).toBe(content);
+
+        const result = await autoInstallDefaultSkills(installDir, [name]);
+        expect(result).toEqual({ installed: [name], skipped: [], errors: [] });
+        const installedFile = path.join(installDir, name, 'SKILL.md');
+        expect(fs.readFileSync(installedFile, 'utf-8').replace(/\r\n/g, '\n')).toBe(content);
+
+        fs.writeFileSync(installedFile, 'User-customized skill');
+        const secondResult = await autoInstallDefaultSkills(installDir, [name]);
+        expect(secondResult).toEqual({ installed: [], skipped: [name], errors: [] });
+        expect(fs.readFileSync(installedFile, 'utf-8')).toBe('User-customized skill');
     });
 
     it('returns empty result for empty skill names list', async () => {
