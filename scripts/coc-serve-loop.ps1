@@ -261,12 +261,10 @@ function Stop-ProcessTree {
         [object[]]$ProcessTable
     )
 
-    # Win32_Process (CIM/WMI) is Windows-only, so on PowerShell 7 for Linux/macOS it
-    # enumerates nothing and child `devtunnel` processes would leak. There, use .NET's
-    # Process.Kill($true) (available on .NET 5+, which pwsh 7 runs on) to kill the whole
-    # tree. On Windows (incl. Windows PowerShell 5.1) keep the portable CIM walk.
-    $isWindowsHost = ($null -eq $IsWindows) -or $IsWindows
-    if (-not $isWindowsHost) {
+    # PowerShell 7 supports .NET's tree kill on every host. Avoid CIM on modern
+    # Windows too: its process snapshot can stall shutdown on a loaded runner.
+    # Windows PowerShell 5.1 still needs the CIM walk below.
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
         try {
             (Get-Process -Id $ProcessId -ErrorAction Stop).Kill($true)
         } catch {
