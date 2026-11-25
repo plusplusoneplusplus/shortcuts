@@ -18,6 +18,7 @@
  * fine without it.
  */
 
+import { prepareWslImageOptions } from './wsl-image-attachments';
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { serializeToolResultWithImages } from './tool-result-images';
@@ -1357,6 +1358,7 @@ export class CodexSDKService implements ISDKService {
         });
 
         try {
+            options = await prepareWslImageOptions(options);
             // Resolve the client for this request. With CoC LLM tools present this
             // builds a fresh client carrying the bridge's mcp_servers config.
             const effectiveModel = this.normalizeCodexModel(options.model);

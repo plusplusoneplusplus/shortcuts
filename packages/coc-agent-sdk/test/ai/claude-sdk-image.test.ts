@@ -132,6 +132,49 @@ describe('ClaudeSDKService image attachments', () => {
         ]);
     });
 
+    it.each([undefined, 'existing-session'])('delivers a WSL image as bytes on session %s', async sessionId => {
+        const bytes = Buffer.from('image bytes');
+        const image = writeFile('upload.png', bytes);
+        const workingDirectory = String.raw`\\wsl$\Ubuntu\home\a\repo`;
+        const result = await svc.sendMessage({
+            prompt: 'look', sessionId, workingDirectory,
+            attachments: [{ type: 'file', path: image, displayName: 'upload.png' }],
+        });
+        expect(result.success).toBe(true);
+        const query = queryFn.mock.calls[0][0];
+        expect(query.options.cwd).toBe(workingDirectory);
+        if (sessionId) expect(query.options.resume).toBe(sessionId);
+        const messages = await drainAsyncIterable(query.prompt);
+        expect((messages[0] as any).message.content[1]).toEqual({
+            type: 'image', source: { type: 'base64', media_type: 'image/png', data: bytes.toString('base64') },
+        });
+        expect(fs.readFileSync(image)).toEqual(bytes);
+        fs.rmSync(image);
+        const failure = await svc.sendMessage({
+            prompt: 'look', sessionId, workingDirectory,
+            attachments: [{ type: 'file', path: image, displayName: 'upload.png' }],
+        });
+        expect(failure.success).toBe(false);
+        expect(failure.error).toContain('Cannot read WSL image attachment');
+        expect(queryFn).toHaveBeenCalledTimes(1);
+        expect(fs.readdirSync(tmpDir)).toEqual([]);
+    });
+
+    it('fails instead of sending text alone if a WSL image becomes unreadable during setup', async () => {
+        const image = writeFile('vanishing.png', 'image bytes');
+        vi.spyOn(svc as any, 'buildClaudeMcpServers').mockImplementation(async () => {
+            fs.rmSync(image);
+            return { servers: {}, allowedTools: [], cleanup: () => {}, inventoryTools: [] };
+        });
+        const result = await svc.sendMessage({
+            prompt: 'look', workingDirectory: String.raw`\\wsl$\Ubuntu\repo`,
+            attachments: [{ type: 'file', path: image, displayName: 'vanishing.png' }],
+        });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Cannot read WSL image attachment');
+        expect(queryFn).not.toHaveBeenCalled();
+    });
+
     it('wraps a no-attachment prompt as a single streaming text message', async () => {
         await svc.sendMessage({ prompt: 'Text only' });
 

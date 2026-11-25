@@ -11,6 +11,7 @@ import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
 import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from '../../src/timeout-defaults';
 import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import pino from 'pino';
@@ -621,6 +622,102 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.error).toContain('destroyed');
         expect(mockSession.abort).toHaveBeenCalledTimes(1);
         expect(mockSession.disconnect).toHaveBeenCalled();
+    });
+
+    it.each([undefined, 'resumed-session'])('delivers WSL upload bytes on initial/resumed sends (%s)', async sessionId => {
+        const { runner, mockSession, mockClient } = makeRunner();
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsl-image-'));
+        const imagePath = path.join(tempDir, 'upload.png');
+        const bytes = Buffer.from('image bytes');
+        fs.writeFileSync(imagePath, bytes);
+        try {
+            mockSession.sendAndWait.mockImplementation(async ({ attachments }) => {
+                expect(fs.readFileSync(attachments[0].path)).toEqual(bytes);
+                return { data: { content: 'received' } };
+            });
+            const result = await runner.send({
+                prompt: 'describe', sessionId, timeoutMs: 5000,
+                workingDirectory: String.raw`\\wsl$\Ubuntu\home\tester\repo`,
+                attachments: [{ type: 'file', path: imagePath, displayName: 'upload.png' }],
+                loadDefaultMcpConfig: false,
+            });
+            expect(result.success).toBe(true);
+            expect(mockSession.sendAndWait).toHaveBeenCalledWith({
+                prompt: 'describe', attachments: [{ type: 'file', path: imagePath, displayName: 'upload.png' }],
+            }, 5000);
+            if (sessionId) expect(mockClient.resumeSession).toHaveBeenCalled();
+            else expect(mockClient.createSession).toHaveBeenCalled();
+            expect(fs.readFileSync(imagePath)).toEqual(bytes);
+            expect(fs.readdirSync(tempDir)).toEqual(['upload.png']);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it.each([undefined, 'resumed-session'])('delivers WSL images through streaming (%s)', async sessionId => {
+        const { runner, mockSession } = makeRunner();
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsl-stream-image-'));
+        const imagePath = path.join(dir, 'upload.png');
+        fs.writeFileSync(imagePath, 'image bytes');
+        const send = vi.spyOn(runner, 'sendWithStreaming').mockImplementation(async (...args) => {
+            expect(fs.readFileSync(args[7]![0].path, 'utf8')).toBe('image bytes');
+            return { response: 'received', turnCount: 1 };
+        });
+        Object.assign(mockSession, { on: vi.fn(), send: vi.fn() });
+        try {
+            const result = await runner.send({
+                prompt: 'look', sessionId, streaming: true,
+                workingDirectory: String.raw`\\wsl$\Ubuntu\repo`,
+                attachments: [{ type: 'file', path: imagePath, displayName: 'upload.png' }],
+                loadDefaultMcpConfig: false,
+            });
+            expect(result.success).toBe(true);
+            expect(send).toHaveBeenCalledOnce();
+            expect(fs.readFileSync(imagePath, 'utf8')).toBe('image bytes');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it.each(['error', 'cancel'])('retains WSL uploads and releases the client after %s', async outcome => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wsl-failed-image-'));
+        const imagePath = path.join(dir, 'upload.png');
+        fs.writeFileSync(imagePath, 'image bytes');
+        const controller = new AbortController();
+        mockSession.sendAndWait.mockImplementation(async () => {
+            if (outcome === 'error') throw new Error('provider rejected the image');
+            controller.abort();
+            return { data: { content: 'late answer' } };
+        });
+        try {
+            const result = await runner.send({
+                prompt: 'look', timeoutMs: 5000, signal: controller.signal,
+                workingDirectory: String.raw`\\wsl$\Ubuntu\repo`,
+                attachments: [{ type: 'file', path: imagePath, displayName: 'upload.png' }],
+                loadDefaultMcpConfig: false,
+            });
+            expect(result.success).toBe(false);
+            expect(result.error).toContain(outcome === 'error' ? 'provider rejected the image' : 'aborted');
+            expect(mockClient.stop).toHaveBeenCalled();
+            expect(mockSession.disconnect).toHaveBeenCalled();
+            expect(fs.readFileSync(imagePath, 'utf8')).toBe('image bytes');
+            expect(fs.readdirSync(dir)).toEqual(['upload.png']);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('fails before session creation if a WSL image is missing', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const result = await runner.send({
+            prompt: 'describe', workingDirectory: String.raw`\\wsl$\Ubuntu\repo`,
+            attachments: [{ type: 'file', path: path.join(os.tmpdir(), 'missing-wsl-image.png'), displayName: 'missing.png' }],
+        });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Cannot read WSL image attachment');
+        expect(mockClient.createSession).not.toHaveBeenCalled();
+        expect(mockSession.sendAndWait).not.toHaveBeenCalled();
     });
 
     it('translates WSL attachment paths before sending', async () => {

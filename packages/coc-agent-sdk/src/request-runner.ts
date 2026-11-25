@@ -41,6 +41,8 @@ import type { TransformOptions, TransformResult } from './sdk-service-interface'
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
 import { isWithinDirectory } from './platform/path-security';
+import { prepareWslImageOptions } from './wsl-image-attachments';
+import { isSupportedCodexImagePath } from './image-converter';
 import {
     screenDangerousCommand,
     extractPermissionRequestShellCommand,
@@ -197,6 +199,8 @@ export class RequestRunner {
             if (options.managedMcpAuthServers && !options.onMcpAuthRequest) {
                 throw new Error('managedMcpAuthServers requires onMcpAuthRequest');
             }
+            options = await prepareWslImageOptions(options);
+            throwIfAborted();
             client = options.client ?? await this.createClient(options.workingDirectory);
             throwIfAborted();
             const preparedAttachments = this.prepareAttachments(options.attachments, options.workingDirectory);
@@ -588,6 +592,8 @@ export class RequestRunner {
         }
 
         return attachments.map(attachment => {
+            // Image paths are already prepared for the host-native runtime.
+            if (attachment.type === 'file' && isSupportedCodexImagePath(attachment.path)) return attachment;
             const translatedPath = translatePathForExecution(attachment.path, executionContext);
             if (!isWithinDirectory(translatedPath, executionContext.linuxWorkingDirectory)) {
                 throw new Error(`WSL mode currently only supports attachments inside the working directory: ${attachment.path}`);

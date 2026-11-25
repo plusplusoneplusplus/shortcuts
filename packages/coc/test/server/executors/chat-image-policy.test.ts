@@ -117,10 +117,10 @@ describe('chat image transport policy', () => {
         expect(() => assertChatImageTransport('copilot', [image], '/workspace')).not.toThrow();
     });
 
-    it('rejects an entire batch if one image is outside the WSL workspace', () => {
+    it('permits managed uploads outside the WSL workspace', () => {
         wsl();
         vi.mocked(translatePathForExecution).mockReturnValueOnce('/workspace/image.png').mockReturnValueOnce('/workspace-other/image.png');
-        expect(() => assertChatImageTransport('copilot', [image, image], '/workspace')).toThrow(CHAT_IMAGE_FAILURE_TEXT.wsl);
+        expect(() => assertChatImageTransport('copilot', [image, image], '/workspace')).not.toThrow();
     });
 
     it('hides path and distro details when WSL translation fails', () => {
@@ -129,10 +129,12 @@ describe('chat image transport policy', () => {
         expect(() => assertChatImageTransport('copilot', [image], '/workspace')).toThrow(CHAT_IMAGE_FAILURE_TEXT.wsl);
     });
 
-    it.each(['codex', 'claude'] as const)('does not apply Copilot WSL restrictions to %s', provider => {
+    it.each(['copilot', 'codex', 'claude'] as const)('checks distro ownership for %s', provider => {
         wsl();
         assertChatImageTransport(provider, [image], '/workspace');
-        expect(translatePathForExecution).not.toHaveBeenCalled();
+        expect(translatePathForExecution).toHaveBeenCalled();
+        vi.mocked(translatePathForExecution).mockImplementation(() => { throw new Error('foreign distro'); });
+        expect(() => assertChatImageTransport(provider, [image], '/workspace')).toThrow(CHAT_IMAGE_FAILURE_TEXT.wsl);
     });
 });
 

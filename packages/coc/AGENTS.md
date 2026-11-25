@@ -45,7 +45,7 @@ Follow [root instructions](../../AGENTS.md). Load [coc-knowledge](../../.github/
 - New experimental flags default off and gate server, tools, and UI together.
 - Late-bound capabilities belong only in `executor-runtime-contracts.ts`. The queue bridge extends the runtime once.
 - Use `src/server/cache/`. Do not add TTL maps. SPA Git and queue readers share `api/workspaceReads.ts`. Repo preferences share `api/repoPreferences.ts` (30s, invalidated on mutation).
-- Admitted chat images stay at their per-turn paths after success, error, or cancellation. Rejected and non-image cleanup still runs. Remote image forwarding is unsupported.
+- Admitted chat images stay at their per-turn paths after success, error, or cancellation. Rejected and non-image cleanup still runs. WSL image-capable SDKs consume host-readable uploads with distro ownership checks; do not stage copies in repo roots. Remote image forwarding is unsupported.
 - Auto-compact is opt-in per chat, server-side, absolute token threshold, default off at 700k. It never rescales from the model limit and adds no deadline to a running compaction. Refrain job chats follow the job threshold (`422 AUTO_COMPACT_JOB_MANAGED`).
 - `copilot.transformTransport` is installation-wide and restart-required. Direct requests use the Copilot CLI account. Never persist that token in admin config. System One, the shared decision backend, and titles use `gpt-6-luna`.
 

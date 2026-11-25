@@ -51,6 +51,18 @@ Forge imports directly from this package.
 | `llm-tools/mcp-config.ts` | `buildCocLlmToolsMcpConfig()` + bridge-path resolution + name/env constants |
 | `index.ts` | Public API surface |
 
+### WSL chat image transport
+
+Copilot, Codex and Claude use host-native runtimes. `wsl-image-attachments.ts`
+prepares image-bearing turns before initial or resumed inference: resolve the
+workspace distro, reject foreign-distro UNC paths, translate Linux paths and cwd
+to host UNC paths, and retain Windows upload paths. It checks readable, nonempty
+regular files up to 10 MiB and rejects symlinks. Files stay at their admitted
+per-turn paths; transport creates no copies or staging directories. Native turns
+and Copilot's non-image attachment restrictions retain their existing behavior.
+OpenCode's text-only adapter rejects chat images; Copilot also requires catalog
+vision support for the explicit selected model.
+
 ## SDKServiceRegistry
 
 `sdkServiceRegistry` registers `ISDKService` instances under `copilot`, `codex`, `claude`, or `opencode`; callers use `getOrThrow(provider)`. Each key has `<NAME>_PROVIDER` and `SDK_PROVIDER_<NAME>` constants. `CopilotSDKService.getInstance()` re-registers the singleton when absent. Hosts can register explicitly constructed providers, including a typed-configured Copilot instance.

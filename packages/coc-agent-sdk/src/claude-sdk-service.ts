@@ -25,6 +25,7 @@
  * the native auth SDK; refresh secrets and credential persistence stay in Rust.
  */
 
+import { prepareWslImageOptions } from './wsl-image-attachments';
 import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage, Attachment } from './types';
 import type { ToolEvent } from './types';
 import { serializeToolResultWithImages } from './tool-result-images';
@@ -46,7 +47,8 @@ import { captureClaudeToolInventory } from './claude-tool-inventory';
 import { unavailableToolInventory } from './tool-inventory';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
-import { evaluateClaudeImageFile } from './image-converter';
+import { evaluateClaudeImageFile, isSupportedCodexImagePath } from './image-converter';
+import { resolveWorkspaceExecutionContext } from './platform/workspace-execution';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as crypto from 'crypto';
@@ -1203,6 +1205,7 @@ export class ClaudeSDKService implements ISDKService {
         };
 
         try {
+            options = await prepareWslImageOptions(options);
             const effort = this.normalizeClaudeEffort(options.reasoningEffort);
             const { servers: mcpServers, allowedTools, cleanup, inventoryTools } = await this.buildClaudeMcpServers(options);
             mcpServerNames = Object.keys(mcpServers).sort();
@@ -1642,6 +1645,11 @@ export class ClaudeSDKService implements ISDKService {
         for (const attachment of options.attachments ?? []) {
             if (attachment.type !== 'file') continue;
             const evaluation = evaluateClaudeImageFile(attachment.path);
+            if (isSupportedCodexImagePath(attachment.path)
+                && resolveWorkspaceExecutionContext(options.workingDirectory).kind === 'wsl'
+                && !evaluation?.ok) {
+                throw new Error('Cannot read WSL image attachment: send the image again');
+            }
             if (!evaluation) continue;
             if (evaluation.ok) {
                 images.push(evaluation.source);
