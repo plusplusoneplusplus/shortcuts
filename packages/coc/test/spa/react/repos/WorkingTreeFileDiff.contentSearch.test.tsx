@@ -102,7 +102,8 @@ describe('mounted all-working-changes search with the real file pane', () => {
         fireEvent.change(screen.getByTestId('review-content-search-input'), { target: { value: 'needle' } });
         await screen.findByText('Searched 2 of 2 files');
         fireEvent.click(screen.getAllByRole('button', { name: 'a.ts, OLD line 1, column 11' })[1]);
-        expect(screen.getByTestId('working-tree-file-diff-header').textContent).toContain('Unstaged diff');
+        expect(screen.getByTestId('working-tree-file-diff-header').textContent).not.toContain('Unstaged diff');
+        expect(h.patch).toHaveBeenCalledWith('workspace', props.filePath, { stage: 'unstaged', full: false });
         expect((await screen.findByTestId('search-outside-patch')).textContent).toContain('OLD line 1');
         fireEvent.click(screen.getByRole('button', { name: 'Open in Editor view' }));
         await screen.findByTestId('editor');
