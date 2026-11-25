@@ -621,6 +621,13 @@ branch (not detached), so `unpushedCount: 0` alone never means "all pushed".
 dot) and the rest pushed (hollow blue dot), each with tooltip and screen-reader text.
 Without it no row is marked.
 
+With `features.sessionContextAttachments` on, recent-commit rows are also copy-drag
+commit-context sources (`picker.contextDrag`, `cursor: copy` like changed-file rows).
+`RepoGitDetailPane` builds it with `useCommitContextPayloadBuilder`, the same
+owner/workspace-name logic as commit list rows, so a member or remote clone keeps its
+concrete `sourceRoutingRef` and an unresolved remote owner leaves rows click-only.
+Click still selects and closes the menu; a drag does neither.
+
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a
 critical marker, and their selected-file unified diff views render test fidelity

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { CommitDetailIcon } from './CommitDetailIcon';
 import type { GitCommitItem } from './commitListTypes';
+import { writePointerContextDragData, type GitCommitContextDragPayload } from '../../chat/sessionContextDrag';
 
 /** Abbreviated (7+) or full hex SHA, matching the Git tab's direct lookup. */
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
@@ -36,6 +37,8 @@ export interface CommitPickerOptions {
      * not on `name` yet, the rest are. Absent when unknown, so no commit is marked local or pushed.
      */
     upstream?: { name: string; localCount: number };
+    /** Session-context payload for a recent-commit row, owned by the commits' workspace/server; null leaves the row click-only. */
+    contextDrag?: (commit: GitCommitItem) => GitCommitContextDragPayload | null;
 }
 
 type LookupState = { status: 'idle' | 'busy' } | { status: 'error'; message: string };
@@ -193,10 +196,16 @@ export function CommitHashPicker({ hash = '', currentViewId, picker }: { hash?: 
                         const upstream = picker.upstream;
                         const sync = upstream && (index < upstream.localCount ? 'local' : 'pushed');
                         const syncText = sync && (sync === 'local' ? `Local, not on ${upstream.name}` : `On ${upstream.name}`);
+                        const payload = busy ? null : picker.contextDrag?.(commit) ?? null;
+                        const title = syncText ? `${commit.subject} · ${syncText}` : commit.subject;
                         return <li key={commit.hash}>
                             <button type="button" data-commit-option aria-current={current ? 'true' : undefined} disabled={busy}
                                 className="git-review-menu-item" onClick={() => choose(commit)}
-                                title={syncText ? `${commit.subject} · ${syncText}` : commit.subject}
+                                title={payload ? `${title} - drag to attach as commit context` : title}
+                                draggable={!!payload}
+                                onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
+                                data-session-context-source={payload ? 'true' : undefined}
+                                data-session-context-kind={payload ? 'commit' : undefined}
                                 data-sync={sync || undefined} data-testid={`commit-hash-picker-option-${commit.hash}`}>
                                 <span className="git-review-commit-picker-check">{current && <CommitDetailIcon name="check" />}</span>
                                 {/* Filled vs hollow dot matches the Git list; color is never the only cue. */}

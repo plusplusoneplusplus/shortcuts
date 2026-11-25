@@ -39,6 +39,30 @@ export interface CommitListDragController {
     getReorderDropProps: (index: number, canDrag: boolean) => CommitReorderDropProps;
 }
 
+/**
+ * Builds a commit's session-context payload owned by its concrete workspace/server,
+ * or null when context drag is off or a remote owner is unknown. Shared by the
+ * commit list and the review header's commit switcher.
+ */
+export function useCommitContextPayloadBuilder(options: {
+    workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceWorkspaceName?: string;
+    enabled: boolean;
+}): (commit: GitCommitItem) => GitCommitContextDragPayload | null {
+    const { workspaceId, sourceSelectionId, sourceWorkspaceName, enabled } = options;
+    const sourceRoutingRef = useCommitContextOwner(workspaceId, sourceSelectionId);
+    return useCallback((commit: GitCommitItem): GitCommitContextDragPayload | null => {
+        if (!(enabled && workspaceId)) return null;
+        if (sourceRoutingRef === undefined && resolveCloneRoute(workspaceId).kind !== 'local') return null;
+        return createGitCommitContextDragPayload(commit, {
+            activeWorkspaceId: workspaceId,
+            sourceRoutingRef,
+            sourceWorkspaceName,
+        });
+    }, [enabled, workspaceId, sourceRoutingRef, sourceWorkspaceName]);
+}
+
 export function useCommitListDragController(options: {
     commits: GitCommitItem[];
     selectedHashes?: ReadonlySet<string>;
@@ -50,21 +74,11 @@ export function useCommitListDragController(options: {
     onReorder?: (newOrder: GitCommitItem[]) => void;
 }): CommitListDragController {
     const { commits, selectedHashes, workspaceId, sourceSelectionId, sourceWorkspaceName, unpushedCount, sessionContextDragEnabled, onReorder } = options;
-    const sourceRoutingRef = useCommitContextOwner(workspaceId, sourceSelectionId);
+    const buildContextPayload = useCommitContextPayloadBuilder({ workspaceId, sourceSelectionId, sourceWorkspaceName, enabled: sessionContextDragEnabled });
 
     // Drag-and-drop reorder state
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
-    const buildContextPayload = useCallback((commit: GitCommitItem): GitCommitContextDragPayload | null => {
-        if (!(sessionContextDragEnabled && workspaceId)) return null;
-        if (sourceRoutingRef === undefined && resolveCloneRoute(workspaceId).kind !== 'local') return null;
-        return createGitCommitContextDragPayload(commit, {
-            activeWorkspaceId: workspaceId,
-            sourceRoutingRef,
-            sourceWorkspaceName,
-        });
-    }, [sessionContextDragEnabled, workspaceId, sourceRoutingRef, sourceWorkspaceName]);
 
     // --- Session-context drag -------------------------------------------------
 
