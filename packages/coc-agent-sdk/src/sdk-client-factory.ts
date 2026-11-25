@@ -124,6 +124,10 @@ export interface CopilotCliResolution {
  * Returns `undefined` when none is installed.
  */
 export function resolveCopilotCli(startDir?: string): CopilotCliResolution | undefined {
+    const sdkRuntime = findCopilotSdkRuntimePath(startDir);
+    if (sdkRuntime) {
+        return { kind: 'native', path: preferUnpackedPath(sdkRuntime) };
+    }
     const js = findCopilotCliPath(startDir);
     if (js) {
         return { kind: 'js', path: preferUnpackedPath(js) };
@@ -131,10 +135,6 @@ export function resolveCopilotCli(startDir?: string): CopilotCliResolution | und
     const native = findCopilotNativeCliPath(startDir);
     if (native) {
         return { kind: 'native', path: preferUnpackedPath(native) };
-    }
-    const sdkRuntime = findCopilotSdkRuntimePath(startDir);
-    if (sdkRuntime) {
-        return { kind: 'native', path: preferUnpackedPath(sdkRuntime) };
     }
     return undefined;
 }

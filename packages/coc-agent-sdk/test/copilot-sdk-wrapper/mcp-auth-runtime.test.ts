@@ -1,17 +1,16 @@
 /**
- * Inference-free pinned CLI verification: COC_COPILOT_MCP_AUTH_RUNTIME=1.
- * COC_COPILOT_MCP_AUTH_CLI can select a separate pinned executable.
+ * Inference-free SDK runtime verification: COC_COPILOT_MCP_AUTH_RUNTIME=1.
+ * The standalone CLI supplies the native vault inspection helpers.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { CopilotClient, RuntimeConnection, type CopilotSession, type SessionConfig } from '@github/copilot-sdk';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { findCopilotNativeCliPath } from '../../src/sdk-client-factory';
+import { findCopilotNativeCliPath, findCopilotSdkRuntimePath } from '../../src/sdk-client-factory';
 import { RequestRunner } from '../../src/request-runner';
 import { SessionManager } from '../../src/session-manager';
 
@@ -34,11 +33,12 @@ describe.skipIf(process.env.COC_COPILOT_MCP_AUTH_RUNTIME !== '1')('Copilot MCP h
     ] as const)('preserves mixed OAuth ownership in $clientMode mode on $sessionMode', async ({ clientMode, sessionMode }) => {
         const require = createRequire(import.meta.url);
         const sdkManifest = path.resolve(path.dirname(require.resolve('@github/copilot-sdk')), '..', '..', 'package.json');
-        expect(JSON.parse(await fs.readFile(sdkManifest, 'utf8')).version).toBe('1.0.9');
-        const cliPath = process.env.COC_COPILOT_MCP_AUTH_CLI ?? findCopilotNativeCliPath();
-        if (!cliPath) throw new Error('Installed Copilot CLI executable not found');
+        expect(JSON.parse(await fs.readFile(sdkManifest, 'utf8')).version).toBe('1.0.34');
+        const cliPath = findCopilotSdkRuntimePath();
+        const inspectorPath = findCopilotNativeCliPath();
+        if (!cliPath || !inspectorPath) throw new Error('Installed SDK runtime or CLI vault inspector not found');
         const native: NativeOAuthStore = require(path.join(
-            path.dirname(cliPath), 'prebuilds', `${process.platform}-${process.arch}`, 'runtime.node',
+            path.dirname(inspectorPath), 'prebuilds', `${process.platform}-${process.arch}`, 'runtime.node',
         ));
         const root = await fs.mkdtemp(path.join(tmpdir(), 'coc-mcp-auth-runtime-'));
         const identity = randomUUID();
@@ -170,7 +170,7 @@ describe.skipIf(process.env.COC_COPILOT_MCP_AUTH_RUNTIME !== '1')('Copilot MCP h
         };
         const createClient = (workspace: number) => new CopilotClient({
             mode: clientMode, baseDirectory: path.join(root, `workspace-${workspace}`, 'sessions'),
-            connection: RuntimeConnection.forStdio({ path: cliPath, args: ['--prefer-version', '1.0.78'], env }),
+            connection: RuntimeConnection.forStdio({ path: cliPath, args: [], env }),
         });
         let client = createClient(0);
         const handlers = nativeTokens.map((accessToken, workspace) => vi.fn((request: Parameters<NonNullable<SessionConfig['onMcpAuthRequest']>>[0]) => {
@@ -266,9 +266,6 @@ describe.skipIf(process.env.COC_COPILOT_MCP_AUTH_RUNTIME !== '1')('Copilot MCP h
             });
         };
         try {
-            expect(execFileSync(cliPath, ['--prefer-version', '1.0.78', '--version'], {
-                env, encoding: 'utf8', timeout: 10000,
-            })).toContain('GitHub Copilot CLI 1.0.78.');
             let sessionId: string | undefined;
             if (sessionMode === 'resume') {
                 const seed = await client.createSession({

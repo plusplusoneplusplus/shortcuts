@@ -78,19 +78,38 @@ import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
 import * as workspaceExecution from '../../src/platform/workspace-execution';
 
+it('resolves registry tarballs from public npm', () => {
+    const root = path.resolve(__dirname, '../../../../');
+    const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+    for (const [name, entry] of Object.entries<{ resolved?: string }>(lock.packages)) {
+        if (entry.resolved?.startsWith('https://') || entry.resolved?.startsWith('http://')) {
+            expect(new URL(entry.resolved).origin, name).toBe('https://registry.npmjs.org');
+        }
+    }
+});
+
 it('pins the SDK and CLI versions used by all workspaces', () => {
     const root = path.resolve(__dirname, '../../../../');
     const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
     const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
-    expect(manifest.dependencies['@github/copilot-sdk']).toBe('1.0.9');
+    expect(manifest.dependencies['@github/copilot-sdk']).toBe('1.0.34');
+    expect(manifest.devDependencies['@github/copilot']).toBe('1.0.78');
     expect(manifest.overrides['@github/copilot']).toBe('1.0.78');
     for (const workspace of ['coc-agent-sdk', 'coc', 'forge']) {
         const pkg = JSON.parse(fs.readFileSync(path.join(root, 'packages', workspace, 'package.json'), 'utf8'));
-        expect(pkg.dependencies?.['@github/copilot-sdk'] ?? pkg.peerDependencies?.['@github/copilot-sdk']).toBe('1.0.9');
+        expect(pkg.dependencies?.['@github/copilot-sdk'] ?? pkg.peerDependencies?.['@github/copilot-sdk']).toBe('1.0.34');
     }
-    expect(lock.packages['node_modules/@github/copilot-sdk'].version).toBe('1.0.9');
+    const sdk = lock.packages['node_modules/@github/copilot-sdk'];
+    expect(sdk.version).toBe('1.0.34');
+    expect(sdk.dependencies['@github/copilot']).toBeUndefined();
+    expect(Object.keys(sdk.optionalDependencies)).toHaveLength(8);
+    for (const [name, version] of Object.entries(sdk.optionalDependencies)) {
+        expect(version).toBe('1.0.34');
+        expect(lock.packages[`node_modules/${name}`]?.version).toBe(version);
+    }
     const cli = lock.packages['node_modules/@github/copilot'];
     expect(cli.version).toBe('1.0.78');
+    expect(cli.dev).toBe(true);
     for (const name of Object.keys(cli.optionalDependencies)) {
         expect(lock.packages[`node_modules/${name}`]?.version).toBe('1.0.78');
     }
@@ -104,7 +123,7 @@ describe('createSdkClient', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         capturedOptions.length = 0;
-        vi.mocked(fs.existsSync).mockReturnValue(true);
+        vi.mocked(fs.existsSync).mockImplementation(p => !String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
     });
 
     it('creates a client with no workingDirectory when called without options', () => {
@@ -277,6 +296,7 @@ const SDK_RUNTIME_PKG_FRAGMENT = path.join('@github', `copilot-sdk-${SDK_RUNTIME
 function mockNativeOnlyLayout(): void {
     vi.mocked(fs.existsSync).mockImplementation((p) => {
         const s = String(p);
+        if (s.includes(SDK_RUNTIME_PKG_FRAGMENT)) return false;
         if (s.endsWith(INDEX_JS_FRAGMENT)) return false;
         if (s.includes(NATIVE_PKG_FRAGMENT)) return true;
         return true; // workingDirectory etc.
@@ -287,7 +307,7 @@ describe('createSdkClient — Electron connection override', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         capturedOptions.length = 0;
-        vi.mocked(fs.existsSync).mockReturnValue(true);
+        vi.mocked(fs.existsSync).mockImplementation(p => !String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
         mockRuntimeConnection.forStdio.mockClear();
         resetSystemNodePathCache();
     });
@@ -434,12 +454,29 @@ describe('createSdkClient — native binary override outside Electron', () => {
     });
 
     it('leaves the SDK default in place under plain Node when index.js exists', () => {
-        vi.mocked(fs.existsSync).mockReturnValue(true);
+        vi.mocked(fs.existsSync).mockImplementation(p => !String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
 
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
         expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
+    });
+
+    it.each([false, true])('spawns the SDK runtime directly with Electron=%s even when standalone CLI layouts exist', electron => {
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+        if (electron) (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        vi.stubEnv('COPILOT_SDK_DEFAULT_CONNECTION', 'inprocess');
+        try {
+            createSdkClient();
+
+            expect(capturedOptions[0].connection).toMatchObject({
+                kind: 'stdio', path: expect.stringContaining(SDK_RUNTIME_PKG_FRAGMENT), args: [],
+            });
+            expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
+        } finally {
+            delete (process.versions as Record<string, string | undefined>).electron;
+            vi.unstubAllEnvs();
+        }
     });
 });
 
@@ -478,12 +515,18 @@ describe('findCopilotNativeCliPath / resolveCopilotCli', () => {
         expect(findCopilotNativeCliPath('/repo')).toBeUndefined();
     });
 
-    it('resolveCopilotCli prefers index.js when both layouts are present', () => {
+    it('resolveCopilotCli prefers the pinned SDK runtime over standalone CLI layouts', () => {
         vi.mocked(fs.existsSync).mockReturnValue(true);
 
         const resolution = resolveCopilotCli('/repo');
 
-        expect(resolution).toEqual({ kind: 'js', path: expect.stringContaining(INDEX_JS_FRAGMENT) });
+        expect(resolution).toEqual({ kind: 'native', path: expect.stringContaining(SDK_RUNTIME_PKG_FRAGMENT) });
+    });
+
+    it('resolveCopilotCli falls back to index.js when SDK runtime packages are absent', () => {
+        vi.mocked(fs.existsSync).mockImplementation(p => String(p).includes(INDEX_JS_FRAGMENT));
+
+        expect(resolveCopilotCli('/repo')).toEqual({ kind: 'js', path: expect.stringContaining(INDEX_JS_FRAGMENT) });
     });
 
     it('resolveCopilotCli falls back to the native binary when index.js is absent', () => {
@@ -502,6 +545,33 @@ describe('findCopilotNativeCliPath / resolveCopilotCli', () => {
         expect(found).toContain(SDK_RUNTIME_PKG_FRAGMENT);
         expect(found).toContain(path.join('prebuilds', SDK_RUNTIME_PLATFORM));
         expect(path.basename(found!)).toBe(process.platform === 'win32' ? 'copilot-runtime.exe' : 'copilot-runtime');
+    });
+
+    it.each([
+        ['darwin', 'arm64', 'darwin-arm64'],
+        ['darwin', 'x64', 'darwin-x64'],
+        ['linux', 'arm64', 'linux-arm64'],
+        ['linux', 'x64', 'linux-x64'],
+        ['linux', 'arm64', 'linuxmusl-arm64'],
+        ['linux', 'x64', 'linuxmusl-x64'],
+        ['win32', 'arm64', 'win32-arm64'],
+        ['win32', 'x64', 'win32-x64'],
+    ] as const)('finds the %s %s runtime in %s', (platform, arch, packagePlatform) => {
+        const executable = platform === 'win32' ? 'copilot-runtime.exe' : 'copilot-runtime';
+        const relative = path.join('node_modules', '@github', `copilot-sdk-${packagePlatform}`,
+            'prebuilds', packagePlatform, executable);
+        vi.mocked(fs.existsSync).mockImplementation(p => String(p).endsWith(relative));
+
+        expect(findCopilotSdkRuntimePath(path.resolve('fixture'), platform, arch)).toBe(path.resolve('fixture', relative));
+    });
+
+    it('resolves the pinned SDK runtime outside asar', () => {
+        vi.mocked(fs.existsSync).mockImplementation(p => String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
+
+        const resolution = resolveCopilotCli(path.resolve('resources', 'app.asar', 'dist'));
+
+        expect(resolution).toEqual({ kind: 'native', path: expect.stringContaining(`app.asar.unpacked${path.sep}`) });
+        expect(resolution!.path).toContain(SDK_RUNTIME_PKG_FRAGMENT);
     });
 
     it('resolveCopilotCli falls back to the current SDK runtime package', () => {

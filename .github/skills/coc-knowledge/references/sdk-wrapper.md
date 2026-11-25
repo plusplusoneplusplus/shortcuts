@@ -75,12 +75,19 @@ real-home user directory from native discovery; CoC discovery uses the real home
 Native canvas tools require `requestCanvasRenderer: true`. CoC's three-tool bundle
 works with both native surfaces off, without same-name tool exclusions.
 `copilot-native-loader.test.ts` replays a recorded catalog by default;
-`COC_CANVAS_COPILOT_RUNTIME=1` verifies both scopes and renderer states, home
-isolation, and a complete loopback-model turn with one CoC extension process.
+`COC_CANVAS_COPILOT_RUNTIME=1` uses the pinned SDK runtime to verify both scopes,
+renderer states, home isolation, and a complete loopback-model turn. These offline
+BYOK clients disable logged-in-user authentication and supply an explicit SDK
+path and launch provider when testing native extensions.
 
 ### Copilot CLI spawn resolution
 
-`sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` locates the runtime and rewrites `app.asar` paths to `app.asar.unpacked`. It supports the SDK runtime package at `@github/copilot-sdk-<platform>/prebuilds/<platform>/copilot-runtime`, the standalone native package at `@github/copilot-<platform>-<arch>`, and the JavaScript `@github/copilot/index.js` entry.
+`sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` prefers
+the SDK runtime at `@github/copilot-sdk-<platform>/prebuilds/<platform>/copilot-runtime`,
+then falls back to the JavaScript `@github/copilot/index.js` entry and standalone
+native `@github/copilot-<platform>-<arch>` package. It rewrites `app.asar` paths
+to `app.asar.unpacked`. An installed standalone CLI cannot displace the pinned SDK
+runtime.
 
 - `index.js` under Electron: connection is overridden to `<node runtime> index.js` (system node preferred, else the Electron binary with `ELECTRON_RUN_AS_NODE=1`). Under plain Node the copilot-sdk default handles it.
 - Native layouts: the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends its runtime arguments) under both Electron and plain Node.
@@ -478,3 +485,4 @@ Status surfaces two ways, both off the same canonical `currentStatus(key)` calc:
 - Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (`MockCopilotClient` — a different layer).
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass the real SDK.
 - Test provider SDK option mappings at the provider boundary: SDK module fakes, protocol fixtures, transcript/request assertions, stream-event assertions, or sanitized log assertions. Do not rely only on wrapper/adapter argument assertions for provider-owned option names.
+- `sdk-runtime.test.ts` starts the pinned runtime over stdio with isolated persistence, verifies initialized tool metadata and a real tool callback, and resumes the session through a fresh client. `COC_COPILOT_MCP_AUTH_RUNTIME=1` exercises managed and generic OAuth ownership on that runtime; the development-only CLI supplies native vault inspection and targeted cleanup helpers.

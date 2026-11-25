@@ -335,7 +335,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(addPath).toHaveBeenCalledWith({ path: '/writable' });
+        expect(addPath).toHaveBeenCalledWith({ path: path.resolve('/writable') });
         expect(updateOptions).not.toHaveBeenCalled();
     });
 
@@ -363,8 +363,8 @@ describe('RequestRunner.send() — non-streaming path', () => {
             }),
         );
         expect(addPath.mock.calls).toEqual([
-            [{ path: '/writable' }],
-            [{ path: '/reference' }],
+            [{ path: path.resolve('/writable') }],
+            [{ path: path.resolve('/reference') }],
         ]);
         expect(updateOptions).toHaveBeenCalledWith({
             sandboxConfig: {
@@ -373,11 +373,11 @@ describe('RequestRunner.send() — non-streaming path', () => {
                 userPolicy: {
                     filesystem: {
                         readwritePaths: [
-                            '/writable',
+                            path.resolve('/writable'),
                             path.join(os.homedir(), '.coc'),
                             os.tmpdir(),
                         ],
-                        readonlyPaths: ['/reference'],
+                        readonlyPaths: [path.resolve('/reference')],
                     },
                 },
             },
@@ -444,14 +444,14 @@ describe('RequestRunner.send() — non-streaming path', () => {
         });
 
         expect(addPath.mock.calls).toEqual([
-            [{ path: '/session-root/writable' }],
-            [{ path: '/session-root/reference' }],
+            [{ path: path.resolve('/session-root', 'writable') }],
+            [{ path: path.resolve('/session-root', 'reference') }],
         ]);
         expect(updateOptions).toHaveBeenCalledWith(expect.objectContaining({
             sandboxConfig: expect.objectContaining({
                 userPolicy: {
                     filesystem: expect.objectContaining({
-                        readonlyPaths: ['/session-root/reference'],
+                        readonlyPaths: [path.resolve('/session-root', 'reference')],
                     }),
                 },
             }),
