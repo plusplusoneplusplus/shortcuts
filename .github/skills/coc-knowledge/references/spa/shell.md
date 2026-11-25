@@ -729,7 +729,12 @@ existing throttling. WebView2 uses controller
 shared setting. The toolbar's Web page zoom controls are separate from app zoom and
 show unavailable/disabled states without a supported bridge/engine. Apply failures
 are surfaced; persistence records desired zoom even if a guest fails to apply it.
-The SPA shell, editors, terminals, file previews and system browser are unaffected.
+On `coc://git`, the toolbar controls tab-local Git review zoom (50–200%,
+25-point steps, reset 100%) through CSS `zoom` on the page body containing the
+detail portal. Its readout and labels identify this scope. State belongs to the
+mounted tab and concrete owner; navigation retains it without changing desktop
+preferences. Other CoC pages hide these controls. The SPA shell, chat, other
+editors, terminals, file previews and system browser are unaffected.
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 

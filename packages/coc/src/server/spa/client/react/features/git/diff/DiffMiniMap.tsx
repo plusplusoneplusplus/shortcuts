@@ -10,6 +10,7 @@
  * position, or drag the viewport indicator.
  */
 
+import { diffLayoutRect } from './diffLayoutRect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DiffLine } from './UnifiedDiffViewer';
 
@@ -73,7 +74,7 @@ export function measureLineOffsets(
     const lineEls = scrollContainer.querySelectorAll<HTMLElement>('[data-diff-line-index]');
     if (lineEls.length === 0) return { offsets: [], totalHeight: scrollContainer.scrollHeight };
 
-    const containerRect = scrollContainer.getBoundingClientRect();
+    const containerRect = diffLayoutRect(scrollContainer);
     const scrollTop = scrollContainer.scrollTop;
 
     const result: Array<LineOffset | undefined> = [];
@@ -81,7 +82,7 @@ export function measureLineOffsets(
         const index = Number.parseInt(el.getAttribute('data-diff-line-index') ?? '', 10);
         if (!Number.isFinite(index) || index < 0) continue;
 
-        const elRect = el.getBoundingClientRect();
+        const elRect = diffLayoutRect(el);
         const top = elRect.top - containerRect.top + scrollTop;
         const bottom = top + elRect.height;
         const existing = result[index];

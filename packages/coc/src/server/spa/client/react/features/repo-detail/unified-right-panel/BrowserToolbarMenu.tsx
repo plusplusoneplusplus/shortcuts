@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { browserEngineName, type BrowserEngine, type BrowserPreferences, type DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { NativeViewIcon, nativeViewIconButton, nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, onDownloads, bridge }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, onDownloads, bridge, gitZoom }: {
+    /** Undefined uses shared URL-guest zoom; null hides zoom for other CoC pages. */
+    gitZoom?: { percent: number; onChange(percent: number): void } | null;
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
@@ -25,8 +27,9 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     const zoomPending = useRef(false);
     const zoomRequest = useRef(0);
 
+    const usesGuestZoom = gitZoom === undefined;
     useEffect(() => {
-        if (!open || !bridge?.setPageZoom) return;
+        if (!open || !usesGuestZoom || !bridge?.setPageZoom) return;
         let disposed = false;
         const refresh = async () => {
             const request = ++zoomRequest.current;
@@ -43,12 +46,17 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
         void refresh();
         const off = bridge.onPreferencesChanged(() => { void refresh(); });
         return () => { disposed = true; ++zoomRequest.current; off(); };
-    }, [open, bridge]);
+    }, [open, bridge, usesGuestZoom]);
 
-    const zoom = preferences?.pageZoom;
-    const zoomAvailable = Boolean(!zoomUnsupported && bridge?.setPageZoom && zoom
+    const zoom = gitZoom ? { percent: gitZoom.percent, min: 50, max: 200, step: 25 } : preferences?.pageZoom;
+    const zoomSubject = gitZoom ? 'Git review' : 'all web pages';
+    const zoomAvailable = Boolean(gitZoom) || Boolean(!zoomUnsupported && bridge?.setPageZoom && zoom
         && preferences?.engines.some(item => item.engine === (engine ?? preferences.defaultEngine) && item.available));
     const changeZoom = async (percent: number) => {
+        if (gitZoom) {
+            gitZoom.onChange(percent);
+            return;
+        }
         if (!bridge?.setPageZoom || !zoomAvailable || zoomPending.current) return;
         zoomPending.current = true;
         setZoomBusy(true);
@@ -153,22 +161,26 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
                     Engine: {browserEngineName(engine)}
                 </div>}
-                <div role="group" aria-label="Web page zoom" className="border-b border-[#e5e5e5] px-2 py-1 dark:border-[#333]">
-                    <div className="mb-1 text-[#616161] dark:text-[#9d9d9d]" title="All embedded web pages in every workspace and desktop window. Does not change app zoom.">Web page zoom (all pages)</div>
+                {gitZoom !== null && <div role="group" aria-label={gitZoom ? 'Git review zoom' : 'Web page zoom'} className="border-b border-[#e5e5e5] px-2 py-1 dark:border-[#333]">
+                    <div className="mb-1 text-[#616161] dark:text-[#9d9d9d]" title={gitZoom
+                        ? 'Only the Git review in this tab. Does not change app or web page zoom.'
+                        : 'All embedded web pages in every workspace and desktop window. Does not change app zoom.'}>
+                        {gitZoom ? 'Git review zoom (this tab)' : 'Web page zoom (all pages)'}
+                    </div>
                     <div className="flex items-center gap-1">
-                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Zoom out all web pages"
-                            disabled={!zoomAvailable || zoomBusy || !zoom || zoom.percent <= zoom.min}
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label={`Zoom out ${zoomSubject}`}
+                            disabled={!zoomAvailable || (!gitZoom && zoomBusy) || !zoom || zoom.percent <= zoom.min}
                             onClick={() => zoom && void changeZoom(zoom.percent - zoom.step)}>-</button>
                         <span className="min-w-10 text-center" aria-live="polite" data-testid="browser-page-zoom-percent">{zoomAvailable && zoom ? `${zoom.percent}%` : 'Unavailable'}</span>
-                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Zoom in all web pages"
-                            disabled={!zoomAvailable || zoomBusy || !zoom || zoom.percent >= zoom.max}
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label={`Zoom in ${zoomSubject}`}
+                            disabled={!zoomAvailable || (!gitZoom && zoomBusy) || !zoom || zoom.percent >= zoom.max}
                             onClick={() => zoom && void changeZoom(zoom.percent + zoom.step)}>+</button>
-                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Reset all web pages to 100%"
-                            disabled={!zoomAvailable || zoomBusy || zoom?.percent === 100}
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label={`Reset ${zoomSubject} to 100%`}
+                            disabled={!zoomAvailable || (!gitZoom && zoomBusy) || zoom?.percent === 100}
                             onClick={() => void changeZoom(100)}>Reset</button>
                     </div>
-                    {zoomError && <div role="alert" className="mt-1 text-[#a1260d] dark:text-[#f48771]">{zoomError}</div>}
-                </div>
+                    {!gitZoom && zoomError && <div role="alert" className="mt-1 text-[#a1260d] dark:text-[#f48771]">{zoomError}</div>}
+                </div>}
                 <button
                     type="button"
                     role="menuitem"

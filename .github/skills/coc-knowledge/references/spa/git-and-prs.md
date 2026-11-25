@@ -89,6 +89,13 @@ address, else the remembered per-group pick; `RepoGroupGitTab` writes that pick
 into an already open page in place (`setGitPageMember`) and never opens,
 focuses or reveals the page just because the group is shown.
 
+### Review zoom geometry
+
+The panel's Git page uses tab-local CSS zoom (see [shared zoom](shell.md#shared-web-page-zoom)).
+HTML diff viewers and minimap measurements use `diffLayoutRect` to remove
+`currentCSSZoom` from client geometry before combining it with scroll offsets.
+Pointer and overlay positioning retain screen coordinates.
+
 ### Refresh and panel Reload
 
 `refreshAll`'s in-progress guard covers history and branch range only; every call

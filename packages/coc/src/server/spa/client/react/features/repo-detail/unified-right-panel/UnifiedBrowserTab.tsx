@@ -145,6 +145,11 @@ export function UnifiedBrowserTab({
     const onCocRef = useRef(cocPage !== null);
     onCocRef.current = cocPage !== null;
     const [cocReload, setCocReload] = useState(0);
+    // Local to this tab and concrete owner; URL guests keep desktop-wide zoom.
+    const gitZoomOwner = JSON.stringify([sessionKey, tabId, viewId]);
+    const [gitZoomState, setGitZoomState] = useState({ owner: gitZoomOwner, percent: 100 });
+    const gitZoomPercent = gitZoomState.owner === gitZoomOwner ? gitZoomState.percent : 100;
+    const isGitPage = cocPage?.page.kind === 'git';
     // Ctrl/Cmd+L reaches the address from a `coc://` page, except in a terminal.
     // A DOM listener: the Settings form is a portal whose React events bubble elsewhere.
     const [cocPageNode, setCocPageNode] = useState<HTMLDivElement | null>(null);
@@ -483,6 +488,10 @@ export function UnifiedBrowserTab({
                 onOpenChange={setMenuOpen}
                 engine={engine}
                 bridge={bridge}
+                gitZoom={isGitPage ? {
+                    percent: gitZoomPercent,
+                    onChange: percent => setGitZoomState({ owner: gitZoomOwner, percent }),
+                } : cocPage ? null : undefined}
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
@@ -536,7 +545,7 @@ export function UnifiedBrowserTab({
                 </div>
             )}
             {cocPage ? (
-                <div ref={setCocPageNode} className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="browser-coc-page">
+                <div ref={setCocPageNode} style={isGitPage ? { zoom: gitZoomPercent / 100 } : undefined} className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="browser-coc-page">
                     <UnifiedCocPage
                         key={cocPage.page.kind === 'terminal' ? `${tabHistory.index}:${cocReload}`
                             : cocPage.page.kind === 'canvas' ? `${tabHistory.index}:${cocPage.page.canvasId}`
