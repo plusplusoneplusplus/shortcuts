@@ -1244,7 +1244,7 @@ export function formatShortTimestamp(date: Date): string {
     return `${month}/${day} ${hours}:${minutes} ${ampm}`;
 }
 
-/** Inline metrics wrap only between complete values or expanded detail entries. */
+/** Compact metrics disclose exact values outside the single-row header flow. */
 function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTokenUsage; costTimeMs?: number }) {
     const [expanded, setExpanded] = useState(false);
 
@@ -1274,7 +1274,7 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
     return (
         <button
             type="button"
-            className={cn(CONTEXT_TRIGGER_CLASS, 'assistant-stats-badge max-w-full shrink-0 flex-wrap gap-x-1.5 gap-y-0.5 text-[11px] leading-4 tabular-nums hover:text-[#1e1e1e] dark:hover:text-[#cccccc]')}
+            className={cn(CONTEXT_TRIGGER_CLASS, 'assistant-stats-badge min-w-[1.5rem] shrink text-[11px] leading-4 tabular-nums hover:text-[#1e1e1e] dark:hover:text-[#cccccc]')}
             title={expanded ? 'Click to collapse' : detail}
             aria-label={`Token usage and elapsed time: ${detail}. ${expanded ? 'Hide' : 'Show'} details`}
             aria-expanded={expanded}
@@ -1286,32 +1286,30 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
                 }
             }}
         >
-            {expanded ? detailParts.map((part, index) => (
-                <span key={part} className="whitespace-nowrap">
-                    {index > 0 && <span aria-hidden="true">· </span>}
-                    {part}
+            <span className="min-w-0 truncate">
+                {tokenUsage && (
+                    <span className="whitespace-nowrap">
+                        <span title={`Input tokens: ${inputTokens.toLocaleString()}`}>
+                            <span aria-hidden="true">↓</span>{formatTokenCount(inputTokens)}
+                        </span>
+                        <span className="ml-1.5" title={`Output tokens: ${outputTokens.toLocaleString()}`}>
+                            <span aria-hidden="true">↑</span>{formatTokenCount(outputTokens)}
+                        </span>
+                    </span>
+                )}
+                {costTimeMs != null && (
+                    <span
+                        className={cn('whitespace-nowrap', tokenUsage && 'border-l border-[#d0d7de] dark:border-[#505050] pl-1.5')}
+                        title={`Elapsed time: ${costTimeMs.toLocaleString()}ms`}
+                    >
+                        {formatCostTime(costTimeMs)}
+                    </span>
+                )}
+            </span>
+            {expanded && (
+                <span className="assistant-stats-details absolute right-0 top-full z-20 max-w-full rounded border border-[#d0d7de] dark:border-[#505050] bg-white dark:bg-[#252526] p-2 text-left text-[#1e1e1e] dark:text-[#cccccc] whitespace-normal break-words shadow-lg">
+                    {detail}
                 </span>
-            )) : (
-                <>
-                    {tokenUsage && (
-                        <span className="inline-flex gap-1.5 whitespace-nowrap">
-                            <span title={`Input tokens: ${inputTokens.toLocaleString()}`}>
-                                <span aria-hidden="true">↓</span>{formatTokenCount(inputTokens)}
-                            </span>
-                            <span title={`Output tokens: ${outputTokens.toLocaleString()}`}>
-                                <span aria-hidden="true">↑</span>{formatTokenCount(outputTokens)}
-                            </span>
-                        </span>
-                    )}
-                    {costTimeMs != null && (
-                        <span
-                            className={cn('whitespace-nowrap', tokenUsage && 'border-l border-[#d0d7de] dark:border-[#505050] pl-1.5')}
-                            title={`Elapsed time: ${costTimeMs.toLocaleString()}ms`}
-                        >
-                            {formatCostTime(costTimeMs)}
-                        </span>
-                    )}
-                </>
             )}
         </button>
     );
@@ -1800,7 +1798,7 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                                 ? 'bg-[#fff8c5] dark:bg-[#3a3520] border border-[#f0d878] dark:border-[#a08020]'
                                 : 'bg-[#f3f4f6] dark:bg-[#2a2a2c]'
                         )
-                        : 'turn-body flex-1 min-w-0'
+                        : 'turn-body flex-1 min-w-0 [container-type:inline-size] [container-name:turn-body]'
                 )}
             >
                 <div
@@ -1808,7 +1806,7 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                         'turn-header flex items-center gap-1.5 text-[11px] leading-4 text-[#848484] mb-1 select-none',
                         isUser
                             ? 'flex-nowrap absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
-                            : 'flex-wrap min-h-[16px]'
+                            : isScript ? 'relative flex-wrap min-h-[16px]' : 'relative flex-nowrap min-w-0 h-4 [@container_turn-body_(max-width:300px)]:gap-1'
                     )}
                 >
                     {!isUser && turn.pinnedAt && (
@@ -1822,7 +1820,12 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                         {isUser ? 'You' : isScript ? 'Script Output' : 'Assistant'}
                     </span>
                     {!isUser && !isScript && (
-                        <span className="assistant-attribution min-w-0 truncate" data-provider={assistantProvider ?? 'copilot'}>
+                        <span
+                            className="assistant-attribution min-w-[1rem] flex-1 truncate"
+                            title={`${assistantProviderLabel}${turn.model ? ` · ${turn.model}` : ''}`}
+                            tabIndex={0}
+                            data-provider={assistantProvider ?? 'copilot'}
+                        >
                             {assistantProviderLabel}
                             {turn.model && <span className="assistant-model"> · {turn.model}</span>}
                         </span>
@@ -1830,7 +1833,12 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                     {turn.timestamp && (() => {
                         const d = new Date(turn.timestamp);
                         return (
-                            <span className="ml-auto timestamp shrink-0 whitespace-nowrap font-mono tabular-nums" title={d.toLocaleString()}>
+                            <span
+                                className={cn('ml-auto timestamp font-mono tabular-nums', isUser || isScript ? 'shrink-0 whitespace-nowrap' : 'min-w-[1.5rem] truncate')}
+                                title={d.toLocaleString()}
+                                aria-label={d.toLocaleString()}
+                                tabIndex={isUser || isScript ? undefined : 0}
+                            >
                                 {formatShortTimestamp(d)}
                             </span>
                         );
@@ -1860,7 +1868,7 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                     {!isUser && !turn.streaming && (turn.tokenUsage || turn.costTimeMs != null) && (
                         <AssistantStatsBadge tokenUsage={turn.tokenUsage} costTimeMs={turn.costTimeMs} />
                     )}
-                    <span className="turn-header-actions ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+                    <span className="turn-header-actions ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap [@container_turn-body_(max-width:300px)]:gap-1">
                     {jsonDetected && !showRaw && (
                         <button
                             className="bubble-json-toggle-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px] font-medium"
@@ -1869,7 +1877,8 @@ export function ConversationTurnBubble({ turn, logicalTurn = turn, taskId, onRet
                             style={viewMode === 'json' ? { opacity: 1, color: '#0078d4' } : undefined}
                             data-testid="json-toggle-btn"
                         >
-                            {viewMode === 'json' ? 'JSON' : 'Rendered'}
+                            <span className="[@container_turn-body_(max-width:300px)]:sr-only">{viewMode === 'json' ? 'JSON' : 'Rendered'}</span>
+                            <span className="hidden [@container_turn-body_(max-width:300px)]:inline" aria-hidden="true">{'{}'}</span>
                         </button>
                     )}
                     <button

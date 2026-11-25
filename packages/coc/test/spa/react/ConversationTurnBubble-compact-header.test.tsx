@@ -197,7 +197,7 @@ describe('ConversationTurnBubble — merged assistant stats badge', () => {
         expect(badge.querySelector('[title="Input tokens: 329,900"]')).toBeTruthy();
         expect(badge.querySelector('[title="Output tokens: 387"]')).toBeTruthy();
         expect(badge.className).toContain('bg-transparent');
-        expect(badge.className).toContain('shrink-0');
+        expect(badge.className).toContain('min-w-[1.5rem]');
         expect(badge.querySelectorAll('.whitespace-nowrap')).toHaveLength(2);
         expect(container.querySelector('.turn-header-actions')?.className).toContain('shrink-0');
     });
@@ -275,13 +275,15 @@ describe('ConversationTurnBubble — compact timestamp', () => {
         expect(title!.length).toBeGreaterThan(10);
     });
 
-    it('timestamp span has whitespace-nowrap', () => {
+    it('timestamp truncates with a full accessible value', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn({ timestamp: '2026-04-20T07:32:43Z' })} />
         );
         const ts = container.querySelector('.timestamp');
         expect(ts).toBeTruthy();
-        expect(ts!.className).toContain('whitespace-nowrap');
+        expect(ts!.className).toContain('truncate');
+        expect(ts!.getAttribute('aria-label')).toBe(ts!.getAttribute('title'));
+        expect(ts!.tabIndex).toBe(0);
     });
 });
 
@@ -314,15 +316,17 @@ describe('ConversationTurnBubble — compact header layout', () => {
         expect(headerRow!.className).not.toContain('gap-2');
     });
 
-    it('assistant header wraps between complete metrics and action groups', () => {
+    it('assistant header stays single-row with accessible metadata and intact actions', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn()} />
         );
         const bubble = container.querySelector('.group');
         const headerRow = bubble?.querySelector('.flex.items-center');
         expect(headerRow).toBeTruthy();
-        expect(headerRow!.className).toContain('flex-wrap');
-        expect(headerRow!.className).not.toContain('flex-nowrap');
+        expect(headerRow!.className).toContain('flex-nowrap');
+        const attribution = headerRow!.querySelector('.assistant-attribution') as HTMLElement;
+        expect(attribution.tabIndex).toBe(0);
+        expect(attribution.title).toBe(attribution.textContent);
         const actions = headerRow!.querySelector('.turn-header-actions')!;
         expect(actions.querySelector('.bubble-raw-btn')).toBeTruthy();
         expect(actions.querySelector('.bubble-copy-btn')).toBeTruthy();
