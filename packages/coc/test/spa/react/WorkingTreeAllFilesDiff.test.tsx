@@ -121,6 +121,51 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         expect(screen.queryByRole('button', { name: 'Mark viewed' })).toBeNull();
         expect(screen.queryByLabelText('Hide viewed')).toBeNull();
     });
+    it('places real matching counts and layout controls in the compact header and combines filters', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            change('src/a.ts', 'staged'), change('src/a.ts', 'unstaged'),
+            change('tests/a.test.ts', 'untracked', '?'), change('docs/guide.md', 'unstaged', 'D'),
+        ] });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        expect(nav()).toHaveClass('git-review-nav-compact');
+        const header = nav().querySelector('.git-review-filter-title')!;
+        expect(within(header as HTMLElement).getByRole('group', { name: 'File list view' })).toBeTruthy();
+        const badge = () => nav().querySelector('.git-review-file-count');
+        expect(badge()).toHaveTextContent('4');
+        const kinds = within(nav()).getByRole('group', { name: 'File kind filter' });
+        expect(kinds.parentElement).toBe(screen.getByLabelText('Change status filter').parentElement);
+        for (const label of ['All 4', 'Source 2', 'Tests 1', 'Docs 1']) {
+            expect(within(kinds).getByRole('button', { name: label })).toBeTruthy();
+        }
+        fireEvent.click(within(kinds).getByRole('button', { name: 'Source 2' }));
+        expect(badge()).toHaveTextContent('2');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'src/' } });
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'D' } });
+        expect(badge()).toHaveTextContent('0');
+        expect(within(kinds).getByRole('button', { name: 'All 4' })).toBeTruthy();
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Clear filters' }));
+        expect(badge()).toHaveTextContent('4');
+        fireEvent.click(within(kinds).getByRole('button', { name: 'Tests 1' }));
+        expect(current()).toMatchObject({ stage: 'untracked', filePath: '/repo/tests/a.test.ts' });
+        expect(badge()).toHaveAttribute('aria-label', '1 matching file');
+    });
+    it('keeps compact drawer search focus, keyboard navigation and focus return', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        const trigger = screen.getByRole('button', { name: 'Files · 3' });
+        fireEvent.click(trigger);
+        expect(document.activeElement).toBe(screen.getByRole('textbox'));
+        const groups = within(nav()).getByRole('button', { name: 'Groups', exact: true });
+        groups.focus();
+        fireEvent.keyDown(groups, { key: 'Tab', shiftKey: true });
+        expect(document.activeElement).toBe(row('Untracked'));
+        fireEvent.keyDown(row('Untracked'), { key: 'Tab' });
+        expect(document.activeElement).toBe(groups);
+        fireEvent.keyDown(nav(), { key: 'Escape' });
+        expect(document.activeElement).toBe(trigger);
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
     it('keeps the same path separate in groups, tree and flat, including keyboard and hunk navigation', async () => {
         render(<WorkingTreeAllFilesDiff {...props} />);
         await screen.findByTestId('full-working-diff');

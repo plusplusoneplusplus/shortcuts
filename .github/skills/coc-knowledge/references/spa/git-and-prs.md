@@ -210,6 +210,9 @@ selection, directory/tree/flat layouts, overview, progress and the narrow drawer
 and drag capabilities keep Git revision attachments and PR classification/visited
 markers consumer-owned. Optional file IDs separate selection from displayed paths;
 mutable hosts can guard navigation and retain selection while an editor is dirty.
+Working changes opts into `ReviewFiles.compactNavigator`; its badge reflects the
+filtered list while kind totals describe the full comparison. The presentation
+shares all existing filters, tree ordering, row actions and drawer navigation.
 Each host keys the shell by owner and comparison identity.
 Optional `rowMenu(file, anchor)` items open from right-click, Menu key or
 Shift+F10 on the clicked row without changing selection; `anchor` carries the

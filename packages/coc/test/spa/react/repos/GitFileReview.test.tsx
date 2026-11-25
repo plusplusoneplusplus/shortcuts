@@ -198,6 +198,9 @@ describe('changed-file category counts', () => {
         const changed = [files[0], files[2], { path: 'tests/README.md', status: 'M' }, files[3], { path: 'AGENTS.md', status: 'A' }];
         render(<GitFileReview {...props} files={changed} />);
         expect(nav().querySelector('.git-review-filter-title strong')?.textContent).toBe('Changed files');
+        expect(nav()).not.toHaveClass('git-review-nav-compact');
+        expect(nav().querySelector('.git-review-file-count')).toBeNull();
+        expect(nav().querySelector('.git-review-filter-title [aria-label="File list view"]')).toBeNull();
         expectCounts([5, 1, 2, 2]);
     });
     it('keeps all totals when switching categories and preserves a still-visible selection', () => {
