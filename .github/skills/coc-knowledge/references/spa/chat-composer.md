@@ -391,8 +391,8 @@ confirmed queued notices stay on the current page without changing selections.
 ### Session-context attachments
 
 With `features.sessionContextAttachments` enabled, chat/process rows, Ralph
-session group rows, Work Item list and hierarchy rows, Git commit rows, branch range
-headers, Git review changed-file rows, right-panel source-file tabs, and Pull Request rows become copy-drag context sources. `NewChatArea`,
+session group rows, Work Item list and hierarchy rows, Git commit rows, review-header commit switcher
+rows, branch range headers, Git review changed-file rows, right-panel source-file tabs, and Pull Request rows become copy-drag context sources. `NewChatArea`,
 `FollowUpInputArea`, and the desktop repo header Queue Task / Ask buttons accept them.
 
 Drops and sends enforce a shared three-item cap, feature gating, exact-source

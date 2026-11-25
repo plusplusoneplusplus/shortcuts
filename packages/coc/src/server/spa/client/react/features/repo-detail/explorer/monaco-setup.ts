@@ -13,6 +13,7 @@ import { registerShadowLanguages, type ShadowMonaco } from '../../language-serve
 import { installLanguageEditorOpener, type NavigationMonaco } from '../../language-servers/editorNavigation';
 import { installSemanticTokenThemes, type SemanticThemeMonaco } from '../../language-servers/semanticTokens';
 import { registerTlaLanguage, type TlaMonaco } from '../../../shared/monaco/tlaLanguage';
+import { registerLeanLanguage } from '../../../shared/monaco/leanLanguage';
 import { monacoWorkerUrl } from './monacoWorkerUrls';
 
 // Use the locally bundled Monaco instead of CDN
@@ -28,8 +29,9 @@ registerShadowLanguages(monaco as unknown as ShadowMonaco, {
 });
 
 // Languages Monaco's bundle lacks are registered before any model exists, so
-// a `.tla` file opened in an editor, preview or diff tokenizes from the start.
+// a `.tla` or `.lean` file opened in an editor, preview or diff tokenizes from the start.
 registerTlaLanguage(monaco as unknown as TlaMonaco);
+registerLeanLanguage(monaco);
 
 // A definition in another file has nowhere to open in a standalone Monaco, so
 // the one global opener is installed here and dispatches to whichever preview

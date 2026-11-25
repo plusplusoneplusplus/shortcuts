@@ -356,7 +356,9 @@ revision checks rather than overwriting concurrent delivery state.
 
 Admitted initial and follow-up turns retain image files at their existing managed
 per-turn paths on success, error and cancellation, including queued cancellation and
-direct follow-up delivery. `chat-image-policy.ts` preserves images while cleaning
+direct follow-up delivery. WSL image-capable providers consume these host files
+through the SDK host-path adapter, with workspace distro ownership checks and no
+workspace staging copies. `chat-image-policy.ts` preserves images while cleaning
 non-image uploads; rejected/unadmitted inputs still use immediate cleanup. This is a
 temporary local-delegation workaround, without a sweeper or durable attachment IDs.
 OS temp cleanup is environment-dependent and not guaranteed under disk pressure;

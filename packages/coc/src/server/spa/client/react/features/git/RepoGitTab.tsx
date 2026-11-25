@@ -695,9 +695,13 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
     const selectedBranchFile = view?.type === 'branch-file' ? view.filePath : null;
     const selectedWorkingTreeFile = view?.type === 'working-tree-all' ? view.filePath ?? null : null;
 
+    const sourceWorkspaceName = reposList
+        ? findRepoBySelectionId(reposList, sourceSelectionId ?? workspaceId)?.workspace?.name
+        : sourceSelectionId?.startsWith('remote:') ? undefined : sourceWorkspace?.name;
     const detailPanel = (
         <RepoGitDetailPane
             attachmentDestinationId={sourceSelectionId ?? workspaceId}
+            sourceWorkspaceName={sourceWorkspaceName}
             workspaceId={workspaceId}
             view={view}
             commits={data.commits}
@@ -766,9 +770,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, repositorySelector, la
     const listPane = (
         <RepoGitListPane
             sourceSelectionId={sourceSelectionId}
-            sourceWorkspaceName={reposList
-                ? findRepoBySelectionId(reposList, sourceSelectionId ?? workspaceId)?.workspace?.name
-                : sourceSelectionId?.startsWith('remote:') ? undefined : sourceWorkspace?.name}
+            sourceWorkspaceName={sourceWorkspaceName}
             workspaceId={workspaceId}
             isSplitWorkspace={isSplitWorkspace}
             headerHoisted={headerHoisted}

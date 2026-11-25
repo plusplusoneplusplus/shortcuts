@@ -4,14 +4,14 @@ import { downloadInboundImage } from '@plusplusoneplusplus/coc-connector';
 import { cleanupTempDir, MAX_IMAGE_BYTES, parseDataUrl } from '../core/image-utils';
 import { getRepoDataPath } from '../paths';
 import type { Attachment, ModelInfo } from '@plusplusoneplusplus/forge';
-import { getLogger, isWithinDirectory, LogCategory, resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
 
 /** Fixed messages safe to send through either messaging answer relay. */
 export const CHAT_IMAGE_FAILURE_TEXT = {
     storage: 'The saved images are missing or invalid. Send the images again with your instructions.',
     provider: 'This provider cannot receive image attachments. Select Copilot, Codex, or Claude and send the images again.',
-    wsl: 'This workspace cannot receive these image attachments in WSL. Select a native workspace and send the images again.',
+    wsl: 'These image attachments cannot be accessed from this WSL workspace. Send the images again from the same workspace.',
     model: 'This model cannot receive image attachments. Select a model with vision support and send the images again.',
     unknownModel: 'Image support could not be confirmed for this model. Select an explicit Copilot model with vision support and send the images again.',
 } as const;
@@ -77,19 +77,14 @@ export function assertChatImageTransport(
 
     // OpenCode currently builds text parts only; file references are not images.
     if (provider === 'opencode') throw new Error(CHAT_IMAGE_FAILURE_TEXT.provider);
-    if (provider !== 'copilot') return;
 
     const context = resolveWorkspaceExecutionContext(workingDirectory);
     if (context.kind !== 'wsl') return;
-    // Mirror RequestRunner's restriction, projecting a safe, actionable error
-    // rather than its exception containing host paths and distro details.
+    // Native provider adapters consume host files (or inline bytes for Claude).
+    // Managed uploads need not live in the repo. Still reject a foreign distro
+    // before admitting a turn; adapters validate host readability before sending.
     try {
-        for (const image of images) {
-            const translated = translatePathForExecution(image.path, context);
-            if (!isWithinDirectory(translated, context.linuxWorkingDirectory)) {
-                throw new Error('outside workspace');
-            }
-        }
+        for (const image of images) translatePathForExecution(image.path, context);
     } catch {
         throw new Error(CHAT_IMAGE_FAILURE_TEXT.wsl);
     }

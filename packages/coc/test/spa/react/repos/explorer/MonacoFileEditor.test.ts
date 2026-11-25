@@ -33,6 +33,11 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('main.go')).toBe('go');
     });
 
+    it('maps Lean source files', () => {
+        expect(getMonacoLanguage('Main.lean')).toBe('lean');
+        expect(getMonacoLanguage('Mathlib/Proof.LEAN')).toBe('lean');
+    });
+
     it('maps Rust', () => {
         expect(getMonacoLanguage('lib.rs')).toBe('rust');
     });

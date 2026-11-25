@@ -15,7 +15,7 @@ Commit list, commit diff, and commit-bound chat for the Git tab.
 `CommitList.tsx` is wiring. Behavior lives in `commitListSelection.ts`, `commitRowViewModel.ts`, `useCommitListExpansion.ts`, `useCommitListGestures.ts`, and `useCommitListDragController.ts`. Types: `commitListTypes.ts`.
 
 - `onMultiSelect` receives display order from `commitsInSet`, never from iterating the hash set.
-- The ⠿ handle is reorder (`text/plain` index only). The row body is session-context drag. `dragIndex` is set only by `handleReorderDragStart`. Drops outside the unpushed range are rejected. Payloads keep the raw member workspace and `sourceRoutingRef`. An unresolved remote source cannot become local.
+- The ⠿ handle is reorder (`text/plain` index only). The row body is session-context drag. `dragIndex` is set only by `handleReorderDragStart`. Drops outside the unpushed range are rejected. Payloads keep the raw member workspace and `sourceRoutingRef`. An unresolved remote source cannot become local. `useCommitContextPayloadBuilder` owns that payload rule; `CommitHashPicker` recent-commit rows reuse it through `picker.contextDrag`.
 - `listCommitFiles` carries a generation that bumps on workspace change. Discard late responses and clear the cache.
 - Toggle selection (Ctrl/Cmd-click, mobile tap, swipe) goes through `computeToggleSelection` so the Shift anchor stays shared.
 - `CommitTooltip` portals to `document.body`. Pointer events on it do not dismiss hover-peek. Rail outgoing rows reuse the tooltip. Copy is not row activation.

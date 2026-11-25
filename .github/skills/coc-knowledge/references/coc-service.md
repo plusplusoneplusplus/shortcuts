@@ -44,6 +44,9 @@ without access to the installing user's Cargo directory.
 
 Configure the tunnel first: `.\scripts\config-devtunnel.ps1 [-TunnelId <id>] [-Port <port>]`. The service loop reads the configured tunnel port and only starts/stops `devtunnel host`.
 
+Tunnel cleanup uses .NET process-tree termination on PowerShell 7 on all hosts.
+Windows PowerShell 5.1 walks one CIM process snapshot to stop descendants first.
+
 ## Logs
 
 Log file `~/.coc/logs/coc-service.log`, rotated automatically at 10 MB.

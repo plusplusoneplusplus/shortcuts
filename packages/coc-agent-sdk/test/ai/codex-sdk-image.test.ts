@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 import type { Attachment } from '../../src/types';
 
@@ -74,5 +77,44 @@ describe('CodexSDKService image attachments', () => {
             { type: 'local_image', path: '/tmp/first.jpg' },
             { type: 'local_image', path: '/tmp/second.WEBP' },
         ]);
+    });
+});
+
+
+describe('Codex WSL image delivery', () => {
+    it.each([undefined, 'existing-thread'])('delivers host upload bytes with session %s', async sessionId => {
+        const svc = new CodexSDKService();
+        const { client, thread } = makeCodexMock();
+        (svc as any).sdk = client;
+        (svc as any).availabilityCache = { available: true };
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-wsl-image-'));
+        const image = path.join(dir, 'upload.png');
+        const bytes = Buffer.from('image bytes');
+        fs.writeFileSync(image, bytes);
+        try {
+            const result = await svc.sendMessage({
+                prompt: 'look', sessionId, workingDirectory: String.raw`\\wsl$\Ubuntu\home\a\repo`,
+                attachments: [fileAttachment(image)],
+            });
+            expect(result.success).toBe(true);
+            const input = thread.runStreamed.mock.calls[0][0];
+            expect(input).toEqual([{ type: 'text', text: 'look' }, { type: 'local_image', path: image }]);
+            expect(fs.readFileSync(input[1].path)).toEqual(bytes);
+            expect(sessionId ? client.resumeThread : client.startThread).toHaveBeenCalledWith(
+                ...(sessionId ? [sessionId] : []), expect.objectContaining({ workingDirectory: String.raw`\\wsl$\Ubuntu\home\a\repo` }),
+            );
+            fs.rmSync(image);
+            const failed = await svc.sendMessage({
+                prompt: 'look', sessionId, workingDirectory: String.raw`\\wsl$\Ubuntu\repo`,
+                attachments: [fileAttachment(image)],
+            });
+            expect(failed.success).toBe(false);
+            expect(failed.error).toContain('Cannot read WSL image attachment');
+            expect(thread.runStreamed).toHaveBeenCalledTimes(1);
+            expect(fs.readdirSync(dir)).toEqual([]);
+        } finally {
+            svc.dispose();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

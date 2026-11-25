@@ -309,7 +309,7 @@ describe('CoC service PowerShell scripts', () => {
       // The Windows walk queries Win32_Process once and recurses over that snapshot.
       expect(serveLoop.match(/Get-CimInstance Win32_Process/g)).toHaveLength(1);
       expect(serveLoop).toContain('Stop-ProcessTree -ProcessId $_.ProcessId -ProcessTable $ProcessTable');
-      // On pwsh-for-Linux, Win32_Process is unavailable, so the tree is killed via .NET Kill($true).
+      // PowerShell 7 uses .NET tree kill on Windows, Linux and macOS.
       expect(serveLoop).toContain('(Get-Process -Id $ProcessId -ErrorAction Stop).Kill($true)');
       expect(serveLoop).toContain('Stop-DevTunnel -TunnelSession $tunnelSession');
       expect(serveLoop).toContain('} finally {');
@@ -354,6 +354,35 @@ describe('PowerShell script encoding', () => {
 });
 
 describePowerShell('CoC service PowerShell script behavior', () => {
+  it('uses native tree kill on PowerShell 7 even when CIM is unavailable', () => {
+    const serveLoop = readScript('coc-serve-loop.ps1');
+    const cleanupFunction = serveLoop.slice(serveLoop.indexOf('function Stop-ProcessTree {'), serveLoop.indexOf('function Stop-DevTunnel {'));
+    const command = `
+$ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) { exit 0 }
+${cleanupFunction}
+$script:treeKilled = $false
+function Get-CimInstance { throw 'CIM must not be used by modern PowerShell cleanup' }
+function Stop-Process { throw 'Must kill descendants, not just the root process' }
+function Get-Process {
+  param($Id)
+  if ($Id -ne 12345) { throw 'Unexpected process id' }
+  $proc = [PSCustomObject]@{}
+  $proc | Add-Member -MemberType ScriptMethod -Name Kill -Value {
+    param([bool]$entireProcessTree)
+    $script:treeKilled = $entireProcessTree
+  }
+  return $proc
+}
+Stop-ProcessTree -ProcessId 12345
+if (-not $script:treeKilled) { throw 'Process tree was not killed' }
+`;
+    const result = spawnSync(powerShellCommand!, ['-NoProfile', '-NonInteractive', '-Command', command], {
+      cwd: repoRoot, encoding: 'utf-8', timeout: 20_000,
+    });
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  });
+
   it('passes PowerShell parser checks', () => {
     const command = `
 $errors = @()

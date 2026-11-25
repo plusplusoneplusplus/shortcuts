@@ -16,6 +16,8 @@ import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
 import type { CommitDetailProps } from '../commits/CommitDetail';
 import type { CommitPickerOptions, CommitPickerView } from '../commits/CommitHashPicker';
+import { useCommitContextPayloadBuilder } from '../commits/useCommitListDragController';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
 import { WorkingTreeAllComments } from '../working-tree/WorkingTreeAllComments';
@@ -27,6 +29,8 @@ import type { HunkTarget, RightPanelView, WorkingTreeStage } from './types';
 export interface RepoGitDetailPaneProps {
     workspaceId: string;
     attachmentDestinationId?: string;
+    /** Display name of the owning repository, carried by commit context drags. */
+    sourceWorkspaceName?: string;
     view: RightPanelView | null;
     commits: GitCommitItem[];
     /** Load state of `commits`, shown by the commit header's hash switcher. */
@@ -68,15 +72,18 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, attachmentDestinationId, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, commitsUpstream, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, sourceWorkspaceName, view, commits, commitsLoading, commitsError, onRefreshCommits, onSelectCommit, onSelectBranchRange, onSelectWorkingChanges, unpushedCount, commitsUpstream, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     // One switcher for every review header, so a commit, the branch range and
     // uncommitted changes can always reach each other.
+    const contextDrag = useCommitContextPayloadBuilder({
+        workspaceId, sourceSelectionId: attachmentDestinationId, sourceWorkspaceName, enabled: isSessionContextAttachmentsEnabled(),
+    });
     const switcher: CommitPickerOptions | undefined = onSelectCommit && {
-        commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit,
+        commits, loading: commitsLoading, error: commitsError, onRefresh: onRefreshCommits, onSelect: onSelectCommit, contextDrag,
         upstream: commitsUpstream ? { name: commitsUpstream, localCount: unpushedCount } : undefined,
         views: pickerViews(branchRangeData, onSelectBranchRange, onSelectWorkingChanges),
     };

@@ -134,14 +134,17 @@ async function teamsTransport(handle: (msg: InboundTeamsMessage) => Promise<void
         cancelDownloads: () => reader.stop() };
 }
 
-async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'opencode' = 'copilot', vision = true) {
+async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'codex' | 'claude' | 'opencode' = 'copilot', vision = true, wsl = false) {
+    // Explicit execution paths let this Windows-host fixture exercise WSL policy
+    // on POSIX too, where the queue's native path.resolve treats UNC as relative.
+    const execution = (id: unknown) => wsl ? { workingDirectory: `\\\\wsl$\\${id === 'ws-a' ? 'Ubuntu' : 'Debian'}\\home\\repo` } : {};
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'incoming-execution-'));
     cleanup.push(() => fs.rmSync(dataDir, { recursive: true, force: true }));
     const store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
     cleanup.push(() => store.close());
     for (const id of ['ws-a', 'ws-b']) {
-        const rootPath = path.join(dataDir, id);
-        fs.mkdirSync(rootPath);
+        const rootPath = wsl ? `\\\\wsl$\\${id === 'ws-a' ? 'Ubuntu' : 'Debian'}\\home\\repo` : path.join(dataDir, id);
+        if (!wsl) fs.mkdirSync(rootPath);
         await store.registerWorkspace({ id, name: id, rootPath });
         if (provider === 'copilot') writeRepoPreferences(dataDir, id, { defaultModel: 'gpt-4.1' });
     }
@@ -149,9 +152,9 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
         id: 'gpt-4.1', name: 'Fixture model',
         capabilities: { supports: { vision, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
     }] });
-    const received: Array<{ prompt: string; bytes: Buffer[]; paths: string[] }> = [];
+    const received: Array<{ prompt: string; bytes: Buffer[]; paths: string[]; workingDirectory?: string }> = [];
     ai.mockSendMessage.mockImplementation(async (options: SendMessageOptions) => {
-        received.push({ prompt: options.prompt,
+        received.push({ prompt: options.prompt, workingDirectory: options.workingDirectory,
             bytes: options.attachments?.map(attachment => fs.readFileSync(attachment.path)) ?? [],
             paths: options.attachments?.map(attachment => attachment.path) ?? [] });
         return { success: true, response: 'Image received', sessionId: 'test-session' };
@@ -182,7 +185,7 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
             handOff,
             enqueue: (workspaceId, prompt, mode, processId, id, botControl, images) => queue.enqueue({
                 id, processId, botControl, type: 'chat', repoId: workspaceId, priority: 'normal', config: {},
-                payload: { kind: 'chat', prompt, mode: mode ?? 'ask', workspaceId, relayRequestId: id,
+                payload: { kind: 'chat', ...execution(workspaceId), prompt, mode: mode ?? 'ask', workspaceId, relayRequestId: id,
                     ...(processId !== toQueueProcessId(id) ? { processId } : {}), ...incomingImageTaskPayload(images) },
             }),
         });
@@ -215,16 +218,16 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
             executeFollowUp: async () => { throw new Error('Expected admitted image follow-up'); },
             enqueueRelayChat: (workspaceId, prompt, id, mode, botControl, images) => queue.enqueue({
                 id, processId: toQueueProcessId(id), botControl, type: 'chat', repoId: workspaceId, priority: 'normal', config: {},
-                payload: { kind: 'chat', prompt, mode: mode ?? 'ask', workspaceId, ...incomingImageTaskPayload(images) },
+                payload: { kind: 'chat', ...execution(workspaceId), prompt, mode: mode ?? 'ask', workspaceId, ...incomingImageTaskPayload(images) },
             }),
             admitRelayFollowUp: async (process, prompt, requestId, mode, id, images) => ({ taskId: await queue.enqueue({
                 id, processId: process.id, type: 'chat', repoId: String(process.metadata.workspaceId), priority: 'normal', config: {},
-                payload: { kind: 'chat', prompt, mode: mode ?? 'sentinel', workspaceId: process.metadata.workspaceId,
+                payload: { kind: 'chat', ...execution(process.metadata.workspaceId), prompt, mode: mode ?? 'sentinel', workspaceId: process.metadata.workspaceId,
                     processId: process.id, relayRequestId: requestId, ...incomingImageTaskPayload(images) },
             }) }),
             enqueuePendingRelayFollowUp: (workspaceId, processId, prompt, requestId, mode, id, images) => queue.enqueue({
                 id, processId, type: 'chat', repoId: workspaceId, priority: 'normal', config: {},
-                payload: { kind: 'chat', prompt, mode: mode ?? 'ask', workspaceId,
+                payload: { kind: 'chat', ...execution(workspaceId), prompt, mode: mode ?? 'ask', workspaceId,
                     processId, relayRequestId: requestId, ...incomingImageTaskPayload(images) },
             }),
         });
@@ -276,6 +279,24 @@ describe.each(['whatsapp'] as const)('%s native images through execution and rec
         await ctx.deliver(captionless ? 'image-follow' : 'follow', captionless ? '' : '/autopilot compare the image', true, 'first');
         expect(ctx.facade.getAll()).toHaveLength(2);
         expect(ctx.downloadCount()).toBe(2);
+    });
+
+    it.each(['copilot', 'codex', 'claude'] as const)('delivers initial and follow-up WSL images for %s in the owning workspace', { timeout: 20_000 }, async provider => {
+        const ctx = await harness(platform, provider, true, true);
+        await ctx.deliver('first-wsl', '/ask describe the image', true);
+        await ctx.settle();
+        await ctx.deliver('follow-wsl', '/autopilot compare the image', true, 'first-wsl');
+        await ctx.settle();
+        expect(ctx.received).toHaveLength(2);
+        expect(ctx.received.map(turn => turn.bytes)).toEqual([[PNG], [PNG]]);
+        expect(ctx.received.map(turn => turn.workingDirectory)).toEqual([
+            String.raw`\\wsl$\Ubuntu\home\repo`, String.raw`\\wsl$\Ubuntu\home\repo`,
+        ]);
+        for (const turn of ctx.received) {
+            expect(path.dirname(path.dirname(turn.paths[0]))).toBe(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'));
+            expect(fs.readFileSync(turn.paths[0])).toEqual(PNG);
+        }
+        expect(fs.existsSync(getRepoDataPath(ctx.dataDir, 'ws-b', 'attachments'))).toBe(false);
     });
 
     it('returns safe unsupported-provider feedback without an image-less SDK turn', { timeout: 20_000 }, async () => {
