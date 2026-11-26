@@ -25,7 +25,7 @@ export interface OpenDiffDefinitionInExplorerInput {
     ownerRoutingRef?: string | null;
     panelHost: UnifiedPanelHost | null;
     /** The way back to the diff: chip label and the diff's position restore. */
-    returnTo?: { label: string; restore?: () => void };
+    returnTo?: { label: string; currentCode?: true; restore?: () => void };
 }
 
 /** Whether the target was opened. */
@@ -42,6 +42,7 @@ export function openDiffDefinitionInExplorer({ route, workspaceId, ownerRoutingR
         if (returnTo && tabId !== originTabId) {
             recordDiffDefinitionReturn(panelHost.workspaceId, tabId, {
                 label: returnTo.label, originTabId, chatId: panelHost.chatId, restore: returnTo.restore,
+                ...(returnTo.currentCode ? { currentCode: true as const } : {}),
             });
         }
         return true;

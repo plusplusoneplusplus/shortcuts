@@ -325,7 +325,15 @@ on the initiating side, another changed file of the review switches the review
 there (same side), and any other file opens its current version at the line in
 the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
 without a panel; `diffDefinitionExplorer.ts`). Foreign-workspace targets are
-declined. `FileDiffPanel` holds the reveal until that file's models are displayed
+declined. In-review destinations must hold in the shown snapshot
+(`diffDefinitionLocate.ts`): `FileDiffPanel` reads the destination side through
+`fetchFileContent` and current code through `explorerApi.readBlob`, and reveals
+only when the texts are equal or the current definition line occurs exactly once
+verbatim in the snapshot (at that line). A missing, edited, repeated, unreadable
+or absent-side line opens current code in Explorer instead, flagged
+`currentCode` so the return chip shows a "Current code" label (a toast without a
+panel). One lookup is pending at a time; a newer jump, file/source/workspace
+change or unmount aborts it. `FileDiffPanel` holds the reveal until that file's models are displayed
 and suppresses the hunk target for it; the viewer's `revealTarget` goes through
 the controller's `reveal`, which waits for attach and is dropped by a model swap.
 `WorkingTreeFileDiff` is not a review: it routes both its full-language and
@@ -333,8 +341,8 @@ ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own
 
 Before an in-review jump (same file or review file), `FileDiffPanel` captures the
 initiating side's cursor and scroll offset through the viewer handle's
-`capturePosition` (controller → adapter `getViewPosition`) and pushes it on a
-per-review back stack (reset when workspace, source label or `shortRef` change).
+`capturePosition` (controller → adapter `getViewPosition`) and, once the
+destination is located, pushes it on a per-review back stack (reset when workspace, source label or `shortRef` change).
 The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on the
 panel before Monaco, only while the stack is non-empty) pop it: switch file via
 `onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter

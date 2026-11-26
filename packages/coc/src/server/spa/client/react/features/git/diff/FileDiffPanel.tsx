@@ -6,7 +6,7 @@
  * mode-specific behavior (URL building, comment context, AI chat support).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, useMemo, type RefObject } from 'react';
 import type { GitFileDiffContentResponse } from '@plusplusoneplusplus/coc-client';
 import { Spinner, Button } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons, computeDiffLines } from './UnifiedDiffViewer';
@@ -47,10 +47,12 @@ import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifi
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 import { DiffFilePicker } from './DiffFilePicker';
 import type { DiffEditorPosition } from './monacoDiffController';
-import type { DiffEditorSide } from './diffCoords';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { resolveDiffDefinitionRoute } from './diffDefinitionRoute';
 import { openDiffDefinitionInExplorer } from './diffDefinitionExplorer';
+import { locateDefinitionInSnapshot, snapshotText, type SnapshotLocation } from './diffDefinitionLocate';
+import { explorerApi } from '../../repo-detail/explorer/explorerApi';
+import { ToastContext } from '../../../contexts/ToastContext';
 import { reviewFileParts } from './gitReviewFiles';
 import { createDiffLineIndexResolver } from './diffCoords';
 import type { ReviewContentMatch } from './reviewContentSearch';
@@ -107,6 +109,7 @@ export interface FileDiffPanelProps {
 /** A spot in one file of this review: a jump target or a back origin. */
 type DefinitionLocation = DiffEditorPosition & { path: string };
 const DEFINITION_BACK_LIMIT = 50;
+const CURRENT_CODE_FALLBACK_MESSAGE = 'Opened the current code: the definition could not be located in this review\'s version.';
 
 type EditorContentState =
     | { key: string; status: 'loading' }
@@ -412,10 +415,6 @@ export function FileDiffPanel({
     const [definitionReveal, setDefinitionReveal] = useState<DefinitionLocation | null>(null);
     // Origins of in-diff jumps, newest last; Alt+← and the back chip pop them.
     const [definitionBack, setDefinitionBack] = useState<DefinitionLocation[]>([]);
-    const rememberDefinitionOrigin = useCallback((side: DiffEditorSide | undefined) => {
-        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
-        if (origin) setDefinitionBack(stack => [...stack, { ...origin, path: filePath }].slice(-DEFINITION_BACK_LIMIT));
-    }, [filePath]);
     // A return from Explorer may land after this panel moved on or unmounted.
     const definitionReturnRef = useRef({ mounted: true, filePath, onNavigateToFile });
     definitionReturnRef.current.filePath = filePath;
@@ -425,41 +424,74 @@ export function FileDiffPanel({
         live.mounted = true;
         return () => { live.mounted = false; };
     }, []);
+    // At most one in-review jump is being located; a newer jump, a file or
+    // review change, or unmount supersedes it.
+    const definitionLocateRef = useRef<AbortController | null>(null);
+    useEffect(() => () => { definitionLocateRef.current?.abort(); }, [workspaceId, source.cacheKey, filePath]);
+    const toast = useContext(ToastContext);
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
         if (!route) return false;
         setDismissedSearchTarget(contentSearchTarget ?? null);
-        if (route.kind === 'same-file') {
-            rememberDefinitionOrigin(side);
-            setDefinitionReveal({ path: filePath, side: route.side, line: route.line, column: route.column });
-            return true;
-        }
-        if (route.kind === 'review-file' && onNavigateToFile) {
-            rememberDefinitionOrigin(side);
-            setDefinitionReveal({ path: route.path, side: route.side, line: route.line, column: route.column });
-            onNavigateToFile(route.path, 'first');
-            return true;
-        }
-        const explorerRoute = route.kind === 'explorer' ? route : {
-            kind: 'explorer' as const, path: route.path, line: route.line, column: route.column,
-            ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
-        };
-        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        definitionLocateRef.current?.abort();
+        definitionLocateRef.current = null;
+        const requestedSource = sourceRef.current;
         const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
-        const returnLocation = origin ? { ...origin, path: filePath } : null;
-        return openDiffDefinitionInExplorer({
-            route: explorerRoute, workspaceId, ownerRoutingRef, panelHost,
-            returnTo: {
-                label: `${source.shortRef ?? source.label} · ${reviewFileParts(filePath).name}`,
-                restore: () => {
-                    const live = definitionReturnRef.current;
-                    if (!live.mounted || !returnLocation) return;
-                    setDefinitionReveal(returnLocation);
-                    if (returnLocation.path !== live.filePath) live.onNavigateToFile?.(returnLocation.path, 'first');
+        const originLocation = origin ? { ...origin, path: filePath } : null;
+        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        const openInExplorer = (currentCode: boolean) => {
+            const opened = openDiffDefinitionInExplorer({
+                route: {
+                    kind: 'explorer', path: route.kind === 'same-file' ? filePath : route.path, line: route.line, column: route.column,
+                    ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
                 },
-            },
-        });
-    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin, source.shortRef, source.label, contentSearchTarget]);
+                workspaceId, ownerRoutingRef, panelHost,
+                returnTo: {
+                    label: `${requestedSource.shortRef ?? requestedSource.label} · ${reviewFileParts(filePath).name}`,
+                    ...(currentCode ? { currentCode: true as const } : {}),
+                    restore: () => {
+                        const live = definitionReturnRef.current;
+                        if (!live.mounted || !originLocation) return;
+                        setDefinitionReveal(originLocation);
+                        if (originLocation.path !== live.filePath) live.onNavigateToFile?.(originLocation.path, 'first');
+                    },
+                },
+            });
+            if (opened && currentCode && !panelHost) toast?.addToast(CURRENT_CODE_FALLBACK_MESSAGE, 'info');
+            return opened;
+        };
+        if (route.kind === 'explorer' || (route.kind === 'review-file' && !onNavigateToFile)) return openInExplorer(false);
+        // Inside the review only where the definition is provably in the shown snapshot.
+        const destination = route.kind === 'same-file' ? filePath : route.path;
+        const fetchFileContent = requestedSource.fetchFileContent;
+        const routingRef = requestedSource.routingTarget;
+        const abort = new AbortController();
+        definitionLocateRef.current = abort;
+        void (async () => {
+            let location: SnapshotLocation | null = null;
+            try {
+                if (fetchFileContent) {
+                    const [content, current] = await Promise.all([
+                        fetchFileContent(destination),
+                        explorerApi.readBlob(workspaceId, destination, { signal: abort.signal }, routingRef),
+                    ]);
+                    const snapshot = snapshotText(content, route.side);
+                    if (snapshot !== null && current.encoding === 'utf-8') {
+                        location = locateDefinitionInSnapshot(snapshot, current.content, route.line, route.column);
+                    }
+                }
+            } catch {
+                location = null;
+            }
+            if (abort.signal.aborted || definitionLocateRef.current !== abort) return;
+            definitionLocateRef.current = null;
+            if (!location) { openInExplorer(true); return; }
+            if (originLocation) setDefinitionBack(stack => [...stack, originLocation].slice(-DEFINITION_BACK_LIMIT));
+            setDefinitionReveal({ path: destination, side: route.side, ...location });
+            if (route.kind === 'review-file') onNavigateToFile?.(route.path, 'first');
+        })();
+        return true;
+    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, contentSearchTarget, toast]);
     const backFromDefinition = definitionBack[definitionBack.length - 1] ?? null;
     const goBackFromDefinition = useCallback(() => {
         if (!backFromDefinition) return;
