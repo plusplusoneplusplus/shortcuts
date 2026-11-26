@@ -69,7 +69,7 @@ export function Router() {
     const [referenceHash, setReferenceHash] = useState<string | null>(() =>
         location.hash === '#chat-references' || location.hash.startsWith('#chat-references/') ? location.hash : null);
     const { state, dispatch } = useApp();
-    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { state: queueState, dispatch: queueDispatch, chatArchiveSnapshots } = useQueue();
     const client = useCocClient(state.selectedRepoId ?? undefined);
     const workspaceId = state.selectedRepoId ? getWorkspaceIdFromSelectionId(state.selectedRepoId) : '';
     const queueJobs = useRepoQueueJobs(workspaceId, client, state.selectedRepoId ?? undefined);
@@ -153,6 +153,10 @@ export function Router() {
                 if (isEditableTarget(e.target) && !inComposer) return;
                 const previous = chatSelectionMruRef.current.get(state.selectedRepoId)?.previous;
                 if (!previous) return;
+                const cacheKey = workspaceReadCacheKey(workspaceId, source);
+                // Optimistic sidebar actions precede the next history snapshot.
+                if (chatArchiveSnapshots && [...chatArchiveSnapshots.values()].some(snapshot =>
+                    snapshot.cacheKey === cacheKey && snapshot.archivedIds.includes(previous))) return;
                 const inQueue = [...queueJobs.running, ...queueJobs.queued].some(job =>
                     (job.processId ?? ensureQueueProcessId(job.id)) === previous);
                 const inHistory = historyMatchesOwner && history?.items.some(item => item.id === previous && !item.archived);
@@ -220,6 +224,9 @@ export function Router() {
         queueJobs,
         history,
         historyMatchesOwner,
+        chatArchiveSnapshots,
+        workspaceId,
+        source,
         dispatch,
         queueDispatch,
         queueState.selectedTaskId,

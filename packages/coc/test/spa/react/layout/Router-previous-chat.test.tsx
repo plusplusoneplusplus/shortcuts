@@ -1,11 +1,21 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
-import { useLayoutEffect } from 'react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
 import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import { queueJobHash } from '../../../../src/server/spa/client/react/queue/queueJobRoute';
 import { resolveChatSubTab } from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
+import { ChatPreferencesProvider, ChatPrefsSync, useChatPrefs } from '../../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../../../src/server/spa/client/react/api/workspaceReads';
+import { getWorkspaceIdFromSelectionId } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { archiveProcess, archiveProcesses } from '../../../../src/server/spa/client/react/queue/hooks/pinArchiveApi';
+
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/pinArchiveApi', () => ({
+    archiveProcess: vi.fn().mockResolvedValue(undefined),
+    archiveProcesses: vi.fn().mockResolvedValue(undefined),
+    unarchiveProcess: vi.fn().mockResolvedValue(undefined),
+}));
 
 const client = vi.hoisted(() => ({ options: {} as { baseUrl?: string; apiBasePath?: string } }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: () => client }));
@@ -14,6 +24,17 @@ vi.mock('../../../../src/server/spa/client/react/layout/DashboardChatReferenceRo
 }));
 
 let queueDispatch: ReturnType<typeof useQueue>['dispatch'];
+let historySnapshot: unknown;
+const emptyHistory: { id: string }[] = [];
+function ArchiveControls() {
+    const prefs = useChatPrefs();
+    return <>
+        <button onClick={() => prefs.archiveChat('queue_A')}>Archive A</button>
+        <button onClick={() => prefs.archiveChats(['queue_A'])}>Archive batch</button>
+        <button onClick={() => prefs.unarchiveChat('queue_A')}>Unarchive A</button>
+        {!prefs.archivedChatIds.has('queue_A') && <span data-testid="visible-A">A</span>}
+    </>;
+}
 function SeedList() {
     const { dispatch } = useQueue();
     queueDispatch = dispatch;
@@ -23,7 +44,7 @@ function SeedList() {
     }, [dispatch]);
     return null;
 }
-function tree() { return <QueueProvider><SeedList /><Router /></QueueProvider>; }
+function tree(extra?: ReactNode) { return <QueueProvider><SeedList /><Router />{extra}</QueueProvider>; }
 function list(items: { id: string; archived?: boolean }[], source?: string, repoId = 'workspace') {
     act(() => queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId, source, items, hasMore: false }));
 }
@@ -35,7 +56,15 @@ const app = vi.hoisted(() => ({
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({ useApp: () => app }));
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => {
     const { state } = useQueue();
-    return <div data-testid="selected-chat">{state.selectedTaskIdByRepo[app.state.selectedRepoId]}</div>;
+    const workspaceId = getWorkspaceIdFromSelectionId(app.state.selectedRepoId);
+    const cacheKey = workspaceReadCacheKey(workspaceId, workspaceReadSource(client));
+    const items = state.repoHistoryMap[cacheKey]?.items ?? emptyHistory;
+    historySnapshot = items;
+    return <ChatPreferencesProvider key={cacheKey} workspaceId={workspaceId} archiveScopeKey={cacheKey}>
+        <ChatPrefsSync history={items} workspaceId={workspaceId} />
+        <ArchiveControls />
+        <div data-testid="selected-chat">{state.selectedTaskIdByRepo[app.state.selectedRepoId]}</div>
+    </ChatPreferencesProvider>;
 } }));
 
 function href(id: string) {
@@ -56,9 +85,9 @@ function press(init: KeyboardEventInit = {}, target: EventTarget = document) {
     act(() => { window.dispatchEvent(new HashChangeEvent('hashchange')); });
     return event;
 }
-function setup() {
+function setup(extra?: ReactNode) {
     history.replaceState(null, '', href('queue_A'));
-    const view = render(tree());
+    const view = render(tree(extra));
     visit('queue_B');
     return view;
 }
@@ -82,6 +111,8 @@ beforeEach(() => {
     app.state.selectedRepoId = 'workspace';
     client.options = {};
     app.dispatch.mockClear();
+    vi.mocked(archiveProcess).mockClear();
+    vi.mocked(archiveProcesses).mockClear();
     history.replaceState(null, '', '#');
 });
 afterEach(() => {
@@ -90,6 +121,57 @@ afterEach(() => {
 });
 
 describe('Router previous chat shortcut', () => {
+    it.each([
+        ['Archive A', false], ['Archive batch', false],
+        ['Archive A', true], ['Archive batch', true],
+    ] as const)('blocks a previous chat after the real %s action (remote: %s)', (action, remote) => {
+        if (remote) {
+            app.state.selectedRepoId = 'remote:server:workspace';
+            client.options = { baseUrl: 'https://remote.example' };
+        }
+        setup();
+        const beforeArchive = historySnapshot;
+        // Queue membership must not override the sidebar's optimistic archive state.
+        act(() => queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: 'workspace',
+            source: workspaceReadSource(client), queue: { running: [{ id: 'A' }], queued: [] } }));
+        fireEvent.click(screen.getByRole('button', { name: action, exact: true }));
+        expect(action === 'Archive A' ? archiveProcess : archiveProcesses).toHaveBeenCalled();
+        expect(screen.queryByTestId('visible-A')).toBeNull();
+        expect(historySnapshot).toBe(beforeArchive);
+        expect(historySnapshot).toEqual([{ id: 'queue_A' }, { id: 'queue_B' }]);
+        expect(press().defaultPrevented).toBe(false);
+        expect(location.hash).toBe(href('queue_B'));
+        expect(screen.getByTestId('selected-chat').textContent).toBe('queue_B');
+        fireEvent.click(screen.getByRole('button', { name: 'Unarchive A' }));
+        expect(press().defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_A'));
+    });
+
+    it.each([
+        { workspaceId: 'other-workspace', source: JSON.stringify(['', '']) },
+        { workspaceId: 'workspace', source: JSON.stringify(['https://other.example', '']) },
+    ])('ignores archive state from another owner: %j', owner => {
+        setup(<ChatPreferencesProvider workspaceId={owner.workspaceId}
+            archiveScopeKey={workspaceReadCacheKey(owner.workspaceId, owner.source)}>
+            <ChatPrefsSync history={[{ id: 'queue_A', archived: true }]} workspaceId={owner.workspaceId} />
+        </ChatPreferencesProvider>);
+        expect(press().defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_A'));
+    });
+
+    it.each(['unmount', 'owner change'])('cleans up archive snapshots on %s', change => {
+        const archived = [{ id: 'queue_A', archived: true }];
+        const sidebar = (source: string) => <ChatPreferencesProvider workspaceId="workspace"
+            archiveScopeKey={workspaceReadCacheKey('workspace', source)}>
+            <ChatPrefsSync history={archived} workspaceId="workspace" />
+        </ChatPreferencesProvider>;
+        const view = setup(sidebar(workspaceReadSource(client)));
+        expect(press().defaultPrevented).toBe(false);
+        view.rerender(tree(change === 'unmount' ? undefined : sidebar(JSON.stringify(['https://other.example', '']))));
+        expect(press().defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_A'));
+    });
+
     it('toggles A to B through the same hash selection path as sidebar clicks', () => {
         setup();
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_B');

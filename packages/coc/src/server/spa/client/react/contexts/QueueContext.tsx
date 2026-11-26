@@ -3,7 +3,7 @@
  * Replaces the global mutable queueState singleton from state.ts.
  */
 
-import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import { createContext, useContext, useReducer, useRef, type ReactNode, type Dispatch } from 'react';
 import type { QueueRepoGate } from '@plusplusoneplusplus/coc-client';
 import type { SessionContextAttachmentDragPayload } from '../features/chat/sessionContextDrag';
 import { workspaceReadCacheKey } from '../api/workspaceReads';
@@ -305,11 +305,17 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
 
 // ── Context ────────────────────────────────────────────────────────────
 
-const QueueContext = createContext<{ state: QueueContextState; dispatch: Dispatch<QueueAction> } | null>(null);
+const QueueContext = createContext<{
+    state: QueueContextState;
+    dispatch: Dispatch<QueueAction>;
+    /** Mounted sidebar archive state, keyed by provider instance and owner-qualified cache key. */
+    chatArchiveSnapshots: Map<symbol, { cacheKey: string; archivedIds: readonly string[] }>;
+} | null>(null);
 
 export function QueueProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(queueReducer, initialState);
-    return <QueueContext.Provider value={{ state, dispatch }}>{children}</QueueContext.Provider>;
+    const chatArchiveSnapshots = useRef(new Map<symbol, { cacheKey: string; archivedIds: readonly string[] }>()).current;
+    return <QueueContext.Provider value={{ state, dispatch, chatArchiveSnapshots }}>{children}</QueueContext.Provider>;
 }
 
 export function useQueue() {
