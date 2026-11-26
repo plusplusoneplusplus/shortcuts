@@ -10,6 +10,10 @@
 
 import { buildWorkResourceHash } from './workResourceRoute';
 import { recordChatSelection, type ChatSelectionMruByWorkspace } from './chatSelectionMru';
+import { useCocClient } from '../repos/cloneRouting';
+import { workspaceReadCacheKey, workspaceReadSource } from '../api/workspaceReads';
+import { useRepoQueueJobs } from '../queue/hooks/useRepoQueueStats';
+import { ensureQueueProcessId } from '../utils/queue-process-id';
 import { queueJobHash } from '../queue/queueJobRoute';
 import { isEditableTarget } from '../hooks/useScopedFindShortcut';
 import { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
@@ -22,7 +26,7 @@ import { isTerminalEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled 
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
-import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
+import { getWorkspaceIdFromSelectionId, parseRemoteCloneKey } from '../repos/cloneIdentity';
 import { isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 import {
     resolveDashboardRoute,
@@ -66,6 +70,14 @@ export function Router() {
         location.hash === '#chat-references' || location.hash.startsWith('#chat-references/') ? location.hash : null);
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const client = useCocClient(state.selectedRepoId ?? undefined);
+    const workspaceId = state.selectedRepoId ? getWorkspaceIdFromSelectionId(state.selectedRepoId) : '';
+    const queueJobs = useRepoQueueJobs(workspaceId, client, state.selectedRepoId ?? undefined);
+    const source = workspaceReadSource(client);
+    const history = queueState.repoHistoryMap?.[workspaceReadCacheKey(workspaceId, source)];
+    // Match the sidebar's owner checks: unresolved remote routes cannot use local snapshots.
+    const historyMatchesOwner = !(parseRemoteCloneKey(state.selectedRepoId) && !client.options?.baseUrl)
+        && (history?.source ? history.source === source : !client.options?.baseUrl);
     const chatSelectionMruRef = useRef<ChatSelectionMruByWorkspace>(new Map());
     const selectedChatId = state.selectedRepoId
         ? queueState.selectedTaskIdByRepo?.[state.selectedRepoId]
@@ -141,6 +153,10 @@ export function Router() {
                 if (isEditableTarget(e.target) && !inComposer) return;
                 const previous = chatSelectionMruRef.current.get(state.selectedRepoId)?.previous;
                 if (!previous) return;
+                const inQueue = [...queueJobs.running, ...queueJobs.queued].some(job =>
+                    (job.processId ?? ensureQueueProcessId(job.id)) === previous);
+                const inHistory = historyMatchesOwner && history?.items.some(item => item.id === previous && !item.archived);
+                if (!inQueue && !inHistory) return;
                 e.preventDefault();
                 location.hash = queueJobHash(state.selectedRepoId, { id: previous, processId: previous }, resolveChatSubTab());
                 return;
@@ -201,6 +217,9 @@ export function Router() {
         return () => document.removeEventListener('keydown', handler);
     }, [
         referenceHash,
+        queueJobs,
+        history,
+        historyMatchesOwner,
         dispatch,
         queueDispatch,
         queueState.selectedTaskId,
