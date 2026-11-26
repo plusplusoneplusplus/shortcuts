@@ -71,6 +71,9 @@ per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 the last two viewed chats in memory through `layout/chatSelectionMru.ts`, keyed
 by the exact workspace selection id. Re-selecting the current chat, clearing
 selection, and viewing chat-reference routes preserve that workspace's history.
+Ctrl+Alt+Left opens the previous entry through the shared queue-job hash builder
+and normal route selection. The binding allows the chat composer and yields to
+other form fields, rich text editors, and Monaco.
 
 Group member chat routes use
 `#repos/<groupSelectionId>/chats/member/<ownerWorkspaceId>/<canonicalProcessId>`.

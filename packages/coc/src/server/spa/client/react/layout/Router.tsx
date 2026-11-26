@@ -10,6 +10,8 @@
 
 import { buildWorkResourceHash } from './workResourceRoute';
 import { recordChatSelection, type ChatSelectionMruByWorkspace } from './chatSelectionMru';
+import { queueJobHash } from '../queue/queueJobRoute';
+import { isEditableTarget } from '../hooks/useScopedFindShortcut';
 import { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
 import { DashboardChatReferenceRoute } from './DashboardChatReferenceRoute';
 import { useApp } from '../contexts/AppContext';
@@ -130,9 +132,21 @@ export function Router() {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (referenceHash !== null) return;
+            if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
+            if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.key === 'ArrowLeft') {
+                const element = e.target instanceof Element ? e.target : null;
+                if (element?.closest('.monaco-editor')) return;
+                const inComposer = element?.closest('[contenteditable="true"]')
+                    ?.closest('[data-testid="chat-input-stack"]');
+                if (isEditableTarget(e.target) && !inComposer) return;
+                const previous = chatSelectionMruRef.current.get(state.selectedRepoId)?.previous;
+                if (!previous) return;
+                e.preventDefault();
+                location.hash = queueJobHash(state.selectedRepoId, { id: previous, processId: previous }, resolveChatSubTab());
+                return;
+            }
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-            if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
 
             // Cmd/Ctrl+B → collapse/expand the whole left workspace sidebar in the
             // split layout. Input-guarded + repo-scoped (both above); only wired
