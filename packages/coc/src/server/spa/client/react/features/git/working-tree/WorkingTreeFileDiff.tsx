@@ -553,7 +553,9 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                     <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     {editorSides && <DiffWordWrapToggle />}
-                    <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
+                    {stage !== 'unstaged' && (
+                        <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
+                    )}
                     {stage !== 'untracked' && (
                         <button
                             onClick={() => setSidebarOpen(o => !o)}

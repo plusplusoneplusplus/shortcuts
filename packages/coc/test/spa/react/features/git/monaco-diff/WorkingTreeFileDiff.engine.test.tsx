@@ -148,6 +148,34 @@ beforeEach(() => {
 });
 
 describe('WorkingTreeFileDiff — diff engine', () => {
+    it.each(['ws-a', 'ws-b'])('omits the unstaged toolbar label while preserving controls and diff loading for %s', async workspaceId => {
+        await renderDiff({ workspaceId });
+        const header = screen.getByTestId('working-tree-file-diff-header');
+        expect(header.textContent).not.toContain('Unstaged diff');
+        expect(screen.getByRole('button', { name: 'Word wrap' })).toBeTruthy();
+        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
+        expect(screen.getByTestId('toggle-comments-btn')).toBeTruthy();
+        expect(screen.getByTestId('hunk-next')).toBeTruthy();
+        expect(clients[workspaceId].git.getWorkingTreeFileContent).toHaveBeenCalledWith(workspaceId, '/repo/src/a.ts', 'unstaged');
+        expect(fakes[0].models[0].original.text).toBe('a\n');
+        expect(fakes[0].models[0].modified.text).toBe('b\n');
+        const otherWorkspaceId = workspaceId === 'ws-a' ? 'ws-b' : 'ws-a';
+        expect(clients[otherWorkspaceId].git.getWorkingTreeFileContent).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
+        expect(header.textContent).not.toContain('Unstaged diff');
+        expect(screen.getByTestId('classic-viewer').textContent).toContain('+b');
+        expect(clients[workspaceId].git.getWorkingTreeFileDiff).toHaveBeenCalledWith(workspaceId, '/repo/src/a.ts', { stage: 'unstaged', full: false });
+        expect(clients[otherWorkspaceId].git.getWorkingTreeFileDiff).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['staged', 'Staged diff'],
+        ['untracked', 'Untracked file'],
+    ] as const)('preserves the %s toolbar label', async (stage, label) => {
+        await renderDiff({ stage });
+        expect(screen.getByTestId('working-tree-file-diff-header').textContent).toContain(label);
+    });
+
     it('renders untracked text as a full all-added comparison in the shared review', async () => {
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\ntext\n', {
             base: { content: '', ref: 'EMPTY', exists: false },

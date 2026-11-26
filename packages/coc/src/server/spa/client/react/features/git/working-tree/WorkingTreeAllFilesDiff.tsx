@@ -109,7 +109,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     return <>
         {/* Mounts again once loaded, so the requested file wins over the default first file. */}
         <ReviewFiles key={String(loaded)} identity={identity}
-            files={files} reviewEnabled={false} retainSelection={dirty}
+            files={files} compactNavigator reviewEnabled={false} retainSelection={dirty}
             selectedPath={requested ? changeKey(requested) : null} initialHunkTarget={initialHunkTarget}
             beforeNavigate={proceed => guard.guard(proceed)()}
             onSelect={(key, target) => {
@@ -132,7 +132,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                 return change && changes.some(current => changeKey(current) === changeKey(change))
                     ? workingChangeContextPayload(change, workspaceId, sourceOwner, props.repoRoot) : null;
             }}
-            rowDetails={file => <span className="git-review-muted">{file.label}</span>}
+            rowDetails={file => <span className="git-review-stage" data-stage={file.label?.toLowerCase()}>{file.label}</span>}
             rowMenu={(file, anchor) => {
                 const change = byKey.get(reviewFileKey(file));
                 const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;

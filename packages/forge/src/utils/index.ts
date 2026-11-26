@@ -68,30 +68,6 @@ export {
     parseAIResponse
 } from './ai-response-parser';
 
-// Terminal types
-export {
-    TerminalType,
-    InteractiveSessionStatus,
-    InteractiveSession,
-    ExternalTerminalLaunchOptions,
-    ExternalTerminalLaunchResult,
-    WindowFocusResult
-} from './terminal-types';
-
-// Window focus service
-export {
-    WindowFocusService,
-    getWindowFocusService,
-    resetWindowFocusService
-} from './window-focus-service';
-
-// External terminal launcher
-export {
-    ExternalTerminalLauncher,
-    getExternalTerminalLauncher,
-    resetExternalTerminalLauncher
-} from './external-terminal-launcher';
-
 // Process monitor
 export {
     Disposable,

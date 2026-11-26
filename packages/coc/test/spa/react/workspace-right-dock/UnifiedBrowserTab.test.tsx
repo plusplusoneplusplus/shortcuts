@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { createPortal } from 'react-dom';
+import { useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -613,6 +615,118 @@ describe('browser toolbar overflow', () => {
         expect(off).toHaveBeenCalled();
     });
 
+});
+
+describe('Git review zoom controls', () => {
+    function Review() {
+        const host = useUnifiedGitTabHost('git-owner');
+        return host ? createPortal(<button onClick={reviewAction}>Review action</button>, host) : null;
+    }
+    const reviewAction = vi.fn();
+
+    it.each([true, false])('zooms only the portaled Git review and resets (desktop: %s)', async desktop => {
+        const bridge = mocks.bridge!;
+        bridge.setPageZoom = vi.fn();
+        if (!desktop) mocks.bridge = undefined;
+        render(<>
+            <Review />
+            <div data-testid="chat">Chat</div>
+            <UnifiedBrowserTab tabId="git" viewId="git-view" sessionKey="remote-git" url="coc://git/abcdef"
+                active visible onNavigate={vi.fn()} onPageState={vi.fn()}
+                resolveCocPage={() => ({ kind: 'git', ownerWorkspaceId: 'git-owner' })} />
+        </>);
+        const content = screen.getByTestId('browser-coc-page');
+        const action = screen.getByRole('button', { name: 'Review action' });
+        const trigger = screen.getByRole('button', { name: 'Browser options' });
+        await userEvent.click(trigger);
+        expect(screen.getByRole('group', { name: 'Git review zoom' })).toHaveTextContent('this tab');
+        expect(screen.queryByRole('group', { name: 'Web page zoom' })).toBeNull();
+        const plus = screen.getByRole('menuitem', { name: 'Zoom in Git review' });
+        const minus = screen.getByRole('menuitem', { name: 'Zoom out Git review' });
+        const reset = screen.getByRole('menuitem', { name: 'Reset Git review to 100%' });
+        await userEvent.click(plus);
+        expect(content.style.zoom).toBe('1.25');
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('125%');
+        expect(content).toContainElement(action);
+        // Chrome, chat and the menu stay outside the zoomed subtree.
+        for (const node of [trigger, screen.getByTestId('chat'), screen.getByRole('menu')]) {
+            expect(content).not.toContainElement(node);
+            expect(node.style.zoom ?? '').toBe('');
+        }
+        await userEvent.click(minus);
+        expect(content.style.zoom).toBe('1');
+        await userEvent.click(minus);
+        expect(content.style.zoom).toBe('0.75');
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('75%');
+        await userEvent.click(reset);
+        expect(content.style.zoom).toBe('1');
+        expect(reset).toBeDisabled();
+        for (let i = 0; i < 4; i++) await userEvent.click(plus);
+        expect(content.style.zoom).toBe('2');
+        expect(plus).toBeDisabled();
+        for (let i = 0; i < 6; i++) await userEvent.click(minus);
+        expect(content.style.zoom).toBe('0.5');
+        expect(minus).toBeDisabled();
+        await userEvent.click(reset);
+        await userEvent.click(trigger);
+        await userEvent.click(action);
+        expect(reviewAction).toHaveBeenCalledOnce();
+        expect(screen.getByRole('button', { name: 'Review action' })).toBe(action);
+        expect(bridge.setPageZoom).not.toHaveBeenCalled();
+        expect(bridge.getPreferences).not.toHaveBeenCalled();
+        expect(bridge.open).not.toHaveBeenCalled();
+    });
+
+    it('keeps zoom local to its tab and concrete owner and disables hidden-tab controls', async () => {
+        const props = {
+            tabId: 'git', viewId: 'git-view', sessionKey: 'remote-a', url: 'coc://git', active: true, visible: true,
+            onNavigate: vi.fn(), onPageState: vi.fn(),
+            resolveCocPage: () => ({ kind: 'git' as const, ownerWorkspaceId: 'git-owner' }),
+        };
+        const view = render(<UnifiedBrowserTab {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom in Git review' }));
+        view.rerender(<UnifiedBrowserTab {...props} visible={false} />);
+        expect(screen.queryByRole('menu')).toBeNull();
+        view.rerender(<UnifiedBrowserTab {...props} />);
+        expect(screen.getByTestId('browser-coc-page').style.zoom).toBe('1.25');
+        view.rerender(<UnifiedBrowserTab {...props} sessionKey="remote-b" />);
+        expect(screen.getByTestId('browser-coc-page').style.zoom).toBe('1');
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('100%');
+        view.unmount();
+        render(<UnifiedBrowserTab {...props} tabId="other-git" viewId="other-view" />);
+        expect(screen.getByTestId('browser-coc-page').style.zoom).toBe('1');
+    });
+
+    it('switches the controls between Git and web zoom without scaling other CoC pages', async () => {
+        mocks.bridge!.setPageZoom = vi.fn();
+        mocks.bridge!.getPreferences = vi.fn(async () => ({
+            defaultEngine: 'electron', engines: [{ engine: 'electron', available: true }], clearing: [],
+            pageZoom: { percent: 150, min: 50, max: 200, step: 25 },
+        }));
+        mocks.bridge!.onPreferencesChanged = vi.fn(() => vi.fn());
+        tab({ url: 'coc://git', resolveCocPage: address => address.kind === 'git'
+            ? { kind: 'git', ownerWorkspaceId: 'git-owner' } : { kind: 'settings', ownerKey: 'ws' } });
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom in Git review' }));
+        const navigate = (value: string) => {
+            const input = screen.getByLabelText('Address');
+            fireEvent.change(input, { target: { value } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+        };
+        navigate('coc://settings');
+        expect(screen.getByTestId('browser-coc-page').style.zoom).toBe('');
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.queryByRole('group', { name: /zoom/ })).toBeNull();
+        navigate('https://example.test/');
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await waitFor(() => expect(screen.getByRole('group', { name: 'Web page zoom' })).toHaveTextContent('150%'));
+        expect(mocks.bridge!.setPageZoom).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByLabelText('Back'));
+        fireEvent.click(screen.getByLabelText('Back'));
+        expect(screen.getByTestId('browser-coc-page').style.zoom).toBe('1.25');
+    });
 });
 
 describe('shared desktop web page zoom controls', () => {

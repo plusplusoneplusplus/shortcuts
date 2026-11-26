@@ -38,6 +38,8 @@ export interface ReviewFilesProps {
     retainSelection?: boolean;
     /** Mutable changes do not have persisted review progress. */
     reviewEnabled?: boolean;
+    /** Compact working-changes presentation; other review hosts keep their layout. */
+    compactNavigator?: boolean;
     defaultView?: 'groups' | 'tree' | 'flat';
     files: ReviewFile[];
     selectedPath?: string | null;
@@ -62,7 +64,7 @@ export interface ReviewFilesProps {
 }
 
 export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    identity, contentSearch, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
+    identity, contentSearch, beforeNavigate, retainSelection = false, reviewEnabled = true, compactNavigator = false, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, rowMenu, isFileDimmed }: ReviewFilesProps) {
     const contentSearchEnabled = useDiffContentSearchEnabled();
     const canSearch = contentSearchEnabled && !!contentSearch;
     const [navigatorMode, setNavigatorMode] = useState<'files' | 'search'>('files');
@@ -239,6 +241,12 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 </button>{!collapsed.has(node.path) && treeRows(node.children, depth + 1)}
             </section>);
     }
+    const viewControls = <div className="git-review-filter-row git-review-layouts" role="group" aria-label="File list view">
+        <button type="button" aria-pressed={viewMode === 'groups'} onClick={() => setViewMode('groups')}>Groups</button>
+        <button type="button" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Tree</button>
+        <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>Flat</button>
+    </div>;
+    const statusControl = <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select>;
     return <div ref={reviewRef} className="git-file-review" data-testid="git-file-review" data-review-content-search={canSearch ? 'true' : undefined}>
         <GitReviewToolbar header={header} progress={reviewEnabled ? { viewed: viewedCount, total: files.length } : undefined}>
             <button type="button" className="git-review-drawer-trigger" ref={drawerTrigger} aria-expanded={drawer} aria-controls={navId} onClick={() => setDrawer(value => !value)}>Files · {files.length}</button>
@@ -269,7 +277,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         </GitReviewToolbar>
         <div className="git-review-body" ref={bodyRef} style={{ '--git-review-nav-width': `${navWidth}px` } as CSSProperties}>
             {drawer && <button type="button" className="git-review-scrim" aria-label="Close file navigator" onClick={() => setDrawer(false)} />}
-            <aside id={navId} ref={navRef} className={`git-review-nav${drawer ? ' open' : ''}`} aria-label="Changed files"
+            <aside id={navId} ref={navRef} className={`git-review-nav${compactNavigator ? ' git-review-nav-compact' : ''}${drawer ? ' open' : ''}`} aria-label="Changed files"
                 onKeyDown={event => {
                     // Menu items portal to the body but bubble here through React.
                     if (menu) return;
@@ -305,16 +313,16 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 </div>}
                 <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
-                    <div className="git-review-filter-title"><strong>Changed files</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
-                    <div className="git-review-filter-row" role="group" aria-label="File list view">
-                        <button type="button" aria-pressed={viewMode === 'groups'} onClick={() => setViewMode('groups')}>Groups</button>
-                        <button type="button" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Tree</button>
-                        <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>Flat</button>
+                    <div className="git-review-filter-title">
+                        <strong>Changed files{compactNavigator && <span className="git-review-file-count" aria-label={`${visible.length} matching ${visible.length === 1 ? 'file' : 'files'}`}>{visible.length}</span>}</strong>
+                        {compactNavigator && viewControls}
+                        <button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button>
                     </div>
+                    {!compactNavigator && viewControls}
                     <input ref={searchRef} aria-label="Search changed files by name or path" placeholder="Search files or path…" value={query} onChange={event => setQuery(event.target.value)} />
-                    <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'} <span className="git-review-muted">{kindCounts[value]}</span></button>)}</div>
-                    <div className="git-review-filter-row">{reviewEnabled && <label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>}
-                        <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select></div>
+                    <div className="git-review-filter-row git-review-kind-filters"><div role="group" aria-label="File kind filter">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'} <span className="git-review-muted">{kindCounts[value]}</span></button>)}</div>{compactNavigator && statusControl}</div>
+                    {(reviewEnabled || !compactNavigator) && <div className="git-review-filter-row">{reviewEnabled && <label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>}
+                        {!compactNavigator && statusControl}</div>}
                 </div>
                 <div className="git-review-file-list">{viewMode === 'flat' ? visible.map(file => row(file)) : viewMode === 'tree' ? treeRows(tree) : groups.map(group => <section key={group.directory}>
                     <button type="button" className="git-review-directory" aria-label={`${group.directory} ${group.files.length} files`} aria-expanded={!collapsed.has(group.directory)} onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.directory)) next.delete(group.directory); else next.add(group.directory); return next; })}>

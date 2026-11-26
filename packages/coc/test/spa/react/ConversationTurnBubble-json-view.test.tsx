@@ -95,7 +95,7 @@ describe('ConversationTurnBubble — JSON response viewer', () => {
         );
         const btn = container.querySelector('[data-testid="json-toggle-btn"]');
         expect(btn).toBeTruthy();
-        expect(btn!.textContent).toBe('JSON');
+        expect(btn).toHaveAccessibleName('JSON');
     });
 
     it('does NOT show JSON toggle button for non-JSON content', () => {
@@ -114,7 +114,7 @@ describe('ConversationTurnBubble — JSON response viewer', () => {
         // Should now show markdown view, not JSON view
         expect(container.querySelector('[data-testid="json-response-view"]')).toBeNull();
         expect(container.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
-        expect(btn.textContent).toBe('Rendered');
+        expect(btn).toHaveAccessibleName('Rendered');
     });
 
     it('switches back to JSON view on second toggle click', () => {
@@ -125,7 +125,7 @@ describe('ConversationTurnBubble — JSON response viewer', () => {
         fireEvent.click(btn); // → rendered
         fireEvent.click(btn); // → json
         expect(container.querySelector('[data-testid="json-response-view"]')).toBeTruthy();
-        expect(btn.textContent).toBe('JSON');
+        expect(btn).toHaveAccessibleName('JSON');
     });
 
     // --- Raw view overrides JSON view ---

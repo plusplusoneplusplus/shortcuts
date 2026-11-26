@@ -71,8 +71,10 @@ marker. Persisted markers reproduce the same sections on history hydration and r
 across chat modes and pop-outs. It reuses `ContextUsagePopover`'s token formatter and
 button reset, retains exact cache/total/time details, and exposes disclosure state to
 assistive technology. Streaming turns omit metrics; partial usage keeps zero defaults
-and derives missing totals from input/output. Header wrapping preserves complete values
-and the non-shrinking action group; keyboard focus reveals actions.
+and derives missing totals from input/output. Assistant headers stay single-row with
+truncated, focusable provider/model and timestamp metadata, a titled metrics trigger,
+and an out-of-flow exact-value disclosure. Pane container queries compact JSON actions
+and gaps; the action group stays non-shrinking and keyboard focus reveals actions.
 
 Native rewind and edit-and-resend are available only for user turns in the active
 provider segment. Earlier-segment controls stay visible but disabled with the

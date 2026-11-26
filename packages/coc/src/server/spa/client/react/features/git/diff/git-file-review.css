@@ -67,6 +67,33 @@
 .git-review-filter-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px;font-size:11px;margin-top:3px}
 .git-review-filter-row label{display:flex;align-items:center;gap:3px;min-height:26px;white-space:nowrap}
 .git-review-filter-row select{background:transparent;min-height:26px;max-width:112px}
+.git-review-kind-filters>[role=group]{display:contents}
+/* Working changes opts in; layout, filtering and row actions stay shared with review hosts. */
+.git-review-nav-compact .git-review-filters{padding:8px}
+.git-review-nav-compact .git-review-filter-title{flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.git-review-nav-compact .git-review-filter-title>strong{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px}
+.git-review-file-count{padding:1px 5px;border-radius:9px;background:#80808018;color:var(--review-muted);font-size:10px;font-weight:500;font-variant-numeric:tabular-nums}
+.git-review-nav-compact .git-review-layouts{display:inline-flex;flex-wrap:nowrap;gap:1px;margin:0 0 0 auto;padding:2px;border:1px solid var(--review-border);border-radius:6px;background:#8080800a}
+.git-review-nav-compact .git-review-layouts button{min-height:22px;padding:2px 5px;border-radius:4px;font-size:10px}
+.git-review-nav-compact .git-review-layouts button[aria-pressed=true]{background:var(--review-panel);box-shadow:0 1px 3px #0002;font-weight:600}
+.git-review-nav-compact .git-review-filters>input{height:28px;border-radius:6px;background:#ffffff60;color:inherit}
+.dark .git-review-nav-compact .git-review-filters>input{background:#0002}
+.git-review-nav-compact .git-review-kind-filters{justify-content:flex-start;gap:4px;margin-top:6px}
+.git-review-nav-compact .git-review-kind-filters>[role=group]{display:flex;flex-wrap:wrap;gap:1px}
+.git-review-nav-compact .git-review-kind-filters button{min-height:24px;padding:2px 4px;border-radius:5px;font-size:10px}
+.git-review-nav-compact .git-review-kind-filters .git-review-muted{font-size:10px}
+.git-review-nav-compact .git-review-kind-filters button[aria-pressed=true]{font-weight:600}
+.dark .git-review-nav-compact button[aria-pressed=true]{color:#75bfff}
+.git-review-nav-compact select{flex:0 1 auto;min-width:0;max-width:100%;margin-left:auto;padding:3px 4px;border:1px solid var(--review-border);border-radius:5px;color:inherit;background:var(--review-panel);font-size:10px}
+.git-review-nav-compact .git-review-file-list{padding:3px 0}
+.git-review-nav-compact .git-review-directory{min-height:25px}
+.git-review-nav-compact .git-review-file{min-height:36px;flex-wrap:wrap;gap:5px;padding-top:4px;padding-bottom:4px}
+.git-review-nav-compact .git-review-file-name{min-width:65px}
+.git-review-stage{flex-shrink:0;padding:2px 4px;border-radius:4px;font-size:9px;color:var(--review-muted);background:#80808018}
+.git-review-stage[data-stage=staged]{color:#16825d;background:#16825d15}
+.git-review-stage[data-stage=untracked]{color:#91631b;background:#b5852015}
+.dark .git-review-stage[data-stage=staged]{color:#67b79a}
+.dark .git-review-stage[data-stage=untracked]{color:#d6b471}
 .git-review-file-list{flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
 .git-review-directory{display:flex;align-items:center;gap:5px;width:100%;min-height:26px;padding:3px 7px;font-size:10px;color:var(--review-muted);background:var(--review-panel);text-align:left}
 .git-review-directory>span:nth-child(2){flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
@@ -100,6 +127,6 @@
 @container(max-width:599px){.git-review-md{display:none!important}}
 @container(max-width:479px){.git-review-label-sm{display:none!important}}
 @container(max-width:700px){.git-review-nav,.git-review-resizer{display:none}.git-review-nav.open{display:flex;position:absolute;inset:0 auto 0 0;z-index:30;width:min(290px,90%);box-shadow:4px 0 12px #0003}.git-review-drawer-trigger{display:inline-flex;align-items:center;min-height:28px;padding:2px 6px}.git-review-scrim{display:block;position:absolute;inset:0;z-index:29;background:#0003}}
-@media(pointer:coarse){.git-file-review button,.git-review-filter-row label,.git-review-filters>input,.git-review-filter-row select{min-height:36px}}
+@media(pointer:coarse){.git-review-nav-compact .git-review-layouts button,.git-review-nav-compact .git-review-kind-filters button,.git-file-review button,.git-review-filter-row label,.git-review-filters>input,.git-review-filter-row select{min-height:36px}}
 
 .git-review-file[draggable="true"], .git-review-commit-picker-list .git-review-menu-item[draggable="true"] { cursor: copy; }

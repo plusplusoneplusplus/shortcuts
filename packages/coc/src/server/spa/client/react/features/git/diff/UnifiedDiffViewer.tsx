@@ -8,6 +8,7 @@
 
 import { Fragment, useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { diffLayoutRect } from './diffLayoutRect';
 import { getLanguageFromFileName, highlightBlock, escapeHtml } from '../hooks/useSyntaxHighlight';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
@@ -1085,7 +1086,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         // Offset of the row list within the scroll element's content, so
         // scrollToIndex targets the right absolute position when the diff is
         // not the first thing inside the scroll container.
-        setScrollMargin(c.getBoundingClientRect().top - se.getBoundingClientRect().top + se.scrollTop);
+        setScrollMargin(diffLayoutRect(c).top - diffLayoutRect(se).top + se.scrollTop);
     }, [virtualized]);
 
     const rowVirtualizer = useVirtualizer({
@@ -1103,7 +1104,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             // that fallback keeps windowing deterministic in tests while
             // self-correcting in a real browser.
             if (node.childElementCount === 0) return 0;
-            const h = node.getBoundingClientRect?.().height;
+            const h = diffLayoutRect(node).height;
             return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
         },
     });
@@ -1136,7 +1137,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         if (!target) return;
         const scrollParent = getScrollableAncestor(container);
         scrollParent.scrollTo({
-            top: scrollParent.scrollTop + target.getBoundingClientRect().top - scrollParent.getBoundingClientRect().top,
+            top: scrollParent.scrollTop + diffLayoutRect(target).top - diffLayoutRect(scrollParent).top,
             behavior: 'smooth',
         });
     };
@@ -1190,10 +1191,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const next = (currentHunkIndexRef.current + 1) % edits.length;
             currentHunkIndexRef.current = next;
             const scrollParent = getScrollableAncestor(container);
-            const parentTop = scrollParent.getBoundingClientRect().top;
+            const parentTop = diffLayoutRect(scrollParent).top;
             const centerOffset = scrollParent.clientHeight / 3;
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[next].getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + diffLayoutRect(edits[next]).top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -1207,10 +1208,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const prev = (startIndex - 1 + edits.length) % edits.length;
             currentHunkIndexRef.current = prev;
             const scrollParent = getScrollableAncestor(container);
-            const parentTop = scrollParent.getBoundingClientRect().top;
+            const parentTop = diffLayoutRect(scrollParent).top;
             const centerOffset = scrollParent.clientHeight / 3;
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[prev].getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + diffLayoutRect(edits[prev]).top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -1225,10 +1226,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (edits.length === 0 || index < 0 || index >= edits.length) return;
             currentHunkIndexRef.current = index;
             const scrollParent = getScrollableAncestor(container);
-            const parentTop = scrollParent.getBoundingClientRect().top;
+            const parentTop = diffLayoutRect(scrollParent).top;
             const centerOffset = scrollParent.clientHeight / 3;
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[index].getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + diffLayoutRect(edits[index]).top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -1239,10 +1240,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const el = container.querySelector<HTMLElement>(`[data-diff-line-index="${lineIndex}"]`);
             if (!el) return;
             const scrollParent = getScrollableAncestor(container);
-            const parentTop = scrollParent.getBoundingClientRect().top;
+            const parentTop = diffLayoutRect(scrollParent).top;
             const centerOffset = scrollParent.clientHeight / 3;
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + el.getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + diffLayoutRect(el).top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
