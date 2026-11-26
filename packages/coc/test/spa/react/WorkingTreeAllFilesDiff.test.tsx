@@ -47,6 +47,7 @@ vi.mock('../../../src/server/spa/client/react/features/git/working-tree/WorkingT
 import { WorkingTreeAllFilesDiff } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff';
 import { WorkingTree } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTree';
 import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { ToastContext } from '../../../src/server/spa/client/react/contexts/ToastContext';
 
 const ROOT = '/repo';
 const writeText = vi.fn();
@@ -584,9 +585,9 @@ describe('working changes definition routing', () => {
                 head: { content: sides.head, ref: 'HEAD', exists: true } };
         });
     }
-    const jump = (path: string, side: 'original' | 'modified', line = 4, signal = new AbortController().signal) => {
+    const jump = (path: string, side: 'original' | 'modified', line = 4, signal = new AbortController().signal, origin: object | null = null) => {
         let moved!: Promise<boolean>;
-        act(() => { moved = current().onNavigateDefinitionFile({ path, side, line, column: 3 }, signal); });
+        act(() => { moved = current().onNavigateDefinitionFile({ path, side, line, column: 3 }, signal, origin); });
         return moved;
     };
     beforeEach(() => { h.readBlob.mockResolvedValue({ encoding: 'utf-8', content: CURRENT }); });
@@ -668,6 +669,88 @@ describe('working changes definition routing', () => {
         await act(async () => { await jump('def.ts', 'modified'); });
         fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
         expect(current()).toMatchObject({ filePath: '/repo/def.ts', definitionTarget: { side: 'modified', line: 4, column: 3 } });
+    });
+
+    describe('Back history', () => {
+        const FILES = ['caller.ts', 'a.ts', 'b.ts', 'c.ts'];
+        const at = (line: number, scrollTop: number) => ({ side: 'modified' as const, line, column: 2, scrollTop });
+        const hop = async (path: string, origin: object) => {
+            await act(async () => { expect(await jump(path, 'modified', 4, undefined, origin)).toBe(true); });
+        };
+        const back = () => act(() => { current().definitionHistory.back(); });
+        const start = { ...props, filePath: '/repo/caller.ts', stage: 'unstaged' as const };
+        beforeEach(() => {
+            h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: FILES.map(file => change(file, 'unstaged')) });
+            serve(Object.fromEntries(FILES.map(file => [`/repo/${file}`, { unstaged: { base: CURRENT, head: CURRENT } }])));
+        });
+
+        it('returns through a chain of jumps to each exact file, side, cursor and scroll, across pane replacement', async () => {
+            render(<WorkingTreeAllFilesDiff {...start} />);
+            await screen.findByTestId('full-working-diff');
+            expect(current().definitionHistory.backLabel).toBeNull();
+            await hop('a.ts', at(10, 100));
+            // A same-file jump inside a.ts joins the same chain.
+            act(() => { current().definitionHistory.push(at(4, 140)); });
+            await hop('b.ts', at(20, 200));
+            await hop('c.ts', at(30, 300));
+            expect(current()).toMatchObject({ filePath: '/repo/c.ts', definitionHistory: { backLabel: 'Unstaged · b.ts' } });
+            const mounts = h.mount.mock.calls.length;
+            back();
+            expect(current()).toMatchObject({ filePath: '/repo/b.ts', definitionTarget: at(30, 300), definitionHistory: { backLabel: 'Unstaged · a.ts' } });
+            back();
+            expect(current()).toMatchObject({ filePath: '/repo/a.ts', definitionTarget: at(20, 200) });
+            const reveal = current().definitionTarget;
+            back();
+            // Same file: a new target object, so the pane reveals again without being replaced.
+            expect(current()).toMatchObject({ filePath: '/repo/a.ts', definitionTarget: at(4, 140), definitionHistory: { backLabel: 'Unstaged · caller.ts' } });
+            expect(current().definitionTarget).not.toBe(reveal);
+            back();
+            expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionTarget: at(10, 100), definitionHistory: { backLabel: null } });
+            expect(h.mount.mock.calls.length - mounts).toBe(3);
+            expect(props.onNavigateToFile).toHaveBeenLastCalledWith('/repo/caller.ts', 'unstaged', 'first');
+        });
+
+        it('adds nothing when unsaved-edit Cancel stops a jump, and keeps the entry when Cancel stops Back', async () => {
+            render(<WorkingTreeAllFilesDiff {...start} />);
+            await screen.findByTestId('full-working-diff');
+            fireEvent.click(screen.getByText('Edit buffer'));
+            await hop('a.ts', at(10, 100));
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+            expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionHistory: { backLabel: null } });
+            fireEvent.click(screen.getByText('Edit buffer'));
+            await hop('a.ts', at(10, 100));
+            fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+            fireEvent.click(screen.getByText('Edit buffer'));
+            back();
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+            expect(current()).toMatchObject({ filePath: '/repo/a.ts', definitionHistory: { backLabel: 'Unstaged · caller.ts' } });
+        });
+
+        it('reports an origin a refresh removed instead of moving to another entry', async () => {
+            const addToast = vi.fn();
+            const view = render(<ToastContext.Provider value={{ addToast } as any}><WorkingTreeAllFilesDiff {...start} refreshKey={0} /></ToastContext.Provider>);
+            await screen.findByTestId('full-working-diff');
+            await hop('a.ts', at(10, 100));
+            await hop('b.ts', at(20, 200));
+            h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: ['caller.ts', 'b.ts'].map(file => change(file, 'unstaged')) });
+            view.rerender(<ToastContext.Provider value={{ addToast } as any}><WorkingTreeAllFilesDiff {...start} refreshKey={1} /></ToastContext.Provider>);
+            await waitFor(() => expect(within(nav()).queryByRole('button', { name: /a\.ts/ })).toBeNull());
+            back();
+            expect(addToast).toHaveBeenCalledWith('That spot is no longer in the working changes.', 'info');
+            expect(current()).toMatchObject({ filePath: '/repo/b.ts', definitionHistory: { backLabel: 'Unstaged · caller.ts' } });
+            back();
+            expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionTarget: at(10, 100) });
+        });
+
+        it('starts a fresh history for another repository owner with the same paths', async () => {
+            const view = render(<WorkingTreeAllFilesDiff {...start} />);
+            await screen.findByTestId('full-working-diff');
+            await hop('a.ts', at(10, 100));
+            expect(current().definitionHistory.backLabel).toBe('Unstaged · caller.ts');
+            view.rerender(<WorkingTreeAllFilesDiff {...start} attachmentDestinationId="remote:b:ws-1" />);
+            await waitFor(() => expect(current().attachmentDestinationId).toBe('remote:b:ws-1'));
+            expect(current().definitionHistory.backLabel).toBeNull();
+        });
     });
 
     it('reads current code through the concrete remote owner', async () => {

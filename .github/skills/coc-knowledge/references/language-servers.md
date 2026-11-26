@@ -360,9 +360,16 @@ destination is located, pushes it on a per-review back stack (reset when workspa
 The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on the
 panel before Monaco, only while the stack is non-empty) pop it: switch file via
 `onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter
-restores exactly instead of centring. `WorkingTreeFileDiff` keeps a bounded
-same-file stack with the same cursor/scroll capture and chip/Alt+← restore;
-workspace, clone, file or stage changes clear that stack and its pending reveal.
+restores exactly instead of centring. In working changes the stack (50 entries
+of entry key, `Stage · file` label and captured position) lives in
+`WorkingTreeAllFilesDiff`, because each entry's pane is keyed and replaced; the
+review is remounted per owner, so history never crosses repositories. The pane
+gets `definitionHistory` (`backLabel`, `push`, `back`) for its chip and Alt+←,
+pushes same-file origins itself, and passes cross-file origins to
+`onNavigateDefinitionFile`, which records them only once the dirty guard lets
+the selection through. Back reveals in place for the same entry, else selects
+the origin entry through the guard (Cancel keeps the entry); an origin a
+refresh removed is dropped with an "unavailable" toast instead of moving.
 
 Explorer jumps add nothing to those in-diff stacks. Instead, when a panel hosts
 the target, `openDiffDefinitionInExplorer` reads the panel's active tab (often

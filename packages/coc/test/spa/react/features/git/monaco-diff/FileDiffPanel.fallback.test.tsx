@@ -550,6 +550,41 @@ describe('definition routing', () => {
         expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
     });
 
+    it('returns through a chain of three file jumps in order, and another commit starts a fresh history', async () => {
+        const source = { ...commitSource(), files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'] };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        const chain = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'];
+        const spot = (index: number) => ({ line: index + 2, column: index + 1, scrollTop: 100 * (index + 1) });
+        for (let index = 0; index < 3; index++) {
+            fakes[0].viewPositions.modified = spot(index);
+            act(() => { jumpFrom('modified').onNavigate(target(chain[index + 1])); });
+            await settle();
+            expect(onNavigateToFile).toHaveBeenLastCalledWith(chain[index + 1], 'first');
+            await act(async () => { view.rerender(panel(source, chain[index + 1], onNavigateToFile)); });
+            await settle();
+        }
+        for (let index = 2; index >= 0; index--) {
+            expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe(`← Back to abc1234 · ${chain[index].split('/')[1]}`);
+            act(() => { fireEvent.click(screen.getByTestId('diff-definition-back-chip')); });
+            expect(onNavigateToFile).toHaveBeenLastCalledWith(chain[index], 'first');
+            await act(async () => { view.rerender(panel(source, chain[index], onNavigateToFile)); });
+            await settle();
+            expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', ...spot(index) });
+        }
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        fakes[0].viewPositions.modified = spot(0);
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await settle();
+        expect(screen.getByTestId('diff-definition-back-chip')).toBeTruthy();
+        await act(async () => { view.rerender(panel({ ...source, shortRef: 'def5678' }, 'src/b.ts', onNavigateToFile)); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
     it('a jump that falls back to current code adds no in-diff history', async () => {
         const source = commitSource(vi.fn(async (path: string) => reviewContent(path, {
             head: { content: 'unrelated\n', ref: 'head', exists: true },

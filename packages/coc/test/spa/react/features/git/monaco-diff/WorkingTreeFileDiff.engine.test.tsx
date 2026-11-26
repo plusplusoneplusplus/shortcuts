@@ -497,7 +497,8 @@ describe('WorkingTreeFileDiff — definition routing', () => {
         const mount = await renderHosted({ definitionFiles: ['src/a.ts', 'src/b.ts'], onNavigateDefinitionFile });
         fakes[0].viewPositions.original = { line: 5, column: 3, scrollTop: 90 };
         await act(async () => { mount.onNavigate(target('src/b.ts')); });
-        expect(onNavigateDefinitionFile).toHaveBeenCalledWith({ path: 'src/b.ts', side: 'original', line: 7, column: 2 }, expect.any(AbortSignal));
+        expect(onNavigateDefinitionFile).toHaveBeenCalledWith({ path: 'src/b.ts', side: 'original', line: 7, column: 2 }, expect.any(AbortSignal),
+            { side: 'original', line: 5, column: 3, scrollTop: 90 });
         expect(openUnifiedPanelTab).not.toHaveBeenCalled();
         expect(fakes[0].revealedPositions).toEqual([]);
     });
@@ -531,42 +532,55 @@ describe('WorkingTreeFileDiff — definition routing', () => {
         expect(fakes[0].revealedPositions).toEqual([definitionTarget]);
     });
 
-    it.each(['original', 'modified'] as const)('restores %s cursor and exact scroll through the chip and Alt+←', async side => {
+    it.each(['original', 'modified'] as const)('records the exact %s origin of a same-file jump in the host history', async side => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValueOnce(content(TEXT, TEXT, {
             base: { content: TEXT, ref: 'HEAD', exists: true },
             head: { content: `${TEXT}\nindex tail`, ref: 'INDEX', exists: true },
         })).mockResolvedValueOnce(content(TEXT, `${TEXT}\ndisk differs`));
-        await renderDiff({ stage: 'staged' });
+        const push = vi.fn();
+        await renderDiff({ stage: 'staged', definitionHistory: { backLabel: null, push, back: vi.fn() } });
         const mount = currentCodeMounts[side === 'original' ? 0 : 1];
         expect(mount).toBeDefined();
-        const origin = { line: 3, column: 4, scrollTop: 183.5 };
-        fakes[0].viewPositions[side] = origin;
+        fakes[0].viewPositions[side] = { line: 3, column: 4, scrollTop: 183.5 };
         act(() => { mount.onNavigate(target('src/a.ts')); });
-        expect(screen.getByTestId('diff-definition-back-chip').textContent).toContain('Back to Staged · a.ts');
-        fakes[0].viewPositions[side] = { line: 7, column: 2, scrollTop: 500 };
-        act(() => { mount.onNavigate(target('src/a.ts', { line: 12 })); });
-        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
-        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, line: 7, column: 2, scrollTop: 500 });
-        fireEvent.click(screen.getByTestId('diff-definition-back-chip'));
-        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, ...origin });
-        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
-        const count = fakes[0].revealedPositions.length;
-        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
-        expect(fakes[0].revealedPositions).toHaveLength(count);
+        expect(push).toHaveBeenCalledWith({ side, line: 3, column: 4, scrollTop: 183.5 });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, line: 7, column: 2 });
     });
 
-    it('clears return history and pending reveal when the selected file changes', async () => {
+    it('shows the host history as a Back chip that the chip and Alt+← follow', async () => {
+        const back = vi.fn();
+        const view = await renderDiff({ stage: 'staged', definitionHistory: { backLabel: null, push: vi.fn(), back } });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        expect(back).not.toHaveBeenCalled();
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="staged"
+            createDiffEditor={createDiffEditor} definitionHistory={{ backLabel: 'Untracked · b.ts', push: vi.fn(), back }} />);
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toContain('Back to Untracked · b.ts');
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        fireEvent.click(screen.getByTestId('diff-definition-back-chip'));
+        expect(back).toHaveBeenCalledTimes(2);
+    });
+
+    it('reveals each new host target, restoring exact scroll', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         const view = await renderDiff();
-        fakes[0].viewPositions.original = { line: 2, column: 1, scrollTop: 70 };
+        const back = { side: 'original' as const, line: 3, column: 4, scrollTop: 183.5 };
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+            createDiffEditor={createDiffEditor} definitionTarget={back} />);
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+            createDiffEditor={createDiffEditor} definitionTarget={{ ...back }} />);
+        expect(fakes[0].revealedPositions).toEqual([back, back]);
+    });
+
+    it('drops a pending reveal when the selected file changes', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        const view = await renderDiff();
         act(() => { currentCodeMounts[0].onNavigate(target('src/a.ts')); });
-        expect(screen.getByTestId('diff-definition-back-chip')).toBeTruthy();
         await act(async () => {
             view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/b.ts" repoRoot="/repo"
                 stage="unstaged" createDiffEditor={createDiffEditor} />);
         });
-        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
         expect(fakes.flatMap(fake => fake.revealedPositions)).toEqual([{ side: 'original', line: 8, column: 2 }]);
     });
 
