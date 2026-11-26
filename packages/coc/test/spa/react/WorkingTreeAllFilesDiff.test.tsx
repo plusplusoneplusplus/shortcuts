@@ -150,6 +150,24 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
         expect(current()).toMatchObject({ stage: 'untracked', filePath: '/repo/tests/a.test.ts' });
         expect(badge()).toHaveAttribute('aria-label', '1 matching file');
     });
+    it('keeps icon layout controls named, titled and keyboard accessible without clearing filters', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a.ts' } });
+        const layouts = within(nav()).getByRole('group', { name: 'File list view' });
+        for (const label of ['Tree', 'Flat', 'Groups']) {
+            const button = within(layouts).getByRole('button', { name: label, exact: true });
+            expect(button).toHaveAttribute('title', label);
+            expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+            button.focus();
+            expect(document.activeElement).toBe(button);
+            fireEvent.click(button);
+            expect(button).toHaveAttribute('aria-pressed', 'true');
+            expect(within(layouts).getAllByRole('button').filter(control => control.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
+            expect(screen.getByRole('textbox')).toHaveValue('a.ts');
+            expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(2);
+        }
+    });
     it('keeps compact drawer search focus, keyboard navigation and focus return', async () => {
         render(<WorkingTreeAllFilesDiff {...props} />);
         await screen.findByTestId('full-working-diff');

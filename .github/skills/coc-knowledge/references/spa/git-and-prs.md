@@ -213,6 +213,8 @@ mutable hosts can guard navigation and retain selection while an editor is dirty
 Working changes opts into `ReviewFiles.compactNavigator`; its badge reflects the
 filtered list while kind totals describe the full comparison. The presentation
 shares all existing filters, tree ordering, row actions and drawer navigation.
+Named sidebar queries adapt the layout selector independently of the named outer
+review queries that control the drawer and toolbar.
 Each host keys the shell by owner and comparison identity.
 Optional `rowMenu(file, anchor)` items open from right-click, Menu key or
 Shift+F10 on the clicked row without changing selection; `anchor` carries the

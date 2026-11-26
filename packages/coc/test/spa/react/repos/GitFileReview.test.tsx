@@ -358,10 +358,10 @@ describe('single-row review toolbar', () => {
     it('defines a 34px nonwrapping row with container-driven compaction tiers', () => {
         const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
         expect(css).toMatch(/\.git-review-tools\{[^}]*flex-wrap:nowrap[^}]*height:34px/);
-        expect(css).toContain('@container(min-width:900px){.git-review-collapsible{display:none!important}}');
-        expect(css).toContain('@container(max-width:899px){.git-review-wide{display:none!important}}');
-        expect(css).toContain('@container(max-width:599px){.git-review-md{display:none!important}}');
-        expect(css).toContain('@container(max-width:479px){.git-review-label-sm{display:none!important}}');
+        expect(css).toContain('@container git-review (min-width:900px){.git-review-collapsible{display:none!important}}');
+        expect(css).toContain('@container git-review (max-width:899px){.git-review-wide{display:none!important}}');
+        expect(css).toContain('@container git-review (max-width:599px){.git-review-md{display:none!important}}');
+        expect(css).toContain('@container git-review (max-width:479px){.git-review-label-sm{display:none!important}}');
     });
 });
 
@@ -440,7 +440,7 @@ describe('resizable changed-files separator', () => {
         const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
         expect(css).toContain('.git-review-nav{width:var(--git-review-nav-width,262px)');
         expect(css).toMatch(/\.git-review-resizer\{[^}]*cursor:col-resize/);
-        expect(css).toContain('@container(max-width:700px){.git-review-nav,.git-review-resizer{display:none}');
+        expect(css).toContain('@container git-review (max-width:700px){.git-review-nav,.git-review-resizer{display:none}');
     });
 });
 

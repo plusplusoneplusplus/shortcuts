@@ -242,9 +242,17 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             </section>);
     }
     const viewControls = <div className="git-review-filter-row git-review-layouts" role="group" aria-label="File list view">
-        <button type="button" aria-pressed={viewMode === 'groups'} onClick={() => setViewMode('groups')}>Groups</button>
-        <button type="button" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Tree</button>
-        <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>Flat</button>
+        {(['groups', 'tree', 'flat'] as const).map(mode => {
+            const label = mode === 'groups' ? 'Groups' : mode === 'tree' ? 'Tree' : 'Flat';
+            return <button type="button" key={mode} aria-label={label} title={label} aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)}>
+                {compactNavigator && <svg className="git-review-layout-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+                    {mode === 'groups' ? <><rect x="2" y="2" width="12" height="4" rx="1" /><rect x="2" y="10" width="12" height="4" rx="1" /></>
+                        : mode === 'tree' ? <><path d="M3 2v10h4M3 5h4" /><rect x="8" y="3" width="6" height="4" rx="1" /><rect x="8" y="10" width="6" height="4" rx="1" /></>
+                        : <><path d="M5 3h9M5 8h9M5 13h9" /><path d="M2 3h1M2 8h1M2 13h1" /></>}
+                </svg>}
+                <span className="git-review-layout-label">{label}</span>
+            </button>;
+        })}
     </div>;
     const statusControl = <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select>;
     return <div ref={reviewRef} className="git-file-review" data-testid="git-file-review" data-review-content-search={canSearch ? 'true' : undefined}>
@@ -314,7 +322,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
                     <div className="git-review-filter-title">
-                        <strong>Changed files{compactNavigator && <span className="git-review-file-count" aria-label={`${visible.length} matching ${visible.length === 1 ? 'file' : 'files'}`}>{visible.length}</span>}</strong>
+                        <strong><span title="Changed files">Changed files</span>{compactNavigator && <span className="git-review-file-count" aria-label={`${visible.length} matching ${visible.length === 1 ? 'file' : 'files'}`}>{visible.length}</span>}</strong>
                         {compactNavigator && viewControls}
                         <button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button>
                     </div>
