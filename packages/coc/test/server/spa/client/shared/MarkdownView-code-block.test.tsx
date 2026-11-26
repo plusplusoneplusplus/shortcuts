@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
     useMermaid: vi.fn(),
@@ -119,7 +119,10 @@ describe('MarkdownView Copy all', () => {
         expect(button.getAttribute('type')).toBe('button');
         expect(button.tabIndex).toBe(0);
         expect(button.getAttribute('aria-live')).toBe('polite');
-        expect(block.querySelector('.code-block-header')?.contains(button)).toBe(true);
+        expect(block.classList.contains('code-block-compact')).toBe(true);
+        expect(block.querySelector('.code-block-header')).toBeNull();
+        expect(button.parentElement).toBe(block);
+        expect(button.textContent).toBe('Copy');
         expect(pre.contains(button)).toBe(false);
         expect(highlightElement).toHaveBeenCalledTimes(1);
         fireEvent.click(button);
@@ -138,7 +141,7 @@ describe('MarkdownView Copy all', () => {
         expect(container.querySelectorAll('.code-block-copy')).toHaveLength(3);
         fireEvent.click(buttons[1]);
         await waitFor(() => expect(buttons[1].textContent).toBe('Copied!'));
-        expect(buttons[0].textContent).toBe('Copy all');
+        expect(buttons[0].textContent).toBe('Copy');
         fireEvent.click(buttons[2]);
         await waitFor(() => expect(buttons[2].textContent).toBe('Copied!'));
         expect(writeText.mock.calls).toEqual([['second'], ['&lt;literal&gt;\n\n  last']]);
@@ -157,6 +160,27 @@ describe('MarkdownView Copy all', () => {
         fireEvent.click(button);
         await screen.findByRole('button', { name: 'Copied!' });
         expect(writeText).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([false, true])('restores compact and file-preview labels after feedback (failure: %s)', async (failure) => {
+        const writeText = clipboard();
+        if (failure) writeText.mockRejectedValue(new Error('Permission denied'));
+        vi.useFakeTimers();
+        try {
+            render(<MarkdownView html={chatMarkdownToHtml('```\nchat code\n```') +
+                renderMarkdownToHtml('```js\nfile code\n```')} />);
+            const buttons = screen.getAllByRole('button', { name: 'Copy all' });
+            expect(buttons.map(button => button.textContent)).toEqual(['Copy', 'Copy all']);
+            await act(async () => { buttons.forEach(button => fireEvent.click(button)); });
+            expect(buttons.map(button => button.textContent)).toEqual(
+                failure ? ['Copy failed', 'Copy failed'] : ['Copied!', 'Copied!'],
+            );
+            act(() => vi.advanceTimersByTime(3000));
+            expect(buttons.map(button => button.textContent)).toEqual(['Copy', 'Copy all']);
+            expect(screen.getAllByRole('button', { name: 'Copy all' })).toEqual(buttons);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('copies empty blocks through the shared clipboard fallback and reports fallback failure', async () => {
@@ -179,7 +203,7 @@ describe('MarkdownView Copy all', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Copy all' }));
         rerender(<MarkdownView html={chatMarkdownToHtml('```\nnew owner\n```')} />);
         resolve();
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Copy all' }).textContent).toBe('Copy all'));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Copy all' }).textContent).toBe('Copy'));
         fireEvent.click(screen.getByRole('button', { name: 'Copy all' }));
         await screen.findByRole('button', { name: 'Copied!' });
         expect(writeText.mock.calls).toEqual([['old owner'], ['new owner']]);
@@ -208,7 +232,7 @@ describe('MarkdownView Copy all keyboard and ownership', () => {
         expect(document.activeElement).toBe(buttons[0]);
         await user.keyboard('{Enter}');
         await screen.findByRole('button', { name: 'Copied!' });
-        expect(buttons[1].textContent).toBe('Copy all');
+        expect(buttons[1].textContent).toBe('Copy');
         await user.tab();
         expect(document.activeElement).toBe(buttons[1]);
         await user.keyboard(' ');
