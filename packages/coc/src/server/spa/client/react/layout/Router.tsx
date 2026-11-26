@@ -9,6 +9,7 @@
  */
 
 import { buildWorkResourceHash } from './workResourceRoute';
+import { recordChatSelection, type ChatSelectionMruByWorkspace } from './chatSelectionMru';
 import { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
 import { DashboardChatReferenceRoute } from './DashboardChatReferenceRoute';
 import { useApp } from '../contexts/AppContext';
@@ -63,6 +64,16 @@ export function Router() {
         location.hash === '#chat-references' || location.hash.startsWith('#chat-references/') ? location.hash : null);
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const chatSelectionMruRef = useRef<ChatSelectionMruByWorkspace>(new Map());
+    const selectedChatId = state.selectedRepoId
+        ? queueState.selectedTaskIdByRepo?.[state.selectedRepoId]
+        : null;
+    useLayoutEffect(() => {
+        if (state.activeTab !== 'repos' || !state.selectedRepoId || referenceHash !== null) return;
+        chatSelectionMruRef.current = recordChatSelection(
+            chatSelectionMruRef.current, state.selectedRepoId, selectedChatId,
+        );
+    }, [state.activeTab, state.selectedRepoId, selectedChatId, referenceHash]);
     const processDeepLinkContextRef = useRef({
         queueState,
         selectedRepoId: state.selectedRepoId,
