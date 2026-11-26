@@ -72,6 +72,9 @@ export interface FileDiffPanelProps {
     source: DiffSource;
     /** Called when cross-file nav requests switching to a different file. */
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
+    /** The complete comparison for Go to Definition, including files navigator filters hide.
+     * Defaults to the navigable file list; `onNavigateToFile` must accept every entry. */
+    definitionFiles?: string[];
     /** Auto-scroll to first or last hunk after diff loads. */
     initialHunkTarget?: 'first' | 'last';
     /** A new object jumps once; hosts clear it on ordinary file/review navigation. */
@@ -123,6 +126,7 @@ export function FileDiffPanel({
     filePath,
     source,
     onNavigateToFile,
+    definitionFiles,
     initialHunkTarget,
     contentSearchTarget,
     onBack,
@@ -430,7 +434,7 @@ export function FileDiffPanel({
     useEffect(() => () => { definitionLocateRef.current?.abort(); }, [workspaceId, source.cacheKey, filePath]);
     const toast = useContext(ToastContext);
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
-        const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
+        const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: definitionFiles ?? allFiles, target, side });
         if (!route) return false;
         setDismissedSearchTarget(contentSearchTarget ?? null);
         definitionLocateRef.current?.abort();
@@ -491,7 +495,7 @@ export function FileDiffPanel({
             if (route.kind === 'review-file') onNavigateToFile?.(route.path, 'first');
         })();
         return true;
-    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, contentSearchTarget, toast]);
+    }, [workspaceId, filePath, definitionFiles, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, contentSearchTarget, toast]);
     const backFromDefinition = definitionBack[definitionBack.length - 1] ?? null;
     const goBackFromDefinition = useCallback(() => {
         if (!backFromDefinition) return;

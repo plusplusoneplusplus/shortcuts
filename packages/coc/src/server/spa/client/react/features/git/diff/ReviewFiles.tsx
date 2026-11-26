@@ -21,6 +21,8 @@ export type ReviewFile = FileChange;
 export interface ReviewFileRenderContext {
     file: ReviewFile;
     paths: string[];
+    /** Every file of the comparison, independently of navigator filters; `select` accepts any of them. */
+    allPaths: string[];
     select: (path: string, target?: 'first' | 'last') => void;
     target: 'first' | 'last';
     toggleViewed: () => void;
@@ -85,6 +87,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const viewed = reviewedFiles ?? localViewed;
     const [retainedPath, setRetainedPath] = useState<string | null>(null);
     const [selection, setSelection] = useState<string | null>(selectedPath ?? null);
+    // A file selected while filters hide it (e.g. a definition jump) stays shown; filters are kept.
+    const [revealed, setRevealed] = useState<string | null>(null);
     const [target, setTarget] = useState<'first' | 'last'>(initialHunkTarget ?? 'first');
     const [overview, setOverview] = useState(false);
     const [drawer, setDrawer] = useState(false);
@@ -131,7 +135,9 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         return viewMode === 'flat' ? visible : viewMode === 'tree' ? flatten(tree) : groups.flatMap(group => group.files);
     }, [groups, visible, viewMode, tree]);
     const paths = useMemo(() => ordered.map(reviewFileKey), [ordered]);
+    const allPaths = useMemo(() => files.map(reviewFileKey), [files]);
     const selected = (retainSelection ? files.find(file => reviewFileKey(file) === selection) : undefined) ?? ordered.find(file => reviewFileKey(file) === selection)
+        ?? (selection && selection === revealed ? files.find(file => reviewFileKey(file) === selection) : undefined)
         ?? (hideViewed && selection && selection === retainedPath && viewed.has(selection)
             ? filterReviewFiles(files, query, kind, status, false, viewed).find(file => reviewFileKey(file) === selection) : undefined)
         ?? ordered[0];
@@ -141,7 +147,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const viewedCount = files.filter(file => viewed.has(reviewFileKey(file))).length;
     useEffect(() => { if (selectedPath) {
         setSelection(selectedPath); setOverview(false); setTarget(initialHunkTarget ?? 'first');
-        if (!visible.some(file => reviewFileKey(file) === selectedPath)) clear();
+        // A host echoing a revealed selection back keeps the user's filters.
+        if (selectedPath !== revealed && !visible.some(file => reviewFileKey(file) === selectedPath)) clear();
         setCollapsed(previous => new Set([...previous].filter(directory => !selectedPath.startsWith(`${directory}/`))));
     } }, [selectedPath, initialHunkTarget]);
     useEffect(() => {
@@ -160,7 +167,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         row?.scrollIntoView?.({ block: 'nearest' });
     }, [selected && reviewFileKey(selected)]);
     function select(path: string, hunk: 'first' | 'last' = 'first', closeDrawer = true) {
-        const proceed = () => { setSelection(path); setTarget(hunk); setOverview(false); if (closeDrawer) setDrawer(false); onSelect?.(path, hunk); };
+        const proceed = () => { setRevealed(paths.includes(path) ? null : path); setSelection(path); setTarget(hunk); setOverview(false); if (closeDrawer) setDrawer(false); onSelect?.(path, hunk); };
         if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
@@ -332,6 +339,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     {(reviewEnabled || !compactNavigator) && <div className="git-review-filter-row">{reviewEnabled && <label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>}
                         {!compactNavigator && statusControl}</div>}
                 </div>
+                {selected && !overview && index < 0 && <div className="git-review-muted" role="status" data-testid="git-review-hidden-selection">
+                    {reviewFileParts(selected.path).name} is hidden by the current filters <button type="button" onClick={clear}>Clear filters</button></div>}
                 <div className="git-review-file-list">{viewMode === 'flat' ? visible.map(file => row(file)) : viewMode === 'tree' ? treeRows(tree) : groups.map(group => <section key={group.directory}>
                     <button type="button" className="git-review-directory" aria-label={`${group.directory} ${group.files.length} files`} aria-expanded={!collapsed.has(group.directory)} onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.directory)) next.delete(group.directory); else next.add(group.directory); return next; })}>
                         <span>{collapsed.has(group.directory) ? '▸' : '▾'}</span><span title={group.directory}>{group.directory}</span><small>{group.files.length}</small>
@@ -349,7 +358,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
                     <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories {reviewEnabled ? `· ${viewedCount} viewed` : ''} <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>
                     {groups.map(group => <section key={group.directory}><div className="git-review-directory">{group.directory} · {group.files.length}</div>{group.files.map(file => row(file, true))}</section>)}
-                </div> : selected ? renderFile({ file: selected, paths, select, target,
+                </div> : selected ? renderFile({ file: selected, paths, allPaths, select, target,
                     toggleViewed: () => toggleViewed(reviewFileKey(selected)) })
                     : renderEmpty ?? <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}{!!files.length && <button type="button" onClick={clear}>Clear filters</button>}</div>}
             </main>

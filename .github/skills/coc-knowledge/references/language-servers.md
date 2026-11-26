@@ -325,7 +325,11 @@ on the initiating side, another changed file of the review switches the review
 there (same side), and any other file opens its current version at the line in
 the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
 without a panel; `diffDefinitionExplorer.ts`). Foreign-workspace targets are
-declined. In-review destinations must hold in the shown snapshot
+declined. Membership uses the whole comparison: `ReviewFiles` gives
+`renderFile` `allPaths` and its `select` accepts any of them, showing a file the
+navigator filters hide with a "hidden by the current filters" notice (filters
+kept; a host echoing it back as `selectedPath` does not clear them), and
+`GitFileReview` passes `allPaths` as `FileDiffPanel`'s `definitionFiles`. In-review destinations must hold in the shown snapshot
 (`diffDefinitionLocate.ts`): `FileDiffPanel` reads the destination side through
 `fetchFileContent` and current code through `explorerApi.readBlob`, and reveals
 only when the texts are equal or the current definition line occurs exactly once

@@ -464,6 +464,25 @@ describe('definition routing', () => {
         expect(fakes[0].revealedPositions).toEqual([]);
     });
 
+    it('routes into a file navigator filters hide when the host passes the whole comparison', async () => {
+        const source = commitSource();
+        const onNavigateToFile = vi.fn();
+        // The navigable list is filtered down to the current file; the comparison also has src/hidden.ts.
+        const filtered = { ...source, files: ['src/a.ts'] };
+        await act(async () => {
+            render(<UnifiedPanelHostProvider host={panelHost}><FileDiffPanel workspaceId="ws-a" filePath="src/a.ts" source={filtered}
+                definitionFiles={['src/a.ts', 'src/hidden.ts']} createDiffEditor={createEditor}
+                onNavigateToFile={onNavigateToFile} initialHunkTarget="first" /></UnifiedPanelHostProvider>);
+        });
+        act(() => { jumpFrom('modified').onNavigate(target('src/hidden.ts')); });
+        await settle();
+        expect(onNavigateToFile).toHaveBeenCalledWith('src/hidden.ts', 'first');
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        // Not part of the comparison at all: still current source.
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({ resourceId: 'src/b.ts' }));
+    });
+
     it('an Explorer jump leaves a way back to the exact diff file, side and scroll spot', async () => {
         resetDiffDefinitionReturns();
         const source = commitSource();

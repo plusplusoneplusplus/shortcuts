@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useState } from 'react';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -116,6 +117,32 @@ describe('compact focused Git review', () => {
         view.rerender(<GitFileReview {...props} selectedPath="test/a.test.ts" />);
         expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
         expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+    });
+    it('gives definition routing the whole comparison and shows a filtered target without dropping filters', () => {
+        const Host = () => {
+            const [selected, setSelected] = useState<string | null>('src/z.ts');
+            return <GitFileReview {...props} selectedPath={selected} onSelect={setSelected} />;
+        };
+        render(<Host />);
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Source 2', exact: true }));
+        const filtered = panel.mock.calls.at(-1)![0];
+        expect(filtered.source.files).toEqual(['src/a.ts', 'src/z.ts']);
+        expect(filtered.definitionFiles).toEqual(files.map(file => file.path));
+        // A definition jump selects a file the Source filter hides; the host echoes it back.
+        act(() => { filtered.onNavigateToFile('docs/README.md', 'first'); });
+        expect(screen.getByTestId('focused-diff').textContent).toContain('docs/README.md');
+        expect(within(nav()).getByRole('button', { name: 'Source 2', exact: true }).getAttribute('aria-pressed')).toBe('true');
+        expect(nav().querySelector('[data-file-path="docs/README.md"]')).toBeNull();
+        expect(screen.getByTestId('git-review-hidden-selection').textContent).toContain('README.md');
+        // Back to a visible file clears the notice; filters still hold.
+        act(() => { panel.mock.calls.at(-1)![0].onNavigateToFile('src/z.ts', 'first'); });
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        expect(screen.queryByTestId('git-review-hidden-selection')).toBeNull();
+        expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['src/a.ts', 'src/z.ts']);
+        act(() => { panel.mock.calls.at(-1)![0].onNavigateToFile('test/a.test.ts', 'first'); });
+        fireEvent.click(within(screen.getByTestId('git-review-hidden-selection')).getByRole('button', { name: 'Clear filters' }));
+        expect(nav().querySelector('[data-file-path="test/a.test.ts"]')).not.toBeNull();
+        expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
     });
     it('shows loading and errors without mounting a diff; retries metadata', () => {
         const retry = vi.fn(); const view = render(<GitFileReview {...props} loading />);
