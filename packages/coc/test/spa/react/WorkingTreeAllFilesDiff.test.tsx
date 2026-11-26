@@ -9,8 +9,12 @@ const h = vi.hoisted(() => ({
     unresolved: false,
     searchEnabled: false,
     panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(), openTab: vi.fn(),
-    createComment: vi.fn(), reviewClientFor: vi.fn(),
+    createComment: vi.fn(), reviewClientFor: vi.fn(), readBlob: vi.fn(),
 }));
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi')>();
+    return { explorerApi: { ...actual.explorerApi, readBlob: h.readBlob } };
+});
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useDiffContentSearchEnabled', () => ({
     useDiffContentSearchEnabled: () => h.searchEnabled,
 }));
@@ -564,6 +568,115 @@ describe('working changes full-content search', () => {
             finish.forEach(resolve => resolve({ base: { exists: false }, head: { content: 'late needle', exists: true } }));
         });
         expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledTimes(4);
+    });
+});
+
+describe('working changes definition routing', () => {
+    // Current code, as definition providers see it; `line 1` … `line 6`.
+    const CURRENT = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`).join('\n');
+    type Sides = { base: string | null; head: string };
+    function serve(files: Record<string, Partial<Record<'staged' | 'unstaged' | 'untracked', Sides>>>) {
+        h.client.git.getWorkingTreeFileContent.mockReset().mockImplementation(async (_workspace: string, path: string, stage: 'staged') => {
+            const sides = files[path]?.[stage];
+            if (!sides) throw new Error(`no ${stage} content for ${path}`);
+            return { path, fileName: path.split('/').pop(), binary: false, tooLarge: false,
+                base: { content: sides.base ?? '', ref: 'BASE', exists: sides.base !== null },
+                head: { content: sides.head, ref: 'HEAD', exists: true } };
+        });
+    }
+    const jump = (path: string, side: 'original' | 'modified', line = 4, signal = new AbortController().signal) => {
+        let moved!: Promise<boolean>;
+        act(() => { moved = current().onNavigateDefinitionFile({ path, side, line, column: 3 }, signal); });
+        return moved;
+    };
+    beforeEach(() => { h.readBlob.mockResolvedValue({ encoding: 'utf-8', content: CURRENT }); });
+
+    it('selects a changed file hidden by the navigator filter and reveals the definition in it, keeping the filter', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('def.ts', 'unstaged')] });
+        serve({ '/repo/def.ts': { unstaged: { base: `header\n${CURRENT}`, head: CURRENT } } });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'caller' } });
+        expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionFiles: ['caller.ts', 'def.ts'] });
+        await act(async () => { expect(await jump('def.ts', 'original')).toBe(true); });
+        // The index side carries one more line above the definition than current code.
+        expect(current()).toMatchObject({ filePath: '/repo/def.ts', stage: 'unstaged', definitionTarget: { side: 'original', line: 5, column: 3 } });
+        expect(h.readBlob).toHaveBeenCalledWith('ws-1', 'def.ts', expect.objectContaining({ signal: expect.any(AbortSignal) }), null);
+        expect(screen.getByRole('textbox')).toHaveValue('caller');
+        expect(props.onNavigateToFile).toHaveBeenLastCalledWith('/repo/def.ts', 'unstaged', 'first');
+    });
+
+    it('picks the staged or unstaged entry whose snapshot holds the definition, never an arbitrary one', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('a.ts', 'staged'), change('a.ts', 'unstaged')] });
+        // HEAD still has the definition (shifted); the index already dropped it.
+        serve({ '/repo/a.ts': {
+            staged: { base: `old\nold\n${CURRENT}`, head: 'index only' },
+            unstaged: { base: 'index only', head: CURRENT },
+        } });
+        render(<WorkingTreeAllFilesDiff {...props} filePath="/repo/caller.ts" stage="unstaged" />);
+        await screen.findByTestId('full-working-diff');
+        await act(async () => { expect(await jump('a.ts', 'original')).toBe(true); });
+        expect(current()).toMatchObject({ filePath: '/repo/a.ts', stage: 'staged', definitionTarget: { side: 'original', line: 6, column: 3 } });
+        // The right side: the disk file equals current code, so the unstaged entry wins over the index.
+        serve({ '/repo/a.ts': { staged: { base: '', head: CURRENT }, unstaged: { base: CURRENT, head: CURRENT } } });
+        await act(async () => { expect(await jump('a.ts', 'modified', 2)).toBe(true); });
+        expect(current()).toMatchObject({ stage: 'unstaged', definitionTarget: { side: 'modified', line: 2, column: 3 } });
+    });
+
+    it('declines when no entry locates the definition, and for an untracked file\'s missing left side', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('a.ts', 'staged'), change('new.ts', 'untracked', '?')] });
+        serve({ '/repo/a.ts': { staged: { base: 'line 4\nline 4', head: 'gone' } }, '/repo/new.ts': { untracked: { base: null, head: CURRENT } } });
+        render(<WorkingTreeAllFilesDiff {...props} filePath="/repo/caller.ts" stage="unstaged" />);
+        await screen.findByTestId('full-working-diff');
+        await act(async () => { expect(await jump('a.ts', 'original')).toBe(false); });
+        await act(async () => { expect(await jump('a.ts', 'modified')).toBe(false); });
+        await act(async () => { expect(await jump('new.ts', 'original')).toBe(false); });
+        h.readBlob.mockResolvedValue({ encoding: 'base64', content: 'AAAA' });
+        await act(async () => { expect(await jump('new.ts', 'modified')).toBe(false); });
+        expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionTarget: undefined });
+        h.readBlob.mockResolvedValue({ encoding: 'utf-8', content: CURRENT });
+        await act(async () => { expect(await jump('new.ts', 'modified')).toBe(true); });
+        expect(current()).toMatchObject({ filePath: '/repo/new.ts', stage: 'untracked', definitionTarget: { side: 'modified', line: 4 } });
+    });
+
+    it('ignores a lookup its diff superseded', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('def.ts', 'unstaged')] });
+        serve({ '/repo/def.ts': { unstaged: { base: CURRENT, head: CURRENT } } });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        const abort = new AbortController();
+        let moved!: Promise<boolean>;
+        await act(async () => { moved = jump('def.ts', 'modified', 4, abort.signal); abort.abort(); await moved; });
+        expect(current().filePath).toBe('/repo/caller.ts');
+    });
+
+    it('asks before leaving unsaved edits; Cancel keeps the file and sets no reveal, Don\'t Save moves and reveals', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('def.ts', 'unstaged')] });
+        serve({ '/repo/def.ts': { unstaged: { base: CURRENT, head: CURRENT } } });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByText('Edit buffer'));
+        await act(async () => { await jump('def.ts', 'modified'); });
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+        expect(current()).toMatchObject({ filePath: '/repo/caller.ts', definitionTarget: undefined });
+        // A manual move to the file later does not replay the cancelled jump.
+        fireEvent.click(within(nav()).getByRole('button', { name: /def\.ts/ }));
+        fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+        expect(current()).toMatchObject({ filePath: '/repo/def.ts', definitionTarget: undefined });
+        fireEvent.click(within(nav()).getByRole('button', { name: /caller\.ts/ }));
+        fireEvent.click(screen.getByText('Edit buffer'));
+        await act(async () => { await jump('def.ts', 'modified'); });
+        fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+        expect(current()).toMatchObject({ filePath: '/repo/def.ts', definitionTarget: { side: 'modified', line: 4, column: 3 } });
+    });
+
+    it('reads current code through the concrete remote owner', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [change('caller.ts', 'unstaged'), change('def.ts', 'unstaged')] });
+        serve({ '/repo/def.ts': { unstaged: { base: CURRENT, head: CURRENT } } });
+        render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:b:ws-1" />);
+        await screen.findByTestId('full-working-diff');
+        await act(async () => { await jump('def.ts', 'modified'); });
+        expect(h.readBlob).toHaveBeenCalledWith('ws-1', 'def.ts', expect.anything(), 'remote:b:ws-1');
     });
 });
 

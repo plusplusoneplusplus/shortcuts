@@ -340,8 +340,18 @@ panel). One lookup is pending at a time; a newer jump, file/source/workspace
 change or unmount aborts it. `FileDiffPanel` holds the reveal until that file's models are displayed
 and suppresses the hunk target for it; the viewer's `revealTarget` goes through
 the controller's `reveal`, which waits for attach and is dropped by a model swap.
-`WorkingTreeFileDiff` is not a review: it routes both its full-language and
-ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own.
+Working changes follow the same rules with stage-qualified entries.
+`WorkingTreeFileDiff` places a ref-backed same-file jump in its loaded side
+against the loaded disk text (a side-less live-document jump is taken as-is) and
+sends another file of `definitionFiles` (every entry's repo-relative path,
+ignoring filters) to `WorkingTreeAllFilesDiff` through `onNavigateDefinitionFile`.
+The host reads each entry of that path and current code through the concrete
+owner, and `locateWorkingTreeDefinition` picks the entry whose side holds the
+definition (snapshot equal to current code first, else untracked → unstaged →
+staged); it then selects it through the dirty guard (Cancel sets nothing) and
+hands the pane a one-shot `definitionTarget`, which a manual selection drops.
+No located entry, or an entry a refresh removed, opens labeled current code; an
+aborted lookup (newer jump, pane unmount) does nothing. Peek stays Monaco's own.
 
 Before an in-review jump (same file or review file), `FileDiffPanel` captures the
 initiating side's cursor and scroll offset through the viewer handle's
