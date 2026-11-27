@@ -85,8 +85,12 @@ Workspace-owned `notes-changed` events reload matching open notes. An empty
 in that workspace. Recent-save echoes and unsaved local edits retain their
 existing reload guards; tree readers also refresh on workspace invalidation.
 
-`RichEditorCore` accepts `readOnly` (default false), setting Tiptap editability
-and suppressing change callbacks and paste/drop overrides. Code-block language
+`RichEditorCore` is CoC's wrapper around tiptap-react's `RichEditor` shell (see
+[Tiptap packages](#tiptap-packages)). It adds the CoC nodes, opens Ctrl/Cmd-clicked
+links through `onOpenLink` (`canvas://` → panel canvas tab, else the user's
+link-handler settings) and renders the YouTube/PDF/paper dialogs as the shell's
+children. `readOnly` (default false) sets Tiptap editability and suppresses change
+callbacks and paste/drop overrides. Code-block language
 controls and image resize controls respect editor editability. Standalone paste
 tabs hydrate Markdown without updates and have no note I/O, toolbar, or save host.
 
@@ -252,11 +256,12 @@ normal `ChatDetail` flow.
 
 `features/notes/editor/NoteEditorToolbar.tsx` is composition only: it decides which
 rows exist (formatting row, find/replace row, contextual table strip) and delegates to
-`features/notes/editor/toolbar/`. It re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
+`@plusplusoneplusplus/tiptap-react/toolbar` (`packages/tiptap-react/src/toolbar/`)
+plus CoC's own `features/notes/editor/toolbar/ToolbarHostActions.tsx`. It re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
 `TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
 
-The one thing it owns for the whole toolbar is reactivity. `RichEditorCore` is the
-component that calls `useEditor`, and it sits *below* the toolbar's owner
+The one thing it owns for the whole toolbar is reactivity. The `RichEditor` shell
+inside `RichEditorCore` calls `useEditor`, and it sits *below* the toolbar's owner
 (`NoteEditor`), whose only editor bridge is `onUpdate` — which Tiptap fires solely when
 `transaction.docChanged`. Selection-only transactions therefore never reach the
 toolbar on their own, so `NoteEditorToolbar` calls `useEditorTransactionTick(editor)`
@@ -299,8 +304,8 @@ not add a second one per widget.
   (`TABLE_PICKER_COLS`/`ROWS`), cell fill picker, and `useTableToolbarState`, which
   derives widths / header shape / wrap mode / move availability. Outside a table it
   short-circuits and reads nothing off the doc.
-- `ToolbarHostActions.tsx` — right-end actions (AI edits, comments, chat, TOC, refresh,
-  custom `toolbarRight`). These read no editor state, are prop-driven, and stay visible
+- `ToolbarHostActions.tsx` (CoC) — right-end actions (AI edits, comments, chat, TOC
+  via tiptap-react's `TocPanel`, refresh, custom `toolbarRight`). These read no editor state, are prop-driven, and stay visible
   in source mode. `hasHostActions(props)` decides whether the `ml-auto` spacer is
   emitted at all.
 
@@ -337,9 +342,9 @@ via `style="…"`.
 ## Find & replace
 
 In-document find and replace lives behind the toolbar's 🔍 button
-(`features/notes/editor/toolbar/FindReplacePanel.tsx`), backed by
-`@tiptap/extension-find-and-replace`, registered last in `RichEditorCore` so its match
-decorations paint above the comment and AI-edit decorations. State lives on the editor
+(tiptap-react `toolbar/FindReplacePanel.tsx`), backed by
+`@tiptap/extension-find-and-replace`, which the shell registers after every host
+extension so its match decorations paint above the comment and AI-edit decorations. State lives on the editor
 instance (`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`)
 and is read fresh on each render; the `n / total` counter stays live off the toolbar's
 shared `useEditorTransactionTick` subscription.
@@ -385,9 +390,19 @@ projects can reuse it without the dashboard:
   root entry re-exports every area except `/math`, which loads the optional `katex`
   peer and stays subpath-only. Chat, PR and diff Markdown renderers import math
   and HTML escaping from the kit too.
-- `packages/tiptap-react` — React node views: `/math` (`MathInline`,
-  `MathDisplay`) and `/mermaid` (`MermaidBlock`). The root re-exports `/mermaid`
-  only, for the same katex reason. The editor shell and toolbar move here next.
+- `packages/tiptap-react` — React UI: `/editor` (`RichEditor` shell and
+  `createRichEditorExtensions`: StarterKit with H1–H6, task lists, links, tables
+  with kit cell attributes, highlight, sup/sub, text style, alignment, indent, and
+  find/replace last; the host adds `leadingExtensions` (parse precedence over
+  StarterKit), a `codeBlock` replacement and `extensions`, and opens links via
+  `onOpenLink`; `#anchor` links stay in-document), `/toolbar` (formatting toolbar,
+  dropdowns, table strip, find/replace panel, transaction tick), `/toc`
+  (`TocPanel`), `/math` (`MathInline`, `MathDisplay`) and `/mermaid`
+  (`MermaidBlock`). The root re-exports every area except `/math`, for the same
+  katex reason. Toolbar and TOC style with Tailwind utilities, so a host's Tailwind
+  `content` must scan `tiptap-react/src` (CoC's `tailwind.config.js` does, guarded
+  by `test/scripts/tailwind-content.test.ts`); editor CSS (`noteEditor.css`) stays
+  in CoC.
 - `packages/tiptap-embeds` — scaffold for the media embeds.
 
 All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror

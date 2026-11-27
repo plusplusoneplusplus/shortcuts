@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
-import { NoteTocPanel } from '../NoteTocPanel';
+import { TocPanel } from '@plusplusoneplusplus/tiptap-react/toc';
 
 /**
  * Right-end toolbar controls owned by the host rather than by the editor.
@@ -152,7 +152,7 @@ export function ToolbarHostActions({
                         ≡
                     </button>
                     {tocOpen && hasHeadings && onTocJump && (
-                        <NoteTocPanel
+                        <TocPanel
                             entries={tocEntries}
                             activeIndex={tocActiveIndex}
                             onJump={onTocJump}

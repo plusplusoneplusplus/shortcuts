@@ -14,7 +14,7 @@ import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { NoteZoomControl } from './NoteZoomControl';
-import { TOOLBAR_BUTTON_CLASS } from './toolbar/ToolbarDropdown';
+import { TOOLBAR_BUTTON_CLASS } from '@plusplusoneplusplus/tiptap-react/toolbar';
 import { useNoteZoom } from './useNoteZoom';
 import { handleNoteZoomKey } from './noteZoomKeyboard';
 import { RichEditorCore } from './RichEditorCore';

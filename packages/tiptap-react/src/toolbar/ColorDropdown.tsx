@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeCssColor, type PaletteColor } from '@plusplusoneplusplus/tiptap-kit/text-style';
-import { ToolbarDropdown } from './ToolbarDropdown';
+import { ToolbarDropdown } from './ToolbarDropdown.js';
 
 /**
  * The "A ▾" color control: one trigger, one panel, two sections.

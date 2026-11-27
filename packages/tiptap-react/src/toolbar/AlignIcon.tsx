@@ -1,4 +1,4 @@
-import type { AlignValue } from './formattingCommands';
+import type { AlignValue } from './formattingCommands.js';
 
 // ── Alignment icons ─────────────────────────────────────────────────────────
 // Drawn rather than typed: the Unicode glyphs these replace (⫷ ≡ ⫸ ☰) render at

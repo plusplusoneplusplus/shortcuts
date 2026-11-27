@@ -11,8 +11,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, renderHook, act } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
-import { useFindReplaceToolbarController } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/useFindReplaceToolbarController';
-import { ToolbarDropdown, MenuItem } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/ToolbarDropdown';
+import { useFindReplaceToolbarController } from '../src/toolbar/index.js';
+import { ToolbarDropdown, MenuItem } from '../src/toolbar/index.js';
 
 const tableWidthMocks = vi.hoisted(() => ({
     activeTableHasColumnWidths: vi.fn(() => false),
@@ -38,7 +38,7 @@ vi.mock('@plusplusoneplusplus/tiptap-kit/table', async (importOriginal) => ({
 
 // Imported after the mocks so the hook picks up the doubles.
 const { useTableToolbarState } = await import(
-    '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/TableToolbarControls'
+    '../src/toolbar/index.js'
 );
 
 beforeEach(() => {

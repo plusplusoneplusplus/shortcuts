@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/react';
-import { ToolbarDropdown, MenuItem } from './ToolbarDropdown';
+import { ToolbarDropdown, MenuItem } from './ToolbarDropdown.js';
 import {
     DEFAULT_FONT_SIZE_OPTION,
     FONT_SIZE_OPTIONS,

@@ -19,7 +19,7 @@ import {
     toggleLink,
     type ToolbarCommandDescriptor,
     type ToolbarSlot,
-} from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/formattingCommands';
+} from '../src/toolbar/index.js';
 
 /**
  * Editor double that records the chained calls a descriptor makes, so a

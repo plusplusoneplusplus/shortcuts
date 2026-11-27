@@ -13,9 +13,9 @@ import { render, screen, cleanup } from '@testing-library/react';
 import {
     ToolbarIcon,
     hasToolbarIcon,
-} from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/ToolbarIcon';
-import { TB } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/FormattingToolbar';
-import { FORMATTING_COMMANDS } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/formattingCommands';
+} from '../src/toolbar/index.js';
+import { TB } from '../src/toolbar/index.js';
+import { FORMATTING_COMMANDS } from '../src/toolbar/index.js';
 
 afterEach(cleanup);
 

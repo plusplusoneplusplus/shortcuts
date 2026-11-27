@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Editor } from '@tiptap/react';
-import { Sep } from './ToolbarDropdown';
-import { useFindAndReplaceState, getSelectedText } from './useFindReplaceToolbarController';
+import { Sep } from './ToolbarDropdown.js';
+import { useFindAndReplaceState, getSelectedText } from './useFindReplaceToolbarController.js';
 
 export interface FindReplacePanelProps {
     editor: Editor;

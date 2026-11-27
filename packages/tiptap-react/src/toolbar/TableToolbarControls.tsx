@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import { ToolbarDropdown, Sep } from './ToolbarDropdown';
+import { ToolbarDropdown, Sep } from './ToolbarDropdown.js';
 import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from '@plusplusoneplusplus/tiptap-kit/table';
 import { tableHeaderState } from '@plusplusoneplusplus/tiptap-kit/table';
 import { TABLE_CELL_COLORS, activeCellBackgroundColor } from '@plusplusoneplusplus/tiptap-kit/table';

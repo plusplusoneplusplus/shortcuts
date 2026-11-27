@@ -1,11 +1,14 @@
 /**
  * Package contract: each `exports` subpath is a src/<area>/index.ts with
- * matching dist paths, and `math` (optional katex peer) stays out of the root.
+ * matching dist paths, the root re-exports every other area without losing a
+ * name (`export *` drops collisions silently), and `math` (optional katex
+ * peer) stays out of the root.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import * as root from '../src/index.js';
 
 const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
@@ -19,7 +22,7 @@ const rootSource = readFileSync(join(pkgDir, 'src', 'index.ts'), 'utf8');
 
 describe('tiptap-react exports', () => {
     it('maps each subpath to src/<area>/index.ts and dist/<area>/index.js', () => {
-        expect(areas).toEqual(expect.arrayContaining(['math', 'mermaid']));
+        expect(areas).toEqual(expect.arrayContaining(['editor', 'toolbar', 'toc', 'math', 'mermaid']));
         for (const area of areas) {
             expect(existsSync(join(pkgDir, 'src', area, 'index.ts')), area).toBe(true);
             expect(manifest.exports[`./${area}`]).toEqual({
@@ -29,10 +32,19 @@ describe('tiptap-react exports', () => {
         }
     });
 
+    it('re-exports every non-math area from the root without losing a name', async () => {
+        for (const area of areas.filter((a) => a !== 'math')) {
+            expect(rootSource).toContain(`'./${area}/index.js'`);
+            const mod = (await import(`../src/${area}/index.ts`)) as Record<string, unknown>;
+            for (const [name, value] of Object.entries(mod)) {
+                expect((root as Record<string, unknown>)[name], `${area}.${name}`).toBe(value);
+            }
+        }
+    });
+
     it('keeps math subpath-only because katex is an optional peer', () => {
         expect(manifest.peerDependenciesMeta?.katex?.optional).toBe(true);
         expect(rootSource).not.toContain("'./math/index.js'");
-        expect(rootSource).toContain("'./mermaid/index.js'");
     });
 
     it('keeps Tiptap and React as peers', () => {

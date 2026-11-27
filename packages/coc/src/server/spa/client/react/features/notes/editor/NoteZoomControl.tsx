@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { TOOLBAR_BUTTON_CLASS } from './toolbar/ToolbarDropdown';
+import { TOOLBAR_BUTTON_CLASS } from '@plusplusoneplusplus/tiptap-react/toolbar';
 import {
     NOTE_ZOOM_DEFAULT,
     NOTE_ZOOM_PRESETS,

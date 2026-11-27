@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
 
-export interface NoteTocPanelProps {
+export interface TocPanelProps {
     entries: TocEntry[];
     activeIndex: number | null;
     onJump: (entry: TocEntry) => void;
@@ -14,7 +14,7 @@ const INDENT: Record<1 | 2 | 3, string> = {
     3: 'pl-8',
 };
 
-export function NoteTocPanel({ entries, activeIndex, onJump, onClose }: NoteTocPanelProps) {
+export function TocPanel({ entries, activeIndex, onJump, onClose }: TocPanelProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 

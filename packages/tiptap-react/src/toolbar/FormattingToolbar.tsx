@@ -1,13 +1,13 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import { ToolbarDropdown, MenuItem, Sep, TOOLBAR_BUTTON_CLASS } from './ToolbarDropdown';
-import { AlignIcon } from './AlignIcon';
-import { ToolbarIcon, hasToolbarIcon } from './ToolbarIcon';
-import { ColorDropdown } from './ColorDropdown';
-import { FontFamilyDropdown } from './FontFamilyDropdown';
-import { FontSizeDropdown } from './FontSizeDropdown';
-import { TableInsertButton } from './TableToolbarControls';
+import { ToolbarDropdown, MenuItem, Sep, TOOLBAR_BUTTON_CLASS } from './ToolbarDropdown.js';
+import { AlignIcon } from './AlignIcon.js';
+import { ToolbarIcon, hasToolbarIcon } from './ToolbarIcon.js';
+import { ColorDropdown } from './ColorDropdown.js';
+import { FontFamilyDropdown } from './FontFamilyDropdown.js';
+import { FontSizeDropdown } from './FontSizeDropdown.js';
+import { TableInsertButton } from './TableToolbarControls.js';
 import {
     ALIGN_OPTIONS,
     FORMATTING_GROUPS,
@@ -15,7 +15,7 @@ import {
     isCommandActive,
     type ToolbarCommandDescriptor,
     type ToolbarItem,
-} from './formattingCommands';
+} from './formattingCommands.js';
 
 // ── Color palettes ──────────────────────────────────────────────────────────
 // Live in `colorPalette.ts` so `noteMarkdown.ts` can read the default color

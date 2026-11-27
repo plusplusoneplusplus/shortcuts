@@ -9,8 +9,8 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import { AlignIcon } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/AlignIcon';
-import { ALIGN_OPTIONS } from '../../../../../../src/server/spa/client/react/features/notes/editor/toolbar/formattingCommands';
+import { AlignIcon } from '../src/toolbar/index.js';
+import { ALIGN_OPTIONS } from '../src/toolbar/index.js';
 
 afterEach(cleanup);
 
