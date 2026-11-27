@@ -157,7 +157,7 @@ vi.mock(
 );
 const mockMapBlock = vi.hoisted(() => ({}));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock',
+    '@plusplusoneplusplus/tiptap-embeds/map',
     () => ({ MapBlock: mockMapBlock }),
 );
 // PdfBlock is configured with an onRequestFullWindow bridge; `configure` returns

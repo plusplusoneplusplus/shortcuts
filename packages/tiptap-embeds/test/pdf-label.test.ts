@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     pdfLabelFromMarkdown,
     normalizeStoredPdfLabel,
-} from '../../../../src/server/spa/client/react/features/notes/editor/pdfLabel';
+} from '../src/pdf/index.js';
 
 // Both helpers decode exactly one layer of Markdown backslash escaping so a PDF
 // block's visible title equals the original filename. They share an implementation

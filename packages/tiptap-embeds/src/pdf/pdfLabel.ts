@@ -1,5 +1,5 @@
 /**
- * pdfLabel — keep the Notes PDF block's visible title equal to the original
+ * pdfLabel — keep the PDF block's visible title equal to the original
  * filename across Markdown round-trips.
  *
  * The on-disk canonical `![label](x.pdf)` Markdown may legitimately escape
@@ -10,7 +10,7 @@
  * `OSDI_2026_Paper_Survey.pdf`, never `OSDI\_2026\_Paper\_Survey.pdf`.
  *
  * These helpers are intentionally pure and PDF-scoped. `plainLinkLabel` in
- * noteMarkdown is left untouched because map-link rendering relies on its exact
+ * tiptap-kit/markdown is left untouched because map-link rendering relies on its exact
  * behavior; decoding backslash escapes globally would broaden the fix.
  */
 

@@ -20,7 +20,7 @@ import {
 } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { ResizableImage } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage';
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
-import { MapBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock';
+import { MapBlock } from '@plusplusoneplusplus/tiptap-embeds/map';
 import { MermaidBlock } from '@plusplusoneplusplus/tiptap-react/mermaid';
 import { MathInline, MathDisplay } from '@plusplusoneplusplus/tiptap-react/math';
 

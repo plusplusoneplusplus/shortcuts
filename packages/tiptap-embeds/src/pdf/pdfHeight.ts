@@ -1,5 +1,5 @@
 /**
- * pdfHeightShared — framework-free height primitives for the inline PDF embed
+ * pdfHeight — framework-free height primitives for the inline PDF embed
  * block's resizable viewport.
  *
  * Mirrors indentShared: intentionally dependency-free (no `@tiptap/core` import)

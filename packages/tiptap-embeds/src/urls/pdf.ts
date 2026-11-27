@@ -1,8 +1,3 @@
-/** Default rendered height (px) for an inline PDF embed. */
-export const DEFAULT_PDF_EMBED_HEIGHT = 480;
-export const MIN_PDF_EMBED_HEIGHT = 160;
-export const MAX_PDF_EMBED_HEIGHT = 1200;
-
 /**
  * True when `href` points at a PDF file.
  *

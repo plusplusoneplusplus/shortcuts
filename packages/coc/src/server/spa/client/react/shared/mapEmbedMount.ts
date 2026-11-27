@@ -3,7 +3,7 @@ import {
     MAX_MAP_EMBED_HEIGHT,
     MIN_MAP_EMBED_HEIGHT,
     isEmbeddableMapUrl,
-} from '@plusplusoneplusplus/forge/editor/rendering';
+} from '@plusplusoneplusplus/tiptap-embeds/urls';
 
 function clampHeight(value: number): number {
     if (!Number.isFinite(value)) return DEFAULT_MAP_EMBED_HEIGHT;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPdfUrl } from '../../../src/editor/rendering/pdf-embed';
+import { isPdfUrl } from '../src/urls/index.js';
 
 describe('isPdfUrl', () => {
     it('accepts relative attachment paths ending in .pdf', () => {

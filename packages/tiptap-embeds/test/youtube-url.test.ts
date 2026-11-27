@@ -3,7 +3,7 @@ import {
     isYouTubeUrl,
     parseYouTubeVideoId,
     youTubeEmbedUrl,
-} from '../../../src/editor/rendering/youtube-embed';
+} from '../src/urls/index.js';
 
 const VIDEO_ID = 'dQw4w9WgXcQ';
 

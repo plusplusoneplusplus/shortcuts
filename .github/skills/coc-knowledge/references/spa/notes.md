@@ -400,8 +400,8 @@ projects can reuse it without the dashboard:
   `turndownRules` (checked before the built-in rules, after the aligned-block and
   empty-paragraph rules) and `parse` / `serialize` wrappers; the first extension's
   wrapper is outermost. `noteMarkdown.ts` builds the Notes codec from Quick Ask side
-  notes (definition block split out before parsing, rebuilt on save), map/PDF
-  embeds, note links, file-path refs, math and code-fence language aliases.
+  notes (definition block split out before parsing, rebuilt on save), the embeds'
+  map/PDF rules, note links, file-path refs, math and code-fence language aliases.
 - `packages/tiptap-react` — React UI: `/editor` (`RichEditor` shell and
   `createRichEditorExtensions`: StarterKit with H1–H6, task lists, links, tables
   with kit cell attributes, highlight, sup/sub, text style, alignment, indent, and
@@ -415,16 +415,32 @@ projects can reuse it without the dashboard:
   `content` must scan `tiptap-react/src` (CoC's `tailwind.config.js` does, guarded
   by `test/scripts/tailwind-content.test.ts`); editor CSS (`noteEditor.css`) stays
   in CoC.
-- `packages/tiptap-embeds` — scaffold for the media embeds.
+- `packages/tiptap-embeds` — media embeds: `/urls` (pure `isEmbeddableMapUrl`,
+  `isPdfUrl`, `parseYouTubeVideoId`, `youTubeEmbedUrl`; chat's `mapEmbedMount`
+  uses them too), `/youtube` (`YouTubeEmbedDecorationExtension` and the
+  `YouTubePopupPlayer` iframe), `/map` (`MapBlock`), `/pdf` (`createPdfBlock`,
+  `PdfBlock`, height and label helpers, `classifyPdfUrl`), `/paper`
+  (`PaperLinkEmbedDecorationExtension`, `classifyPdfLink`) and `/markdown`
+  (`mapMarkdownExtension`, `pdfMarkdownExtension`; subpath-only for the same
+  marked/turndown reason). Host behavior is injected: `createPdfBlock` takes
+  `classifyUrl`, `isDesktopShell`, `renderViewer`, `renderOverlay` and
+  `renderToolbarActions` (closure hooks, so tests that pass bare
+  `extension.options` keep them; a failing viewer falls back to an iframe and drops
+  the overlay); the paper decoration takes `classifyLink` and `isDesktopShell`
+  options. CoC keeps thin wrappers in `features/notes/editor/extensions/`:
+  `pdfBlock.tsx` (Notes-route `pdfBlockUrl` rules, pdf.js viewer, Quick Ask /
+  region-ask / annotation overlays, "Chat about this paper"),
+  `PaperLinkEmbedDecorationExtension.ts` (arXiv-aware `paperLink` classifier) and
+  `YouTubePopupDialog` (CoC `Dialog`).
 
 All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror
 instance; the lockfile keeps every `@tiptap/*` at the root on one exact version.
 Kit code takes no CoC import (no `notesApi`, contexts, feature flags or `ui/`); what
 needs those stays under `features/notes/editor/` and passes behavior in.
-The SPA bundle resolves both packages through their `exports` into `dist/` (CoC
-prebuild and the CI `build-shared` job build kit, then react, first); CoC's Vitest
-aliases `@plusplusoneplusplus/tiptap-kit` and `/tiptap-react` to their `src/`, so mock
+The SPA bundle resolves the packages through their `exports` into `dist/` (CoC
+prebuild and the CI `build-shared` job build kit, then react and embeds, first);
+CoC's Vitest aliases all three to their `src/`, so mock
 a subpath (`vi.mock('@plusplusoneplusplus/tiptap-kit/table', …)`) with one partial
 `importOriginal` mock per subpath. Package tests live in each package's `test/`
-(tiptap-react aliases the kit to its `src/` too) and run in the cross-OS
+(tiptap-react and tiptap-embeds alias the kit to its `src/` too) and run in the cross-OS
 `forge-test` CI job.

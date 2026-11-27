@@ -16,7 +16,7 @@ vi.mock('@tiptap/react', () => ({
     ReactNodeViewRenderer: (component: unknown) => component,
 }));
 
-import { MapBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock';
+import { MapBlock } from '../src/map/index.js';
 
 const mapUrl = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
 

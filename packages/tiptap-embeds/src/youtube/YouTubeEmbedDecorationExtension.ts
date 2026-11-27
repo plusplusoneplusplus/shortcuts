@@ -13,7 +13,7 @@
  * link, byte-for-byte. Non-YouTube links get no buttons. A link that resolves
  * inside a table cell only gets the Popup button (inline expansion is hidden).
  *
- * See {@link parseYouTubeVideoId} / {@link youTubeEmbedUrl} in forge for the
+ * See {@link parseYouTubeVideoId} / {@link youTubeEmbedUrl} in `../urls` for the
  * URL detection + privacy-mode embed-URL builder shared with the rest of the app.
  */
 
@@ -22,7 +22,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import { parseYouTubeVideoId, youTubeEmbedUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { parseYouTubeVideoId, youTubeEmbedUrl } from '../urls/index.js';
 
 // ── Options ──────────────────────────────────────────────────────────────────
 

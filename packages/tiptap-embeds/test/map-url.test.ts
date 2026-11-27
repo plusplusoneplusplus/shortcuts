@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEmbeddableMapUrl } from '../../../src/editor/rendering/map-embed';
+import { isEmbeddableMapUrl } from '../src/urls/index.js';
 
 describe('isEmbeddableMapUrl', () => {
     it('allows modern Google Maps embed URLs', () => {

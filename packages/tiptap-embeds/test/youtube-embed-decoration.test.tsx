@@ -23,11 +23,10 @@ import {
     buildYouTubeButtons,
     buildInlinePlayer,
     findYouTubeLinkRuns,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/YouTubeEmbedDecorationExtension';
-import {
-    markdownToHtml,
-    htmlToMarkdown,
-} from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
+} from '../src/youtube/index.js';
+import { createMarkdownCodec } from '@plusplusoneplusplus/tiptap-kit/markdown';
+
+const { markdownToHtml, htmlToMarkdown } = createMarkdownCodec();
 
 const VIDEO_ID = 'dQw4w9WgXcQ';
 const WATCH_URL = `https://www.youtube.com/watch?v=${VIDEO_ID}`;

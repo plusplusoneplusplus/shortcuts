@@ -7,7 +7,7 @@ import {
     MIN_PDF_HEIGHT,
     parsePdfHeightAttr,
     renderPdfHeightAttr,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfHeightShared';
+} from '../src/pdf/index.js';
 
 describe('pdfHeightShared bounds', () => {
     it('matches the CSS-derived defaults', () => {
