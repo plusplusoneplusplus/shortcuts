@@ -68,17 +68,18 @@ per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 `layout/Router`.
 
 `Router` observes `queueState.selectedTaskIdByRepo` on the repos view and keeps
-the last two viewed chats in memory through `layout/chatSelectionMru.ts`, keyed
+up to 50 chat visits in memory through `layout/chatSelectionHistory.ts`, keyed
 by the exact workspace selection id. Re-selecting the current chat, clearing
 selection, and viewing chat-reference routes preserve that workspace's history.
-Ctrl+Alt+Left opens the previous entry through the shared queue-job hash builder
-and normal route selection, only when the owner-qualified queue or unarchived
-history snapshot contains that chat. Mounted sidebar preferences publish their current
+Ctrl+Alt+Left/Right step backward/forward through the shared queue-job hash builder
+and normal route selection, skipping entries absent from the owner-qualified queue
+and unarchived history snapshot. Replay moves the cursor without recording a new
+visit; a new selection after going back discards the forward branch. Mounted sidebar preferences publish their current
 archive IDs to a provider-instance registry in `QueueContext`, scoped by the same
 workspace/server cache key. The shortcut checks that registry at keydown, so
 optimistic archive actions block jumps before history refreshes; layout-effect
 cleanup removes snapshots on owner changes and unmount. `RepoChatTab` keys its
-preferences provider by that cache key. Missing entries and unresolved remote owners
+preferences provider by that cache key. With no available destination, missing entries and unresolved remote owners
 leave navigation and the key untouched. The binding allows the chat composer and
 yields to other form fields, rich text editors, and Monaco.
 
