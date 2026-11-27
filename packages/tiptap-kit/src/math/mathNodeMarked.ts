@@ -20,8 +20,8 @@
  */
 
 import type { MarkedExtension, TokenizerAndRendererExtension, Tokens } from 'marked';
-import { matchMathAtStart, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
-import { nextInlineMathStart } from '../../../../shared/math/mathMarkedExtension';
+import { matchMathAtStart, type MathDelimiter } from './mathTokenizer.js';
+import { nextInlineMathStart } from './mathMarkedExtension.js';
 
 interface MathNodeToken extends Tokens.Generic {
     type: 'cocMathNodeInline' | 'cocMathNodeBlock';

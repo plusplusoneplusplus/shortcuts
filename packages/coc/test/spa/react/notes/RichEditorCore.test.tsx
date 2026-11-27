@@ -152,7 +152,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extension
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock',
+    '@plusplusoneplusplus/tiptap-react/mermaid',
     () => ({ MermaidBlock: {} }),
 );
 const mockMapBlock = vi.hoisted(() => ({}));

@@ -31,6 +31,7 @@ export const REQUIRED_BUILD_WORKSPACES = [
     '@plusplusoneplusplus/coc-client',
     '@plusplusoneplusplus/coc-connector',
     '@plusplusoneplusplus/tiptap-kit',
+    '@plusplusoneplusplus/tiptap-react',
 ];
 
 export function buildRequiredWorkspacePackages({

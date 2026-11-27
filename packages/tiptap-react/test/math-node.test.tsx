@@ -32,7 +32,7 @@ vi.mock('@tiptap/react', () => ({
 import {
     MathInline,
     MathDisplay,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mathNode';
+} from '../src/math/index.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

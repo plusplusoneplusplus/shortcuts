@@ -378,17 +378,26 @@ projects can reuse it without the dashboard:
   widths, header state, cell background, column wrap, row/column reorder),
   `/text-style` (color palette, font families, font sizes), `/text-anchor`,
   `/comment-anchoring`, `/comment-mark` (`CommentExtension`, `BlockCommentExtension`),
-  `/toc`, `/history`, `/scroll` and `/link`. The root entry re-exports every area.
-- `packages/tiptap-react` and `packages/tiptap-embeds` — scaffolds for the editor
-  shell/toolbar and the media embeds.
+  `/toc`, `/history`, `/scroll`, `/link`, `/html` (`escapeHtmlText`,
+  `escapeHtmlAttribute`), `/mermaid` (CDN loader: `ensureMermaid`,
+  `applyMermaidTheme`) and `/math` (TeX tokenizer, KaTeX `renderMath`, the
+  read-only `mathMarkedExtension` and the editor's `mathNodeMarkedExtension`). The
+  root entry re-exports every area except `/math`, which loads the optional `katex`
+  peer and stays subpath-only. Chat, PR and diff Markdown renderers import math
+  and HTML escaping from the kit too.
+- `packages/tiptap-react` — React node views: `/math` (`MathInline`,
+  `MathDisplay`) and `/mermaid` (`MermaidBlock`). The root re-exports `/mermaid`
+  only, for the same katex reason. The editor shell and toolbar move here next.
+- `packages/tiptap-embeds` — scaffold for the media embeds.
 
 All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror
 instance; the lockfile keeps every `@tiptap/*` at the root on one exact version.
 Kit code takes no CoC import (no `notesApi`, contexts, feature flags or `ui/`); what
 needs those stays under `features/notes/editor/` and passes behavior in.
-The SPA bundle resolves the kit through its `exports` into `dist/` (CoC prebuild and
-the CI `build-shared` job build it first); CoC's Vitest aliases
-`@plusplusoneplusplus/tiptap-kit` to `packages/tiptap-kit/src`, so mock a subpath
-(`vi.mock('@plusplusoneplusplus/tiptap-kit/table', …)`) with one partial
-`importOriginal` mock per subpath. Kit unit tests live in `packages/tiptap-kit/test`
-and run in the cross-OS `forge-test` CI job.
+The SPA bundle resolves both packages through their `exports` into `dist/` (CoC
+prebuild and the CI `build-shared` job build kit, then react, first); CoC's Vitest
+aliases `@plusplusoneplusplus/tiptap-kit` and `/tiptap-react` to their `src/`, so mock
+a subpath (`vi.mock('@plusplusoneplusplus/tiptap-kit/table', …)`) with one partial
+`importOriginal` mock per subpath. Package tests live in each package's `test/`
+(tiptap-react aliases the kit to its `src/` too) and run in the cross-OS
+`forge-test` CI job.

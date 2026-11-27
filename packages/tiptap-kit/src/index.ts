@@ -8,3 +8,6 @@ export * from './toc/index.js';
 export * from './history/index.js';
 export * from './scroll/index.js';
 export * from './link/index.js';
+export * from './html/index.js';
+export * from './mermaid/index.js';
+// `./math` is subpath-only: it loads the optional `katex` peer.

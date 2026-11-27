@@ -2,11 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-vi.mock('../../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-kit/mermaid', () => ({
     ensureMermaid: vi.fn(() => Promise.resolve()),
 }));
 
-import { MermaidBlockView } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock';
+import { MermaidBlockView } from '../src/mermaid/index.js';
 
 function renderMermaidBlock(code = 'graph TD\n  A --> B') {
     return render(

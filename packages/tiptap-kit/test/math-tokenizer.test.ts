@@ -5,7 +5,7 @@ import {
     wrapMathDelimiters,
     type MarkdownMathSegment,
     type MathSegment,
-} from '../../../../../src/server/spa/client/shared/math/mathTokenizer';
+} from '../src/math/index.js';
 
 function mathOnly(segs: MarkdownMathSegment[]): MathSegment[] {
     return segs.filter((s): s is MathSegment => s.type === 'math');

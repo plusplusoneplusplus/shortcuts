@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import katex from 'katex';
-import { renderMath, getMathError } from '../../../../../src/server/spa/client/shared/math/renderMath';
+import { renderMath, getMathError } from '../src/math/index.js';
 
 describe('renderMath — safe rendering', () => {
     it('escapes both quote delimiters in thrown-error attributes and source text', () => {

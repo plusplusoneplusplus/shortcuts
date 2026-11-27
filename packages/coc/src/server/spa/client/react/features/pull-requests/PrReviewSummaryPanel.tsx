@@ -5,7 +5,7 @@
 
 import { useMemo } from 'react';
 import { Marked } from 'marked';
-import { mathMarkedExtension } from '../../../shared/math/mathMarkedExtension';
+import { mathMarkedExtension } from '@plusplusoneplusplus/tiptap-kit/math';
 import { cn } from '../../ui';
 import { ReviewerBadge } from './ReviewerBadge';
 import type { Reviewer } from './pr-utils';

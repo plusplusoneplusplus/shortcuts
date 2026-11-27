@@ -62,6 +62,18 @@
     "./link": {
       "types": "./dist/link/index.d.ts",
       "import": "./dist/link/index.js"
+    },
+    "./html": {
+      "types": "./dist/html/index.d.ts",
+      "import": "./dist/html/index.js"
+    },
+    "./math": {
+      "types": "./dist/math/index.d.ts",
+      "import": "./dist/math/index.js"
+    },
+    "./mermaid": {
+      "types": "./dist/mermaid/index.d.ts",
+      "import": "./dist/mermaid/index.js"
     }
   },
   "scripts": {
@@ -73,11 +85,20 @@
     "@tiptap/core": "^3.31.3",
     "@tiptap/pm": "^3.31.3",
     "@tiptap/extension-table-cell": "^3.31.3",
-    "@tiptap/extension-table-header": "^3.31.3"
+    "@tiptap/extension-table-header": "^3.31.3",
+    "katex": "^0.16.0",
+    "marked": "^12.0.0"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    },
+    "marked": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@tiptap/core": "3.31.3",
-    "@tiptap/pm": "3.31.3",
     "@tiptap/extension-table": "3.31.3",
     "@tiptap/extension-table-cell": "3.31.3",
     "@tiptap/extension-table-header": "3.31.3",
@@ -85,8 +106,11 @@
     "@tiptap/extension-task-item": "3.31.3",
     "@tiptap/extension-task-list": "3.31.3",
     "@tiptap/extension-text-style": "3.31.3",
+    "@tiptap/pm": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "jsdom": "^27.0.1",
+    "katex": "^0.16.22",
+    "marked": "^12.0.0",
     "typescript": "^5.3.0",
     "vitest": "^4.1.10"
   },

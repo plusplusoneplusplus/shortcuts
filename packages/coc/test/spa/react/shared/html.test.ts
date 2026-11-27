@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtmlAttribute, escapeHtmlText } from '../../../../src/server/spa/client/shared/html';
+import { escapeHtmlAttribute, escapeHtmlText } from '@plusplusoneplusplus/tiptap-kit/html';
 import { escapeHtml } from '../../../../src/server/spa/client/react/utils/format';
 import { escapeHtml as encodeHtml } from '../../../../src/server/spa/client/react/features/dev-tools/logic/encoders';
 import { renderAskUserMarkdown } from '../../../../src/server/spa/client/react/features/chat/AskUserMarkdown';

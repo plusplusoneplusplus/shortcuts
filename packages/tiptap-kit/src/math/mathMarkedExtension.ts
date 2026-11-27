@@ -22,8 +22,8 @@
  */
 
 import type { MarkedExtension, TokenizerAndRendererExtension, Tokens } from 'marked';
-import { matchMathAtStart } from './mathTokenizer';
-import { renderMath } from './renderMath';
+import { matchMathAtStart } from './mathTokenizer.js';
+import { renderMath } from './renderMath.js';
 
 interface MathToken extends Tokens.Generic {
     type: 'cocMathInline' | 'cocMathBlock';

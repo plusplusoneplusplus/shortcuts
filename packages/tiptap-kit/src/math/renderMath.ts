@@ -19,7 +19,7 @@
  */
 
 import katex from 'katex';
-import { escapeHtmlAttribute as escapeHtml } from '../html';
+import { escapeHtmlAttribute as escapeHtml } from '../html/escape.js';
 
 export interface RenderMathOptions {
     /** Render as display (block) math when true, inline otherwise. */

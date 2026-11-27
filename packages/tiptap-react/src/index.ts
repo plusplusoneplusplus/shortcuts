@@ -1,3 +1,2 @@
-// React editor shell and toolbar. Populated as code moves out of
-// packages/coc/src/server/spa/client/react/features/notes/editor.
-export {};
+export * from './mermaid/index.js';
+// `./math` is subpath-only: it loads the optional `katex` peer.

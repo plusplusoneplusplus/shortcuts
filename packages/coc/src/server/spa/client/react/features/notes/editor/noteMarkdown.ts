@@ -8,9 +8,9 @@
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
-import { mathNodeMarkedExtension } from './mathNodeMarked';
-import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
-import { escapeHtmlText } from '../../../../shared/html';
+import { mathNodeMarkedExtension } from '@plusplusoneplusplus/tiptap-kit/math';
+import { wrapMathDelimiters, type MathDelimiter } from '@plusplusoneplusplus/tiptap-kit/math';
+import { escapeHtmlText } from '@plusplusoneplusplus/tiptap-kit/html';
 import {
     DEFAULT_HIGHLIGHT_COLOR,
     normalizeCssColor,

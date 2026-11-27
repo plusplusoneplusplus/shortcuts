@@ -408,11 +408,16 @@ jobs:
         run: npm run build
         working-directory: packages/coc-client
 
-      # Same reason as coc-client: the SPA imports @plusplusoneplusplus/tiptap-kit
-      # and esbuild resolves it through the package `exports` into dist/.
+      # Same reason as coc-client: the SPA imports the tiptap-kit and tiptap-react
+      # packages, and esbuild resolves them through the package `exports` into dist/.
       - name: Build tiptap-kit package
         run: npm run build
         working-directory: packages/tiptap-kit
+
+      # tiptap-react imports tiptap-kit, so it builds after it.
+      - name: Build tiptap-react package
+        run: npm run build
+        working-directory: packages/tiptap-react
 
       - name: Build coc SPA client bundle
         run: npm run build:client

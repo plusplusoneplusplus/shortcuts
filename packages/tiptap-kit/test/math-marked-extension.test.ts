@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Marked } from 'marked';
-import { mathMarkedExtension } from '../../../../../src/server/spa/client/shared/math/mathMarkedExtension';
+import { mathMarkedExtension } from '../src/math/index.js';
 
 /** A minimal Marked instance mirroring how the live consumers register the extension. */
 function md(): Marked {

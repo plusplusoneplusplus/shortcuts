@@ -20,7 +20,7 @@ vi.mock('@tiptap/react', () => ({
 
 const mockEnsureMermaid = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock(
-    '../../../../src/server/spa/client/react/hooks/ui/useMermaid',
+    '@plusplusoneplusplus/tiptap-kit/mermaid',
     () => ({ ensureMermaid: mockEnsureMermaid }),
 );
 
@@ -33,7 +33,7 @@ vi.stubGlobal('mermaid', {
 import {
     MermaidBlock,
     computeAutoFitWidth,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock';
+} from '../src/mermaid/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

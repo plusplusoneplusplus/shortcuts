@@ -77,7 +77,7 @@ coc-native -> coc-agent-sdk -> coc-workflow -> forge -> coc-client
 ```
 
 Forge's prebuild builds native, SDK, workflow and memory before forge itself.
-CoC's prebuild builds those plus forge, client, connector and tiptap-kit, then emits build
+CoC's prebuild builds those plus forge, client, connector, tiptap-kit and tiptap-react, then emits build
 metadata; CoC's build cleans `dist` and compiles/copies the SPA.
 See `packages/forge/scripts/prebuild.mjs` and `packages/coc/scripts/prebuild.mjs`.
 SDK imports native Git output, so native TypeScript emission must precede SDK.

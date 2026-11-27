@@ -24,7 +24,7 @@
  */
 
 import { chatMarkdownToHtml } from '../../chat/conversation/markdownHtml';
-import { ensureMermaid } from '../../../hooks/ui/useMermaid';
+import { ensureMermaid } from '@plusplusoneplusplus/tiptap-kit/mermaid';
 import { getExportKatexCss } from '../../../../shared/math/katexCssExtract';
 import { browserDownload } from './exportCanvasAsHtml';
 import type { ExportCanvasAsHtmlDeps } from './exportCanvasAsHtml';

@@ -21,8 +21,8 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { renderMath, getMathError } from '../../../../../shared/math/renderMath';
-import type { MathDelimiter } from '../../../../../shared/math/mathTokenizer';
+import { renderMath, getMathError } from '@plusplusoneplusplus/tiptap-kit/math';
+import type { MathDelimiter } from '@plusplusoneplusplus/tiptap-kit/math';
 import { createIndentAttribute } from '@plusplusoneplusplus/tiptap-kit/indent';
 
 const DELIMITERS: MathDelimiter[] = ['dollar', 'double-dollar', 'paren', 'bracket'];

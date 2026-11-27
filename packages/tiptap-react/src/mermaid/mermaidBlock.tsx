@@ -10,9 +10,9 @@ import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } fro
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { ensureMermaid } from '../../../../hooks/ui/useMermaid';
+import { ensureMermaid } from '@plusplusoneplusplus/tiptap-kit/mermaid';
 import { createIndentAttribute, renderIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
-import { escapeHtmlText as escapeHtmlForMermaid } from '../../../../../shared/html';
+import { escapeHtmlText as escapeHtmlForMermaid } from '@plusplusoneplusplus/tiptap-kit/html';
 
 declare const mermaid: {
     run(opts: { nodes: NodeListOf<Element> | Element[] }): Promise<void>;
