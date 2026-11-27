@@ -6,7 +6,9 @@ import { queueCanvasCapabilityRun } from '../canvas/canvas-capability-queue';
 import type { CanvasUpdateNotifier } from '../canvas/canvas-update-notifier';
 import { discoverCanvasExtensions } from './discovery';
 import type { CanvasExtensionHostRegistry, CanvasExtensionOwner } from './host-registry';
-import { listCanvasExtensionInstances, readCanvasExtensionInstance, type CanvasExtensionInstance } from './instance-records';
+import {
+    listCanvasExtensionInstances, readCanvasExtensionInstance, type CanvasExtensionInstance, type CanvasExtensionRecord,
+} from './instance-records';
 
 export interface CanvasExtensionInstanceDeps extends CanvasExtensionOwner {
     dataDir: string;
@@ -86,10 +88,7 @@ export function reopenCanvasExtension(deps: CanvasExtensionInstanceDeps, recordI
     });
 }
 
-/**
- * The "+" menu opens an extension by key: its first declared canvas, reusing this
- * chat's saved instance of it (an open one first) so repeated picks focus one panel.
- */
+/** The "+" menu opens an extension's first declared canvas, always reusing this chat's saved instance. */
 export function openCanvasExtensionByKey(deps: CanvasExtensionInstanceDeps, extensionKey: string) {
     return runCanvasExtensionOperation(deps, async () => {
         const extensions = await discoverCanvasExtensions({
@@ -99,15 +98,26 @@ export function openCanvasExtensionByKey(deps: CanvasExtensionInstanceDeps, exte
         if (!extension) throw new Error(`Canvas extension is unavailable: ${extensionKey}`);
         const [declaration] = await deps.hosts.declarations({ workspaceId: deps.workspaceId, processId: deps.processId }, extension);
         if (!declaration) throw new Error(`Canvas extension declares no canvas: ${extensionKey}`);
-        const saved = listCanvasExtensionInstances(deps.canvasStore, deps)
-            .filter(({ instance }) => instance.extensionKey === extensionKey && instance.canvasId === declaration.id);
-        const reuse = saved.find(({ instance }) => !instance.closed) ?? saved[0];
+        const reuse = reusableInstance(listCanvasExtensionInstances(deps.canvasStore, deps), extensionKey, declaration.id);
         const opened = await openInstance(deps, {
             canvasId: `${extensionKey}/${declaration.id}`,
             ...(reuse ? { instanceId: reuse.instance.instanceId } : {}),
         });
         return { ...opened, extensionKey };
     });
+}
+
+export function isCanvasExtensionSingleton(config: Pick<CLIConfig, 'canvasExtensions'>): boolean {
+    return config.canvasExtensions?.singletonPerSession !== false;
+}
+
+/**
+ * The conversation's instance of one canvas: an open one first, else a closed one,
+ * most recently updated first. Older duplicates stay saved and reopenable by ID.
+ */
+function reusableInstance(saved: CanvasExtensionRecord[], extensionKey: string, canvasId: string) {
+    const matches = saved.filter(({ instance }) => instance.extensionKey === extensionKey && instance.canvasId === canvasId);
+    return matches.find(({ instance }) => !instance.closed) ?? matches[0];
 }
 
 async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasExtensionArgs) {
@@ -128,12 +138,14 @@ async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasE
     const declarations = await deps.hosts.declarations(owner, extension);
     const declaration = declarations.find(item => item.id === canvasId);
     if (!declaration) throw new Error(`Unknown canvas: ${args.canvasId}`);
-    const instanceId = args.instanceId ?? randomUUID();
-    const existing = listCanvasExtensionInstances(deps.canvasStore, deps)
-        .find(record => record.instance.instanceId === instanceId);
+    const saved = listCanvasExtensionInstances(deps.canvasStore, deps);
+    let existing = args.instanceId === undefined ? undefined : saved.find(record => record.instance.instanceId === args.instanceId);
     if (existing && (existing.instance.extensionKey !== extension.extensionKey || existing.instance.canvasId !== canvasId)) {
         throw new Error('Canvas instance belongs to another canvas');
     }
+    // Singleton mode: a new or unknown instance ID resolves to this chat's saved instance.
+    if (!existing && isCanvasExtensionSingleton(deps.config())) existing = reusableInstance(saved, extension.extensionKey, canvasId);
+    const instanceId = existing?.instance.instanceId ?? args.instanceId ?? randomUUID();
     const input = args.input ?? existing?.instance.input;
     const result = await deps.hosts.open(owner, extension, { canvasId, instanceId, ...(input ? { input } : {}) });
     const title = result.title ?? existing?.instance.title ?? declaration.displayName;
@@ -145,5 +157,5 @@ async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasE
         if (!existing) await deps.hosts.close(owner, extension, instanceId).catch(() => {});
         throw error;
     }
-    return { success: true, canvasId: canvas.id, instanceId, title, url: result.url, embed: `canvas://${canvas.id}` };
+    return { success: true, canvasId: canvas.id, instanceId, reused: Boolean(existing), title, url: result.url, embed: `canvas://${canvas.id}` };
 }

@@ -23,7 +23,9 @@ export function readCanvasExtensionInstance(canvas: CanvasRecord): CanvasExtensi
     return value;
 }
 
-export function listCanvasExtensionInstances(store: CanvasStore, owner: CanvasExtensionOwner) {
+export interface CanvasExtensionRecord { canvas: CanvasRecord; instance: CanvasExtensionInstance }
+
+export function listCanvasExtensionInstances(store: CanvasStore, owner: CanvasExtensionOwner): CanvasExtensionRecord[] {
     return store.listCanvases(owner.workspaceId, { processId: owner.processId })
         .filter(canvas => canvas.type === 'copilot-extension')
         .map(descriptor => {

@@ -835,6 +835,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'canvasExtensions.singletonPerSession', default: true, runtime: 'live',
+        ui: {
+            group: 'review', order: 61.6, label: 'One canvas extension instance per chat',
+            hint: 'Opening an extension canvas reuses its saved instance in the same chat instead of creating another. Existing extra instances are kept. Enabled by default.',
+            dependsOn: 'canvasExtensions.enabled', badge: 'experimental', testId: 'toggle-canvas-extensions-singleton',
+        },
+    }),
+    bool({
         key: 'browserControl.enabled', default: false, runtime: 'live', runtimeFlag: 'browserControlEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 10, label: 'Browser control',

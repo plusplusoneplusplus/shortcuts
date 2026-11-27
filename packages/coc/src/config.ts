@@ -251,6 +251,8 @@ export interface CLIConfig {
     /** Run discovered Copilot canvas extensions. Disabled by default. */
     canvasExtensions?: {
         enabled?: boolean;
+        /** Reuse one saved instance per extension canvas per conversation. Enabled by default. */
+        singletonPerSession?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
     browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean; cursorOverlayEnabled?: boolean; demoRecordingEnabled?: boolean; annotationEnabled?: boolean };
@@ -715,6 +717,7 @@ export interface ResolvedCLIConfig {
     /** Run discovered Copilot canvas extensions. */
     canvasExtensions: {
         enabled: boolean;
+        singletonPerSession: boolean;
     };
     /** Desktop browser control. */
     browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean; cursorOverlayEnabled: boolean; demoRecordingEnabled: boolean; annotationEnabled: boolean };
@@ -1109,6 +1112,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     canvasExtensions: {
         enabled: false,
+        singletonPerSession: true,
     },
     kusto: {
         enabled: false,

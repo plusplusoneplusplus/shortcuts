@@ -246,7 +246,7 @@ extension tools and catalog. Tool assembly and catalog discovery never start chi
 live gate before discovery, owner reads or runtime calls. `manage_canvas` takes a
 required `action`: `open` needs a qualified `canvasId` (optional `instanceId` reopens a
 saved instance, optional `input`); `close` needs `instanceId`, rejects `canvasId`/`input`
-and keeps the saved record. Invalid actions fail after the live gate. Open persists a
+and keeps the saved record. Open reuse follows [Instance reuse](#instance-reuse). Invalid actions fail after the live gate. Open persists a
 `copilot-extension` record in the conversation workspace, with extension key, declared
 canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
 The shared notifier emits both WebSocket and process updates on open/close. A closed
@@ -261,9 +261,8 @@ close/open races. `GET /api/workspaces/:id/canvas-extensions` lists discovered
 extensions (key, name, description) from discovery alone, never starting a child, and
 returns an empty list while the flag is off. `POST /api/workspaces/:id/canvas-extensions/open`
 with `{ processId, extensionKey }` opens the extension's first declared canvas in that
-conversation, reusing its saved instance (an open one first, else a closed one with its
-input) so repeated picks keep one record; it shares the owner queue and failure
-envelopes below. The panel's `+` menu uses both through `canvases.listCopilotExtensions`
+conversation, always reusing its saved instance regardless of the singleton flag; it
+shares the owner queue and failure envelopes below. The panel's `+` menu uses both through `canvases.listCopilotExtensions`
 and `canvases.openCopilotExtensionByKey`.
 `POST /api/workspaces/:id/canvases/:canvasId/copilot-extension/open`
 derives the conversation and extension identity/input from the saved record, revalidates
@@ -299,6 +298,20 @@ The typed client exposes `canvases.openCopilotExtension` for saved-record reopen
 Native Copilot loading/rendering remain opted out on create/resume/fallback; the pinned
 runtime's opt-in controls and one-process/tool-set conformance are covered by
 `copilot-native-loader.test.ts`. See [SDK ownership](../sdk-wrapper.md#canvas-extension-ownership).
+
+### Instance reuse
+
+The SDK and host support many instances per canvas, keyed by `instanceId`. With
+`canvasExtensions.singletonPerSession` on (default, live, server-only), `openInstance`
+keeps one instance per qualified canvas ID per owner conversation. An open with no ID,
+or an unknown ID, resolves to the saved instance: open first, else closed, most
+recently updated first. Results carry `reused`. Supplied `input` replaces the saved
+input and is sent to the extension's `open`; omitted input keeps the saved one.
+
+Reuse runs inside the per-conversation owner queue, so concurrent opens produce one
+record. Other extensions, canvases and conversations stay separate. Pre-existing
+duplicates are never merged or deleted: each stays hydrated while open and reopenable
+by its own ID. With the flag off, an open without a known ID creates a new instance.
 
 ### Extension canvases
 

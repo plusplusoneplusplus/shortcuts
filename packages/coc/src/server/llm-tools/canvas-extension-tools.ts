@@ -2,7 +2,7 @@ import { defineTool, type Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { discoverCanvasExtensions } from '../canvas-extensions/discovery';
 import { listCanvasExtensionInstances } from '../canvas-extensions/instance-records';
 import {
-    canvasExtensionFailure, openCanvasExtension, persistCanvasExtensionInstance, runCanvasExtensionOperation,
+    canvasExtensionFailure, isCanvasExtensionSingleton, openCanvasExtension, persistCanvasExtensionInstance, runCanvasExtensionOperation,
     type CanvasExtensionInstanceDeps, type OpenCanvasExtensionArgs,
 } from '../canvas-extensions/instance-service';
 
@@ -70,6 +70,10 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
         defineTool<ManageArgs>('manage_canvas', {
             description: 'Open or close an installed canvas instance. action "open" needs a qualified canvasId '
                 + '(from list_canvas_capabilities) and takes optional input; supply instanceId to reopen a saved instance. '
+                + (isCanvasExtensionSingleton(deps.config())
+                    ? 'Each canvas has one instance per chat: open reuses the saved instance (result reused: true, with its instanceId); '
+                        + 'input, when given, replaces its saved input and is sent to the extension, otherwise the saved input is kept. '
+                    : '')
                 + 'action "close" needs instanceId; the saved record remains available to reopen.',
             parameters: { type: 'object', properties: {
                 action: { type: 'string', enum: ['open', 'close'] },

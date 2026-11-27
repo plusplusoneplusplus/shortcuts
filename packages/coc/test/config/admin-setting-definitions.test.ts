@@ -1222,6 +1222,7 @@ describe('feature toggle settings-tab placement', () => {
         'cron.enabled': 'features',
         'canvas.enabled': 'features',
         'canvasExtensions.enabled': 'features',
+        'canvasExtensions.singletonPerSession': 'features',
         'browserControl.backgroundEnabled': 'browser',
         'browserControl.navigationApprovalEnabled': 'browser',
         'browserControl.enabled': 'browser',

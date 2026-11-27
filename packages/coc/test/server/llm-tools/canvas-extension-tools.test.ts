@@ -19,10 +19,10 @@ const owner = { workspaceId: 'workspace-1', processId: 'conversation-1' };
 const qualifiedId = 'workspace-1:counter/counter';
 
 describe('canvas extension tool factories and persistence', () => {
-    let root: string, repo: string, enabled: boolean;
+    let root: string, repo: string, enabled: boolean, singleton: boolean | undefined;
     let canvasStore: CanvasStore, processStore: ProcessStore, hosts: CanvasExtensionHostRegistry;
     let emitProcessEvent: ReturnType<typeof vi.fn>, broadcastProcessEvent: ReturnType<typeof vi.fn>, startHost: ReturnType<typeof vi.fn>;
-    const config = () => ({ canvasExtensions: { enabled } });
+    const config = () => ({ canvasExtensions: { enabled, singletonPerSession: singleton } });
     function registry() {
         return new CanvasExtensionHostRegistry({
             config, dataDir: root, store: processStore, log: vi.fn(), startHost,
@@ -46,7 +46,7 @@ describe('canvas extension tool factories and persistence', () => {
         return result;
     }
     beforeEach(() => {
-        enabled = true;
+        enabled = true; singleton = undefined;
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'coc canvas tools '));
         repo = path.join(root, 'repo');
         const folder = path.join(repo, '.github', 'extensions', 'counter');
@@ -132,6 +132,7 @@ describe('canvas extension tool factories and persistence', () => {
         expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
     });
     it('restores all saved open instances after registry restart before an action', async () => {
+        singleton = false;
         await open(5, 'one'); await open(10, 'two');
         await call('invoke_canvas_action', { instanceId: 'one', actionName: 'increment' });
         await hosts.dispose(); canvasStore = new CanvasStore(root); hosts = registry();
@@ -158,6 +159,7 @@ describe('canvas extension tool factories and persistence', () => {
         expect(startHost).toHaveBeenCalledTimes(1);
     });
     it('serializes concurrent opens across factories into one record and generates IDs when omitted', async () => {
+        singleton = false;
         const args = { canvasId: qualifiedId, instanceId: 'same', input: { count: 3 } };
         const results = await Promise.all([call('manage_canvas', { action: 'open', ...args }), call('manage_canvas', { action: 'open', ...args })]);
         expect(results.every(result => result.success)).toBe(true);
@@ -270,5 +272,70 @@ describe('canvas extension tool factories and persistence', () => {
         expect(await call('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' }))
             .toMatchObject({ success: false, error: { message: expect.stringContaining('unavailable') } });
         expect(emitProcessEvent).toHaveBeenCalledTimes(1);
+    });
+    describe('one instance per canvas per conversation', () => {
+        const records = (scope = owner) => canvasStore.listCanvases(scope.workspaceId, { processId: scope.processId });
+        const openCanvas = (args: Record<string, unknown> = {}, scope = owner) =>
+            call('manage_canvas', { action: 'open', canvasId: qualifiedId, ...args }, scope);
+
+        it('reuses the saved instance for repeated and unknown-ID opens, with input replacing the saved input', async () => {
+            const first = await openCanvas({ input: { count: 2 } });
+            expect(first).toMatchObject({ success: true, reused: false });
+            const second = await openCanvas();
+            expect(second).toMatchObject({ success: true, reused: true, instanceId: first.instanceId, canvasId: first.canvasId });
+            const third = await openCanvas({ instanceId: 'new-id', input: { count: 7 } });
+            expect(third).toMatchObject({ reused: true, instanceId: first.instanceId, canvasId: first.canvasId });
+            expect(records()).toHaveLength(1);
+            expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, first.canvasId)!).input).toEqual({ count: 7 });
+            expect(startHost).toHaveBeenCalledTimes(1);
+        });
+        it('serializes concurrent opens without IDs into one record', async () => {
+            const results = await Promise.all([openCanvas(), openCanvas(), openCanvas({ instanceId: 'other' })]);
+            expect(results.every(result => result.success)).toBe(true);
+            expect(new Set(results.map(result => result.instanceId)).size).toBe(1);
+            expect(results.filter(result => result.reused)).toHaveLength(2);
+            expect(records()).toHaveLength(1);
+        });
+        it('reopens the closed instance with its saved input instead of creating another', async () => {
+            const first = await openCanvas({ input: { count: 4 } });
+            await call('manage_canvas', { action: 'close', instanceId: first.instanceId });
+            const reopened = await openCanvas();
+            expect(reopened).toMatchObject({ success: true, reused: true, instanceId: first.instanceId });
+            expect(await (await fetch(reopened.url)).json()).toEqual({ count: 4 });
+            expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, first.canvasId)!).closed).toBeUndefined();
+            await hosts.dispose(); hosts = registry();
+            expect(await call('invoke_canvas_action', { instanceId: first.instanceId, actionName: 'increment' })).toEqual({ success: true, result: 5 });
+            expect(records()).toHaveLength(1);
+        });
+        it('keeps separate instances per extension and per conversation', async () => {
+            const folder = path.join(repo, '.github', 'extensions', 'counter-two');
+            fs.mkdirSync(folder, { recursive: true });
+            fs.copyFileSync(path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs'), path.join(folder, 'extension.mjs'));
+            const sibling = { ...owner, processId: 'conversation-2' };
+            const a = await openCanvas();
+            const b = await openCanvas({ canvasId: 'workspace-1:counter-two/counter' });
+            const c = await openCanvas({}, sibling);
+            expect([b.reused, c.reused]).toEqual([false, false]);
+            expect(new Set([a.instanceId, b.instanceId, c.instanceId]).size).toBe(3);
+            expect(records()).toHaveLength(2); expect(records(sibling)).toHaveLength(1);
+        });
+        it('keeps pre-existing duplicates usable and reuses the most recent open one', async () => {
+            singleton = false;
+            await open(1, 'old'); await open(2, 'recent');
+            await call('manage_canvas', { action: 'close', instanceId: 'recent' });
+            singleton = undefined;
+            expect(await openCanvas()).toMatchObject({ reused: true, instanceId: 'old' });
+            expect(await openCanvas({ instanceId: 'recent' })).toMatchObject({ reused: true, instanceId: 'recent' });
+            expect(records()).toHaveLength(2);
+            await hosts.dispose(); hosts = registry();
+            expect(await call('invoke_canvas_action', { instanceId: 'old', actionName: 'increment' })).toEqual({ success: true, result: 2 });
+            expect(await call('invoke_canvas_action', { instanceId: 'recent', actionName: 'increment' })).toEqual({ success: true, result: 3 });
+        });
+        it('describes reuse to the model only while the flag is on', () => {
+            const description = () => tools().find(tool => tool.name === 'manage_canvas')!.description;
+            expect(description()).toContain('one instance per chat');
+            singleton = false;
+            expect(description()).not.toContain('one instance per chat');
+        });
     });
 });
