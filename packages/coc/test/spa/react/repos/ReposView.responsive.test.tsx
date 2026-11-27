@@ -42,12 +42,13 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => {
+    const queue = () => ({
         state: { selectedTaskId: null, selectedTaskIdByRepo: {}, repoQueueMap: {} },
         dispatch: mockQueueDispatch,
-    }),
-}));
+    });
+    return { useQueue: queue, useQueueOptional: queue };
+});
 
 // fetchApi resolves immediately with empty workspaces list so loading finishes
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
