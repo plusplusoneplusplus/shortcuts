@@ -1277,7 +1277,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
 
     if (loading) {
         return (
-            <ChatPreferencesProvider workspaceId={workspaceId}>
+            <ChatPreferencesProvider key={cacheKey} workspaceId={workspaceId} archiveScopeKey={unresolvedRemote ? undefined : cacheKey}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="p-4 text-sm text-[#848484]">Loading queue...</div>
             </ChatPreferencesProvider>
@@ -1412,7 +1412,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // resize handle or mobile split of its own.
     if (layout === 'split-workspace') {
         return (
-            <ChatPreferencesProvider workspaceId={workspaceId}>
+            <ChatPreferencesProvider key={cacheKey} workspaceId={workspaceId} archiveScopeKey={unresolvedRemote ? undefined : cacheKey}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div
                     className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
@@ -1477,7 +1477,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
 
     if (isMobile) {
         return (
-            <ChatPreferencesProvider workspaceId={workspaceId}>
+            <ChatPreferencesProvider key={cacheKey} workspaceId={workspaceId} archiveScopeKey={unresolvedRemote ? undefined : cacheKey}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail ? (
@@ -1569,7 +1569,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     }
 
     return (
-        <ChatPreferencesProvider workspaceId={workspaceId}>
+        <ChatPreferencesProvider key={cacheKey} workspaceId={workspaceId} archiveScopeKey={unresolvedRemote ? undefined : cacheKey}>
             <ChatPrefsSync history={history} workspaceId={workspaceId} />
             <div className={cn('relative flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {listCollapsed ? (

@@ -98,10 +98,10 @@ function GitFileReviewContent({ identity, ...props }: Props & { identity: string
 }
 
 function GitReviewDiff({ context, contentSearchTarget, ...props }: Props & { context: ReviewFileRenderContext; contentSearchTarget?: ReviewContentSearchTarget }) {
-    const { file, paths, select, target } = context;
+    const { file, paths, allPaths, select, target } = context;
     const source = useMemo(() => ({ ...props.source, files: paths, fetchFileList: undefined }), [props.source, paths]);
     return <FileDiffPanel workspaceId={props.workspaceId} attachmentDestinationId={props.attachmentDestinationId}
         reviewChat={props.reviewChat} getHunkClassification={props.getHunkClassification} hunkActiveFilters={props.hunkActiveFilters}
-        onDiffEngineChange={props.onDiffEngineChange} focusComment={props.focusComment} createDiffEditor={props.createDiffEditor} source={source} filePath={file.path} onNavigateToFile={select}
+        onDiffEngineChange={props.onDiffEngineChange} focusComment={props.focusComment} createDiffEditor={props.createDiffEditor} source={source} definitionFiles={allPaths} filePath={file.path} onNavigateToFile={select}
         initialHunkTarget={target} contentSearchTarget={contentSearchTarget} showSourceLabel={false} showChatToggle={!props.reviewChat} />;
 }

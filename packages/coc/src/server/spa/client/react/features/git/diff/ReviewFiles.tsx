@@ -21,6 +21,8 @@ export type ReviewFile = FileChange;
 export interface ReviewFileRenderContext {
     file: ReviewFile;
     paths: string[];
+    /** Every file of the comparison, independently of navigator filters; `select` accepts any of them. */
+    allPaths: string[];
     select: (path: string, target?: 'first' | 'last') => void;
     target: 'first' | 'last';
     toggleViewed: () => void;
@@ -85,6 +87,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const viewed = reviewedFiles ?? localViewed;
     const [retainedPath, setRetainedPath] = useState<string | null>(null);
     const [selection, setSelection] = useState<string | null>(selectedPath ?? null);
+    // A file selected while filters hide it (e.g. a definition jump) stays shown; filters are kept.
+    const [revealed, setRevealed] = useState<string | null>(null);
     const [target, setTarget] = useState<'first' | 'last'>(initialHunkTarget ?? 'first');
     const [overview, setOverview] = useState(false);
     const [drawer, setDrawer] = useState(false);
@@ -131,7 +135,9 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         return viewMode === 'flat' ? visible : viewMode === 'tree' ? flatten(tree) : groups.flatMap(group => group.files);
     }, [groups, visible, viewMode, tree]);
     const paths = useMemo(() => ordered.map(reviewFileKey), [ordered]);
+    const allPaths = useMemo(() => files.map(reviewFileKey), [files]);
     const selected = (retainSelection ? files.find(file => reviewFileKey(file) === selection) : undefined) ?? ordered.find(file => reviewFileKey(file) === selection)
+        ?? (selection && selection === revealed ? files.find(file => reviewFileKey(file) === selection) : undefined)
         ?? (hideViewed && selection && selection === retainedPath && viewed.has(selection)
             ? filterReviewFiles(files, query, kind, status, false, viewed).find(file => reviewFileKey(file) === selection) : undefined)
         ?? ordered[0];
@@ -141,7 +147,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     const viewedCount = files.filter(file => viewed.has(reviewFileKey(file))).length;
     useEffect(() => { if (selectedPath) {
         setSelection(selectedPath); setOverview(false); setTarget(initialHunkTarget ?? 'first');
-        if (!visible.some(file => reviewFileKey(file) === selectedPath)) clear();
+        // A host echoing a revealed selection back keeps the user's filters.
+        if (selectedPath !== revealed && !visible.some(file => reviewFileKey(file) === selectedPath)) clear();
         setCollapsed(previous => new Set([...previous].filter(directory => !selectedPath.startsWith(`${directory}/`))));
     } }, [selectedPath, initialHunkTarget]);
     useEffect(() => {
@@ -160,7 +167,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         row?.scrollIntoView?.({ block: 'nearest' });
     }, [selected && reviewFileKey(selected)]);
     function select(path: string, hunk: 'first' | 'last' = 'first', closeDrawer = true) {
-        const proceed = () => { setSelection(path); setTarget(hunk); setOverview(false); if (closeDrawer) setDrawer(false); onSelect?.(path, hunk); };
+        const proceed = () => { setRevealed(paths.includes(path) ? null : path); setSelection(path); setTarget(hunk); setOverview(false); if (closeDrawer) setDrawer(false); onSelect?.(path, hunk); };
         if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
@@ -242,9 +249,17 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             </section>);
     }
     const viewControls = <div className="git-review-filter-row git-review-layouts" role="group" aria-label="File list view">
-        <button type="button" aria-pressed={viewMode === 'groups'} onClick={() => setViewMode('groups')}>Groups</button>
-        <button type="button" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Tree</button>
-        <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>Flat</button>
+        {(['groups', 'tree', 'flat'] as const).map(mode => {
+            const label = mode === 'groups' ? 'Groups' : mode === 'tree' ? 'Tree' : 'Flat';
+            return <button type="button" key={mode} aria-label={label} title={label} aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)}>
+                {compactNavigator && <svg className="git-review-layout-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+                    {mode === 'groups' ? <><rect x="2" y="2" width="12" height="4" rx="1" /><rect x="2" y="10" width="12" height="4" rx="1" /></>
+                        : mode === 'tree' ? <><path d="M3 2v10h4M3 5h4" /><rect x="8" y="3" width="6" height="4" rx="1" /><rect x="8" y="10" width="6" height="4" rx="1" /></>
+                        : <><path d="M5 3h9M5 8h9M5 13h9" /><path d="M2 3h1M2 8h1M2 13h1" /></>}
+                </svg>}
+                <span className="git-review-layout-label">{label}</span>
+            </button>;
+        })}
     </div>;
     const statusControl = <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select>;
     return <div ref={reviewRef} className="git-file-review" data-testid="git-file-review" data-review-content-search={canSearch ? 'true' : undefined}>
@@ -314,7 +329,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 <div hidden={searching} style={{ display: searching ? 'none' : 'contents' }}>
                 <div className="git-review-filters">
                     <div className="git-review-filter-title">
-                        <strong>Changed files{compactNavigator && <span className="git-review-file-count" aria-label={`${visible.length} matching ${visible.length === 1 ? 'file' : 'files'}`}>{visible.length}</span>}</strong>
+                        <strong><span title="Changed files">Changed files</span>{compactNavigator && <span className="git-review-file-count" aria-label={`${visible.length} matching ${visible.length === 1 ? 'file' : 'files'}`}>{visible.length}</span>}</strong>
                         {compactNavigator && viewControls}
                         <button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button>
                     </div>
@@ -324,6 +339,8 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     {(reviewEnabled || !compactNavigator) && <div className="git-review-filter-row">{reviewEnabled && <label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>}
                         {!compactNavigator && statusControl}</div>}
                 </div>
+                {selected && !overview && index < 0 && <div className="git-review-muted" role="status" data-testid="git-review-hidden-selection">
+                    {reviewFileParts(selected.path).name} is hidden by the current filters <button type="button" onClick={clear}>Clear filters</button></div>}
                 <div className="git-review-file-list">{viewMode === 'flat' ? visible.map(file => row(file)) : viewMode === 'tree' ? treeRows(tree) : groups.map(group => <section key={group.directory}>
                     <button type="button" className="git-review-directory" aria-label={`${group.directory} ${group.files.length} files`} aria-expanded={!collapsed.has(group.directory)} onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.directory)) next.delete(group.directory); else next.add(group.directory); return next; })}>
                         <span>{collapsed.has(group.directory) ? '▸' : '▾'}</span><span title={group.directory}>{group.directory}</span><small>{group.files.length}</small>
@@ -341,7 +358,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
                     <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories {reviewEnabled ? `· ${viewedCount} viewed` : ''} <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>
                     {groups.map(group => <section key={group.directory}><div className="git-review-directory">{group.directory} · {group.files.length}</div>{group.files.map(file => row(file, true))}</section>)}
-                </div> : selected ? renderFile({ file: selected, paths, select, target,
+                </div> : selected ? renderFile({ file: selected, paths, allPaths, select, target,
                     toggleViewed: () => toggleViewed(reviewFileKey(selected)) })
                     : renderEmpty ?? <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}{!!files.length && <button type="button" onClick={clear}>Clear filters</button>}</div>}
             </main>

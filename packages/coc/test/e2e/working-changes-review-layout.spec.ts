@@ -66,6 +66,36 @@ for (const dark of [false, true]) {
         await expectFullHeight();
         await page.locator('#fixture').evaluate(element => { element.style.display = 'flex'; });
         await expectFullHeight();
+        const layouts = navigator.getByRole('group', { name: 'File list view' });
+        // Sidebar queries must not switch the desktop shell into its drawer tier.
+        for (const key of ['Home', 'End', 'Home']) {
+            await separator.focus();
+            await page.keyboard.press(key);
+            const narrow = key === 'Home';
+            await expect.poll(async () => (await navigator.boundingBox())!.width).toBe(narrow ? 180 : 560);
+            for (const label of ['Groups', 'Tree', 'Flat']) {
+                const button = layouts.getByRole('button', { name: label, exact: true });
+                await expect(button).toHaveAttribute('title', label);
+                await expect(button.locator('svg')).toBeVisible({ visible: narrow });
+                await expect(button.locator('.git-review-layout-label')).toBeVisible({ visible: !narrow });
+            }
+            const title = (await navigator.locator('.git-review-filter-title').boundingBox())!;
+            const selector = (await layouts.boundingBox())!;
+            // Regression: the selector must stay in the heading row at minimum width.
+            expect(selector.y + selector.height).toBeLessThanOrEqual(title.y + title.height + 1);
+            const heading = (await navigator.locator('.git-review-filter-title strong').boundingBox())!;
+            expect(Math.abs(heading.y + heading.height / 2 - selector.y - selector.height / 2)).toBeLessThanOrEqual(1);
+            await expect(navigator.getByRole('button', { name: 'Close file navigator', exact: true })).toBeHidden();
+            expect(await navigator.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+        }
+        const treeButton = layouts.getByRole('button', { name: 'Tree', exact: true });
+        await treeButton.focus();
+        await page.keyboard.press('Enter');
+        await expect(treeButton).toHaveAttribute('aria-pressed', 'true');
+        await page.keyboard.press('Tab');
+        await expect(layouts.getByRole('button', { name: 'Flat', exact: true })).toBeFocused();
+        await page.keyboard.press('Space');
+        await expect(layouts.getByRole('button', { name: 'Flat', exact: true })).toHaveAttribute('aria-pressed', 'true');
         const width = (await navigator.boundingBox())!.width;
         await separator.focus();
         await page.keyboard.press('ArrowRight');

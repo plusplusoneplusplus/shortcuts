@@ -27,6 +27,15 @@ export function DiffDefinitionReturnChip({ scopeWorkspaceId, tabId }: DiffDefini
             >
                 ← Back to {entry.label}
             </button>
+            {entry.currentCode && (
+                <span
+                    className="ml-2 flex-shrink-0 rounded border border-amber-500/50 bg-amber-100/95 px-1.5 text-[10px] font-medium text-amber-900 dark:bg-amber-950/95 dark:text-amber-200"
+                    title="The definition could not be located in the reviewed version, so this tab shows the current code."
+                    data-testid="diff-definition-current-code-label"
+                >
+                    Current code — not the reviewed version
+                </span>
+            )}
         </div>
     );
 }

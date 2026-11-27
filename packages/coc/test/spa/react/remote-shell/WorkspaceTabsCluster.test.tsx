@@ -4,7 +4,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
@@ -13,6 +13,7 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
 let mockUnseenCounts: Record<string, number> = {};
 let mockSchedulesInScheduledSlideEnabled = false;
+let mockPageTabsEnabled = true;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -26,11 +27,11 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({ 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({ useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({ useRepos: () => ({ fetchRepos: vi.fn(), repos: [], unseenCounts: mockUnseenCounts }) }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({ useTerminalEnabled: () => true }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => true }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => mockPageTabsEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequestsEnabled', () => ({ usePullRequestsEnabled: () => true }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => true }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => mockPageTabsEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => mockPageTabsEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
@@ -61,6 +62,7 @@ beforeEach(() => {
     mockUnseenCounts = {};
 
     mockSchedulesInScheduledSlideEnabled = false;
+    mockPageTabsEnabled = true;
 });
 
 describe('WorkspaceTabsCluster', () => {
@@ -447,7 +449,8 @@ describe('flat clone strip identity', () => {
         const strip = screen.getByTestId('clone-strip');
         expect(strip.getAttribute('role')).toBe('group');
         expect(strip.className).toContain('overflow-x-auto');
-        expect(strip.className).toContain('max-w-');
+        expect(strip.className.split(' ')).toEqual(expect.arrayContaining(['flex-1', 'min-w-0']));
+        expect(strip.className).not.toContain('max-w-');
         expect(screen.getAllByTestId('clone-pill')).toHaveLength(12);
     });
 
@@ -455,8 +458,80 @@ describe('flat clone strip identity', () => {
         const selected = remote(repo('long', 'very-long-repository-name'), 'long', 'very-long-machine');
         render(<WorkspaceTabsCluster repo={selected} repos={[selected]} />);
         const strip = screen.getByTestId('clone-strip').className.split(' ');
-        expect(strip).toEqual(expect.arrayContaining(['max-w-[50%]', 'lg:max-w-[60%]']));
+        expect(strip).toEqual(expect.arrayContaining(['flex-1', 'min-w-0']));
         expect(screen.getByTestId('clone-pill-name').className).toContain('max-w-[200px]');
         expect(screen.getByTestId('clone-pill-machine').className).toContain('max-w-[140px]');
+    });
+});
+
+describe('clone strip width allocation', () => {
+    it('gives the strip all available space when no page tabs are enabled, including after flag changes', () => {
+        mockPageTabsEnabled = false;
+        mockSchedulesInScheduledSlideEnabled = true;
+        const repos = Array.from({ length: 12 }, (_, i) => repo(`c${i}`, `shortcuts-${i}`));
+        const { rerender } = render(<WorkspaceTabsCluster repo={repos[11]} repos={repos} />);
+
+        const expectFullWidthStrip = () => {
+            const strip = screen.getByTestId('clone-strip');
+            expect(strip.className.split(' ')).toContain('flex-1');
+            expect(strip.className).not.toContain('max-w-');
+            expect(screen.queryByTestId('clone-tab-region')).toBeNull();
+            expect(screen.queryByTestId('subbar-overflow-toggle')).toBeNull();
+            expect(screen.getAllByTestId('clone-pill')).toHaveLength(12);
+        };
+        expectFullWidthStrip();
+
+        mockPageTabsEnabled = true;
+        rerender(<WorkspaceTabsCluster repo={repos[11]} repos={repos} />);
+        expect(screen.getByTestId('clone-tab-region').className).toContain('min-w-0');
+        expect(screen.getAllByTestId('clone-scope-tab').map(el => el.dataset.subtab))
+            .toEqual(['dreams', 'workflows', 'tasks']);
+
+        mockPageTabsEnabled = false;
+        rerender(<WorkspaceTabsCluster repo={repos[11]} repos={repos} />);
+        expectFullWidthStrip();
+    });
+
+    it('keeps page tabs reachable through overflow and restores them when their region grows', () => {
+        let resize: () => void = () => {};
+        const disconnect = vi.fn();
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(private callback: () => void) {}
+            observe(target: HTMLElement) {
+                if (target.dataset.testid === 'clone-tab-region') {
+                    resize = this.callback;
+                }
+            }
+            disconnect = disconnect;
+        });
+        try {
+            mockAppState = { activeTab: 'repos', activeRepoSubTab: 'workflows' };
+            const selected = repo('a', 'shortcuts');
+            const { unmount } = render(<WorkspaceTabsCluster repo={selected} repos={[selected]} />);
+            const region = screen.getByTestId('clone-tab-region');
+            let width = 100;
+            Object.defineProperty(region, 'clientWidth', { get: () => width });
+            for (const el of screen.getByTestId('workspace-tabs-cluster').querySelectorAll('[data-measure-key]')) {
+                Object.defineProperty(el, 'offsetWidth', { value: 80 });
+            }
+            act(() => resize());
+            expect(screen.getAllByTestId('clone-scope-tab').map(el => el.dataset.subtab)).toEqual(['workflows']);
+            expect(screen.getByTestId('clone-scope-tab').getAttribute('aria-current')).toBe('page');
+            const more = screen.getByRole('button', { name: 'More clone tabs' });
+            fireEvent.click(more);
+            expect(more.getAttribute('aria-expanded')).toBe('true');
+            const dreams = screen.getAllByRole('menuitem').find(el => el.dataset.subtab === 'dreams')!;
+            fireEvent.click(dreams);
+            expect(mockSwitchSubTab).toHaveBeenCalledWith('dreams');
+
+            width = 500;
+            act(() => resize());
+            expect(screen.getAllByTestId('clone-scope-tab')).toHaveLength(4);
+            expect(screen.queryByTestId('subbar-overflow-toggle')).toBeNull();
+            unmount();
+            expect(disconnect).toHaveBeenCalled();
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

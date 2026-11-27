@@ -7,10 +7,12 @@
 import {
     useReducer,
     useEffect,
+    useLayoutEffect,
     useRef,
     type ReactNode,
 } from 'react';
 import { ChatPreferencesContext, useChatPrefs } from './chatPrefsConsumer';
+import { useQueueOptional } from './QueueContext';
 
 export { useChatPrefs, useOptionalChatPrefs, type ChatPrefsAPI } from './chatPrefsConsumer';
 
@@ -109,9 +111,12 @@ export function chatPrefsReducer(
  */
 export function ChatPreferencesProvider({
     workspaceId,
+    archiveScopeKey,
     children,
 }: {
     workspaceId: string;
+    /** Owner-qualified sidebar cache key; omitted outside the workspace sidebar. */
+    archiveScopeKey?: string;
     children: ReactNode;
 }) {
     const [state, dispatch] = useReducer(chatPrefsReducer, {
@@ -120,6 +125,13 @@ export function ChatPreferencesProvider({
         loaded: false,
         workspaceId: '',
     });
+    const snapshots = useQueueOptional()?.chatArchiveSnapshots;
+    const snapshotId = useRef(Symbol('chat-archive-snapshot')).current;
+    useLayoutEffect(() => {
+        if (!snapshots || !archiveScopeKey || state.workspaceId !== workspaceId) return;
+        snapshots.set(snapshotId, { cacheKey: archiveScopeKey, archivedIds: state.archivedIds });
+        return () => { snapshots.delete(snapshotId); };
+    }, [snapshots, snapshotId, archiveScopeKey, state.workspaceId, state.archivedIds, workspaceId]);
 
     return (
         <ChatPreferencesContext.Provider value={{ state, dispatch, workspaceId }}>

@@ -20,6 +20,8 @@ export interface DiffDefinitionReturn {
     originTabId: string | null;
     /** The chat whose view of the panel holds `originTabId`. */
     chatId: string | null;
+    /** The definition could not be located in the diff's version; the tab shows current code. */
+    currentCode?: true;
     /** Puts the diff back where the jump started; a no-op once it unmounted. */
     restore?: () => void;
 }

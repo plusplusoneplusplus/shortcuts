@@ -287,7 +287,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                 aria-label={`${remoteLabel} clones`}
                 data-testid="clone-strip"
                 onScroll={() => setHoverPill(null)}
-                className="flex items-center gap-1 min-w-0 max-w-[50%] lg:max-w-[60%] overflow-x-auto overflow-y-hidden py-0.5 [scrollbar-width:thin]"
+                className="flex flex-1 items-center gap-1 min-w-0 overflow-x-auto overflow-y-hidden py-0.5 [scrollbar-width:thin]"
             >
                 {clones.map(c => {
                     const selectionId = getRepoSelectionId(c);
@@ -384,9 +384,11 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                 </span>
             )}
 
-            <div ref={cloneRegionRef} className="flex items-center gap-0.5 flex-1 min-w-0 overflow-hidden" data-testid="clone-tab-region">
-                {visibleCloneTabs.map(t => renderTab(t, 'clone-scope-tab'))}
-            </div>
+            {cloneTabs.length > 0 && (
+                <div ref={cloneRegionRef} className="flex items-center gap-0.5 flex-1 min-w-0 overflow-hidden" data-testid="clone-tab-region">
+                    {visibleCloneTabs.map(t => renderTab(t, 'clone-scope-tab'))}
+                </div>
+            )}
 
             {hasOverflow && (
                 <div className="relative flex-shrink-0" ref={ovRef}>

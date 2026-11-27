@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useCocClient, useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { useCommitContextOwner } from '../../chat/gitCommitContext';
 import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
@@ -16,9 +16,18 @@ import { useCopyChangedFilePath } from '../diff/copyChangedFilePath';
 import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
 import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
+import type { DiffEditorPosition } from '../diff/monacoDiffController';
+import { explorerApi } from '../../repo-detail/explorer/explorerApi';
+import { locateWorkingTreeDefinition } from './workingTreeDefinitionTarget';
+import { ToastContext } from '../../../contexts/ToastContext';
 
 type Stage = WorkingTreeChange['stage'];
 const STAGE_LABEL: Record<Stage, string> = { staged: 'Staged', unstaged: 'Unstaged', untracked: 'Untracked' };
+const DEFINITION_BACK_LIMIT = 50;
+const DEFINITION_BACK_UNAVAILABLE = 'That spot is no longer in the working changes.';
+
+/** Where a Go to Definition jump started: the entry and its exact side, cursor and scroll. */
+interface DefinitionOrigin { key: string; label: string; position: DiffEditorPosition }
 
 export interface WorkingTreeAllFilesDiffProps extends Pick<WorkingTreeFileDiffProps,
     'workspaceId' | 'attachmentDestinationId' | 'repoRoot' | 'refreshKey' | 'onFileMissing' |
@@ -105,6 +114,66 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     }, JSON.stringify([refreshKey, attempt]));
     const [contentSearchTarget, setContentSearchTarget] = useState<ReviewContentSearchTarget>();
     useEffect(() => { setContentSearchTarget(undefined); }, [controller]);
+
+    // Go to Definition into another entry: the whole inventory, whatever the navigator filters show.
+    const workspacePath = useCallback((change: WorkingTreeChange) => props.repoRoot ? repoRelative(change.filePath, props.repoRoot) : change.filePath, [props.repoRoot]);
+    const definitionFiles = useMemo(() => [...new Set(retainedChanges.map(workspacePath))], [retainedChanges, workspacePath]);
+    const [definitionTarget, setDefinitionTarget] = useState<{ key: string; position: DiffEditorPosition }>();
+    const definitionSelectRef = useRef<string | null>(null);
+    const byKeyRef = useRef(byKey);
+    byKeyRef.current = byKey;
+    const readRouting = attachmentDestinationId === undefined ? undefined
+        : attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
+    // Back history across entries. This review is remounted per owner, so it never crosses repositories.
+    const [definitionBack, setDefinitionBack] = useState<DefinitionOrigin[]>([]);
+    const toast = useContext(ToastContext);
+    const pushDefinitionOrigin = useCallback((change: WorkingTreeChange, position: DiffEditorPosition) => {
+        const origin = { key: changeKey(change), label: `${STAGE_LABEL[change.stage]} · ${change.filePath.split('/').pop()}`, position };
+        setDefinitionBack(stack => [...stack, origin].slice(-DEFINITION_BACK_LIMIT));
+    }, []);
+    /** Selects `key` (asking first about unsaved edits) and reveals `position` there; Cancel changes nothing. */
+    const revealInEntry = useCallback((key: string, position: DiffEditorPosition, select: (key: string) => void, from: string, done?: () => void) => {
+        const move = () => {
+            done?.();
+            setContentSearchTarget(undefined);
+            definitionSelectRef.current = key;
+            setDefinitionTarget({ key, position: { ...position } });
+            if (key !== from) select(key);
+            definitionSelectRef.current = null;
+        };
+        if (key === from) move(); else guard.guard(move)();
+    }, [guard.guard]);
+    const goBackFromDefinition = useCallback((select: (key: string) => void, from: string) => {
+        const origin = definitionBack[definitionBack.length - 1];
+        if (!origin) return;
+        const drop = () => setDefinitionBack(stack => stack.slice(0, -1));
+        // Refreshed away: say so rather than landing on some other entry.
+        if (!byKeyRef.current.has(origin.key)) {
+            drop();
+            toast?.addToast(DEFINITION_BACK_UNAVAILABLE, 'info');
+            return;
+        }
+        revealInEntry(origin.key, origin.position, select, from, drop);
+    }, [definitionBack, revealInEntry, toast]);
+    const navigateDefinitionFile = useCallback(async (request: DiffEditorPosition & { path: string }, signal: AbortSignal, select: (key: string) => void, from: WorkingTreeChange, origin: DiffEditorPosition | null) => {
+        const found = await locateWorkingTreeDefinition(
+            retainedChanges.filter(change => workspacePath(change) === request.path),
+            change => client.git.getWorkingTreeFileContent(workspaceId, change.filePath, change.stage),
+            async () => {
+                const blob = await explorerApi.readBlob(workspaceId, request.path, { signal }, readRouting);
+                return blob.encoding === 'utf-8' ? blob.content : null;
+            },
+            request,
+        );
+        if (signal.aborted) return true;
+        const key = found && changeKey(found.change);
+        // A refresh may have dropped the entry while it was being read.
+        if (!found || !key || !byKeyRef.current.has(key)) return false;
+        revealInEntry(key, { side: request.side, ...found.location }, select, changeKey(from), () => {
+            if (origin) pushDefinitionOrigin(from, origin);
+        });
+        return true;
+    }, [retainedChanges, workspacePath, client, workspaceId, readRouting, revealInEntry, pushDefinitionOrigin]);
     const retry = () => setAttempt(value => value + 1);
     return <>
         {/* Mounts again once loaded, so the requested file wins over the default first file. */}
@@ -114,6 +183,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
             beforeNavigate={proceed => guard.guard(proceed)()}
             onSelect={(key, target) => {
                 setContentSearchTarget(undefined);
+                if (definitionSelectRef.current !== key) setDefinitionTarget(undefined);
                 const change = byKey.get(key);
                 setSelected(change);
                 if (change) onNavigateToFile?.(change.filePath, change.stage, target);
@@ -157,6 +227,14 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     contentSearchTarget={contentSearchTarget}
                     refreshKey={(refreshKey ?? 0) + attempt}
                     workingTreeFiles={stageChanges.map(c => c.filePath)}
+                    definitionFiles={definitionFiles}
+                    onNavigateDefinitionFile={(request, signal, origin) => navigateDefinitionFile(request, signal, select, change, origin)}
+                    definitionTarget={definitionTarget?.key === changeKey(change) ? definitionTarget.position : undefined}
+                    definitionHistory={{
+                        backLabel: definitionBack[definitionBack.length - 1]?.label ?? null,
+                        push: origin => pushDefinitionOrigin(change, origin),
+                        back: () => goBackFromDefinition(select, changeKey(change)),
+                    }}
                     onNavigateToFile={(path, hunk) => {
                         const next = stageChanges.find(c => c.filePath === path);
                         if (next) select(changeKey(next), hunk);

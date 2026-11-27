@@ -67,6 +67,21 @@ keep those pages and their Alt+N / Alt+C shortcuts.
 per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 `layout/Router`.
 
+`Router` observes `queueState.selectedTaskIdByRepo` on the repos view and keeps
+the last two viewed chats in memory through `layout/chatSelectionMru.ts`, keyed
+by the exact workspace selection id. Re-selecting the current chat, clearing
+selection, and viewing chat-reference routes preserve that workspace's history.
+Ctrl+Alt+Left opens the previous entry through the shared queue-job hash builder
+and normal route selection, only when the owner-qualified queue or unarchived
+history snapshot contains that chat. Mounted sidebar preferences publish their current
+archive IDs to a provider-instance registry in `QueueContext`, scoped by the same
+workspace/server cache key. The shortcut checks that registry at keydown, so
+optimistic archive actions block jumps before history refreshes; layout-effect
+cleanup removes snapshots on owner changes and unmount. `RepoChatTab` keys its
+preferences provider by that cache key. Missing entries and unresolved remote owners
+leave navigation and the key untouched. The binding allows the chat composer and
+yields to other form fields, rich text editors, and Monaco.
+
 Group member chat routes use
 `#repos/<groupSelectionId>/chats/member/<ownerWorkspaceId>/<canonicalProcessId>`.
 `dashboardRoutes` builds and parses the path, deriving the member's concrete clone

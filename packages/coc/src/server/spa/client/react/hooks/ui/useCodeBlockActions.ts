@@ -30,7 +30,7 @@ export function useCodeBlockActions(
         const copyButtons = container.querySelectorAll<HTMLButtonElement>('.code-block-copy');
         for (const button of copyButtons) {
             button.type = 'button';
-            button.textContent = 'Copy all';
+            button.textContent = button.closest('.code-block-compact') ? 'Copy' : 'Copy all';
             button.title = 'Copy all';
             button.setAttribute('aria-label', 'Copy all');
             button.setAttribute('aria-live', 'polite');
@@ -58,7 +58,7 @@ export function useCodeBlockActions(
                 pending.delete(btn);
             }
             if (active) timers.set(btn, setTimeout(() => {
-                btn.textContent = 'Copy all';
+                btn.textContent = btn.closest('.code-block-compact') ? 'Copy' : 'Copy all';
                 btn.setAttribute('aria-label', 'Copy all');
                 btn.title = 'Copy all';
                 timers.delete(btn);

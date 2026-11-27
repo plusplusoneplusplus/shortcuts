@@ -325,22 +325,51 @@ on the initiating side, another changed file of the review switches the review
 there (same side), and any other file opens its current version at the line in
 the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
 without a panel; `diffDefinitionExplorer.ts`). Foreign-workspace targets are
-declined. `FileDiffPanel` holds the reveal until that file's models are displayed
+declined. Membership uses the whole comparison: `ReviewFiles` gives
+`renderFile` `allPaths` and its `select` accepts any of them, showing a file the
+navigator filters hide with a "hidden by the current filters" notice (filters
+kept; a host echoing it back as `selectedPath` does not clear them), and
+`GitFileReview` passes `allPaths` as `FileDiffPanel`'s `definitionFiles`. In-review destinations must hold in the shown snapshot
+(`diffDefinitionLocate.ts`): `FileDiffPanel` reads the destination side through
+`fetchFileContent` and current code through `explorerApi.readBlob`, and reveals
+only when the texts are equal or the current definition line occurs exactly once
+verbatim in the snapshot (at that line). A missing, edited, repeated, unreadable
+or absent-side line opens current code in Explorer instead, flagged
+`currentCode` so the return chip shows a "Current code" label (a toast without a
+panel). One lookup is pending at a time; a newer jump, file/source/workspace
+change or unmount aborts it. `FileDiffPanel` holds the reveal until that file's models are displayed
 and suppresses the hunk target for it; the viewer's `revealTarget` goes through
 the controller's `reveal`, which waits for attach and is dropped by a model swap.
-`WorkingTreeFileDiff` is not a review: it routes both its full-language and
-ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own.
+Working changes follow the same rules with stage-qualified entries.
+`WorkingTreeFileDiff` places a ref-backed same-file jump in its loaded side
+against the loaded disk text (a side-less live-document jump is taken as-is) and
+sends another file of `definitionFiles` (every entry's repo-relative path,
+ignoring filters) to `WorkingTreeAllFilesDiff` through `onNavigateDefinitionFile`.
+The host reads each entry of that path and current code through the concrete
+owner, and `locateWorkingTreeDefinition` picks the entry whose side holds the
+definition (snapshot equal to current code first, else untracked → unstaged →
+staged); it then selects it through the dirty guard (Cancel sets nothing) and
+hands the pane a one-shot `definitionTarget`, which a manual selection drops.
+No located entry, or an entry a refresh removed, opens labeled current code; an
+aborted lookup (newer jump, pane unmount) does nothing. Peek stays Monaco's own.
 
 Before an in-review jump (same file or review file), `FileDiffPanel` captures the
 initiating side's cursor and scroll offset through the viewer handle's
-`capturePosition` (controller → adapter `getViewPosition`) and pushes it on a
-per-review back stack (reset when workspace, source label or `shortRef` change).
+`capturePosition` (controller → adapter `getViewPosition`) and, once the
+destination is located, pushes it on a per-review back stack (reset when workspace, source label or `shortRef` change).
 The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on the
 panel before Monaco, only while the stack is non-empty) pop it: switch file via
 `onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter
-restores exactly instead of centring. `WorkingTreeFileDiff` keeps a bounded
-same-file stack with the same cursor/scroll capture and chip/Alt+← restore;
-workspace, clone, file or stage changes clear that stack and its pending reveal.
+restores exactly instead of centring. In working changes the stack (50 entries
+of entry key, `Stage · file` label and captured position) lives in
+`WorkingTreeAllFilesDiff`, because each entry's pane is keyed and replaced; the
+review is remounted per owner, so history never crosses repositories. The pane
+gets `definitionHistory` (`backLabel`, `push`, `back`) for its chip and Alt+←,
+pushes same-file origins itself, and passes cross-file origins to
+`onNavigateDefinitionFile`, which records them only once the dirty guard lets
+the selection through. Back reveals in place for the same entry, else selects
+the origin entry through the guard (Cancel keeps the entry); an origin a
+refresh removed is dropped with an "unavailable" toast instead of moving.
 
 Explorer jumps add nothing to those in-diff stacks. Instead, when a panel hosts
 the target, `openDiffDefinitionInExplorer` reads the panel's active tab (often

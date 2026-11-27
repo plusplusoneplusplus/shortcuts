@@ -76,6 +76,8 @@ function makeClient() {
     };
 }
 const clients: Record<string, ReturnType<typeof makeClient>> = {};
+/** Twelve distinct lines: definition targets need text to be located in. */
+const TEXT = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n');
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: (workspaceId: string) => clients[workspaceId],
 }));
@@ -415,6 +417,7 @@ describe('working-tree content search Monaco navigation', () => {
         expect(fakes[0].revealedPositions).toHaveLength(1);
     });
     it('lets later definition navigation supersede a search target', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content(TEXT, TEXT));
         await renderDiff({ contentSearchTarget: match('old') });
         act(() => { currentCodeMounts[0].onNavigate({ workspaceId: 'ws-a', path: 'src/a.ts', line: 2, column: 5 }); });
         expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 2, column: 5 });
@@ -449,6 +452,8 @@ describe('WorkingTreeFileDiff — historical definitions', () => {
 
 describe('WorkingTreeFileDiff — definition routing', () => {
     const target = (path: string, extra: Partial<NavigateTarget> = {}): NavigateTarget => ({ workspaceId: 'ws-a', path, line: 7, column: 2, ...extra });
+    // The index (left of an unstaged diff) has one more line above the definitions than the disk file.
+    beforeEach(() => { clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content(`header\n${TEXT}`, TEXT)); });
     async function renderHosted(props: Partial<React.ComponentProps<typeof WorkingTreeFileDiff>> = {}) {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         await act(async () => {
@@ -464,52 +469,119 @@ describe('WorkingTreeFileDiff — definition routing', () => {
         return currentCodeMounts[0];
     }
 
-    it('reveals a same-file target on the left side the jump started from', async () => {
+    it('reveals a same-file target where it sits in the left (index) side the jump started from', async () => {
         const mount = await renderHosted();
         let handled: boolean | undefined;
         act(() => { handled = mount.onNavigate(target('src/a.ts')); });
         expect(handled).toBe(true);
-        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 7, column: 2 }]);
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 8, column: 2 }]);
         expect(openUnifiedPanelTab).not.toHaveBeenCalled();
     });
 
-    it.each(['original', 'modified'] as const)('restores %s cursor and exact scroll through the chip and Alt+←', async side => {
-        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
-        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValueOnce(content('a\n', 'b\n', {
-            base: { content: 'a\n', ref: 'HEAD', exists: true },
-            head: { content: 'b\n', ref: 'INDEX', exists: true },
-        })).mockResolvedValueOnce(content('b\n', 'disk differs\n'));
-        await renderDiff({ stage: 'staged' });
-        const mount = currentCodeMounts[side === 'original' ? 0 : 1];
-        expect(mount).toBeDefined();
-        const origin = { line: 3, column: 4, scrollTop: 183.5 };
-        fakes[0].viewPositions[side] = origin;
+    it.each([
+        ['missing from', `header\nline 1\nline 2`],
+        ['repeated in', `${TEXT}\nline 7`],
+    ])('opens labeled current code when the definition line is %s the shown snapshot', async (_case, index) => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content(index, TEXT));
+        resetDiffDefinitionReturns();
+        const mount = await renderHosted();
         act(() => { mount.onNavigate(target('src/a.ts')); });
-        expect(screen.getByTestId('diff-definition-back-chip').textContent).toContain('Back to Staged · a.ts');
-        fakes[0].viewPositions[side] = { line: 7, column: 2, scrollTop: 500 };
-        act(() => { mount.onNavigate(target('src/a.ts', { line: 12 })); });
-        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
-        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, line: 7, column: 2, scrollTop: 500 });
-        fireEvent.click(screen.getByTestId('diff-definition-back-chip'));
-        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, ...origin });
+        expect(fakes[0].revealedPositions).toEqual([]);
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({ resourceId: 'src/a.ts', line: 7, column: 2 }));
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ currentCode: true });
         expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
-        const count = fakes[0].revealedPositions.length;
-        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
-        expect(fakes[0].revealedPositions).toHaveLength(count);
     });
 
-    it('clears return history and pending reveal when the selected file changes', async () => {
+    it('asks the host for another entry and reveals nothing itself', async () => {
+        const onNavigateDefinitionFile = vi.fn(async () => true);
+        const mount = await renderHosted({ definitionFiles: ['src/a.ts', 'src/b.ts'], onNavigateDefinitionFile });
+        fakes[0].viewPositions.original = { line: 5, column: 3, scrollTop: 90 };
+        await act(async () => { mount.onNavigate(target('src/b.ts')); });
+        expect(onNavigateDefinitionFile).toHaveBeenCalledWith({ path: 'src/b.ts', side: 'original', line: 7, column: 2 }, expect.any(AbortSignal),
+            { side: 'original', line: 5, column: 3, scrollTop: 90 });
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('opens labeled current code when no entry of the comparison locates the definition', async () => {
+        resetDiffDefinitionReturns();
+        const mount = await renderHosted({ definitionFiles: ['src/b.ts'], onNavigateDefinitionFile: async () => false });
+        await act(async () => { mount.onNavigate(target('src/b.ts')); });
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({ resourceId: 'src/b.ts', line: 7 }));
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ currentCode: true });
+    });
+
+    it('drops a superseded cross-file lookup', async () => {
+        const answers: ((moved: boolean) => void)[] = [];
+        const signals: AbortSignal[] = [];
+        const mount = await renderHosted({ definitionFiles: ['src/b.ts', 'src/c.ts'], onNavigateDefinitionFile: (_request, signal) => {
+            signals.push(signal);
+            return new Promise<boolean>(resolve => { answers.push(resolve); });
+        } });
+        act(() => { mount.onNavigate(target('src/b.ts')); });
+        act(() => { mount.onNavigate(target('lib/outside.ts')); });
+        expect(signals[0].aborted).toBe(true);
+        openUnifiedPanelTab.mockClear();
+        await act(async () => { answers[0](false); });
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
+
+    it('reveals a definition the host moved it to', async () => {
+        const definitionTarget = { side: 'modified' as const, line: 9, column: 4 };
+        await renderHosted({ definitionTarget });
+        expect(fakes[0].revealedPositions).toEqual([definitionTarget]);
+    });
+
+    it.each(['original', 'modified'] as const)('records the exact %s origin of a same-file jump in the host history', async side => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValueOnce(content(TEXT, TEXT, {
+            base: { content: TEXT, ref: 'HEAD', exists: true },
+            head: { content: `${TEXT}\nindex tail`, ref: 'INDEX', exists: true },
+        })).mockResolvedValueOnce(content(TEXT, `${TEXT}\ndisk differs`));
+        const push = vi.fn();
+        await renderDiff({ stage: 'staged', definitionHistory: { backLabel: null, push, back: vi.fn() } });
+        const mount = currentCodeMounts[side === 'original' ? 0 : 1];
+        expect(mount).toBeDefined();
+        fakes[0].viewPositions[side] = { line: 3, column: 4, scrollTop: 183.5 };
+        act(() => { mount.onNavigate(target('src/a.ts')); });
+        expect(push).toHaveBeenCalledWith({ side, line: 3, column: 4, scrollTop: 183.5 });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, line: 7, column: 2 });
+    });
+
+    it('shows the host history as a Back chip that the chip and Alt+← follow', async () => {
+        const back = vi.fn();
+        const view = await renderDiff({ stage: 'staged', definitionHistory: { backLabel: null, push: vi.fn(), back } });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        expect(back).not.toHaveBeenCalled();
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="staged"
+            createDiffEditor={createDiffEditor} definitionHistory={{ backLabel: 'Untracked · b.ts', push: vi.fn(), back }} />);
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toContain('Back to Untracked · b.ts');
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        fireEvent.click(screen.getByTestId('diff-definition-back-chip'));
+        expect(back).toHaveBeenCalledTimes(2);
+    });
+
+    it('reveals each new host target, restoring exact scroll', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         const view = await renderDiff();
-        fakes[0].viewPositions.original = { line: 2, column: 1, scrollTop: 70 };
+        const back = { side: 'original' as const, line: 3, column: 4, scrollTop: 183.5 };
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+            createDiffEditor={createDiffEditor} definitionTarget={back} />);
+        view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+            createDiffEditor={createDiffEditor} definitionTarget={{ ...back }} />);
+        expect(fakes[0].revealedPositions).toEqual([back, back]);
+    });
+
+    it('drops a pending reveal when the selected file changes', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        const view = await renderDiff();
         act(() => { currentCodeMounts[0].onNavigate(target('src/a.ts')); });
-        expect(screen.getByTestId('diff-definition-back-chip')).toBeTruthy();
         await act(async () => {
             view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/b.ts" repoRoot="/repo"
                 stage="unstaged" createDiffEditor={createDiffEditor} />);
         });
-        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
-        expect(fakes.flatMap(fake => fake.revealedPositions)).toEqual([{ side: 'original', line: 7, column: 2 }]);
+        expect(fakes.flatMap(fake => fake.revealedPositions)).toEqual([{ side: 'original', line: 8, column: 2 }]);
     });
 
     it('opens another file, even a changed one, in Explorer at the definition line', async () => {

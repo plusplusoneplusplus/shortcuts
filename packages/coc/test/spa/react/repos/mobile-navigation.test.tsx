@@ -20,6 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext',
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+    useQueueOptional: () => ({ state: {}, dispatch: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({

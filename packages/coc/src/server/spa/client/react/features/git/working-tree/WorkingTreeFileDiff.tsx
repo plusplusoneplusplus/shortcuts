@@ -25,7 +25,7 @@
  * Keep mine.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, useMemo, type RefObject } from 'react';
 import type { GitWorkingTreeFileContentResponse } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
@@ -47,6 +47,8 @@ import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 import type { DiffDefinitionNavigate } from '../diff/diffLanguageMount';
 import { resolveDiffDefinitionRoute } from '../diff/diffDefinitionRoute';
 import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
+import { locateDefinitionInSnapshot, snapshotText } from '../diff/diffDefinitionLocate';
+import { ToastContext } from '../../../contexts/ToastContext';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
@@ -82,6 +84,18 @@ export interface WorkingTreeFileDiffProps {
     workingTreeFiles?: string[];
     /** Called when cross-file navigation requests switching to a different file. */
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
+    /** Repo-relative paths of the whole comparison (all stages, ignoring navigator filters) for Go to Definition. */
+    definitionFiles?: string[];
+    /**
+     * Moves the review to another file's definition. Resolves false when no
+     * entry's snapshot locates it, so this diff opens labeled current source.
+     * `origin` is where the jump started, for the host's Back history.
+     */
+    onNavigateDefinitionFile?: (request: DiffEditorPosition & { path: string }, signal: AbortSignal, origin: DiffEditorPosition | null) => Promise<boolean>;
+    /** A definition to reveal in this diff; a new object reveals once. */
+    definitionTarget?: DiffEditorPosition | null;
+    /** Go to Definition Back history, kept by the host so it outlives this pane. */
+    definitionHistory?: WorkingTreeDefinitionHistory;
     /** When set, auto-scrolls to the first or last hunk after the diff loads. */
     initialHunkTarget?: 'first' | 'last';
     /** A new object jumps once; ordinary navigation clears it in the review host. */
@@ -120,6 +134,8 @@ export function stagedDiskMatchesIndex(
     return staged.head.exists && disk.head.exists && disk.head.content === staged.head.content;
 }
 
+const CURRENT_CODE_FALLBACK_MESSAGE = 'Opened the current code: the definition could not be located in this diff\'s version.';
+
 const STAGE_LABEL: Record<string, string> = {
     staged: 'Staged diff',
     unstaged: 'Unstaged diff',
@@ -138,7 +154,15 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
+export interface WorkingTreeDefinitionHistory {
+    /** Where Back returns to; null when there is nothing to go back to. */
+    backLabel: string | null;
+    /** Records where a jump within this diff started. */
+    push(origin: DiffEditorPosition): void;
+    back(): void;
+}
+
+export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, definitionFiles, onNavigateDefinitionFile, definitionTarget, definitionHistory, initialHunkTarget, contentSearchTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const [untrackedPreviewFallback, setUntrackedPreviewFallback] = useState(false);
     const { dispatch: queueDispatch } = useQueue();
     const copyPath = useCopyChangedFilePath();
@@ -343,60 +367,94 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         return () => onRegisterSave(null);
     }, [canSave, onRegisterSave, handleSaveEdits]);
 
-    // ── Go to definition: same diff side, else the current file in Explorer ──
-    // The working tree is not a review, so another changed file opens in Explorer too.
+    // Definitions answer in current (disk) coordinates; place them in the side this diff shows.
+    const locateInShownSide = useCallback((side: DiffEditorPosition['side'], line: number, column: number) => {
+        if (currentContent?.status !== 'loaded' || currentContent.diskText === null) return null;
+        const snapshot = snapshotText(currentContent.content, side);
+        return snapshot === null ? null : locateDefinitionInSnapshot(snapshot, currentContent.diskText, line, column);
+    }, [currentContent]);
+
+    // ── Go to definition: this diff, another entry of the working changes, or Explorer ──
     const panelHost = useUnifiedPanelHost();
+    const toast = useContext(ToastContext);
     const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
     const editorRevealTarget = useMemo<DiffEditorPosition | null>(() => searchTarget && showEditor
         && (searchTarget.side !== 'old' || viewMode === 'split')
         ? { side: searchTarget.side === 'old' ? 'original' : 'modified', line: searchTarget.line, column: searchTarget.startColumn }
         : definitionReveal, [searchTarget, showEditor, viewMode, definitionReveal]);
-    const [definitionBack, setDefinitionBack] = useState<DiffEditorPosition[]>([]);
     // A return from Explorer may land after this diff unmounted.
     const mountedRef = useRef(true);
     useEffect(() => {
         mountedRef.current = true;
         return () => { mountedRef.current = false; };
     }, []);
-    useEffect(() => {
-        setDefinitionBack([]);
-        setDefinitionReveal(null);
-    }, [workspaceId, ownerRoute, relativePath, stage]);
+    useEffect(() => { setDefinitionReveal(null); }, [workspaceId, ownerRoute, relativePath, stage]);
+    // The host moved here for a definition; runs after the reset above on mount.
+    useEffect(() => { if (definitionTarget) setDefinitionReveal(definitionTarget); }, [definitionTarget]);
+    // At most one cross-file jump is being located; a newer jump or leaving this diff supersedes it.
+    const definitionLocateRef = useRef<AbortController | null>(null);
+    useEffect(() => () => { definitionLocateRef.current?.abort(); }, [workspaceId, ownerRoute, relativePath, stage]);
+    const onNavigateDefinitionFileRef = useRef(onNavigateDefinitionFile);
+    onNavigateDefinitionFileRef.current = onNavigateDefinitionFile;
+    const definitionHistoryRef = useRef(definitionHistory);
+    definitionHistoryRef.current = definitionHistory;
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
-        const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: [], target, side });
+        const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: definitionFiles ?? [], target, side });
         if (!route) return false;
         setDismissedSearchTarget(contentSearchTarget ?? null);
+        definitionLocateRef.current?.abort();
+        definitionLocateRef.current = null;
+        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        const openInExplorer = (currentCode: boolean) => {
+            const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
+            const opened = openDiffDefinitionInExplorer({
+                route: {
+                    kind: 'explorer', path: route.kind === 'same-file' ? relativePath : route.path, line: route.line, column: route.column,
+                    ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
+                },
+                workspaceId, ownerRoutingRef: ownerRoute, panelHost,
+                returnTo: {
+                    label: `${stage === 'staged' ? 'Staged' : 'Unstaged'} · ${relativePath.split('/').pop()}`,
+                    ...(currentCode ? { currentCode: true as const } : {}),
+                    restore: () => { if (mountedRef.current && origin) { setDismissedSearchTarget(contentSearchTarget ?? null); setDefinitionReveal(origin); } },
+                },
+            });
+            if (opened && currentCode && !panelHost) toast?.addToast(CURRENT_CODE_FALLBACK_MESSAGE, 'info');
+            return opened;
+        };
+        if (route.kind === 'explorer') return openInExplorer(false);
         if (route.kind === 'same-file') {
+            // A side-less jump comes from the live disk document, whose coordinates hold as-is.
+            const location = side === undefined ? route : locateInShownSide(route.side, route.line, route.column);
+            if (!location) return openInExplorer(true);
             const origin = monacoViewerRef.current?.capturePosition(route.side);
-            if (origin) setDefinitionBack(stack => [...stack, origin].slice(-50));
-            setDefinitionReveal({ side: route.side, line: route.line, column: route.column });
+            if (origin) definitionHistoryRef.current?.push(origin);
+            setDefinitionReveal({ side: route.side, line: location.line, column: location.column });
             return true;
         }
-        if (route.kind !== 'explorer') return false;
-        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
-        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
-        return openDiffDefinitionInExplorer({
-            route, workspaceId, ownerRoutingRef: ownerRoute, panelHost,
-            returnTo: {
-                label: `${stage === 'staged' ? 'Staged' : 'Unstaged'} · ${relativePath.split('/').pop()}`,
-                restore: () => { if (mountedRef.current && origin) { setDismissedSearchTarget(contentSearchTarget ?? null); setDefinitionReveal(origin); } },
-            },
-        });
-    }, [workspaceId, relativePath, ownerRoute, panelHost, stage, contentSearchTarget]);
+        const navigate = onNavigateDefinitionFileRef.current;
+        if (!navigate) return openInExplorer(false);
+        const abort = new AbortController();
+        definitionLocateRef.current = abort;
+        const origin = monacoViewerRef.current?.capturePosition(route.side) ?? null;
+        void navigate({ path: route.path, side: route.side, line: route.line, column: route.column }, abort.signal, origin)
+            .catch(() => false)
+            .then(moved => {
+                if (abort.signal.aborted || definitionLocateRef.current !== abort) return;
+                definitionLocateRef.current = null;
+                if (!moved) openInExplorer(true);
+            });
+        return true;
+    }, [workspaceId, relativePath, definitionFiles, ownerRoute, panelHost, stage, contentSearchTarget, toast, locateInShownSide]);
 
-    const goBackFromDefinition = useCallback(() => {
-        const origin = definitionBack[definitionBack.length - 1];
-        if (!origin) return;
-        setDismissedSearchTarget(contentSearchTarget ?? null);
-        setDefinitionBack(stack => stack.slice(0, -1));
-        setDefinitionReveal(origin);
-    }, [definitionBack, contentSearchTarget]);
+    const backLabel = definitionHistory?.backLabel ?? null;
+    const goBackFromDefinition = useCallback(() => { definitionHistoryRef.current?.back(); }, []);
     const handleDefinitionBackKey = useCallback((event: React.KeyboardEvent) => {
-        if (!definitionBack.length || event.key !== 'ArrowLeft' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (!backLabel || event.key !== 'ArrowLeft' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         event.preventDefault();
         event.stopPropagation();
         goBackFromDefinition();
-    }, [definitionBack.length, goBackFromDefinition]);
+    }, [backLabel, goBackFromDefinition]);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -538,7 +596,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             Save
                         </button>
                     )}
-                    {definitionBack.length > 0 && (
+                    {backLabel && (
                         <button
                             type="button"
                             onClick={goBackFromDefinition}
@@ -546,7 +604,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                             data-testid="diff-definition-back-chip"
                         >
-                            ← Back to {stage === 'staged' ? 'Staged' : 'Unstaged'} · {relativePath.split('/').pop()}
+                            ← Back to {backLabel}
                         </button>
                     )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />

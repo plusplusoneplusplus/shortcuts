@@ -26,7 +26,10 @@ clone. That memory is `AppContextState.lastCloneByRemote` — keyed by
 (`coc-last-clone-by-remote`), since which machine's clone you were viewing is
 per-device. `ScopeSlideSwitcher` records it (deciding the cluster needs the full
 repo list and the grouping pass, which the reducer lacks). `WorkspaceTabsCluster` carries the
-clone strip, clone-scoped tabs, overflow menu, and repo info/remove dialogs. The right-panel `WorkspaceDockToggle` is the first right-side action; the topbar
+clone strip, clone-scoped tabs, overflow menu, and repo info/remove dialogs. The
+scrollable clone strip fills the available cluster width; enabled page tabs share
+that width through their measured overflow region, which is omitted when empty.
+The right-panel `WorkspaceDockToggle` is the first right-side action; the topbar
 has no `+ New` queue button.
 `WorkspaceCloneLabel` presents repository and selected-clone machine identity in
 both selectors and the active repository pin, using `getRemoteCloneKey` and

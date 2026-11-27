@@ -653,8 +653,9 @@ editable file previews.
 ### Markdown block controls
 
 Chat and Markdown-canvas previews share `chatMarkdownToHtml` and `MarkdownView`.
-Ordinary code blocks use the file renderer's `.code-block-container` header and
-`useCodeBlockActions`; copying reads the complete DOM-decoded `data-raw` value through
+Ordinary code blocks use `.code-block-container.code-block-compact` with an inset
+copy button outside the code scroller; file previews retain their language and collapse
+header. Both use `useCodeBlockActions`; copying reads the complete DOM-decoded `data-raw` value through
 `copyToClipboard`, with per-block feedback and effect-scoped cleanup. Nested viewers
 handle their own controls. `MarkdownView` highlights plain code while preserving
 Forge's pre-highlighted `.code-line` and `.line-number` structure.

@@ -85,6 +85,13 @@ vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCur
     },
 }));
 const openUnifiedPanelTab = vi.hoisted(() => vi.fn(() => 'tab-id'));
+/** Current code (the working copy) as the definition lookups see it. */
+const CURRENT = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+const readBlob = vi.hoisted(() => vi.fn());
+vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', async importOriginal => {
+    const actual = await importOriginal<{ explorerApi: object }>();
+    return { ...actual, explorerApi: { ...actual.explorerApi, readBlob } };
+});
 vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', async importOriginal => ({
     ...(await importOriginal<object>()),
     openUnifiedPanelTab,
@@ -159,6 +166,7 @@ beforeEach(() => {
     classicProps = null;
     fakes = [];
     currentCodeMounts.length = 0;
+    readBlob.mockImplementation(async () => ({ encoding: 'utf-8', content: CURRENT }));
 });
 
 describe('review content match navigation', () => {
@@ -246,8 +254,10 @@ describe('review content match navigation', () => {
         const source = { ...makeSource('commit'), supportsCurrentCodeDefinitions: true };
         const target = match();
         await act(async () => { render(panel(source, target)); });
-        act(() => { currentCodeMounts.at(-1)!.onNavigate({ workspaceId: 'ws-a', path: 'src/a.ts', line: 7, column: 2 }); });
-        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 7, column: 2 });
+        readBlob.mockResolvedValue({ encoding: 'utf-8', content: 'after\n' });
+        act(() => { currentCodeMounts.at(-1)!.onNavigate({ workspaceId: 'ws-a', path: 'src/a.ts', line: 1, column: 2 }); });
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 1, column: 2 });
     });
 
     it('reveals unchanged contents in a rename-only review instead of showing an empty editor', async () => {
@@ -302,7 +312,16 @@ describe('definition routing', () => {
     const panelHost = { workspaceId: 'group-1', chatId: 'chat-1', routingRef: null };
     const jumpFrom = (side: 'original' | 'modified') => currentCodeMounts[side === 'original' ? currentCodeMounts.length - 2 : currentCodeMounts.length - 1];
     const target = (path: string, extra: Partial<NavigateTarget> = {}): NavigateTarget => ({ workspaceId: 'ws-a', path, line: 9, column: 3, ...extra });
-    const commitSource = () => ({ ...makeSource('commit'), supportsCurrentCodeDefinitions: true });
+    /** Head equals current code; the parent has one extra line after it. */
+    const reviewContent = (path: string, extra: Partial<GitFileDiffContentResponse> = {}) => content({
+        path,
+        base: { content: `${CURRENT}${path} old\n`, ref: 'base', exists: true },
+        head: { content: CURRENT, ref: 'head', exists: true },
+        ...extra,
+    });
+    const commitSource = (fetchContent: DiffSource['fetchFileContent'] = vi.fn(async (path: string) => reviewContent(path))) =>
+        ({ ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' });
+    const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     function panel(source: DiffSource, filePath: string, onNavigateToFile: (path: string, hunk: 'first' | 'last') => void, host = true) {
         const body = <FileDiffPanel workspaceId="ws-a" filePath={filePath} source={source} createDiffEditor={createEditor}
             onNavigateToFile={onNavigateToFile} initialHunkTarget="first" />;
@@ -310,32 +329,109 @@ describe('definition routing', () => {
     }
 
     it('reveals a same-file target on the side the jump started from', async () => {
-        const source = commitSource();
         const onNavigateToFile = vi.fn();
-        await act(async () => { render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', onNavigateToFile)); });
         let handled: boolean | undefined;
         act(() => { handled = jumpFrom('original').onNavigate(target('src/a.ts')); });
         expect(handled).toBe(true);
+        await settle();
         expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 9, column: 3 }]);
         expect(onNavigateToFile).not.toHaveBeenCalled();
         expect(openUnifiedPanelTab).not.toHaveBeenCalled();
     });
 
     it('switches to a changed file of the review and reveals there instead of the first hunk', async () => {
-        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
-        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true };
+        const source = commitSource();
         const onNavigateToFile = vi.fn();
         let view!: ReturnType<typeof render>;
         await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
         act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
         expect(onNavigateToFile).toHaveBeenCalledWith('src/b.ts', 'first');
+        expect(readBlob).toHaveBeenCalledWith('ws-a', 'src/b.ts', expect.anything(), undefined);
         expect(fakes[0].revealedPositions).toEqual([]);
         await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
-        await act(async () => {});
-        expect(fakes[0].models.at(-1)?.original.text).toBe('src/b.ts old\n');
+        await settle();
+        expect(fakes[0].models.at(-1)?.original.text).toBe(`${CURRENT}src/b.ts old\n`);
         expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 9, column: 3 }]);
         act(() => { fakes[0].finishDiff([{ originalStartLineNumber: 1, originalEndLineNumber: 1, modifiedStartLineNumber: 1, modifiedEndLineNumber: 1 }]); });
         expect(fakes[0].adapter.revealModifiedLine).not.toHaveBeenCalled();
+    });
+
+    it('moves a current-code line to where the definition sits in a historical snapshot', async () => {
+        // The commit's version has two lines fewer before the definition.
+        const shifted = CURRENT.split('\n').slice(2).join('\n');
+        const source = commitSource(vi.fn(async (path: string) => reviewContent(path, {
+            head: { content: shifted, ref: 'head', exists: true },
+        })));
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts', { symbolCandidate: true })); });
+        await settle();
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await settle();
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 7, column: 3 }]);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['missing from the snapshot', 'line 1\nline 2\n'],
+        ['ambiguous in the snapshot', 'line 9\nother\nline 9\n'],
+    ])('opens labeled current code when the definition is %s', async (_case, snapshot) => {
+        resetDiffDefinitionReturns();
+        const source = commitSource(vi.fn(async (path: string) => reviewContent(path, {
+            head: { content: snapshot, ref: 'head', exists: true },
+        })));
+        const onNavigateToFile = vi.fn();
+        await act(async () => { render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        let handled: boolean | undefined;
+        act(() => { handled = jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        expect(handled).toBe(true);
+        await settle();
+        expect(onNavigateToFile).not.toHaveBeenCalled();
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({ resourceId: 'src/b.ts', line: 9, column: 3 }));
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'abc1234 · a.ts', currentCode: true });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('opens labeled current code for a same-file jump into a side that no longer has the definition', async () => {
+        resetDiffDefinitionReturns();
+        const source = commitSource(vi.fn(async (path: string) => reviewContent(path, {
+            base: { content: '', ref: 'base', exists: false },
+        })));
+        await act(async () => { render(panel(source, 'src/a.ts', vi.fn())); });
+        act(() => { jumpFrom('original').onNavigate(target('src/a.ts')); });
+        await settle();
+        expect(fakes[0].revealedPositions).toEqual([]);
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ currentCode: true });
+    });
+
+    it('falls back to labeled current code when either version cannot be read', async () => {
+        resetDiffDefinitionReturns();
+        readBlob.mockRejectedValueOnce(new Error('gone'));
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn())); });
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ currentCode: true });
+    });
+
+    it('ignores a lookup superseded by a file change', async () => {
+        let release!: () => void;
+        readBlob.mockImplementationOnce(() => new Promise(resolve => {
+            release = () => resolve({ encoding: 'utf-8', content: CURRENT });
+        }));
+        const source = commitSource();
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await act(async () => { view.rerender(panel(source, 'src/c.ts', onNavigateToFile)); });
+        await act(async () => { release(); });
+        await settle();
+        expect(onNavigateToFile).not.toHaveBeenCalled();
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
     });
 
     it('a later file change drops a reveal that was not for it', async () => {
@@ -344,13 +440,15 @@ describe('definition routing', () => {
         let view!: ReturnType<typeof render>;
         await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
         act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
         await act(async () => { view.rerender(panel(source, 'src/c.ts', onNavigateToFile)); });
         await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
-        await act(async () => {});
+        await settle();
         expect(fakes[0].revealedPositions).toEqual([]);
     });
 
     it('opens any other file in the Explorer panel at the definition line', async () => {
+        resetDiffDefinitionReturns();
         const source = { ...commitSource(), routingTarget: 'remote:srv:ws-a' };
         await act(async () => { render(panel(source, 'src/a.ts', vi.fn())); });
         let handled: boolean | undefined;
@@ -360,13 +458,34 @@ describe('definition routing', () => {
             kind: 'file', ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a', chatId: 'chat-1',
             resourceId: 'lib/util.ts', line: 9, column: 3, symbolCandidate: true,
         }));
+        // Outside the comparison is plain current source, not a version fallback.
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')?.currentCode).toBeUndefined();
+        expect(readBlob).not.toHaveBeenCalled();
         expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('routes into a file navigator filters hide when the host passes the whole comparison', async () => {
+        const source = commitSource();
+        const onNavigateToFile = vi.fn();
+        // The navigable list is filtered down to the current file; the comparison also has src/hidden.ts.
+        const filtered = { ...source, files: ['src/a.ts'] };
+        await act(async () => {
+            render(<UnifiedPanelHostProvider host={panelHost}><FileDiffPanel workspaceId="ws-a" filePath="src/a.ts" source={filtered}
+                definitionFiles={['src/a.ts', 'src/hidden.ts']} createDiffEditor={createEditor}
+                onNavigateToFile={onNavigateToFile} initialHunkTarget="first" /></UnifiedPanelHostProvider>);
+        });
+        act(() => { jumpFrom('modified').onNavigate(target('src/hidden.ts')); });
+        await settle();
+        expect(onNavigateToFile).toHaveBeenCalledWith('src/hidden.ts', 'first');
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        // Not part of the comparison at all: still current source.
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({ resourceId: 'src/b.ts' }));
     });
 
     it('an Explorer jump leaves a way back to the exact diff file, side and scroll spot', async () => {
         resetDiffDefinitionReturns();
-        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
-        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const source = commitSource();
         const onNavigateToFile = vi.fn();
         let view!: ReturnType<typeof render>;
         await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
@@ -375,13 +494,13 @@ describe('definition routing', () => {
         expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'abc1234 · a.ts', chatId: 'chat-1' });
         // The diff moved on to another file while Explorer was showing.
         await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
-        await act(async () => {});
+        await settle();
         let returned = false;
         act(() => { returned = returnToDiffDefinitionOrigin('group-1', 'tab-id'); });
         expect(returned).toBe(true);
         expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
         await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
-        await act(async () => {});
+        await settle();
         expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 7, column: 2, scrollTop: 220 });
         expect(getDiffDefinitionReturn('group-1', 'tab-id')).toBeNull();
         // The in-diff chip is for in-diff jumps only.
@@ -398,8 +517,7 @@ describe('definition routing', () => {
     });
 
     it('Alt+← and the back chip return to the exact file, side and scroll spot', async () => {
-        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
-        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const source = commitSource();
         const onNavigateToFile = vi.fn();
         let view!: ReturnType<typeof render>;
         await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
@@ -408,6 +526,7 @@ describe('definition routing', () => {
         // Same-file jump from the old side, then back with Alt+←.
         fakes[0].viewPositions.original = { line: 4, column: 6, scrollTop: 140 };
         act(() => { jumpFrom('original').onNavigate(target('src/a.ts')); });
+        await settle();
         expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
         const key = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
         act(() => { screen.getByTestId('file-diff-panel').dispatchEvent(key); });
@@ -418,15 +537,63 @@ describe('definition routing', () => {
         // Cross-file jump from the new side, then the chip switches back.
         fakes[0].viewPositions.modified = { line: 12, column: 1, scrollTop: 400 };
         act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
         await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
-        await act(async () => {});
+        await settle();
         expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
         act(() => { fireEvent.click(screen.getByTestId('diff-definition-back-chip')); });
         expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
         await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
-        await act(async () => {});
-        expect(fakes[0].models.at(-1)?.original.text).toBe('src/a.ts old\n');
+        await settle();
+        expect(fakes[0].models.at(-1)?.original.text).toBe(`${CURRENT}src/a.ts old\n`);
         expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 12, column: 1, scrollTop: 400 });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('returns through a chain of three file jumps in order, and another commit starts a fresh history', async () => {
+        const source = { ...commitSource(), files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'] };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        const chain = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'];
+        const spot = (index: number) => ({ line: index + 2, column: index + 1, scrollTop: 100 * (index + 1) });
+        for (let index = 0; index < 3; index++) {
+            fakes[0].viewPositions.modified = spot(index);
+            act(() => { jumpFrom('modified').onNavigate(target(chain[index + 1])); });
+            await settle();
+            expect(onNavigateToFile).toHaveBeenLastCalledWith(chain[index + 1], 'first');
+            await act(async () => { view.rerender(panel(source, chain[index + 1], onNavigateToFile)); });
+            await settle();
+        }
+        for (let index = 2; index >= 0; index--) {
+            expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe(`← Back to abc1234 · ${chain[index].split('/')[1]}`);
+            act(() => { fireEvent.click(screen.getByTestId('diff-definition-back-chip')); });
+            expect(onNavigateToFile).toHaveBeenLastCalledWith(chain[index], 'first');
+            await act(async () => { view.rerender(panel(source, chain[index], onNavigateToFile)); });
+            await settle();
+            expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', ...spot(index) });
+        }
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        fakes[0].viewPositions.modified = spot(0);
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await settle();
+        expect(screen.getByTestId('diff-definition-back-chip')).toBeTruthy();
+        await act(async () => { view.rerender(panel({ ...source, shortRef: 'def5678' }, 'src/b.ts', onNavigateToFile)); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('a jump that falls back to current code adds no in-diff history', async () => {
+        const source = commitSource(vi.fn(async (path: string) => reviewContent(path, {
+            head: { content: 'unrelated\n', ref: 'head', exists: true },
+        })));
+        await act(async () => { render(panel(source, 'src/a.ts', vi.fn())); });
+        fakes[0].viewPositions.modified = { line: 1, column: 1, scrollTop: 0 };
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await settle();
+        expect(openUnifiedPanelTab).toHaveBeenCalled();
         expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
     });
 
@@ -446,6 +613,7 @@ describe('definition routing', () => {
         act(() => { handled = jumpFrom('modified').onNavigate(target('src/b.ts', { workspaceId: 'ws-b' })); });
         expect(handled).toBe(false);
         expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        expect(readBlob).not.toHaveBeenCalled();
     });
 });
 
