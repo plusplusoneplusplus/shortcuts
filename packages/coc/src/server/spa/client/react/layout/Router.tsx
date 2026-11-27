@@ -9,7 +9,7 @@
  */
 
 import { buildWorkResourceHash } from './workResourceRoute';
-import { recordChatSelection, type ChatSelectionMruByWorkspace } from './chatSelectionMru';
+import { recordChatSelection, moveChatSelection, type ChatSelectionHistoryByWorkspace } from './chatSelectionHistory';
 import { useCocClient } from '../repos/cloneRouting';
 import { workspaceReadCacheKey, workspaceReadSource } from '../api/workspaceReads';
 import { useRepoQueueJobs } from '../queue/hooks/useRepoQueueStats';
@@ -78,14 +78,14 @@ export function Router() {
     // Match the sidebar's owner checks: unresolved remote routes cannot use local snapshots.
     const historyMatchesOwner = !(parseRemoteCloneKey(state.selectedRepoId) && !client.options?.baseUrl)
         && (history?.source ? history.source === source : !client.options?.baseUrl);
-    const chatSelectionMruRef = useRef<ChatSelectionMruByWorkspace>(new Map());
+    const chatSelectionHistoryRef = useRef<ChatSelectionHistoryByWorkspace>(new Map());
     const selectedChatId = state.selectedRepoId
         ? queueState.selectedTaskIdByRepo?.[state.selectedRepoId]
         : null;
     useLayoutEffect(() => {
         if (state.activeTab !== 'repos' || !state.selectedRepoId || referenceHash !== null) return;
-        chatSelectionMruRef.current = recordChatSelection(
-            chatSelectionMruRef.current, state.selectedRepoId, selectedChatId,
+        chatSelectionHistoryRef.current = recordChatSelection(
+            chatSelectionHistoryRef.current, state.selectedRepoId, selectedChatId,
         );
     }, [state.activeTab, state.selectedRepoId, selectedChatId, referenceHash]);
     const processDeepLinkContextRef = useRef({
@@ -145,24 +145,32 @@ export function Router() {
         const handler = (e: KeyboardEvent) => {
             if (referenceHash !== null) return;
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
-            if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.key === 'ArrowLeft') {
+            if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
                 const element = e.target instanceof Element ? e.target : null;
                 if (element?.closest('.monaco-editor')) return;
                 const inComposer = element?.closest('[contenteditable="true"]')
                     ?.closest('[data-testid="chat-input-stack"]');
                 if (isEditableTarget(e.target) && !inComposer) return;
-                const previous = chatSelectionMruRef.current.get(state.selectedRepoId)?.previous;
-                if (!previous) return;
                 const cacheKey = workspaceReadCacheKey(workspaceId, source);
-                // Optimistic sidebar actions precede the next history snapshot.
-                if (chatArchiveSnapshots && [...chatArchiveSnapshots.values()].some(snapshot =>
-                    snapshot.cacheKey === cacheKey && snapshot.archivedIds.includes(previous))) return;
-                const inQueue = [...queueJobs.running, ...queueJobs.queued].some(job =>
-                    (job.processId ?? ensureQueueProcessId(job.id)) === previous);
-                const inHistory = historyMatchesOwner && history?.items.some(item => item.id === previous && !item.archived);
-                if (!inQueue && !inHistory) return;
+                const next = moveChatSelection(
+                    chatSelectionHistoryRef.current, state.selectedRepoId,
+                    e.key === 'ArrowLeft' ? -1 : 1,
+                    chatId => {
+                        // Optimistic sidebar actions precede the next history snapshot.
+                        if (chatArchiveSnapshots && [...chatArchiveSnapshots.values()].some(snapshot =>
+                            snapshot.cacheKey === cacheKey && snapshot.archivedIds.includes(chatId))) return false;
+                        const inQueue = [...queueJobs.running, ...queueJobs.queued].some(job =>
+                            (job.processId ?? ensureQueueProcessId(job.id)) === chatId);
+                        const inHistory = historyMatchesOwner && history?.items.some(item => item.id === chatId && !item.archived);
+                        return !!(inQueue || inHistory);
+                    },
+                );
+                if (next === chatSelectionHistoryRef.current) return;
+                const entry = next.get(state.selectedRepoId)!;
+                const chatId = entry.entries[entry.index];
+                chatSelectionHistoryRef.current = next;
                 e.preventDefault();
-                location.hash = queueJobHash(state.selectedRepoId, { id: previous, processId: previous }, resolveChatSubTab());
+                location.hash = queueJobHash(state.selectedRepoId, { id: chatId, processId: chatId }, resolveChatSubTab());
                 return;
             }
             const target = e.target as HTMLElement;

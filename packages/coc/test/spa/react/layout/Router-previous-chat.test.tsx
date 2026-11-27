@@ -120,7 +120,7 @@ afterEach(() => {
     history.replaceState(null, '', '#');
 });
 
-describe('Router previous chat shortcut', () => {
+describe('Router chat history shortcuts', () => {
     it.each([
         ['Archive A', false], ['Archive batch', false],
         ['Archive A', true], ['Archive batch', true],
@@ -172,15 +172,66 @@ describe('Router previous chat shortcut', () => {
         expect(location.hash).toBe(href('queue_A'));
     });
 
-    it('toggles A to B through the same hash selection path as sidebar clicks', () => {
+    it('goes back and forward through the same hash selection path as sidebar clicks', () => {
         setup();
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_B');
         expect(press().defaultPrevented).toBe(true);
         expect(location.hash).toBe(href('queue_A'));
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_A');
-        expect(press().defaultPrevented).toBe(true);
+        expect(press().defaultPrevented).toBe(false);
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
         expect(location.hash).toBe(href('queue_B'));
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_B');
+    });
+
+    it('navigates A → B → C in both directions and stops at the ends', () => {
+        setup();
+        list([{ id: 'queue_A' }, { id: 'queue_B' }, { id: 'queue_C' }]);
+        visit('queue_C');
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        for (const id of ['queue_B', 'queue_A']) {
+            expect(press().defaultPrevented).toBe(true);
+            expect(screen.getByTestId('selected-chat').textContent).toBe(id);
+        }
+        expect(press().defaultPrevented).toBe(false);
+        for (const id of ['queue_B', 'queue_C']) {
+            expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
+            expect(screen.getByTestId('selected-chat').textContent).toBe(id);
+        }
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+    });
+
+    it('drops forward history when a new chat is selected after going back', () => {
+        setup();
+        list([{ id: 'queue_A' }, { id: 'queue_B' }, { id: 'queue_C' }, { id: 'queue_D' }]);
+        visit('queue_C');
+        press();
+        visit('queue_D');
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        press();
+        expect(location.hash).toBe(href('queue_B'));
+        press({ key: 'ArrowRight' });
+        expect(location.hash).toBe(href('queue_D'));
+    });
+
+    it.each(['archived', 'deleted'])('skips a %s entry in both directions', reason => {
+        setup();
+        list([{ id: 'queue_A' }, { id: 'queue_B' }, { id: 'queue_C' }]);
+        visit('queue_C');
+        list([{ id: 'queue_A' }, ...(reason === 'archived' ? [{ id: 'queue_B', archived: true }] : []), { id: 'queue_C' }]);
+        expect(press().defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_A'));
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_C'));
+    });
+
+    it('blocks forward replay after an optimistic archive action', () => {
+        setup();
+        visit('queue_A');
+        press();
+        fireEvent.click(screen.getByRole('button', { name: 'Archive A', exact: true }));
+        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        expect(location.hash).toBe(href('queue_B'));
     });
 
     it('does not consume the key when only one chat has been selected', () => {
@@ -238,7 +289,7 @@ describe('Router previous chat shortcut', () => {
         expect(location.hash).toBe('#chat-references/example');
     });
 
-    it('keeps workspace histories separate and restores the first workspace toggle', () => {
+    it('keeps workspace histories separate and restores the first workspace history', () => {
         const view = setup();
         app.state.selectedRepoId = 'other-workspace';
         view.rerender(tree());
@@ -268,7 +319,6 @@ describe('Router previous chat shortcut', () => {
 
     it.each<KeyboardEventInit>([
         { ctrlKey: false }, { altKey: false }, { metaKey: true }, { shiftKey: true },
-        { key: 'ArrowRight' },
     ])('ignores other key combinations: %j', init => {
         setup();
         expect(press(init).defaultPrevented).toBe(false);
