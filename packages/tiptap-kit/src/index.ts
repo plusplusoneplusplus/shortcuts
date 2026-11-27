@@ -10,4 +10,5 @@ export * from './scroll/index.js';
 export * from './link/index.js';
 export * from './html/index.js';
 export * from './mermaid/index.js';
-// `./math` is subpath-only: it loads the optional `katex` peer.
+// `./math` and `./markdown` are subpath-only: they load optional peers
+// (`katex`, `marked`, `turndown`).

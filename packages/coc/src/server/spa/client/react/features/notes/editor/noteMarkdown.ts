@@ -1,24 +1,25 @@
 /**
- * noteMarkdown — Markdown ↔ HTML conversion utilities for the Tiptap editor.
+ * noteMarkdown — the Notes Markdown ↔ HTML codec.
  *
- * markdownToHtml: marked (GFM) → HTML with Tiptap-compatible task-list attributes.
- * htmlToMarkdown: Tiptap HTML → markdown via turndown with custom task-list rules.
+ * The generic conversion lives in tiptap-kit's `createMarkdownCodec`. This file
+ * adds the Notes syntax on top: map and PDF embeds, `[[note:…]]` links, bare
+ * file-path references, Quick Ask side notes, TeX math and code-fence language
+ * aliases. It also keeps the comment export and the image URL rewriting.
  */
 
-import { marked } from 'marked';
-import TurndownService from 'turndown';
+import type TurndownService from 'turndown';
+import type { MarkedExtension } from 'marked';
 import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
-import { mathNodeMarkedExtension } from '@plusplusoneplusplus/tiptap-kit/math';
-import { wrapMathDelimiters, type MathDelimiter } from '@plusplusoneplusplus/tiptap-kit/math';
-import { escapeHtmlText } from '@plusplusoneplusplus/tiptap-kit/html';
+import { mathMarkdownExtension } from '@plusplusoneplusplus/tiptap-kit/math';
 import {
-    DEFAULT_HIGHLIGHT_COLOR,
-    normalizeCssColor,
-    readInlineColor,
-    readStyleProp,
-} from '@plusplusoneplusplus/tiptap-kit/text-style';
-import { readInlineFontFamily } from '@plusplusoneplusplus/tiptap-kit/text-style';
-import { readInlineFontSize } from '@plusplusoneplusplus/tiptap-kit/text-style';
+    createMarkdownCodec,
+    escapeAttr,
+    escapeMarkdownLinkLabel,
+    getHtmlAttr,
+    plainLinkLabel,
+    type MarkdownCodecExtension,
+} from '@plusplusoneplusplus/tiptap-kit/markdown';
+import { escapeHtmlText } from '@plusplusoneplusplus/tiptap-kit/html';
 import { clampIndent, parseIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
@@ -31,43 +32,14 @@ import {
     qaFootnoteMarkedExtension,
 } from './extensions/sidenoteFootnote';
 
-// ── marked configuration ────────────────────────────────────────────────────
-
-marked.setOptions({ gfm: true, breaks: true });
-
-function escapeAttr(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function decodeBasicHtmlEntities(value: string): string {
-    return value
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&#x27;/gi, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&');
-}
-
-function plainLinkLabel(renderedText: string, fallback: string): string {
-    const withoutTags = renderedText.replace(/<[^>]*>/g, '');
-    return decodeBasicHtmlEntities(withoutTags).trim() || fallback;
-}
-
-function escapeMarkdownLinkLabel(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
-}
+// ── Map and PDF embeds ──────────────────────────────────────────────────────
 
 function renderDefaultLink(href: string, title: string | null | undefined, text: string): string {
     const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
     return `<a href="${escapeAttr(href ?? '')}"${titleAttr}>${text}</a>`;
 }
 
-const mapLinkRenderer: marked.MarkedExtension = {
+const mapLinkRenderer: MarkedExtension = {
     renderer: {
         link(href: string, title: string | null | undefined, text: string): string {
             if (isEmbeddableMapUrl(href)) {
@@ -78,12 +50,11 @@ const mapLinkRenderer: marked.MarkedExtension = {
         },
     },
 };
-marked.use(mapLinkRenderer);
 
 // `.pdf` image embeds (`![label](x.pdf)`) render as an inline PDF placeholder
 // div that the PdfBlock node view picks up. Non-pdf images fall back to marked's
 // default `<img>` renderer (returning `false` triggers the default).
-const pdfImageRenderer: marked.MarkedExtension = {
+const pdfImageRenderer: MarkedExtension = {
     renderer: {
         image(href: string, _title: string | null | undefined, text: string): string | false {
             if (isPdfUrl(href)) {
@@ -98,846 +69,6 @@ const pdfImageRenderer: marked.MarkedExtension = {
         },
     },
 };
-marked.use(pdfImageRenderer);
-
-// Add [[note:...]] wiki-link syntax support to marked
-const noteLinkExtension: marked.MarkedExtension = {
-    extensions: [
-        {
-            name: 'noteLink',
-            level: 'inline' as const,
-            start(src: string) {
-                return src.indexOf('[[note:');
-            },
-            tokenizer(src: string) {
-                // [[label|note:path#heading]] or [[note:path#heading]]
-                const match = /^\[\[(?:([^\]|]+)\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/.exec(src);
-                if (match) {
-                    return {
-                        type: 'noteLink',
-                        raw: match[0],
-                        label: match[1] || '',
-                        path: match[2],
-                        heading: match[3] || '',
-                    };
-                }
-                return undefined;
-            },
-            renderer(token: { label: string; path: string; heading: string }) {
-                const basename = token.path.split('/').pop()?.replace(/\.md$/i, '') ?? token.path;
-                const displayLabel = token.label || (token.heading ? `${basename} § ${token.heading}` : basename);
-                const headingAttr = token.heading ? ` data-note-heading="${token.heading}"` : '';
-                return `<span class="note-link" data-note-path="${token.path}"${headingAttr}>${displayLabel}</span>`;
-            },
-        },
-    ],
-};
-marked.use(noteLinkExtension);
-
-// Add file-path reference syntax support to marked
-// Detects paths like `tasks/coc/foo.plan.md` and wraps them in <span class="file-ref-link">
-const filePathExtension: marked.MarkedExtension = {
-    extensions: [
-        {
-            name: 'filePathRef',
-            level: 'inline' as const,
-            start(src: string) {
-                // Look for the start of a path segment (word char or dot)
-                const m = /[a-zA-Z0-9_.]/.exec(src);
-                return m ? m.index : -1;
-            },
-            tokenizer(src: string) {
-                // Never inside a link label: marked lexes the label char by
-                // char, so a URL label like https://www.x.com/a/b.html would
-                // match at `www.` and split into a file-ref chip.
-                if ((this as { lexer?: { state?: { inLink?: boolean } } }).lexer?.state?.inLink) {
-                    return undefined;
-                }
-                // Requires at least one `/` and a known extension
-                const match = /^([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|txt|py|go|sh|rs|css|html))(?=[^/a-zA-Z0-9_.-]|$)/.exec(src);
-                if (!match) return undefined;
-                return {
-                    type: 'filePathRef',
-                    raw: match[0],
-                    filePath: match[1],
-                };
-            },
-            renderer(token: { filePath: string }) {
-                return `<span class="file-ref-link" data-file-path="${token.filePath}">${token.filePath}</span>`;
-            },
-        },
-    ],
-};
-marked.use(filePathExtension);
-
-// Add ==highlight== syntax support to marked
-const highlightExtension: marked.MarkedExtension = {
-    extensions: [
-        {
-            name: 'highlight',
-            level: 'inline' as const,
-            start(src: string) {
-                return src.indexOf('==');
-            },
-            tokenizer(src: string) {
-                // `[^\n]+?` rather than `[^=]+`: a highlight may legitimately
-                // contain an `=`, and since colors persist as inline HTML the
-                // very common case — a colored word inside a highlight — carries
-                // one in `style="…"`. Staying non-greedy and single-line keeps
-                // the old matches (`a ==b== c` still highlights just `b`).
-                const match = /^==([^\n]+?)==/.exec(src);
-                if (match) {
-                    return {
-                        type: 'highlight',
-                        raw: match[0],
-                        text: match[1],
-                        tokens: [],
-                    };
-                }
-                return undefined;
-            },
-            renderer(token: { text: string }) {
-                return `<mark>${token.text}</mark>`;
-            },
-        },
-    ],
-};
-marked.use(highlightExtension);
-
-// Math: parse the four TeX delimiter forms into editable Tiptap formula
-// placeholders (`<span/div data-math=… data-tex=… data-delim=…>`). The rendered
-// KaTeX lives only in the runtime NodeView — never in the persisted Markdown.
-marked.use(mathNodeMarkedExtension);
-
-// Quick Ask side-note reference markers (`[^qa-<id>]`) → bare marker span; the
-// answer/question are folded in from the stripped definition block afterwards
-// (see markdownToHtml / sidenoteFootnote.ts).
-marked.use(qaFootnoteMarkedExtension);
-
-// ── turndown singleton ──────────────────────────────────────────────────────
-
-const turndown = new TurndownService({
-    headingStyle: 'atx',
-    codeBlockStyle: 'fenced',
-    bulletListMarker: '-',
-});
-
-// Line breaks: <br> → plain \n (avoids trailing-space hard-break syntax on save)
-turndown.addRule('lineBreak', {
-    filter: 'br',
-    replacement() {
-        return '\n';
-    },
-});
-
-// Strikethrough: <del> / <s> → ~~text~~
-turndown.addRule('strikethrough', {
-    filter: ['del', 's'],
-    replacement(content) {
-        return `~~${content}~~`;
-    },
-});
-
-// Superscript / subscript: <sup> / <sub> → the same literal HTML tags. Markdown
-// has no portable syntax for either (pandoc's `^x^` / `~x~` collide with our
-// `~~strike~~` and `==highlight==` handling), and inline HTML is what marked
-// passes back through to Tiptap's parseHTML. Without a rule turndown would drop
-// the tags and keep only the bare text, silently losing the mark on every save.
-turndown.addRule('superscript', {
-    filter: 'sup',
-    replacement(content) {
-        return `<sup>${content}</sup>`;
-    },
-});
-
-turndown.addRule('subscript', {
-    filter: 'sub',
-    replacement(content) {
-        return `<sub>${content}</sub>`;
-    },
-});
-
-// Highlight: <mark> → ==text==, except for a non-default color, which has no
-// `==` syntax and is emitted as inline HTML instead. The default color stays
-// bare `==text==` so ordinary highlights remain clean Markdown and every note
-// written before colors were persisted keeps its exact current serialization.
-turndown.addRule('highlight', {
-    filter: 'mark',
-    replacement(content, node) {
-        const el = node as HTMLElement;
-        // Tiptap's Highlight extension writes `data-color` alongside the inline
-        // style; either one alone is enough to recover the color.
-        const color =
-            readInlineColor(el.getAttribute('style'), 'background-color')
-            ?? normalizeCssColor(el.getAttribute('data-color'));
-        if (color && color !== DEFAULT_HIGHLIGHT_COLOR) {
-            return `<mark style="background-color:${color}">${content}</mark>`;
-        }
-        return `==${content}==`;
-    },
-});
-
-// Text style: <span style="color:…; font-family:…; font-size:…"> → the same
-// inline HTML. Markdown has syntax for none of them, and inline HTML is the one
-// form that survives marked → Tiptap → turndown *and* still renders in an
-// external Markdown viewer.
-//
-// Color, font family and font size are three attributes of the SAME Tiptap
-// `textStyle` mark, so one span can carry all three and they have to be
-// serialized together — a second, independent span rule would never see a span
-// the first rule already claimed.
-// Declarations are emitted in a fixed order so re-saving an untouched note
-// produces byte-identical Markdown.
-//
-// NOTE: addRule() unshifts, so this is checked BEFORE the plain `highlight` rule
-// above but AFTER every span rule registered later (note-link, file-ref, math,
-// comment, Quick Ask). Those spans carry neither declaration, so the ordering
-// only matters as insurance.
-function readTextStyleDeclarations(node: Node): string[] {
-    const style = (node as HTMLElement).getAttribute('style');
-    const declarations: string[] = [];
-    const color = readInlineColor(style, 'color');
-    if (color) declarations.push(`color:${color}`);
-    const fontFamily = readInlineFontFamily(style);
-    if (fontFamily) declarations.push(`font-family:${fontFamily}`);
-    const fontSize = readInlineFontSize(style);
-    if (fontSize) declarations.push(`font-size:${fontSize}`);
-    return declarations;
-}
-
-turndown.addRule('textStyleSpan', {
-    filter(node) {
-        return node.nodeName === 'SPAN' && readTextStyleDeclarations(node).length > 0;
-    },
-    replacement(content, node) {
-        const declarations = readTextStyleDeclarations(node);
-        // An empty span carries no text to style — drop the wrapper rather than
-        // leaving `<span style="…"></span>` noise in the file.
-        if (declarations.length === 0 || !content) return content;
-        return `<span style="${declarations.join('; ')}">${content}</span>`;
-    },
-});
-
-// Images with a width or a nonzero indent: preserve as an HTML <img> tag so the
-// dimensions and/or the indent level round-trip (standard `![]()` syntax carries
-// neither). A plain, level-0, unsized image still serializes as `![alt](src)`.
-turndown.addRule('resizableImage', {
-    filter(node) {
-        return (
-            node.nodeName === 'IMG' &&
-            (node.hasAttribute('width') || parseIndentAttr(node as HTMLElement) > 0)
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const src = el.getAttribute('src') ?? '';
-        const alt = el.getAttribute('alt') ?? '';
-        const width = el.getAttribute('width') ?? '';
-        const indent = parseIndentAttr(el);
-        const altAttr = alt ? ` alt="${alt}"` : '';
-        const widthAttr = width ? ` width="${width}"` : '';
-        const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
-        return `<img src="${src}"${altAttr}${widthAttr}${indentAttr} />`;
-    },
-});
-
-// Google Maps embeds serialize back to ordinary markdown links. A nonzero indent
-// has no link syntax, so an indented map is emitted as a raw HTML placeholder div
-// carrying `data-indent` that marked passes through and MapBlock re-parses.
-turndown.addRule('mapEmbed', {
-    filter(node) {
-        return (
-            node.nodeName === 'DIV' &&
-            (node as Element).classList.contains('md-map-embed') &&
-            node.hasAttribute('data-map-url')
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const url = el.getAttribute('data-map-url') ?? '';
-        if (!url) return '';
-        const label = el.getAttribute('data-map-label')?.trim() || url;
-        const indent = parseIndentAttr(el);
-        if (indent > 0) {
-            return `\n\n<div class="md-map-embed" data-map-url="${escapeAttr(url)}" data-map-label="${escapeAttr(label)}" data-indent="${indent}"></div>\n\n`;
-        }
-        return `[${escapeMarkdownLinkLabel(label)}](${url})`;
-    },
-});
-
-// PDF embeds serialize back to markdown image syntax (`![label](url)`).
-// Empty level-0 placeholder divs are pre-converted to <img> by
-// serializePdfEmbedPlaceholders (turndown skips blank block nodes); an indented
-// embed is instead kept as a non-blank div by that helper so this rule fires and
-// re-emits it as a raw HTML placeholder carrying `data-indent`.
-turndown.addRule('pdfEmbed', {
-    filter(node) {
-        return (
-            node.nodeName === 'DIV' &&
-            (node as Element).classList.contains('md-pdf-embed') &&
-            node.hasAttribute('data-pdf-url')
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const url = el.getAttribute('data-pdf-url') ?? '';
-        if (!url) return '';
-        const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
-        const indent = parseIndentAttr(el);
-        const height = parsePdfHeightAttr(el);
-        const collapsed = el.getAttribute('data-pdf-collapsed') === 'true';
-        // `![]()` cannot carry an indent, a height or a collapsed flag — any of
-        // them forces the raw `<div>` form so the attribute survives the next save.
-        if (indent > 0 || height != null || collapsed) {
-            const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
-            const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
-            const collapsedAttr = collapsed ? ' data-pdf-collapsed="true"' : '';
-            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}${collapsedAttr}></div>\n\n`;
-        }
-        return `![${escapeMarkdownLinkLabel(label)}](${url})`;
-    },
-});
-
-// Comment spans: strip wrapper, keep inner text
-turndown.addRule('commentSpan', {
-    filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            node.hasAttribute('data-comment-id')
-        );
-    },
-    replacement(content) {
-        return content;
-    },
-});
-
-// Task list container: pass through children, don't wrap in extra markup
-turndown.addRule('taskList', {
-    filter(node) {
-        return (
-            node.nodeName === 'UL' &&
-            node.getAttribute('data-type') === 'taskList'
-        );
-    },
-    replacement(_content, node) {
-        // Process children manually to preserve task item rules
-        let out = '';
-        for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType === 1) {
-                out += turndown.turndown((child as Element).outerHTML) + '\n';
-            }
-        }
-        return out;
-    },
-});
-
-// Task list item: serialize to `- [x] ` or `- [ ] `
-turndown.addRule('taskItem', {
-    filter(node) {
-        return (
-            node.nodeName === 'LI' &&
-            node.getAttribute('data-type') === 'taskItem'
-        );
-    },
-    replacement(_content, node) {
-        const checked = node.getAttribute('data-checked') === 'true';
-        const prefix = checked ? '- [x] ' : '- [ ] ';
-        // Get inner text content, stripping the leading checkbox if present
-        let inner = '';
-        for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType === 1) {
-                const el = child as Element;
-                // Skip checkbox inputs, process other content
-                if (el.nodeName === 'INPUT') continue;
-                // For label or paragraph wrappers, get their text
-                if (el.nodeName === 'LABEL' || el.nodeName === 'DIV' || el.nodeName === 'P') {
-                    inner += el.textContent ?? '';
-                } else {
-                    inner += turndown.turndown(el.outerHTML);
-                }
-            } else if (child.nodeType === 3) {
-                inner += child.textContent ?? '';
-            }
-        }
-        return prefix + inner.trim();
-    },
-});
-
-// Indented list containers (bulletList / orderedList / taskList with data-indent > 0):
-// standard Markdown list syntax cannot carry an indent attribute, so the whole
-// element is emitted as a raw HTML block that marked passes through unchanged and
-// Tiptap re-parses on reload. Level-0 lists fall through to the normal rules above.
-// NOTE: TurndownService.addRule() prepends (unshift) — last added = first checked.
-// This rule is added AFTER taskList/taskItem so it has higher priority and intercepts
-// indented task lists before the GFM task-list rules fire.
-turndown.addRule('indentedList', {
-    filter(node) {
-        if (node.nodeName !== 'UL' && node.nodeName !== 'OL') return false;
-        return parseIndentAttr(node as HTMLElement) > 0;
-    },
-    replacement(_content, node) {
-        // Emit the DOM element's current HTML (after pre-processing such as
-        // unwrapSingleParagraphListItems has already run) as a raw HTML block.
-        return `\n\n${(node as Element).outerHTML}\n\n`;
-    },
-});
-
-// GFM table: <table>/<thead>/<tbody>/<tr>/<th>/<td> → pipe-table markdown
-turndown.addRule('tableCell', {
-    filter: ['th', 'td'],
-    replacement(content) {
-        // Collapse in-cell breaks to GFM <br> (a pipe-table cell must be one
-        // physical line); trim first so edge breaks don't leave a stray <br>.
-        const cell = content.trim().replace(/\n+/g, '<br>');
-        const escaped = cell.replace(/\|/g, '\\|');
-        return `| ${escaped} `;
-    },
-});
-
-turndown.addRule('tableRow', {
-    filter: 'tr',
-    replacement(content, node) {
-        const row = `${content}|\n`;
-        const isInThead = node.parentNode && node.parentNode.nodeName === 'THEAD';
-        const thCells = Array.from(node.querySelectorAll('th'));
-
-        let needsSeparator = isInThead || thCells.length > 0;
-
-        // td-only tables (e.g. pasted content): first row still needs a GFM separator.
-        // "First" means first in the whole table, not first in its section: a
-        // <thead>+<tbody> table (what `markdownToHtml` emits) would otherwise get a
-        // second separator after the first body row, splitting the table in two on the
-        // way back to markdown.
-        if (!needsSeparator && node.parentNode) {
-            const table = (node as Element).closest?.('table');
-            const firstTr = table
-                ? allTableRows(table)[0]
-                : Array.from(node.parentNode.childNodes).find(c => c.nodeName === 'TR');
-            needsSeparator = firstTr === node;
-        }
-
-        if (needsSeparator) {
-            const cells = thCells.length > 0 ? thCells : Array.from(node.querySelectorAll('td'));
-            const separators = cells.map((cell) => {
-                const style = (cell as Element).getAttribute('style') ?? '';
-                // Tiptap writes alignment as `style="text-align: …"`; `marked` writes it
-                // as the HTML `align` attribute. Both have to be read or an aligned
-                // table loses its markers the first time it round-trips.
-                const align =
-                    style.match(/text-align:\s*(\w+)/i)?.[1]
-                    ?? (cell as Element).getAttribute('align')
-                    ?? '';
-                if (align === 'center') return '| :---: ';
-                if (align === 'right') return '| ---: ';
-                return '| --- ';
-            });
-            const separator = separators.join('') + '|\n';
-            return row + separator;
-        }
-        return row;
-    },
-});
-
-turndown.addRule('tableSectionPassthrough', {
-    filter: ['thead', 'tbody'],
-    replacement(content) {
-        return content;
-    },
-});
-
-turndown.addRule('table', {
-    filter: 'table',
-    replacement(content) {
-        const normalized = content.trim().replace(/\n{2,}/g, '\n');
-        return `\n\n${normalized}\n\n`;
-    },
-});
-
-// A table takes the pipe-table path above only when GFM syntax can express it in
-// full; otherwise it is emitted as a raw single-line HTML block that marked passes
-// through unchanged and Tiptap re-parses on reload — the same escape hatch
-// `indentedList` / `mathDisplay` use for content markdown cannot express. Two
-// things push a table off the pipe path:
-//
-//  1. Per-cell state with no pipe syntax: a dragged column width (`colwidth`, from
-//     ProseMirror's columnResizing plugin), a cell fill (`data-bg`, from the
-//     tableCellBackground extension) or a no-wrap column (`data-wrap`, from the
-//     tableColumnWrap extension).
-//  2. A header layout that is not GFM-shaped — see `isGfmShapedTable`. A pipe table
-//     is exactly one header row on top, so a header column, a lone header cell, or
-//     no header at all has no faithful pipe form.
-//
-// Everything a plain insert-and-type produces is still GFM-shaped with no per-cell
-// state, so only notes that actually used one of those features pay the cost of an
-// unreadable line-level diff.
-// NOTE: addRule() unshifts, so this must stay registered AFTER the plain `table`
-// rule for it to be checked (and win) first.
-const RAW_TABLE_CELL_SELECTOR =
-    'th[colwidth], td[colwidth], th[data-bg], td[data-bg], th[data-wrap], td[data-wrap]';
-
-function tableRowChildren(parent: Element): Element[] {
-    return Array.from(parent.children).filter(child => child.nodeName === 'TR');
-}
-
-function tableCellChildren(row: Element): Element[] {
-    return Array.from(row.children).filter(
-        child => child.nodeName === 'TH' || child.nodeName === 'TD',
-    );
-}
-
-/**
- * Every `<tr>` under a table, in document order, whether it sits in a section
- * (`<thead>`/`<tbody>`/`<tfoot>`) or directly under `<table>` — Tiptap emits a
- * single `<tbody>` with no `<thead>`, pasted HTML may use either, and a DOM parser
- * can leave a bare `<tr>` in rare cases.
- */
-function allTableRows(table: Element): Element[] {
-    const rows: Element[] = [];
-    for (const child of Array.from(table.children)) {
-        if (child.nodeName === 'TR') rows.push(child);
-        else if (
-            child.nodeName === 'THEAD' ||
-            child.nodeName === 'TBODY' ||
-            child.nodeName === 'TFOOT'
-        ) {
-            rows.push(...tableRowChildren(child));
-        }
-    }
-    return rows;
-}
-
-/**
- * A GFM pipe table is exactly one header row across the top, so a table can take
- * the pipe path only when its first row is all `<th>` and no later row holds one.
- * Anything else — no header row, a header column, a single header cell — has no
- * pipe form and must serialize as raw HTML instead, or reload would silently
- * change its shape: a header-less table gets its first data row promoted by the
- * `tableRow` fallback, and a header column emits a separator line after *every*
- * row, which is not a table at all.
- *
- * A table with no rows, or whose first row has no cells, counts as GFM-shaped so
- * degenerate markup keeps its current output rather than churning into HTML.
- */
-function isGfmShapedTable(table: Element): boolean {
-    const rows = allTableRows(table);
-    if (rows.length === 0) return true;
-
-    const headerCells = tableCellChildren(rows[0]);
-    if (headerCells.length === 0) return true;
-    if (!headerCells.every(cell => cell.nodeName === 'TH')) return false;
-
-    return rows
-        .slice(1)
-        .every(row => tableCellChildren(row).every(cell => cell.nodeName !== 'TH'));
-}
-
-function cellColspan(cell: Element): number {
-    return parseInt(cell.getAttribute('colspan') ?? '1', 10) || 1;
-}
-
-/** First entry of a cell's `colwidth` array (one entry per spanned column). */
-function cellFirstColwidth(cell: Element): string | null {
-    const first = (cell.getAttribute('colwidth') ?? '').split(',')[0]?.trim() ?? '';
-    return /^\d+$/.test(first) ? first : null;
-}
-
-function serializeRawTableCell(cell: Element): string {
-    const tag = cell.nodeName.toLowerCase();
-    const attrs: string[] = [];
-    for (const name of ['colspan', 'rowspan']) {
-        const value = cell.getAttribute(name);
-        if (value && value !== '1') attrs.push(`${name}="${escapeAttr(value)}"`);
-    }
-    const colwidth = cell.getAttribute('colwidth');
-    if (colwidth) attrs.push(`colwidth="${escapeAttr(colwidth)}"`);
-    // `data-bg` is the fill's primary carrier — an inert data attribute, so it
-    // survives anything that might one day strip `style`. The style below is only
-    // what makes the fill visible in renderers that are not the editor.
-    const backgroundColor = cell.getAttribute('data-bg');
-    if (backgroundColor) attrs.push(`data-bg="${escapeAttr(backgroundColor)}"`);
-    // `data-wrap` is only ever emitted for a no-wrap cell — the default renders no
-    // attribute — so its mere presence is the setting. Whitelisted like the rest:
-    // the raw path copies the attributes it knows, never arbitrary pasted ones.
-    const wrap = cell.getAttribute('data-wrap');
-    if (wrap) attrs.push(`data-wrap="${escapeAttr(wrap)}"`);
-    // A cell's `style` carries its text-align and its fill, both authored content —
-    // only the *computed* style Table.renderHTML puts on <table>/<col> is dropped.
-    const style = cell.getAttribute('style');
-    if (style) attrs.push(`style="${escapeAttr(style)}"`);
-    const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-    // innerHTML keeps inline formatting (<strong>, <a>, …) as HTML; it is not
-    // re-run through turndown, Tiptap parses it back directly.
-    return `<${tag}${attrStr}>${cell.innerHTML}</${tag}>`;
-}
-
-/**
- * `<colgroup>` is a redundant convenience — the per-cell `colwidth` arrays are the
- * lossless record. One `<col>` per first-row cell is only correct when no cell in
- * that row is merged, so a `colspan > 1` first row drops the colgroup entirely
- * rather than emitting a mis-aligned one. A table that took the raw path for a
- * cell fill alone has no widths at all, and an all-bare `<col>` list would be
- * pure noise, so that case drops the colgroup too.
- */
-function serializeRawTableColgroup(firstRow: Element | null): string {
-    if (!firstRow) return '';
-    const cells = tableCellChildren(firstRow);
-    if (cells.length === 0 || cells.some(cell => cellColspan(cell) > 1)) return '';
-    if (cells.every(cell => cellFirstColwidth(cell) === null)) return '';
-    const cols = cells.map(cell => {
-        const width = cellFirstColwidth(cell);
-        // `width` as an attribute, not a style: Tiptap's parseColgroupWidth reads
-        // only the attribute, so a style-only colgroup round trip loses widths.
-        return width ? `<col width="${width}">` : '<col>';
-    });
-    return `<colgroup>${cols.join('')}</colgroup>`;
-}
-
-function serializeRawTable(table: Element): string {
-    const sections: string[] = [];
-    let firstRow: Element | null = null;
-
-    const pushSection = (tag: string, rows: Element[]): void => {
-        if (rows.length === 0) return;
-        if (!firstRow) firstRow = rows[0];
-        sections.push(`<${tag}>${rows.map(serializeRawTableRow).join('')}</${tag}>`);
-    };
-
-    for (const child of Array.from(table.children)) {
-        if (child.nodeName === 'THEAD' || child.nodeName === 'TBODY' || child.nodeName === 'TFOOT') {
-            pushSection(child.nodeName.toLowerCase(), tableRowChildren(child));
-        }
-    }
-    // Defensive: a <tr> parsed directly under <table> (DOM parsers normally insert
-    // an implicit <tbody>, so this is rare) still needs a home.
-    pushSection('tbody', tableRowChildren(table));
-
-    return `<table>${serializeRawTableColgroup(firstRow)}${sections.join('')}</table>`;
-}
-
-function serializeRawTableRow(row: Element): string {
-    return `<tr>${tableCellChildren(row).map(serializeRawTableCell).join('')}</tr>`;
-}
-
-turndown.addRule('rawTable', {
-    filter(node) {
-        if (node.nodeName !== 'TABLE') return false;
-        const table = node as Element;
-        // Truthiness, not `!== null`: turndown runs on the browser DOM in the app but
-        // on domino under Node, and domino's querySelector returns `undefined` rather
-        // than `null` for a miss — so `!== null` sent *every* table down the raw path.
-        return (
-            Boolean(table.querySelector(RAW_TABLE_CELL_SELECTOR)) ||
-            !isGfmShapedTable(table)
-        );
-    },
-    replacement(_content, node) {
-        // The block must be a single physical line with no interior blank line, or
-        // marked terminates the HTML block early and mangles the rest of the note.
-        const html = serializeRawTable(node as Element).replace(/\s*\r?\n\s*/g, ' ');
-        return `\n\n${html}\n\n`;
-    },
-});
-
-// Mermaid fenced code block: <pre><code class="language-mermaid">…</code></pre> → ```mermaid\n…\n```
-// Registered last so it wins over turndown's built-in fenced-code rule for mermaid blocks.
-turndown.addRule('mermaidCode', {
-    filter(node) {
-        if (node.nodeName !== 'PRE') return false;
-        // Truthiness for the same reason as `rawTable` above: under domino a miss is
-        // `undefined`, so `!== null` matched every <pre> and rewrote plain code blocks
-        // into empty ```mermaid fences.
-        return Boolean((node as Element).querySelector('code.language-mermaid'));
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const code = el.querySelector('code.language-mermaid');
-        const text = code?.textContent ?? '';
-        const indent = parseIndentAttr(el);
-        if (indent > 0) {
-            // Indent has no fenced-code syntax, so emit a raw <pre> HTML block
-            // carrying `data-indent`; marked passes it through and MermaidBlock
-            // re-parses the `code.language-mermaid` and the indent level.
-            return `\n\n<pre data-indent="${indent}"><code class="language-mermaid">${escapeHtmlText(text)}</code></pre>\n\n`;
-        }
-        return `\`\`\`mermaid\n${text}\n\`\`\``;
-    },
-});
-
-// Note-link spans: <span class="note-link" data-note-path="..." data-note-heading="..."> → [[note:...]]
-turndown.addRule('noteLink', {
-    filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            (node as Element).classList.contains('note-link') &&
-            node.hasAttribute('data-note-path')
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const path = el.getAttribute('data-note-path') ?? '';
-        const heading = el.getAttribute('data-note-heading') ?? '';
-        return heading ? `[[note:${path}#${heading}]]` : `[[note:${path}]]`;
-    },
-});
-
-// Quick Ask side-note reference marker: <span class="qa-sidenote-ref" data-qa-id="..."> → [^qa-...].
-// The answer/question live in the definition block appended by appendQaFootnoteDefs (htmlToMarkdown),
-// so this rule only re-emits the inline marker; the leaf content (✨) is discarded.
-turndown.addRule('qaSidenoteRef', {
-    filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            (node as Element).classList.contains(QA_SIDENOTE_REF_CLASS) &&
-            node.hasAttribute('data-qa-id')
-        );
-    },
-    replacement(_content, node) {
-        const id = (node as HTMLElement).getAttribute('data-qa-id') ?? '';
-        return id ? `[^qa-${id}]` : '';
-    },
-});
-
-// File-path reference spans: <span class="file-ref-link" data-file-path="..."> → plain text path
-turndown.addRule('filePathRef', {
-    filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            (node as Element).classList.contains('file-ref-link') &&
-            node.hasAttribute('data-file-path')
-        );
-    },
-    replacement(_content, node) {
-        return (node as HTMLElement).getAttribute('data-file-path') ?? '';
-    },
-});
-
-// Math formula nodes: rebuild the exact original delimited source from the
-// node's stored delimiter + TeX. Because the TeX is preserved verbatim in
-// `data-tex`, an unedited formula round-trips byte-for-byte, and no rendered
-// KaTeX/MathML is ever serialized into the Markdown source.
-function mathDelimiterFromNode(node: HTMLElement, fallback: MathDelimiter): MathDelimiter {
-    const raw = node.getAttribute('data-delim');
-    if (raw === 'dollar' || raw === 'double-dollar' || raw === 'paren' || raw === 'bracket') {
-        return raw;
-    }
-    return fallback;
-}
-
-turndown.addRule('mathInline', {
-    filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            (node as Element).getAttribute('data-math') === 'inline'
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const tex = el.getAttribute('data-tex') ?? '';
-        return wrapMathDelimiters(mathDelimiterFromNode(el, 'dollar'), tex);
-    },
-});
-
-turndown.addRule('mathDisplay', {
-    filter(node) {
-        return (
-            node.nodeName === 'DIV' &&
-            (node as Element).getAttribute('data-math') === 'display'
-        );
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const tex = el.getAttribute('data-tex') ?? '';
-        const delim = mathDelimiterFromNode(el, 'double-dollar');
-        const indent = parseIndentAttr(el);
-        if (indent > 0) {
-            // Delimited `$$…$$` source has no indent metadata, so emit a raw HTML
-            // placeholder div carrying `data-indent` (plus the exact TeX/delimiter);
-            // marked passes it through and MathDisplay re-parses all three.
-            return `\n\n<div data-math="display" data-tex="${escapeAttr(tex)}" data-delim="${delim}" data-indent="${indent}">${escapeHtmlText(tex)}</div>\n\n`;
-        }
-        return `\n\n${wrapMathDelimiters(delim, tex)}\n\n`;
-    },
-});
-
-// Aligned or indented paragraphs/headings: no standard markdown syntax exists, so
-// these are serialized as raw HTML blocks that `marked` will pass through unchanged.
-// Handles paragraphs and headings (H1–H3) that carry a non-default text-align style
-// or a data-indent attribute.
-function hasAlignOrIndent(el: HTMLElement): boolean {
-    const style = el.getAttribute('style') ?? '';
-    const indent = el.getAttribute('data-indent');
-    const hasNonDefaultAlign =
-        /text-align/i.test(style) && !/text-align:\s*left\b/i.test(style);
-    const hasIndent = indent != null && indent !== '0' && indent !== '';
-    return hasNonDefaultAlign || hasIndent;
-}
-
-turndown.addRule('alignedOrIndentedBlock', {
-    filter(node) {
-        const tag = node.nodeName;
-        if (!['P', 'H1', 'H2', 'H3'].includes(tag)) return false;
-        return hasAlignOrIndent(node as HTMLElement);
-    },
-    replacement(_content, node) {
-        const el = node as HTMLElement;
-        const tag = el.tagName.toLowerCase();
-        const attrs: string[] = [];
-        const style = el.getAttribute('style');
-        if (style) attrs.push(`style="${style}"`);
-        const indent = el.getAttribute('data-indent');
-        if (indent && indent !== '0') attrs.push(`data-indent="${indent}"`);
-        const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-        // Use innerHTML so inline formatting (bold, italic, etc.) is preserved
-        const inner = el.innerHTML;
-        return `\n\n<${tag}${attrStr}>${inner}</${tag}>\n\n`;
-    },
-});
-
-// Empty paragraphs (from pressing Enter multiple times) → `&nbsp;` placeholder line.
-// Required because turndown drops `<p></p>` and CommonMark collapses blank lines, so
-// without a placeholder consecutive empty paragraphs vanish in the markdown round-trip.
-// Matches `<p></p>` (after preprocessEmptyParagraphs upgrades it to `<p><br></p>`),
-// `<p><br></p>`, and `<p>&nbsp;</p>` so re-saving an unchanged note is idempotent.
-turndown.addRule('emptyParagraph', {
-    filter(node) {
-        if (node.nodeName !== 'P') return false;
-        const text = (node.textContent ?? '').replace(/ /g, '').trim();
-        if (text !== '') return false;
-        for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType === 1 && (child as Element).nodeName !== 'BR') return false;
-        }
-        return true;
-    },
-    replacement() {
-        // Emit raw-HTML passthrough rather than `&nbsp;` text — marked's inline
-        // tokenizer (with our file-path/note-link/highlight extensions registered)
-        // escapes the `&` in `&nbsp;` to `&amp;` on reload, breaking the round-trip.
-        // `<p>&nbsp;</p>` as a raw HTML block sidesteps inline tokenization entirely.
-        return '\n\n<p>&nbsp;</p>\n\n';
-    },
-});
-
-// ── Pre-processing helpers ──────────────────────────────────────────────────
-
-/**
- * Unwrap single-<p> list items so turndown produces tight lists.
- *
- * Tiptap always wraps list item content in <p> tags, even for tight lists.
- * Turndown interprets <li><p>...</p></li> as a loose list, adding blank lines.
- * This strips the <p> wrapper when it's the sole child of <li>.
- */
-function unwrapSingleParagraphListItems(html: string): string {
-    return html.replace(
-        /<li>\s*<p>((?:(?!<\/p>)[\s\S])*)<\/p>\s*<\/li>/gi,
-        (_match, inner: string) => `<li>${inner}</li>`,
-    );
-}
-
-function getHtmlAttr(attrs: string, name: string): string {
-    const re = new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i');
-    const match = re.exec(attrs);
-    return match ? decodeBasicHtmlEntities(match[2]) : '';
-}
 
 function serializeMapEmbedPlaceholders(html: string): string {
     return html.replace(
@@ -989,87 +120,221 @@ function serializePdfEmbedPlaceholders(html: string): string {
     );
 }
 
-// Normalize visually-empty paragraphs to `<p><br></p>` so turndown's blank-node
-// check doesn't drop them before the emptyParagraph rule runs. JS `\s` includes
-// the NBSP character, so a `<p>&nbsp;</p>` (round-tripped placeholder) is also
-// treated as blank by turndown — handle both shapes here.
-function preprocessEmptyParagraphs(html: string): string {
-    return html.replace(/<p>\s*<\/p>|<p>(?:&nbsp;|&#160;|&#xA0;)\s*<\/p>/gi, '<p><br></p>');
-}
+function addEmbedRules(turndown: TurndownService): void {
+    // Google Maps embeds serialize back to ordinary markdown links. A nonzero indent
+    // has no link syntax, so an indented map is emitted as a raw HTML placeholder div
+    // carrying `data-indent` that marked passes through and MapBlock re-parses.
+    turndown.addRule('mapEmbed', {
+        filter(node) {
+            return (
+                node.nodeName === 'DIV' &&
+                (node as Element).classList.contains('md-map-embed') &&
+                node.hasAttribute('data-map-url')
+            );
+        },
+        replacement(_content, node) {
+            const el = node as HTMLElement;
+            const url = el.getAttribute('data-map-url') ?? '';
+            if (!url) return '';
+            const label = el.getAttribute('data-map-label')?.trim() || url;
+            const indent = parseIndentAttr(el);
+            if (indent > 0) {
+                return `\n\n<div class="md-map-embed" data-map-url="${escapeAttr(url)}" data-map-label="${escapeAttr(label)}" data-indent="${indent}"></div>\n\n`;
+            }
+            return `[${escapeMarkdownLinkLabel(label)}](${url})`;
+        },
+    });
 
-// Convert `<p>&nbsp;</p>` (and literal NBSP form) back to `<p></p>` after marked,
-// so Tiptap loads a clean empty paragraph instead of one with a stray NBSP character
-// that the user would have to delete before typing.
-function stripNbspParagraphPlaceholders(html: string): string {
-    return html.replace(/<p>(?:&nbsp;| )\s*<\/p>/gi, '<p></p>');
-}
-
-// marked always appends a single `\n` to fenced-code content (`<pre><code>x\n</code></pre>`).
-// Tiptap's CodeBlock parses `<pre>` with `preserveWhitespace: 'full'`, so that trailing
-// newline renders as a phantom empty last line inside every code block. Strip exactly one
-// trailing newline before the closing tags; interior line breaks are left untouched.
-// Round-trips cleanly — turndown re-fences without the newline and marked re-adds (then
-// this re-strips) the single artifact one, so re-saves stay idempotent.
-function stripCodeBlockTrailingNewline(html: string): string {
-    return html.replace(
-        /(<pre(?:\s[^>]*)?><code(?:\s[^>]*)?>[\s\S]*?)\n(<\/code><\/pre>)/g,
-        '$1$2',
-    );
-}
-
-// Tiptap's `Table.renderHTML` writes colgroup widths as an inline *style*
-// (`<col style="width: 180px">`), but its `parseColwidth` colgroup fallback reads
-// only the `width` *attribute* off `<col>` — so a style-only colgroup silently
-// loses every width on reload. Rewrite style → attribute on load so colgroup-only
-// HTML (pasted, hand-written, or from an older save) still parses into `colwidth`.
-// A `<col>` whose style carries no px width (Tiptap's `min-width` placeholder for
-// an unsized column) just loses the dead style.
-function normalizeColgroupWidths(html: string): string {
-    return html.replace(/<col\b([^>]*?)\/?>/gi, (match, attrs: string) => {
-        const style = getHtmlAttr(attrs, 'style');
-        if (!style) return match;
-        const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
-        // An explicit width attribute already wins over the style; keep it as-is.
-        if (getHtmlAttr(rest, 'width')) return `<col${rest}>`;
-        const styleWidth = /(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)\s*px/i.exec(style)?.[1];
-        if (!styleWidth) return `<col${rest}>`;
-        return `<col${rest} width="${Math.round(parseFloat(styleWidth))}">`;
+    // PDF embeds serialize back to markdown image syntax (`![label](url)`).
+    // Empty level-0 placeholder divs are pre-converted to <img> by
+    // serializePdfEmbedPlaceholders (turndown skips blank block nodes); an indented
+    // embed is instead kept as a non-blank div by that helper so this rule fires and
+    // re-emits it as a raw HTML placeholder carrying `data-indent`.
+    turndown.addRule('pdfEmbed', {
+        filter(node) {
+            return (
+                node.nodeName === 'DIV' &&
+                (node as Element).classList.contains('md-pdf-embed') &&
+                node.hasAttribute('data-pdf-url')
+            );
+        },
+        replacement(_content, node) {
+            const el = node as HTMLElement;
+            const url = el.getAttribute('data-pdf-url') ?? '';
+            if (!url) return '';
+            const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
+            const indent = parseIndentAttr(el);
+            const height = parsePdfHeightAttr(el);
+            const collapsed = el.getAttribute('data-pdf-collapsed') === 'true';
+            // `![]()` cannot carry an indent, a height or a collapsed flag — any of
+            // them forces the raw `<div>` form so the attribute survives the next save.
+            if (indent > 0 || height != null || collapsed) {
+                const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
+                const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
+                const collapsedAttr = collapsed ? ' data-pdf-collapsed="true"' : '';
+                return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}${collapsedAttr}></div>\n\n`;
+            }
+            return `![${escapeMarkdownLinkLabel(label)}](${url})`;
+        },
     });
 }
 
-// `marked` passes inline HTML through verbatim, so a `<span>`/`<mark>` in the
-// source arrives at Tiptap with whatever `style` was written. Only the
-// declarations each tag persists are honored — `color`, `font-family` and
-// `font-size` on `<span>`, `background-color` on `<mark>` — and only in a form
-// `normalizeCssColor` / `normalizeFontStack` / `normalizeFontSize` recognizes.
-// A `font-size` in any unit other than `px`, or outside the persisted range, is
-// dropped like any other unrecognized value. Everything else is
-// dropped, so a hand-written or pasted `style` cannot turn the note format into
-// a general HTML-styling escape hatch. A tag left with no honored declaration
-// loses its `style` attribute entirely; for a `<span>` that also means turndown
-// unwraps it on the next save.
-//
-// The declaration order here matches the `textStyleSpan` turndown rule, so a
-// note that is loaded and re-saved without an edit serializes unchanged.
-function sanitizeInlineStyles(html: string): string {
-    return html.replace(/<(span|mark)\b([^>]*?)(\/?)>/gi, (match, tag: string, attrs: string, selfClose: string) => {
-        if (!/\bstyle\s*=/i.test(attrs)) return match;
-        const raw = getHtmlAttr(attrs, 'style');
-        const isSpan = tag.toLowerCase() === 'span';
-        const declarations: string[] = [];
-        const color = normalizeCssColor(readStyleProp(raw, isSpan ? 'color' : 'background-color'));
-        if (color) declarations.push(`${isSpan ? 'color' : 'background-color'}:${color}`);
-        if (isSpan) {
-            const fontFamily = readInlineFontFamily(raw);
-            if (fontFamily) declarations.push(`font-family:${fontFamily}`);
-            const fontSize = readInlineFontSize(raw);
-            if (fontSize) declarations.push(`font-size:${fontSize}`);
-        }
-        const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
-        const style = declarations.length > 0 ? ` style="${declarations.join('; ')}"` : '';
-        return `<${tag}${rest}${style}${selfClose}>`;
-    });
-}
+const embedMarkdown: MarkdownCodecExtension = {
+    name: 'embeds',
+    marked: [mapLinkRenderer, pdfImageRenderer],
+    turndownRules: addEmbedRules,
+    serialize: (html, next) => next(serializePdfEmbedPlaceholders(serializeMapEmbedPlaceholders(html))),
+};
+
+// ── Note links ──────────────────────────────────────────────────────────────
+
+// Add [[note:...]] wiki-link syntax support to marked
+const noteLinkExtension: MarkedExtension = {
+    extensions: [
+        {
+            name: 'noteLink',
+            level: 'inline' as const,
+            start(src: string) {
+                return src.indexOf('[[note:');
+            },
+            tokenizer(src: string) {
+                // [[label|note:path#heading]] or [[note:path#heading]]
+                const match = /^\[\[(?:([^\]|]+)\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/.exec(src);
+                if (match) {
+                    return {
+                        type: 'noteLink',
+                        raw: match[0],
+                        label: match[1] || '',
+                        path: match[2],
+                        heading: match[3] || '',
+                    };
+                }
+                return undefined;
+            },
+            renderer(token) {
+                const basename = token.path.split('/').pop()?.replace(/\.md$/i, '') ?? token.path;
+                const displayLabel = token.label || (token.heading ? `${basename} § ${token.heading}` : basename);
+                const headingAttr = token.heading ? ` data-note-heading="${token.heading}"` : '';
+                return `<span class="note-link" data-note-path="${token.path}"${headingAttr}>${displayLabel}</span>`;
+            },
+        },
+    ],
+};
+
+const noteLinkMarkdown: MarkdownCodecExtension = {
+    name: 'noteLink',
+    marked: noteLinkExtension,
+    turndownRules(turndown) {
+        // Note-link spans: <span class="note-link" data-note-path="..." data-note-heading="..."> → [[note:...]]
+        turndown.addRule('noteLink', {
+            filter(node) {
+                return (
+                    node.nodeName === 'SPAN' &&
+                    (node as Element).classList.contains('note-link') &&
+                    node.hasAttribute('data-note-path')
+                );
+            },
+            replacement(_content, node) {
+                const el = node as HTMLElement;
+                const path = el.getAttribute('data-note-path') ?? '';
+                const heading = el.getAttribute('data-note-heading') ?? '';
+                return heading ? `[[note:${path}#${heading}]]` : `[[note:${path}]]`;
+            },
+        });
+    },
+};
+
+// ── File-path references ────────────────────────────────────────────────────
+
+// Add file-path reference syntax support to marked
+// Detects paths like `tasks/coc/foo.plan.md` and wraps them in <span class="file-ref-link">
+const filePathExtension: MarkedExtension = {
+    extensions: [
+        {
+            name: 'filePathRef',
+            level: 'inline' as const,
+            start(src: string) {
+                // Look for the start of a path segment (word char or dot)
+                const m = /[a-zA-Z0-9_.]/.exec(src);
+                return m ? m.index : -1;
+            },
+            tokenizer(src: string) {
+                // Never inside a link label: marked lexes the label char by
+                // char, so a URL label like https://www.x.com/a/b.html would
+                // match at `www.` and split into a file-ref chip.
+                if ((this as { lexer?: { state?: { inLink?: boolean } } }).lexer?.state?.inLink) {
+                    return undefined;
+                }
+                // Requires at least one `/` and a known extension
+                const match = /^([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|txt|py|go|sh|rs|css|html))(?=[^/a-zA-Z0-9_.-]|$)/.exec(src);
+                if (!match) return undefined;
+                return {
+                    type: 'filePathRef',
+                    raw: match[0],
+                    filePath: match[1],
+                };
+            },
+            renderer(token) {
+                return `<span class="file-ref-link" data-file-path="${token.filePath}">${token.filePath}</span>`;
+            },
+        },
+    ],
+};
+
+const filePathMarkdown: MarkdownCodecExtension = {
+    name: 'filePathRef',
+    marked: filePathExtension,
+    turndownRules(turndown) {
+        // File-path reference spans: <span class="file-ref-link" data-file-path="..."> → plain text path
+        turndown.addRule('filePathRef', {
+            filter(node) {
+                return (
+                    node.nodeName === 'SPAN' &&
+                    (node as Element).classList.contains('file-ref-link') &&
+                    node.hasAttribute('data-file-path')
+                );
+            },
+            replacement(_content, node) {
+                return (node as HTMLElement).getAttribute('data-file-path') ?? '';
+            },
+        });
+    },
+};
+
+// ── Quick Ask side notes ────────────────────────────────────────────────────
+
+// Reference markers (`[^qa-<id>]`) parse to a bare marker span. The answers sit
+// in a definition block at the file bottom: it is split out before parsing and
+// folded into the markers after, then rebuilt from the marker spans on save.
+const qaSidenoteMarkdown: MarkdownCodecExtension = {
+    name: 'qaSidenote',
+    marked: qaFootnoteMarkedExtension,
+    turndownRules(turndown) {
+        // Quick Ask side-note reference marker: <span class="qa-sidenote-ref" data-qa-id="..."> → [^qa-...].
+        // The answer/question live in the definition block appended by appendQaFootnoteDefs (htmlToMarkdown),
+        // so this rule only re-emits the inline marker; the leaf content (✨) is discarded.
+        turndown.addRule('qaSidenoteRef', {
+            filter(node) {
+                return (
+                    node.nodeName === 'SPAN' &&
+                    (node as Element).classList.contains(QA_SIDENOTE_REF_CLASS) &&
+                    node.hasAttribute('data-qa-id')
+                );
+            },
+            replacement(_content, node) {
+                const id = (node as HTMLElement).getAttribute('data-qa-id') ?? '';
+                return id ? `[^qa-${id}]` : '';
+            },
+        });
+    },
+    parse(md, next) {
+        const { body, defs } = extractQaFootnoteDefs(md);
+        return injectQaAnswers(next(body), defs);
+    },
+    serialize: (html, next) => appendQaFootnoteDefs(next(html), html),
+};
+
+// ── Code fence languages ────────────────────────────────────────────────────
 
 // marked emits a fenced code block's info-string verbatim as the `<code>`
 // class (```` ```ts ```` → `<code class="language-ts">`). CodeBlockLowlight only
@@ -1093,26 +358,27 @@ function resolveFencedCodeLanguages(html: string): string {
     );
 }
 
+const codeLanguageMarkdown: MarkdownCodecExtension = {
+    name: 'codeLanguage',
+    parse: (md, next) => resolveFencedCodeLanguages(next(md)),
+};
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
-/**
- * Convert a markdown string to HTML suitable for Tiptap's `setContent()`.
- *
- * Task lists (`- [x]` / `- [ ]`) are post-processed into Tiptap-compatible
- * `<ul data-type="taskList">` / `<li data-type="taskItem" data-checked>` markup.
- */
+const codec = createMarkdownCodec({
+    extensions: [
+        qaSidenoteMarkdown,
+        embedMarkdown,
+        noteLinkMarkdown,
+        filePathMarkdown,
+        mathMarkdownExtension,
+        codeLanguageMarkdown,
+    ],
+});
+
+/** Convert a Note's Markdown to HTML for Tiptap's `setContent()`. */
 export function markdownToHtml(md: string): string {
-    if (!md) return '';
-    // Split the Quick Ask footnote definition block out of the body and fold
-    // each answer back into its inline marker after parsing (the marked
-    // tokenizer, a singleton, cannot see per-call definitions).
-    const { body, defs } = extractQaFootnoteDefs(md);
-    const html = injectQaAnswers(marked.parse(body) as string, defs);
-    return sanitizeInlineStyles(resolveFencedCodeLanguages(
-        normalizeColgroupWidths(
-            stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
-        ),
-    ));
+    return codec.markdownToHtml(md);
 }
 
 /**
@@ -1122,21 +388,7 @@ export function markdownToHtml(md: string): string {
  * Non-empty output always ends with a single trailing newline.
  */
 export function htmlToMarkdown(html: string): string {
-    if (!html) return '';
-    // Tiptap returns `<p></p>` for an empty document
-    if (/^<p>\s*<\/p>$/i.test(html.trim())) return '';
-    let md = turndown.turndown(
-        preprocessEmptyParagraphs(
-            unwrapSingleParagraphListItems(
-                serializePdfEmbedPlaceholders(serializeMapEmbedPlaceholders(html)),
-            ),
-        ),
-    );
-    // Ensure single trailing newline
-    md = md.replace(/\n*$/, '\n');
-    // Rebuild the Quick Ask footnote definition block from the marker spans in
-    // the source HTML so each answer is persisted at the file bottom.
-    return appendQaFootnoteDefs(md, html);
+    return codec.htmlToMarkdown(html);
 }
 
 /**
@@ -1311,48 +563,6 @@ export function rewriteImageSrcToRelative(markdown: string): string {
             return `data-pdf-url="${decodeURIComponent(encodedPath)}"`;
         },
     );
-
-    return result;
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Post-process HTML from `marked` to convert standard GFM task-list markup
- * into Tiptap-compatible data attributes.
- *
- * marked renders:
- *   `<ul>\n<li><input type="checkbox" checked="" disabled=""> done</li>\n</ul>`
- *
- * We convert to:
- *   `<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label>...</label></li></ul>`
- */
-function postProcessTaskLists(html: string): string {
-    // Detect <li> containing <input type="checkbox"> — these are task items
-    const taskItemRe =
-        /<li>\s*<input\s+[^>]*type="checkbox"[^>]*>([\s\S]*?)<\/li>/gi;
-
-    let result = html;
-    let hasTaskItems = false;
-
-    result = result.replace(taskItemRe, (_match, content: string) => {
-        hasTaskItems = true;
-        // Determine checked state from the original input
-        const isChecked = /checked/i.test(_match);
-        return `<li data-type="taskItem" data-checked="${isChecked}">${content.trim()}</li>`;
-    });
-
-    if (hasTaskItems) {
-        // Wrap parent <ul> of task items with data-type="taskList".
-        // Use a lookahead so we only tag <ul> whose immediate first child is a
-        // taskItem — this avoids cross-boundary matches that would incorrectly
-        // tag a preceding regular bullet list when both lists appear in the
-        // same HTML fragment.
-        result = result.replace(
-            /<ul>\s*(?=<li data-type="taskItem")/gi,
-            '<ul data-type="taskList">',
-        );
-    }
 
     return result;
 }

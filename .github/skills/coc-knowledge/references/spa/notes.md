@@ -284,7 +284,7 @@ not add a second one per widget.
   exports `HEADING_LEVELS`.
 - `tiptap-kit/text-style` (`colorPalette.ts`) — single source of truth for the
   inline color palettes and `normalizeCssColor` / `readStyleProp` / `readInlineColor`.
-  It imports neither React nor Tiptap, so `noteMarkdown.ts` can read
+  It imports neither React nor Tiptap, so the kit Markdown codec can read
   `DEFAULT_HIGHLIGHT_COLOR` from the plain serialization path.
 - `ToolbarDropdown.tsx` — the single dropdown primitive (`ToolbarDropdown`, `MenuItem`,
   `Sep`). Owns open/close state, outside-click and Escape dismissal with focus return
@@ -311,12 +311,12 @@ not add a second one per widget.
 
 ## Inline colors
 
-Markdown has no color syntax, so `noteMarkdown.ts` persists inline color as inline HTML
-— the one form that survives `marked` → Tiptap → `turndown` and still renders in an
-external Markdown viewer:
+Markdown has no color syntax, so the Markdown codec (`tiptap-kit/markdown`) persists
+inline color as inline HTML — the one form that survives `marked` → Tiptap →
+`turndown` and still renders in an external Markdown viewer:
 
-- Text color → `<span style="color:#rrggbb">text</span>` (`textColorSpan` turndown
-  rule).
+- Text color → `<span style="color:#rrggbb">text</span>` (`textStyleSpan` turndown
+  rule, which also carries font family and size).
 - Highlight → bare `==text==` for `DEFAULT_HIGHLIGHT_COLOR`, and
   `<mark style="background-color:#rrggbb">text</mark>` otherwise. The default staying
   bare keeps notes written before color persistence byte-identical, so no migration is
@@ -385,11 +385,23 @@ projects can reuse it without the dashboard:
   `/comment-anchoring`, `/comment-mark` (`CommentExtension`, `BlockCommentExtension`),
   `/toc`, `/history`, `/scroll`, `/link`, `/html` (`escapeHtmlText`,
   `escapeHtmlAttribute`), `/mermaid` (CDN loader: `ensureMermaid`,
-  `applyMermaidTheme`) and `/math` (TeX tokenizer, KaTeX `renderMath`, the
-  read-only `mathMarkedExtension` and the editor's `mathNodeMarkedExtension`). The
-  root entry re-exports every area except `/math`, which loads the optional `katex`
-  peer and stays subpath-only. Chat, PR and diff Markdown renderers import math
-  and HTML escaping from the kit too.
+  `applyMermaidTheme`), `/math` (TeX tokenizer, KaTeX `renderMath`, the
+  read-only `mathMarkedExtension`, the editor's `mathNodeMarkedExtension` and the
+  codec's `mathMarkdownExtension`) and `/markdown` (`createMarkdownCodec`). The
+  root entry re-exports every area except `/math` and `/markdown`, which load the
+  optional `katex`, `marked` and `turndown` peers and stay subpath-only. Chat, PR
+  and diff Markdown renderers import math and HTML escaping from the kit too.
+- `createMarkdownCodec({ extensions })` returns `markdownToHtml` / `htmlToMarkdown`
+  over its own `Marked` and turndown instances (the global `marked` is never
+  configured). Built in: GFM task lists, tables (raw HTML when widths, fills,
+  no-wrap or a non-GFM header shape need it), highlight, sup/sub, text style, sized
+  or indented images, indented lists, aligned/indented blocks, empty paragraphs,
+  comment spans and Mermaid fences. An extension adds `marked` extensions,
+  `turndownRules` (checked before the built-in rules, after the aligned-block and
+  empty-paragraph rules) and `parse` / `serialize` wrappers; the first extension's
+  wrapper is outermost. `noteMarkdown.ts` builds the Notes codec from Quick Ask side
+  notes (definition block split out before parsing, rebuilt on save), map/PDF
+  embeds, note links, file-path refs, math and code-fence language aliases.
 - `packages/tiptap-react` — React UI: `/editor` (`RichEditor` shell and
   `createRichEditorExtensions`: StarterKit with H1–H6, task lists, links, tables
   with kit cell attributes, highlight, sup/sub, text style, alignment, indent, and
