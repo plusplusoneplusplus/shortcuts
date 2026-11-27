@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Media embed extensions for Tiptap (YouTube, Google Maps, PDF, paper links) and their Markdown codec rules, built on @plusplusoneplusplus/tiptap-kit",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "files": [
     "dist"
   ],
@@ -46,10 +48,11 @@
     "./markdown": {
       "types": "./dist/markdown/index.d.ts",
       "import": "./dist/markdown/index.js"
-    }
+    },
+    "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/styles.css', 'dist/styles.css')\"",
     "test": "vitest",
     "test:run": "vitest run"
   },

@@ -45,6 +45,7 @@ import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvas
 // markdown review dialog's rich view, for one — still gets the styles even if
 // the bundler ever code-splits the two apart.
 import '@plusplusoneplusplus/tiptap-react/styles.css';
+import '@plusplusoneplusplus/tiptap-embeds/styles.css';
 import './noteEditor.css';
 
 // ── Props ───────────────────────────────────────────────────────────────────

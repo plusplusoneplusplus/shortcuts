@@ -1,5 +1,5 @@
 /**
- * Package contract: every `exports` subpath is a folder under src/ with an
+ * Package contract: every JavaScript `exports` subpath is a folder under src/ with an
  * index, and the root re-exports every name of every area except the
  * subpath-only `markdown` area (it loads the optional marked/turndown peers).
  */
@@ -11,12 +11,12 @@ import * as root from '../src/index.js';
 
 const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-    exports: Record<string, { types: string; import: string }>;
+    exports: Record<string, string | { types: string; import: string }>;
     peerDependencies: Record<string, string>;
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     dependencies?: Record<string, string>;
 };
-const areas = Object.keys(manifest.exports).filter((key) => key !== '.').map((key) => key.slice(2));
+const areas = Object.keys(manifest.exports).filter((key) => key !== '.' && key !== './styles.css').map((key) => key.slice(2));
 const SUBPATH_ONLY = ['markdown'];
 
 describe('tiptap-embeds exports', () => {

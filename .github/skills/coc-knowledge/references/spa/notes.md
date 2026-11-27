@@ -417,8 +417,8 @@ projects can reuse it without the dashboard:
   table, indentation, comment, Mermaid and find/replace styles under
   `.rich-editor .ProseMirror`, with `--rich-editor-table-bg-*` palette variables
   on `.rich-editor`, `--rich-editor-table-nowrap-max` for the no-wrap limit,
-  and `.dark` theme overrides. CoC imports it before `noteEditor.css` and
-  passes `className="rich-editor note-editor"` to keep both scopes.
+  and `.dark` theme overrides. CoC imports both package stylesheets before
+  `noteEditor.css` and passes `className="rich-editor note-editor"` to keep both scopes.
 - `packages/tiptap-embeds` — media embeds: `/urls` (pure `isEmbeddableMapUrl`,
   `isPdfUrl`, `parseYouTubeVideoId`, `youTubeEmbedUrl`; chat's `mapEmbedMount`
   uses them too), `/youtube` (`YouTubeEmbedDecorationExtension` and the
@@ -435,7 +435,10 @@ projects can reuse it without the dashboard:
   `pdfBlock.tsx` (Notes-route `pdfBlockUrl` rules, pdf.js viewer, Quick Ask /
   region-ask / annotation overlays, "Chat about this paper"),
   `PaperLinkEmbedDecorationExtension.ts` (arXiv-aware `paperLink` classifier) and
-  `YouTubePopupDialog` (CoC `Dialog`).
+  `YouTubePopupDialog` (CoC `Dialog`). `/styles.css` ships map and PDF block
+  shell styles under `.rich-editor .ProseMirror` with `.dark` overrides.
+  Images, code-block language controls, note/file links, AI diffs, pdf.js,
+  Quick Ask and paper annotations stay in CoC CSS.
 
 All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror
 instance; the lockfile keeps every `@tiptap/*` at the root on one exact version.
