@@ -110,7 +110,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extension
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
+    '@plusplusoneplusplus/tiptap-kit/comment-mark',
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 

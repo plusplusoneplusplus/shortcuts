@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { TocEntry } from './noteTocUtils';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
 
 export interface NoteTocPanelProps {
     entries: TocEntry[];

@@ -146,6 +146,12 @@ describe('prebuild script', () => {
                 cwd: '/repo/root',
                 shell: undefined,
             },
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/tiptap-kit'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
         ]);
     });
 
@@ -200,6 +206,12 @@ describe('prebuild script', () => {
             {
                 command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-connector'],
+                cwd: '/repo/root',
+                shell: true,
+            },
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/tiptap-kit'],
                 cwd: '/repo/root',
                 shell: true,
             },

@@ -13,7 +13,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { createIndentAttribute } from './indentShared';
+import { createIndentAttribute } from '@plusplusoneplusplus/tiptap-kit/indent';
 
 const MIN_WIDTH = 50;
 

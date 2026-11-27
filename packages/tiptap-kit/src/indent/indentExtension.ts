@@ -1,0 +1,131 @@
+/**
+ * IndentExtension — adds indent/outdent commands for the indentable block nodes.
+ *
+ * Stores the indentation level as a `data-indent` attribute on the node.
+ * Visual padding is applied via CSS in noteEditor.css.
+ *
+ * Two families of nodes share the SAME indentation contract:
+ *   - Text blocks (`paragraph`, `heading`) carry `indent` as a Tiptap *global*
+ *     attribute added here.
+ *   - Block-level visual embeds (`image`, `pdfBlock`, `mapBlock`,
+ *     `mermaidBlock`, `mathDisplay`) declare their own `indent` attribute via
+ *     the shared `createIndentAttribute()` helper so parsing, clamping, and
+ *     rendering can never drift from the text blocks.
+ *
+ * The commands operate on every name in `INDENT_TYPES`.
+ *
+ * Tab / Shift-Tab trigger increase/decrease indent only when the cursor is
+ * not inside a list item (where Tiptap's default Tab behaviour applies).
+ */
+
+import { Extension } from '@tiptap/core';
+import {
+    INDENT_TYPES,
+    LIST_CONTAINER_TYPES,
+    MAX_INDENT,
+    TEXT_INDENT_TYPES,
+    createIndentAttribute,
+    isListOwned,
+} from './shared.js';
+
+
+declare module '@tiptap/core' {
+    interface Commands<ReturnType> {
+        indent: {
+            increaseIndent: () => ReturnType;
+            decreaseIndent: () => ReturnType;
+        };
+    }
+}
+
+export const IndentExtension = Extension.create({
+    name: 'indent',
+
+    addGlobalAttributes() {
+        return [
+            {
+                types: TEXT_INDENT_TYPES,
+                attributes: {
+                    indent: createIndentAttribute(),
+                },
+            },
+            {
+                // List container nodes: indent the whole list (marker + text move together).
+                // Tab/Shift-Tab inside lists remains structural nesting; only toolbar reaches here.
+                types: LIST_CONTAINER_TYPES,
+                attributes: {
+                    indent: createIndentAttribute(),
+                },
+            },
+        ];
+    },
+
+    addCommands() {
+        return {
+            increaseIndent:
+                () =>
+                ({ tr, state, dispatch }) => {
+                    const { from, to } = state.selection;
+                    let changed = false;
+                    state.doc.nodesBetween(from, to, (node, pos, parent) => {
+                        // List containers: indent the whole list, stop recursing into items.
+                        if (LIST_CONTAINER_TYPES.includes(node.type.name)) {
+                            const current = (node.attrs.indent as number) ?? 0;
+                            if (current < MAX_INDENT) {
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current + 1 });
+                                changed = true;
+                            }
+                            return false; // do not recurse into list items
+                        }
+                        if (!INDENT_TYPES.includes(node.type.name)) return;
+                        if (isListOwned(parent)) return; // list/task item owns its child's indentation
+                        const current = (node.attrs.indent as number) ?? 0;
+                        if (current >= MAX_INDENT) return;
+                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current + 1 });
+                        changed = true;
+                    });
+                    if (changed && dispatch) dispatch(tr);
+                    return changed;
+                },
+
+            decreaseIndent:
+                () =>
+                ({ tr, state, dispatch }) => {
+                    const { from, to } = state.selection;
+                    let changed = false;
+                    state.doc.nodesBetween(from, to, (node, pos, parent) => {
+                        // List containers: decrease the whole list's indent, stop recursing.
+                        if (LIST_CONTAINER_TYPES.includes(node.type.name)) {
+                            const current = (node.attrs.indent as number) ?? 0;
+                            if (current > 0) {
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current - 1 });
+                                changed = true;
+                            }
+                            return false; // do not recurse into list items
+                        }
+                        if (!INDENT_TYPES.includes(node.type.name)) return;
+                        if (isListOwned(parent)) return; // list/task item owns its child's indentation
+                        const current = (node.attrs.indent as number) ?? 0;
+                        if (current <= 0) return;
+                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current - 1 });
+                        changed = true;
+                    });
+                    if (changed && dispatch) dispatch(tr);
+                    return changed;
+                },
+        };
+    },
+
+    addKeyboardShortcuts() {
+        return {
+            Tab: ({ editor }) => {
+                if (editor.isActive('listItem') || editor.isActive('taskItem')) return false;
+                return editor.commands.increaseIndent();
+            },
+            'Shift-Tab': ({ editor }) => {
+                if (editor.isActive('listItem') || editor.isActive('taskItem')) return false;
+                return editor.commands.decreaseIndent();
+            },
+        };
+    },
+});

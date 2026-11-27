@@ -17,8 +17,8 @@ import * as pmTables from '@tiptap/pm/tables';
 import {
     TableCellWithWrap,
     TableHeaderWithWrap,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap';
-import { TableReorder } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableReorder';
+} from '@plusplusoneplusplus/tiptap-kit/table';
+import { TableReorder } from '@plusplusoneplusplus/tiptap-kit/table';
 import {
     htmlToMarkdown,
     markdownToHtml,

@@ -15,14 +15,11 @@ import {
     parseIndentAttr,
     renderIndentAttr,
     createIndentAttribute,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/indentExtension';
+} from '@plusplusoneplusplus/tiptap-kit/indent';
 
-const EXTENSIONS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react',
-    'features', 'notes', 'editor', 'extensions',
-);
-const EXTENSION_PATH = path.join(EXTENSIONS_DIR, 'indentExtension.ts');
-const SHARED_PATH = path.join(EXTENSIONS_DIR, 'indentShared.ts');
+const INDENT_DIR = path.join(__dirname, '..', '..', '..', '..', '..', 'tiptap-kit', 'src', 'indent');
+const EXTENSION_PATH = path.join(INDENT_DIR, 'indentExtension.ts');
+const SHARED_PATH = path.join(INDENT_DIR, 'shared.ts');
 const CSS_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react',
     'features', 'notes', 'editor', 'noteEditor.css',

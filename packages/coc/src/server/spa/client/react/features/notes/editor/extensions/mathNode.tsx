@@ -23,7 +23,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { renderMath, getMathError } from '../../../../../shared/math/renderMath';
 import type { MathDelimiter } from '../../../../../shared/math/mathTokenizer';
-import { createIndentAttribute } from './indentShared';
+import { createIndentAttribute } from '@plusplusoneplusplus/tiptap-kit/indent';
 
 const DELIMITERS: MathDelimiter[] = ['dollar', 'double-dollar', 'paren', 'bracket'];
 

@@ -1,27 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
-import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
+import { TABLE_CELL_COLORS } from '@plusplusoneplusplus/tiptap-kit/table';
 
 const tableWidthMocks = vi.hoisted(() => ({
     activeTableHasColumnWidths: vi.fn(() => false),
     clearActiveTableColumnWidths: vi.fn(() => true),
 }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/tableColumnWidths',
-    () => tableWidthMocks,
-);
 
 // Header-ness is read off a real ProseMirror doc, which the mock editor has no
 // way to supply, so the helper is stubbed here and exercised for real in
-// tableHeaderState.test.ts.
+// packages/tiptap-kit/test/table-header-state.test.ts.
 const tableHeaderMocks = vi.hoisted(() => ({
     tableHeaderState: vi.fn(() => ({ row: false, column: false })),
 }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/tableHeaderState',
-    () => tableHeaderMocks,
-);
 
 // Wrap state is likewise read off a real doc; the real helpers are covered in
 // tableColumnWrap.test.ts.
@@ -29,10 +21,14 @@ const tableWrapMocks = vi.hoisted(() => ({
     activeColumnWrap: vi.fn((): string | null => 'wrap'),
     toggleActiveColumnWrap: vi.fn(() => true),
 }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap',
-    () => tableWrapMocks,
-);
+// The three helper groups now share one module, so one partial mock carries
+// all the doubles and keeps the real exports (e.g. TABLE_CELL_COLORS).
+vi.mock('@plusplusoneplusplus/tiptap-kit/table', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-kit/table')>()),
+    ...tableWidthMocks,
+    ...tableHeaderMocks,
+    ...tableWrapMocks,
+}));
 
 beforeEach(() => {
     tableWidthMocks.activeTableHasColumnWidths.mockReset().mockReturnValue(false);

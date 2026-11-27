@@ -22,15 +22,15 @@ import { TableRow } from '@tiptap/extension-table-row';
 import {
     TableCellWithWrap,
     TableHeaderWithWrap,
-} from './extensions/tableColumnWrap';
-import { TableReorder } from './extensions/tableReorder';
+} from '@plusplusoneplusplus/tiptap-kit/table';
+import { TableReorder } from '@plusplusoneplusplus/tiptap-kit/table';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Superscript } from '@tiptap/extension-superscript';
 import { Subscript } from '@tiptap/extension-subscript';
 import { TextStyle, Color, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
-import { IndentExtension } from './extensions/indentExtension';
+import { IndentExtension } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
 import { MathInline, MathDisplay } from './extensions/mathNode';
@@ -38,7 +38,7 @@ import { MapBlock } from './extensions/mapBlock';
 import { PdfBlock } from './extensions/pdfBlock';
 import type { PdfFullWindowRequest } from './extensions/pdfBlock';
 import { PdfPopupDialog } from './extensions/PdfPopupDialog';
-import { CommentExtension } from './extensions/commentExtension';
+import { CommentExtension } from '@plusplusoneplusplus/tiptap-kit/comment-mark';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
@@ -52,7 +52,7 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
-import { jumpToHeadingAnchor } from './noteTocUtils';
+import { jumpToHeadingAnchor } from '@plusplusoneplusplus/tiptap-kit/toc';
 import { parseCanvasLink } from '../../../shared/canvasLink';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvasLink';

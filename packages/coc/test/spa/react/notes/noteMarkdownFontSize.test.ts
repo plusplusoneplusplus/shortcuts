@@ -18,11 +18,11 @@ import {
 } from '../../../../src/server/spa/client/react/shared/markdown-document/markdownRichConversion';
 import {
     FONT_SIZE_OPTIONS,
-} from '../../../../src/server/spa/client/react/features/notes/editor/fontSizes';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 import {
     FONT_FAMILY_OPTIONS,
     normalizeFontStack,
-} from '../../../../src/server/spa/client/react/features/notes/editor/fontFamilies';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 /** md → html → md, the exact path a save/reload cycle takes. */
 function roundTrip(md: string): string {

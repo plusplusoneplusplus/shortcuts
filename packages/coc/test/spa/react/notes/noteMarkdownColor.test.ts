@@ -8,7 +8,7 @@ import {
     HIGHLIGHT_COLORS,
     normalizeCssColor,
     readStyleProp,
-} from '../../../../src/server/spa/client/react/features/notes/editor/colorPalette';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 /** md → html → md, the exact path a save/reload cycle takes. */
 function roundTrip(md: string): string {

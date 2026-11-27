@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
-import type { TocEntry } from '../noteTocUtils';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
 import { NoteTocPanel } from '../NoteTocPanel';
 
 /**

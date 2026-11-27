@@ -15,7 +15,7 @@ import {
     findSizeOption,
     normalizeFontSize,
     readInlineFontSize,
-} from '../../../../src/server/spa/client/react/features/notes/editor/fontSizes';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 import { activeFontSize } from '../../../../src/server/spa/client/react/features/notes/editor/toolbar/FontSizeDropdown';
 
 describe('FONT_SIZE_OPTIONS', () => {

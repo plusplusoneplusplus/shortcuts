@@ -20,8 +20,8 @@
 
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { findAnchorInDoc } from '../commentAnchoring';
-import type { TextAnchor } from '../textAnchor';
+import { findAnchorInDoc } from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
+import type { TextAnchor } from '@plusplusoneplusplus/tiptap-kit/text-anchor';
 import { encodeQaTurns, type QaTurn } from './sidenoteFootnote';
 import { QA_SIDENOTE_NODE_NAME } from './sidenoteRefExtension';
 

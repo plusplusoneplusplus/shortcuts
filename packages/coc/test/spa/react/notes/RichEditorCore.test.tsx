@@ -187,7 +187,7 @@ vi.mock(
     }),
 );
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
+    '@plusplusoneplusplus/tiptap-kit/comment-mark',
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 

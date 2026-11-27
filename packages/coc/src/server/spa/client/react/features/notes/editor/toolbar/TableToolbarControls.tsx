@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, Sep } from './ToolbarDropdown';
-import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from '../tableColumnWidths';
-import { tableHeaderState } from '../tableHeaderState';
-import { TABLE_CELL_COLORS, activeCellBackgroundColor } from '../extensions/tableCellBackground';
-import { activeColumnWrap, toggleActiveColumnWrap } from '../extensions/tableColumnWrap';
+import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from '@plusplusoneplusplus/tiptap-kit/table';
+import { tableHeaderState } from '@plusplusoneplusplus/tiptap-kit/table';
+import { TABLE_CELL_COLORS, activeCellBackgroundColor } from '@plusplusoneplusplus/tiptap-kit/table';
+import { activeColumnWrap, toggleActiveColumnWrap } from '@plusplusoneplusplus/tiptap-kit/table';
 
 // ── Table insert button with hover size picker ──────────────────────────────
 

@@ -3,7 +3,7 @@ import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
-import { createIndentAttribute, renderIndentAttr } from './indentShared';
+import { createIndentAttribute, renderIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
 
 function MapBlockView({ node, updateAttributes }: NodeViewProps) {
     const [mode, setMode] = useState<'preview' | 'source'>('preview');

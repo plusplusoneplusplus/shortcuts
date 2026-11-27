@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NoteTocPanel } from '../../../../../../src/server/spa/client/react/features/notes/editor/NoteTocPanel';
-import type { TocEntry } from '../../../../../../src/server/spa/client/react/features/notes/editor/noteTocUtils';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
 
 // ── Test data ────────────────────────────────────────────────────────────────
 

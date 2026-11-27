@@ -22,7 +22,7 @@ import {
     activeColumnWrap,
     isTableWrapMode,
     toggleActiveColumnWrap,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap';
+} from '@plusplusoneplusplus/tiptap-kit/table';
 import {
     htmlToMarkdown,
     markdownToHtml,

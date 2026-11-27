@@ -40,6 +40,9 @@ COPY packages/coc-desktop/package.json     packages/coc-desktop/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
 COPY packages/coc-native/package.json      packages/coc-native/
+COPY packages/tiptap-kit/package.json      packages/tiptap-kit/
+COPY packages/tiptap-react/package.json    packages/tiptap-react/
+COPY packages/tiptap-embeds/package.json   packages/tiptap-embeds/
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 # The release workflow drops prebuilt N-API binaries into
@@ -74,6 +77,9 @@ COPY packages/coc-desktop/package.json     packages/coc-desktop/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
 COPY packages/coc-native/package.json      packages/coc-native/
+COPY packages/tiptap-kit/package.json      packages/tiptap-kit/
+COPY packages/tiptap-react/package.json    packages/tiptap-react/
+COPY packages/tiptap-embeds/package.json   packages/tiptap-embeds/
 # Production deps only; optional deps (agent CLI binaries, node-pty) are kept.
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 

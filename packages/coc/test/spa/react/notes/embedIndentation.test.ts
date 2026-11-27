@@ -17,7 +17,7 @@ import {
     INDENT_TYPES,
     EMBED_INDENT_TYPES,
     TEXT_INDENT_TYPES,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/indentExtension';
+} from '@plusplusoneplusplus/tiptap-kit/indent';
 import { ResizableImage } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage';
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
 import { MapBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock';

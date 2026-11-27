@@ -20,7 +20,7 @@ import {
     FONT_FAMILY_OPTIONS,
     fontStackKey,
     normalizeFontStack,
-} from '../../../../src/server/spa/client/react/features/notes/editor/fontFamilies';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 const RED = '#e11d48';
 const MONO_STACK = FONT_FAMILY_OPTIONS.find((o) => o.id === 'mono')!.stack;

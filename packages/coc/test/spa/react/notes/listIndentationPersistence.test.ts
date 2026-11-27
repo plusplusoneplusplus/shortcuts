@@ -29,7 +29,7 @@ import { TaskItem } from '@tiptap/extension-task-item';
 import {
     IndentExtension,
     MAX_INDENT,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/indentExtension';
+} from '@plusplusoneplusplus/tiptap-kit/indent';
 import {
     htmlToMarkdown,
     markdownToHtml,

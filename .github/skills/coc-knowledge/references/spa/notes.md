@@ -275,8 +275,9 @@ not add a second one per widget.
   that prompts for input.
 - `FormattingToolbar.tsx` — renders the descriptor groups plus the highlight split
   button, heading dropdown, and list dropdown. Re-exports `HIGHLIGHT_COLORS` /
-  `DEFAULT_HIGHLIGHT_COLOR` from `colorPalette.ts` and exports `HEADING_LEVELS`.
-- `colorPalette.ts` (in `editor/`, not `toolbar/`) — single source of truth for the
+  `DEFAULT_HIGHLIGHT_COLOR` from `@plusplusoneplusplus/tiptap-kit/text-style` and
+  exports `HEADING_LEVELS`.
+- `tiptap-kit/text-style` (`colorPalette.ts`) — single source of truth for the
   inline color palettes and `normalizeCssColor` / `readStyleProp` / `readInlineColor`.
   It imports neither React nor Tiptap, so `noteMarkdown.ts` can read
   `DEFAULT_HIGHLIGHT_COLOR` from the plain serialization path.
@@ -316,7 +317,7 @@ external Markdown viewer:
   bare keeps notes written before color persistence byte-identical, so no migration is
   needed. Color is read from `style`, falling back to Tiptap's `data-color`.
 
-Every color read goes through `normalizeCssColor` (`colorPalette.ts`), which
+Every color read goes through `normalizeCssColor` (`tiptap-kit/text-style`), which
 canonicalizes to lowercase `#rrggbb` and accepts `#rgb`, `#rrggbb`, `rgb()`, and
 `rgba()` (alpha dropped). That is what makes the round trip idempotent: a browser
 rewrites `style="color: #e11d48"` to `rgb(225, 29, 72)` when Tiptap parses it back, so
@@ -366,3 +367,28 @@ Constraints worth knowing:
 - Default match styles are disabled (`injectCSS: false`) because the bundled yellow
   fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
   outlines matches instead so one inside a user highlight still reads.
+
+## Tiptap packages
+
+The CoC-independent half of the editor lives in publishable workspaces, so other
+projects can reuse it without the dashboard:
+
+- `packages/tiptap-kit` — framework-free extensions and helpers, one subpath per
+  area: `/indent` (`IndentExtension` + indent attribute helpers), `/table` (column
+  widths, header state, cell background, column wrap, row/column reorder),
+  `/text-style` (color palette, font families, font sizes), `/text-anchor`,
+  `/comment-anchoring`, `/comment-mark` (`CommentExtension`, `BlockCommentExtension`),
+  `/toc`, `/history`, `/scroll` and `/link`. The root entry re-exports every area.
+- `packages/tiptap-react` and `packages/tiptap-embeds` — scaffolds for the editor
+  shell/toolbar and the media embeds.
+
+All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror
+instance; the lockfile keeps every `@tiptap/*` at the root on one exact version.
+Kit code takes no CoC import (no `notesApi`, contexts, feature flags or `ui/`); what
+needs those stays under `features/notes/editor/` and passes behavior in.
+The SPA bundle resolves the kit through its `exports` into `dist/` (CoC prebuild and
+the CI `build-shared` job build it first); CoC's Vitest aliases
+`@plusplusoneplusplus/tiptap-kit` to `packages/tiptap-kit/src`, so mock a subpath
+(`vi.mock('@plusplusoneplusplus/tiptap-kit/table', …)`) with one partial
+`importOriginal` mock per subpath. Kit unit tests live in `packages/tiptap-kit/test`
+and run in the cross-OS `forge-test` CI job.

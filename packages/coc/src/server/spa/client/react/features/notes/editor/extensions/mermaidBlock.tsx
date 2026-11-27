@@ -11,7 +11,7 @@ import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { ensureMermaid } from '../../../../hooks/ui/useMermaid';
-import { createIndentAttribute, renderIndentAttr } from './indentShared';
+import { createIndentAttribute, renderIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { escapeHtmlText as escapeHtmlForMermaid } from '../../../../../shared/html';
 
 declare const mermaid: {

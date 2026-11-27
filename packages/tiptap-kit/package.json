@@ -1,0 +1,96 @@
+{
+  "name": "@plusplusoneplusplus/tiptap-kit",
+  "version": "0.1.0",
+  "description": "Framework-agnostic Tiptap extensions and editor helpers (indent, tables, text style, comments, TOC)",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plusplusoneplusplus/shortcuts.git",
+    "directory": "packages/tiptap-kit"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./indent": {
+      "types": "./dist/indent/index.d.ts",
+      "import": "./dist/indent/index.js"
+    },
+    "./table": {
+      "types": "./dist/table/index.d.ts",
+      "import": "./dist/table/index.js"
+    },
+    "./text-style": {
+      "types": "./dist/text-style/index.d.ts",
+      "import": "./dist/text-style/index.js"
+    },
+    "./text-anchor": {
+      "types": "./dist/text-anchor/index.d.ts",
+      "import": "./dist/text-anchor/index.js"
+    },
+    "./comment-anchoring": {
+      "types": "./dist/comment-anchoring/index.d.ts",
+      "import": "./dist/comment-anchoring/index.js"
+    },
+    "./comment-mark": {
+      "types": "./dist/comment-mark/index.d.ts",
+      "import": "./dist/comment-mark/index.js"
+    },
+    "./toc": {
+      "types": "./dist/toc/index.d.ts",
+      "import": "./dist/toc/index.js"
+    },
+    "./history": {
+      "types": "./dist/history/index.d.ts",
+      "import": "./dist/history/index.js"
+    },
+    "./scroll": {
+      "types": "./dist/scroll/index.d.ts",
+      "import": "./dist/scroll/index.js"
+    },
+    "./link": {
+      "types": "./dist/link/index.d.ts",
+      "import": "./dist/link/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/extension-table-cell": "^3.31.3",
+    "@tiptap/extension-table-header": "^3.31.3"
+  },
+  "devDependencies": {
+    "@tiptap/core": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/extension-table-cell": "3.31.3",
+    "@tiptap/extension-table-header": "3.31.3",
+    "@tiptap/extension-table-row": "3.31.3",
+    "@tiptap/extension-task-item": "3.31.3",
+    "@tiptap/extension-task-list": "3.31.3",
+    "@tiptap/extension-text-style": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "jsdom": "^27.0.1",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -13,7 +13,7 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 For any CoC, architecture, convention, or build/test/release work, load [coc-knowledge](.github/skills/coc-knowledge/SKILL.md) and its relevant references before responding or editing. Follow their detailed contracts; this file keeps only the core rules.
 
-Node.js ≥ 24; npm workspaces for workflow, server, Forge, clients/SDK, memory, container, and Teams/WhatsApp connectors. Docker ships `ghcr.io/plusplusoneplusplus/coc`, bound to loopback.
+Node.js ≥ 24; npm workspaces for workflow, server, Forge, clients/SDK, memory, container, Teams/WhatsApp connectors, and publishable Tiptap editor packages. Docker ships `ghcr.io/plusplusoneplusplus/coc`, bound to loopback.
 
 ## Core rules
 

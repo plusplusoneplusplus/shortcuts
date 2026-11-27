@@ -108,7 +108,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/useCommen
     useComments: () => mockCommentsReturn,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-kit/comment-anchoring', () => ({
     createTextAnchorFromSelection: vi.fn(),
     findAnchorInDoc: vi.fn(),
     applyCommentMark: vi.fn(),

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import type { TocEntry } from './noteTocUtils';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
 import { Sep } from './toolbar/ToolbarDropdown';
 import { FormattingToolbar } from './toolbar/FormattingToolbar';
 import { FindReplacePanel } from './toolbar/FindReplacePanel';

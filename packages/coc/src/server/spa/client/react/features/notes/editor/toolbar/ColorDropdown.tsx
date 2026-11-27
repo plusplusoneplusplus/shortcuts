@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/react';
-import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeCssColor, type PaletteColor } from '../colorPalette';
+import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeCssColor, type PaletteColor } from '@plusplusoneplusplus/tiptap-kit/text-style';
 import { ToolbarDropdown } from './ToolbarDropdown';
 
 /**

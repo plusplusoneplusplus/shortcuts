@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { createIndentAttribute, renderIndentAttr } from './indentShared';
+import { createIndentAttribute, renderIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
 import {
     clampPdfHeight,
     createPdfHeightAttribute,

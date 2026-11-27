@@ -5,7 +5,7 @@ import {
     FONT_SIZE_OPTIONS,
     findSizeOption,
     normalizeFontSize,
-} from '../fontSizes';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 /**
  * The font-size picker.

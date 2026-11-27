@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
-import { IndentExtension } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/indentExtension';
+import { IndentExtension } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { ResizableImage } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage';
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
 import { MapBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock';

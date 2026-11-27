@@ -122,7 +122,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/useCommen
 const mockFindAnchorInDoc = vi.fn(() => ({ from: 1, to: 5 }));
 const mockApplyCommentMark = vi.fn();
 const mockRevealCommentThread = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-kit/comment-anchoring', () => ({
     createTextAnchorFromSelection: vi.fn(() => ({ quotedText: 'test', prefix: '', suffix: '' })),
     findAnchorInDoc: (...args: any[]) => mockFindAnchorInDoc(...args),
     applyCommentMark: (...args: any[]) => mockApplyCommentMark(...args),

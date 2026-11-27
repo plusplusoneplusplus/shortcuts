@@ -16,10 +16,10 @@ import {
     normalizeCssColor,
     readInlineColor,
     readStyleProp,
-} from './colorPalette';
-import { readInlineFontFamily } from './fontFamilies';
-import { readInlineFontSize } from './fontSizes';
-import { clampIndent, parseIndentAttr } from './extensions/indentShared';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
+import { readInlineFontFamily } from '@plusplusoneplusplus/tiptap-kit/text-style';
+import { readInlineFontSize } from '@plusplusoneplusplus/tiptap-kit/text-style';
+import { clampIndent, parseIndentAttr } from '@plusplusoneplusplus/tiptap-kit/indent';
 import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
 import { pdfLabelFromMarkdown } from './pdfLabel';

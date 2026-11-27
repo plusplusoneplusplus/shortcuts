@@ -21,7 +21,7 @@ import {
 // Live in `colorPalette.ts` so `noteMarkdown.ts` can read the default color
 // without importing a React module; re-exported here for existing consumers.
 
-export { HIGHLIGHT_COLORS, TEXT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
+export { HIGHLIGHT_COLORS, TEXT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 // ── Toolbar button helper ───────────────────────────────────────────────────
 

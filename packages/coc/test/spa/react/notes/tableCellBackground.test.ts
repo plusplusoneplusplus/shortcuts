@@ -22,7 +22,7 @@ import {
     isKnownTableCellColor,
     tableCellBackgroundVar,
     tableCellColorFromStyle,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
+} from '@plusplusoneplusplus/tiptap-kit/table';
 import {
     htmlToMarkdown,
     markdownToHtml,

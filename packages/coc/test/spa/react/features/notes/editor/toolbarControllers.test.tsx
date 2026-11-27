@@ -18,27 +18,23 @@ const tableWidthMocks = vi.hoisted(() => ({
     activeTableHasColumnWidths: vi.fn(() => false),
     clearActiveTableColumnWidths: vi.fn(() => true),
 }));
-vi.mock(
-    '../../../../../../src/server/spa/client/react/features/notes/editor/tableColumnWidths',
-    () => tableWidthMocks,
-);
 
 const tableHeaderMocks = vi.hoisted(() => ({
     tableHeaderState: vi.fn(() => ({ row: false, column: false })),
 }));
-vi.mock(
-    '../../../../../../src/server/spa/client/react/features/notes/editor/tableHeaderState',
-    () => tableHeaderMocks,
-);
 
 const tableWrapMocks = vi.hoisted(() => ({
     activeColumnWrap: vi.fn((): string | null => 'wrap'),
     toggleActiveColumnWrap: vi.fn(() => true),
 }));
-vi.mock(
-    '../../../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap',
-    () => tableWrapMocks,
-);
+// The three helper groups now share one module, so one partial mock carries
+// all the doubles and keeps the real exports (e.g. TABLE_CELL_COLORS).
+vi.mock('@plusplusoneplusplus/tiptap-kit/table', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-kit/table')>()),
+    ...tableWidthMocks,
+    ...tableHeaderMocks,
+    ...tableWrapMocks,
+}));
 
 // Imported after the mocks so the hook picks up the doubles.
 const { useTableToolbarState } = await import(

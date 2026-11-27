@@ -30,6 +30,7 @@ export const REQUIRED_BUILD_WORKSPACES = [
     '@plusplusoneplusplus/forge',
     '@plusplusoneplusplus/coc-client',
     '@plusplusoneplusplus/coc-connector',
+    '@plusplusoneplusplus/tiptap-kit',
 ];
 
 export function buildRequiredWorkspacePackages({

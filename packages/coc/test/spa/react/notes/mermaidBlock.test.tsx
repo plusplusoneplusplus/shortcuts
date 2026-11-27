@@ -6,6 +6,8 @@ import React from 'react';
 
 vi.mock('@tiptap/core', () => ({
     Node: { create: (config: unknown) => config },
+    // The indent helpers come from tiptap-kit/indent, which also defines IndentExtension.
+    Extension: { create: (config: unknown) => config },
 }));
 
 vi.mock('@tiptap/react', () => ({
