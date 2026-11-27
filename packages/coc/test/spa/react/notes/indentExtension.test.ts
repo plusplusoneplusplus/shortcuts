@@ -1,6 +1,6 @@
 /**
  * Tests for IndentExtension — verifies attribute parsing, rendering, and
- * that the CSS rules for data-indent are present in noteEditor.css.
+ * that the CSS rules for data-indent are present in tiptap-react/styles.css.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -21,8 +21,7 @@ const INDENT_DIR = path.join(__dirname, '..', '..', '..', '..', '..', 'tiptap-ki
 const EXTENSION_PATH = path.join(INDENT_DIR, 'indentExtension.ts');
 const SHARED_PATH = path.join(INDENT_DIR, 'shared.ts');
 const CSS_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react',
-    'features', 'notes', 'editor', 'noteEditor.css',
+    __dirname, '..', '..', '..', '..', '..', 'tiptap-react', 'src', 'styles.css',
 );
 
 const source = fs.readFileSync(EXTENSION_PATH, 'utf-8');
@@ -127,7 +126,7 @@ describe('IndentExtension source structure', () => {
     });
 });
 
-describe('noteEditor.css — data-indent rules', () => {
+describe('tiptap-react/styles.css — data-indent rules', () => {
     for (let i = 1; i <= MAX_INDENT; i++) {
         const level = i;
         const expectedPaddingRem = level * 2;
@@ -137,7 +136,7 @@ describe('noteEditor.css — data-indent rules', () => {
         });
     }
 
-    it('scopes indent rules inside .note-editor .ProseMirror', () => {
-        expect(css).toContain('.note-editor .ProseMirror [data-indent="1"]');
+    it('scopes indent rules inside .rich-editor .ProseMirror', () => {
+        expect(css).toContain('.rich-editor .ProseMirror [data-indent="1"]');
     });
 });

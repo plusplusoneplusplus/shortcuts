@@ -4,7 +4,7 @@
  * A `backgroundColor` attribute on TableCell / TableHeader holding a *semantic
  * token* (`yellow`, `green`, …), never a hex. A cell fill covers a large area
  * behind the text, so no single hex reads well in both themes: the token lets
- * `noteEditor.css` pick a pale pastel in light mode and a desaturated tint in
+ * `@plusplusoneplusplus/tiptap-react/styles.css` pick a pale pastel in light mode and a desaturated tint in
  * dark mode while leaving body text color alone. (Text highlight stores raw hex
  * and papers over the dark-mode problem by force-flipping `mark` ink to
  * `#1e1e1e`; that trick does not generalize to a cell full of links and code
@@ -47,9 +47,9 @@ export const TABLE_CELL_COLORS: readonly TableCellColor[] = [
     { token: 'purple', name: 'Purple', swatch: '#e0c3fc' },
 ] as const;
 
-/** CSS custom property backing a token, defined in `noteEditor.css`. */
+/** CSS custom property backing a token, defined in `@plusplusoneplusplus/tiptap-react/styles.css`. */
 export function tableCellBackgroundVar(token: string): string {
-    return `--note-table-bg-${token}`;
+    return `--rich-editor-table-bg-${token}`;
 }
 
 export function isKnownTableCellColor(value: unknown): value is string {
@@ -64,7 +64,7 @@ const SWATCH_TO_TOKEN = new Map(
  * Recover a token from an inline `background-color`, for content that predates
  * this feature or was pasted from elsewhere.
  *
- * Two shapes are recognised: our own `var(--note-table-bg-<token>)`, and an
+ * Two shapes are recognised: our own `var(--rich-editor-table-bg-<token>)`, and an
  * exact light-palette hex. Anything else — `rgb(...)` from a Notion/Excel
  * paste, a hand-written `red` — returns null and the fill is simply dropped.
  * Nearest-token matching would be friendlier but silently recolors content;
@@ -75,7 +75,7 @@ export function tableCellColorFromStyle(style: string | null | undefined): strin
     const value = style.match(/background-color:\s*([^;]+)/i)?.[1]?.trim();
     if (!value) return null;
 
-    const fromVar = value.match(/^var\(\s*--note-table-bg-([a-z]+)\s*\)$/i)?.[1]?.toLowerCase();
+    const fromVar = value.match(/^var\(\s*--rich-editor-table-bg-([a-z]+)\s*\)$/i)?.[1]?.toLowerCase();
     if (fromVar && isKnownTableCellColor(fromVar)) return fromVar;
 
     return SWATCH_TO_TOKEN.get(value.toLowerCase()) ?? null;
@@ -91,7 +91,7 @@ const backgroundColorAttribute = {
         },
         renderHTML: (attributes: Record<string, unknown>): Record<string, string> => {
             const token = attributes.backgroundColor;
-            // An unknown token would render `var(--note-table-bg-chartreuse)`,
+            // An unknown token would render `var(--rich-editor-table-bg-chartreuse)`,
             // which resolves to nothing and leaves a `style` attribute that
             // parseHTML then reads back as null — so drop it outright.
             if (!isKnownTableCellColor(token)) return {};

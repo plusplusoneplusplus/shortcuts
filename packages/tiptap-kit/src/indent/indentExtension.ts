@@ -2,7 +2,7 @@
  * IndentExtension — adds indent/outdent commands for the indentable block nodes.
  *
  * Stores the indentation level as a `data-indent` attribute on the node.
- * Visual padding is applied via CSS in noteEditor.css.
+ * Visual padding is applied via CSS in @plusplusoneplusplus/tiptap-react/styles.css.
  *
  * Two families of nodes share the SAME indentation contract:
  *   - Text blocks (`paragraph`, `heading`) carry `indent` as a Tiptap *global*

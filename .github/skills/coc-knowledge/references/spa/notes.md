@@ -370,7 +370,7 @@ Constraints worth knowing:
   surrounding marks — including comment marks spanning the replaced text (see
   [../task-comments.md](../task-comments.md)).
 - Default match styles are disabled (`injectCSS: false`) because the bundled yellow
-  fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
+  fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `tiptap-react/styles.css`
   outlines matches instead so one inside a user highlight still reads.
 
 ## Tiptap packages
@@ -413,8 +413,12 @@ projects can reuse it without the dashboard:
   (`MermaidBlock`). The root re-exports every area except `/math`, for the same
   katex reason. Toolbar and TOC style with Tailwind utilities, so a host's Tailwind
   `content` must scan `tiptap-react/src` (CoC's `tailwind.config.js` does, guarded
-  by `test/scripts/tailwind-content.test.ts`); editor CSS (`noteEditor.css`) stays
-  in CoC.
+  by `test/scripts/tailwind-content.test.ts`). `/styles.css` ships the shared editor,
+  table, indentation, comment, Mermaid and find/replace styles under
+  `.rich-editor .ProseMirror`, with `--rich-editor-table-bg-*` palette variables
+  on `.rich-editor`, `--rich-editor-table-nowrap-max` for the no-wrap limit,
+  and `.dark` theme overrides. CoC imports it before `noteEditor.css` and
+  passes `className="rich-editor note-editor"` to keep both scopes.
 - `packages/tiptap-embeds` — media embeds: `/urls` (pure `isEmbeddableMapUrl`,
   `isPdfUrl`, `parseYouTubeVideoId`, `youTubeEmbedUrl`; chat's `mapEmbedMount`
   uses them too), `/youtube` (`YouTubeEmbedDecorationExtension` and the

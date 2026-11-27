@@ -24,7 +24,7 @@ export interface PaletteColor {
 
 /**
  * Highlight swatches. The `mark` background sits behind body text, so these stay
- * pale; `noteEditor.css` force-flips `mark` ink to a near-black in dark mode.
+ * pale; `@plusplusoneplusplus/tiptap-react/styles.css` force-flips `mark` ink to a near-black in dark mode.
  *
  * `table/cellBackground.ts` mirrors these names and light values as semantic
  * tokens — keep the two in sync so the pickers read as one system.

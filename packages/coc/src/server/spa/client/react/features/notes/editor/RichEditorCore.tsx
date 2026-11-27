@@ -44,6 +44,7 @@ import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvas
 // here (rather than only from NoteEditor) so a mount outside Notes — the
 // markdown review dialog's rich view, for one — still gets the styles even if
 // the bundler ever code-splits the two apart.
+import '@plusplusoneplusplus/tiptap-react/styles.css';
 import './noteEditor.css';
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -239,11 +240,8 @@ export function RichEditorCore({
             handlePaste={handlePaste}
             handleDrop={handleDrop}
             scrollContainerRef={scrollContainerRef}
-            // `note-editor` is the CSS scope of noteEditor.css. NoteEditor puts
-            // it on its own container too, but a bare mount (the markdown review
-            // dialog) has no such ancestor, and the table-cell fill palette is
-            // declared on that scope.
-            className="note-editor"
+            // Carry shared and CoC styles even when mounted without NoteEditor.
+            className="rich-editor note-editor"
         >
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
             <PdfPopupDialog

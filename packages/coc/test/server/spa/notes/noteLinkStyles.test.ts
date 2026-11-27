@@ -7,8 +7,10 @@ const css = readFileSync(
     'utf-8',
 );
 
-function expectRule(pattern: RegExp): string {
-    const match = css.match(pattern);
+const sharedCss = readFileSync(resolve(__dirname, '../../../../../tiptap-react/src/styles.css'), 'utf-8');
+
+function expectRule(pattern: RegExp, stylesheet = css): string {
+    const match = stylesheet.match(pattern);
     expect(match).toBeTruthy();
     return match![1];
 }
@@ -65,7 +67,8 @@ describe('note link visual styles', () => {
             /\.note-editor\s+\.ProseMirror\s+\.file-ref-link\s*\{([^}]+)\}/,
         );
         const anchorBody = expectRule(
-            /\.note-editor\s+\.ProseMirror\s+a\s*\{([^}]+)\}/,
+            /\.rich-editor\s+\.ProseMirror\s+a\s*\{([^}]+)\}/,
+            sharedCss,
         );
 
         expect(fileRefBody).toContain('font-family: ui-monospace');

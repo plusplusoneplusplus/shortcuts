@@ -244,15 +244,11 @@ describe('RichEditorCore', () => {
 
     // ── CSS scope travels with the editor ────────────────────────────────
 
-    it('carries the note-editor CSS scope class itself, so styles do not depend on the host', () => {
-        // Every rule in noteEditor.css is `.note-editor .ProseMirror …`. NoteEditor
-        // puts that class on its own container, but RichEditorCore is also mounted
-        // bare (markdown review dialog, rich view). Without the class on the editor
-        // itself, a bare mount loses all of it — most visibly the table cell fills,
-        // whose `var(--note-table-bg-*)` palette is declared on that same scope and
-        // silently resolves to nothing, so a filled cell renders unfilled.
+    it('carries shared and CoC CSS scopes even without a host wrapper', () => {
         render(<RichEditorCore />);
-        expect(screen.getByTestId('rich-editor-content').className).toContain('note-editor');
+        const classes = screen.getByTestId('rich-editor-content').className.split(/\s+/);
+        expect(classes).toContain('rich-editor');
+        expect(classes).toContain('note-editor');
     });
 
     // ── onChange fires when content changes ──────────────────────────────

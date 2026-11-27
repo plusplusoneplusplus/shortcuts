@@ -72,7 +72,7 @@ describe('TABLE_CELL_COLORS palette', () => {
     });
 
     it('names the CSS variable after the token', () => {
-        expect(tableCellBackgroundVar('yellow')).toBe('--note-table-bg-yellow');
+        expect(tableCellBackgroundVar('yellow')).toBe('--rich-editor-table-bg-yellow');
     });
 
     it('recognises only palette tokens', () => {
@@ -85,7 +85,7 @@ describe('TABLE_CELL_COLORS palette', () => {
 
 describe('tableCellColorFromStyle', () => {
     it('reads our own CSS variable back', () => {
-        expect(tableCellColorFromStyle('background-color: var(--note-table-bg-blue);')).toBe('blue');
+        expect(tableCellColorFromStyle('background-color: var(--rich-editor-table-bg-blue);')).toBe('blue');
     });
 
     it('maps an exact light-palette hex to its token, case-insensitively', () => {
@@ -99,7 +99,7 @@ describe('tableCellColorFromStyle', () => {
     it('drops colors outside the palette rather than guessing a nearest token', () => {
         expect(tableCellColorFromStyle('background-color: red')).toBeNull();
         expect(tableCellColorFromStyle('background-color: rgb(12, 34, 56)')).toBeNull();
-        expect(tableCellColorFromStyle('background-color: var(--note-table-bg-chartreuse)')).toBeNull();
+        expect(tableCellColorFromStyle('background-color: var(--rich-editor-table-bg-chartreuse)')).toBeNull();
         expect(tableCellColorFromStyle('text-align: right')).toBeNull();
         expect(tableCellColorFromStyle('')).toBeNull();
         expect(tableCellColorFromStyle(null)).toBeNull();
@@ -120,7 +120,7 @@ describe('backgroundColor cell attribute', () => {
         expect(cells(ed)[0].attrs.backgroundColor).toBe('yellow');
         const html = ed.getHTML();
         expect(html).toContain('data-bg="yellow"');
-        expect(html).toContain('background-color: var(--note-table-bg-yellow);');
+        expect(html).toContain('background-color: var(--rich-editor-table-bg-yellow);');
     });
 
     it('carries the attribute on header cells too', () => {
@@ -145,7 +145,7 @@ describe('backgroundColor cell attribute', () => {
         expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual([null, null]);
         const html = ed.getHTML();
         expect(html).not.toContain('chartreuse');
-        expect(html).not.toContain('var(--note-table-bg-');
+        expect(html).not.toContain('var(--rich-editor-table-bg-');
     });
 
     it('keeps colspan, rowspan and colwidth alongside a fill (AC-13)', () => {
@@ -172,7 +172,7 @@ describe('backgroundColor cell attribute', () => {
         const html = ed.getHTML();
         expect(html).toContain('data-bg="orange"');
         expect(html).toMatch(/text-align:\s*center/);
-        expect(html).toContain('var(--note-table-bg-orange)');
+        expect(html).toContain('var(--rich-editor-table-bg-orange)');
     });
 
     it('setCellAttribute fills the caret cell and clears it again', () => {

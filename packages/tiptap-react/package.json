@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "React editor shell, formatting toolbar, TOC panel and math/mermaid node views for Tiptap, built on @plusplusoneplusplus/tiptap-kit",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "files": [
     "dist"
   ],
@@ -42,10 +44,11 @@
     "./mermaid": {
       "types": "./dist/mermaid/index.d.ts",
       "import": "./dist/mermaid/index.js"
-    }
+    },
+    "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/styles.css', 'dist/styles.css')\"",
     "test": "vitest",
     "test:run": "vitest run"
   },

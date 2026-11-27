@@ -7,13 +7,13 @@
  * matches something real. The element it targets is not written by us — it is
  * built by a tiptap node view. So the rule can silently stop applying without
  * any test noticing: rename a class, or mount the editor outside
- * `.note-editor`, and a wide table goes back to overflowing the page with every
+ * `.rich-editor`, and a wide table goes back to overflowing the page with every
  * existing test still green.
  *
  * This file closes that gap from the DOM side. It builds a real headless editor
  * configured exactly as `RichEditorCore.tsx` configures it, mounts it inside the
- * `.note-editor` wrapper the app uses, and feeds the *actual selector text* out
- * of `noteEditor.css` to `querySelector`.
+ * `.rich-editor` wrapper the app uses, and feeds the *actual selector text* out
+ * of `tiptap-react/styles.css` to `querySelector`.
  *
  * What it deliberately does not check: that the wrapper actually scrolls. jsdom
  * does no layout — every box is 0×0 and `overflow-x` has no observable effect —
@@ -33,7 +33,7 @@ import { TableHeader } from '@tiptap/extension-table-header';
 const css = readFileSync(
     resolve(
         __dirname,
-        '../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css',
+        '../../../../../tiptap-react/src/styles.css',
     ),
     'utf-8',
 );
@@ -56,12 +56,12 @@ let editor: Editor | null = null;
 let host: HTMLElement | null = null;
 
 /**
- * Mounts an editor inside the same `.note-editor` wrapper the app renders, so
- * the descendant selectors in noteEditor.css have their full ancestor chain.
+ * Mounts an editor inside the same `.rich-editor` wrapper the app renders, so
+ * the descendant selectors in tiptap-react/styles.css have their full ancestor chain.
  */
 function mount(config: Record<string, unknown> = TABLE_CONFIG): HTMLElement {
     host = document.createElement('div');
-    host.className = 'note-editor';
+    host.className = 'rich-editor';
     document.body.appendChild(host);
     editor = new Editor({
         element: host,
@@ -106,8 +106,8 @@ describe('note table horizontal scroll container (AC-12)', () => {
     it("the CSS rule's own selector matches that wrapper in a mounted editor", () => {
         mount();
         const selector = wrapperRuleSelector();
-        // Read straight out of noteEditor.css: if anyone renames a class in the
-        // rule, or the app stops wrapping the editor in `.note-editor`, this
+        // Read straight out of tiptap-react/styles.css: if anyone renames a class in the
+        // rule, or the app stops wrapping the editor in `.rich-editor`, this
         // stops matching and AC-12 regresses silently.
         expect(selector).toContain('.tableWrapper');
         expect(document.querySelector(selector)).toBe(
@@ -120,7 +120,7 @@ describe('note table horizontal scroll container (AC-12)', () => {
         // positioned cell-selection tint and the resize handle to it, so the
         // scrolling has to happen one level out.
         const tableRule = css.match(
-            /\.note-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/,
+            /\.rich-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/,
         )?.[0];
         expect(tableRule).toBeDefined();
         expect(tableRule).toMatch(/overflow:\s*hidden/);

@@ -1,5 +1,5 @@
 /**
- * Package contract: each `exports` subpath is a src/<area>/index.ts with
+ * Package contract: each JavaScript `exports` subpath is a src/<area>/index.ts with
  * matching dist paths, the root re-exports every other area without losing a
  * name (`export *` drops collisions silently), and `math` (optional katex
  * peer) stays out of the root.
@@ -12,12 +12,12 @@ import * as root from '../src/index.js';
 
 const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-    exports: Record<string, { types: string; import: string }>;
+    exports: Record<string, string | { types: string; import: string }>;
     peerDependencies: Record<string, string>;
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     dependencies?: Record<string, string>;
 };
-const areas = Object.keys(manifest.exports).filter((k) => k !== '.').map((k) => k.slice(2));
+const areas = Object.keys(manifest.exports).filter((k) => k !== '.' && k !== './styles.css').map((k) => k.slice(2));
 const rootSource = readFileSync(join(pkgDir, 'src', 'index.ts'), 'utf8');
 
 describe('tiptap-react exports', () => {

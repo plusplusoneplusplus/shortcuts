@@ -1,0 +1,538 @@
+/* ProseMirror content-area styling for the Tiptap rich editor */
+
+.rich-editor .ProseMirror {
+    outline: none;
+    min-height: 300px;
+    padding: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    color: #1e1e1e;
+}
+
+.rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: #999;
+    pointer-events: none;
+    float: left;
+    height: 0;
+}
+
+/* Heading sizes */
+.rich-editor .ProseMirror h1 { font-size: 1.75rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
+.rich-editor .ProseMirror h2 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.rich-editor .ProseMirror h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+
+/* Lists */
+.rich-editor .ProseMirror ul { list-style: disc; padding-left: 1.5rem; }
+.rich-editor .ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
+
+/* Task lists */
+.rich-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.rich-editor .ProseMirror ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
+.rich-editor .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { margin-top: 0.3rem; }
+
+/* Blockquote */
+.rich-editor .ProseMirror blockquote {
+    border-left: 3px solid #d0d0d0;
+    padding-left: 1rem;
+    color: #666;
+    margin: 0.75rem 0;
+}
+
+/* Code — inline */
+.rich-editor .ProseMirror code {
+    background: #f3f3f3;
+    color: #c7254e;
+    border-radius: 4px;
+    padding: 0.12em 0.38em;
+    font-size: 0.92em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Horizontal rule */
+.rich-editor .ProseMirror hr { border: none; border-top: 1px solid #e0e0e0; margin: 1.5rem 0; }
+
+/* Links */
+.rich-editor .ProseMirror a { color: #0078d4; text-decoration: underline; cursor: pointer; }
+
+/* Highlight / <mark> */
+.rich-editor .ProseMirror mark {
+    border-radius: 2px;
+    padding: 0.05rem 0.1rem;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+/* Dark mode overrides */
+.dark .rich-editor .ProseMirror { color: #d4d4d4; }
+.dark .rich-editor .ProseMirror a { color: #4ea6ea; }
+.dark .rich-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
+.dark .rich-editor .ProseMirror code { background: #2d2d2d; color: #ff9da4; }
+.dark .rich-editor .ProseMirror hr { border-top-color: #3c3c3c; }
+/* Highlight backgrounds come from a fixed pale palette in both themes, so
+   highlighted text needs dark ink to stay readable — a light color here made
+   it near-invisible on the pale swatch. */
+.dark .rich-editor .ProseMirror mark {
+    color: #1e1e1e;
+}
+
+/* Tables */
+
+/* Per-cell fill palette. Cells store a semantic token (`data-bg="yellow"`) and
+   render `background-color: var(--rich-editor-table-bg-yellow)`, so each theme picks
+   its own actual color: pale pastels in light mode (the same hexes the text
+   highlight palette uses), desaturated tints in dark mode chosen so the default
+   body text stays readable on them. */
+.rich-editor {
+    --rich-editor-table-bg-yellow: #fff3b0;
+    --rich-editor-table-bg-green: #b9f5d0;
+    --rich-editor-table-bg-blue: #bde0fe;
+    --rich-editor-table-bg-pink: #ffc8dd;
+    --rich-editor-table-bg-orange: #ffd6a5;
+    --rich-editor-table-bg-purple: #e0c3fc;
+}
+
+/* The column-resizing plugin's node view wraps every table in this div. A table
+   dragged wider than the note body scrolls here instead of overflowing the page
+   (AC-12) — the table itself keeps `overflow: hidden` so the absolutely
+   positioned cell-selection tint and resize handle clip to it. */
+.rich-editor .ProseMirror .tableWrapper {
+    overflow-x: auto;
+    margin: 0.75rem 0;
+}
+
+.rich-editor .ProseMirror table {
+    border-collapse: collapse;
+    /* `fixed` is required by ProseMirror column resizing (AC-10): with `auto`
+       the browser recomputes widths from content and treats the plugin's
+       <colgroup> widths as suggestions, so a drag snaps back. `min-width`
+       rather than `width` so an unsized table still fills the note body but a
+       resized one can honour the px width tiptap puts on the element. */
+    table-layout: fixed;
+    min-width: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+.rich-editor .ProseMirror th,
+.rich-editor .ProseMirror td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.rich-editor .ProseMirror th {
+    background: #f3f3f3;
+    font-weight: 600;
+}
+
+/* Header column spine (AC-13). A `<th>` already gets the tint and the bold
+   weight wherever it sits, so a header column is legible but reads like a
+   mis-rendered first row. The thicker right border on the leading cell is what
+   separates "attributes down the left" from "header row". Deliberately no
+   `text-align: center` — a header column must stay left-aligned like the shared
+   th/td rule above sets it. */
+.rich-editor .ProseMirror th:first-child {
+    border-right: 2px solid #e0e0e0;
+}
+
+/* Per-column no-wrap. The constraint sits on the cell's *block children*, not
+   on the cell: browsers largely ignore `max-width` on a `td`, and
+   `text-overflow` needs a bounded box to clip against. ProseMirror always wraps
+   cell content in a block (a `<p>`), so there is always something to target.
+
+   Under `table-layout: fixed` the column's own width already bounds the line,
+   so `--rich-editor-table-nowrap-max` is just the ceiling for a column nobody has
+   resized yet — set the variable per column once there is a better source than
+   the 24rem guess.
+
+   No color is introduced here, so dark mode needs no counterpart rule. A cell
+   holding several blocks (multiple paragraphs, or a `<br>`) clips each block on
+   its own line rather than collapsing to one — hiding the later blocks outright
+   would drop text the user can still reach by clicking into the cell. */
+.rich-editor .ProseMirror td[data-wrap='nowrap'] > *,
+.rich-editor .ProseMirror th[data-wrap='nowrap'] > * {
+    max-width: var(--rich-editor-table-nowrap-max, 24rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* A link inside a filled cell. The normal `#0078d4` only manages 2.9:1 on the
+   purple pastel (and misses 4.5:1 on all six), because these fills are the text
+   highlight hexes, which were picked to sit under near-black body text. Darken
+   the link just for filled cells rather than darkening the fills — the fill has
+   to stay pale to be a fill. Worst case across the six is now 4.9:1. */
+.rich-editor .ProseMirror td[data-bg] a,
+.rich-editor .ProseMirror th[data-bg] a {
+    color: #00568f;
+}
+
+/* Tiptap cell selection highlight */
+.rich-editor .ProseMirror .selectedCell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 120, 212, 0.12);
+    pointer-events: none;
+}
+
+/* Column resize handle. The plugin only puts this element in the DOM while a
+   column border is hovered or dragged, so it is opaque — fading it would just
+   make the affordance hard to find (AC-02). */
+.rich-editor .ProseMirror .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    background: #0078d4;
+    pointer-events: none;
+    z-index: 20;
+}
+
+/* Set on the editor root by the resizing plugin for the duration of a drag, so
+   the cursor stays col-resize even as the pointer leaves the border. */
+.rich-editor .ProseMirror.resize-cursor {
+    cursor: col-resize;
+}
+
+/* Dark mode — tables */
+
+/* Same six tokens, dark tints — do not swap these for the light pastels.
+
+   All six sit at the same relative luminance (~0.049) on purpose. Two things
+   pull in opposite directions: a fill has to be lighter than the surrounding
+   `#1e1e1e` cell to read as a fill at all, and it has to stay dark enough that
+   `#d4d4d4` body text keeps a 4.5:1 ratio on it. Equal luminance is what makes
+   the six read as one palette — the first guess at these values ranged from
+   1.33:1 to 1.69:1 against an unfilled cell, so a yellow cell looked filled and
+   a purple one looked like a rendering glitch. Now every token is ~1.56:1
+   against an unfilled cell and ~7.2:1 under body text. */
+.dark .rich-editor {
+    --rich-editor-table-bg-yellow: #453e24;
+    --rich-editor-table-bg-green: #294431;
+    --rich-editor-table-bg-blue: #284155;
+    --rich-editor-table-bg-pink: #583343;
+    --rich-editor-table-bg-orange: #4d3b28;
+    --rich-editor-table-bg-purple: #46375d;
+}
+
+.dark .rich-editor .ProseMirror th,
+.dark .rich-editor .ProseMirror td {
+    border-color: #3c3c3c;
+}
+
+.dark .rich-editor .ProseMirror th {
+    background: #252526;
+}
+
+/* Dark counterpart of the header-column spine (AC-13). */
+.dark .rich-editor .ProseMirror th:first-child {
+    border-right: 2px solid #3c3c3c;
+}
+
+/* Same problem in the other direction: `#4ea6ea` lands at 4.0:1 on the dark
+   fills, so brighten it for filled cells only. Worst case is now 5.1:1. */
+.dark .rich-editor .ProseMirror td[data-bg] a,
+.dark .rich-editor .ProseMirror th[data-bg] a {
+    color: #6fbcf5;
+}
+
+.dark .rich-editor .ProseMirror .selectedCell::after {
+    background: rgba(0, 120, 212, 0.22);
+}
+
+/* A brighter handle so it reads against the dark cell borders (AC-11). */
+.dark .rich-editor .ProseMirror .column-resize-handle {
+    background: #4ea6ea;
+}
+
+/* ── Paragraph / heading indentation (data-indent attribute) ─────────── */
+
+.rich-editor .ProseMirror [data-indent="1"] { padding-left: 2rem; }
+.rich-editor .ProseMirror [data-indent="2"] { padding-left: 4rem; }
+.rich-editor .ProseMirror [data-indent="3"] { padding-left: 6rem; }
+.rich-editor .ProseMirror [data-indent="4"] { padding-left: 8rem; }
+.rich-editor .ProseMirror [data-indent="5"] { padding-left: 10rem; }
+.rich-editor .ProseMirror [data-indent="6"] { padding-left: 12rem; }
+.rich-editor .ProseMirror [data-indent="7"] { padding-left: 14rem; }
+.rich-editor .ProseMirror [data-indent="8"] { padding-left: 16rem; }
+
+/* ── List-container indentation (data-indent on ul/ol) ──────────────── */
+/* Uses margin-left so the bullet marker moves with the text.
+   The [data-indent] rules above use padding-left, which leaves markers behind for lists.
+   These more-specific selectors (tag + attribute = higher specificity) override
+   padding-left back to the normal list value and shift with margin-left instead. */
+.rich-editor .ProseMirror ul[data-indent],
+.rich-editor .ProseMirror ol[data-indent] { padding-left: 1.5rem; }
+
+.rich-editor .ProseMirror ul[data-indent="1"], .rich-editor .ProseMirror ol[data-indent="1"] { margin-left: 2rem; }
+.rich-editor .ProseMirror ul[data-indent="2"], .rich-editor .ProseMirror ol[data-indent="2"] { margin-left: 4rem; }
+.rich-editor .ProseMirror ul[data-indent="3"], .rich-editor .ProseMirror ol[data-indent="3"] { margin-left: 6rem; }
+.rich-editor .ProseMirror ul[data-indent="4"], .rich-editor .ProseMirror ol[data-indent="4"] { margin-left: 8rem; }
+.rich-editor .ProseMirror ul[data-indent="5"], .rich-editor .ProseMirror ol[data-indent="5"] { margin-left: 10rem; }
+.rich-editor .ProseMirror ul[data-indent="6"], .rich-editor .ProseMirror ol[data-indent="6"] { margin-left: 12rem; }
+.rich-editor .ProseMirror ul[data-indent="7"], .rich-editor .ProseMirror ol[data-indent="7"] { margin-left: 14rem; }
+.rich-editor .ProseMirror ul[data-indent="8"], .rich-editor .ProseMirror ol[data-indent="8"] { margin-left: 16rem; }
+
+/* ── Comment highlights ─────────────────────────────────────────────────── */
+
+/* Inline comment marks (rendered by CommentExtension) */
+.rich-editor .ProseMirror span[data-comment-id] {
+    background-color: rgba(255, 212, 0, 0.2);
+    border-bottom: 2px solid rgba(255, 212, 0, 0.6);
+    cursor: pointer;
+    transition: background-color 0.15s;
+    border-radius: 1px;
+    padding: 0.05rem 0;
+}
+
+.rich-editor .ProseMirror span[data-comment-id]:hover {
+    background-color: rgba(255, 212, 0, 0.35);
+}
+
+/* Active comment — cursor is inside this mark */
+.rich-editor .ProseMirror span[data-comment-id].comment-active {
+    background-color: rgba(255, 212, 0, 0.45);
+    border-bottom-color: rgba(255, 212, 0, 0.9);
+}
+
+/* Resolved comment — dimmed, dashed underline */
+.rich-editor .ProseMirror span[data-comment-id].comment-resolved {
+    background-color: rgba(128, 128, 128, 0.1);
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+}
+
+/* Block comment decorations (rendered by blockComment.ts plugin) */
+.rich-editor .ProseMirror .block-comment {
+    border-left: 3px solid rgba(255, 212, 0, 0.6);
+    padding-left: 8px;
+    background-color: rgba(255, 212, 0, 0.05);
+    transition: background-color 0.15s, border-left-color 0.15s;
+}
+
+.rich-editor .ProseMirror .block-comment:hover {
+    background-color: rgba(255, 212, 0, 0.1);
+}
+
+.rich-editor .ProseMirror .block-comment.block-comment-active {
+    border-left-color: rgba(255, 212, 0, 0.9);
+    background-color: rgba(255, 212, 0, 0.12);
+}
+
+.rich-editor .ProseMirror .block-comment.block-comment-resolved {
+    border-left: 2px dashed rgba(128, 128, 128, 0.4);
+    background-color: rgba(128, 128, 128, 0.03);
+}
+
+/* Dark mode — comments */
+.dark .rich-editor .ProseMirror span[data-comment-id] {
+    background-color: rgba(255, 212, 0, 0.15);
+    border-bottom-color: rgba(255, 212, 0, 0.4);
+}
+.dark .rich-editor .ProseMirror span[data-comment-id]:hover {
+    background-color: rgba(255, 212, 0, 0.25);
+}
+.dark .rich-editor .ProseMirror span[data-comment-id].comment-active {
+    background-color: rgba(255, 212, 0, 0.35);
+    border-bottom-color: rgba(255, 212, 0, 0.7);
+}
+.dark .rich-editor .ProseMirror span[data-comment-id].comment-resolved {
+    background-color: rgba(128, 128, 128, 0.08);
+    border-bottom-color: rgba(128, 128, 128, 0.3);
+}
+.dark .rich-editor .ProseMirror .block-comment {
+    border-left-color: rgba(255, 212, 0, 0.4);
+    background-color: rgba(255, 212, 0, 0.04);
+}
+.dark .rich-editor .ProseMirror .block-comment.block-comment-active {
+    border-left-color: rgba(255, 212, 0, 0.7);
+    background-color: rgba(255, 212, 0, 0.08);
+}
+
+/* ── Mermaid block node view ─────────────────────────────────────────────── */
+
+.rich-editor .ProseMirror .mermaid-node-view {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 0.75rem 0;
+}
+
+/* ProseMirror sets this class on the selected node */
+.rich-editor .ProseMirror .mermaid-node-view.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-toolbar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-toolbar button {
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #c0c0c0;
+    background: #f5f5f5;
+    color: inherit;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-toolbar button:hover {
+    background: #e8e8e8;
+    border-color: #aaa;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-zoom-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-zoom-level {
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: #555;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-preview {
+    min-height: 60px;
+    padding: 12px;
+    overflow: auto;
+    cursor: grab;
+    touch-action: none;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-preview.mermaid-node-view-dragging {
+    cursor: grabbing;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-canvas {
+    display: inline-block;
+    min-width: 100%;
+    transform-origin: 0 0;
+    transition: transform 120ms ease-out;
+    will-change: transform;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-canvas .mermaid {
+    display: inline-block;
+    margin: 0;
+}
+
+/* SVG rendered by mermaid is display:block by default; center it */
+.rich-editor .ProseMirror .mermaid-node-view-preview svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-source {
+    font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.03);
+    white-space: pre-wrap;
+    overflow: auto;
+    margin: 0;
+    border: none;
+    resize: vertical;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.rich-editor .ProseMirror .mermaid-node-view-error {
+    color: #b91c1c;
+    font-size: 12px;
+    padding: 6px 10px;
+    background: rgba(185, 28, 28, 0.05);
+    border-top: 1px solid rgba(185, 28, 28, 0.15);
+}
+
+/* Dark mode — Mermaid block node view */
+.dark .rich-editor .ProseMirror .mermaid-node-view {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view.ProseMirror-selectednode {
+    outline-color: #4fc3f7;
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-toolbar {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-toolbar button {
+    border-color: #555;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-toolbar button:hover {
+    background: #3c3c3c;
+    border-color: #666;
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-zoom-level {
+    color: #bdbdbd;
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-source {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d4d4d4;
+}
+
+.dark .rich-editor .ProseMirror .mermaid-node-view-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+    border-top-color: rgba(248, 113, 113, 0.2);
+}
+
+/* ── Find & replace match highlights ─────────────────────────────────────────
+   The extension's bundled styles are disabled (injectCSS: false in
+   createRichEditorExtensions) because their yellow/orange fills are indistinguishable from
+   the first Highlight mark color (#fff3b0) and from comment highlights. Matches
+   are outlined instead, so a match sitting inside a user highlight or a
+   commented run still reads as a match. The current match additionally gets a
+   faint fill and a stronger outline so it stands out from its siblings. */
+.rich-editor .ProseMirror .find-and-replace-result {
+    border-radius: 2px;
+    outline: 1.5px solid rgba(0, 120, 212, 0.75);
+    outline-offset: 0;
+}
+
+.rich-editor .ProseMirror .find-and-replace-result-current {
+    outline: 2px solid #0078d4;
+    background: rgba(0, 120, 212, 0.18);
+}
+
+.dark .rich-editor .ProseMirror .find-and-replace-result {
+    outline-color: rgba(55, 148, 255, 0.8);
+}
+
+.dark .rich-editor .ProseMirror .find-and-replace-result-current {
+    outline-color: #3794ff;
+    background: rgba(55, 148, 255, 0.28);
+}
