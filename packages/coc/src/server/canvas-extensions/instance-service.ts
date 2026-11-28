@@ -39,17 +39,78 @@ export function canvasExtensionFailure(error: unknown) {
 /** Tools and tab reopening share one owner queue, including the durable write. */
 export function runCanvasExtensionOperation<T>(deps: CanvasExtensionInstanceDeps, action: () => Promise<T>): Promise<T> {
     return queueCanvasCapabilityRun(deps.workspaceId, `copilot-extension:${deps.processId}`, async () => {
-        if (!deps.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
-        const process = await deps.processStore.getProcess(deps.processId, deps.workspaceId);
-        if (!process || process.archived || process.metadata?.workspaceId !== deps.workspaceId) {
-            throw new Error('Canvas conversation is missing, archived or owned by another workspace');
-        }
+        await assertCanvasExtensionOwner(deps);
         return action();
     });
 }
 
+async function assertCanvasExtensionOwner(deps: CanvasExtensionInstanceDeps): Promise<void> {
+    if (!deps.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
+    const process = await deps.processStore.getProcess(deps.processId, deps.workspaceId);
+    if (!process || process.archived || process.metadata?.workspaceId !== deps.workspaceId) {
+        throw new Error('Canvas conversation is missing, archived or owned by another workspace');
+    }
+    if (!deps.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
+}
+
+/** Caller holds the owner operation queue. All open instances share this runtime. */
+export async function reloadCanvasExtensionInstances(
+    deps: CanvasExtensionInstanceDeps, target: CanvasExtensionRecord, signal?: AbortSignal,
+) {
+    signal?.throwIfAborted();
+    const { instance } = target;
+    const affected = listCanvasExtensionInstances(deps.canvasStore, deps).filter(record =>
+        record.instance.extensionKey === instance.extensionKey
+        && (!record.instance.closed || record.canvas.id === target.canvas.id));
+    const extensions = await discoverCanvasExtensions({
+        config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
+    });
+    const extension = extensions.find(item => item.extensionKey === instance.extensionKey);
+    if (!extension) throw new Error(`Canvas extension is unavailable: ${instance.extensionKey}`);
+    signal?.throwIfAborted();
+    await deps.hosts.reset(deps, extension);
+    const id = randomUUID();
+    const results = new Map<string, Awaited<ReturnType<CanvasExtensionHostRegistry['open']>>>();
+    try {
+        for (const record of affected) {
+            signal?.throwIfAborted();
+            const { canvasId, instanceId, input } = record.instance;
+            results.set(record.canvas.id, await deps.hosts.open(deps, extension, { canvasId, instanceId, input }));
+        }
+    } catch (error) {
+        // A canceled or revoked owner must not publish late failures to its views.
+        signal?.throwIfAborted();
+        await deps.hosts.reset(deps, extension);
+        signal?.throwIfAborted();
+        const message = canvasExtensionFailure(error).error.message;
+        for (const record of affected) {
+            persistCanvasExtensionInstance(deps, {
+                ...record.instance, runtimeReload: { id, error: message },
+            }, record.canvas, { refreshOnly: true });
+        }
+        throw error;
+    }
+    signal?.throwIfAborted();
+    await assertCanvasExtensionOwner(deps);
+    signal?.throwIfAborted();
+    for (const record of affected) {
+        persistCanvasExtensionInstance(deps, {
+            ...record.instance, closed: undefined,
+            title: results.get(record.canvas.id)!.title ?? record.instance.title,
+            runtimeReload: { id },
+        }, record.canvas, { refreshOnly: true });
+    }
+    const result = results.get(target.canvas.id)!;
+    return {
+        success: true, canvasId: target.canvas.id, instanceId: instance.instanceId, reused: true,
+        title: result.title ?? instance.title, url: result.url, embed: `canvas://${target.canvas.id}`,
+        extensionKey: instance.extensionKey, refreshedCanvasIds: affected.map(record => record.canvas.id),
+    };
+}
+
 export function persistCanvasExtensionInstance(
     deps: CanvasExtensionInstanceDeps, instance: CanvasExtensionInstance, existing?: CanvasRecord,
+    notification?: { refreshOnly?: boolean },
 ): CanvasRecord {
     const content = JSON.stringify(instance);
     let canvas: CanvasRecord;
@@ -65,7 +126,7 @@ export function persistCanvasExtensionInstance(
             title: instance.title, content, type: 'copilot-extension', editor: 'ai',
         });
     }
-    deps.notifier.canvasUpdated(deps.workspaceId, canvas, 'ai');
+    deps.notifier.canvasUpdated(deps.workspaceId, canvas, 'ai', notification);
     return canvas;
 }
 
@@ -82,21 +143,13 @@ export function reopenCanvasExtension(
         const canvas = deps.canvasStore.getCanvas(deps.workspaceId, recordId);
         if (!canvas || canvas.processId !== deps.processId) throw new Error('Canvas is unavailable in this conversation');
         const instance = readCanvasExtensionInstance(canvas);
-        if (options.reload) {
-            const extensions = await discoverCanvasExtensions({
-                config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
-            });
-            const extension = extensions.find(item => item.extensionKey === instance.extensionKey);
-            if (!extension) throw new Error(`Canvas extension is unavailable: ${instance.extensionKey}`);
-            options.signal?.throwIfAborted();
-            await deps.hosts.reset(deps, extension);
-        }
+        if (options.reload) return reloadCanvasExtensionInstances(deps, { canvas, instance }, options.signal);
         options.signal?.throwIfAborted();
         const opened = await openInstance(deps, {
             canvasId: `${instance.extensionKey}/${instance.canvasId}`,
             instanceId: instance.instanceId,
             input: instance.input,
-        }, options.signal);
+        }, options.signal, true);
         return { ...opened, extensionKey: instance.extensionKey };
     });
 }
@@ -133,7 +186,7 @@ function reusableInstance(saved: CanvasExtensionRecord[], extensionKey: string, 
     return matches.find(({ instance }) => !instance.closed) ?? matches[0];
 }
 
-async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasExtensionArgs, signal?: AbortSignal) {
+async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasExtensionArgs, signal?: AbortSignal, refreshOnly = false) {
     const owner = { workspaceId: deps.workspaceId, processId: deps.processId };
     if (typeof args?.canvasId !== 'string' || !args.canvasId.trim()) throw new Error('canvasId must be a non-empty string');
     if (args.input !== undefined && (!args.input || typeof args.input !== 'object' || Array.isArray(args.input))) {
@@ -167,7 +220,9 @@ async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasE
     let canvas: CanvasRecord;
     try {
         signal?.throwIfAborted();
-        canvas = persistCanvasExtensionInstance(deps, { extensionKey: extension.extensionKey, canvasId, instanceId, input, title }, existing?.canvas);
+        canvas = persistCanvasExtensionInstance(deps, { extensionKey: extension.extensionKey, canvasId, instanceId, input, title,
+            ...(existing?.instance.runtimeReload ? { runtimeReload: existing.instance.runtimeReload } : {}),
+        }, existing?.canvas, refreshOnly ? { refreshOnly: true } : undefined);
     } catch (error) {
         // An instance without a durable record cannot be found to close later.
         if (!existing) await deps.hosts.close(owner, extension, instanceId).catch(() => {});

@@ -29,7 +29,7 @@ export type CanvasUpdateEditor = 'ai' | 'user';
 
 export interface CanvasUpdateNotifier {
     /** Announce a successful canvas mutation on every realtime channel. */
-    canvasUpdated(workspaceId: string, canvas: CanvasRecord, editor: CanvasUpdateEditor): void;
+    canvasUpdated(workspaceId: string, canvas: CanvasRecord, editor: CanvasUpdateEditor, options?: { refreshOnly?: boolean }): void;
 }
 
 export interface CanvasUpdateNotifierDeps {
@@ -41,7 +41,7 @@ export interface CanvasUpdateNotifierDeps {
 
 export function createCanvasUpdateNotifier({ getWsServer, processStore }: CanvasUpdateNotifierDeps): CanvasUpdateNotifier {
     return {
-        canvasUpdated(workspaceId, canvas, editor) {
+        canvasUpdated(workspaceId, canvas, editor, options) {
             getWsServer?.()?.broadcastProcessEvent({
                 type: 'canvas-updated',
                 workspaceId,
@@ -50,6 +50,7 @@ export function createCanvasUpdateNotifier({ getWsServer, processStore }: Canvas
                 title: canvas.title,
                 revision: canvas.revision,
                 editor,
+                ...(options?.refreshOnly ? { refreshOnly: true } : {}),
                 timestamp: Date.now(),
             });
             if (processStore && canvas.processId) {
@@ -59,6 +60,7 @@ export function createCanvasUpdateNotifier({ getWsServer, processStore }: Canvas
                     title: canvas.title,
                     revision: canvas.revision,
                     editor,
+                    ...(options?.refreshOnly ? { refreshOnly: true } : {}),
                 });
             }
         },

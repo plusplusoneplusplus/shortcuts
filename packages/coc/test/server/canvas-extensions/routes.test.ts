@@ -138,7 +138,7 @@ describe('persisted canvas extension reopening routes', () => {
         expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, canvas.id)!).input).toEqual({ count: 7 });
     });
 
-    it('reports invalid code without saving and recovers on reload after repair', async () => {
+    it('reports invalid code to saved views and recovers on reload after repair', async () => {
         const canvas = saved();
         const first = await (await post(canvas.id)).json();
         const entry = path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs');
@@ -149,8 +149,11 @@ describe('persisted canvas extension reopening routes', () => {
         const failed = await post(canvas.id, owner.workspaceId, undefined, 'reload');
         expect(failed.status).toBe(422);
         expect(await failed.json()).toMatchObject({ success: false, error: { message: expect.any(String) } });
-        expect(canvasStore.getCanvas(owner.workspaceId, canvas.id)).toEqual(before);
-        expect(emit).not.toHaveBeenCalled();
+        const failedRecord = canvasStore.getCanvas(owner.workspaceId, canvas.id)!;
+        expect(failedRecord.revision).toBe(before!.revision + 1);
+        expect(readCanvasExtensionInstance(failedRecord)).toMatchObject({ input: { count: 7 },
+            runtimeReload: { id: expect.any(String), error: expect.any(String) } });
+        expect(emit).toHaveBeenCalledOnce();
         await expect(fetch(first.url)).rejects.toThrow();
         fs.writeFileSync(entry, source.replaceAll("title: 'Counter'", "title: 'Repaired'"));
         const repaired = await (await post(canvas.id, owner.workspaceId, undefined, 'reload')).json();

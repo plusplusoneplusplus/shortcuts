@@ -7,6 +7,8 @@ export interface CanvasExtensionInstance extends CanvasInstanceRequest {
     extensionKey: string;
     title: string;
     closed?: boolean;
+    /** Only explicit runtime reloads change this marker; ordinary opens preserve it. */
+    runtimeReload?: { id: string; error?: string };
 }
 
 export function readCanvasExtensionInstance(canvas: CanvasRecord): CanvasExtensionInstance {
@@ -17,6 +19,9 @@ export function readCanvasExtensionInstance(canvas: CanvasRecord): CanvasExtensi
         || typeof value.instanceId !== 'string' || !value.instanceId
         || typeof value.title !== 'string'
         || (value.closed !== undefined && typeof value.closed !== 'boolean')
+        || (value.runtimeReload !== undefined && (!value.runtimeReload
+            || typeof value.runtimeReload.id !== 'string' || !value.runtimeReload.id
+            || (value.runtimeReload.error !== undefined && typeof value.runtimeReload.error !== 'string')))
         || (value.input !== undefined && (!value.input || typeof value.input !== 'object' || Array.isArray(value.input)))) {
         throw new Error(`Invalid canvas extension record: ${canvas.id}`);
     }

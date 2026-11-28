@@ -8,7 +8,8 @@ The AI canvas has **no chat-side column**. It lives in the unified right panel a
 `coc://canvas/<canvasId>` page inside a web tab (`UnifiedCanvasTab`), in the standalone pop-out window, or as an inline
 embed; the chat itself renders no rail, resize handle, or reserved width for it. An AI
 `canvas-updated` event activates that tab and reveals the panel for non-Kusto kinds.
-Kusto events carry `canvasType: 'kusto'` and only refresh mounted views, preserving
+Kusto events carry `canvasType: 'kusto'`; events with `refreshOnly: true` and Kusto
+events only refresh mounted views, preserving
 the selected tab and panel visibility; result links and the `+` menu open them explicitly.
 With no panel hosting the chat, every kind only refreshes mounted views. The panel
 supplies `liveEvent` through its `useSyncExternalStore` relay. See
@@ -234,12 +235,17 @@ Discovery supplies the current hash on each tool call; a changed path/hash refre
 an existing runtime and reopens known instances before dispatch. Idle expiry preserves
 declarations; disable/shutdown clear them. Opens and actions retain separate
 conversation processes even when their declarations come from the shared cache.
-Hash refresh does not replace mounted guests. Desktop Reload explicitly retires only
+Hash refresh does not replace mounted guests. Explicit tool or desktop Reload retires only
 that workspace/conversation/extension runtime and invalidates its declarations,
 regardless of hash. Retirement cancels scripts and revokes queued/late runtime work;
 the next open hydrates saved instances and reads all code in a fresh process.
-Other conversations and workspaces keep their runtimes. Other views of the same
-runtime can need reopening because their URLs belong to the retired child.
+Other conversations and workspaces keep their runtimes. Every saved open instance
+of the same extension in the exact conversation receives one `runtimeReload` marker
+`{ id, error? }` and revision-checked update. Closed siblings stay closed. Success
+publishes after all runtime opens succeed; runtime failure stops the replacement
+and publishes an error marker to affected views. Persistence conflicts fail without
+overwriting concurrent input or retrying. Multi-record saves can fail partway;
+callers receive the persistence error and can explicitly reload again.
 
 Server composition supplies shared runtime, CanvasStore hydration and update notifier
 services through `getCanvasExtensionRuntime`. Standard chat, follow-up, Ralph and
@@ -253,10 +259,17 @@ extension tools and catalog. Tool assembly and catalog discovery never start chi
 live gate before discovery, owner reads or runtime calls. `manage_canvas` takes a
 required `action`: `open` needs a qualified `canvasId` (optional `instanceId` reopens a
 saved instance, optional `input`); `close` needs `instanceId`, rejects `canvasId`/`input`
-and keeps the saved record. Open reuse follows [Instance reuse](#instance-reuse). Invalid actions fail after the live gate. Open persists a
+and keeps the saved record. `reload` requires an open `instanceId`, rejects
+`canvasId`/`input`, forces a new runtime even for unchanged entry hashes, and returns
+`refreshedCanvasIds` for all open instances of that extension in the conversation.
+It preserves their saved IDs/input and session files; runtime memory and unsaved
+page input can be lost. Running owner operations finish first; actions are never
+replayed. Tool cancellation revokes queued work and late success/error publication.
+Cancellation after retirement keeps the old process stopped; stale views require an
+explicit reload rather than automatic replay. Open reuse follows [Instance reuse](#instance-reuse). Invalid actions fail after the live gate. Open persists a
 `copilot-extension` record in the conversation workspace, with extension key, declared
 canvas ID, instance ID, input and title as JSON content. Runtime URLs stay in memory.
-The shared notifier emits both WebSocket and process updates on open/close. A closed
+The shared notifier emits both WebSocket and process updates on open/close/reload. A closed
 marker retains reopen input while excluding that record from runtime hydration.
 
 `instance-records.ts` reads owner-filtered records and supplies the registry's optional
@@ -276,13 +289,16 @@ derives the conversation and extension identity/input from the saved record, rev
 the live owner/gate, re-sends `canvas.open` and returns an uncached runtime URL plus
 extension key. Closed records reopen with their original input. Request bodies cannot
 override ownership or input. The matching `POST .../copilot-extension/reload` route
-forces runtime retirement before reopening the same saved record. Both operations
+shares tool reload and refreshes all saved open instances of the selected extension,
+including a closed target explicitly reopened by the desktop. Both operations
 share the owner queue with tools and wait for running owner operations to finish.
-Disconnects revoke queued requests and prevent
-late persistence without disposing a runtime shared with another view. Reload
+Disconnects revoke queued requests and prevent late persistence without disposing
+a runtime shared with another view. Reload
 preserves saved input and the session workspace, while runtime memory and unsaved
-page input can be lost. Failures return structured errors without saving a new
-record; retrying Reload after code repair starts a fresh child.
+page input can be lost. Failures return structured errors and runtime failures update
+existing records with error markers; retrying Reload after code repair starts a
+fresh child. Reload and ordinary desktop reopen notifications carry `refreshOnly`
+on both channels, preserving tab selection and panel visibility.
 Failures use SDK `resultType: 'failure'` envelopes whose
 `textResultForLlm` contains `{ success: false, error: { code, message } }` JSON,
 preserving CanvasError details and MCP `isError` across providers. Failed initial persistence closes the newly opened runtime instance.
@@ -299,6 +315,11 @@ Its optional boolean reload argument selects the reload POST. The installed gues
 shows a Reload control with confirmation of the shared runtime and input loss;
 loading disables it, errors keep it available for recovery. Each attempt replaces
 the guest with a fresh view identity and discards late old-view replies.
+`CanvasBodyRenderer` passes the saved reload marker to `CopilotExtensionCanvasView`.
+A changed success marker replaces the guest through ordinary open; an error marker
+closes it and shows the error without opening. Ordinary opens preserve the marker,
+so their own revision notifications cannot trigger a reopen loop. Repeated channel
+delivery keeps the same marker. Owner changes revoke old views and pending replies.
 Main reopens through the POST on the desktop's fixed local server and
 derives the URL/key from that response. IPC requires the registered SPA main
 frame on that server; close, reload, crash and shutdown abort pending opens.

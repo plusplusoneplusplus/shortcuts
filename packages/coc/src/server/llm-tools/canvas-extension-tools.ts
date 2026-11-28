@@ -1,8 +1,8 @@
-import { defineTool, type Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { defineTool, type Tool, type ToolInvocation } from '@plusplusoneplusplus/coc-agent-sdk';
 import { discoverCanvasExtensions } from '../canvas-extensions/discovery';
 import { listCanvasExtensionInstances } from '../canvas-extensions/instance-records';
 import {
-    canvasExtensionFailure, isCanvasExtensionSingleton, openCanvasExtension, persistCanvasExtensionInstance, runCanvasExtensionOperation,
+    canvasExtensionFailure, isCanvasExtensionSingleton, openCanvasExtension, persistCanvasExtensionInstance, reloadCanvasExtensionInstances, runCanvasExtensionOperation,
     type CanvasExtensionInstanceDeps, type OpenCanvasExtensionArgs,
 } from '../canvas-extensions/instance-service';
 
@@ -11,7 +11,7 @@ export type CanvasExtensionToolsDeps = CanvasExtensionInstanceDeps;
 export type { CanvasExtensionRuntime } from '../canvas-extensions/instance-service';
 
 interface InvokeArgs { instanceId: string; actionName: string; input?: Record<string, unknown> }
-type ManageArgs = { action: 'open' | 'close' } & Partial<OpenCanvasExtensionArgs>;
+type ManageArgs = { action: 'open' | 'close' | 'reload' } & Partial<OpenCanvasExtensionArgs>;
 
 function requiredString(value: unknown, name: string): asserts value is string {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
@@ -42,9 +42,9 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
         if (!extension) throw new Error(`Canvas extension is unavailable: ${extensionKey}`);
         return extension;
     };
-    const toolResult = <T>(action: (args: T) => Promise<unknown>) => async (args: T) => {
+    const toolResult = <T>(action: (args: T, signal?: AbortSignal) => Promise<unknown>) => async (args: T, invocation?: ToolInvocation) => {
         try {
-            return await action(args);
+            return await action(args, invocation?.signal);
         } catch (error) {
             const failure = canvasExtensionFailure(error);
             return { resultType: 'failure', textResultForLlm: JSON.stringify(failure) };
@@ -68,25 +68,33 @@ export function createCanvasExtensionTools(deps: CanvasExtensionToolsDeps): Tool
             }),
         }),
         defineTool<ManageArgs>('manage_canvas', {
-            description: 'Open or close an installed canvas instance. action "open" needs a qualified canvasId '
+            description: 'Open, close or reload an installed canvas instance. action "open" needs a qualified canvasId '
                 + '(from list_canvas_capabilities) and takes optional input; supply instanceId to reopen a saved instance. '
                 + (isCanvasExtensionSingleton(deps.config())
                     ? 'Each canvas has one instance per chat: open reuses the saved instance (result reused: true, with its instanceId); '
                         + 'input, when given, replaces its saved input and is sent to the extension, otherwise the saved input is kept. '
                     : '')
-                + 'action "close" needs instanceId; the saved record remains available to reopen.',
+                + 'action "close" needs instanceId; the saved record remains available to reopen. '
+                + 'action "reload" needs an open instanceId and rejects canvasId/input. It restarts this extension in this chat '
+                + 'even when only local imports changed, reopens all its open instances with saved input, and refreshes their visible views. '
+                + 'Unsaved page input and runtime memory may be lost; session files are kept. Running actions finish first; no action is replayed.',
             parameters: { type: 'object', properties: {
-                action: { type: 'string', enum: ['open', 'close'] },
+                action: { type: 'string', enum: ['open', 'close', 'reload'] },
                 canvasId: { type: 'string' }, input: { type: 'object' }, instanceId: { type: 'string' },
             }, required: ['action'] },
-            handler: toolResult(async args => args?.action === 'open'
+            handler: toolResult(async (args, signal) => args?.action === 'open'
                 ? openCanvasExtension(deps, args as OpenCanvasExtensionArgs)
                 : runCanvasExtensionOperation(deps, async () => {
-                    if (args?.action !== 'close') throw new Error('action must be "open" or "close"');
+                    if (args?.action !== 'close' && args?.action !== 'reload') throw new Error('action must be "open", "close" or "reload"');
                     for (const name of ['canvasId', 'input'] as const) {
-                        if (args[name] !== undefined) throw new Error(`${name} is not supported for action "close"`);
+                        if (args[name] !== undefined) throw new Error(`${name} is not supported for action "${args.action}"`);
                     }
                     const { canvas, instance } = findInstance(args.instanceId as string);
+                    if (args.action === 'reload') {
+                        signal?.throwIfAborted();
+                        if (instance.closed) throw new Error('Canvas instance is closed; reopen it before reloading');
+                        return reloadCanvasExtensionInstances(deps, { canvas, instance }, signal);
+                    }
                     if (!instance.closed) {
                         await deps.hosts.close(owner, await extensionFor(instance.extensionKey), instance.instanceId);
                         persistCanvasExtensionInstance(deps, { ...instance, closed: true }, canvas);

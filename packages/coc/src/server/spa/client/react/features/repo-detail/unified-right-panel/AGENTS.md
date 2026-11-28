@@ -61,7 +61,7 @@ Reuse existing views. Do not add a second editor, terminal manager, search backe
 ## Other entry points
 
 - Chat diffs, source links, directory links, HTML links, notes, Explorer, definitions, canvas embeds, and AI canvas events use `openUnifiedPanelTab` with the originating chat and concrete owner. Hosted links resolve ownership first. `sourceLinkTabInput` sends a single `:line` link as a one-line range (`endLine = line`), so `PreviewPane` highlights it like a multi-line range; search and symbol jumps send no `endLine` and only scroll. Chats without a matching panel keep their existing surface.
-- Kusto canvas updates only reconcile. Other canvas updates may reopen a dismissed tab. Handlers read the host through refs because `useChatSSE` does not resubscribe. With no host the event is still published and nothing is activated.
+- Kusto canvas updates and `refreshOnly` events only reconcile, preserving selection and visibility. Other canvas updates may reopen a dismissed tab. Handlers read the host through refs because `useChatSSE` does not resubscribe. With no host the event is still published and nothing is activated.
 - Chat Changes uses resource id `chat-changes-<chatId>`, not a content hash. The registry is not persisted. Missing means the transcript has not loaded. `null` means it loaded and changed nothing. A restored tab claims the source. Publishing never mints a source for a closed tab. Path keys are forward-slash normalized.
 - Canvas pop-out is `coc-canvas-<id>` on the owning workspace. A new Kusto query opens a sibling tab. The originating tab keeps its draft.
 

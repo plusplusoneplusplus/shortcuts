@@ -65,6 +65,8 @@ export interface PendingMessageAddedPayload {
 /** Fired when a canvas linked to this process is created or updated by the AI. */
 export interface CanvasUpdatedPayload {
     canvasId: string;
+    /** Refresh mounted views without opening or selecting a tab. */
+    refreshOnly?: boolean;
     /** Persisted kind; Kusto updates refresh without opening or selecting a panel tab. */
     canvasType?: string;
     title: string;

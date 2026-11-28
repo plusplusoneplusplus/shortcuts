@@ -15,13 +15,32 @@ export interface ExtensionCanvasBridge {
     }) => void): () => void;
 }
 
+export interface ExtensionRuntimeReload {
+    id: string;
+    error?: string;
+}
+
+/** Saved reload markers drive guest replacement independently of ordinary revisions. */
+export function parseExtensionRuntimeReload(content: string): ExtensionRuntimeReload | undefined {
+    try {
+        const marker: unknown = JSON.parse(content)?.runtimeReload;
+        if (!marker || typeof marker !== 'object' || !('id' in marker)
+            || typeof marker.id !== 'string' || !marker.id.trim()
+            || ('error' in marker && typeof marker.error !== 'string')) return undefined;
+        return { id: marker.id, ...('error' in marker ? { error: marker.error as string } : {}) };
+    } catch {
+        return undefined;
+    }
+}
+
 export function CopilotExtensionCanvasView({
-    workspaceId, canvasId, routingRef, allowDesktopGuest = false,
+    workspaceId, canvasId, routingRef, allowDesktopGuest = false, runtimeReload,
 }: {
     workspaceId: string;
     canvasId: string;
     routingRef?: string | null;
     allowDesktopGuest?: boolean;
+    runtimeReload?: ExtensionRuntimeReload;
 }) {
     const ref = routingRef === null ? undefined : routingRef ?? workspaceId;
     const baseUrl = useCloneBaseUrl(ref);
@@ -35,13 +54,22 @@ export function CopilotExtensionCanvasView({
     const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
     const [error, setError] = useState<string>();
     const [reloadNonce, setReloadNonce] = useState(0);
-    const reloadRequested = useRef(false);
+    const reloadRequested = useRef<{ workspaceId: string; canvasId: string; routingRef?: string | null } | null>(null);
+    const runtimeReloadId = runtimeReload?.id;
+    const runtimeReloadError = runtimeReload?.error;
 
     useEffect(() => {
         if (!enabled || !bridge) return;
         const viewId = `extension-canvas-${crypto.randomUUID()}`;
-        const reload = reloadRequested.current;
-        reloadRequested.current = false;
+        const requested = reloadRequested.current;
+        const reload = !!requested && requested.workspaceId === workspaceId && requested.canvasId === canvasId
+            && requested.routingRef === routingRef;
+        reloadRequested.current = null;
+        if (!reload && runtimeReloadError !== undefined) {
+            setStatus('failed');
+            setError(runtimeReloadError || 'Failed to reload extension canvas');
+            return;
+        }
         let disposed = false;
         let failed = false;
         let guest: (HTMLElement & { getWebContentsId(): number }) | undefined;
@@ -92,7 +120,7 @@ export function CopilotExtensionCanvasView({
             guest?.remove();
             bridge.close(viewId);
         };
-    }, [enabled, bridge, workspaceId, canvasId, routingRef, reloadNonce]);
+    }, [enabled, bridge, workspaceId, canvasId, routingRef, reloadNonce, runtimeReloadId, runtimeReloadError]);
 
     if (!enabled) {
         return <div className="p-6 text-center text-xs text-[#848484]">Open in the CoC desktop app</div>;
@@ -103,8 +131,8 @@ export function CopilotExtensionCanvasView({
                 <button type="button" disabled={status === 'loading'}
                     className="rounded px-2 py-1 text-xs text-[#848484] hover:bg-[#848484]/10 disabled:opacity-50"
                     onClick={() => {
-                        if (status === 'loading' || !window.confirm('Reload this extension? This restarts its shared runtime in this conversation. Unsaved page input may be lost. Saved instance input and session files are kept. Other open canvases from this extension may need to be reopened. Running actions finish before reload. Actions are not replayed.')) return;
-                        reloadRequested.current = true;
+                        if (status === 'loading' || !window.confirm('Reload this extension? This restarts its shared runtime in this conversation. Unsaved page input may be lost. Saved instance input and session files are kept. Other open canvases from this extension will refresh too. Running actions finish before reload. Actions are not replayed.')) return;
+                        reloadRequested.current = { workspaceId, canvasId, routingRef };
                         setStatus('loading');
                         setReloadNonce(value => value + 1);
                     }}>Reload</button>

@@ -19,6 +19,7 @@ import * as path from 'path';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerCanvasRoutes } from '../../../src/server/canvas/canvas-routes';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
+import { createCanvasUpdateNotifier } from '../../../src/server/canvas/canvas-update-notifier';
 import type { Route } from '../../../src/server/types';
 import type { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -97,6 +98,23 @@ describe('canvas update fanout', () => {
 
     afterEach(() => {
         fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('forwards refresh-only reload intent to both realtime channels exactly once', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', type: 'copilot-extension', content: '{}', processId: PROC });
+        const notifier = createCanvasUpdateNotifier({
+            processStore: { emitProcessEvent } as unknown as ProcessStore,
+            getWsServer: () => ({ broadcastProcessEvent }) as unknown as ProcessWebSocketServer,
+        });
+        notifier.canvasUpdated(WS, canvas, 'ai', { refreshOnly: true });
+        expect(wsEvents(canvas.id)).toHaveLength(1);
+        expect(wsEvents(canvas.id)[0]).toMatchObject({ refreshOnly: true, workspaceId: WS, canvasId: canvas.id });
+        expect(sseEvents(canvas.id)).toHaveLength(1);
+        expect(sseEvents(canvas.id)[0].canvasUpdate).toMatchObject({ refreshOnly: true, canvasId: canvas.id });
+        expect(emitProcessEvent).toHaveBeenCalledWith(PROC, expect.anything());
+        notifier.canvasUpdated(WS, canvas, 'ai');
+        expect(wsEvents(canvas.id)[1]).not.toHaveProperty('refreshOnly');
+        expect(sseEvents(canvas.id)[1].canvasUpdate).not.toHaveProperty('refreshOnly');
     });
 
     /**

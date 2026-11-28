@@ -156,7 +156,7 @@ export type ServerMessage = DashboardDiscoveryServerEvent
     | { type: 'workspace-topology-changed'; workspaceId: string; action: 'added' | 'updated' | 'removed'; timestamp: number }
     | { type: 'server-topology-changed'; serverId: string; action: 'added' | 'updated' | 'removed' | 'connection'; timestamp: number }
     | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string }
-    | { type: 'canvas-updated'; workspaceId: string; canvasId: string; processId?: string; title?: string; revision: number; editor: 'ai' | 'user'; timestamp: number }
+    | { type: 'canvas-updated'; refreshOnly?: boolean; workspaceId: string; canvasId: string; processId?: string; title?: string; revision: number; editor: 'ai' | 'user'; timestamp: number }
     | { type: 'work-item-added'; workspaceId: string; item: any }
     | { type: 'work-item-updated'; workspaceId: string; item: any }
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }

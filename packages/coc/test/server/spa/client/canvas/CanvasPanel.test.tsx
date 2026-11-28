@@ -237,6 +237,48 @@ describe('CanvasPanel', () => {
         }
     });
 
+    it('refreshes a visible installed guest from saved reload markers without looping on ordinary revision events', async () => {
+        const open = vi.fn().mockResolvedValue({
+            ok: true, embed: 'webview', src: 'http://127.0.0.1:3210/', partition: 'extension-memory',
+        });
+        const close = vi.fn();
+        (window as any).cocDesktop = { extensionCanvas: {
+            open, close, adopt: vi.fn(), onState: () => () => {},
+        } };
+        const record = (revision: number, marker: { id: string; error?: string }) => makeCanvas({
+            type: 'copilot-extension', revision, content: JSON.stringify({ runtimeReload: marker }),
+        });
+        mocks.get.mockResolvedValue(record(1, { id: 'first' }));
+        let view: ReturnType<typeof render> | undefined;
+        try {
+            view = render(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await waitFor(() => expect(view!.container.querySelector('webview')).not.toBeNull());
+            const oldGuest = view.container.querySelector('webview');
+            const event = (revision: number) => ({ canvasId: 'doc-abc123', revision,
+                canvasType: 'copilot-extension' as const, title: 'Board', editor: 'ai' as const });
+            mocks.get.mockResolvedValue(record(2, { id: 'second' }));
+            view.rerender(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={event(2)} />);
+            await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+            await waitFor(() => expect(view!.container.querySelector('webview')).not.toBeNull());
+            expect(view.container.querySelector('webview')).not.toBe(oldGuest);
+            const replacement = view.container.querySelector('webview');
+            mocks.get.mockResolvedValue(record(3, { id: 'second' }));
+            view.rerender(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={event(3)} />);
+            await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
+            expect(open).toHaveBeenCalledTimes(2);
+            expect(view.container.querySelector('webview')).toBe(replacement);
+            mocks.get.mockResolvedValue(record(4, { id: 'failed', error: 'Bad imported code' }));
+            view.rerender(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={event(4)} />);
+            await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Bad imported code'));
+            expect(view.container.querySelector('webview')).toBeNull();
+            expect(open).toHaveBeenCalledTimes(2);
+            expect(open.mock.calls.every(call => call.length === 3)).toBe(true);
+        } finally {
+            view?.unmount();
+            delete (window as any).cocDesktop;
+        }
+    });
+
     it('honors main-process extension denial even when canvas.enabled is on', async () => {
         const open = vi.fn().mockResolvedValue({ ok: false, message: 'Canvas extensions are disabled' });
         (window as any).__DASHBOARD_CONFIG__ = { canvasEnabled: true, features: { canvasExtensionsEnabled: false } };

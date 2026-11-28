@@ -1,8 +1,8 @@
 /**
  * unifiedCanvasEvents — route document updates and reconcile every canvas kind.
  *
- * Kusto result events only publish: background query results must preserve the
- * selected tab and panel visibility. Explicit embed/menu actions still open them.
+ * Kusto results and refresh-only events publish without changing the selected
+ * tab or panel visibility. Explicit embed/menu actions still open them.
  * Other canvas updates open or refocus their tab through `openUnifiedPanelTab`.
  * Reconciliation uses a small store because the panel lives outside the chat's
  * SSE subtree; mounted views refresh in place or retain their dirty-draft UI.
@@ -142,7 +142,7 @@ export function canvasEventTabInput(args: UnifiedCanvasUpdateArgs): OpenUnifiedT
 
 /**
  * Show the canvas an AI event just touched: publish the event for a mounted
- * view. Kusto results preserve panel state; other kinds open/activate their tab
+ * view. Kusto results and refresh-only events preserve panel state; other updates open/activate their tab
  * and reveal the panel. Returns the opened tab id, or null for a passive update
  * or an event this panel cannot own.
  *
@@ -154,6 +154,6 @@ export function routeUnifiedCanvasUpdate(args: UnifiedCanvasUpdateArgs): string 
     const input = canvasEventTabInput(args);
     if (!input) return null;
     publishUnifiedCanvasEvent(args.ownerWorkspaceId, args.event);
-    if (args.event.canvasType === 'kusto') return null;
+    if (args.event.refreshOnly || args.event.canvasType === 'kusto') return null;
     return openUnifiedPanelTab(args.scopeWorkspaceId, input);
 }
