@@ -4,14 +4,18 @@ import { resolveDashboardChatReference } from '../../../shared/dashboard-discove
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { encodeSegment, repoHashBase } from '../../../layout/routePath';
 import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
+import { RemoveReferenceButton } from './SentinelTodoExternalReferences';
 
 const UNAVAILABLE = 'Referenced chat unavailable. Reconnect its server and try again.';
 
 type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?: string) => void;
 
-/** References only navigate; ownership checks never update the ledger. */
-export function SentinelTodoConversationReferences({ item, owner, onFollowLink }: {
+/** References navigate; ownership checks never update the ledger. Removal only unlinks. */
+export function SentinelTodoConversationReferences({ item, owner, onFollowLink, onRemove, removeDisabled }: {
     item: SentinelTodoItem; owner: SentinelTodoOwner; onFollowLink: FollowLink;
+    /** Shown in the detail view only; absent for archived items. */
+    onRemove?: (reference: SentinelTodoConversationReference) => void;
+    removeDisabled?: boolean;
 }) {
     const pending = useRef<{ controller: AbortController; timer: ReturnType<typeof setTimeout> } | null>(null);
     const [opening, setOpening] = useState<string | null>(null);
@@ -92,6 +96,8 @@ export function SentinelTodoConversationReferences({ item, owner, onFollowLink }
                     {(ref.serverLabel || ref.workspaceLabel) && <span className="text-[10px] text-[#616161] dark:text-[#a0a0a0]">{[ref.serverLabel, ref.workspaceLabel].filter(Boolean).join(' · ')}</span>}
                     {ref.verification === 'unverified' && <span className="text-[10px]">Unverified</span>}
                     {opening === key && <span role="status" className="text-[10px]">Checking chat…</span>}
+                    {onRemove && <RemoveReferenceButton label={ref.title ?? ref.processId} disabled={removeDisabled}
+                        testId={`sentinel-todo-reference-remove-${item.id}-${ref.processId}`} onClick={() => onRemove(ref)} />}
                 </li>;
             })}
         </ul>

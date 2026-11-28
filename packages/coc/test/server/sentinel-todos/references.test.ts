@@ -192,6 +192,96 @@ describe('Sentinel to-do conversation references', () => {
         });
     });
 
+    describe('removal', () => {
+        const ref = (processId: string, extra: Record<string, unknown> = {}) =>
+            ({ processId, workspaceId: 'ws-a', openLink: `#${processId}`, ...extra });
+        const setup = () => {
+            const created = todos.create(owner, {
+                title: 'Browser control', status: 'todo', statusReason: PENDING,
+                externalReferences: [{ kind: 'link', url: 'https://example.com/spec', title: 'Spec' }],
+            }, { actor: 'user' }).item;
+            let item = todos.linkJob(owner, created.id, { processId: 'queue_job', workspaceId: 'ws-a', kind: 'local', openLink: '#job' }).item;
+            for (const target of [ref('queue_a'), ref('queue_b'), ref('queue_b', { serverIdentity: 'server-b', serverLabel: 'Tunnel' }), ref('queue_c')]) {
+                item = todos.attachReference(owner, item.id, item.revision, target, 'user').item;
+            }
+            return item;
+        };
+
+        it('removes one exact identity and persists, preserving other references, jobs, status and evidence', () => {
+            const item = setup();
+            const result = todos.detachReference(owner, item.id, item.revision, { processId: 'queue_b', workspaceId: 'ws-a' }, 'user');
+            expect(result.changed).toBe(true);
+            expect(result.item.revision).toBe(item.revision + 1);
+            expect(result.item.references.map(r => [r.kind ?? 'conversation', 'processId' in r ? r.processId : r.url,
+                'serverIdentity' in r ? r.serverIdentity : undefined])).toEqual([
+                ['conversation', 'queue_a', undefined], ['conversation', 'queue_b', 'server-b'],
+                ['conversation', 'queue_c', undefined], ['link', 'https://example.com/spec', undefined]]);
+            expect(result.item.statusReason).toBe(item.statusReason);
+            expect(result.item).toMatchObject({ status: item.status, jobs: item.jobs,
+                evidence: item.evidence, dependsOn: item.dependsOn });
+            expect(result.item.userEditedAt).toBeUndefined();
+            expect(result.item.userVerdictRevision).toBe(item.userVerdictRevision);
+            database.close();
+            const reopened = createTodoTestDatabase(database.dataDir);
+            try {
+                expect(new SentinelTodoStore(reopened.db).get(owner).items[0]).toEqual(result.item);
+            } finally { reopened.close(); }
+        });
+
+        it('keeps orders unique so attach and remove work after removing a middle reference', () => {
+            let item = setup();
+            item = todos.detachReference(owner, item.id, item.revision, { processId: 'queue_a', workspaceId: 'ws-a' }, 'user').item;
+            item = todos.attachReference(owner, item.id, item.revision, ref('queue_d'), 'user').item;
+            item = todos.detachReference(owner, item.id, item.revision, { processId: 'queue_c', workspaceId: 'ws-a' }, 'sentinel').item;
+            item = todos.attachReference(owner, item.id, item.revision, ref('queue_a'), 'user').item;
+            const ids = item.references.flatMap(r => 'processId' in r ? [r.processId] : []);
+            expect(ids).toEqual(['queue_b', 'queue_b', 'queue_d', 'queue_a']);
+            expect(todos.get(owner).items[0]).toEqual(item);
+            const orders = database.db.prepare('SELECT reference_order AS o FROM sentinel_todo_references ORDER BY o').all<{ o: number }>();
+            expect(orders.map(row => row.o)).toEqual([0, 1, 2, 3]);
+        });
+
+        it('is a no-op for an absent identity at any revision and checks CAS otherwise', () => {
+            const item = setup();
+            const ledger = todos.get(owner);
+            expect(todos.detachReference(owner, item.id, 1, { processId: 'queue_b', workspaceId: 'ws-b' }, 'user'))
+                .toEqual({ item, ledgerRevision: ledger.revision, changed: false });
+            expect(todos.detachReference(owner, item.id, 1, { processId: 'queue_a', workspaceId: 'ws-a', serverIdentity: 'server-x' }, 'user').changed)
+                .toBe(false);
+            expectTodoError(() => todos.detachReference(owner, item.id, item.revision - 1, { processId: 'queue_a', workspaceId: 'ws-a' }, 'user'), 'conflict');
+            expectTodoError(() => todos.detachReference(owner, 'missing', 1, { processId: 'queue_a', workspaceId: 'ws-a' }, 'user'), 'not_found');
+            expectTodoError(() => todos.detachReference(owner, item.id, item.revision,
+                { processId: 'queue_a', workspaceId: 'ws-a', openLink: '#x' } as never, 'user'), 'invalid');
+            expectTodoError(() => todos.detachReference(owner, item.id, item.revision,
+                { processId: 'queue_a', workspaceId: 'ws-a' }, 'system' as SentinelTodoActor), 'invalid');
+            expect(todos.get(owner)).toEqual(ledger);
+        });
+
+        it('stays scoped to the owning ledger', () => {
+            const item = setup();
+            const other = { workspaceId: 'ws-a', processId: 'queue_other_sentinel' };
+            const otherItem = todos.create(other, { title: 'Other' }, { actor: 'user' }).item;
+            todos.attachReference(other, otherItem.id, 1, ref('queue_a'), 'user');
+            expectTodoError(() => todos.detachReference(other, item.id, item.revision, { processId: 'queue_a', workspaceId: 'ws-a' }, 'user'), 'not_found');
+            todos.detachReference(owner, item.id, item.revision, { processId: 'queue_a', workspaceId: 'ws-a' }, 'user');
+            expect(todos.get(other).items[0].references).toEqual([expect.objectContaining({ processId: 'queue_a' })]);
+        });
+
+        it('service emits once, keeps hidden external references while the flag is off, and checks the owner', async () => {
+            const item = setup();
+            const removed = await service.detachReference(owner, item.id, item.revision, { processId: 'queue_c', workspaceId: 'ws-a' }, 'user');
+            expect(removed).toMatchObject({ removed: true, item: { revision: item.revision + 1 } });
+            expect(removed.item.references.some(r => r.kind === 'link')).toBe(false);
+            expect(todos.get(owner).items[0].references.some(r => r.kind === 'link')).toBe(true);
+            expect(onChange).toHaveBeenCalledTimes(1);
+            expect((await service.detachReference(owner, item.id, 1, { processId: 'queue_c', workspaceId: 'ws-a' }, 'user')).removed).toBe(false);
+            expect(onChange).toHaveBeenCalledTimes(1);
+            await expect(service.detachReference({ workspaceId: 'ws-b', processId: owner.processId }, item.id, 1,
+                { processId: 'queue_a', workspaceId: 'ws-a' }, 'user')).rejects.toMatchObject({ code: 'not_found' });
+            expect(processes.has('queue_c')).toBe(false);
+        });
+    });
+
     describe('service', () => {
         it('derives link and title server-side, emits once, and shows no execution or review', async () => {
             const item = pendingItem();
@@ -456,6 +546,45 @@ describe('Sentinel to-do conversation references', () => {
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_nope', workspaceId: 'ws-a' })).status).toBe(404);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(200);
             expect(todos.get(owner).items[0].references).toHaveLength(2);
+        });
+    });
+
+    describe('REST removal', () => {
+        let server: http.Server;
+        let baseUrl: string;
+        beforeEach(async () => {
+            const routes: Route[] = [];
+            registerSentinelTodoRoutes({ routes, service });
+            server = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+            baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+        });
+        afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); });
+        const remove = async (itemId: string, body: unknown) => {
+            const res = await fetch(`${baseUrl}/api/workspaces/ws-a/sentinel-todos/queue_parent/items/${itemId}/references`, {
+                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            return { status: res.status, body: await res.json() };
+        };
+
+        it('removes through the client, replays idempotently and maps errors', async () => {
+            const item = pendingItem();
+            let revision = todos.attachReference(owner, item.id, 1, { processId: 'queue_design', workspaceId: 'ws-a', openLink: '#a' }, 'user').item.revision;
+            revision = todos.attachReference(owner, item.id, revision, { processId: 'queue_remote_repo', workspaceId: 'ws-b', openLink: '#b' }, 'user').item.revision;
+            const client = new CocClient({ baseUrl });
+            expect((await remove(item.id, { expectedRevision: revision - 1, processId: 'queue_design', workspaceId: 'ws-a' })))
+                .toMatchObject({ status: 409, body: { code: 'conflict', current: { revision } } });
+            const removed = await client.sentinelTodos.detachReference('ws-a', 'queue_parent', item.id,
+                { expectedRevision: revision, processId: 'queue_design', workspaceId: 'ws-a' });
+            expect(removed).toMatchObject({ removed: true, item: { revision: revision + 1, status: 'todo' } });
+            expect(removed.item.references).toEqual([expect.objectContaining({ processId: 'queue_remote_repo' })]);
+            expect((await remove(item.id, { expectedRevision: 1, processId: 'queue_design', workspaceId: 'ws-a' })).body)
+                .toMatchObject({ removed: false });
+            expect((await remove(item.id, { processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(400);
+            expect((await remove(item.id, { expectedRevision: revision + 1, processId: 'queue_remote_repo', workspaceId: 'ws-b', jobs: [] })).status).toBe(400);
+            expect((await remove('missing', { expectedRevision: 1, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(404);
+            expect(todos.get(owner).items[0].references).toHaveLength(1);
+            expect(processes.has('queue_design')).toBe(true);
         });
     });
 

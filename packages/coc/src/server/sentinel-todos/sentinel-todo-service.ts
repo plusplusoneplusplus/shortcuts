@@ -531,6 +531,23 @@ export class SentinelTodoService {
     }
 
     /**
+     * Removes one attached conversation reference by exact identity. Only the
+     * link is removed: the conversation, jobs, status and evidence stay.
+     */
+    async detachReference(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        conversation: { processId: string; workspaceId: string; serverIdentity?: string },
+        actor: SentinelTodoActor,
+    ): Promise<{ item: SentinelTodoItem; ledgerRevision: number; removed: boolean }> {
+        await this.assertOwner(owner);
+        const result = this.withVisibleErrors(() => this.deps.todos.detachReference(owner, itemId, expectedRevision, conversation, actor));
+        if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
+        return this.visibleWrite({ item: result.item, ledgerRevision: result.ledgerRevision, removed: result.changed });
+    }
+
+    /**
      * Proves a local reference target in exactly `workspaceId` from server
      * state only: the saved process, else the live queued/running chat task
      * for a `queue_` ID, else a Ralph session journal. Ralph iterations carry

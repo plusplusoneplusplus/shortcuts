@@ -1232,6 +1232,9 @@ pasted Markdown links into editable title/URL fields with accessible validation.
 Shared coc-client URL validation restricts Teams/Slack to supported HTTPS
 message/channel links without content reads. External replacements
 and clears preserve conversation attachments; omission preserves external links.
+The detail view of unarchived items gives each conversation and external reference a
+Remove button: conversations use `detachReference`, externals PATCH the remaining
+external list. Both use the item revision; Retry after a conflict reapplies to the reloaded item.
 External links follow shared desktop/web navigation without selecting the card or
 starting a conversation excursion. References remain display metadata. Detail notes
 store and edit raw Markdown but display inline Markdown through `SentinelTodoNotes`

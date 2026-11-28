@@ -292,6 +292,18 @@ export interface AttachSentinelTodoReferenceRequest {
   workspaceId: string;
 }
 
+/**
+ * Removes one attached conversation reference by its exact identity; removing a
+ * reference that is already gone is a no-op. Jobs and the conversation stay.
+ */
+export interface DetachSentinelTodoReferenceRequest {
+  expectedRevision: number;
+  processId: string;
+  workspaceId: string;
+  /** Required for dashboard references on another installation; omit for local ones. */
+  serverIdentity?: string;
+}
+
 /** A write's committed item (without derived job execution) and ledger revision. */
 export interface SentinelTodoWriteResponse {
   item: Omit<SentinelTodoItem, 'jobs'> & { jobs: Omit<SentinelTodoJobLink, 'execution' | 'mode'>[] };
@@ -299,6 +311,8 @@ export interface SentinelTodoWriteResponse {
   created?: boolean;
   /** Reference attachments: false when the conversation was already attached. */
   attached?: boolean;
+  /** Reference removals: false when the conversation was already removed. */
+  removed?: boolean;
 }
 
 /** WebSocket event sent after a committed ledger write. */

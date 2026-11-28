@@ -858,6 +858,39 @@ export class SentinelTodoStore {
     }
 
     /**
+     * Removes one conversation reference by its exact server/workspace/process
+     * identity. Status, jobs, evidence, dependencies, external references and
+     * the referenced conversation stay untouched. A reference that is already
+     * gone is an idempotent no-op; otherwise `expectedRevision` must match.
+     */
+    detachReference(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        input: { processId: string; workspaceId: string; serverIdentity?: string },
+        actor: SentinelTodoActor,
+    ): { item: SentinelTodoItem; ledgerRevision: number; changed: boolean } {
+        assertCaller(actor);
+        const target = parse(referenceSchema.pick({ processId: true, workspaceId: true, serverIdentity: true }).strict(), input);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+            const current = ledger.items[index];
+            const matches = (ref: SentinelTodoItem['references'][number]) => isConversationReference(ref)
+                && ref.processId === target.processId && ref.workspaceId === target.workspaceId
+                && ref.serverIdentity === target.serverIdentity;
+            if (!current.references.some(matches)) return { item: current, ledgerRevision: ledger.revision, changed: false };
+            if (current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
+            }
+            const now = new Date().toISOString();
+            const next: Record<string, unknown> = { ...current, references: current.references.filter(ref => !matches(ref)) };
+            return { ...this.commit(owner, ledger, index, next, actor, now), changed: true };
+        });
+    }
+
+    /**
      * Records a registered job's first terminal outcome on its exact link. Failed,
      * cancelled, and capped outcomes move the item to Needs attention unless
      * the item is archived or done, the user edited it after the job was
@@ -1090,6 +1123,9 @@ export class SentinelTodoStore {
     }
 
     private writeReferences(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
+        // Rewrite the item's rows so removals persist and orders stay dense and unique.
+        this.db.prepare(`DELETE FROM sentinel_todo_references
+            WHERE workspace_id = ? AND parent_process_id = ? AND item_id = ?`).run(owner.workspaceId, owner.processId, item.id);
         const statement = this.db.prepare(`INSERT INTO sentinel_todo_references (
             workspace_id, parent_process_id, item_id, server_key, process_id, reference_order,
             reference_workspace_id, open_link, title, attached_at, attached_by, metadata
