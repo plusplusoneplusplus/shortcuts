@@ -17,18 +17,16 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // Stub the pdf.js renderer so this test never loads the real (browser-only)
 // pdf.js library. `shouldError` drives the iframe fallback.
 const pdfjsStub = vi.hoisted(() => ({ shouldError: false, lastProps: null as any }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => {
-            pdfjsStub.lastProps = props;
-            React.useEffect(() => {
-                if (pdfjsStub.shouldError) props.onError?.();
-            }, [props.url]);
-            return <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />;
-        },
-    }),
-);
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => {
+        pdfjsStub.lastProps = props;
+        React.useEffect(() => {
+            if (pdfjsStub.shouldError) props.onError?.();
+        }, [props.url]);
+        return <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />;
+    },
+}));
 
 import { PaperInlineViewer } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/PaperInlineViewer';
 import type { PaperLinkInfo } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/paperLink';
@@ -68,6 +66,8 @@ describe('PaperInlineViewer', () => {
         const viewport = await screen.findByTestId('pdfjs-render-viewport');
         // Renders the resolved cache URL, never the arXiv source URL, through pdf.js.
         expect(viewport.getAttribute('data-url')).toBe(CACHE_URL);
+        // The worker is served at the site root; /static/pdf.worker.js would hit the SPA fallback.
+        expect(pdfjsStub.lastProps.workerSrc).toBe('/pdf.worker.js');
         expect(screen.queryByTestId('paper-inline-loading')).toBeNull();
         expect(document.querySelector('iframe')).toBeNull();
     });

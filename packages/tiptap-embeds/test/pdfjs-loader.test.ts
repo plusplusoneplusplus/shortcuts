@@ -72,9 +72,10 @@ import {
     MIN_SELECTABLE_TEXT_CHARS,
     MIN_PDF_SCALE,
     MAX_PDF_SCALE,
-    PDF_WORKER_URL,
     DEFAULT_PDF_SCALE,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader';
+} from '../src/pdf/index.js';
+
+const WORKER = '/assets/pdf.worker.js';
 
 function makePage(overrides: Partial<FakePage> = {}): FakePage {
     return {
@@ -166,21 +167,23 @@ afterEach(() => {
 });
 
 describe('renderPdfDocument', () => {
-    it('configures the worker src to the served root path', async () => {
+    it('sets the host-provided worker src on every render', async () => {
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container });
-        expect(state.workerSrc).toBe(PDF_WORKER_URL);
-        // The client build emits `pdf.worker.js` into `dist/`, which the router
-        // serves at the site root (`path.join(staticDir, pathname)`). A
-        // `/static/…` URL would map to `dist/static/pdf.worker.js` (absent) and
-        // fall through to the SPA HTML, so the worker load would silently fail
-        // and pdf.js would drop back to the native iframe.
-        expect(PDF_WORKER_URL).toBe('/pdf.worker.js');
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
+        expect(state.workerSrc).toBe(WORKER);
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: '/other/pdf.worker.js', container });
+        expect(state.workerSrc).toBe('/other/pdf.worker.js');
+    });
+
+    it('rejects without a worker src so the caller can fall back to an iframe', async () => {
+        const container = document.createElement('div');
+        await expect(renderPdfDocument({ url: '/x.pdf', workerSrc: '', container })).rejects.toThrow('workerSrc');
+        expect(container.children).toHaveLength(0);
     });
 
     it('creates a sized wrapper (canvas + text layer) for every page up front', async () => {
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
 
         // Every page's wrapper/canvas/text-layer exists immediately so the
         // scrollbar reflects the full document — even though only page 1 paints.
@@ -198,7 +201,7 @@ describe('renderPdfDocument', () => {
 
     it('paints only the first page eagerly, then the rest as they scroll into view', async () => {
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
         await flush();
         // First page painted immediately so content shows at once; page 2 waits.
         expect(state.textLayerCtor).toHaveBeenCalledTimes(1);
@@ -215,7 +218,7 @@ describe('renderPdfDocument', () => {
         const viewport = document.createElement('div');
         const container = document.createElement('div');
         viewport.appendChild(container);
-        await renderPdfDocument({ url: '/x.pdf', container });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
 
         expect(ioInstances).toHaveLength(1);
         const io = ioInstances[0];
@@ -231,7 +234,7 @@ describe('renderPdfDocument', () => {
         state.numPages = 1;
         state.getPageImpl = () => Promise.resolve(page);
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, scale: 2 });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, scale: 2 });
         expect(page.getViewport).toHaveBeenCalledWith({ scale: 2 });
         expect((container.querySelector('.pdfjs-page') as HTMLElement).style.getPropertyValue('--scale-factor')).toBe('2');
     });
@@ -239,7 +242,7 @@ describe('renderPdfDocument', () => {
     it('reports progress as each page paints', async () => {
         const onPageRendered = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, onPageRendered });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onPageRendered });
         await flush();
         // First page paints eagerly.
         expect(onPageRendered).toHaveBeenNthCalledWith(1, 1, 2);
@@ -253,7 +256,7 @@ describe('renderPdfDocument', () => {
     it('rejects when the document fails to load so the caller can fall back', async () => {
         state.getDocumentReject = true;
         const container = document.createElement('div');
-        await expect(renderPdfDocument({ url: '/x.pdf', container })).rejects.toThrow('load failed');
+        await expect(renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container })).rejects.toThrow('load failed');
     });
 
     it('keeps rendering remaining pages when one page throws', async () => {
@@ -265,7 +268,7 @@ describe('renderPdfDocument', () => {
                   )
                 : Promise.resolve(makePage());
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
         await flush();
         triggerIntersections();
         await flush();
@@ -277,7 +280,7 @@ describe('renderPdfDocument', () => {
 
     it('destroys the pdf document via the handle (idempotent)', async () => {
         const container = document.createElement('div');
-        const handle = await renderPdfDocument({ url: '/x.pdf', container });
+        const handle = await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container });
         handle.destroy();
         handle.destroy();
         expect(state.docDestroy).toHaveBeenCalledTimes(1);
@@ -292,7 +295,7 @@ describe('renderPdfDocument', () => {
             return Promise.resolve(makePage());
         };
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, signal: controller.signal });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, signal: controller.signal });
         await flush();
         // Aborted before any placeholder was built or page painted.
         expect(container.querySelectorAll('.pdfjs-page').length).toBe(0);
@@ -305,7 +308,7 @@ describe('renderPdfDocument', () => {
         state.textLayerText = 'Hello world'; // 11 chars per page
         const onTextStats = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onTextStats });
         await flush();
         // First page painted → partial summary with the running totals so far.
         expect(onTextStats).toHaveBeenLastCalledWith({
@@ -331,7 +334,7 @@ describe('renderPdfDocument', () => {
         state.textLayerText = ''; // pages draw but produce no selectable text
         const onTextStats = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onTextStats });
         await flush();
         // The very first painted page already flags image-only — the host shows
         // the notice without waiting for the whole document to render.
@@ -351,7 +354,7 @@ describe('renderPdfDocument', () => {
         state.textLayerText = '   \n\t  ';
         const onTextStats = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onTextStats });
         await flush();
         expect(onTextStats.mock.lastCall![0].totalTextLength).toBe(0);
     });
@@ -365,7 +368,7 @@ describe('renderPdfDocument', () => {
         };
         const onTextStats = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, signal: controller.signal, onTextStats });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, signal: controller.signal, onTextStats });
         await flush();
         expect(onTextStats).not.toHaveBeenCalled();
     });
@@ -374,7 +377,7 @@ describe('renderPdfDocument', () => {
         state.numPages = 3;
         const onPageRendered = vi.fn();
         const container = document.createElement('div');
-        const handle = await renderPdfDocument({ url: '/x.pdf', container, onPageRendered });
+        const handle = await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onPageRendered });
         await flush();
         expect(onPageRendered).toHaveBeenCalledTimes(1); // page 1 painted eagerly
 
@@ -395,6 +398,7 @@ describe('renderPdfDocument', () => {
         const container = document.createElement('div');
         await renderPdfDocument({
             url: '/x.pdf',
+            workerSrc: WORKER,
             container,
             signal: controller.signal,
             onPageRendered,
@@ -414,7 +418,7 @@ describe('renderPdfDocument', () => {
         state.numPages = 3;
         const onPageRendered = vi.fn();
         const container = document.createElement('div');
-        await renderPdfDocument({ url: '/x.pdf', container, onPageRendered });
+        await renderPdfDocument({ url: '/x.pdf', workerSrc: WORKER, container, onPageRendered });
         await flush();
         // Without an observer every page still paints — just yielding between
         // pages so the main thread is never monopolised.

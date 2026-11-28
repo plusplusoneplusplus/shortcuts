@@ -3,9 +3,13 @@
  * filled in — the Notes-route URL rules, the pdf.js viewer, the Quick Ask /
  * region-ask / annotation overlays and the "Chat about this paper" button.
  */
-import { createPdfBlock, type PdfBlockOptions as BasePdfBlockOptions } from '@plusplusoneplusplus/tiptap-embeds/pdf';
+import {
+    PdfJsRenderer,
+    createPdfBlock,
+    type PdfBlockOptions as BasePdfBlockOptions,
+} from '@plusplusoneplusplus/tiptap-embeds/pdf';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
-import { PdfJsRenderer } from './PdfJsRenderer';
+import { PDF_WORKER_URL } from './pdfWorker';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
@@ -42,7 +46,7 @@ export const PdfBlock = createPdfBlock<PdfBlockOptions>({
     classifyUrl: (url) => classifyPdfBlockUrl(url, window.location.origin),
     isDesktopShell: () => isDesktopShell(),
     renderViewer: ({ href, label, height, onError }) => (
-        <PdfJsRenderer url={href} label={label} height={height} onError={onError} />
+        <PdfJsRenderer url={href} workerSrc={PDF_WORKER_URL} label={label} height={height} onError={onError} />
     ),
     renderOverlay: ({ url, containerRef, options }) => {
         const layerProps = {

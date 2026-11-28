@@ -28,7 +28,7 @@ import { openLink } from '../../../utils/link-handler';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { copyToClipboard } from '../../../utils/format';
 import { wordDiff, type DiffChunk, type EditDiffRegion } from '@plusplusoneplusplus/tiptap-kit/edit-diff';
-import { isLikelyArxivUrl } from './extensions/arxivPaste';
+import { isLikelyArxivUrl } from '@plusplusoneplusplus/tiptap-embeds/paper';
 import { isArxivPaperIngestEnabled } from '../../../utils/config';
 import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';

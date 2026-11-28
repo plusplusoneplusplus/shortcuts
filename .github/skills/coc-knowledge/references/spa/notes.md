@@ -434,20 +434,28 @@ projects can reuse it without the dashboard:
   `isPdfUrl`, `parseYouTubeVideoId`, `youTubeEmbedUrl`; chat's `mapEmbedMount`
   uses them too), `/youtube` (`YouTubeEmbedDecorationExtension` and the
   `YouTubePopupPlayer` iframe), `/map` (`MapBlock`), `/pdf` (`createPdfBlock`,
-  `PdfBlock`, height and label helpers, `classifyPdfUrl`), `/paper`
-  (`PaperLinkEmbedDecorationExtension`, `classifyPdfLink`) and `/markdown`
-  (`mapMarkdownExtension`, `pdfMarkdownExtension`; subpath-only for the same
-  marked/turndown reason). Host behavior is injected: `createPdfBlock` takes
+  `PdfBlock`, height and label helpers, `classifyPdfUrl`, the pdf.js
+  `PdfJsRenderer` and its `renderPdfDocument` loader with lazy page painting,
+  zoom bounds and the image-only check), `/paper`
+  (`PaperLinkEmbedDecorationExtension`, `classifyPdfLink`, `isLikelyArxivUrl`) and
+  `/markdown` (`mapMarkdownExtension`, `pdfMarkdownExtension`). `/markdown` and
+  `/pdf` are subpath-only: they load the optional `marked`, `turndown` and
+  `pdfjs-dist` peers. `PdfJsRenderer` and `renderPdfDocument` take a required
+  `workerSrc`; CoC passes `PDF_WORKER_URL` (`extensions/pdfWorker.ts`,
+  `/pdf.worker.js`, because the client `dist/` is served at the site root, not
+  under `/static`) from `pdfBlock.tsx`, `PdfPopupDialog` and `PaperInlineViewer`. Host behavior is injected: `createPdfBlock` takes
   `classifyUrl`, `isDesktopShell`, `renderViewer`, `renderOverlay` and
   `renderToolbarActions` (closure hooks, so tests that pass bare
   `extension.options` keep them; a failing viewer falls back to an iframe and drops
   the overlay); the paper decoration takes `classifyLink` and `isDesktopShell`
   options. CoC keeps thin wrappers in `features/notes/editor/extensions/`:
-  `pdfBlock.tsx` (Notes-route `pdfBlockUrl` rules, pdf.js viewer, Quick Ask /
+  `pdfBlock.tsx` (Notes-route `pdfBlockUrl` rules, pdf.js viewer wiring, Quick Ask /
   region-ask / annotation overlays, "Chat about this paper"),
   `PaperLinkEmbedDecorationExtension.ts` (arXiv-aware `paperLink` classifier) and
   `YouTubePopupDialog` (CoC `Dialog`). `/styles.css` ships map and PDF block
-  shell styles under `.rich-editor .ProseMirror` with `.dark` overrides.
+  shell styles under `.rich-editor .ProseMirror` with `.dark` overrides. The
+  pdf.js renderer DOM (`.pdfjs-render-*`, `.pdfjs-page*`, `.textLayer`) has no
+  package CSS because the full-window reader renders it outside `.rich-editor`.
   Base image and fenced-code styles, note/file links, edit-diff colors, pdf.js,
   Quick Ask and paper annotations stay in CoC CSS.
 

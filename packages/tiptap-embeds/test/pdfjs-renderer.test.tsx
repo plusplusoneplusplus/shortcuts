@@ -14,18 +14,14 @@ const loader = vi.hoisted(() => ({
     destroy: vi.fn(),
 }));
 
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader',
-    () => ({
-        renderPdfDocument: (opts: any) => loader.render(opts),
-        isLikelyImageOnly: (s: any) => s.pagesRendered > 0 && s.totalTextLength < 1,
-        MIN_SELECTABLE_TEXT_CHARS: 1,
-        PDF_WORKER_URL: '/pdf.worker.js',
-        DEFAULT_PDF_SCALE: 1.5,
-    }),
-);
+vi.mock('../src/pdf/pdfJsLoader.js', () => ({
+    renderPdfDocument: (opts: any) => loader.render(opts),
+    isLikelyImageOnly: (s: any) => s.pagesRendered > 0 && s.totalTextLength < 1,
+    MIN_SELECTABLE_TEXT_CHARS: 1,
+    DEFAULT_PDF_SCALE: 1.5,
+}));
 
-import { PdfJsRenderer } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer';
+import { PdfJsRenderer } from '../src/pdf/PdfJsRenderer.js';
 
 beforeEach(() => {
     loader.render.mockReset();
@@ -43,7 +39,7 @@ afterEach(() => cleanup());
 
 describe('PdfJsRenderer', () => {
     it('renders a document surface with the label as its aria-label', async () => {
-        render(<PdfJsRenderer url="/x.pdf" label="paper.pdf" />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="paper.pdf" />);
         const doc = screen.getByRole('document', { name: 'paper.pdf' });
         expect(doc).toBeTruthy();
         await waitFor(() =>
@@ -51,17 +47,18 @@ describe('PdfJsRenderer', () => {
         );
     });
 
-    it('invokes renderPdfDocument with the url, a container, and an abort signal', async () => {
-        render(<PdfJsRenderer url="/paper.pdf" label="p" />);
+    it('invokes renderPdfDocument with the url, worker src, a container, and an abort signal', async () => {
+        render(<PdfJsRenderer workerSrc="/w.js" url="/paper.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
         const opts = loader.render.mock.calls[0][0];
         expect(opts.url).toBe('/paper.pdf');
+        expect(opts.workerSrc).toBe('/w.js');
         expect(opts.container).toBeInstanceOf(HTMLElement);
         expect(opts.signal).toBeInstanceOf(AbortSignal);
     });
 
     it('applies a fixed height to the viewport when provided', () => {
-        render(<PdfJsRenderer url="/x.pdf" label="p" height={420} />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" height={420} />);
         expect((screen.getByTestId('pdfjs-render-viewport') as HTMLElement).style.height).toBe('420px');
     });
 
@@ -76,7 +73,7 @@ describe('PdfJsRenderer', () => {
                     };
                 }),
         );
-        render(<PdfJsRenderer url="/x.pdf" label="p" />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" />);
         expect(screen.getByTestId('pdfjs-render-loading')).toBeTruthy();
         resolvePage!();
         await waitFor(() => expect(screen.queryByTestId('pdfjs-render-loading')).toBeNull());
@@ -85,7 +82,7 @@ describe('PdfJsRenderer', () => {
     it('calls onError and marks the surface errored when the document fails', async () => {
         loader.render.mockRejectedValue(new Error('boom'));
         const onError = vi.fn();
-        render(<PdfJsRenderer url="/x.pdf" label="p" onError={onError} />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" onError={onError} />);
         await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
         expect(screen.getByTestId('pdfjs-render-viewport').getAttribute('data-status')).toBe('error');
     });
@@ -97,7 +94,7 @@ describe('PdfJsRenderer', () => {
             opts.onPageRendered?.(1, 1);
             return { destroy: loader.destroy };
         });
-        const { unmount } = render(<PdfJsRenderer url="/x.pdf" label="p" />);
+        const { unmount } = render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalled());
         unmount();
         expect(capturedSignal!.aborted).toBe(true);
@@ -105,29 +102,29 @@ describe('PdfJsRenderer', () => {
     });
 
     it('forwards the scale prop to renderPdfDocument', async () => {
-        render(<PdfJsRenderer url="/x.pdf" label="p" scale={2.25} />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" scale={2.25} />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
         expect(loader.render.mock.calls[0][0].scale).toBe(2.25);
     });
 
     it('re-renders when the scale prop changes', async () => {
-        const { rerender } = render(<PdfJsRenderer url="/x.pdf" label="p" scale={1.5} />);
+        const { rerender } = render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" scale={1.5} />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
-        rerender(<PdfJsRenderer url="/x.pdf" label="p" scale={2} />);
+        rerender(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" scale={2} />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(2));
         expect(loader.render.mock.calls[1][0].scale).toBe(2);
     });
 
     it('clears prior pages and re-renders when the url changes', async () => {
-        const { rerender } = render(<PdfJsRenderer url="/a.pdf" label="p" />);
+        const { rerender } = render(<PdfJsRenderer workerSrc="/w.js" url="/a.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
-        rerender(<PdfJsRenderer url="/b.pdf" label="p" />);
+        rerender(<PdfJsRenderer workerSrc="/w.js" url="/b.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(2));
         expect(loader.render.mock.calls[1][0].url).toBe('/b.pdf');
     });
 
     it('does not show the image-only notice for a document with selectable text', async () => {
-        render(<PdfJsRenderer url="/x.pdf" label="p" />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/x.pdf" label="p" />);
         await waitFor(() =>
             expect(screen.getByTestId('pdfjs-render-viewport').getAttribute('data-status')).toBe('ready'),
         );
@@ -141,7 +138,7 @@ describe('PdfJsRenderer', () => {
             opts.onTextStats?.({ totalTextLength: 0, totalPages: 2, pagesRendered: 2 });
             return { destroy: loader.destroy };
         });
-        render(<PdfJsRenderer url="/scan.pdf" label="p" />);
+        render(<PdfJsRenderer workerSrc="/w.js" url="/scan.pdf" label="p" />);
         await waitFor(() =>
             expect(screen.getByTestId('pdfjs-image-only-notice')).toBeTruthy(),
         );
@@ -154,10 +151,10 @@ describe('PdfJsRenderer', () => {
             opts.onTextStats?.({ totalTextLength: 0, totalPages: 1, pagesRendered: 1 });
             return { destroy: loader.destroy };
         });
-        const { rerender } = render(<PdfJsRenderer url="/scan.pdf" label="p" />);
+        const { rerender } = render(<PdfJsRenderer workerSrc="/w.js" url="/scan.pdf" label="p" />);
         await waitFor(() => expect(screen.getByTestId('pdfjs-image-only-notice')).toBeTruthy());
         // Second render (default mock) reports real text → notice must clear.
-        rerender(<PdfJsRenderer url="/text.pdf" label="p" />);
+        rerender(<PdfJsRenderer workerSrc="/w.js" url="/text.pdf" label="p" />);
         await waitFor(() => expect(screen.queryByTestId('pdfjs-image-only-notice')).toBeNull());
     });
 });

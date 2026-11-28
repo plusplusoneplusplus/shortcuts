@@ -104,10 +104,10 @@ await Promise.all(MONACO_WORKERS.map(worker =>
 ));
 
 // pdf.js worker (Goal 0 AC-04): emitted into dist/ and served at the site root
-// as /pdf.worker.js (see PDF_WORKER_URL in pdfJsLoader.ts), wired via
-// GlobalWorkerOptions.workerSrc. We bundle the *legacy* worker
-// so it runs under the es2020 target and desktop Electron Chromium, matching the
-// legacy main build imported by the renderer.
+// as /pdf.worker.js (see PDF_WORKER_URL in notes/editor/extensions/pdfWorker.ts),
+// passed to the embeds package's PdfJsRenderer as workerSrc. We bundle the
+// *legacy* worker so it runs under the es2020 target and desktop Electron
+// Chromium, matching the legacy main build imported by the renderer.
 await esbuild.build({
     entryPoints: ['pdfjs-dist/legacy/build/pdf.worker.mjs'],
     outfile: 'src/server/spa/client/dist/pdf.worker.js',

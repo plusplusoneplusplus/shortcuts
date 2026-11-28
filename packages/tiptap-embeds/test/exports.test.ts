@@ -1,7 +1,8 @@
 /**
  * Package contract: every JavaScript `exports` subpath is a folder under src/ with an
  * index, and the root re-exports every name of every area except the
- * subpath-only `markdown` area (it loads the optional marked/turndown peers).
+ * subpath-only `markdown` (optional marked/turndown peers) and `pdf` (its
+ * pdf.js renderer imports the optional pdfjs-dist peer) areas.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -17,7 +18,7 @@ const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) 
     dependencies?: Record<string, string>;
 };
 const areas = Object.keys(manifest.exports).filter((key) => key !== '.' && key !== './styles.css').map((key) => key.slice(2));
-const SUBPATH_ONLY = ['markdown'];
+const SUBPATH_ONLY = ['markdown', 'pdf'];
 
 describe('tiptap-embeds exports', () => {
     it('maps each subpath to src/<area>/index.ts and dist/<area>/index.js', () => {
@@ -40,11 +41,12 @@ describe('tiptap-embeds exports', () => {
         }
     });
 
-    it('keeps the Markdown rules subpath-only with optional peers', () => {
+    it('keeps optional-peer areas subpath-only', () => {
         const rootSource = readFileSync(join(pkgDir, 'src', 'index.ts'), 'utf8');
-        expect(rootSource).not.toContain("'./markdown/index.js'");
+        for (const area of SUBPATH_ONLY) expect(rootSource).not.toContain(`'./${area}/index.js'`);
         expect(Object.keys(root)).not.toContain('pdfMarkdownExtension');
-        for (const peer of ['marked', 'turndown']) expect(manifest.peerDependenciesMeta?.[peer]?.optional, peer).toBe(true);
+        expect(Object.keys(root)).not.toContain('renderPdfDocument');
+        for (const peer of ['marked', 'turndown', 'pdfjs-dist']) expect(manifest.peerDependenciesMeta?.[peer]?.optional, peer).toBe(true);
     });
 
     it('keeps Tiptap and the kit as peers', () => {

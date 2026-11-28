@@ -171,14 +171,12 @@ vi.mock(
 // The full-window PdfPopupDialog now renders through PdfJsRenderer (pdf.js
 // text layer, AC-03). Stub it so this test never loads the real browser-only
 // pdf.js library; the popup-wiring test asserts the viewport it renders.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => (
-            <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
-        ),
-    }),
-);
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => (
+        <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
+    ),
+}));
 vi.mock(
     '@plusplusoneplusplus/tiptap-kit/comment-mark',
     () => ({ CommentExtension: { configure: () => ({}) } }),

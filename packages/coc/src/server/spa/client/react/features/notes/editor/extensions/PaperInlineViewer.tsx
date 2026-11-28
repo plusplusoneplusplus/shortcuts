@@ -17,7 +17,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { PdfJsRenderer } from './PdfJsRenderer';
+import { PdfJsRenderer } from '@plusplusoneplusplus/tiptap-embeds/pdf';
+import { PDF_WORKER_URL } from './pdfWorker';
 import type { PdfPopupTarget } from './PdfPopupDialog';
 import type { PaperLinkInfo } from './paperLink';
 
@@ -111,6 +112,7 @@ export function PaperInlineViewer({ info, resolveSource, onClose }: PaperInlineV
                     ) : (
                         <PdfJsRenderer
                             url={target.url}
+                            workerSrc={PDF_WORKER_URL}
                             label={target.label}
                             onError={() => setPdfJsFailed(true)}
                         />

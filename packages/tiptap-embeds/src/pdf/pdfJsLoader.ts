@@ -1,37 +1,29 @@
 /**
  * pdf.js loader — renders a PDF into a host DOM container as a stack of
- * `<canvas>` pages each overlaid by a transparent, selectable text layer
- * (Goal 0 AC-01/AC-02).
+ * `<canvas>` pages each overlaid by a transparent, selectable text layer.
  *
- * This is the one real infra piece of the paper-reading feature: a native
- * `<iframe>` PDF viewer exposes no text or selection to the host page, so every
- * annotation system in the app (which is `container.textContent`-based) is blind
- * to it. Rendering with pdf.js gives the paper a host-accessible text layer, so
- * dragging across a passage produces a real `window.getSelection()` Range and
- * the existing Quick Ask / comment resolvers can see inside it.
+ * A native `<iframe>` PDF viewer exposes no text or selection to the host page,
+ * so `textContent`-based annotation code is blind to it. Rendering with pdf.js
+ * gives the document a host-accessible text layer, so dragging across a passage
+ * produces a real `window.getSelection()` Range.
  *
  * We import the **legacy** build (`pdfjs-dist/legacy/build/pdf.mjs`) rather than
  * the modern one: the modern build relies on very recent runtime features
  * (e.g. `Promise.withResolvers`) that are not guaranteed under the es2020
- * esbuild target or the desktop Electron Chromium; the legacy build is compiled
- * for older environments (AC-04).
+ * esbuild target or older Electron Chromium; the legacy build is compiled for
+ * older environments. `pdfjs-dist` is an optional peer of this package.
  *
  * The pdf.js module is loaded via a dynamic `import()` so that:
  *   - the heavy (~1MB) library is referenced from exactly one place, and
  *   - unit tests can `vi.mock('pdfjs-dist/legacy/build/pdf.mjs', …)` without the
  *     real library (which touches browser-only globals) ever executing in jsdom.
+ *
+ * The host serves the pdf.js worker itself (bundle
+ * `pdfjs-dist/legacy/build/pdf.worker.mjs`) and passes its URL as `workerSrc`.
+ * Use a URL the host really serves: a path that falls through to an SPA HTML
+ * fallback breaks both the real Worker and pdf.js's fake-worker import, and the
+ * render then rejects so the caller falls back to an iframe.
  */
-
-/**
- * URL the bundled pdf.js worker is served from. The client build
- * (`scripts/build-client.mjs`) emits `pdf.worker.js` into the client `dist/`,
- * and the dashboard router serves that directory at the site root — so the file
- * resolves at `/pdf.worker.js` (a request for `/static/pdf.worker.js` falls
- * through to the SPA HTML fallback, breaking both the real Worker and pdf.js's
- * fake-worker import). Keep this path root-relative so it matches the router's
- * static resolver (`staticDir` + pathname; see `src/server/router.ts`).
- */
-export const PDF_WORKER_URL = '/pdf.worker.js';
 
 /** Rendering scale. 1.5 keeps text crisp on HiDPI without huge canvases. */
 export const DEFAULT_PDF_SCALE = 1.5;
@@ -63,7 +55,7 @@ export function clampPdfScale(value: number): number {
  * across all of its text layers is treated as scanned / image-only: pdf.js drew
  * the page images but there is no host-selectable text, so Quick Ask and the
  * anchoring resolvers (which are `textContent`-based) have nothing to grab onto.
- * We only flag it — OCR is out of scope (Goal 4 AC-04).
+ * We only flag it — no OCR.
  */
 export const MIN_SELECTABLE_TEXT_CHARS = 1;
 
@@ -114,19 +106,17 @@ interface PdfPageProxy {
     getTextContent: () => Promise<unknown>;
 }
 
-let workerConfigured = false;
-
-async function loadPdfjs(): Promise<PdfjsModule> {
+async function loadPdfjs(workerSrc: string): Promise<PdfjsModule> {
+    if (!workerSrc) throw new Error('renderPdfDocument needs a workerSrc');
     const mod = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfjsModule;
-    if (!workerConfigured) {
-        mod.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
-        workerConfigured = true;
-    }
+    mod.GlobalWorkerOptions.workerSrc = workerSrc;
     return mod;
 }
 
 export interface RenderPdfOptions {
     url: string;
+    /** URL the host serves the pdf.js worker from (`GlobalWorkerOptions.workerSrc`). */
+    workerSrc: string;
     /** Host element the page canvases + text layers are appended into. */
     container: HTMLElement;
     scale?: number;
@@ -139,7 +129,7 @@ export interface RenderPdfOptions {
      * much selectable text the rendered pages have produced so far. Because pages
      * now paint lazily (on scroll) rather than all up front, the summary is
      * reported incrementally: the host re-evaluates the scanned / image-only
-     * heuristic (Goal 4 AC-04) as pages come in, so a text-bearing page clears the
+     * heuristic as pages come in, so a text-bearing page clears the
      * notice the moment it appears. Not called for a page whose render was aborted
      * (unmount / url change).
      */
@@ -178,8 +168,7 @@ interface PdfPageSlot {
  * the viewport (with a {@link PDF_PAGE_RENDER_MARGIN_PX} lookahead), correcting
  * its placeholder size if the real page differs, and the first page paints
  * eagerly so something shows at once. This keeps the main thread free instead of
- * pegging it by rendering an entire multi-page paper back-to-back (the
- * popout-reader freeze this replaces).
+ * pegging it by rendering an entire multi-page document back-to-back.
  *
  * The `--scale-factor` CSS variable pdf.js 4.x requires for text-layer geometry
  * is set on each wrapper. Rejects if the document fails to load so the caller can
@@ -187,8 +176,8 @@ interface PdfPageSlot {
  * single bad page does not blank the whole paper.
  */
 export async function renderPdfDocument(opts: RenderPdfOptions): Promise<PdfRenderHandle> {
-    const { url, container, scale = DEFAULT_PDF_SCALE, signal, onPageRendered, onTextStats } = opts;
-    const pdfjs = await loadPdfjs();
+    const { url, workerSrc, container, scale = DEFAULT_PDF_SCALE, signal, onPageRendered, onTextStats } = opts;
+    const pdfjs = await loadPdfjs(workerSrc);
 
     const loadingTask = pdfjs.getDocument({ url });
     let destroyed = false;

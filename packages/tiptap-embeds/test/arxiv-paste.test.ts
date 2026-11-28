@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isLikelyArxivUrl } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/arxivPaste';
+import { isLikelyArxivUrl } from '../src/paper/index.js';
 
 describe('isLikelyArxivUrl', () => {
     it('recognizes canonical arXiv PDF / abstract URLs', () => {

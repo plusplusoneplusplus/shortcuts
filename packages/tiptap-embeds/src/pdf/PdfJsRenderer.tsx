@@ -1,6 +1,6 @@
 /**
- * PdfJsRenderer — renders an inline PDF via pdf.js (canvas + transparent,
- * selectable text layer) in place of the native `<iframe>` (Goal 0 AC-01).
+ * PdfJsRenderer — renders a PDF via pdf.js (canvas + transparent, selectable
+ * text layer) in place of a native `<iframe>`.
  *
  * The heavy lifting lives in {@link renderPdfDocument}; this component owns the
  * React lifecycle: it mounts a scroll container, kicks off a render on
@@ -8,13 +8,19 @@
  * calls {@link onError} if the document fails to load so the host can fall back
  * to the iframe. Selection works because the text layer is real host DOM, not
  * an opaque iframe.
+ *
+ * It renders `.pdfjs-render-*`, `.pdfjs-page*` and pdf.js `.textLayer` DOM; the
+ * package ships no CSS for it (it is also used outside `.rich-editor`, e.g. in
+ * a full-window reader), so the host styles those classes.
  */
 import { useEffect, useRef, useState } from 'react';
-import { renderPdfDocument, isLikelyImageOnly, type PdfRenderHandle } from './pdfJsLoader';
+import { renderPdfDocument, isLikelyImageOnly, type PdfRenderHandle } from './pdfJsLoader.js';
 
 export interface PdfJsRendererProps {
     /** Same-origin, inline-classified PDF URL. */
     url: string;
+    /** URL the host serves the pdf.js worker from; see {@link renderPdfDocument}. */
+    workerSrc: string;
     /** Filename/label, used for the aria-label of the reading surface. */
     label: string;
     /** Optional fixed viewport height (px); scrolls internally when set. */
@@ -25,18 +31,18 @@ export interface PdfJsRendererProps {
      */
     scale?: number;
     /**
-     * Called when the document cannot be rendered by pdf.js. The host
-     * (PdfBlockView) uses this to fall back to the native iframe so a broken or
-     * unsupported PDF still shows something.
+     * Called when the document cannot be rendered by pdf.js. The host uses
+     * this to fall back to a native iframe so a broken or unsupported PDF still
+     * shows something.
      */
     onError?: () => void;
 }
 
-export function PdfJsRenderer({ url, label, height, scale, onError }: PdfJsRendererProps) {
+export function PdfJsRenderer({ url, workerSrc, label, height, scale, onError }: PdfJsRendererProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // True once a rendered document is found to have no selectable text
-    // (scanned / image-only). Drives the "no selectable text" notice (AC-04).
+    // (scanned / image-only). Drives the "no selectable text" notice.
     const [imageOnly, setImageOnly] = useState(false);
 
     useEffect(() => {
@@ -54,6 +60,7 @@ export function PdfJsRenderer({ url, label, height, scale, onError }: PdfJsRende
 
         renderPdfDocument({
             url,
+            workerSrc,
             container,
             scale,
             signal: controller.signal,
@@ -80,7 +87,7 @@ export function PdfJsRenderer({ url, label, height, scale, onError }: PdfJsRende
             controller.abort();
             handle?.destroy();
         };
-    }, [url, scale, onError]);
+    }, [url, workerSrc, scale, onError]);
 
     return (
         <div
