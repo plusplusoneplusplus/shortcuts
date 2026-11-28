@@ -11,9 +11,7 @@ import { useCallback, useState } from 'react';
 import type { Canvas, CocClient } from '@plusplusoneplusplus/coc-client';
 import { downloadFilenameFor, isSvgCodeCanvas, notesPathFor } from '../canvas-panel-model';
 import { exportCanvasAsHtml } from '../html-export/exportCanvasAsHtml';
-import type { ExtensionExportSource } from '../html-export/exportCanvasAsHtml';
 import { createHtmlExportDeps } from '../html-export/htmlExportDeps';
-import { isCanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
 
 const EXPORT_STATUS_MS = 2500;
 
@@ -120,33 +118,6 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
         if (current.type === 'kusto' || current.type === 'copilot-extension') return;
         setExportOpen(false);
         try {
-            // Extension canvases render from a UI document stored apart from their
-            // JSON state `content`. Fetch it through the workspace-routed client so
-            // it resolves for remote/clone workspaces too (mirrors the live
-            // ExtensionCanvasView path), and hand the exporter `{ uiHtml, revision }`.
-            // `capabilitiesJs` is deliberately never fetched — capability code must
-            // not ship in a view-only snapshot. A retrieval failure surfaces a toast
-            // and aborts before any download, so no broken/partial file is produced.
-            let extension: ExtensionExportSource | undefined;
-            if (current.type === 'extension') {
-                try {
-                    const doc = await client.canvases.getExtension(workspaceId, current.id);
-                    extension = {
-                        uiHtml: doc.uiHtml,
-                        revision: current.revision,
-                        // A JSX extension exports its compiled UI plus the
-                        // libraries the exporter must inline to make it run.
-                        ...(doc.uiJs ? {
-                            uiJs: doc.uiJs,
-                            libraries: (doc.manifest?.libraries ?? []).filter(isCanvasLibraryId),
-                        } : {}),
-                    };
-                } catch {
-                    notify('Could not load the extension to export as HTML', 'error');
-                    flashExportStatus('Export failed');
-                    return;
-                }
-            }
             const result = await exportCanvasAsHtml(
                 {
                     title: current.title,
@@ -154,7 +125,6 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
                     content: current.content,
                     language: current.language,
                     workspaceId,
-                    extension,
                 },
                 createHtmlExportDeps(),
             );

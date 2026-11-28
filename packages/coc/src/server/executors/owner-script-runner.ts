@@ -3,7 +3,7 @@
  * a chat would have on an unattended turn, without starting a provider turn.
  *
  * Shared by Sentinel job gates (`job-gate-owner-runner.ts`) and the canvas
- * `host.runScript` bridge (`canvas/canvas-script-bridge.ts`). The tool context is
+ * extension tool-script bridge (`canvas/owner-tool-script-service.ts`). The tool context is
  * built with `unattendedScript: true`: no `ask_user`, approval-gated tools are
  * denied, and only the CoC handlers in the context execute. With
  * `features.toolScriptingMcp` the script also gets `mcp_list_tools` / `mcp_call`

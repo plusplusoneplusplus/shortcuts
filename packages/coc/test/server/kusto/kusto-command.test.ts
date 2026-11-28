@@ -11,7 +11,7 @@ import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-bui
 import { runScriptWithOwnerTools } from '../../../src/server/executors/owner-script-runner';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
-import { isCanvasScriptTool, validateCanvasManifestTools } from '../../../src/server/canvas/canvas-script-bridge';
+import { isExtensionScriptTool, validateExtensionScriptTools } from '../../../src/server/canvas-extensions/script-tools';
 import { LLM_TOOL_PARAMETER_SCHEMAS } from '../../../src/server/llm-tools/llm-tool-parameter-schemas';
 import { summarizeToolParameters } from '../../../src/server/llm-tools/llm-tool-parameters';
 import type { AskUserSSEPayload } from '../../../src/server/llm-tools/ask-user-tool';
@@ -101,8 +101,8 @@ describe('Kusto management command execution', () => {
         const f = fixture();
         const tool = createKustoTools({ dataDir, workspaceId: 'ws', ...f.runtime }).executeKustoCommand;
         expect(summarizeToolParameters(tool.parameters)).toEqual(summarizeToolParameters(LLM_TOOL_PARAMETER_SCHEMAS.execute_kusto_command));
-        expect(isCanvasScriptTool('execute_kusto_command')).toBe(false);
-        expect(validateCanvasManifestTools(['execute_kusto_command']).ok).toBe(false);
+        expect(isExtensionScriptTool('execute_kusto_command')).toBe(false);
+        expect(validateExtensionScriptTools(['execute_kusto_command']).ok).toBe(false);
     });
 
     it.each(['command', 'clusterUrl', 'database'])('validates missing %s without dispatch', async field => {

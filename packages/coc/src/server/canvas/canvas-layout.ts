@@ -10,8 +10,6 @@
  *       `artifact.md`            — content
  *       `versions/<rev>.json`    — per-revision snapshots
  *       `comments.json`          — anchored comments
- *       `extension/`             — extension documents
- *       `files/`                 — read-only data an extension canvas may read
  *
  * The lock directory sits beside the canvases rather than inside one, and its
  * name starts with a dot, so `isValidCanvasId` filters it out of every listing.
@@ -25,14 +23,7 @@ export const DESCRIPTOR_FILE = 'canvas.json';
 export const ARTIFACT_FILE = 'artifact.md';
 export const VERSIONS_DIR = 'versions';
 export const COMMENTS_FILE = 'comments.json';
-export const EXTENSION_DIR = 'extension';
-export const EXTENSION_MANIFEST_FILE = 'manifest.json';
-export const EXTENSION_UI_FILE = 'ui.html';
-export const EXTENSION_UI_JS_FILE = 'ui.js';
-export const EXTENSION_UI_JSX_FILE = 'ui.jsx';
-export const EXTENSION_CAPABILITIES_FILE = 'capabilities.js';
 /** Subdirectory of a canvas's own directory holding the files it may read. */
-export const FILES_DIR = 'files';
 export const LOCKS_DIR_NAME = '.locks';
 
 export class CanvasLayout {
@@ -70,11 +61,4 @@ export class CanvasLayout {
         return path.join(this.canvasDir(workspaceId, canvasId), COMMENTS_FILE);
     }
 
-    extensionDir(workspaceId: string, canvasId: string): string {
-        return path.join(this.canvasDir(workspaceId, canvasId), EXTENSION_DIR);
-    }
-
-    filesRoot(workspaceId: string, canvasId: string): string {
-        return path.join(this.canvasDir(workspaceId, canvasId), FILES_DIR);
-    }
 }

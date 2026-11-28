@@ -67,8 +67,8 @@ describe('canvas extension tool factories and persistence', () => {
         fs.rmSync(root, { recursive: true, force: true });
     });
 
-    it('exposes three lazy fixed tools and lists real SDK declarations with qualified IDs', async () => {
-        expect(tools().map(tool => tool.name)).toEqual(['list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action']);
+    it('exposes four lazy fixed tools and lists real SDK declarations with qualified IDs', async () => {
+        expect(tools().map(tool => tool.name)).toEqual(['extension_canvas', 'list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action']);
         expect(startHost).not.toHaveBeenCalled();
         expect(await call('list_canvas_capabilities')).toMatchObject({ success: true, canvases: [{
             id: qualifiedId, extensionKey: 'workspace-1:counter', displayName: 'Counter',
@@ -376,6 +376,8 @@ describe('canvas extension tool factories and persistence', () => {
         ]);
         processStore.registerWorkspace = vi.fn();
         const group = await createRepoGroup(root, processStore, { name: 'Both', members: [owner.workspaceId, 'workspace-2'] });
+        const members = await processStore.getWorkspaces();
+        vi.mocked(processStore.getWorkspaces).mockResolvedValue([...members, group]);
         const scope = { ...owner, workspaceId: group.id };
         const result = await call('list_canvas_capabilities', {}, scope);
         expect(result.canvases.map((canvas: any) => canvas.id)).toEqual([qualifiedId, 'workspace-2:counter/counter']);

@@ -245,7 +245,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.processId,
             {
                 ...(options.canvasToolsEnabled !== undefined ? { enabled: options.canvasToolsEnabled } : {}),
-                ...(options.ownerScriptRunner ? { ownerScriptRunner: options.ownerScriptRunner } : {}),
             },
         ));
     }

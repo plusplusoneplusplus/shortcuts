@@ -134,13 +134,14 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'read_canvas',
         label: 'Read Canvas',
-        description: 'Reads a canvas\'s content and revision (and manifest for extension canvases).',
+        description: 'Reads canvas content/revision or owner-scoped generated publication paths.',
         enabledByDefault: true,
     },
     {
         name: 'extension_canvas',
         label: 'Extension Canvas',
-        description: 'Builds or runs a custom interactive canvas (UI + capabilities over JSON shared state).',
+        scriptable: false, readOnly: false,
+        description: 'Publishes and runs a conversation-owned Node extension.mjs package.',
         enabledByDefault: true,
     },
     {
@@ -228,11 +229,11 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
 ] as const;
 
 /** Tool names belonging to the canvas feature (gated by `canvas.enabled`). */
-export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_canvas'] as const;
+export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas'] as const;
 
 /** Installed-extension tools, independently gated by `canvasExtensions.enabled`. */
 export const CANVAS_EXTENSION_LLM_TOOL_NAMES = [
-    'list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action',
+    'extension_canvas', 'list_canvas_capabilities', 'manage_canvas', 'invoke_canvas_action',
 ] as const;
 
 /** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */

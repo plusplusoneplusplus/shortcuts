@@ -1,5 +1,5 @@
 /**
- * A corrupt descriptor, artifact, snapshot, extension document, or comments
+ * A corrupt descriptor, artifact, snapshot, or comments
  * file used to be swallowed by a bare `catch {}`, so a canvas simply vanished
  * or lost its history with nothing to look at afterwards. Every such skip now
  * routes through here.
@@ -10,7 +10,7 @@
  * local filesystem layout into logs that get shipped around).
  *
  * An ordinary "file is not there" is not a fault — a canvas without comments,
- * without an extension, or without snapshots is normal — so ENOENT is dropped
+ * or without snapshots is normal — so ENOENT is dropped
  * before it reaches the logger.
  */
 
@@ -23,9 +23,7 @@ export type CanvasArtifactRole =
     | 'version'
     | 'version-prune'
     | 'comments'
-    | 'extension-manifest'
-    | 'extension-capabilities'
-    | 'extension-ui'
+    | 'retirement'
     | 'listing'
     | 'temp-cleanup';
 

@@ -53,7 +53,7 @@ export function useCanvasVersions({
     }, [workspaceId, canvasId]);
 
     useEffect(() => {
-        if (loadNonce === 0) return;
+        if (loadNonce === 0 || canvas?.type === 'copilot-extension') return;
         client.canvases.listVersions(workspaceId, canvasId)
             .then(setVersions)
             .catch(() => { /* version history is best-effort */ });
@@ -77,7 +77,7 @@ export function useCanvasVersions({
 
     const restore = useCallback(async () => {
         const current = canvasRef.current;
-        if (!current || !viewingVersion || restoring) return;
+        if (!current || current.type === 'copilot-extension' || !viewingVersion || restoring) return;
         setRestoring(true);
         try {
             const saved = await client.canvases.save(workspaceId, canvasId, {

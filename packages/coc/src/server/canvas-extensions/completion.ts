@@ -1,24 +1,9 @@
-/**
- * Backs `host.complete(prompt, { model? })` inside an async extension-canvas
- * capability with the same one-shot invoker the Quick Ask side-notes use
- * (`createCLIAIInvoker` with `approvePermissions: false` and a timeout). No new
- * LLM path is introduced here — this is a thin, attributed wrapper.
- *
- * `host.complete` is exposed CAPABILITY-SIDE ONLY. There is deliberately no
- * `CanvasHost.complete()` in the iframe: a browser-side completion would
- * produce state the server never gated, and it would split rate limiting and
- * logging across two places. The iframe loses nothing — it can already reach
- * the model by invoking a capability that calls `host.complete`.
- *
- * Every call is logged with the workspace, canvas, capability and owning
- * process, because a completion an artifact triggered on its own is otherwise
- * invisible: it appears in no conversation transcript.
- */
+interface ExtensionCompletionRequest { prompt: string; model?: string }
+type ExtensionCompleteFn = (request: ExtensionCompletionRequest) => Promise<{ ok: true; text: string } | { ok: false; error: string; code?: string }>;
 
-import type { CapabilityCompleteFn, CapabilityCompletionRequest } from './canvas-capability-runner';
 import { resolveDefaultModel } from '../preferences/repository';
 
-/** Wall clock for one `host.complete` call. Under the 30 s run budget on purpose. */
+/** Wall clock for one `ephemeralQuery` call. Under the 30 s run budget on purpose. */
 export const CANVAS_COMPLETE_TIMEOUT_MS = 25_000;
 
 /** Ceiling on a single prompt, so one call cannot ship the whole canvas state. */
@@ -27,8 +12,8 @@ export const MAX_CANVAS_COMPLETE_PROMPT_CHARS = 24_000;
 /** Who a completion belongs to. Every field is known at the call site. */
 export interface CanvasCompletionAttribution {
     workspaceId: string;
-    canvasId: string;
-    capability: string;
+    extensionKey: string;
+    operation: string;
     /** Conversation that owns the canvas, when it has one. */
     processId?: string;
 }
@@ -44,7 +29,7 @@ export interface CanvasCompletionDeps {
 
 /**
  * The default invocation: the CLI one-shot invoker, imported lazily so a server
- * that never runs an async capability never pays for loading the SDK stack.
+ * that never runs an async operation never pays for loading the SDK stack.
  */
 async function invokeOneShot(
     prompt: string,
@@ -64,29 +49,29 @@ async function invokeOneShot(
 }
 
 /**
- * Build the `host.complete` implementation for one capability run.
+ * Build the `ephemeralQuery` implementation for one operation run.
  *
  * Model resolution follows the caller's policy or the per-repo `quickAsk`
- * preference, unless the capability names a model itself.
+ * preference, unless the operation names a model itself.
  */
-export function createCanvasCompleteFn(
+export function createExtensionCompleteFn(
     dataDir: string,
     attribution: CanvasCompletionAttribution,
     deps: CanvasCompletionDeps = {},
-): CapabilityCompleteFn {
+): ExtensionCompleteFn {
     const invoke = deps.invoke ?? invokeOneShot;
     const log = deps.log ?? ((message: string) => console.log(message));
 
-    return async (request: CapabilityCompletionRequest) => {
+    return async (request: ExtensionCompletionRequest) => {
         const prompt = typeof request.prompt === 'string' ? request.prompt : '';
         if (!prompt.trim()) {
-            return { ok: false, code: 'capability-error', error: 'host.complete needs a non-empty prompt' };
+            return { ok: false, code: 'operation-error', error: 'ephemeralQuery needs a non-empty prompt' };
         }
         if (prompt.length > MAX_CANVAS_COMPLETE_PROMPT_CHARS) {
             return {
                 ok: false,
-                code: 'capability-error',
-                error: `host.complete prompt is ${prompt.length} characters, over the ${MAX_CANVAS_COMPLETE_PROMPT_CHARS} limit`,
+                code: 'operation-error',
+                error: `ephemeralQuery prompt is ${prompt.length} characters, over the ${MAX_CANVAS_COMPLETE_PROMPT_CHARS} limit`,
             };
         }
 
@@ -102,14 +87,14 @@ export function createCanvasCompleteFn(
         }
 
         log(
-            `[canvas] host.complete workspace=${attribution.workspaceId} canvas=${attribution.canvasId} `
-            + `capability=${attribution.capability} process=${attribution.processId ?? 'none'} `
+            `[canvas-extension] ephemeralQuery workspace=${attribution.workspaceId} canvas=${attribution.extensionKey} `
+            + `operation=${attribution.operation} process=${attribution.processId ?? 'none'} `
             + `model=${model ?? 'default'} promptChars=${prompt.length}`,
         );
 
         const result = await invoke(prompt, model);
         return result.success
             ? { ok: true, text: result.response }
-            : { ok: false, code: 'capability-error', error: result.error };
+            : { ok: false, code: 'operation-error', error: result.error };
     };
 }

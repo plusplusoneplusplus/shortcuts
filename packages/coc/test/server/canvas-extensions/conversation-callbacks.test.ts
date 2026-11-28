@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { SqliteProcessStore, denyAllPermissions, type CreateTaskInput, type ISDKService } from '@plusplusoneplusplus/forge';
 import { createCanvasExtensionCallbacks } from '../../../src/server/canvas-extensions/conversation-callbacks';
 import { CanvasExtensionHostRegistry } from '../../../src/server/canvas-extensions/host-registry';
-import { CANVAS_COMPLETE_TIMEOUT_MS, MAX_CANVAS_COMPLETE_PROMPT_CHARS } from '../../../src/server/canvas/canvas-capability-completion';
+import { CANVAS_COMPLETE_TIMEOUT_MS, MAX_CANVAS_COMPLETE_PROMPT_CHARS } from '../../../src/server/canvas-extensions/completion';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -26,6 +26,7 @@ describe('canvas extension conversation callbacks', () => {
     beforeEach(async () => {
         root = await mkdtemp(join(tmpdir(), 'canvas-callbacks-'));
         store = new SqliteProcessStore({ dbPath: join(root, 'processes.db') });
+        await store.registerWorkspace({ id: owner.workspaceId, name: 'Group', rootPath: root, virtual: true });
         for (const [id, workspaceId] of [[owner.processId, owner.workspaceId], ['sibling', 'other-workspace']]) {
             await store.addProcess({ id, type: 'chat', status: 'completed', promptPreview: 'Canvas',
                 fullPrompt: 'Canvas', startTime: new Date(), workingDirectory: root,

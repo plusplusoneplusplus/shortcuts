@@ -47,7 +47,7 @@ test.beforeAll(async () => {
 
 for (const dark of [false, true]) {
     for (const width of [320, 900]) {
-        test(`canvas disclosure preserves iframe drafts at ${width}px (${dark ? 'dark' : 'light'})`, async ({ page }) => {
+        test(`canvas disclosure preserves desktop-only extension routing at ${width}px (${dark ? 'dark' : 'light'})`, async ({ page }) => {
             const errors: string[] = [];
             page.on('pageerror', error => errors.push(error.message));
             await page.setViewportSize({ width, height: 900 });
@@ -56,22 +56,14 @@ for (const dark of [false, true]) {
                 if (url.pathname === '/') {
                     await route.fulfill({
                         contentType: 'text/html',
-                        body: '<div id="fixture" class="markdown-body" style="height:500px;overflow:auto"></div>',
-                    });
-                } else if (url.pathname.endsWith('/extension')) {
-                    await route.fulfill({
-                        json: { extension: {
-                            manifest: { description: 'Draft editor', capabilities: [] },
-                            capabilitiesJs: 'capabilities = {};',
-                            uiHtml: '<label>Draft <input id="draft"></label><script>window.frameIdentity = Math.random();</script>',
-                        } },
+                        body: '<div id="fixture" class="markdown-body" style="height:100px;overflow:auto"></div>',
                     });
                 } else if (/\/canvases\/(first|second)$/.test(url.pathname)) {
                     const id = url.pathname.split('/').at(-1);
                     await route.fulfill({
                         json: { canvas: {
                             id, workspaceId: 'ws-fixture', title: `Message draft ${id}`,
-                            type: 'extension', content: '{}', revision: 1,
+                            type: 'copilot-extension', content: '{}', revision: 1,
                             createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', lastEditor: 'ai',
                         } },
                     });
@@ -89,9 +81,9 @@ for (const dark of [false, true]) {
             const first = page.getByTestId('canvas-embed').nth(0);
             const second = page.getByTestId('canvas-embed').nth(1);
             const toggle = first.getByTestId('canvas-embed-toggle');
-            const frame = first.frameLocator('iframe');
-            await frame.getByRole('textbox', { name: 'Draft' }).fill('Unsaved local draft');
-            const identity = await frame.locator('body').evaluate(() => Reflect.get(window, 'frameIdentity'));
+            await expect(first.getByText('Open in the CoC desktop app')).toBeVisible();
+            await expect(second.getByText('Open in the CoC desktop app')).toBeVisible();
+            await expect(first.locator('iframe')).toHaveCount(0);
             const expandedHeight = (await first.boundingBox())!.height;
             const expandedScrollHeight = await page.locator('#fixture').evaluate(el => el.scrollHeight);
             const scrollTop = await page.locator('#fixture').evaluate(el => el.scrollTop);
@@ -100,8 +92,8 @@ for (const dark of [false, true]) {
             await expect(toggle).toHaveAttribute('aria-expanded', 'false');
             await expect(first.getByTestId('canvas-embed-body')).toBeHidden();
             await expect(first.getByTestId('canvas-embed-body')).toHaveAttribute('inert', '');
-            expect(expandedHeight - (await first.boundingBox())!.height).toBeGreaterThanOrEqual(400);
-            expect(expandedScrollHeight - await page.locator('#fixture').evaluate(el => el.scrollHeight)).toBeGreaterThanOrEqual(350);
+            expect(expandedHeight - (await first.boundingBox())!.height).toBeGreaterThan(0);
+            expect(expandedScrollHeight - await page.locator('#fixture').evaluate(el => el.scrollHeight)).toBeGreaterThan(0);
             expect(await page.locator('#fixture').evaluate(el => el.scrollTop)).toBe(scrollTop);
             expect(await first.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
             await expect(second.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'true');
@@ -118,8 +110,8 @@ for (const dark of [false, true]) {
             await toggle.focus();
             await page.keyboard.press('Space');
             await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-            await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Unsaved local draft');
-            expect(await frame.locator('body').evaluate(() => Reflect.get(window, 'frameIdentity'))).toBe(identity);
+            await expect(first.getByText('Open in the CoC desktop app')).toBeVisible();
+            await expect(first.locator('iframe')).toHaveCount(0);
 
             const secondToggle = second.getByTestId('canvas-embed-toggle');
             await secondToggle.tap();

@@ -9,15 +9,15 @@ import * as crypto from 'crypto';
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto' | 'copilot-extension';
+export type CanvasType = 'markdown' | 'code' | 'excalidraw' | 'kusto' | 'copilot-extension';
 
-export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension', 'excalidraw', 'kusto', 'copilot-extension'];
+export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'excalidraw', 'kusto', 'copilot-extension'];
 
 export interface CanvasDescriptor {
     id: string;
     workspaceId: string;
     title: string;
-    /** Artifact type: markdown document, single code file, or custom extension (JSON shared state). */
+    /** Document, query, diagram, or extension runtime identity. */
     type: CanvasType;
     /** Language hint for code canvases (e.g. "typescript", "python"). */
     language?: string;
@@ -55,6 +55,8 @@ export interface CanvasEdit {
 }
 
 export interface CreateCanvasInput {
+    /** Internal preallocated identity for recoverable publication. */
+    id?: string;
     workspaceId: string;
     title: string;
     content: string;
@@ -94,70 +96,6 @@ export interface CanvasVersion extends CanvasVersionMeta {
     content: string;
 }
 
-export interface CanvasCapabilityMeta {
-    name: string;
-    description: string;
-    /** Free-form description of the params object the capability expects. */
-    paramsDescription?: string;
-    /**
-     * Run this capability on the ASYNC path: a terminable worker thread with a
-     * 30 s budget and a `host` object (`host.complete`), instead of the default
-     * `node:vm` call with a 1000 ms budget and no host.
-     *
-     * Absent or false is the legacy shape and the default — every capability
-     * stored before this field existed keeps the sync path exactly.
-     */
-    async?: boolean;
-}
-
-export interface CanvasExtensionManifest {
-    /** Human-readable description of what this extension canvas does. */
-    description: string;
-    capabilities: CanvasCapabilityMeta[];
-    /**
-     * Minimum `window.CanvasHost` protocol version this extension's `uiHtml`
-     * requires. Absent means "whatever the host offers" — every extension written
-     * before the versioned bridge. A host reads this to decide which bridge
-     * features an extension may be handed, without sniffing for method existence.
-     */
-    hostVersion?: number;
-    /**
-     * Vendored libraries the compiled `ui.js` needs, already dependency-resolved
-     * and in load order (see `canvas-libraries.ts`). Absent on every `uiHtml`
-     * extension — the legacy path loads nothing.
-     */
-    libraries?: string[];
-    /**
-     * Tools an async capability's `host.runScript` may call — registered,
-     * scriptable, read-only tool names. Absent or empty means no tool access.
-     */
-    tools?: string[];
-}
-
-export interface CanvasExtension {
-    manifest: CanvasExtensionManifest;
-    /**
-     * Self-contained HTML+JS rendered in the panel's sandboxed iframe. Empty
-     * for a JSX-authored extension, which renders from `uiJs` instead.
-     */
-    uiHtml: string;
-    /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
-    capabilitiesJs: string;
-    /**
-     * Compiled UI for a JSX-authored extension: the esbuild-transformed `uiJsx`,
-     * which assigns `window.CanvasExtension = { mount(rootEl, host) {} }`.
-     * Absent for `uiHtml` extensions. When present it takes precedence over
-     * `uiHtml`.
-     */
-    uiJs?: string;
-    /**
-     * The JSX source `uiJs` was derived from. Stored so version history shows
-     * what the AI actually wrote rather than only the transform output; never
-     * executed.
-     */
-    uiJsx?: string;
-}
-
 export type CanvasCommentStatus = 'open' | 'sent' | 'resolved';
 
 export interface CanvasComment {
@@ -169,16 +107,6 @@ export interface CanvasComment {
     createdAt: string;
     updatedAt: string;
 }
-
-/** Size caps for extension documents. */
-export const MAX_EXTENSION_UI_BYTES = 512 * 1024;
-/**
- * Cap on the compiled `ui.js`. Mirrors `MAX_EXTENSION_UI_BYTES` — a JSX
- * transform is roughly source-sized (libraries are never inlined into the
- * stored document), so the same ceiling applies to `uiJsx` and its output.
- */
-export const MAX_EXTENSION_UI_JS_BYTES = 512 * 1024;
-export const MAX_EXTENSION_CAPABILITIES_BYTES = 256 * 1024;
 
 /** Number of most recent version snapshots kept per canvas. */
 export const MAX_CANVAS_VERSIONS = 50;

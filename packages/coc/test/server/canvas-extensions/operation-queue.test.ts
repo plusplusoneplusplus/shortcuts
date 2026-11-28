@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { queueCanvasCapabilityRun, getQueuedCanvasCount } from '../../../src/server/canvas/canvas-capability-queue';
+import { queueCanvasExtensionOperation, getQueuedCanvasCount } from '../../../src/server/canvas-extensions/operation-queue';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-describe('queueCanvasCapabilityRun', () => {
+describe('queueCanvasExtensionOperation', () => {
     it('runs tasks for one canvas strictly one at a time', async () => {
         const events: string[] = [];
         const task = (name: string) => async () => {
@@ -14,9 +14,9 @@ describe('queueCanvasCapabilityRun', () => {
         };
 
         const results = await Promise.all([
-            queueCanvasCapabilityRun('ws', 'c1', task('a')),
-            queueCanvasCapabilityRun('ws', 'c1', task('b')),
-            queueCanvasCapabilityRun('ws', 'c1', task('c')),
+            queueCanvasExtensionOperation('ws', 'c1', task('a')),
+            queueCanvasExtensionOperation('ws', 'c1', task('b')),
+            queueCanvasExtensionOperation('ws', 'c1', task('c')),
         ]);
 
         expect(results).toEqual(['a', 'b', 'c']);
@@ -34,8 +34,8 @@ describe('queueCanvasCapabilityRun', () => {
         };
 
         await Promise.all([
-            queueCanvasCapabilityRun('ws', 'one', task),
-            queueCanvasCapabilityRun('ws', 'two', task),
+            queueCanvasExtensionOperation('ws', 'one', task),
+            queueCanvasExtensionOperation('ws', 'two', task),
         ]);
         expect(peak).toBe(2);
     });
@@ -50,27 +50,27 @@ describe('queueCanvasCapabilityRun', () => {
             running--;
         };
         await Promise.all([
-            queueCanvasCapabilityRun('ws-a', 'same-id', task),
-            queueCanvasCapabilityRun('ws-b', 'same-id', task),
+            queueCanvasExtensionOperation('ws-a', 'same-id', task),
+            queueCanvasExtensionOperation('ws-b', 'same-id', task),
         ]);
         expect(peak).toBe(2);
     });
 
     it('does not let a failing task wedge the canvas', async () => {
-        const failing = queueCanvasCapabilityRun('ws', 'c2', async () => {
+        const failing = queueCanvasExtensionOperation('ws', 'c2', async () => {
             throw new Error('boom');
         });
         await expect(failing).rejects.toThrow('boom');
 
         const after = vi.fn(async () => 'ok');
-        await expect(queueCanvasCapabilityRun('ws', 'c2', after)).resolves.toBe('ok');
+        await expect(queueCanvasExtensionOperation('ws', 'c2', after)).resolves.toBe('ok');
         expect(after).toHaveBeenCalledTimes(1);
     });
 
     it('propagates a rejection to the caller that queued it, not the next one', async () => {
         const outcomes = await Promise.allSettled([
-            queueCanvasCapabilityRun('ws', 'c3', async () => { throw new Error('first'); }),
-            queueCanvasCapabilityRun('ws', 'c3', async () => 'second'),
+            queueCanvasExtensionOperation('ws', 'c3', async () => { throw new Error('first'); }),
+            queueCanvasExtensionOperation('ws', 'c3', async () => 'second'),
         ]);
         expect(outcomes[0].status).toBe('rejected');
         expect(outcomes[1]).toEqual({ status: 'fulfilled', value: 'second' });
@@ -78,7 +78,7 @@ describe('queueCanvasCapabilityRun', () => {
 
     it('drops a canvas from the map once its chain drains', async () => {
         const before = getQueuedCanvasCount();
-        await queueCanvasCapabilityRun('ws', 'transient', async () => 'done');
+        await queueCanvasExtensionOperation('ws', 'transient', async () => 'done');
         // The cleanup runs a microtask behind the task's own resolution.
         await delay(0);
         expect(getQueuedCanvasCount()).toBe(before);

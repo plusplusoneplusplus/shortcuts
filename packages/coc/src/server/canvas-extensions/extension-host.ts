@@ -11,7 +11,7 @@ import {
 import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
 import type { DiscoveredCanvasExtension } from './discovery';
-import { validateCanvasManifestTools } from '../canvas/canvas-script-bridge';
+import { validateExtensionScriptTools } from './script-tools';
 import type { OwnerToolScriptRequest, OwnerToolScriptOutcome } from '../canvas/owner-tool-script-service';
 import type { CanvasMcpServerList } from './mcp-server-list';
 import type { CanvasToolMetadataResult } from './tool-metadata';
@@ -36,6 +36,8 @@ export interface CanvasExtensionHostOptions {
     /** Bound by the registry to the owning conversation's captured tool inventory. */
     getToolMetadata?: () => Promise<CanvasToolMetadataResult>;
     timeoutMs?: number;
+    /** Startup cancellation terminates a child that has not declared its canvases yet. */
+    signal?: AbortSignal;
 }
 
 export interface CanvasInstanceRequest {
@@ -69,14 +71,18 @@ export class CanvasExtensionHost {
 
     static async start(options: CanvasExtensionHostOptions): Promise<CanvasExtensionHost> {
         if (!options.config.canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
+        options.signal?.throwIfAborted();
         const host = new CanvasExtensionHost(options);
+        const abort = () => { void host.dispose().catch(error => options.log(`Canvas startup cleanup failed: ${error}`)); };
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) abort();
         try {
             host.declarations.push(...await host.withDeadline(host.ready));
             return host;
         } catch (error) {
-            await host.dispose();
+            try { await host.dispose(); } catch (cleanupError) { options.log(`Canvas startup cleanup failed: ${cleanupError}`); }
             throw error;
-        }
+        } finally { options.signal?.removeEventListener('abort', abort); }
     }
 
     private constructor(private readonly options: CanvasExtensionHostOptions) {
@@ -194,7 +200,9 @@ export class CanvasExtensionHost {
                 throw new ResponseError(ErrorCodes.InvalidParams, 'Invalid canvas declarations');
             }
             try {
-                const workspacePath = sessionWorkspacePath(this.options.dataDir, this.options);
+                const sessionRoot = sessionWorkspacePath(this.options.dataDir, this.options);
+                const generatedId = this.options.extension.generatedId;
+                const workspacePath = generatedId ? path.join(sessionRoot, 'generated', generatedId) : sessionRoot;
                 await fs.mkdir(workspacePath, { recursive: true });
                 await fs.access(workspacePath, fsConstants.W_OK);
                 this.resolveReady(canvases);
@@ -246,7 +254,7 @@ export class CanvasExtensionHost {
         }
         if (action === 'register') {
             if (this.scriptTools) throw new ResponseError(ErrorCodes.InvalidParams, 'Tool script declaration is already registered');
-            const declaration = validateCanvasManifestTools(params.tools);
+            const declaration = validateExtensionScriptTools(params.tools);
             if (!declaration.ok) throw new ResponseError(ErrorCodes.InvalidParams, declaration.error);
             this.scriptTools = declaration.tools;
             return { version: 1 };

@@ -45,7 +45,6 @@ export function isSvgCodeCanvas(canvas: Pick<Canvas, 'type' | 'language' | 'cont
 
 export function downloadFilenameFor(canvas: Canvas): string {
     const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
-    if (canvas.type === 'extension') return `${slug}.json`;
     if (canvas.type === 'kusto') return `${slug}.json`;
     if (canvas.type === 'excalidraw') return `${slug}.excalidraw`;
     if (canvas.type !== 'code') return `${slug}.md`;
@@ -69,7 +68,6 @@ export interface CanvasKind {
     isCode: boolean;
     /** A code canvas whose content is an SVG document — rendered, not fenced. */
     isSvg: boolean;
-    isExtension: boolean;
     isExcalidraw: boolean;
     isKusto: boolean;
 }
@@ -87,7 +85,6 @@ export function canvasKind(canvas: Canvas | null, displayedContent: string): Can
             language: canvas.language,
             content: displayedContent,
         })),
-        isExtension: canvas?.type === 'extension',
         isExcalidraw: canvas?.type === 'excalidraw',
         isKusto: canvas?.type === 'kusto',
     };
@@ -99,9 +96,7 @@ export function canvasKind(canvas: Canvas | null, displayedContent: string): Can
  *
  * Excalidraw scenes are host-rendered straight from their scene JSON (including
  * history views). Kusto canvases always render through KustoView, so the (up to
- * 10k-row) serialized result JSON is never marked-parsed. Extension canvases
- * render their own iframe UI; the pipeline is used only to show their raw JSON
- * state in a history view.
+ * 10k-row) serialized result JSON is never marked-parsed. Extension runtime records use their desktop guest and bypass this pipeline.
  */
 export function previewMarkdownFor(
     kind: CanvasKind,
@@ -110,7 +105,6 @@ export function previewMarkdownFor(
     viewingHistory: boolean,
 ): string {
     if (kind.isExcalidraw || kind.isKusto || canvas?.type === 'copilot-extension') return '';
-    if (kind.isExtension) return viewingHistory ? fenceCode(displayedContent, 'json') : '';
     return kind.isCode ? fenceCode(displayedContent, canvas?.language) : displayedContent;
 }
 

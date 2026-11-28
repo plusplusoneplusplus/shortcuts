@@ -3,18 +3,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    createCanvasCompleteFn,
+    createExtensionCompleteFn,
     MAX_CANVAS_COMPLETE_PROMPT_CHARS,
-} from '../../../src/server/canvas/canvas-capability-completion';
+} from '../../../src/server/canvas-extensions/completion';
 
 const ATTRIBUTION = {
     workspaceId: 'ws-1',
-    canvasId: 'canvas-abc',
-    capability: 'ask',
+    extensionKey: 'canvas-abc',
+    operation: 'ask',
     processId: 'proc-9',
 };
 
-describe('createCanvasCompleteFn', () => {
+describe('createExtensionCompleteFn', () => {
     let dataDir: string;
 
     beforeEach(() => {
@@ -26,14 +26,14 @@ describe('createCanvasCompleteFn', () => {
 
     it('returns the model response', async () => {
         const invoke = vi.fn(async () => ({ success: true as const, response: 'the answer' }));
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
         await expect(complete({ prompt: 'q' })).resolves.toEqual({ ok: true, text: 'the answer' });
         expect(invoke).toHaveBeenCalledWith('q', undefined);
     });
 
     it('logs workspace, canvas, capability and process for every call', async () => {
         const log = vi.fn();
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, {
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, {
             invoke: async () => ({ success: true as const, response: 'x' }),
             log,
         });
@@ -42,13 +42,13 @@ describe('createCanvasCompleteFn', () => {
         const line = log.mock.calls[0][0] as string;
         expect(line).toContain('workspace=ws-1');
         expect(line).toContain('canvas=canvas-abc');
-        expect(line).toContain('capability=ask');
+        expect(line).toContain('operation=ask');
         expect(line).toContain('process=proc-9');
     });
 
     it('records the absence of an owning process rather than omitting it', async () => {
         const log = vi.fn();
-        const complete = createCanvasCompleteFn(dataDir, { ...ATTRIBUTION, processId: undefined }, {
+        const complete = createExtensionCompleteFn(dataDir, { ...ATTRIBUTION, processId: undefined }, {
             invoke: async () => ({ success: true as const, response: 'x' }),
             log,
         });
@@ -58,7 +58,7 @@ describe('createCanvasCompleteFn', () => {
 
     it('passes a caller-chosen model straight through', async () => {
         const invoke = vi.fn(async () => ({ success: true as const, response: 'x' }));
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
         await complete({ prompt: 'q', model: 'claude-opus-5' });
         expect(invoke).toHaveBeenCalledWith('q', 'claude-opus-5');
     });
@@ -72,14 +72,14 @@ describe('createCanvasCompleteFn', () => {
             'utf-8',
         );
         const invoke = vi.fn(async () => ({ success: true as const, response: 'x' }));
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
         await complete({ prompt: 'q' });
         expect(invoke).toHaveBeenCalledWith('q', 'preferred-model');
     });
 
     it('refuses an empty prompt without calling the model', async () => {
         const invoke = vi.fn();
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
         await expect(complete({ prompt: '   ' })).resolves.toMatchObject({ ok: false });
         expect(invoke).not.toHaveBeenCalled();
     });
@@ -87,7 +87,7 @@ describe('createCanvasCompleteFn', () => {
     it('lets conversation callers override model policy, including the provider default', async () => {
         const invoke = vi.fn(async () => ({ success: true as const, response: 'answer' }));
         const defaultModel = vi.fn((): string | undefined => 'conversation-model');
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, defaultModel, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, defaultModel, log: () => {} });
         await complete({ prompt: 'q' });
         expect(invoke).toHaveBeenLastCalledWith('q', 'conversation-model');
         defaultModel.mockReturnValueOnce(undefined);
@@ -100,7 +100,7 @@ describe('createCanvasCompleteFn', () => {
 
     it('refuses a prompt over the character cap without calling the model', async () => {
         const invoke = vi.fn();
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, { invoke, log: () => {} });
         const result = await complete({ prompt: 'x'.repeat(MAX_CANVAS_COMPLETE_PROMPT_CHARS + 1) });
         expect(result.ok).toBe(false);
         if (!result.ok) expect(result.error).toContain('over the');
@@ -108,7 +108,7 @@ describe('createCanvasCompleteFn', () => {
     });
 
     it('surfaces an invoker failure as an error result', async () => {
-        const complete = createCanvasCompleteFn(dataDir, ATTRIBUTION, {
+        const complete = createExtensionCompleteFn(dataDir, ATTRIBUTION, {
             invoke: async () => ({ success: false as const, error: 'AI service unavailable' }),
             log: () => {},
         });

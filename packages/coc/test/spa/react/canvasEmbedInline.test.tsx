@@ -13,7 +13,6 @@ import type { Canvas } from '@plusplusoneplusplus/coc-client';
 
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
-    getExtension: vi.fn(),
     invokeCapability: vi.fn(),
     client: null as unknown,
 }));
@@ -44,7 +43,6 @@ import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/featur
 mocks.client = {
     canvases: {
         get: mocks.get,
-        getExtension: mocks.getExtension,
         invokeCapability: mocks.invokeCapability,
     },
 };
@@ -57,19 +55,9 @@ const SCENE = JSON.stringify({
     appState: { viewBackgroundColor: '#ffffff' },
 });
 
-const EXTENSION = {
-    manifest: {
-        description: 'Notes Chat header redesign',
-        capabilities: [{ name: 'set_scope', description: 'Change chat scope' }],
-    },
-    uiHtml: '<main><header><strong>Notes Chat</strong><button>This note</button><button>Workspace</button></header></main>',
-    capabilitiesJs: 'capabilities = { set_scope: function (state) { return state; } };',
-};
-
 describe('inline canvas:// embed', () => {
     beforeEach(() => {
         mocks.get.mockReset();
-        mocks.getExtension.mockReset();
     });
 
     afterEach(() => {
@@ -90,7 +78,6 @@ describe('inline canvas:// embed', () => {
         expect(screen.queryByText(/saved-input/)).toBeNull();
         expect(document.querySelector('webview')).toBeNull();
         expect(open).not.toHaveBeenCalled();
-        expect(mocks.getExtension).not.toHaveBeenCalled();
         delete (window as { cocDesktop?: unknown }).cocDesktop;
     });
 
@@ -116,90 +103,6 @@ describe('inline canvas:// embed', () => {
         await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('ws-1', 'arch'));
         const viewer = await screen.findByTestId('mock-excalidraw');
         expect(viewer.getAttribute('data-element-count')).toBe('2');
-    });
-
-    it('renders an extension canvas through its sandboxed iframe instead of Excalidraw', async () => {
-        mocks.get.mockResolvedValue({
-            id: 'notes-chat-header-redesign-d68498',
-            workspaceId: 'ws-1',
-            title: 'Notes Chat Header Redesign',
-            type: 'extension',
-            content: JSON.stringify({ scope: 'note', pinned: false, compact: true }),
-            revision: 11,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-            lastEditor: 'user',
-        });
-        mocks.getExtension.mockResolvedValue(EXTENSION);
-
-        const html = chatMarkdownToHtml(
-            'canvas://notes-chat-header-redesign-d68498',
-            'ws-1',
-            { canvasEmbedEnabled: true },
-        );
-        render(<MarkdownView html={html} />);
-
-        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
-        expect(mocks.get).toHaveBeenCalledWith('ws-1', 'notes-chat-header-redesign-d68498');
-        expect(mocks.getExtension).toHaveBeenCalledWith('ws-1', 'notes-chat-header-redesign-d68498');
-        expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
-        expect(iframe.getAttribute('srcdoc')).toContain('window.CanvasHost');
-        expect(iframe.getAttribute('srcdoc')).toContain('Notes Chat');
-        expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
-    });
-
-    /**
-     * The inline embed mounts the same ExtensionCanvasView as the side panel, so
-     * the CanvasHost request/response bridge must round-trip here too — an embed
-     * that got the v1 fire-and-forget bootstrap would hang every `await`.
-     */
-    it('round-trips a CanvasHost request through the inline embed', async () => {
-        mocks.get.mockResolvedValue({
-            id: 'notes-chat-header-redesign-d68498',
-            workspaceId: 'ws-1',
-            title: 'Notes Chat Header Redesign',
-            type: 'extension',
-            content: JSON.stringify({ pinned: false }),
-            revision: 11,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-            lastEditor: 'user',
-        });
-        mocks.getExtension.mockResolvedValue(EXTENSION);
-        mocks.invokeCapability.mockResolvedValue({
-            id: 'notes-chat-header-redesign-d68498',
-            workspaceId: 'ws-1',
-            title: 'Notes Chat Header Redesign',
-            type: 'extension',
-            content: JSON.stringify({ pinned: true }),
-            revision: 12,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-            lastEditor: 'user',
-        });
-
-        const html = chatMarkdownToHtml('canvas://notes-chat-header-redesign-d68498', 'ws-1', { canvasEmbedEnabled: true });
-        render(<MarkdownView html={html} />);
-
-        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
-        expect(iframe.getAttribute('srcdoc')).toContain(`version: ${CANVAS_HOST_VERSION}`);
-
-        const postMessage = vi.fn();
-        Object.defineProperty(iframe.contentWindow, 'postMessage', { value: postMessage, configurable: true });
-
-        const event = new MessageEvent('message', {
-            data: { __canvasHost: true, id: 5, type: 'invoke-capability', name: 'toggle_pin', params: {} },
-        });
-        Object.defineProperty(event, 'source', { value: iframe.contentWindow, enumerable: true });
-        act(() => { window.dispatchEvent(event); });
-
-        await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
-            __canvasHost: true,
-            type: 'response',
-            id: 5,
-            ok: true,
-            result: { revision: 12, state: { pinned: true } },
-        }, '*'));
     });
 
     it('renders a Kusto canvas through the interactive Kusto view', async () => {
@@ -286,13 +189,11 @@ describe('inline canvas:// embed', () => {
         { type: 'code', language: 'typescript', content: 'const x = 1;' },
         { type: 'code', language: 'svg', content: '<svg xmlns="http://www.w3.org/2000/svg" />' },
         { type: 'excalidraw', content: SCENE },
-        { type: 'extension', content: '{}' },
         { type: 'kusto', content: kustoCanvas('sample').content },
     ];
 
     it.each(canvasKinds)('defaults $type/$language closed only in Sentinel and retains choices through HTML updates', async kind => {
         mocks.get.mockResolvedValue({ ...kustoCanvas('artifact'), ...kind });
-        mocks.getExtension.mockResolvedValue(EXTENSION);
         const fixture = (mode: string, suffix = '') => (
             <ChatRenderContextProvider value={{ wsId: 'ws-1', chatId: 'chat-1', conversationMode: mode }}>
                 <KustoEmbedGroupProvider>
@@ -485,11 +386,10 @@ describe('inline canvas:// embed', () => {
         expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
     });
 
-    it.each(['markdown', 'code', 'excalidraw', 'extension', 'kusto'] as const)(
+    it.each(['markdown', 'code', 'excalidraw', 'kusto'] as const)(
         'collapses the entire %s body without unmounting it',
         async type => {
             mocks.get.mockResolvedValue({ ...kustoCanvas('one'), type, content: type === 'excalidraw' ? SCENE : kustoCanvas('one').content });
-            mocks.getExtension.mockResolvedValue(EXTENSION);
             render(<CanvasEmbed workspaceId="ws-1" canvasId="one" />);
             const toggle = await screen.findByRole('button', { name: 'Query one' });
             const body = screen.getByTestId('canvas-embed-body');
@@ -525,32 +425,6 @@ describe('inline canvas:// embed', () => {
         toggles[0].focus();
         await user.keyboard(' ');
         expect(toggles[0]).toHaveAttribute('aria-expanded', 'true');
-    });
-
-    it.each(['sentinel', 'ask'])('preserves the %s extension frame and saved updates while collapsed', async conversationMode => {
-        const canvas = { ...kustoCanvas('extension'), type: 'extension', content: '{"pinned":false}' };
-        mocks.get.mockResolvedValue(canvas);
-        mocks.getExtension.mockResolvedValue(EXTENSION);
-        mocks.invokeCapability.mockResolvedValue({ ...canvas, title: 'Updated title', content: '{"pinned":true}', revision: 4 });
-        render(<ChatRenderContextProvider value={{ conversationMode }}><CanvasEmbed workspaceId="ws-1" canvasId="extension" /></ChatRenderContextProvider>);
-        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
-        const frameWindow = iframe.contentWindow;
-        const srcDoc = iframe.srcdoc;
-        const postMessage = vi.fn();
-        Object.defineProperty(frameWindow, 'postMessage', { value: postMessage, configurable: true });
-        if (conversationMode !== 'sentinel') fireEvent.click(screen.getByRole('button', { name: 'Query extension' }));
-        const event = new MessageEvent('message', {
-            data: { __canvasHost: true, id: 8, type: 'invoke-capability', name: 'set_scope', params: {} },
-        });
-        Object.defineProperty(event, 'source', { value: frameWindow });
-        act(() => { window.dispatchEvent(event); });
-        const toggle = await screen.findByRole('button', { name: 'Updated title' });
-        expect(toggle).toHaveAttribute('aria-expanded', 'false');
-        await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'response', id: 8, ok: true }), '*'));
-        fireEvent.click(toggle);
-        expect(screen.getByTestId('extension-canvas-iframe')).toBe(iframe);
-        expect(iframe.contentWindow).toBe(frameWindow);
-        expect(iframe.srcdoc).toBe(srcDoc);
     });
 
     it('keeps loading and error content behind the same disclosure', async () => {

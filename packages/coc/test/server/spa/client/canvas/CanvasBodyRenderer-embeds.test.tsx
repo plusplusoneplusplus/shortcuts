@@ -15,9 +15,6 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
     MonacoFileEditor: () => null,
 }));
-vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
-    ExtensionCanvasView: () => null,
-}));
 vi.mock('@excalidraw/excalidraw', () => ({ Excalidraw: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({ useMermaid: () => {} }));
 

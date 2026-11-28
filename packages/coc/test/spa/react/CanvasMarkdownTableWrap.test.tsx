@@ -14,9 +14,6 @@ import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/f
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
     MonacoFileEditor: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
-    ExtensionCanvasView: () => null,
-}));
 vi.mock('@excalidraw/excalidraw', () => ({ Excalidraw: () => null }));
 
 const LONG_URL = `https://example.com/${'long-segment/'.repeat(20)}index.html`;

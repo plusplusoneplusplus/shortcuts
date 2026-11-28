@@ -19,7 +19,7 @@ import { TokenManager } from './token-manager';
 
 export function registerDataRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { store, dataDir, getWsServer, configFunctions } = options;
-    const wiper = new DataWiper(dataDir, store);
+    const wiper = new DataWiper(dataDir, store, options.beforeDataWipe);
 
     // Route-scoped token managers — isolated per server instance; TTL configurable for tests.
     const routeWipeTokenMgr = new TokenManager(options.tokenTtlMs);

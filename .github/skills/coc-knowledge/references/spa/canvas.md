@@ -43,8 +43,7 @@ the rest:
 
 The routed client is passed into every kernel **explicitly** — that is what keeps remote and
 clone workspaces hitting the workspace-owning server, and every canvas call in this file
-(record load/save, versions, comments, export, run, extension load, `invoke-capability`,
-`set-state`, `list-files`, `read-file`, embeds, source previews) goes through it (see
+(record load/save, versions, comments, export, run, extension reopen/reload, embeds, source previews) goes through it (see
 [clone-routing.md](clone-routing.md)). The right panel's `+` menu discovers linked
 canvases via `client.canvases.list(workspaceId, { processId })` and opens each as its own
 tab; the tab strip is the canvas switcher, so the header's in-panel switcher only appears
@@ -223,7 +222,7 @@ removes only the conversation owner's session workspace.
 `conversation-callbacks.ts` binds `session.send` to owner-validated
 `ProcessMessageDeliveryService.deliverOnce`: attributed text, stable message receipt,
 enqueue-only delivery and ordinary pending-message/SSE handling. Busy conversations
-buffer until the next turn boundary. Ephemeral queries reuse `createCanvasCompleteFn`
+buffer until the next turn boundary. Ephemeral queries reuse `createExtensionCompleteFn` in `canvas-extensions/completion.ts`
 with the active conversation provider, recorded model and follow-up model policy.
 The one-shot invoker denies permissions and ambient MCP, adds no turn, and rechecks
 owner/flag state before returning.
@@ -352,47 +351,37 @@ record. Other extensions, canvases and conversations stay separate. Pre-existing
 duplicates are never merged or deleted: each stays hydrated while open and reopenable
 by its own ID. With the flag off, an open without a known ID creates a new instance.
 
-### Extension canvases
+### Generated conversation extensions
 
-`type: 'extension'` renders `ExtensionCanvasView` in preview mode: the extension's
-`ui.html` runs inside an `<iframe sandbox="allow-scripts">` whose injected
-`window.CanvasHost` bridge (`version`/`onState`/`invoke`/`setState`/`listFiles`/`readFile`)
-talks to the host over `postMessage`. Edit mode shows the raw JSON shared state.
+`generated-packages.ts` stores managed source under
+`repos/<workspaceId>/canvas-ext/generated/<encoded-process>/<generated-id>/`.
+Each publication names one bounded revision directory containing `extension.mjs`
+and explicit assets. The content hash covers every file. `generated-publication.ts`
+serializes publication/replacement/deletion with instance operations, checks owner
+leases after awaits and journals durable writes for startup recovery. Recovery
+starts no application code. Failed replacement retains committed source for an
+explicit reload and never replays actions.
 
-The host side lives in `useExtensionCanvasHostController`, not the view: it posts
-`canvas-state` on ready and on every live update, services `invoke-capability` via
-`canvases.invokeCapability`, and services `set-state` via the revision-checked
-`canvases.save`, so human UI actions and AI capability calls share one gate.
+`resolveOwnerCanvasExtensions` merges installed discoveries with only the exact
+conversation's publications. Installed REST discovery and system catalogs remain
+workspace-wide. Generated identity and declaration paths include the full owner.
+Execution cwd must match the conversation's validated registered/member root.
+Source reads use authorized workspace/member and trusted staging roots plus
+realpath containment. Managed deletion rejects symlinks and retries failures.
 
-The preview header registers the view's reload action. Reload confirms guest input
-loss, refuses pending mutations, freezes bridge admission, reads code and durable
-state through the exact `routingRef`, and replaces only that iframe, even with
-unchanged code. Failed reads preserve the guest and expose an error. Replies bind
-to their original guest; actions are never replayed. Installed Copilot guests use
-the separate desktop/runtime lifecycle.
+The existing host and `copilot-extension` desktop guest render generated records.
+Their writable workspace is `session-state/<encoded-process>/generated/<id>`.
+Close/archive/restart preserve source and application files. Permanent generated
+artifact deletion and owner deletion remove records, source and application state.
+Persisted owner enumeration covers both source and state roots; startup reconciles
+orphans and interrupted revisions. Snapshots exclude machine-local packages and
+report omitted runtime record counts; wipe includes both roots.
 
-**Bridge protocol v2.** Constants, the method table, and the error shape live in
-`features/canvas/canvas-host-contract.ts`; `canvas-host-bootstrap.ts` generates both the
-live and the offline in-frame host from that table. `invoke`/`setState` tag each message
-with a monotonic `id` and return a promise settling on
-`{ type: 'response', id, ok, result | error }` or rejecting after 60s with
-`code: 'timeout'`. Rejections carry `{ code, message }` with `code` in `offline` /
-`timeout` / `revision-conflict` / `capability-error` / `file-error`. A failed capability
-rejects *and* raises a host banner; a failed `readFile`/`listFiles` only rejects. A message
-with **no `id`** is a pre-v2 sender, serviced in full without a reply.
-
-An outstanding `invoke` shows `extension-canvas-pending` (a capability declared
-`async: true` runs server-side with a 30s budget), clearing when the last one settles. In
-an exported HTML artifact the offline bootstrap **rejects** `invoke`/`setState` with
-`code: 'offline'` rather than no-oping, so a v2 extension's `await` fails fast; a canvas's
-files are not inlined into an export. `CanvasHost` exposes no `complete()`: model access
-lives only inside an async capability's server-side `host`.
-
-`listFiles`/`readFile` are READ-ONLY and scoped to `canvases/<canvasId>/files/`, hitting
-`canvases.listFiles` / `canvases.readFile` and returning
-`{ path, size, encoding, content }` (`utf-8` for text, `base64` otherwise;
-`{ encoding: 'base64' }` forces bytes). Only the AI writes into that directory, through
-`extension_canvas`'s `files` argument.
+`extension_canvas` runs Node with filesystem/network access under the live extension
+flag and normal tool permission policy. It accepts a self-contained staged entry
+and explicit assets; dependency installation and artifact compilation are outside
+its contract. Interactive records have no generic offline HTML export. Raw
+unsupported descriptors are retired under the canvas lock before listing.
 
 ### Kusto canvases
 
@@ -497,7 +486,7 @@ Bare `canvas://<canvasId>` and `[label](canvas://<canvasId>)` references in chat
 Markdown canvas previews render through `shared/CanvasEmbed.tsx`. IDs contain 1–128
 letters, digits or hyphens and start with a letter or digit. Inline/fenced code
 and Edit text stay literal. The owning workspace routes descriptor reads and
-interactive calls. Persisted `type` selects Excalidraw, `ExtensionCanvasView`, compact
+interactive calls. Persisted `type` selects Excalidraw, desktop-only extension affordances, compact
 `KustoView`, or a plain markdown/code document preview. Document previews do not expand
 nested references, bounding self/cyclic links. Preview displays saved Kusto results
 without running queries. Historical `.md-excalidraw-embed` placeholders remain supported.
@@ -510,7 +499,7 @@ embed defaults never infer mode from titles or individual turns. Ordinary chats 
 expanded generic embeds and the Kusto group default. Dedicated panels keep their own state.
 
 Collapsed bodies and Kusto connection portals stay mounted, hidden and inert,
-preserving iframe state and drafts without layout space. Manual choices override
+preserving view state and drafts without layout space. Manual choices override
 defaults per occurrence. `MarkdownView` retains choices across HTML-driven portal
 remounts, scoped by resolved server/workspace owner, chat, canvas and occurrence; changing ownership
 resets that memory. Loading and errors use the same disclosure and rendering gate.

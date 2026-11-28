@@ -15,12 +15,6 @@ import { setServerLogger } from '../../../src/server/logging/server-logger';
 
 const WS = 'test-workspace';
 
-const EXTENSION = {
-    manifest: { description: 'Counter', capabilities: [{ name: 'bump', description: 'add one' }] },
-    uiHtml: '<html><body>counter</body></html>',
-    capabilitiesJs: 'capabilities = { bump: s => s };',
-};
-
 describe('canvas persistence kernel', () => {
     let dataDir: string;
     let store: CanvasStore;
@@ -95,18 +89,6 @@ describe('canvas persistence kernel', () => {
     // ------------------------------------------------------------------
 
     describe('staged commits', () => {
-        it('leaves no staging files behind after a create, update, or extension save', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Ext', content: '{}', type: 'extension' });
-            store.updateCanvas(WS, canvas.id, { content: '{"n":1}', editor: 'ai' });
-            store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
-            store.addComment(WS, canvas.id, { anchorText: 'n', body: 'why?' });
-
-            const stray = (dir: string): string[] =>
-                fs.readdirSync(dir).filter(name => name.startsWith('.tmp-'));
-            expect(stray(canvasDir(canvas.id))).toEqual([]);
-            expect(stray(path.join(canvasDir(canvas.id), 'versions'))).toEqual([]);
-            expect(stray(path.join(canvasDir(canvas.id), 'extension'))).toEqual([]);
-        });
 
         it('ignores a staging file a dead writer left in the versions directory', () => {
             const canvas = store.createCanvas({ workspaceId: WS, title: 'Plan', content: 'v1' });
@@ -131,58 +113,6 @@ describe('canvas persistence kernel', () => {
             fs.rmSync(path.join(canvasDir(canvas.id), 'versions'), { recursive: true });
 
             expect(store.getCanvas(WS, canvas.id)).toMatchObject({ revision: 1, content: '' });
-        });
-    });
-
-    // ------------------------------------------------------------------
-    // Extension documents
-    // ------------------------------------------------------------------
-
-    describe('extension documents', () => {
-        const jsxExtension = { ...EXTENSION, uiHtml: '', uiJs: 'window.CanvasExtension = {};', uiJsx: '<div />' };
-
-        it('publishes the whole document set with the revision bump', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Ext', content: '{}', type: 'extension' });
-            const saved = store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
-
-            expect(saved).toMatchObject({ revision: 2, lastEditor: 'ai' });
-            expect(store.getExtension(WS, canvas.id)).toMatchObject({
-                uiHtml: EXTENSION.uiHtml,
-                capabilitiesJs: EXTENSION.capabilitiesJs,
-            });
-            // The revision a reader sees is never ahead of the documents.
-            expect(store.getCanvas(WS, canvas.id)?.revision).toBe(2);
-        });
-
-        it('removes the stale UI variant when an extension switches authoring mode', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Ext', content: '{}', type: 'extension' });
-            const extensionDir = path.join(canvasDir(canvas.id), 'extension');
-
-            store.saveExtension(WS, canvas.id, jsxExtension, 'ai');
-            expect(fs.existsSync(path.join(extensionDir, 'ui.js'))).toBe(true);
-            expect(fs.existsSync(path.join(extensionDir, 'ui.html'))).toBe(false);
-            expect(store.getExtension(WS, canvas.id)).toMatchObject({ uiJs: jsxExtension.uiJs, uiJsx: '<div />', uiHtml: '' });
-
-            store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
-            expect(fs.existsSync(path.join(extensionDir, 'ui.js'))).toBe(false);
-            expect(fs.existsSync(path.join(extensionDir, 'ui.jsx'))).toBe(false);
-            expect(store.getExtension(WS, canvas.id)).toMatchObject({ uiHtml: EXTENSION.uiHtml });
-            expect(store.getExtension(WS, canvas.id)?.uiJs).toBeUndefined();
-        });
-
-        it('refuses to save onto a canvas that is not an extension canvas', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Plan', content: 'text' });
-            expect(store.saveExtension(WS, canvas.id, EXTENSION, 'ai')).toBeNull();
-            expect(store.getCanvas(WS, canvas.id)?.revision).toBe(1);
-            expect(fs.existsSync(path.join(canvasDir(canvas.id), 'extension'))).toBe(false);
-        });
-
-        it('treats a directory with a manifest but no UI document as no extension at all', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Ext', content: '{}', type: 'extension' });
-            store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
-            fs.rmSync(path.join(canvasDir(canvas.id), 'extension', 'ui.html'));
-
-            expect(store.getExtension(WS, canvas.id)).toBeNull();
         });
     });
 
@@ -263,15 +193,6 @@ describe('canvas persistence kernel', () => {
             expect(warnings('version')[0]).toMatchObject({ file: '1.json' });
         });
 
-        it('reports a corrupt extension manifest and refuses to serve the extension', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Ext', content: '{}', type: 'extension' });
-            store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
-            fs.writeFileSync(path.join(canvasDir(canvas.id), 'extension', 'manifest.json'), '{ nope');
-
-            expect(store.getExtension(WS, canvas.id)).toBeNull();
-            expect(warnings('extension-manifest')).toHaveLength(1);
-        });
-
         it('reports corrupt comments and drops only the malformed entries', () => {
             const canvas = store.createCanvas({ workspaceId: WS, title: 'Plan', content: 'alpha' });
             const good = store.addComment(WS, canvas.id, { anchorText: 'alpha', body: 'keep me' });
@@ -288,17 +209,6 @@ describe('canvas persistence kernel', () => {
 
             expect(store.listComments(WS, canvas.id)).toEqual([]);
             expect(warnings('comments').length).toBeGreaterThan(0);
-        });
-
-        it('stays quiet about files that are simply absent', () => {
-            const canvas = store.createCanvas({ workspaceId: WS, title: 'Plan', content: 'body' });
-
-            expect(store.listComments(WS, canvas.id)).toEqual([]);
-            expect(store.getExtension(WS, canvas.id)).toBeNull();
-            expect(store.getCanvas(WS, 'never-created-abc123')).toBeNull();
-            expect(store.listCanvases('empty-workspace')).toEqual([]);
-
-            expect(logs.filter(entry => entry.component === 'canvas-store')).toEqual([]);
         });
     });
 });

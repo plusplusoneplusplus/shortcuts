@@ -1,10 +1,12 @@
+import { listSessionWorkspaceOwners } from './canvas-extensions/session-workspace';
+import { reconcileGeneratedPublications } from './canvas-extensions/generated-publication';
 /**
  * Creates and manages an HTTP server for the `coc serve` command.
  */
 
 import { CanvasStore } from './canvas/canvas-store';
 import { createCanvasUpdateNotifier } from './canvas/canvas-update-notifier';
-import { loadCanvasExtensionInstances } from './canvas-extensions/instance-records';
+import { deleteGeneratedCanvasRecords, loadCanvasExtensionInstances } from './canvas-extensions/instance-records';
 import { createCanvasExtensionCallbacks } from './canvas-extensions/conversation-callbacks';
 import * as http from 'http';
 import * as path from 'path';
@@ -462,10 +464,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const kustoRuntime = createKustoClientRuntime(() => runtimeConfigService.config.kusto);
     const unsubscribeKustoConfig = runtimeConfigService.onChange(() => kustoRuntime.syncConfig());
     const extensionCanvasStore = new CanvasStore(dataDir);
+    for (const workspace of await store.getWorkspaces()) extensionCanvasStore.listCanvases(workspace.id);
     const canvasExtensionHosts = new CanvasExtensionHostRegistry({
         getOwnerScriptRunner: () => bridge.runOwnerScript,
         listMcpServers: owner => listCanvasMcpServers({ store, dataDir, workspaceId: owner.workspaceId }),
         getToolMetadata: owner => toolInventoryStore ? getCanvasToolMetadata(toolInventoryStore, owner) : { tools: null },
+        deleteGeneratedRecords: owner => { deleteGeneratedCanvasRecords(extensionCanvasStore, owner); },
         loadInstances: (owner, key) => loadCanvasExtensionInstances(extensionCanvasStore, owner, key),
         config: () => runtimeConfigService.config, store, dataDir,
         log: message => getServerLogger().warn(message),
@@ -481,6 +485,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         canvasStore: extensionCanvasStore,
         notifier: createCanvasUpdateNotifier({ processStore: store, getWsServer: () => wsServer }),
     };
+
+    // Reconcile durable owners before exposing routes; never start extension code during recovery.
+    for (const owner of await listSessionWorkspaceOwners(dataDir)) {
+        const conversation = await store.getProcess(owner.processId, owner.workspaceId);
+        if (!conversation || conversation.metadata?.workspaceId !== owner.workspaceId) {
+            await canvasExtensionHosts.stopConversation(owner, true);
+        } else {
+            try { reconcileGeneratedPublications({ ...canvasExtensionRuntime, ...owner, dataDir, processStore: store }); }
+            catch (error) { getServerLogger().warn({ error, ...owner }, 'Generated canvas recovery failed; retained for retry'); }
+        }
+    }
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,

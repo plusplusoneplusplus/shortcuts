@@ -1,6 +1,6 @@
 import type { OwnerScriptRunner } from '../executors/owner-script-runner';
 import { OwnerScriptUnavailableError } from '../executors/owner-script-runner';
-import { MAX_HOST_SCRIPT_RESULT_BYTES, validateCanvasManifestTools } from './canvas-script-bridge';
+import { MAX_HOST_SCRIPT_RESULT_BYTES, validateExtensionScriptTools } from '../canvas-extensions/script-tools';
 
 export interface OwnerToolScriptRequest {
     code: string;
@@ -29,7 +29,7 @@ export async function runOwnerToolScript(options: {
     maxResultBytes?: number;
 }): Promise<OwnerToolScriptOutcome> {
     const fail = (code: string, error: string): OwnerToolScriptOutcome => ({ ok: false, code, error, logs: [], callCount: 0 });
-    const declaration = validateCanvasManifestTools(options.tools);
+    const declaration = validateExtensionScriptTools(options.tools);
     if (!declaration.ok) return fail('tool-not-allowed', declaration.error);
     const controller = new AbortController();
     const abort = () => controller.abort(options.signal.reason);

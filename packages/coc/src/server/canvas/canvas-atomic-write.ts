@@ -1,6 +1,6 @@
 /**
  * A canvas revision is three files — the version snapshot, the artifact, and
- * the descriptor — and an extension save is up to five more. Writing them one
+ * the descriptor. Writing them one
  * by one leaves a window where a crash strands a descriptor that describes
  * content nobody wrote.
  *

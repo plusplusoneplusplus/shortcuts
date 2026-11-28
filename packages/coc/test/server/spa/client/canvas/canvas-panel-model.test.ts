@@ -97,7 +97,6 @@ describe('canvas-panel-model', () => {
     describe('downloadFilenameFor', () => {
         it('strips the id suffix and picks the extension from the canvas type', () => {
             expect(downloadFilenameFor(makeCanvas())).toBe('doc.md');
-            expect(downloadFilenameFor(makeCanvas({ type: 'extension' }))).toBe('doc.json');
             expect(downloadFilenameFor(makeCanvas({ type: 'kusto' }))).toBe('doc.json');
             expect(downloadFilenameFor(makeCanvas({ type: 'excalidraw' }))).toBe('doc.excalidraw');
         });
@@ -148,13 +147,6 @@ describe('canvas-panel-model', () => {
             }
         });
 
-        it('shows an extension canvas as raw JSON only in a history view', () => {
-            const canvas = makeCanvas({ type: 'extension', content: '{"n":1}' });
-            const kind = canvasKind(canvas, canvas.content);
-            expect(previewMarkdownFor(kind, canvas, canvas.content, false)).toBe('');
-            expect(previewMarkdownFor(kind, canvas, canvas.content, true)).toBe('````json\n{"n":1}\n````');
-        });
-
         it('fences code canvases with their language and passes markdown through', () => {
             const code = makeCanvas({ type: 'code', language: 'python', content: 'x = 1' });
             expect(previewMarkdownFor(canvasKind(code, code.content), code, code.content, false))
@@ -171,9 +163,7 @@ describe('canvas-panel-model', () => {
         });
 
         it('reports every flag false for a missing canvas', () => {
-            expect(canvasKind(null, '')).toEqual({
-                isCode: false, isSvg: false, isExtension: false, isExcalidraw: false, isKusto: false,
-            });
+            expect(canvasKind(null, '')).toEqual({ isCode: false, isSvg: false, isExcalidraw: false, isKusto: false });
         });
     });
 

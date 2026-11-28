@@ -131,7 +131,7 @@ export interface ExecutorRuntimeCapabilities {
     readonly getKustoRuntime?: () => KustoToolsRuntime | undefined;
     /**
      * Owner-bound script runner (the queue router's `runOwnerScript`). Powers
-     * canvas `host.runScript` on the `extension_canvas` run path; absent →
+     * extension tool scripts and Kusto Run; absent →
      * `host.runScript` rejects `disabled`.
      */
     readonly getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;

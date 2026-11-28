@@ -97,12 +97,8 @@ Canvas tools use `canvas.enabled` (default on); installed Copilot extension oper
 | POST | `/api/workspaces/:id/canvases/:canvasId/comments` | Add anchored comment (anchor ≤500 chars, body ≤4000) |
 | PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set status (`open`/`sent`/`resolved`) |
 | DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete comment |
-| GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
 | POST | `/api/workspaces/:id/canvases/:canvasId/copilot-extension/open` | Reopen a saved `copilot-extension` with its stored conversation/identity/input; returns ephemeral URL and extension key (`no-store`). Disabled/unavailable runtime or missing/wrong-kind record → `404`; invalid ID → `400`; invalid/unavailable owner, record or runtime failure → `422` with structured CanvasError details |
 | POST | `/api/workspaces/:id/canvases/:canvasId/copilot-extension/reload` | Force retirement of the saved record's workspace/conversation/extension runtime, then reopen all its saved open instances/input; bypass hashes for imported code. Reload markers and passive updates refresh visible guests or show runtime errors. Same validation/errors as open; disconnected requests cannot persist late results |
-| GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only file metadata, ≤2000 entries; symlinks omitted |
-| GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Text/base64 content; optional `encoding=base64`. Canonical containment rejects traversal/absolute/backslash/NUL/symlink escapes (`400`); missing → `404`; over 1 MB text/10 MB binary → `413` |
-| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` (and `host.runScript` as the canvas owner when `features.canvasToolScripts` is on) gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
 
 ## Filesystem
 
@@ -314,7 +310,7 @@ the persistent job chat before queue admission; every later run reuses it.
 
 Coda (the built-in to-do review) keeps the `/scrubber` REST path and `sentinel-scrubber-changed` event.
 
-`sentinel-coda/coda-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
+`sentinel-coda/coda-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list.
 
 `client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-coda.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
 

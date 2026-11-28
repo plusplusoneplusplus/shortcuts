@@ -212,6 +212,8 @@ export interface ImportOptions {
 
 /** Result summary returned after an import operation. */
 export interface ImportResult {
+    /** Unsupported runtime canvas records filtered from raw snapshot payloads. */
+    droppedCanvasRecords?: number;
     importedProcesses: number;
     importedWorkspaces: number;
     importedQueueFiles: number;

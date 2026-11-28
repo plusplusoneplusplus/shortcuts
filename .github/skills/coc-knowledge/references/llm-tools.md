@@ -70,8 +70,8 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 transcript search, recent metadata browsing, and workspace-scoped displayed-title lookup — see below. |
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
-| `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
-| `canvas-extension-tools.ts` | `list_canvas_capabilities`, `manage_canvas` (`action: "open" \| "close"`), `invoke_canvas_action` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
+| `canvas-tools.ts` | `write_canvas`, `read_canvas` | Chat canvas side-panel artifacts — see below. |
+| `canvas-extension-tools.ts` | `extension_canvas`, `list_canvas_capabilities`, `manage_canvas`, `invoke_canvas_action` | Live-gated installed-extension factories; persistence and runtime contracts are in [Canvas](spa/canvas.md#copilot-canvas-extension-discovery-and-runtime). Executor capabilities bind the exact conversation and add a discovery-only system catalog. |
 | `kusto-tools.ts` | `kusto_query`, `execute_kusto_query`, `execute_kusto_command` | Kusto/KQL against Azure Data Explorer — see below. |
 | `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
@@ -607,85 +607,24 @@ terminal result returns as an ordinary delegated review; tracked posts still rej
 
 ### Canvas tools
 
-Three consolidated tools, kept few to limit tool-schema context cost. Gated by the
-`canvas.enabled` config flag (`buildCanvasToolsAddon` reads `<dataDir>/config.yaml`, with an
-injectable test override); `CANVAS_LLM_TOOL_NAMES` lists all three for registry gating.
+`write_canvas` and `read_canvas` use `canvas.enabled` independently of extensions.
+Documents support Markdown, code/SVG and Excalidraw, revision-checked updates,
+comments and version snapshots through `CanvasStore` and its atomic writer queue.
+Runtime identity records reject ordinary writes and history restore. `read_canvas`
+returns owner-safe generated publication metadata and source/asset paths.
 
-`write_canvas` creates (omit `canvasId`) or updates a `markdown`/`code` canvas. Mermaid blocks
-render as diagrams, `code` takes a normalized `language`, and an optional free-form `purpose`
-persisted on the descriptor at create time declares semantic intent (`purpose: 'plan'` surfaces
-the "Implement this plan" card). `read_canvas` returns content/revision plus the manifest for
-extensions.
+`canvas-extension-tools.ts` registers `extension_canvas` beside list/manage/invoke,
+gated by live `canvasExtensions.enabled` for every provider. Publication executes
+Node and requires a write-capable owner; it is non-scriptable and excluded from
+read-only owner scripts. Normal preferences and approval gates apply. Restricted
+review/browser-only turns exclude extension publication.
 
-`extension_canvas` authors and runs custom interactive `extension` canvases, dispatched by the
-presence of `capability`. BUILD mode takes manifest + `capabilities[]` + `capabilitiesJs` +
-**one of** `uiHtml` or `uiJsx`; RUN mode takes `canvasId` + `capability` + `params`. `uiJsx` is
-compiled at BUILD time by `esbuild.transform` (`canvas-jsx.ts`, classic runtime →
-`React.createElement`) into a stored `ui.js`, keeping the source as `ui.jsx` for history; a
-syntax error is a tool error and nothing is saved. esbuild is loaded with `await import`
-*inside* the transform, never at module scope, because this file sits on a static import chain
-the server walks at boot — a top-level import turns a missing esbuild into a startup crash. It
-must stay a production dependency of `@plusplusoneplusplus/coc` with `**/@esbuild/**` in the
-desktop `asarUnpack`. `libraries` names vendored globals from the fixed allowlist in
-`canvas-libraries.ts` (react, recharts, papaparse, tailwind — dependency-resolved, react
-implied), loaded by the panel from `/canvas-vendor/*` as classic scripts.
-
-Persistence goes through `CanvasStore` (`~/.coc/repos/<wsId>/canvases/`), a facade over
-per-contract services (write queue, record/extension/comment repositories, file sandbox,
-corruption diagnostics). Every mutation runs inside the per-canvas lock, and a revision's
-descriptor/artifact/snapshot are staged and published together. The store links the canvas to
-the creating process, applies revision-checked exact-match edits, and emits `canvas-updated`
-SSE events on the process channel. Extension canvases store
-`extension/{manifest.json,capabilities.js}` plus **either** `ui.html` **or** `ui.js` + `ui.jsx`;
-`getExtension` returns null only when neither UI document exists, and `saveExtension` removes
-documents it was not given so a stale `ui.js` cannot shadow a new `ui.html`.
-
-RUN mode executes a capability and writes the result as a revision-checked update through the
-per-canvas queue in `canvas-capability-queue.ts` — runs for one canvas never overlap, and each
-re-reads the canvas inside its critical section so run N+1 sees N's output. A capability is by
-default a pure `(state, params) => nextState` transform in a `node:vm` sandbox
-(`canvas-capability-runner.ts`: no require/process, 1s timeout, 1 MB state cap). Declaring
-`async: true` runs it instead in a `worker_threads` worker built from
-`CAPABILITY_WORKER_SOURCE` (`canvas-capability-worker.ts`, started with `eval: true` so there
-is no dist/source path to resolve) with a 30s whole-run budget; the worker is `terminate()`d on
-every outcome including success, because a `vm` continuation cannot be killed and a capability
-may resolve and keep spinning. At most 4 async runs execute process-wide at once.
-
-An async capability receives a third argument `host`:
-- `await host.complete(prompt, { model? })` — the one-shot `createCLIAIInvoker` path
-  (`canvas-capability-completion.ts`, `resolveDefaultModel(..., 'quickAsk')`), capped at 3 calls
-  per run and logged with workspace/canvas/capability/process.
-- `await host.runScript(code, { state? })` → `{ result, logs, callCount }` — a
-  `run_tool_script`-style script (`canvas-script-bridge.ts`), capped at 3 per run inside the
-  same 30s budget; the parent aborts the script's signal when the budget fires or the run
-  ends. It runs as the canvas OWNER chat (`processId`), never the caller, on both the REST and
-  `extension_canvas` paths, through `MultiRepoQueueRouter.runOwnerScript` (the same router →
-  bridge → registry → `ChatBaseExecutor` chain as job gates; on the AI path via the
-  `getOwnerScriptRunner` runtime capability). Tools = owner's unattended tools ∩ manifest
-  `tools`; nested scripts are always off; approval-gated tools are denied. Results over 16 MiB
-  reject. Rejections carry `code` `disabled | no-owner | limit | timeout | aborted |
-  script-error`; one `[canvas runScript]` log line per call holds ids, counts and outcome only.
-- `host.tools` — the frozen manifest `tools` list.
-
-Manifest `tools` (validated when `extension_canvas` builds) must be registered, scriptable,
-`readOnly: true` in `LLM_TOOL_REGISTRY` (`query_pull_request`, `execute_kusto_query`), unique, at most 16,
-and never `run_tool_script`. Both invoke paths build async run options with
-`buildCapabilityRunOptions` (`canvas-mutation-service.ts`). The panel shows "Uses: …" when a
-manifest declares tools. `test/fixtures/canvas/pr-dashboard/` is a reference plugin.
-
-There is deliberately no `host.fetch` (CoC's own API is on unauthenticated loopback) and no
-`CanvasHost.complete()` / `runScript()` in the iframe. Async capabilities and `host.complete`
-are gated on `features.canvasHostApis` (off by default): with the flag off an async capability
-404s from the route and errors from the tool, while sync capabilities are untouched.
-`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts` (both on by default).
-
-`extension_canvas` also accepts `files: [{ path, content, encoding? }]` (max 20/call) — data
-written into the canvas's read-only `files/` directory that the artifact reads back with
-`CanvasHost.readFile`. Passing `canvasId` + `files` with no UI fields attaches data without
-re-authoring the extension. That directory is the ONLY write path in: no upload route, no write
-endpoint. Reads are served by `GET /canvases/:id/files[/<path>]` behind layered path safety in
-`canvas-file-sandbox.ts` (shape → resolve → `isWithinDirectory` → `realpath` re-verify) with
-1 MB text / 10 MB binary caps.
+The tool accepts absolute `sourcePath`, create-only `declaredCanvasId`, optional
+saved `canvasId` plus required update `expectedRevision`, `input`, and explicit
+`assets: [{ path, sourcePath }]`. The server derives identity, owner and roots.
+Entry/assets/package/startup limits are 512 KiB, 20 assets at 8 MiB each, 32 MiB,
+and 60 seconds. Code and assets replace the previous publication in full; omitted
+input and application state persist. See [canvas runtime](spa/canvas.md).
 
 ### Browser control
 

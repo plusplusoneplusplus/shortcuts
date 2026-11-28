@@ -401,10 +401,6 @@ export interface CLIConfig {
         composerWordHint?: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution?: boolean;
-        /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
-        canvasHostApis?: boolean;
-        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Enabled by default; still needs `canvasHostApis` and `toolScripting`. */
-        canvasToolScripts?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -868,10 +864,6 @@ export interface ResolvedCLIConfig {
         composerWordHint: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution: boolean;
-        /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
-        canvasHostApis: boolean;
-        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Enabled by default; still needs `canvasHostApis` and `toolScripting`. */
-        canvasToolScripts: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -1226,8 +1218,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         schedulerDelayHint: true,
         composerWordHint: true,
         gitWorktreeExecution: false,
-        canvasHostApis: false,
-        canvasToolScripts: true,
         sensitiveInput: false,
         explorerEditorTabs: true,
         explorerDelete: true,

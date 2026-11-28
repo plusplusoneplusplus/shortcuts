@@ -8,6 +8,8 @@ import { isRepoGroupWorkspaceId, resolveRepoGroupMembers } from '../workspaces/r
 
 export interface DiscoveredCanvasExtension {
     extensionKey: string;
+    generatedId?: string;
+    skipSavedInstances?: boolean;
     name: string;
     /** Registered member workspace ID, or "global" for the user scope. */
     ownerWorkspaceId: string;

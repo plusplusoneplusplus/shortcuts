@@ -1,49 +1,11 @@
-/**
- * Workspace-scoped canvas API consumed by the dashboard canvas side panel:
- *   GET    /api/workspaces/:wsId/canvases?processId=...           — list descriptors
- *   GET    /api/workspaces/:wsId/canvases/:canvasId               — full record
- *   PUT    /api/workspaces/:wsId/canvases/:canvasId               — user save (revision-checked)
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/versions      — version snapshot metadata
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/versions/:rev — one full version snapshot
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/comments      — anchored comments (?status= filter)
- *   POST   /api/workspaces/:wsId/canvases/:canvasId/comments      — add a comment
- *   PATCH  /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — set comment status
- *   DELETE /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — delete a comment
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/extension     — extension documents (manifest + ui + capabilities)
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/files         — list the canvas's readable files
- *   GET    /api/workspaces/:wsId/canvases/:canvasId/files/<path>  — read one file (?encoding=base64 to force bytes)
- *   POST   /api/workspaces/:wsId/canvases/:canvasId/capabilities/:name — invoke a capability against the shared state
- *
- * These handlers validate requests and map outcomes to status codes; they do not
- * write. Every canvas mutation goes through `CanvasMutationService`, which
- * announces each success once through `CanvasUpdateNotifier` — one
- * `canvas-updated` WebSocket event so other dashboard tabs can refresh, and one
- * ProcessStore/SSE event so the chat timeline sees it. No route emits either on
- * its own; that is what keeps the two channels from drifting apart.
- *
- * Revision conflicts return 409 with the current record so the client can offer
- * a reload.
- *
- * Capability invocations are SERIALIZED PER CANVAS and re-read the canvas
- * inside the critical section, so two concurrent invocations both land instead
- * of one losing its revision check. A capability the manifest declares
- * `async: true` additionally requires the `features.canvasHostApis` flag; with
- * it off that capability 404s and sync capabilities are unaffected.
- */
-
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import { CanvasStore, isValidCanvasId, isSafeCanvasFilePath, hasEncodedPathEscape } from './canvas-store';
+import { CanvasStore, isValidCanvasId } from './canvas-store';
 import type { CanvasEdit, CanvasCommentStatus } from './canvas-store';
-import { isValidCapabilityName } from './canvas-capability-runner';
-import type { CapabilityCompleteFn } from './canvas-capability-runner';
-import { createCanvasCompleteFn } from './canvas-capability-completion';
 import { createCanvasUpdateNotifier } from './canvas-update-notifier';
-import { CanvasMutationService, isAsyncCapability } from './canvas-mutation-service';
-import type { CanvasRunScriptFactory } from './canvas-script-bridge';
-import type { CapabilityAttribution } from './canvas-mutation-service';
+import { CanvasMutationService } from './canvas-mutation-service';
 import type { OwnerScriptRunner } from '../executors/owner-script-runner';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
@@ -52,12 +14,8 @@ const versionsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/version
 const versionDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/versions\/(\d+)$/;
 const commentsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments$/;
 const commentDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments\/([^/]+)$/;
-const extensionPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/extension$/;
-const capabilityPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/capabilities\/([^/]+)$/;
 const runPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/run$/;
-const filesPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files$/;
 /** The trailing group is a whole relative path, so it deliberately spans `/`. */
-const fileDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files\/(.+)$/;
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
@@ -77,26 +35,8 @@ export function registerCanvasRoutes(
     getKustoEnabled?: () => boolean,
     /** Internal owner runner for built-in Kusto Run; independent of optional canvas script flags. */
     getOwnerScriptRunner?: () => OwnerScriptRunner | undefined,
-    /**
-     * Live gate for the canvas host APIs — async capabilities and the
-     * `host.complete` they get access to. When it returns false an invocation
-     * of a capability declared `async: true` 404s, exactly as if the feature had
-     * never been built. Sync capabilities are untouched by it.
-     */
-    getCanvasHostApisEnabled?: () => boolean,
-    /**
-     * Injectable `host.complete` implementation. Overridden in tests so a
-     * capability run never reaches a real model.
-     */
-    completeFactory?: (attribution: CapabilityAttribution) => CapabilityCompleteFn,
-    /** Builds `host.runScript` for async runs, bound to the canvas's owner chat. Absent → `disabled`. */
-    runScriptFactory?: CanvasRunScriptFactory,
 ): CanvasMutationService {
     const store = new CanvasStore(dataDir);
-
-    /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
-    const defaultCompleteFactory = (attribution: CapabilityAttribution): CapabilityCompleteFn =>
-        createCanvasCompleteFn(dataDir, attribution);
 
     // One notifier, one mutation service: every canvas write in this file goes
     // through `mutations`, and every success it returns has already announced
@@ -107,9 +47,6 @@ export function registerCanvasRoutes(
             ...(getWsServer ? { getWsServer } : {}),
             ...(processStore ? { processStore } : {}),
         }),
-        ...(getCanvasHostApisEnabled ? { getCanvasHostApisEnabled } : {}),
-        completeFactory: completeFactory ?? defaultCompleteFactory,
-        ...(runScriptFactory ? { runScriptFactory } : {}),
         getOwnerScriptRunner, processStore, getKustoEnabled,
     });
 
@@ -344,157 +281,6 @@ export function registerCanvasRoutes(
         },
     });
 
-    routes.push({
-        method: 'GET',
-        pattern: extensionPattern,
-        handler: async (_req, res, match) => {
-            const wsId = decodeURIComponent(match![1]);
-            const canvasId = decodeURIComponent(match![2]);
-            if (!isValidCanvasId(canvasId)) {
-                return sendError(res, 400, 'Invalid canvas ID');
-            }
-            const extension = store.getExtension(wsId, canvasId);
-            if (!extension) {
-                return sendError(res, 404, 'Canvas extension not found');
-            }
-            sendJSON(res, 200, { extension });
-        },
-    });
-
-    // Read-only canvas files. The scope is the canvas's OWN `files/` directory —
-    // not the workspace repo, not the machine — which is what an artifact
-    // actually needs: the data it was given. There is deliberately no write
-    // route; the canvas state is the write channel, and it is revision-checked
-    // and version-snapshotted in a way a file write would not be.
-    routes.push({
-        method: 'GET',
-        pattern: filesPattern,
-        handler: async (_req, res, match) => {
-            const wsId = decodeURIComponent(match![1]);
-            const canvasId = decodeURIComponent(match![2]);
-            if (!isValidCanvasId(canvasId)) {
-                return sendError(res, 400, 'Invalid canvas ID');
-            }
-            if (!store.getCanvas(wsId, canvasId)) {
-                return sendError(res, 404, 'Canvas not found');
-            }
-            sendJSON(res, 200, { files: store.listCanvasFiles(wsId, canvasId) });
-        },
-    });
-
-    routes.push({
-        method: 'GET',
-        pattern: fileDetailPattern,
-        handler: async (req, res, match) => {
-            const wsId = decodeURIComponent(match![1]);
-            const canvasId = decodeURIComponent(match![2]);
-            if (!isValidCanvasId(canvasId)) {
-                return sendError(res, 400, 'Invalid canvas ID');
-            }
-
-            // The router matches on the RAW (still percent-encoded) pathname, so
-            // the check runs on both forms: the raw one refuses `%2e%2e` before
-            // it can decode into `..` (and `%252e%252e` before it decodes into
-            // `%2e%2e`), the decoded one refuses a literal `..` that was never
-            // encoded at all. A path that will not decode is malformed, not
-            // merely missing. The store repeats the decoded check — this is not
-            // the only caller, and it must not be the only guard.
-            const rawPath = match![3];
-            if (hasEncodedPathEscape(rawPath)) {
-                return sendError(res, 400, 'Invalid file path');
-            }
-            let filePath: string;
-            try {
-                filePath = decodeURIComponent(rawPath);
-            } catch {
-                return sendError(res, 400, 'Invalid file path');
-            }
-            if (!isSafeCanvasFilePath(filePath)) {
-                return sendError(res, 400, 'Invalid file path');
-            }
-
-            const encodingParam = new URL(req.url!, 'http://x').searchParams.get('encoding');
-            // Only base64 may be forced. Forcing utf-8 onto real bytes hands back
-            // silent mojibake, so it is rejected rather than honoured.
-            if (encodingParam !== null && encodingParam !== 'base64') {
-                return sendError(res, 400, 'encoding must be "base64" when provided');
-            }
-
-            const result = store.readCanvasFile(
-                wsId,
-                canvasId,
-                filePath,
-                encodingParam === 'base64' ? { encoding: 'base64' } : undefined,
-            );
-            if (!result.ok) {
-                if (result.reason === 'invalid-path') {
-                    return sendError(res, 400, 'Invalid file path');
-                }
-                if (result.reason === 'too-large') {
-                    return sendError(res, 413, `File is ${result.size} bytes, over the ${result.limit} byte limit`);
-                }
-                return sendError(res, 404, 'Canvas file not found');
-            }
-            sendJSON(res, 200, { file: result.file });
-        },
-    });
-
-    routes.push({
-        method: 'POST',
-        pattern: capabilityPattern,
-        handler: async (req, res, match) => {
-            const wsId = decodeURIComponent(match![1]);
-            const canvasId = decodeURIComponent(match![2]);
-            const capability = decodeURIComponent(match![3]);
-            if (!isValidCanvasId(canvasId)) {
-                return sendError(res, 400, 'Invalid canvas ID');
-            }
-            if (!isValidCapabilityName(capability)) {
-                return sendError(res, 400, 'Invalid capability name');
-            }
-
-            let body: { params?: unknown };
-            try {
-                body = await parseBody(req) as { params?: unknown };
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
-
-            const canvas = store.getCanvas(wsId, canvasId);
-            if (!canvas || canvas.type !== 'extension') {
-                return sendError(res, 404, 'Extension canvas not found');
-            }
-            const extension = store.getExtension(wsId, canvasId);
-            if (!extension) {
-                return sendError(res, 404, 'Canvas extension not found');
-            }
-            // Fail the flag check before queueing, so a request that can never
-            // succeed does not wait behind a 30 s run to be told so.
-            if (isAsyncCapability(extension.manifest, capability) && !getCanvasHostApisEnabled?.()) {
-                return sendError(res, 404, 'Not found');
-            }
-
-            const outcome = await mutations.invokeCapability(wsId, canvasId, capability, body.params);
-
-            if (outcome.kind === 'gone') {
-                return sendError(res, 404, 'Extension canvas not found');
-            }
-            if (outcome.kind === 'disabled') {
-                return sendError(res, 404, 'Not found');
-            }
-            if (outcome.kind === 'run-error') {
-                return sendError(res, 422, outcome.error);
-            }
-            if (outcome.kind === 'conflict') {
-                return sendJSON(res, 409, { error: 'revision-conflict', canvas: outcome.canvas });
-            }
-
-            sendJSON(res, 200, { canvas: outcome.canvas });
-        },
-    });
-
-    // AC-02 — run a Kusto canvas's query server-side (no AI turn). Gated on the
-    // Kusto feature flag so the route is unreachable when disabled (AC-08).
     routes.push({
         method: 'POST',
         pattern: runPattern,

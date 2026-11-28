@@ -141,27 +141,6 @@ describe('canvas update fanout', () => {
         expect(sseEvents(canvas.id)).toHaveLength(1);
     });
 
-    it('emits both channels exactly once for a capability invocation', async () => {
-        const canvas = store.createCanvas({
-            workspaceId: WS,
-            title: 'Counter',
-            type: 'extension',
-            content: '{"count":0}',
-            processId: PROC,
-        });
-        store.saveExtension(WS, canvas.id, {
-            manifest: { description: 'Counter', capabilities: [{ name: 'bump', description: 'bump' }] },
-            uiHtml: '<div></div>',
-            capabilitiesJs: 'capabilities = { bump: function (s) { return { count: (s.count || 0) + 1 }; } };',
-        });
-
-        const res = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${canvas.id}/capabilities/bump`, {});
-
-        expect(res.status).toBe(200);
-        expect(wsEvents(canvas.id)).toHaveLength(1);
-        expect(sseEvents(canvas.id)).toHaveLength(1);
-    });
-
     it('emits both channels exactly once for a manual Kusto create', async () => {
         const res = await request(handler, 'POST', `/api/workspaces/${WS}/canvases`, {
             type: 'kusto',

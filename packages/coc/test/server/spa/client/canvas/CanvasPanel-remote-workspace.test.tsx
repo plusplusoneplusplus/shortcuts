@@ -14,7 +14,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 
 const mocks = vi.hoisted(() => {
     const remote = {
-        getExtension: vi.fn(), get: vi.fn(), save: vi.fn(), run: vi.fn(), list: vi.fn(), create: vi.fn(),
+        get: vi.fn(), save: vi.fn(), run: vi.fn(), list: vi.fn(), create: vi.fn(),
         listVersions: vi.fn(), getVersion: vi.fn(),
         listComments: vi.fn(), addComment: vi.fn(), setCommentStatus: vi.fn(), deleteComment: vi.fn(),
         notesSaveContent: vi.fn(), sendMessage: vi.fn(),
@@ -36,7 +36,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        canvases: { ...mocks.local, getExtension: vi.fn() },
+        canvases: { ...mocks.local },
         notes: { saveContent: mocks.local.notesSaveContent },
         processes: { sendMessage: mocks.local.sendMessage },
     }),
@@ -234,30 +234,6 @@ describe('CanvasPanel on a remote workspace', () => {
         await waitFor(() => expect(mocks.remote.create).toHaveBeenCalledWith('ws-remote', expect.objectContaining({
             type: 'kusto', title: 'Kusto Query', processId: 'proc-1',
         })));
-    });
-    it('reloads an extension from its header through the remote owner and hydrates saved state', async () => {
-        const extension = { uiHtml: '<input value="fresh">', capabilitiesJs: '', manifest: {} };
-        mocks.remote.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"persisted":1}' }));
-        mocks.remote.getExtension.mockResolvedValue(extension);
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-        await renderPanel();
-        const old = await screen.findByTestId('extension-canvas-iframe');
-        const button = screen.getByRole('button', { name: 'Reload canvas extension' });
-        expect(button.getAttribute('title')).toBe('Reload canvas extension');
-        mocks.remote.get.mockResolvedValue(makeCanvas({ type: 'extension', revision: 5, content: '{"persisted":2}' }));
-        fireEvent.click(button);
-        await waitFor(() => expect(screen.getByTestId('extension-canvas-iframe')).not.toBe(old));
-        const fresh = screen.getByTestId('extension-canvas-iframe') as HTMLIFrameElement;
-        const post = vi.spyOn(fresh.contentWindow!, 'postMessage');
-        act(() => window.dispatchEvent(new MessageEvent('message', {
-            source: fresh.contentWindow, data: { __canvasHost: true, type: 'ready' },
-        })));
-        expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'canvas-state', state: { persisted: 2 }, revision: 5 }), '*');
-        expect(mocks.remote.getExtension).toHaveBeenCalledWith('ws-remote', 'doc-abc123');
-        expect(mocks.remote.get).toHaveBeenCalledTimes(2);
-        expect(mocks.local.get).not.toHaveBeenCalled();
-        expect(confirm).toHaveBeenCalledOnce();
-        confirm.mockRestore();
     });
 
 });

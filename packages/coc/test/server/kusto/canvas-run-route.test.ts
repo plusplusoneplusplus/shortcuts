@@ -72,7 +72,7 @@ async function build(kustoEnabled: boolean, factory: KustoClientFactory = okFact
     }
     // Existing installations need no unrelated canvas/script opt-in.
     fs.writeFileSync(path.join(dataDir, CONFIG_FILE_NAME),
-        'features:\n  canvasHostApis: false\n  canvasToolScripts: false\n  toolScripting: false\n');
+        'features:\n  toolScripting: false\n');
     const enabled = { value: kustoEnabled };
     const runner = vi.fn<OwnerScriptRunner>(request => runScriptWithOwnerTools({
         ...request, ownerTools: { dataDir, workspaceId: request.workspaceId, processId: request.processId,

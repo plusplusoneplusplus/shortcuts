@@ -34,7 +34,6 @@ export interface CanvasPanelHeaderProps {
     creatingKusto: boolean;
     onCreateKusto: () => void;
     onPopOut?: () => void;
-    onReloadExtension?: () => void;
     isFullscreen: boolean;
     onToggleFullscreen: () => void;
     onClose?: () => void;
@@ -43,7 +42,7 @@ export interface CanvasPanelHeaderProps {
 export function CanvasPanelHeader({
     canvas, canvasId, title, kind, availableCanvases, onSelectCanvas, titleAccessory, versions, exporter,
     saveState, statusLabel, mode, onModeChange, kustoEnabled, creatingKusto, onCreateKusto,
-    onPopOut, onReloadExtension, isFullscreen, onToggleFullscreen, onClose,
+    onPopOut, isFullscreen, onToggleFullscreen, onClose,
 }: CanvasPanelHeaderProps) {
     const [titleSwitcherOpen, setTitleSwitcherOpen] = useState(false);
     const titleSwitcherButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -143,7 +142,7 @@ export function CanvasPanelHeader({
                     {canvas?.language ?? 'code'}
                 </span>
             )}
-            {(kind.isExtension || isCopilotExtension) && (
+            {isCopilotExtension && (
                 <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-300 shrink-0" data-testid="canvas-panel-extension-badge">
                     extension
                 </span>
@@ -239,10 +238,9 @@ export function CanvasPanelHeader({
                                     type="button"
                                     className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
                                     onClick={() => void exporter.exportHtml()}
-                                    title={canvas.type === 'extension' ? 'Exports a self-contained, view-only snapshot of the current state.' : undefined}
                                     data-testid="canvas-panel-export-html"
                                 >
-                                    {canvas.type === 'extension' ? 'Export as HTML (view-only)' : 'Export as HTML'}
+                                    Export as HTML
                                 </button>
                             )}
                             {canvas.type === 'markdown' && (
@@ -266,15 +264,6 @@ export function CanvasPanelHeader({
                     data-testid="canvas-panel-new-kusto"
                 >
                     {creatingKusto ? 'Creating…' : 'New Kusto query'}
-                </button>
-            )}
-            {onReloadExtension && (
-                <button type="button" className={ICON_BTN_CLASS} onClick={onReloadExtension}
-                    aria-label="Reload canvas extension" title="Reload canvas extension"
-                    data-testid="canvas-panel-reload-extension">
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M13 6a5 5 0 10.1 4M13 2v4H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
                 </button>
             )}
             {onPopOut && !isFullscreen && !isCopilotExtension && (

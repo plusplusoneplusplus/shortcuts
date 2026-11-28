@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { generatedOwnerRoot, removeManagedPath, assertManagedPath } from './generated-packages';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CanvasDeclaration } from '@github/copilot-sdk';
 import type { CLIConfig } from '../../config';
@@ -17,7 +18,7 @@ export interface CanvasExtensionOwner {
 
 export interface CanvasExtensionRegistryOptions {
     config: () => Pick<CLIConfig, 'canvasExtensions'>;
-    store: Pick<ProcessStore, 'getProcess'>;
+    store: Pick<ProcessStore, 'getProcess'> & Partial<Pick<ProcessStore, 'getWorkspaces'>>;
     dataDir: string;
     log: (message: string) => void;
     send?: (owner: CanvasExtensionOwner, extensionKey: string, prompt: string) => Promise<{ messageId: string }>;
@@ -26,6 +27,7 @@ export interface CanvasExtensionRegistryOptions {
     listMcpServers?: (owner: CanvasExtensionOwner) => Promise<CanvasMcpServerList>;
     getToolMetadata?: (owner: CanvasExtensionOwner) => CanvasToolMetadataResult;
     /** Open persisted instances, read once when a conversation runtime is first used. */
+    deleteGeneratedRecords?: (owner: CanvasExtensionOwner) => void;
     loadInstances?: (owner: CanvasExtensionOwner, extensionKey: string) => CanvasInstanceRequest[];
     /** Test seam; production always starts the stdio host. */
     startHost?: (options: CanvasExtensionHostOptions) => Promise<CanvasExtensionHost>;
@@ -41,21 +43,60 @@ interface Entry {
     retired: boolean;
     hydrated: boolean;
     timer?: ReturnType<typeof setTimeout>;
+    startup?: AbortController;
 }
 
 /** One lazy canvas runtime per conversation and extension, independent of providers. */
 export class CanvasExtensionHostRegistry {
     private readonly entries = new Map<string, Entry>();
     private readonly declarationCache = new Map<string, { contentHash: string; declarations: CanvasDeclaration[] }>();
+    private readonly publications = new Set<{ owner: CanvasExtensionOwner; controller: AbortController; done: Promise<void> }>();
+    private readonly removingWorkspaces = new Set<string>();
     private readonly cleanup = new Set<Promise<void>>();
     private readonly deletions = new Map<string, Promise<void>>();
     private disposed = false;
+    private wiping = false;
+    private epoch = 0;
+    private readonly ownerEpochs = new Map<string, number>();
     private disposePromise?: Promise<void>;
     private readonly idleTtlMs: number;
 
     constructor(private readonly options: CanvasExtensionRegistryOptions) {
         const value = Number(process.env.COC_CANVAS_EXT_IDLE_TTL_MS ?? 600_000);
         this.idleTtlMs = Number.isFinite(value) && value >= 0 && value <= 2_147_483_647 ? value : 600_000;
+    }
+
+    /** Publication checks this lease after every await; lifecycle events revoke late results. */
+    publicationGuard(owner: CanvasExtensionOwner): () => void {
+        this.assertEnabled();
+        const key = JSON.stringify([owner.workspaceId, owner.processId]);
+        const epoch = this.epoch;
+        const ownerEpoch = this.ownerEpochs.get(key) ?? 0;
+        return () => {
+            this.assertEnabled();
+            if (this.removingWorkspaces.has(owner.workspaceId)) throw new Error('Canvas workspace is being removed');
+            if (epoch !== this.epoch || ownerEpoch !== (this.ownerEpochs.get(key) ?? 0)) {
+                throw new Error('Canvas publication was revoked');
+            }
+        };
+    }
+
+    /** Track staging/syntax/startup as owner work so disable/delete/shutdown cancel and drain it too. */
+    runPublication<T>(owner: CanvasExtensionOwner, requestSignal: AbortSignal | undefined,
+        action: (signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
+        const check = this.publicationGuard(owner);
+        const controller = new AbortController();
+        const abort = () => controller.abort(requestSignal?.reason);
+        requestSignal?.addEventListener('abort', abort, { once: true });
+        if (requestSignal?.aborted) abort();
+        const pending = { owner: { ...owner }, controller, done: Promise.resolve() };
+        this.publications.add(pending);
+        const result = Promise.resolve().then(() => action(controller.signal, check)).finally(() => {
+            requestSignal?.removeEventListener('abort', abort);
+            this.publications.delete(pending);
+        });
+        pending.done = this.track(result.then(() => {}, () => {}));
+        return result;
     }
 
     async declarations(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension) {
@@ -112,15 +153,22 @@ export class CanvasExtensionHostRegistry {
     /** Called synchronously on store events, revoking queued and starting work immediately. */
     stopConversation(owner: CanvasExtensionOwner, deleted = false): Promise<void> {
         const key = JSON.stringify([owner.workspaceId, owner.processId]);
+        this.ownerEpochs.set(key, (this.ownerEpochs.get(key) ?? 0) + 1);
         const pending = this.deletions.get(key);
         if (pending) return pending;
+        const publications = [...this.publications].filter(pending => pending.owner.workspaceId === owner.workspaceId && pending.owner.processId === owner.processId);
+        for (const pending of publications) pending.controller.abort(new Error('Canvas owner retired'));
         const stops = [...this.entries.values()]
             .filter(entry => entry.owner.workspaceId === owner.workspaceId && entry.owner.processId === owner.processId)
             .map(entry => this.retire(entry));
         const cleanup = this.track((async () => {
-            await Promise.all(stops);
+            await Promise.all([...stops, ...publications.map(pending => pending.done)]);
             if (deleted) {
-                await fs.rm(sessionWorkspacePath(this.options.dataDir, owner), { recursive: true, force: true });
+                this.options.deleteGeneratedRecords?.(owner);
+                const state = sessionWorkspacePath(this.options.dataDir, owner);
+                assertManagedPath(this.options.dataDir, state);
+                await fs.rm(state, { recursive: true, force: true });
+                removeManagedPath(this.options.dataDir, generatedOwnerRoot(this.options.dataDir, owner));
             }
         })());
         if (deleted) {
@@ -130,6 +178,23 @@ export class CanvasExtensionHostRegistry {
             void cleanup.then(settled, settled);
         }
         return cleanup;
+    }
+
+    /** Revoke starts before unregistering, and stop children before removing their source/state. */
+    async removeWorkspace(workspaceId: string, remove: () => Promise<boolean>): Promise<boolean> {
+        if (this.removingWorkspaces.has(workspaceId)) throw new Error('Workspace removal is already pending');
+        this.removingWorkspaces.add(workspaceId);
+        try {
+            const owners = new Map([...this.entries.values()].filter(entry => entry.owner.workspaceId === workspaceId)
+                .map(entry => [entry.owner.processId, entry.owner]));
+            for (const owner of await listSessionWorkspaceOwners(this.options.dataDir)) {
+                if (owner.workspaceId === workspaceId) owners.set(owner.processId, owner);
+            }
+            await Promise.all([...owners.values()].map(owner => this.stopConversation(owner)));
+            const removed = await remove();
+            if (removed) await Promise.all([...owners.values()].map(owner => this.stopConversation(owner, true)));
+            return removed;
+        } finally { this.removingWorkspaces.delete(workspaceId); }
     }
 
     onProcessChange(event: Parameters<NonNullable<ProcessStore['onProcessChange']>>[0]): void {
@@ -167,8 +232,21 @@ export class CanvasExtensionHostRegistry {
     }
 
     stopAll(): Promise<void> {
+        this.epoch++;
         this.declarationCache.clear();
-        return this.track(Promise.all([...this.entries.values()].map(entry => this.retire(entry))).then(() => {}));
+        const publications = [...this.publications];
+        for (const pending of publications) pending.controller.abort(new Error('Canvas extensions stopped'));
+        return this.track(Promise.all([...this.entries.values()].map(entry => this.retire(entry)).concat(publications.map(pending => pending.done))).then(() => {}));
+    }
+
+    async prepareDataWipe(): Promise<() => void> {
+        if (this.wiping) throw new Error('Canvas data wipe is already pending');
+        this.wiping = true;
+        try {
+            await this.stopAll();
+            for (const owner of await listSessionWorkspaceOwners(this.options.dataDir)) await this.stopConversation(owner, true);
+            return () => { this.wiping = false; };
+        } catch (error) { this.wiping = false; throw error; }
     }
 
     dispose(): Promise<void> {
@@ -205,7 +283,7 @@ export class CanvasExtensionHostRegistry {
                 current.extension = { ...extension };
             }
             if (!current.hydrated) {
-                const instances = this.options.loadInstances?.(current.owner, current.extension.extensionKey) ?? [];
+                const instances = current.extension.skipSavedInstances ? [] : this.options.loadInstances?.(current.owner, current.extension.extensionKey) ?? [];
                 for (const instance of instances) current.instances.set(instance.instanceId, structuredClone(instance));
                 current.hydrated = true;
             }
@@ -231,8 +309,9 @@ export class CanvasExtensionHostRegistry {
         if (entry.host?.running) return entry.host;
         await entry.host?.dispose();
         this.assertActive(entry);
+        entry.startup = new AbortController();
         const host = await (this.options.startHost ?? CanvasExtensionHost.start)({
-            config: this.options.config(), extension: entry.extension,
+            config: this.options.config(), extension: entry.extension, signal: entry.startup.signal,
             workspaceId: entry.owner.workspaceId, processId: entry.owner.processId,
             dataDir: this.options.dataDir, log: this.options.log,
             send: prompt => {
@@ -292,6 +371,7 @@ export class CanvasExtensionHostRegistry {
     private retire(entry: Entry): Promise<void> {
         if (!entry.retired) {
             entry.retired = true;
+            entry.startup?.abort(new Error('Canvas runtime retired during startup'));
             clearTimeout(entry.timer);
             // Keep this entry until cleanup finishes so a later call cannot overlap its child.
             const stop = entry.host?.dispose();
@@ -314,13 +394,17 @@ export class CanvasExtensionHostRegistry {
 
     private assertEnabled(): void {
         if (this.disposed) throw new Error('Canvas extension registry is disposed');
+        if (this.wiping) throw new Error('Canvas extension data is being wiped');
         if (!this.options.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
     }
 
     private async assertOwner(owner: CanvasExtensionOwner): Promise<void> {
         this.assertEnabled();
+        if (this.removingWorkspaces.has(owner.workspaceId)) throw new Error('Canvas workspace is being removed');
         const conversation = await this.options.store.getProcess(owner.processId, owner.workspaceId);
+        const workspaces = await this.options.store.getWorkspaces?.();
         this.assertEnabled();
+        if (this.removingWorkspaces.has(owner.workspaceId) || (workspaces && !workspaces.some(workspace => workspace.id === owner.workspaceId))) throw new Error('Canvas workspace is unavailable');
         if (!conversation || conversation.archived || conversation.metadata?.workspaceId !== owner.workspaceId) {
             throw new Error('Canvas conversation is missing, archived or owned by another workspace');
         }

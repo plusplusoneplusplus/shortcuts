@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CLIConfig } from '../../config';
 import type { CanvasRecord, CanvasStore } from '../canvas/canvas-store';
-import { queueCanvasCapabilityRun } from '../canvas/canvas-capability-queue';
+import { queueCanvasExtensionOperation } from './operation-queue';
 import type { CanvasUpdateNotifier } from '../canvas/canvas-update-notifier';
-import { discoverCanvasExtensions } from './discovery';
+import { resolveOwnerCanvasExtensions, listGeneratedPackages, writeGeneratedPublication } from './generated-packages';
 import type { CanvasExtensionHostRegistry, CanvasExtensionOwner } from './host-registry';
 import {
     listCanvasExtensionInstances, readCanvasExtensionInstance, type CanvasExtensionInstance, type CanvasExtensionRecord,
@@ -38,7 +38,7 @@ export function canvasExtensionFailure(error: unknown) {
 
 /** Tools and tab reopening share one owner queue, including the durable write. */
 export function runCanvasExtensionOperation<T>(deps: CanvasExtensionInstanceDeps, action: () => Promise<T>): Promise<T> {
-    return queueCanvasCapabilityRun(deps.workspaceId, `copilot-extension:${deps.processId}`, async () => {
+    return queueCanvasExtensionOperation(deps.workspaceId, `copilot-extension:${deps.processId}`, async () => {
         await assertCanvasExtensionOwner(deps);
         return action();
     });
@@ -62,8 +62,8 @@ export async function reloadCanvasExtensionInstances(
     const affected = listCanvasExtensionInstances(deps.canvasStore, deps).filter(record =>
         record.instance.extensionKey === instance.extensionKey
         && (!record.instance.closed || record.canvas.id === target.canvas.id));
-    const extensions = await discoverCanvasExtensions({
-        config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
+    const extensions = await resolveOwnerCanvasExtensions({
+        config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId, processId: deps.processId,
     });
     const extension = extensions.find(item => item.extensionKey === instance.extensionKey);
     if (!extension) throw new Error(`Canvas extension is unavailable: ${instance.extensionKey}`);
@@ -100,6 +100,8 @@ export async function reloadCanvasExtensionInstances(
             runtimeReload: { id },
         }, record.canvas, { refreshOnly: true });
     }
+    const generated = listGeneratedPackages(deps.dataDir, deps).find(item => item.extension.extensionKey === instance.extensionKey);
+    if (generated?.status === 'failed') writeGeneratedPublication(deps.dataDir, deps, { ...generated, status: 'committed' });
     const result = results.get(target.canvas.id)!;
     return {
         success: true, canvasId: target.canvas.id, instanceId: instance.instanceId, reused: true,
@@ -110,7 +112,7 @@ export async function reloadCanvasExtensionInstances(
 
 export function persistCanvasExtensionInstance(
     deps: CanvasExtensionInstanceDeps, instance: CanvasExtensionInstance, existing?: CanvasRecord,
-    notification?: { refreshOnly?: boolean },
+    notification?: { refreshOnly?: boolean; silent?: boolean; recordId?: string },
 ): CanvasRecord {
     const content = JSON.stringify(instance);
     let canvas: CanvasRecord;
@@ -122,11 +124,11 @@ export function persistCanvasExtensionInstance(
         canvas = result.canvas;
     } else {
         canvas = deps.canvasStore.createCanvas({
-            workspaceId: deps.workspaceId, processId: deps.processId,
+            id: notification?.recordId, workspaceId: deps.workspaceId, processId: deps.processId,
             title: instance.title, content, type: 'copilot-extension', editor: 'ai',
         });
     }
-    deps.notifier.canvasUpdated(deps.workspaceId, canvas, 'ai', notification);
+    if (!notification?.silent) deps.notifier.canvasUpdated(deps.workspaceId, canvas, 'ai', notification);
     return canvas;
 }
 
@@ -157,8 +159,8 @@ export function reopenCanvasExtension(
 /** The "+" menu opens an extension's first declared canvas, always reusing this chat's saved instance. */
 export function openCanvasExtensionByKey(deps: CanvasExtensionInstanceDeps, extensionKey: string) {
     return runCanvasExtensionOperation(deps, async () => {
-        const extensions = await discoverCanvasExtensions({
-            config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
+        const extensions = await resolveOwnerCanvasExtensions({
+            config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId, processId: deps.processId,
         });
         const extension = extensions.find(item => item.extensionKey === extensionKey);
         if (!extension) throw new Error(`Canvas extension is unavailable: ${extensionKey}`);
@@ -195,8 +197,8 @@ async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasE
     if (args.instanceId !== undefined && (typeof args.instanceId !== 'string' || !args.instanceId.trim())) {
         throw new Error('instanceId must be a non-empty string');
     }
-    const extensions = await discoverCanvasExtensions({
-        config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId,
+    const extensions = await resolveOwnerCanvasExtensions({
+        config: deps.config(), store: deps.processStore, dataDir: deps.dataDir, workspaceId: deps.workspaceId, processId: deps.processId,
     });
     const extension = extensions.find(item => args.canvasId.startsWith(`${item.extensionKey}/`));
     signal?.throwIfAborted();
@@ -228,5 +230,7 @@ async function openInstance(deps: CanvasExtensionInstanceDeps, args: OpenCanvasE
         if (!existing) await deps.hosts.close(owner, extension, instanceId).catch(() => {});
         throw error;
     }
+    const generated = listGeneratedPackages(deps.dataDir, deps).find(item => item.extension.extensionKey === extension.extensionKey);
+    if (generated?.status === 'failed') writeGeneratedPublication(deps.dataDir, deps, { ...generated, status: 'committed' });
     return { success: true, canvasId: canvas.id, instanceId, reused: Boolean(existing), title, url: result.url, embed: `canvas://${canvas.id}` };
 }

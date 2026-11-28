@@ -151,7 +151,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
     manage_canvas: {
         type: 'object',
         properties: {
-            action: { type: 'string', enum: ['open', 'close'] },
+            action: { type: 'string', enum: ['open', 'close', 'reload', 'delete'] },
             canvasId: { type: 'string' }, input: { type: 'object' }, instanceId: { type: 'string' },
         },
         required: ['action'],
@@ -194,30 +194,13 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         required: ['canvasId'],
     },
     extension_canvas: {
-        type: 'object',
+        type: 'object', additionalProperties: false,
         properties: {
-            canvasId: { type: 'string' },
-            capability: { type: 'string' },
-            params: { type: 'object' },
-            title: { type: 'string' },
-            description: { type: 'string' },
-            capabilities: {
-                type: 'array',
-                items: {
-                    type: 'object',
-                    properties: {
-                        name: { type: 'string' },
-                        description: { type: 'string' },
-                        paramsDescription: { type: 'string' },
-                    },
-                    required: ['name', 'description'],
-                },
-            },
-            capabilitiesJs: { type: 'string' },
-            uiHtml: { type: 'string' },
-            initialState: { type: 'object' },
-        },
-        required: [],
+            sourcePath: { type: 'string' }, canvasId: { type: 'string' }, expectedRevision: { type: 'integer' },
+            declaredCanvasId: { type: 'string' }, input: { type: 'object' },
+            assets: { type: 'array', maxItems: 20, items: { type: 'object', additionalProperties: false,
+                properties: { path: { type: 'string' }, sourcePath: { type: 'string' } }, required: ['path', 'sourcePath'] } },
+        }, required: ['sourcePath'],
     },
     execute_kusto_query: {
         type: 'object',

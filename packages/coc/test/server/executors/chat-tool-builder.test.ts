@@ -180,7 +180,6 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name).sort()).toEqual([
             'ask_user',
-            'extension_canvas',
             'get_conversation',
             'query_pull_request',
             'read_canvas',

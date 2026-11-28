@@ -70,7 +70,6 @@ import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerCanvasExtensionRoutes } from '../canvas-extensions/routes';
 import type { CanvasExtensionRuntime } from '../canvas-extensions/instance-service';
-import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
@@ -734,7 +733,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const jobScheduler = new SentinelJobScheduler({ jobs: scheduledJobs, service: refrainService, getEnabled: getJobsEnabled });
     const previousJobsRemoveWorkspace = store.removeWorkspace;
     const jobsRemoveWorkspace: ProcessStore['removeWorkspace'] = async id => {
-        const removed = await previousJobsRemoveWorkspace.call(store, id);
+        const removed = opts.canvasExtensionRuntime
+            ? await opts.canvasExtensionRuntime.hosts.removeWorkspace(id, () => previousJobsRemoveWorkspace.call(store, id))
+            : await previousJobsRemoveWorkspace.call(store, id);
         if (removed) {
             jobScheduler.refreshAll();
             await refrainService.invalidate();
@@ -930,11 +931,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         )?.browserControl?.navigationApprovalEnabled !== false);
         return browserControl;
     }, new BrowserToolStateStore(dataDir));
-    // Async extension-canvas capabilities + host.complete. Live (admin toggle
-    // takes effect without a restart) and off by default.
-    const isCanvasHostApisEnabled = (): boolean => (
-        opts.runtimeConfigService?.config ?? opts.resolvedConfig
-    )?.features?.canvasHostApis === true;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker, getSentinelMirror, opts.toolInventoryStore);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
@@ -1146,13 +1142,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    const canvasMutations = registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, () => bridge.runOwnerScript, isCanvasHostApisEnabled,
-        undefined, createCanvasRunScriptFactory({
-            getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
-            getOwnerScriptRunner: () => bridge.runOwnerScript,
-        }));
+    const canvasMutations = registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, () => bridge.runOwnerScript);
     registerCanvasExtensionRoutes(routes, { dataDir, processStore: store, runtime: opts.canvasExtensionRuntime });
     registerAdminRoutes(routes, {
+        beforeDataWipe: () => opts.canvasExtensionRuntime?.hosts.prepareDataWipe() ?? Promise.resolve(),
         store,
         dataDir,
         getWsServer,

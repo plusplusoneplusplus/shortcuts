@@ -46,3 +46,11 @@ export function loadCanvasExtensionInstances(store: CanvasStore, owner: CanvasEx
         .filter(({ instance }) => instance.extensionKey === extensionKey && !instance.closed)
         .map(({ instance: { canvasId, instanceId, input } }) => ({ canvasId, instanceId, ...(input ? { input } : {}) }));
 }
+
+/** Conversation deletion removes generated identities even if their package cleanup previously failed. */
+export function deleteGeneratedCanvasRecords(store: CanvasStore, owner: CanvasExtensionOwner): string[] {
+    const prefix = `generated/${owner.workspaceId}/${Buffer.from(owner.processId).toString('hex')}/`;
+    const records = listCanvasExtensionInstances(store, owner).filter(record => record.instance.extensionKey.startsWith(prefix));
+    for (const record of records) store.deleteCanvas(owner.workspaceId, record.canvas.id);
+    return records.map(record => record.canvas.id);
+}
