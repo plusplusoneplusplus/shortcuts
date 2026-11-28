@@ -1,21 +1,24 @@
 /**
- * AiEditDecorationExtension — Tiptap extension for ephemeral AI edit decorations.
+ * EditDiffDecoration — Tiptap extension for ephemeral word-diff decorations.
  *
- * Renders word-level git-style diff decorations for AI-applied edits:
- * - Added words: green highlight (class `ai-edit-added`)
- * - Removed words: ghost widgets with red strikethrough (class `ai-edit-removed`)
+ * Renders word-level git-style diff decorations for programmatic edits (for
+ * example, edits an assistant applied):
+ * - Added words: inline decoration with class `edit-diff-added`
+ * - Removed words: ghost widgets with class `edit-diff-removed`; long removals
+ *   become a collapsible `edit-diff-deleted-block`
  *
- * Decorations auto-clear after `expiresAt` or on the next user keypress.
+ * The package ships no CSS for these classes; the host styles them.
+ * Decorations auto-clear after `expiresAt` or on the next document change.
  */
 
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { DiffChunk } from './noteEditDiff';
+import type { DiffChunk } from './wordDiff.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export interface AiEditRegion {
+export interface EditDiffRegion {
     id: string;
     /** Start position of the region in the editor document. */
     from: number;
@@ -27,14 +30,14 @@ export interface AiEditRegion {
     expiresAt?: number;
 }
 
-interface AiEditPluginState {
-    regions: AiEditRegion[];
+interface EditDiffPluginState {
+    regions: EditDiffRegion[];
     decorations: DecorationSet;
 }
 
 // ── Plugin key ───────────────────────────────────────────────────────────────
 
-export const aiEditPluginKey = new PluginKey<AiEditPluginState>('aiEditDecoration');
+export const editDiffPluginKey = new PluginKey<EditDiffPluginState>('editDiffDecoration');
 
 // ── Collapsible deleted block widget ──────────────────────────────────────────
 
@@ -42,17 +45,17 @@ const INLINE_DELETE_THRESHOLD = 80;
 
 function buildDeletedBlock(text: string, key: string): HTMLElement {
     const wrapper = document.createElement('div');
-    wrapper.className = 'ai-edit-deleted-block';
+    wrapper.className = 'edit-diff-deleted-block';
     wrapper.setAttribute('data-key', key);
 
     const header = document.createElement('div');
-    header.className = 'ai-edit-deleted-header';
+    header.className = 'edit-diff-deleted-header';
     header.textContent = '⊘ Deleted content ▼';
 
     const body = document.createElement('div');
-    body.className = 'ai-edit-deleted-body';
+    body.className = 'edit-diff-deleted-body';
     const inner = document.createElement('span');
-    inner.className = 'ai-edit-removed';
+    inner.className = 'edit-diff-removed';
     inner.textContent = text;
     body.appendChild(inner);
 
@@ -69,7 +72,7 @@ function buildDeletedBlock(text: string, key: string): HTMLElement {
 
 // ── Decoration builder ───────────────────────────────────────────────────────
 
-function buildDecorations(regions: AiEditRegion[], doc: any): DecorationSet {
+function buildDecorations(regions: EditDiffRegion[], doc: any): DecorationSet {
     const decorations: Decoration[] = [];
 
     for (const region of regions) {
@@ -85,7 +88,7 @@ function buildDecorations(regions: AiEditRegion[], doc: any): DecorationSet {
                 if (cursor < chunkEnd) {
                     decorations.push(
                         Decoration.inline(cursor, chunkEnd, {
-                            class: 'ai-edit-added',
+                            class: 'edit-diff-added',
                         }),
                     );
                 }
@@ -102,7 +105,7 @@ function buildDecorations(regions: AiEditRegion[], doc: any): DecorationSet {
                     );
                 } else {
                     const ghost = document.createElement('span');
-                    ghost.className = 'ai-edit-removed';
+                    ghost.className = 'edit-diff-removed';
                     ghost.textContent = chunk.text;
                     decorations.push(
                         Decoration.widget(pos, ghost, {
@@ -123,34 +126,34 @@ function buildDecorations(regions: AiEditRegion[], doc: any): DecorationSet {
 
 declare module '@tiptap/core' {
     interface Commands<ReturnType> {
-        aiEditDecoration: {
-            /** Apply AI edit decorations. Replaces any existing decorations. */
-            setAiEdits: (regions: AiEditRegion[]) => ReturnType;
-            /** Clear all AI edit decorations immediately. */
-            clearAiEdits: () => ReturnType;
+        editDiffDecoration: {
+            /** Apply edit-diff decorations. Replaces any existing decorations. */
+            setEditDiffs: (regions: EditDiffRegion[]) => ReturnType;
+            /** Clear all edit-diff decorations immediately. */
+            clearEditDiffs: () => ReturnType;
         };
     }
 }
 
-export const AiEditDecorationExtension = Extension.create({
-    name: 'aiEditDecoration',
+export const EditDiffDecoration = Extension.create({
+    name: 'editDiffDecoration',
 
     addCommands() {
         return {
-            setAiEdits:
-                (regions: AiEditRegion[]) =>
+            setEditDiffs:
+                (regions: EditDiffRegion[]) =>
                     ({ tr, dispatch, state }) => {
                         if (dispatch) {
-                            tr.setMeta(aiEditPluginKey, { action: 'set', regions });
+                            tr.setMeta(editDiffPluginKey, { action: 'set', regions });
                             dispatch(tr);
                         }
                         return true;
                     },
-            clearAiEdits:
+            clearEditDiffs:
                 () =>
                     ({ tr, dispatch }) => {
                         if (dispatch) {
-                            tr.setMeta(aiEditPluginKey, { action: 'clear' });
+                            tr.setMeta(editDiffPluginKey, { action: 'clear' });
                             dispatch(tr);
                         }
                         return true;
@@ -162,19 +165,19 @@ export const AiEditDecorationExtension = Extension.create({
         const rafIds = new Map<string, number>();
 
         return [
-            new Plugin<AiEditPluginState>({
-                key: aiEditPluginKey,
+            new Plugin<EditDiffPluginState>({
+                key: editDiffPluginKey,
 
                 state: {
-                    init(): AiEditPluginState {
+                    init(): EditDiffPluginState {
                         return { regions: [], decorations: DecorationSet.empty };
                     },
 
-                    apply(tr, pluginState, _oldState, newState): AiEditPluginState {
-                        const meta = tr.getMeta(aiEditPluginKey);
+                    apply(tr, pluginState, _oldState, newState): EditDiffPluginState {
+                        const meta = tr.getMeta(editDiffPluginKey);
 
                         if (meta?.action === 'set') {
-                            const regions: AiEditRegion[] = meta.regions;
+                            const regions: EditDiffRegion[] = meta.regions;
                             return {
                                 regions,
                                 decorations: buildDecorations(regions, newState.doc),
@@ -196,14 +199,14 @@ export const AiEditDecorationExtension = Extension.create({
 
                 props: {
                     decorations(state) {
-                        return aiEditPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
+                        return editDiffPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
                     },
                 },
 
                 view() {
                     return {
                         update(view) {
-                            const pluginState = aiEditPluginKey.getState(view.state);
+                            const pluginState = editDiffPluginKey.getState(view.state);
                             if (!pluginState || pluginState.regions.length === 0) return;
 
                             // Schedule auto-expiry RAF for each region
@@ -213,14 +216,14 @@ export const AiEditDecorationExtension = Extension.create({
                                 const delay = region.expiresAt - Date.now();
                                 if (delay <= 0) {
                                     // Already expired — clear immediately
-                                    const tr = view.state.tr.setMeta(aiEditPluginKey, { action: 'clear' });
+                                    const tr = view.state.tr.setMeta(editDiffPluginKey, { action: 'clear' });
                                     view.dispatch(tr);
                                     return;
                                 }
                                 const id = setTimeout(() => {
                                     rafIds.delete(region.id);
                                     if (!view.isDestroyed) {
-                                        const clearTr = view.state.tr.setMeta(aiEditPluginKey, { action: 'clear' });
+                                        const clearTr = view.state.tr.setMeta(editDiffPluginKey, { action: 'clear' });
                                         view.dispatch(clearTr);
                                     }
                                 }, delay) as unknown as number;

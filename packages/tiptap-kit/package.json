@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/tiptap-kit",
   "version": "0.1.0",
-  "description": "Framework-agnostic Tiptap extensions and editor helpers (indent, tables, text style, comments, TOC, Markdown codec)",
+  "description": "Framework-agnostic Tiptap extensions and editor helpers (indent, tables, text style, comments, TOC, edit diffs, front matter, Markdown codec)",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -78,6 +78,14 @@
     "./markdown": {
       "types": "./dist/markdown/index.d.ts",
       "import": "./dist/markdown/index.js"
+    },
+    "./edit-diff": {
+      "types": "./dist/edit-diff/index.d.ts",
+      "import": "./dist/edit-diff/index.js"
+    },
+    "./front-matter": {
+      "types": "./dist/front-matter/index.d.ts",
+      "import": "./dist/front-matter/index.js"
     }
   },
   "scripts": {
@@ -92,7 +100,8 @@
     "@tiptap/extension-table-header": "^3.31.3",
     "katex": "^0.16.0",
     "marked": "^12.0.0",
-    "turndown": "^7.2.4"
+    "turndown": "^7.2.4",
+    "js-yaml": "^4.1.0"
   },
   "peerDependenciesMeta": {
     "katex": {
@@ -102,6 +111,9 @@
       "optional": true
     },
     "turndown": {
+      "optional": true
+    },
+    "js-yaml": {
       "optional": true
     }
   },
@@ -116,7 +128,9 @@
     "@tiptap/extension-text-style": "3.31.3",
     "@tiptap/pm": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
+    "@types/js-yaml": "^4.0.0",
     "@types/turndown": "^5.0.6",
+    "js-yaml": "^4.3.0",
     "jsdom": "^27.0.1",
     "katex": "^0.16.22",
     "marked": "^12.0.0",

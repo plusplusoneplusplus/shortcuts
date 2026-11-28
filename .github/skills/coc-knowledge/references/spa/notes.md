@@ -387,9 +387,14 @@ projects can reuse it without the dashboard:
   `escapeHtmlAttribute`), `/mermaid` (CDN loader: `ensureMermaid`,
   `applyMermaidTheme`), `/math` (TeX tokenizer, KaTeX `renderMath`, the
   read-only `mathMarkedExtension`, the editor's `mathNodeMarkedExtension` and the
-  codec's `mathMarkdownExtension`) and `/markdown` (`createMarkdownCodec`). The
-  root entry re-exports every area except `/math` and `/markdown`, which load the
-  optional `katex`, `marked` and `turndown` peers and stay subpath-only. Chat, PR
+  codec's `mathMarkdownExtension`), `/edit-diff` (`wordDiff` and the
+  `EditDiffDecoration` extension with `setEditDiffs` / `clearEditDiffs`; it emits
+  `edit-diff-added`, `edit-diff-removed` and `edit-diff-deleted-block`, which the
+  host styles), `/front-matter` (`parseFrontMatter`,
+  `composeMarkdownWithFrontMatter`, `getFrontMatterFieldCount`) and `/markdown`
+  (`createMarkdownCodec`). The root entry re-exports every area except `/math`,
+  `/markdown` and `/front-matter`, which load the optional `katex`, `marked`,
+  `turndown` and `js-yaml` peers and stay subpath-only. Chat, PR
   and diff Markdown renderers import math and HTML escaping from the kit too.
 - `createMarkdownCodec({ extensions })` returns `markdownToHtml` / `htmlToMarkdown`
   over its own `Marked` and turndown instances (the global `marked` is never

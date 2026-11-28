@@ -87,8 +87,8 @@ const mockEditor = {
             mockEditor.state.doc = makeDocWithText(currentDocText);
         },
         clearContent: mockClearContent,
-        setAiEdits: mockSetAiEdits,
-        clearAiEdits: mockClearAiEdits,
+        setEditDiffs: mockSetAiEdits,
+        clearEditDiffs: mockClearAiEdits,
         insertContentAt: vi.fn(),
     },
     getHTML: mockGetHTML,
@@ -212,7 +212,7 @@ describe('NoteEditor diff-on-reload', () => {
         // setContent called: initial + reload
         expect(mockSetContent).toHaveBeenCalledTimes(2);
 
-        // setAiEdits called with regions (content changed: "initial" → "updated")
+        // setEditDiffs called with regions (content changed: "initial" → "updated")
         expect(mockSetAiEdits).toHaveBeenCalled();
 
         // Navigator pill should be visible
@@ -430,7 +430,7 @@ describe('NoteEditor diff-on-reload', () => {
             expect(nav).toBeDefined();
         });
 
-        // setAiEdits called for each change event
+        // setEditDiffs called for each change event
         expect(mockSetAiEdits).toHaveBeenCalledTimes(2);
     });
 
@@ -471,7 +471,7 @@ describe('NoteEditor diff-on-reload', () => {
         });
         await tickAsync();
 
-        // setAiEdits should be called with regions containing diff chunks
+        // setEditDiffs should be called with regions containing diff chunks
         expect(mockSetAiEdits).toHaveBeenCalledTimes(1);
         const regions = mockSetAiEdits.mock.calls[0][0];
         expect(regions.length).toBeGreaterThan(0);

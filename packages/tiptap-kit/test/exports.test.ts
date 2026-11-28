@@ -21,8 +21,8 @@ const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) 
 const areas = Object.keys(manifest.exports)
     .filter((key) => key !== '.')
     .map((key) => key.slice(2));
-/** Areas that import an optional peer (`math` loads katex, `markdown` loads marked and turndown). */
-const SUBPATH_ONLY = ['math', 'markdown'];
+/** Areas that import an optional peer (`math` loads katex, `markdown` loads marked and turndown, `front-matter` loads js-yaml). */
+const SUBPATH_ONLY = ['math', 'markdown', 'front-matter'];
 
 describe('tiptap-kit exports', () => {
     it('maps each subpath to src/<area>/index.ts and dist/<area>/index.js', () => {
@@ -51,13 +51,14 @@ describe('tiptap-kit exports', () => {
         const rootSource = readFileSync(join(pkgDir, 'src', 'index.ts'), 'utf8');
         const meta = (manifest as { peerDependenciesMeta?: Record<string, { optional?: boolean }> })
             .peerDependenciesMeta ?? {};
-        for (const peer of ['katex', 'marked', 'turndown']) expect(meta[peer]?.optional, peer).toBe(true);
+        for (const peer of ['katex', 'marked', 'turndown', 'js-yaml']) expect(meta[peer]?.optional, peer).toBe(true);
         for (const area of SUBPATH_ONLY) {
             expect(areas).toContain(area);
             expect(rootSource).not.toContain(`'./${area}/index.js'`);
         }
         expect(Object.keys(root)).not.toContain('renderMath');
         expect(Object.keys(root)).not.toContain('createMarkdownCodec');
+        expect(Object.keys(root)).not.toContain('parseFrontMatter');
     });
 
     it('keeps Tiptap as a peer so the host app owns the single editor instance', () => {

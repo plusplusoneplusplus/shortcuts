@@ -1,5 +1,5 @@
 /**
- * Live headless Tiptap tests for AiEditDecorationExtension.
+ * Live headless Tiptap tests for EditDiffDecoration.
  *
  * Unlike the source-inspection tests, these instantiate a real Tiptap Editor
  * with the extension loaded and verify command behavior, plugin state, and
@@ -10,20 +10,20 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import {
-    AiEditDecorationExtension,
-    aiEditPluginKey,
-    type AiEditRegion,
-} from '../../../../../../src/server/spa/client/react/features/notes/editor/extensions/AiEditDecorationExtension';
-import type { DiffChunk } from '../../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
+    EditDiffDecoration,
+    editDiffPluginKey,
+    type EditDiffRegion,
+    type DiffChunk,
+} from '../src/edit-diff/index.js';
 
 function makeEditor(content = '<p>hello world</p>') {
     return new Editor({
-        extensions: [StarterKit, AiEditDecorationExtension],
+        extensions: [StarterKit, EditDiffDecoration],
         content,
     });
 }
 
-function makeRegion(overrides: Partial<AiEditRegion> & { from: number; to: number; chunks: DiffChunk[] }): AiEditRegion {
+function makeRegion(overrides: Partial<EditDiffRegion> & { from: number; to: number; chunks: DiffChunk[] }): EditDiffRegion {
     return {
         id: `test-region-${Date.now()}`,
         expiresAt: Date.now() + 60_000, // far future so auto-expiry doesn't interfere
@@ -31,7 +31,7 @@ function makeRegion(overrides: Partial<AiEditRegion> & { from: number; to: numbe
     };
 }
 
-describe('AiEditDecorationExtension (live Tiptap)', () => {
+describe('EditDiffDecoration (live Tiptap)', () => {
     let editor: Editor;
 
     afterEach(() => {
@@ -46,15 +46,15 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
 
     it('plugin state initialises with empty regions and decorations', () => {
         editor = makeEditor();
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state).toBeDefined();
         expect(state!.regions).toEqual([]);
         expect(state!.decorations).toBeDefined();
     });
 
-    // ── setAiEdits command ───────────────────────────────────────────────
+    // ── setEditDiffs command ───────────────────────────────────────────────
 
-    it('setAiEdits stores regions in plugin state', () => {
+    it('setEditDiffs stores regions in plugin state', () => {
         editor = makeEditor('<p>hello world</p>');
         // "hello world" starts at pos 1 in a <p> node
         const region = makeRegion({
@@ -63,42 +63,42 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             chunks: [{ type: 'add', text: 'hello' }],
         });
 
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state!.regions).toHaveLength(1);
         expect(state!.regions[0].id).toBe(region.id);
     });
 
-    it('setAiEdits replaces previous regions', () => {
+    it('setEditDiffs replaces previous regions', () => {
         editor = makeEditor('<p>hello world</p>');
         const r1 = makeRegion({ id: 'r1', from: 1, to: 6, chunks: [{ type: 'add', text: 'hello' }] });
         const r2 = makeRegion({ id: 'r2', from: 7, to: 12, chunks: [{ type: 'add', text: 'world' }] });
 
-        editor.commands.setAiEdits([r1]);
-        editor.commands.setAiEdits([r2]);
+        editor.commands.setEditDiffs([r1]);
+        editor.commands.setEditDiffs([r2]);
 
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state!.regions).toHaveLength(1);
         expect(state!.regions[0].id).toBe('r2');
     });
 
-    // ── clearAiEdits command ─────────────────────────────────────────────
+    // ── clearEditDiffs command ─────────────────────────────────────────────
 
-    it('clearAiEdits removes all regions and decorations', () => {
+    it('clearEditDiffs removes all regions and decorations', () => {
         editor = makeEditor('<p>hello world</p>');
         const region = makeRegion({ from: 1, to: 6, chunks: [{ type: 'add', text: 'hello' }] });
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
-        editor.commands.clearAiEdits();
+        editor.commands.clearEditDiffs();
 
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state!.regions).toEqual([]);
     });
 
     // ── Decoration rendering ─────────────────────────────────────────────
 
-    it('creates inline decoration with ai-edit-added class for add chunks', () => {
+    it('creates inline decoration with edit-diff-added class for add chunks', () => {
         editor = makeEditor('<p>hello world</p>');
         const region = makeRegion({
             from: 1,
@@ -106,13 +106,13 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             chunks: [{ type: 'add', text: 'hello' }],
         });
 
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
         const html = (editor.view.dom as HTMLElement).innerHTML;
-        expect(html).toContain('ai-edit-added');
+        expect(html).toContain('edit-diff-added');
     });
 
-    it('creates widget decoration with ai-edit-removed class for remove chunks', () => {
+    it('creates widget decoration with edit-diff-removed class for remove chunks', () => {
         editor = makeEditor('<p>hello world</p>');
         // Place a "remove" chunk at position 1 (before text), then an "equal" chunk
         const region = makeRegion({
@@ -124,10 +124,10 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             ],
         });
 
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
         const html = (editor.view.dom as HTMLElement).innerHTML;
-        expect(html).toContain('ai-edit-removed');
+        expect(html).toContain('edit-diff-removed');
     });
 
     it('does not create decorations for equal-only chunks', () => {
@@ -138,11 +138,11 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             chunks: [{ type: 'equal', text: 'hello world' }],
         });
 
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
         const html = (editor.view.dom as HTMLElement).innerHTML;
-        expect(html).not.toContain('ai-edit-added');
-        expect(html).not.toContain('ai-edit-removed');
+        expect(html).not.toContain('edit-diff-added');
+        expect(html).not.toContain('edit-diff-removed');
     });
 
     // ── docChanged clears decorations ────────────────────────────────────
@@ -154,12 +154,12 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             to: 6,
             chunks: [{ type: 'add', text: 'hello' }],
         });
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
         // Simulate user typing
         editor.commands.insertContentAt(12, '!');
 
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state!.regions).toEqual([]);
     });
 
@@ -170,14 +170,14 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
         const r1 = makeRegion({ id: 'r1', from: 1, to: 6, chunks: [{ type: 'add', text: 'hello' }] });
         const r2 = makeRegion({ id: 'r2', from: 13, to: 16, chunks: [{ type: 'add', text: 'foo' }] });
 
-        editor.commands.setAiEdits([r1, r2]);
+        editor.commands.setEditDiffs([r1, r2]);
 
-        const state = aiEditPluginKey.getState(editor.state);
+        const state = editDiffPluginKey.getState(editor.state);
         expect(state!.regions).toHaveLength(2);
 
         const html = (editor.view.dom as HTMLElement).innerHTML;
         // Both regions should produce decorations
-        const addedMatches = html.match(/ai-edit-added/g);
+        const addedMatches = html.match(/edit-diff-added/g);
         expect(addedMatches?.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -194,10 +194,10 @@ describe('AiEditDecorationExtension (live Tiptap)', () => {
             ],
         });
 
-        editor.commands.setAiEdits([region]);
+        editor.commands.setEditDiffs([region]);
 
         const html = (editor.view.dom as HTMLElement).innerHTML;
-        expect(html).toContain('ai-edit-added');
-        expect(html).toContain('ai-edit-removed');
+        expect(html).toContain('edit-diff-added');
+        expect(html).toContain('edit-diff-removed');
     });
 });

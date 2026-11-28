@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
     composeMarkdownWithFrontMatter,
     getFrontMatterFieldCount,
-    parseNoteFrontMatter,
-} from '../../../../src/server/spa/client/react/features/notes/editor/noteFrontMatter';
+    parseFrontMatter,
+} from '../src/front-matter/index.js';
 
-describe('noteFrontMatter', () => {
+describe('front matter', () => {
     it('parses valid top-of-file YAML front matter and separates the body', () => {
-        const result = parseNoteFrontMatter([
+        const result = parseFrontMatter([
             '---',
             'title: Batch selection notes',
             'tags:',
@@ -43,7 +43,7 @@ describe('noteFrontMatter', () => {
     });
 
     it('preserves the original front matter block when composing a rich-mode save', () => {
-        const result = parseNoteFrontMatter('---\ntitle: Original\n---\n\n# Old body');
+        const result = parseFrontMatter('---\ntitle: Original\n---\n\n# Old body');
         expect(result.kind).toBe('valid');
         if (result.kind !== 'valid') throw new Error('expected valid front matter');
 
@@ -53,7 +53,7 @@ describe('noteFrontMatter', () => {
     });
 
     it('keeps an empty rich body as metadata-only markdown', () => {
-        const result = parseNoteFrontMatter('---\ntitle: Original\n---\n\n# Body');
+        const result = parseFrontMatter('---\ntitle: Original\n---\n\n# Body');
         expect(result.kind).toBe('valid');
         if (result.kind !== 'valid') throw new Error('expected valid front matter');
 
@@ -61,16 +61,16 @@ describe('noteFrontMatter', () => {
     });
 
     it('does not classify a leading horizontal rule without a closing delimiter as front matter', () => {
-        expect(parseNoteFrontMatter('---\n# Heading').kind).toBe('none');
+        expect(parseFrontMatter('---\n# Heading').kind).toBe('none');
     });
 
     it('reports invalid YAML without hiding the source block', () => {
-        const result = parseNoteFrontMatter('---\ntitle: [broken\n---\n# Body');
+        const result = parseFrontMatter('---\ntitle: [broken\n---\n# Body');
         expect(result.kind).toBe('invalid');
     });
 
     it('wraps valid non-object YAML as a generic value field', () => {
-        const result = parseNoteFrontMatter('---\n- one\n- two\n---\n# Body');
+        const result = parseFrontMatter('---\n- one\n- two\n---\n# Body');
         expect(result.kind).toBe('valid');
         if (result.kind !== 'valid') throw new Error('expected valid front matter');
         expect(result.frontMatter.data.value).toEqual(['one', 'two']);

@@ -23,7 +23,7 @@ import { PdfBlock } from './extensions/pdfBlock';
 import type { PdfFullWindowRequest } from './extensions/pdfBlock';
 import { PdfPopupDialog } from './extensions/PdfPopupDialog';
 import { CommentExtension } from '@plusplusoneplusplus/tiptap-kit/comment-mark';
-import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
+import { EditDiffDecoration } from '@plusplusoneplusplus/tiptap-kit/edit-diff';
 import { YouTubeEmbedDecorationExtension } from '@plusplusoneplusplus/tiptap-embeds/youtube';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { PaperLinkEmbedDecorationExtension } from './extensions/PaperLinkEmbedDecorationExtension';
@@ -200,7 +200,7 @@ export function RichEditorCore({
                 NoteLinkExtension,
                 SidenoteRefExtension,
                 FilePathNodeExtension,
-                AiEditDecorationExtension,
+                EditDiffDecoration,
                 YouTubeEmbedDecorationExtension.configure({
                     onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
                 }),

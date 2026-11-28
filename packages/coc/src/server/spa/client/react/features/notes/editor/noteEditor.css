@@ -370,14 +370,14 @@
 /* ── AI edit diff decorations ──────────────────────────────────────────────── */
 
 /* Added text — blue-green colored, no background */
-.note-editor .ProseMirror .ai-edit-added {
+.note-editor .ProseMirror .edit-diff-added {
     color: #2563eb;
     border-bottom: 1px solid rgba(37, 99, 235, 0.4);
     border-radius: 2px;
 }
 
 /* Inline removed text — red strikethrough */
-.note-editor .ProseMirror .ai-edit-removed {
+.note-editor .ProseMirror .edit-diff-removed {
     color: #b91c1c;
     text-decoration: line-through;
     text-decoration-color: rgba(185, 28, 28, 0.6);
@@ -386,7 +386,7 @@
 }
 
 /* Block deleted container */
-.note-editor .ProseMirror .ai-edit-deleted-block {
+.note-editor .ProseMirror .edit-diff-deleted-block {
     background: rgba(127, 29, 29, 0.08);
     border: 1px solid rgba(185, 28, 28, 0.25);
     border-radius: 4px;
@@ -395,7 +395,7 @@
     display: block;
 }
 
-.note-editor .ProseMirror .ai-edit-deleted-header {
+.note-editor .ProseMirror .edit-diff-deleted-header {
     color: #ef4444;
     font-size: 12px;
     font-weight: 500;
@@ -409,34 +409,34 @@
     gap: 4px;
 }
 
-.note-editor .ProseMirror .ai-edit-deleted-header:hover {
+.note-editor .ProseMirror .edit-diff-deleted-header:hover {
     background: rgba(127, 29, 29, 0.18);
 }
 
-.note-editor .ProseMirror .ai-edit-deleted-body {
+.note-editor .ProseMirror .edit-diff-deleted-body {
     padding: 6px 8px;
     font-size: 0.9em;
     line-height: 1.5;
 }
 
-.dark .note-editor .ProseMirror .ai-edit-added {
+.dark .note-editor .ProseMirror .edit-diff-added {
     color: #60a5fa;
     border-bottom-color: rgba(96, 165, 250, 0.35);
 }
-.dark .note-editor .ProseMirror .ai-edit-removed {
+.dark .note-editor .ProseMirror .edit-diff-removed {
     color: #f87171;
     text-decoration-color: rgba(248, 113, 113, 0.6);
 }
-.dark .note-editor .ProseMirror .ai-edit-deleted-block {
+.dark .note-editor .ProseMirror .edit-diff-deleted-block {
     background: rgba(127, 29, 29, 0.15);
     border-color: rgba(248, 113, 113, 0.25);
 }
-.dark .note-editor .ProseMirror .ai-edit-deleted-header {
+.dark .note-editor .ProseMirror .edit-diff-deleted-header {
     color: #f87171;
     background: rgba(127, 29, 29, 0.2);
     border-bottom-color: rgba(248, 113, 113, 0.15);
 }
-.dark .note-editor .ProseMirror .ai-edit-deleted-header:hover {
+.dark .note-editor .ProseMirror .edit-diff-deleted-header:hover {
     background: rgba(127, 29, 29, 0.3);
 }
 

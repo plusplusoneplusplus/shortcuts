@@ -1,5 +1,5 @@
 /**
- * Unit tests for noteEditDiff — word-level LCS diff utility.
+ * Unit tests for wordDiff — word-level LCS diff utility.
  *
  * Covers:
  * - Empty strings (both empty, one empty)
@@ -13,8 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { wordDiff } from '../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
-import type { DiffChunk } from '../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
+import { wordDiff, type DiffChunk } from '../src/edit-diff/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 /**
- * Helpers for the note-editor right-click "link" context menu.
+ * Helpers for an editor's right-click "link" context menu.
  *
  * Kept pure (no React) so the link-detection logic can be unit-tested against
  * a jsdom DOM without mounting the whole editor.

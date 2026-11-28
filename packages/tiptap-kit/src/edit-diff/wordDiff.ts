@@ -1,10 +1,10 @@
 /**
- * Word-level diff for AI edit decorations.
+ * Word-level diff for edit decorations.
  *
  * Tokenizes two strings on word/punctuation boundaries and runs an O(n*m)
  * LCS diff to produce a flat list of DiffChunk objects, each typed as
- * 'equal', 'add', or 'remove'. Used by AiEditDecorationExtension to
- * render GitHub-style word-diff decorations in the Tiptap editor.
+ * 'equal', 'add', or 'remove'. EditDiffDecoration renders these chunks as
+ * GitHub-style word-diff decorations in the Tiptap editor.
  */
 
 export type DiffChunkType = 'equal' | 'add' | 'remove';

@@ -1,14 +1,19 @@
+/**
+ * YAML front matter helpers for Markdown documents: split a leading
+ * `---` ... `---` (or `...`) block from the body, parse it with js-yaml, and
+ * put it back in front of an edited body. Needs the optional `js-yaml` peer.
+ */
 import yaml from 'js-yaml';
 
-export interface ParsedNoteFrontMatter {
+export interface ParsedFrontMatter {
     raw: string;
     body: string;
     data: Record<string, unknown>;
 }
 
-export type NoteFrontMatterParseResult =
+export type FrontMatterParseResult =
     | { kind: 'none' }
-    | { kind: 'valid'; frontMatter: ParsedNoteFrontMatter }
+    | { kind: 'valid'; frontMatter: ParsedFrontMatter }
     | { kind: 'invalid'; message: string };
 
 const delimiterLine = /^(---|\.\.\.)[ \t]*(\r\n|\n|\r|$)/gm;
@@ -30,7 +35,7 @@ function trimLeadingBodyBreaks(body: string): string {
     return body.replace(/^(?:\r\n|\n|\r)+/, '');
 }
 
-export function parseNoteFrontMatter(markdown: string): NoteFrontMatterParseResult {
+export function parseFrontMatter(markdown: string): FrontMatterParseResult {
     const opening = openingDelimiter.exec(markdown);
     if (!opening) return { kind: 'none' };
 
@@ -62,7 +67,7 @@ export function parseNoteFrontMatter(markdown: string): NoteFrontMatterParseResu
     }
 }
 
-export function composeMarkdownWithFrontMatter(frontMatter: ParsedNoteFrontMatter, bodyMarkdown: string): string {
+export function composeMarkdownWithFrontMatter(frontMatter: ParsedFrontMatter, bodyMarkdown: string): string {
     const body = bodyMarkdown.replace(/^(?:\r\n|\n|\r)+/, '');
     if (body.trim() === '') {
         return `${frontMatter.raw}\n`;
@@ -70,6 +75,6 @@ export function composeMarkdownWithFrontMatter(frontMatter: ParsedNoteFrontMatte
     return `${frontMatter.raw}\n\n${body}`;
 }
 
-export function getFrontMatterFieldCount(frontMatter: ParsedNoteFrontMatter): number {
+export function getFrontMatterFieldCount(frontMatter: ParsedFrontMatter): number {
     return Object.keys(frontMatter.data).length;
 }
