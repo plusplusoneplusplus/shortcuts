@@ -47,7 +47,8 @@ Reuse existing views. Do not add a second editor, terminal manager, search backe
 ## Browser
 
 - Toolbar zoom targets the active Git review body with tab-local state keyed by concrete owner; URL guests retain installation-wide desktop zoom. Other CoC pages hide zoom controls. Keep the toolbar and surrounding app outside the scaled body.
-- Ctrl/Cmd+T creates a blank tab for the dock target when focus is inside the one visible panel. Repeats are consumed. Native `onOpenMenuRequested` counts only for the matching active visible view.
+- Hand-opened web tabs (`+`, Ctrl/Cmd+T, history, chat links) take `browserOwner`: the shown member chat's owner (`viewingChatOwner`) in a group, else the dock target. Its session key must equal the chat's browser-control scope, or AI `tabs` cannot list the tab.
+- Ctrl/Cmd+T creates a blank tab when focus is inside the one visible panel. Repeats are consumed. Native `onOpenMenuRequested` counts only for the matching active visible view.
 - Default-on `features.browserTabShortcuts`: Ctrl/Cmd+1–9 over rendered web tabs, 9 meaning last. Editors, Monaco, and terminals keep their keys.
 - Ctrl/Cmd+Shift+T restores the newest closed web tab from a memory stack of 20 per scope and chat. Only `closeTabByUser` records. Entries omit view ids. A restore mints a fresh view.
 - Default-off `features.chatScopedBrowserTabs` files a tab under the selected chat. Turning the flag off calls `releaseBrowserChatOwners`. To-do pages are not released that way. Duplicate, popup, and reopen keep the source owner.

@@ -426,7 +426,11 @@ conversation publishes its concrete owner and panel scope through
 that scope separately from each structured command, requires a registered
 exact-source SPA main frame, and resolves owner-qualified tab ids against URL
 views sharing the concrete session key. File previews and other clones stay
-outside this scope; Electron URL popouts inherit their opener's owner.
+outside this scope; Electron URL popouts inherit their opener's owner. A web tab
+opened by hand (`+`, Ctrl/Cmd+T, history, a chat link) takes the panel's
+`browserOwner`: in a repo group showing a member chat that is `viewingChatOwner`'s
+workspace, so its session key equals the chat's control scope and `tabs` lists it;
+otherwise the dock target. Agent-opened tabs already use the chat owner.
 
 Main reveal events open or reuse ordinary descriptors through
 `openUnifiedPanelTab`, including collapsed/unmounted panels. Existing descriptors

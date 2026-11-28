@@ -96,7 +96,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { isBrowserDemoChatInView, resetBrowserDemosForTest, subscribeBrowserDemos } from '../../../../src/server/spa/client/react/shared/file-path/browser-demo';
-import type { BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { OPEN_BROWSER_URL_EVENT, type BrowserDemoState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 import { WorkspaceSettingsProvider } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
 import { openPanelWorkspaceResource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
@@ -875,6 +875,37 @@ describe('UnifiedRightPanel', () => {
             await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(
                 tab.resourceId, url, 'remote:server-a:member-a', undefined,
             ));
+        });
+
+        // Regression: a web tab opened by hand in a repo group took the dock target's
+        // session, while the shown member chat binds AI browser control to its own
+        // owner, so `tabs` from that chat listed nothing.
+        it.each([
+            { routingRef: undefined, ownerRef: 'member-b' },
+            { routingRef: 'remote:server-a:group-g', ownerRef: 'remote:server-a:member-b' },
+        ])('opens a hand-opened web tab in the shown member chat\'s browser session (%j)', async ({ routingRef, ownerRef }) => {
+            const targets = [{ workspaceId: 'member-a', label: 'Repo A' }, { workspaceId: 'member-b', label: 'Repo B' }];
+            const owner = { workspaceId: 'member-b', routingRef: ownerRef, processId: 'chat-b' };
+            renderPanel({ workspaceId: 'group-g', routingRef, chatId: 'chat-b', viewingChatOwner: owner, dock: dockStub({ target: 'member-a', targets }) });
+            await openUrlTab('example.com');
+            const tab = readUnifiedPanelState('group-g').workspaceTabs[0];
+            expect(tab).toMatchObject({ kind: 'browser', ownerWorkspaceId: 'member-b', repoLabel: 'Repo B' });
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(tab.resourceId, 'https://example.com/', ownerRef, undefined));
+
+            // A web link clicked in the chat opens in the same session.
+            const detail = { url: 'https://docs.example.com/', handled: false };
+            act(() => { window.dispatchEvent(new CustomEvent(OPEN_BROWSER_URL_EVENT, { detail })); });
+            const link = readUnifiedPanelState('group-g').workspaceTabs[1];
+            expect(link.ownerWorkspaceId).toBe('member-b');
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(link.resourceId, 'https://docs.example.com/', ownerRef, undefined));
+        });
+
+        it('keeps the dock target as a group web tab\'s owner when no member chat is shown', async () => {
+            renderPanel({ workspaceId: 'group-g', chatId: null, viewingChatOwner: null, dock: dockStub({ target: 'member-a', targets: [{ workspaceId: 'member-a', label: 'Repo A' }] }) });
+            await openUrlTab('example.com');
+            const tab = readUnifiedPanelState('group-g').workspaceTabs[0];
+            expect(tab).toMatchObject({ ownerWorkspaceId: 'member-a', repoLabel: 'Repo A' });
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(tab.resourceId, 'https://example.com/', 'member-a', undefined));
         });
 
         it.each([null, 'remote:server-a:group'])('opens history in a fresh tab using the current dock owner and default engine (%s)', async routingRef => {

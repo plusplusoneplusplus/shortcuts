@@ -66,7 +66,7 @@ import {
     type WorkResourceKind,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
-import { browserOpenInput } from './unifiedBrowserTabs';
+import { browserOpenInput, type BrowserOpenContext } from './unifiedBrowserTabs';
 import { GIT_ICON, SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { formatCocAddress, type CocAddress } from './unifiedPanelAddresses';
@@ -87,6 +87,8 @@ export interface UnifiedPanelOpenMenuProps {
     targetRoutingRef?: string | null;
     /** Repo options for a group; a single-repo panel passes none. */
     targets?: readonly DockTarget[];
+    /** Owner of new web tabs when it is not the target; see `UnifiedRightPanel`. */
+    browserOwner?: Omit<BrowserOpenContext, 'chatId'>;
     /** Open a concrete resource — a searched file or a chat canvas. */
     onOpenResource: (input: OpenUnifiedTabInput) => void;
     /** The selected chat is a Sentinel chat with a To-do; false hides the entry. */
@@ -112,6 +114,7 @@ export function UnifiedPanelOpenMenu({
     target,
     targetRoutingRef,
     targets,
+    browserOwner,
     onOpenResource,
     todoAvailable = false,
     settingsAvailable = false,
@@ -421,14 +424,16 @@ export function UnifiedPanelOpenMenu({
         }
     }, [chatId, openingExtension, workspaceId, ownerContext, onOpenResource, onClose]);
 
-    // A browser tab is owned by the target's concrete workspace — the identity
-    // its temporary site session is keyed by.
-    const browserContext = useMemo(() => ({
-        ownerWorkspaceId: target,
-        ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
+    // A browser tab is owned by a concrete workspace — the identity its temporary
+    // site session is keyed by: the panel's chosen browser owner, else the target.
+    const browserContext = useMemo<BrowserOpenContext>(() => ({
+        ...(browserOwner ?? {
+            ownerWorkspaceId: target,
+            ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
+            ...(target !== workspaceId && targetOption?.label ? { repoLabel: targetOption.label } : {}),
+        }),
         chatId,
-        ...(target !== workspaceId && targetOption?.label ? { repoLabel: targetOption.label } : {}),
-    }), [target, targetRoutingRef, chatId, workspaceId, targetOption?.label]);
+    }), [browserOwner, target, targetRoutingRef, chatId, workspaceId, targetOption?.label]);
 
     const selectItem = useCallback((item: OpenMenuItem) => {
         if (item.type === 'url-error') return;
