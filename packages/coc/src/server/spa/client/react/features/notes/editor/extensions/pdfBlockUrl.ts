@@ -1,9 +1,7 @@
-import { isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { isPdfUrl } from '@plusplusoneplusplus/tiptap-embeds/urls';
+import type { PdfUrlClassification } from '@plusplusoneplusplus/tiptap-embeds/pdf';
 
-export type PdfBlockUrlClassification =
-    | { kind: 'inline'; href: string }
-    | { kind: 'link'; href: string }
-    | { kind: 'invalid' };
+export type PdfBlockUrlClassification = PdfUrlClassification;
 
 const NOTES_PDF_ROUTE = /^\/api\/workspaces\/[^/]+\/notes\/(?:image|local-image)$/;
 const PDF_PATH_SUFFIX = /\.pdf$/i;

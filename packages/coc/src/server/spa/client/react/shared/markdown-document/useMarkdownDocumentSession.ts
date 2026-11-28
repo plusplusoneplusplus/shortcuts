@@ -172,12 +172,12 @@ export function useMarkdownDocumentSession(options: MarkdownDocumentSessionOptio
         clearSaveTimer();
         clearSavedResetTimer();
         setSaveState('saving');
+        const saveWorkspaceId = context?.workspaceId ?? workspaceIdRef.current;
+        const saveRoot = context?.root ?? rootRef.current;
         try {
             const expectedMtime = saveOptions.expectedMtime === null
                 ? undefined
                 : saveOptions.expectedMtime ?? context?.expectedMtime ?? mtimeRef.current ?? undefined;
-            const saveWorkspaceId = context?.workspaceId ?? workspaceIdRef.current;
-            const saveRoot = context?.root ?? rootRef.current;
             const rawResult = await ioRef.current.saveContent(
                 saveWorkspaceId,
                 path,

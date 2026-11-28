@@ -14,39 +14,36 @@ import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { NoteZoomControl } from './NoteZoomControl';
-import { TOOLBAR_BUTTON_CLASS } from './toolbar/ToolbarDropdown';
+import { TOOLBAR_BUTTON_CLASS } from '@plusplusoneplusplus/tiptap-react/toolbar';
 import { useNoteZoom } from './useNoteZoom';
 import { handleNoteZoomKey } from './noteZoomKeyboard';
 import { RichEditorCore } from './RichEditorCore';
 import { NoteQuickAskLayer } from './extensions/NoteQuickAskLayer';
 import { SourceEditor } from '../../../shared/SourceEditor';
-import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
+import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
-import { getLinkHrefFromEventTarget } from './linkContextMenu';
+import { getLinkHrefFromEventTarget } from '@plusplusoneplusplus/tiptap-kit/link';
 import { openLink } from '../../../utils/link-handler';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { copyToClipboard } from '../../../utils/format';
-import { wordDiff } from './noteEditDiff';
-import type { DiffChunk } from './noteEditDiff';
-import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
-import { isLikelyArxivUrl } from './extensions/arxivPaste';
+import { wordDiff, type DiffChunk, type EditDiffRegion } from '@plusplusoneplusplus/tiptap-kit/edit-diff';
+import { isLikelyArxivUrl } from '@plusplusoneplusplus/tiptap-embeds/paper';
 import { isArxivPaperIngestEnabled } from '../../../utils/config';
 import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
-import type { TocEntry } from './noteTocUtils';
-import { extractHeadings, findActiveTocIndex, jumpToHeading, jumpToHeadingAnchor } from './noteTocUtils';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
+import { extractHeadings, findActiveTocIndex, jumpToHeading, jumpToHeadingAnchor } from '@plusplusoneplusplus/tiptap-kit/toc';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
-import { computeBestEffortScrollTop } from './noteScrollToLine';
-import { resetEditorHistory } from './editorHistory';
+import { computeBestEffortScrollTop } from '@plusplusoneplusplus/tiptap-kit/scroll';
+import { resetEditorHistory } from '@plusplusoneplusplus/tiptap-kit/history';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
 import { NoteMetadataPanel } from './NoteMetadataPanel';
-import type { NoteFrontMatterParseResult } from './noteFrontMatter';
-import { parseNoteFrontMatter } from './noteFrontMatter';
+import { parseFrontMatter, type FrontMatterParseResult } from '@plusplusoneplusplus/tiptap-kit/front-matter';
 import { notesApi } from '../notesApi';
 import { useQueue } from '../../../contexts/QueueContext';
 import { isGoalFile } from '../../../shared/goal-file-utils';
@@ -134,7 +131,7 @@ export interface NoteEditorProps {
 function findChangedRegionsInDoc(
     chunks: DiffChunk[],
     doc: { descendants: (callback: (node: { isText: boolean; text?: string }, pos: number) => void) => void },
-): AiEditRegion[] {
+): EditDiffRegion[] {
     // Group chunks into contiguous changed regions and track new-text offsets
     const rawRegions: Array<{ fromOffset: number; toOffset: number; chunks: DiffChunk[] }> = [];
     let newTextOffset = 0;
@@ -180,7 +177,7 @@ function findChangedRegionsInDoc(
     }
 
     const now = Date.now();
-    const regions: AiEditRegion[] = [];
+    const regions: EditDiffRegion[] = [];
 
     for (const raw of rawRegions) {
         const from = textOffsetToDocPos(raw.fromOffset);
@@ -235,7 +232,7 @@ export function NoteEditor({
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string; linkHref?: string } | null>(null);
     const [linkHandlerConfig] = useLinkHandlers();
-    const [frontMatterResult, setFrontMatterResult] = useState<NoteFrontMatterParseResult>({ kind: 'none' });
+    const [frontMatterResult, setFrontMatterResult] = useState<FrontMatterParseResult>({ kind: 'none' });
 
     const canRunSkill = Boolean(notePath);
     const { dispatch: queueDispatch } = useQueue();
@@ -300,7 +297,7 @@ export function NoteEditor({
     const workspaceIdRef = useRef(workspaceId);
     const ioRef = useRef(io);
     const commentBackendRef = useRef(commentBackend);
-    const frontMatterResultRef = useRef<NoteFrontMatterParseResult>(frontMatterResult);
+    const frontMatterResultRef = useRef<FrontMatterParseResult>(frontMatterResult);
     const onNotFoundRef = useRef(onNotFound);
     const rootRef = useRef(root);
 
@@ -392,7 +389,7 @@ export function NoteEditor({
             setTocActiveIndex(null);
         },
         onLoaded: ({ content }) => {
-            setFrontMatterResult(parseNoteFrontMatter(content));
+            setFrontMatterResult(parseFrontMatter(content));
 
             const ed = editorRef.current;
             if (ed && !ed.isDestroyed) {
@@ -969,7 +966,7 @@ export function NoteEditor({
     const handleAiEditDismiss = useCallback(() => {
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
-            ed.commands.clearAiEdits?.();
+            ed.commands.clearEditDiffs?.();
         }
         aiEditRegionsRef.current = [];
         aiEditPreContentRef.current = null;
@@ -1000,7 +997,7 @@ export function NoteEditor({
                 root: rootRef.current,
             });
             setFrontMatterResult(frontMatter);
-            ed.commands.clearAiEdits?.();
+            ed.commands.clearEditDiffs?.();
             ed.commands.setContent(html, { emitUpdate: false });
             // Consistent with the AI-apply path: the restore is not an undoable
             // user edit, so it does not belong in the editor's history stack.
@@ -1033,11 +1030,11 @@ export function NoteEditor({
         const ed = editorRef.current;
         if (!ed || ed.isDestroyed) return;
         if (aiEditsVisible) {
-            ed.commands.clearAiEdits?.();
+            ed.commands.clearEditDiffs?.();
             setAiEditsVisible(false);
         } else {
             if (aiEditRegionsRef.current.length > 0) {
-                ed.commands.setAiEdits(aiEditRegionsRef.current as any);
+                ed.commands.setEditDiffs(aiEditRegionsRef.current as any);
             }
             setAiEditsVisible(true);
         }
@@ -1179,7 +1176,7 @@ export function NoteEditor({
                 const ed = editorRef.current;
                 if (!ed || ed.isDestroyed) {
                     setRawMarkdown(content);
-                    setFrontMatterResult(parseNoteFrontMatter(content));
+                    setFrontMatterResult(parseFrontMatter(content));
                     return;
                 }
 
@@ -1229,7 +1226,7 @@ export function NoteEditor({
                     setAiEditCanDiscard(true);
                 }
                 aiEditRegionsRef.current = [...aiEditRegionsRef.current, ...regions];
-                ed.commands.setAiEdits(aiEditRegionsRef.current as any);
+                ed.commands.setEditDiffs(aiEditRegionsRef.current as any);
                 setAiEditCount(prev => prev + regions.length);
             }).catch(() => { /* non-fatal */ });
         };
@@ -1259,7 +1256,7 @@ export function NoteEditor({
             aiEditRegionsRef.current = regions;
             aiEditPreContentRef.current = detail.preEditContent;
             setAiEditCanDiscard(true);
-            ed.commands.setAiEdits(regions as any);
+            ed.commands.setEditDiffs(regions as any);
             setAiEditCount(regions.length);
             setAiEditsVisible(true);
         };
@@ -1267,7 +1264,7 @@ export function NoteEditor({
             const detail = (e as CustomEvent).detail as { wsId: string } | undefined;
             if (!detail || detail.wsId !== workspaceIdRef.current) return;
             const ed = editorRef.current;
-            if (ed && !ed.isDestroyed) ed.commands.clearAiEdits?.();
+            if (ed && !ed.isDestroyed) ed.commands.clearEditDiffs?.();
             aiEditPreContentRef.current = null;
             setAiEditCanDiscard(false);
             setAiEditCount(0);

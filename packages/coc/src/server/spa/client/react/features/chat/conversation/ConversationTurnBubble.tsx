@@ -22,7 +22,7 @@ import type { ClientSideNote, QuickAskSelection } from '../quick-ask/types';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
-import { getLinkHrefFromEventTarget } from '../../notes/editor/linkContextMenu';
+import { getLinkHrefFromEventTarget } from '@plusplusoneplusplus/tiptap-kit/link';
 import { openLink } from '../../../utils/link-handler';
 import { getLinkHandlersConfig } from '../../../hooks/useLinkHandlers';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';

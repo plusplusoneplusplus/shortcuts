@@ -4,6 +4,8 @@ import React from 'react';
 
 vi.mock('@tiptap/core', () => ({
     Node: { create: (config: unknown) => config },
+    // The indent helpers come from tiptap-kit/indent, which also defines IndentExtension.
+    Extension: { create: (config: unknown) => config },
 }));
 
 vi.mock('@tiptap/react', () => ({
@@ -18,26 +20,24 @@ vi.mock('@tiptap/react', () => ({
 // (browser-only) pdf.js library. `shouldError` simulates a document that fails
 // to render, which drives the iframe fallback inside PdfBlockView.
 const pdfjsStub = vi.hoisted(() => ({ shouldError: false, lastProps: null as any }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => {
-            pdfjsStub.lastProps = props;
-            React.useEffect(() => {
-                if (pdfjsStub.shouldError) props.onError?.();
-            }, [props.url]);
-            return (
-                <div
-                    data-testid="pdfjs-render-viewport"
-                    data-url={props.url}
-                    data-height={props.height ?? ''}
-                    role="document"
-                    aria-label={props.label}
-                />
-            );
-        },
-    }),
-);
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => {
+        pdfjsStub.lastProps = props;
+        React.useEffect(() => {
+            if (pdfjsStub.shouldError) props.onError?.();
+        }, [props.url]);
+        return (
+            <div
+                data-testid="pdfjs-render-viewport"
+                data-url={props.url}
+                data-height={props.height ?? ''}
+                role="document"
+                aria-label={props.label}
+            />
+        );
+    },
+}));
 
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
 
@@ -275,6 +275,8 @@ describe('PdfBlockView', () => {
         expect(viewport).toBeTruthy();
         expect(viewport.getAttribute('data-url')).toBe(normalizedPdfUrl);
         expect(viewport.getAttribute('aria-label')).toBe('sample.pdf');
+        // The worker is served at the site root; /static/pdf.worker.js would hit the SPA fallback.
+        expect(pdfjsStub.lastProps.workerSrc).toBe('/pdf.worker.js');
         // No native iframe while pdf.js is rendering — the text layer replaces it.
         expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
     });

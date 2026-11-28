@@ -21,14 +21,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
-import { PdfJsRenderer } from './PdfJsRenderer';
 import {
     DEFAULT_PDF_SCALE,
     MAX_PDF_SCALE,
     MIN_PDF_SCALE,
     PDF_SCALE_STEP,
+    PdfJsRenderer,
     clampPdfScale,
-} from './pdfJsLoader';
+} from '@plusplusoneplusplus/tiptap-embeds/pdf';
+import { PDF_WORKER_URL } from './pdfWorker';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
@@ -159,7 +160,7 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
                                 Reset
                             </button>
                         </div>
-                        <PdfJsRenderer url={pdf.url} label={pdf.label} scale={scale} onError={handlePdfJsError} />
+                        <PdfJsRenderer url={pdf.url} workerSrc={PDF_WORKER_URL} label={pdf.label} scale={scale} onError={handlePdfJsError} />
                         {/* Goal 1: Quick Ask over the full-window pdf.js text layer.
                             Goal 2: persist answered annotations to the note sidecar. */}
                         <PdfQuickAskLayer

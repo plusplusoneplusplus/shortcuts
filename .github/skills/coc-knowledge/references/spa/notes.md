@@ -85,8 +85,12 @@ Workspace-owned `notes-changed` events reload matching open notes. An empty
 in that workspace. Recent-save echoes and unsaved local edits retain their
 existing reload guards; tree readers also refresh on workspace invalidation.
 
-`RichEditorCore` accepts `readOnly` (default false), setting Tiptap editability
-and suppressing change callbacks and paste/drop overrides. Code-block language
+`RichEditorCore` is CoC's wrapper around tiptap-react's `RichEditor` shell (see
+[Tiptap packages](#tiptap-packages)). It adds the CoC nodes, opens Ctrl/Cmd-clicked
+links through `onOpenLink` (`canvas://` → panel canvas tab, else the user's
+link-handler settings) and renders the YouTube/PDF/paper dialogs as the shell's
+children. `readOnly` (default false) sets Tiptap editability and suppresses change
+callbacks and paste/drop overrides. Code-block language
 controls and image resize controls respect editor editability. Standalone paste
 tabs hydrate Markdown without updates and have no note I/O, toolbar, or save host.
 
@@ -252,11 +256,12 @@ normal `ChatDetail` flow.
 
 `features/notes/editor/NoteEditorToolbar.tsx` is composition only: it decides which
 rows exist (formatting row, find/replace row, contextual table strip) and delegates to
-`features/notes/editor/toolbar/`. It re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
+`@plusplusoneplusplus/tiptap-react/toolbar` (`packages/tiptap-react/src/toolbar/`)
+plus CoC's own `features/notes/editor/toolbar/ToolbarHostActions.tsx`. It re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
 `TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
 
-The one thing it owns for the whole toolbar is reactivity. `RichEditorCore` is the
-component that calls `useEditor`, and it sits *below* the toolbar's owner
+The one thing it owns for the whole toolbar is reactivity. The `RichEditor` shell
+inside `RichEditorCore` calls `useEditor`, and it sits *below* the toolbar's owner
 (`NoteEditor`), whose only editor bridge is `onUpdate` — which Tiptap fires solely when
 `transaction.docChanged`. Selection-only transactions therefore never reach the
 toolbar on their own, so `NoteEditorToolbar` calls `useEditorTransactionTick(editor)`
@@ -275,10 +280,11 @@ not add a second one per widget.
   that prompts for input.
 - `FormattingToolbar.tsx` — renders the descriptor groups plus the highlight split
   button, heading dropdown, and list dropdown. Re-exports `HIGHLIGHT_COLORS` /
-  `DEFAULT_HIGHLIGHT_COLOR` from `colorPalette.ts` and exports `HEADING_LEVELS`.
-- `colorPalette.ts` (in `editor/`, not `toolbar/`) — single source of truth for the
+  `DEFAULT_HIGHLIGHT_COLOR` from `@plusplusoneplusplus/tiptap-kit/text-style` and
+  exports `HEADING_LEVELS`.
+- `tiptap-kit/text-style` (`colorPalette.ts`) — single source of truth for the
   inline color palettes and `normalizeCssColor` / `readStyleProp` / `readInlineColor`.
-  It imports neither React nor Tiptap, so `noteMarkdown.ts` can read
+  It imports neither React nor Tiptap, so the kit Markdown codec can read
   `DEFAULT_HIGHLIGHT_COLOR` from the plain serialization path.
 - `ToolbarDropdown.tsx` — the single dropdown primitive (`ToolbarDropdown`, `MenuItem`,
   `Sep`). Owns open/close state, outside-click and Escape dismissal with focus return
@@ -298,25 +304,25 @@ not add a second one per widget.
   (`TABLE_PICKER_COLS`/`ROWS`), cell fill picker, and `useTableToolbarState`, which
   derives widths / header shape / wrap mode / move availability. Outside a table it
   short-circuits and reads nothing off the doc.
-- `ToolbarHostActions.tsx` — right-end actions (AI edits, comments, chat, TOC, refresh,
-  custom `toolbarRight`). These read no editor state, are prop-driven, and stay visible
+- `ToolbarHostActions.tsx` (CoC) — right-end actions (AI edits, comments, chat, TOC
+  via tiptap-react's `TocPanel`, refresh, custom `toolbarRight`). These read no editor state, are prop-driven, and stay visible
   in source mode. `hasHostActions(props)` decides whether the `ml-auto` spacer is
   emitted at all.
 
 ## Inline colors
 
-Markdown has no color syntax, so `noteMarkdown.ts` persists inline color as inline HTML
-— the one form that survives `marked` → Tiptap → `turndown` and still renders in an
-external Markdown viewer:
+Markdown has no color syntax, so the Markdown codec (`tiptap-kit/markdown`) persists
+inline color as inline HTML — the one form that survives `marked` → Tiptap →
+`turndown` and still renders in an external Markdown viewer:
 
-- Text color → `<span style="color:#rrggbb">text</span>` (`textColorSpan` turndown
-  rule).
+- Text color → `<span style="color:#rrggbb">text</span>` (`textStyleSpan` turndown
+  rule, which also carries font family and size).
 - Highlight → bare `==text==` for `DEFAULT_HIGHLIGHT_COLOR`, and
   `<mark style="background-color:#rrggbb">text</mark>` otherwise. The default staying
   bare keeps notes written before color persistence byte-identical, so no migration is
   needed. Color is read from `style`, falling back to Tiptap's `data-color`.
 
-Every color read goes through `normalizeCssColor` (`colorPalette.ts`), which
+Every color read goes through `normalizeCssColor` (`tiptap-kit/text-style`), which
 canonicalizes to lowercase `#rrggbb` and accepts `#rgb`, `#rrggbb`, `rgb()`, and
 `rgba()` (alpha dropped). That is what makes the round trip idempotent: a browser
 rewrites `style="color: #e11d48"` to `rgb(225, 29, 72)` when Tiptap parses it back, so
@@ -336,9 +342,9 @@ via `style="…"`.
 ## Find & replace
 
 In-document find and replace lives behind the toolbar's 🔍 button
-(`features/notes/editor/toolbar/FindReplacePanel.tsx`), backed by
-`@tiptap/extension-find-and-replace`, registered last in `RichEditorCore` so its match
-decorations paint above the comment and AI-edit decorations. State lives on the editor
+(tiptap-react `toolbar/FindReplacePanel.tsx`), backed by
+`@tiptap/extension-find-and-replace`, which the shell registers after every host
+extension so its match decorations paint above the comment and AI-edit decorations. State lives on the editor
 instance (`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`)
 and is read fresh on each render; the `n / total` counter stays live off the toolbar's
 shared `useEditorTransactionTick` subscription.
@@ -364,5 +370,103 @@ Constraints worth knowing:
   surrounding marks — including comment marks spanning the replaced text (see
   [../task-comments.md](../task-comments.md)).
 - Default match styles are disabled (`injectCSS: false`) because the bundled yellow
-  fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
+  fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `tiptap-react/styles.css`
   outlines matches instead so one inside a user highlight still reads.
+
+## Tiptap packages
+
+The CoC-independent half of the editor lives in publishable workspaces, so other
+projects can reuse it without the dashboard:
+
+- `packages/tiptap-kit` — framework-free extensions and helpers, one subpath per
+  area: `/indent` (`IndentExtension` + indent attribute helpers), `/table` (column
+  widths, header state, cell background, column wrap, row/column reorder),
+  `/text-style` (color palette, font families, font sizes), `/text-anchor`,
+  `/comment-anchoring`, `/comment-mark` (`CommentExtension`, `BlockCommentExtension`),
+  `/toc`, `/history`, `/scroll`, `/link`, `/html` (`escapeHtmlText`,
+  `escapeHtmlAttribute`), `/mermaid` (CDN loader: `ensureMermaid`,
+  `applyMermaidTheme`), `/math` (TeX tokenizer, KaTeX `renderMath`, the
+  read-only `mathMarkedExtension`, the editor's `mathNodeMarkedExtension` and the
+  codec's `mathMarkdownExtension`), `/edit-diff` (`wordDiff` and the
+  `EditDiffDecoration` extension with `setEditDiffs` / `clearEditDiffs`; it emits
+  `edit-diff-added`, `edit-diff-removed` and `edit-diff-deleted-block`, which the
+  host styles), `/front-matter` (`parseFrontMatter`,
+  `composeMarkdownWithFrontMatter`, `getFrontMatterFieldCount`) and `/markdown`
+  (`createMarkdownCodec`). The root entry re-exports every area except `/math`,
+  `/markdown` and `/front-matter`, which load the optional `katex`, `marked`,
+  `turndown` and `js-yaml` peers and stay subpath-only. Chat, PR
+  and diff Markdown renderers import math and HTML escaping from the kit too.
+- `createMarkdownCodec({ extensions })` returns `markdownToHtml` / `htmlToMarkdown`
+  over its own `Marked` and turndown instances (the global `marked` is never
+  configured). Built in: GFM task lists, tables (raw HTML when widths, fills,
+  no-wrap or a non-GFM header shape need it), highlight, sup/sub, text style, sized
+  or indented images, indented lists, aligned/indented blocks, empty paragraphs,
+  comment spans and Mermaid fences. An extension adds `marked` extensions,
+  `turndownRules` (checked before the built-in rules, after the aligned-block and
+  empty-paragraph rules) and `parse` / `serialize` wrappers; the first extension's
+  wrapper is outermost. `noteMarkdown.ts` builds the Notes codec from Quick Ask side
+  notes (definition block split out before parsing, rebuilt on save), the embeds'
+  map/PDF rules, note links, file-path refs, math and code-fence language aliases.
+- `packages/tiptap-react` — React UI: `/editor` (`RichEditor` shell and
+  `createRichEditorExtensions`: StarterKit with H1–H6, task lists, links, tables
+  with kit cell attributes, highlight, sup/sub, text style, alignment, indent, and
+  find/replace last; the host adds `leadingExtensions` (parse precedence over
+  StarterKit), a `codeBlock` replacement and `extensions`, and opens links via
+  `onOpenLink`; `#anchor` links stay in-document), `/toolbar` (formatting toolbar,
+  dropdowns, table strip, find/replace panel, transaction tick), `/toc`
+  (`TocPanel`), `/math` (`MathInline`, `MathDisplay`), `/mermaid`
+  (`MermaidBlock`), `/image` (`ResizableImage`, the `image` node with drag-resize
+  handles and a persisted `width`) and `/code-block` (`CodeBlock`, a
+  CodeBlockLowlight with a per-block language picker, plus `codeLowlight` with 16
+  grammars and no auto-detection, `CODE_LANGUAGES` and `resolveCodeLanguage`). The
+  root re-exports every area except `/math` and `/code-block`, which load the
+  optional `katex`, `@tiptap/extension-code-block-lowlight`, `lowlight` and
+  `highlight.js` peers. Toolbar and TOC style with Tailwind utilities, so a host's Tailwind
+  `content` must scan `tiptap-react/src` (CoC's `tailwind.config.js` does, guarded
+  by `test/scripts/tailwind-content.test.ts`). `/styles.css` ships the shared editor,
+  table, indentation, comment, Mermaid, find/replace, code-block picker and image
+  resize styles under
+  `.rich-editor .ProseMirror`, with `--rich-editor-table-bg-*` palette variables
+  on `.rich-editor`, `--rich-editor-table-nowrap-max` for the no-wrap limit,
+  and `.dark` theme overrides. CoC imports both package stylesheets before
+  `noteEditor.css` and passes `className="rich-editor note-editor"` to keep both scopes.
+- `packages/tiptap-embeds` — media embeds: `/urls` (pure `isEmbeddableMapUrl`,
+  `isPdfUrl`, `parseYouTubeVideoId`, `youTubeEmbedUrl`; chat's `mapEmbedMount`
+  uses them too), `/youtube` (`YouTubeEmbedDecorationExtension` and the
+  `YouTubePopupPlayer` iframe), `/map` (`MapBlock`), `/pdf` (`createPdfBlock`,
+  `PdfBlock`, height and label helpers, `classifyPdfUrl`, the pdf.js
+  `PdfJsRenderer` and its `renderPdfDocument` loader with lazy page painting,
+  zoom bounds and the image-only check), `/paper`
+  (`PaperLinkEmbedDecorationExtension`, `classifyPdfLink`, `isLikelyArxivUrl`) and
+  `/markdown` (`mapMarkdownExtension`, `pdfMarkdownExtension`). `/markdown` and
+  `/pdf` are subpath-only: they load the optional `marked`, `turndown` and
+  `pdfjs-dist` peers. `PdfJsRenderer` and `renderPdfDocument` take a required
+  `workerSrc`; CoC passes `PDF_WORKER_URL` (`extensions/pdfWorker.ts`,
+  `/pdf.worker.js`, because the client `dist/` is served at the site root, not
+  under `/static`) from `pdfBlock.tsx`, `PdfPopupDialog` and `PaperInlineViewer`. Host behavior is injected: `createPdfBlock` takes
+  `classifyUrl`, `isDesktopShell`, `renderViewer`, `renderOverlay` and
+  `renderToolbarActions` (closure hooks, so tests that pass bare
+  `extension.options` keep them; a failing viewer falls back to an iframe and drops
+  the overlay); the paper decoration takes `classifyLink` and `isDesktopShell`
+  options. CoC keeps thin wrappers in `features/notes/editor/extensions/`:
+  `pdfBlock.tsx` (Notes-route `pdfBlockUrl` rules, pdf.js viewer wiring, Quick Ask /
+  region-ask / annotation overlays, "Chat about this paper"),
+  `PaperLinkEmbedDecorationExtension.ts` (arXiv-aware `paperLink` classifier) and
+  `YouTubePopupDialog` (CoC `Dialog`). `/styles.css` ships map and PDF block
+  shell styles under `.rich-editor .ProseMirror` with `.dark` overrides. The
+  pdf.js renderer DOM (`.pdfjs-render-*`, `.pdfjs-page*`, `.textLayer`) has no
+  package CSS because the full-window reader renders it outside `.rich-editor`.
+  Base image and fenced-code styles, note/file links, edit-diff colors, pdf.js,
+  Quick Ask and paper annotations stay in CoC CSS.
+
+All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror
+instance; the lockfile keeps every `@tiptap/*` at the root on one exact version.
+Kit code takes no CoC import (no `notesApi`, contexts, feature flags or `ui/`); what
+needs those stays under `features/notes/editor/` and passes behavior in.
+The SPA bundle resolves the packages through their `exports` into `dist/` (CoC
+prebuild and the CI `build-shared` job build kit, then react and embeds, first);
+CoC's Vitest aliases all three to their `src/`, so mock
+a subpath (`vi.mock('@plusplusoneplusplus/tiptap-kit/table', …)`) with one partial
+`importOriginal` mock per subpath. Package tests live in each package's `test/`
+(tiptap-react and tiptap-embeds alias the kit to its `src/` too) and run in the cross-OS
+`forge-test` CI job.

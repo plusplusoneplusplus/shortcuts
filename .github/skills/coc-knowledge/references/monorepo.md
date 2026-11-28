@@ -20,6 +20,7 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
 | `coc-native/` | Rust/N-API capabilities, standalone auth-sdk/teams-sdk, symbol language server and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
 | `coc-connector/` | CoC/forge-independent messaging contract with native Teams Azure CLI auth; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
+| `tiptap-kit/`, `tiptap-react/`, `tiptap-embeds/` | Publishable, CoC-independent Tiptap editor packages; [Tiptap packages](spa/notes.md#tiptap-packages) |
 
 ### Node package dependencies
 
@@ -71,11 +72,12 @@ Root `build:packages` runs:
 
 ```text
 coc-native -> coc-agent-sdk -> coc-workflow -> forge -> coc-client
--> coc-memory -> coc-connector -> coc -> coccontainer -> coc-desktop
+-> tiptap-kit -> tiptap-react -> tiptap-embeds -> coc-memory -> coc-connector
+-> coc -> coccontainer -> coc-desktop
 ```
 
 Forge's prebuild builds native, SDK, workflow and memory before forge itself.
-CoC's prebuild builds those plus forge, client and connector, then emits build
+CoC's prebuild builds those plus forge, client, connector, tiptap-kit and tiptap-react, then emits build
 metadata; CoC's build cleans `dist` and compiles/copies the SPA.
 See `packages/forge/scripts/prebuild.mjs` and `packages/coc/scripts/prebuild.mjs`.
 SDK imports native Git output, so native TypeScript emission must precede SDK.

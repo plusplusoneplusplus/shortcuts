@@ -5,8 +5,8 @@ import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { AddCommentDialog } from '../../notes/editor/NotesDialogs';
 import { useComments } from '../../notes/editor/useComments';
 import { notesApi } from '../../notes/notesApi';
-import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revealCommentThread } from '../../notes/editor/commentAnchoring';
-import type { TextAnchor } from '../../notes/editor/textAnchor';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revealCommentThread } from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
+import type { TextAnchor } from '@plusplusoneplusplus/tiptap-kit/text-anchor';
 import { ScratchpadDivider } from './ScratchpadDivider';
 import type { ScratchpadExpandMode } from './useScratchpadState';
 

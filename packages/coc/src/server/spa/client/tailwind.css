@@ -1574,12 +1574,17 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    padding: 6px 10px;
+    /* Always one compact row: the row count gives up space, the buttons
+       condense (see the @container tiers below), nothing wraps. */
+    flex-wrap: nowrap;
+    padding: 3px 8px;
     background: #f8f8f8;
     border-bottom: 1px solid #e0e0e0;
     font-size: 0.75rem;
-    gap: 8px;
+    line-height: 1.4;
+    gap: 6px;
+    /* Anchors the column picker, so it opens inside the table's right edge. */
+    position: relative;
     /* Lets the buttons condense to icon-only when the table itself is narrow,
        rather than when the viewport is. */
     container-type: inline-size;
@@ -1610,17 +1615,28 @@
 
 .interactive-table-actions {
     display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
+    gap: 3px;
+    flex-wrap: nowrap;
     justify-content: flex-end;
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
 }
 
-/* Below this width the labels drop and each button is icon + tooltip only. */
-@container (max-width: 420px) {
+/* Below this width the labels drop and each button is icon + tooltip only
+   (each button carries an aria-label, so its accessible name stays). */
+@container (max-width: 520px) {
     .interactive-table-btn-label {
         display: none;
+    }
+}
+
+/* Very narrow tables: tighter icon buttons so all six still fit in one row. */
+@container (max-width: 240px) {
+    .interactive-table-actions {
+        gap: 2px;
+    }
+
+    .interactive-table-actions .interactive-table-btn {
+        padding: 1px 4px;
     }
 }
 
@@ -1629,7 +1645,8 @@
     background: #fff;
     color: #555;
     border-radius: 4px;
-    padding: 2px 8px;
+    padding: 1px 6px;
+    line-height: 1.4;
     cursor: pointer;
     font-size: 0.7rem;
     white-space: nowrap;
@@ -1973,17 +1990,16 @@
     overscroll-behavior: contain;
 }
 
-/* Column visibility picker */
-.interactive-table-col-picker-wrapper {
-    position: relative;
-}
-
+/* Column visibility picker — positioned against the toolbar, not the button,
+   so it never spills past the table's right edge in narrow panes. */
 .interactive-table-col-picker {
     position: absolute;
     top: 100%;
-    left: 0;
+    right: 4px;
     z-index: 10;
-    min-width: 160px;
+    min-width: min(160px, calc(100cqw - 8px));
+    max-width: calc(100cqw - 8px);
+    overflow-wrap: anywhere;
     margin-top: 2px;
     padding: 4px 0;
     background: #fff;
@@ -2026,8 +2042,9 @@
 }
 
 /*
- * "Wrap text" toggle on interactive tables (`wrapText`, opted into by AI
- * response MarkdownViews). Off by default; when on, the table fits the pane and
+ * "Wrap text" toggle on interactive tables (`wrapText`). AI response
+ * MarkdownViews turn it on by default; the Kusto canvas starts with it off.
+ * When on, the table fits the pane and
  * cell text — long URLs, paths and inline code included — breaks anywhere
  * instead of ellipsizing. Columns size from their content (no <colgroup>,
  * auto layout) with a 4rem floor, so a table with too many columns still

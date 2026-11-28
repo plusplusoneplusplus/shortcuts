@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./src/server/spa/client/**/*.{ts,tsx}'],
+  // tiptap-react's toolbar and TOC panel style themselves with Tailwind
+  // utilities, so the SPA build must scan their source too.
+  content: ['./src/server/spa/client/**/*.{ts,tsx}', '../tiptap-react/src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {

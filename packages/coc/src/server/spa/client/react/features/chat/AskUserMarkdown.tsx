@@ -13,8 +13,8 @@
  */
 import { useMemo } from 'react';
 import { Marked } from 'marked';
-import { mathMarkedExtension } from '../../../shared/math/mathMarkedExtension';
-import { escapeHtmlText as escapeHtml } from '../../../shared/html';
+import { mathMarkedExtension } from '@plusplusoneplusplus/tiptap-kit/math';
+import { escapeHtmlText as escapeHtml } from '@plusplusoneplusplus/tiptap-kit/html';
 
 function escapeAttr(value: string): string {
     return value

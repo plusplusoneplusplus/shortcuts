@@ -6,7 +6,7 @@
  */
 
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
-import { escapeHtmlAttribute as escapeHtml } from '../../../shared/html';
+import { escapeHtmlAttribute as escapeHtml } from '@plusplusoneplusplus/tiptap-kit/html';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';

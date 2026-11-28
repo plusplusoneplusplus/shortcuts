@@ -1,17 +1,17 @@
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import type { TocEntry } from './noteTocUtils';
-import { Sep } from './toolbar/ToolbarDropdown';
-import { FormattingToolbar } from './toolbar/FormattingToolbar';
-import { FindReplacePanel } from './toolbar/FindReplacePanel';
-import { useFindReplaceToolbarController } from './toolbar/useFindReplaceToolbarController';
-import { useEditorTransactionTick } from './toolbar/useEditorTransactionTick';
-import { TableToolbarControls } from './toolbar/TableToolbarControls';
+import type { TocEntry } from '@plusplusoneplusplus/tiptap-kit/toc';
+import { Sep } from '@plusplusoneplusplus/tiptap-react/toolbar';
+import { FormattingToolbar } from '@plusplusoneplusplus/tiptap-react/toolbar';
+import { FindReplacePanel } from '@plusplusoneplusplus/tiptap-react/toolbar';
+import { useFindReplaceToolbarController } from '@plusplusoneplusplus/tiptap-react/toolbar';
+import { useEditorTransactionTick } from '@plusplusoneplusplus/tiptap-react/toolbar';
+import { TableToolbarControls } from '@plusplusoneplusplus/tiptap-react/toolbar';
 import { ToolbarHostActions, hasHostActions } from './toolbar/ToolbarHostActions';
 
 // Re-exported so the toolbar module stays the entry point for these constants.
-export { HIGHLIGHT_COLORS, TEXT_COLORS, HEADING_LEVELS } from './toolbar/FormattingToolbar';
-export { TABLE_PICKER_COLS, TABLE_PICKER_ROWS } from './toolbar/TableToolbarControls';
+export { HIGHLIGHT_COLORS, TEXT_COLORS, HEADING_LEVELS } from '@plusplusoneplusplus/tiptap-react/toolbar';
+export { TABLE_PICKER_COLS, TABLE_PICKER_ROWS } from '@plusplusoneplusplus/tiptap-react/toolbar';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;

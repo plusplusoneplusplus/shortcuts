@@ -79,7 +79,7 @@ if (typeof window !== 'undefined') {
         } as unknown as typeof ResizeObserver;
     }
     // jsdom also lacks IntersectionObserver; the lazy PDF page renderer
-    // (pdfJsLoader) uses it to paint pages on scroll. A no-op stub keeps tests
+    // (tiptap-embeds pdfJsLoader) uses it to paint pages on scroll. A no-op stub keeps tests
     // that mount the real renderer from crashing; suites that assert lazy
     // painting install their own controllable mock via vi.stubGlobal.
     if (typeof globalThis.IntersectionObserver === 'undefined') {

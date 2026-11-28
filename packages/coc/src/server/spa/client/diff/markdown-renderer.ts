@@ -29,8 +29,8 @@ import {
 
 import type { CommentSelection } from '@plusplusoneplusplus/forge/editor/types';
 
-import { matchMathAtStart } from '../shared/math/mathTokenizer';
-import { renderMath } from '../shared/math/renderMath';
+import { matchMathAtStart } from '@plusplusoneplusplus/tiptap-kit/math';
+import { renderMath } from '@plusplusoneplusplus/tiptap-kit/math';
 import { protectInlineHtmlLineBreaks } from '../shared/htmlLineBreaks';
 
 // highlight.js is loaded via CDN; declared globally in the HTML template.

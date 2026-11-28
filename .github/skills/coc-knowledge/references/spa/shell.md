@@ -833,7 +833,8 @@ front-matter split/compose, markdown⇄HTML, and image/PDF URL rewriting;
 the notes image API.
 
 `.pdf` embeds (`![label](x.pdf)`) round-trip through the `pdfBlock` Tiptap node
-(`react/features/notes/editor/extensions/pdfBlock.tsx`). Its `pdfBlockUrl` policy renders
+(tiptap-embeds `createPdfBlock`, configured in
+`react/features/notes/editor/extensions/pdfBlock.tsx`). Its `pdfBlockUrl` policy renders
 only exact same-origin Notes `image`/`local-image` PDF routes in an unsandboxed
 browser-native iframe, keeps other HTTP(S) PDFs link-only, and exposes no active URL for
 unsafe values. External-open wording reads the preload-backed `isDesktopShell()`

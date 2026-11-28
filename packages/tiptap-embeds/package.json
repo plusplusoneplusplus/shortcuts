@@ -1,0 +1,109 @@
+{
+  "name": "@plusplusoneplusplus/tiptap-embeds",
+  "version": "0.1.0",
+  "description": "Media embed extensions for Tiptap (YouTube, Google Maps, PDF with a pdf.js renderer, paper links) and their Markdown codec rules, built on @plusplusoneplusplus/tiptap-kit",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plusplusoneplusplus/shortcuts.git",
+    "directory": "packages/tiptap-embeds"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./urls": {
+      "types": "./dist/urls/index.d.ts",
+      "import": "./dist/urls/index.js"
+    },
+    "./youtube": {
+      "types": "./dist/youtube/index.d.ts",
+      "import": "./dist/youtube/index.js"
+    },
+    "./map": {
+      "types": "./dist/map/index.d.ts",
+      "import": "./dist/map/index.js"
+    },
+    "./pdf": {
+      "types": "./dist/pdf/index.d.ts",
+      "import": "./dist/pdf/index.js"
+    },
+    "./paper": {
+      "types": "./dist/paper/index.d.ts",
+      "import": "./dist/paper/index.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown/index.d.ts",
+      "import": "./dist/markdown/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/styles.css', 'dist/styles.css')\"",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@plusplusoneplusplus/tiptap-kit": "^0.1.0",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "marked": "^12.0.0",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1 || ^19.0.0",
+    "turndown": "^7.2.4"
+  },
+  "peerDependenciesMeta": {
+    "marked": {
+      "optional": true
+    },
+    "pdfjs-dist": {
+      "optional": true
+    },
+    "turndown": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@plusplusoneplusplus/tiptap-kit": "^0.1.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-link": "3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/extension-table-cell": "3.31.3",
+    "@tiptap/extension-table-header": "3.31.3",
+    "@tiptap/extension-table-row": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@types/turndown": "^5.0.6",
+    "jsdom": "^27.0.1",
+    "marked": "^12.0.0",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "turndown": "^7.2.4",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

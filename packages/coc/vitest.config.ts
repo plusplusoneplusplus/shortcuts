@@ -30,6 +30,11 @@ const resolveAlias = [
     { find: '@plusplusoneplusplus/coc-connector/teams', replacement: path.resolve(__dirname, '../coc-connector/src/teams/index.ts') },
     { find: '@plusplusoneplusplus/coc-connector/whatsapp', replacement: path.resolve(__dirname, '../coc-connector/src/whatsapp/index.ts') },
     { find: '@plusplusoneplusplus/coc-connector', replacement: path.resolve(__dirname, '../coc-connector/src/index.ts') },
+    // The tiptap packages are served from src/ like coc-client. A subpath
+    // such as `tiptap-kit/table` lands on the src/table folder and resolves to its index.
+    { find: '@plusplusoneplusplus/tiptap-kit', replacement: path.resolve(__dirname, '../tiptap-kit/src') },
+    { find: '@plusplusoneplusplus/tiptap-react', replacement: path.resolve(__dirname, '../tiptap-react/src') },
+    { find: '@plusplusoneplusplus/tiptap-embeds', replacement: path.resolve(__dirname, '../tiptap-embeds/src') },
 ];
 
 const commonTestOptions = {

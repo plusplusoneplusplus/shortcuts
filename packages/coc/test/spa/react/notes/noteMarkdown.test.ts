@@ -1107,7 +1107,7 @@ describe('noteMarkdown', () => {
         // What Tiptap's getHTML() emits for a filled cell: the token in `data-bg`
         // plus an inline style resolving the theme's CSS variable.
         const bg = (token: string) =>
-            ` data-bg="${token}" style="background-color: var(--note-table-bg-${token});"`;
+            ` data-bg="${token}" style="background-color: var(--rich-editor-table-bg-${token});"`;
         const coloredTableHtml =
             '<table><tbody>' +
             '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
@@ -1133,7 +1133,7 @@ describe('noteMarkdown', () => {
             expect(block.startsWith('<table>')).toBe(true);
             expect(block.endsWith('</table>')).toBe(true);
             expect(block).toContain('data-bg="yellow"');
-            expect(block).toContain('background-color: var(--note-table-bg-yellow);');
+            expect(block).toContain('background-color: var(--rich-editor-table-bg-yellow);');
             // Not a pipe table
             expect(md).not.toContain('| --- |');
             // No widths anywhere, so no pointless all-bare colgroup
@@ -1169,14 +1169,14 @@ describe('noteMarkdown', () => {
                 '</tbody></table>'}\n\n`;
             const html = markdownToHtml(md);
             expect(html).toContain('data-bg="blue"');
-            expect(html).toContain('background-color: var(--note-table-bg-blue);');
+            expect(html).toContain('background-color: var(--rich-editor-table-bg-blue);');
         });
 
         // AC-12
         it('round-trip — html → md → html preserves every cell fill', () => {
             const reloaded = markdownToHtml(htmlToMarkdown(coloredTableHtml));
             expect(reloaded).toContain('data-bg="yellow"');
-            expect(reloaded).toContain('background-color: var(--note-table-bg-yellow);');
+            expect(reloaded).toContain('background-color: var(--rich-editor-table-bg-yellow);');
             expect(htmlToMarkdown(reloaded)).toBe(htmlToMarkdown(coloredTableHtml));
         });
 
@@ -1198,11 +1198,11 @@ describe('noteMarkdown', () => {
         it('htmlToMarkdown — a fill and a text-align share one style attribute', () => {
             const html =
                 '<table><tbody>' +
-                '<tr><td data-bg="orange" style="text-align: center; background-color: var(--note-table-bg-orange);"><p>A</p></td></tr>' +
+                '<tr><td data-bg="orange" style="text-align: center; background-color: var(--rich-editor-table-bg-orange);"><p>A</p></td></tr>' +
                 '</tbody></table>';
             const block = htmlToMarkdown(html).trim();
             expect(block).toContain('text-align: center');
-            expect(block).toContain('background-color: var(--note-table-bg-orange);');
+            expect(block).toContain('background-color: var(--rich-editor-table-bg-orange);');
         });
 
         it('round-trip — a colored table does not swallow the block after it', () => {

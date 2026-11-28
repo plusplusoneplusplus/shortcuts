@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import type { ParsedNoteFrontMatter } from './noteFrontMatter';
-import { getFrontMatterFieldCount } from './noteFrontMatter';
+import { getFrontMatterFieldCount, type ParsedFrontMatter } from '@plusplusoneplusplus/tiptap-kit/front-matter';
 
 interface NoteMetadataPanelProps {
-    frontMatter: ParsedNoteFrontMatter;
+    frontMatter: ParsedFrontMatter;
 }
 
 function humanizeKey(key: string): string {
@@ -42,7 +41,7 @@ function formatMetadataValue(value: unknown): { label: string; empty: boolean } 
     return { label: JSON.stringify(value) ?? String(value), empty: false };
 }
 
-function metadataChipValues(frontMatter: ParsedNoteFrontMatter): string[] {
+function metadataChipValues(frontMatter: ParsedFrontMatter): string[] {
     const chips: string[] = [];
     const status = frontMatter.data.status;
     if (isScalar(status)) chips.push(scalarLabel(status));

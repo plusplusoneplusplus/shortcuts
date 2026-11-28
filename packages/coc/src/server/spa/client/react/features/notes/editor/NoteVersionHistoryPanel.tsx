@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { notesApi } from '../notesApi';
-import { wordDiff } from './noteEditDiff';
-import type { DiffChunk } from './noteEditDiff';
+import { wordDiff, type DiffChunk } from '@plusplusoneplusplus/tiptap-kit/edit-diff';
 import { Spinner } from '../../../ui/Spinner';
 
 // ── Types ────────────────────────────────────────────────────────────────────

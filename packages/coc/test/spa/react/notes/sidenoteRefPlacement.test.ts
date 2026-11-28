@@ -26,7 +26,7 @@ import {
 import { htmlToMarkdown }
     from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 import { findAnchorInDoc }
-    from '../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring';
+    from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
 
 function makeEditor(html: string): Editor {
     return new Editor({

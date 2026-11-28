@@ -17,7 +17,7 @@ import { Subscript } from '@tiptap/extension-subscript';
 import {
     FORMATTING_GROUPS,
     FORMATTING_COMMANDS,
-} from '../../../../src/server/spa/client/react/features/notes/editor/toolbar/formattingCommands';
+} from '@plusplusoneplusplus/tiptap-react/toolbar';
 
 /** The same pair RichEditorCore registers, extended the same way. */
 const SUPERSCRIPT = Superscript.extend({ excludes: 'superscript subscript' });

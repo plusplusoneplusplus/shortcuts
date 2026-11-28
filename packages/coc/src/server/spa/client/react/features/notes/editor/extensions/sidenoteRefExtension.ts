@@ -21,7 +21,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { findAnchorInDoc, posToTextOffset, textOffsetToPos } from '../commentAnchoring';
+import { findAnchorInDoc, posToTextOffset, textOffsetToPos } from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
 import { QA_MARKER_GLYPH, QA_SIDENOTE_REF_CLASS } from './sidenoteFootnote';
 
 /** ProseMirror node name for the Quick Ask reference marker atom. Shared so

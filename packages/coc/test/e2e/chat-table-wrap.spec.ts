@@ -7,10 +7,13 @@
  *
  * jsdom has no layout, so the vitest suites only cover the state contract.
  * Here, in the chat pop-out at narrow (280-400px) and wide (1280px) widths:
- *   1. Wrapping is off by default; in narrow panes long cells are ellipsized as before.
- *   2. Turning it on (mouse or keyboard) fits the table to the pane and wraps
- *      long URLs, paths and inline code without clipping any cell.
- *   3. Toggles are per table, and the toolbar never overlaps table text.
+ *   1. Wrapping is on by default: the table fits the pane and wraps long URLs,
+ *      paths and inline code without clipping any cell.
+ *   2. Turning it off (mouse or keyboard) restores single-line, ellipsized
+ *      cells; turning it back on (Space) re-fits the table.
+ *   3. Toggles are per table. The toolbar is one compact row at every width:
+ *      every button stays visible inside the table, none overlap, and the
+ *      toolbar never covers table text.
  *   4. A table with too many columns still scrolls horizontally; static tables
  *      (no toggle) and code blocks keep their own layout.
  *
@@ -89,6 +92,25 @@ async function seedChat(page: Page, serverUrl: string): Promise<string> {
     return processId;
 }
 
+/** Toolbar geometry: one row, every button inside the table box, no overlaps. */
+async function toolbarLayout(root: Locator) {
+    return root.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const bar = el.querySelector('.interactive-table-toolbar')!.getBoundingClientRect();
+        const buttons = Array.from(el.querySelectorAll<HTMLElement>('.interactive-table-actions > button, .interactive-table-col-picker-wrapper > button'))
+            .map(b => b.getBoundingClientRect());
+        const overlaps = buttons.some((a, i) => buttons.some((b, j) => i < j && a.left < b.right - 0.5 && b.left < a.right - 0.5));
+        return {
+            count: buttons.length,
+            tops: [...new Set(buttons.map(b => Math.round(b.top)))],
+            inside: buttons.every(b => b.left >= box.left - 0.5 && b.right <= box.right + 0.5),
+            overlaps,
+            toolbarHeight: bar.height,
+            labelsVisible: Array.from(el.querySelectorAll<HTMLElement>('.interactive-table-btn-label')).some(l => l.offsetParent !== null),
+        };
+    });
+}
+
 /** Overflow facts for one table: its scroll box, and any cell whose content is cut. */
 async function measure(table: Locator) {
     return table.evaluate((el) => {
@@ -113,7 +135,7 @@ for (const width of [280, 320, 400, 1280]) {
             await page.setViewportSize({ width, height: 900 });
         });
 
-        test('wraps each interactive table to the pane on demand without clipping', async ({ page, serverUrl }) => {
+        test('wraps tables by default, unwraps on demand, and keeps a one-row toolbar', async ({ page, serverUrl }) => {
             const processId = await seedChat(page, serverUrl);
             await page.goto(`${serverUrl}/#popout/activity/${encodeURIComponent(processId)}`);
             await expect(page.getByTestId('popout-shell')).toBeVisible({ timeout: 10_000 });
@@ -126,41 +148,44 @@ for (const width of [280, 320, 400, 1280]) {
             const secondBtn = second.getByRole('button', { name: 'Wrap text' });
             const manyBtn = many.getByRole('button', { name: 'Wrap text' });
 
-            // 1. Off by default; in a narrow pane the long values are ellipsized.
+            // Toolbar: one compact row of six buttons, all inside the table, no overlaps;
+            // labels only when there is room for them.
+            for (const root of [first, second, many]) {
+                const bar = await toolbarLayout(root);
+                expect(bar.count).toBe(6);
+                expect(bar.tops).toHaveLength(1);
+                expect(bar.inside).toBe(true);
+                expect(bar.overlaps).toBe(false);
+                expect(bar.toolbarHeight).toBeLessThan(32);
+                expect(bar.labelsVisible).toBe(!narrow);
+            }
+            // The column picker opens inside the table, even in a narrow pane.
+            await first.getByRole('button', { name: 'Toggle column visibility' }).click();
+            const pickerInside = await first.evaluate((el) => {
+                const b = el.getBoundingClientRect();
+                const p = el.querySelector('[data-testid="col-picker"]')!.getBoundingClientRect();
+                return p.left >= b.left - 0.5 && p.right <= b.right + 0.5;
+            });
+            expect(pickerInside).toBe(true);
+            await first.getByRole('button', { name: 'Toggle column visibility' }).click();
+
+            // 1. On by default: the table fits the pane and nothing is clipped.
             for (const btn of [firstBtn, secondBtn, manyBtn]) {
-                await expect(btn).toHaveAttribute('aria-pressed', 'false');
+                await expect(btn).toHaveAttribute('aria-pressed', 'true');
             }
-            const firstBefore = await measure(first.locator('table'));
-            if (narrow) {
-                expect(firstBefore.clipped.length).toBeGreaterThan(0);
-                expect(firstBefore.scrollOverflows).toBe(true);
-            }
-
-            // 2. Mouse toggle: the table fits the pane and nothing is clipped.
-            await firstBtn.click();
-            await expect(firstBtn).toHaveAttribute('aria-pressed', 'true');
-            const firstAfter = await measure(first.locator('table'));
-            expect(firstAfter.scrollOverflows).toBe(false);
-            expect(firstAfter.tableWidth).toBeLessThanOrEqual(firstAfter.boxWidth + 1);
-            expect(firstAfter.clipped).toEqual([]);
-            for (const value of [LONG_PATH, LONG_CODE]) expect(firstAfter.text).toContain(value);
+            const firstWrapped = await measure(first.locator('table'));
+            expect(firstWrapped.scrollOverflows).toBe(false);
+            expect(firstWrapped.tableWidth).toBeLessThanOrEqual(firstWrapped.boxWidth + 1);
+            expect(firstWrapped.clipped).toEqual([]);
+            for (const value of [LONG_PATH, LONG_CODE]) expect(firstWrapped.text).toContain(value);
             await expect(first.locator(`a[href="${LONG_URL}"]`)).toBeVisible();
-
-            // 3. Independent: the other tables did not change.
-            await expect(secondBtn).toHaveAttribute('aria-pressed', 'false');
-            await expect(manyBtn).toHaveAttribute('aria-pressed', 'false');
-            if (narrow) {
-                expect((await measure(second.locator('table'))).clipped.length).toBeGreaterThan(0);
-            }
-
-            // Keyboard toggle (Enter) on the second table.
-            await secondBtn.focus();
-            await page.keyboard.press('Enter');
-            await expect(secondBtn).toHaveAttribute('aria-pressed', 'true');
-            const secondAfter = await measure(second.locator('table'));
-            expect(secondAfter.scrollOverflows).toBe(false);
-            expect(secondAfter.clipped).toEqual([]);
-            await expect(firstBtn).toHaveAttribute('aria-pressed', 'true');
+            const secondWrapped = await measure(second.locator('table'));
+            expect(secondWrapped.scrollOverflows).toBe(false);
+            expect(secondWrapped.clipped).toEqual([]);
+            // Too many columns: cells wrap, the table still scrolls when it must.
+            const manyWrapped = await measure(many.locator('table'));
+            expect(manyWrapped.clipped).toEqual([]);
+            expect(manyWrapped.scrollOverflows).toBe(narrow);
 
             // The toolbar sits above the table and never covers its text.
             for (const [btn, table] of [[firstBtn, first], [secondBtn, second]] as const) {
@@ -169,13 +194,31 @@ for (const width of [280, 320, 400, 1280]) {
                 expect(b.y + b.height).toBeLessThanOrEqual(t.y + 0.5);
             }
 
-            // 4. Too many columns (Space toggles): cells wrap, the table still scrolls when it must.
-            await manyBtn.focus();
-            await page.keyboard.press(' ');
+            // 2. Mouse toggle off: single-line cells, ellipsized in a narrow pane.
+            await firstBtn.click();
+            await expect(firstBtn).toHaveAttribute('aria-pressed', 'false');
+            if (narrow) {
+                const firstOff = await measure(first.locator('table'));
+                expect(firstOff.clipped.length).toBeGreaterThan(0);
+                expect(firstOff.scrollOverflows).toBe(true);
+            }
+
+            // 3. Independent: the other tables did not change.
+            await expect(secondBtn).toHaveAttribute('aria-pressed', 'true');
             await expect(manyBtn).toHaveAttribute('aria-pressed', 'true');
-            const manyAfter = await measure(many.locator('table'));
-            expect(manyAfter.clipped).toEqual([]);
-            expect(manyAfter.scrollOverflows).toBe(narrow);
+
+            // Keyboard toggle off (Enter) on the second table, back on with Space.
+            await secondBtn.focus();
+            await page.keyboard.press('Enter');
+            await expect(secondBtn).toHaveAttribute('aria-pressed', 'false');
+            if (narrow) {
+                expect((await measure(second.locator('table'))).clipped.length).toBeGreaterThan(0);
+            }
+            await page.keyboard.press(' ');
+            await expect(secondBtn).toHaveAttribute('aria-pressed', 'true');
+            expect((await measure(second.locator('table'))).clipped).toEqual([]);
+            await expect(firstBtn).toHaveAttribute('aria-pressed', 'false');
+            expect((await toolbarLayout(first)).tops).toHaveLength(1);
 
             // Static tables have no toggle and already wrap; code blocks keep no-wrap.
             const staticTable = answer.locator('table').filter({ hasText: 'short' }).last();
@@ -185,10 +228,10 @@ for (const width of [280, 320, 400, 1280]) {
                 .evaluate(el => getComputedStyle(el).whiteSpace);
             expect(codeWhiteSpace).toBe('pre');
 
-            // Turning it off restores the original single-line layout.
+            // Turning it back on restores the fitted layout.
             await firstBtn.click();
-            await expect(firstBtn).toHaveAttribute('aria-pressed', 'false');
-            expect((await measure(first.locator('table'))).clipped).toEqual(firstBefore.clipped);
+            await expect(firstBtn).toHaveAttribute('aria-pressed', 'true');
+            expect((await measure(first.locator('table'))).clipped).toEqual([]);
         });
     });
 }

@@ -1,0 +1,141 @@
+{
+  "name": "@plusplusoneplusplus/tiptap-react",
+  "version": "0.1.0",
+  "description": "React editor shell, formatting toolbar, TOC panel, resizable image, code block language picker and math/mermaid node views for Tiptap, built on @plusplusoneplusplus/tiptap-kit",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plusplusoneplusplus/shortcuts.git",
+    "directory": "packages/tiptap-react"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./editor": {
+      "types": "./dist/editor/index.d.ts",
+      "import": "./dist/editor/index.js"
+    },
+    "./toolbar": {
+      "types": "./dist/toolbar/index.d.ts",
+      "import": "./dist/toolbar/index.js"
+    },
+    "./toc": {
+      "types": "./dist/toc/index.d.ts",
+      "import": "./dist/toc/index.js"
+    },
+    "./math": {
+      "types": "./dist/math/index.d.ts",
+      "import": "./dist/math/index.js"
+    },
+    "./mermaid": {
+      "types": "./dist/mermaid/index.d.ts",
+      "import": "./dist/mermaid/index.js"
+    },
+    "./image": {
+      "types": "./dist/image/index.d.ts",
+      "import": "./dist/image/index.js"
+    },
+    "./code-block": {
+      "types": "./dist/code-block/index.d.ts",
+      "import": "./dist/code-block/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/styles.css', 'dist/styles.css')\"",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@plusplusoneplusplus/tiptap-kit": "^0.1.0",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-code-block-lowlight": "^3.31.3",
+    "@tiptap/extension-find-and-replace": "^3.31.3",
+    "@tiptap/extension-highlight": "^3.31.3",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-subscript": "^3.31.3",
+    "@tiptap/extension-superscript": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/extension-table-cell": "^3.31.3",
+    "@tiptap/extension-table-header": "^3.31.3",
+    "@tiptap/extension-table-row": "^3.31.3",
+    "@tiptap/extension-task-item": "^3.31.3",
+    "@tiptap/extension-task-list": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/extension-text-style": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "highlight.js": "^11.0.0",
+    "katex": "^0.16.0",
+    "lowlight": "^3.0.0",
+    "react": "^18.3.1 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tiptap/extension-code-block-lowlight": {
+      "optional": true
+    },
+    "highlight.js": {
+      "optional": true
+    },
+    "katex": {
+      "optional": true
+    },
+    "lowlight": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@plusplusoneplusplus/tiptap-kit": "^0.1.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-code-block-lowlight": "3.31.3",
+    "@tiptap/extension-find-and-replace": "3.31.3",
+    "@tiptap/extension-highlight": "3.31.3",
+    "@tiptap/extension-link": "3.31.3",
+    "@tiptap/extension-placeholder": "3.31.3",
+    "@tiptap/extension-subscript": "3.31.3",
+    "@tiptap/extension-superscript": "3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/extension-table-cell": "3.31.3",
+    "@tiptap/extension-table-header": "3.31.3",
+    "@tiptap/extension-table-row": "3.31.3",
+    "@tiptap/extension-task-item": "3.31.3",
+    "@tiptap/extension-task-list": "3.31.3",
+    "@tiptap/extension-text-align": "3.31.3",
+    "@tiptap/extension-text-style": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "highlight.js": "^11.9.0",
+    "jsdom": "^27.0.1",
+    "katex": "^0.16.22",
+    "lowlight": "^3.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

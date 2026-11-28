@@ -13,7 +13,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { escapeHtmlAttribute as escapeHtml } from '../../../shared/html';
+import { escapeHtmlAttribute as escapeHtml } from '@plusplusoneplusplus/tiptap-kit/html';
 import type {
     Canvas,
     KustoCellValue,

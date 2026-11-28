@@ -11,8 +11,8 @@ import {
     revealCommentThread,
     findCommentMarkRange,
     COMMENT_ACTIVE_HIGHLIGHT_MS,
-} from '../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring';
-import { CommentExtension } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension';
+} from '@plusplusoneplusplus/tiptap-kit/comment-anchoring';
+import { CommentExtension } from '@plusplusoneplusplus/tiptap-kit/comment-mark';
 
 const MARKED = '<p>Hello <span data-comment-id="t1">world</span> again</p>';
 

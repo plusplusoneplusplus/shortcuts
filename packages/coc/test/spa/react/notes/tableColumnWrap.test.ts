@@ -22,7 +22,7 @@ import {
     activeColumnWrap,
     isTableWrapMode,
     toggleActiveColumnWrap,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap';
+} from '@plusplusoneplusplus/tiptap-kit/table';
 import {
     htmlToMarkdown,
     markdownToHtml,
@@ -372,7 +372,7 @@ describe('editing and structural commands (AC-05, AC-06, AC-07)', () => {
 });
 
 /**
- * The clipping rule lives in noteEditor.css and targets DOM this file does not
+ * The clipping rule lives in tiptap-react/styles.css and targets DOM this file does not
  * write — tiptap renders it. So the rule can stop applying with every attribute
  * assertion above still green: rename the attribute, or drop the block child
  * the selector reaches through, and no-wrap silently becomes a no-op. This
@@ -386,7 +386,7 @@ describe('the no-wrap CSS rule matches the rendered cell (AC-12)', () => {
     const css = readFileSync(
         resolve(
             __dirname,
-            '../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css',
+            '../../../../../tiptap-react/src/styles.css',
         ),
         'utf-8',
     );
@@ -398,10 +398,10 @@ describe('the no-wrap CSS rule matches the rendered cell (AC-12)', () => {
         host = null;
     });
 
-    /** Mounts an editor inside the `.note-editor` wrapper the app renders. */
+    /** Mounts an editor inside the `.rich-editor` wrapper the app renders. */
     function mount(content: string): Editor {
         host = document.createElement('div');
-        host.className = 'note-editor';
+        host.className = 'rich-editor';
         document.body.appendChild(host);
         editor = new Editor({
             element: host,

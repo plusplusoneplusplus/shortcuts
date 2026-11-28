@@ -21,14 +21,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 
 // Stub the pdf.js renderer so the delegated PdfPopupDialog never loads the real
 // (browser-only) pdf.js library.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => (
-            <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
-        ),
-    }),
-);
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => (
+        <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
+    ),
+}));
 
 import { PaperPopupDialog } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/PaperPopupDialog';
 import type { PaperLinkInfo } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/paperLink';

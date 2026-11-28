@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { notesApi, type CommentThread, type Comment } from '../notesApi';
-import type { TextAnchor } from './textAnchor';
+import type { TextAnchor } from '@plusplusoneplusplus/tiptap-kit/text-anchor';
 
 export type CommentFilter = 'all' | 'open' | 'resolved';
 

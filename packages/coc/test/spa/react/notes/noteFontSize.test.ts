@@ -15,8 +15,8 @@ import {
     findSizeOption,
     normalizeFontSize,
     readInlineFontSize,
-} from '../../../../src/server/spa/client/react/features/notes/editor/fontSizes';
-import { activeFontSize } from '../../../../src/server/spa/client/react/features/notes/editor/toolbar/FontSizeDropdown';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
+import { activeFontSize } from '@plusplusoneplusplus/tiptap-react/toolbar';
 
 describe('FONT_SIZE_OPTIONS', () => {
     it('is exactly the fourteen agreed entries, in order', () => {

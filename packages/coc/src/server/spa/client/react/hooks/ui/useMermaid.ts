@@ -4,66 +4,12 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { escapeHtmlText as escapeHtmlForMermaid } from '../../../shared/html';
+import { escapeHtmlText as escapeHtmlForMermaid } from '@plusplusoneplusplus/tiptap-kit/html';
+import { applyMermaidTheme, ensureMermaid, getMermaidRuntime } from '@plusplusoneplusplus/tiptap-kit/mermaid';
 
-const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
-
-interface MermaidRuntime {
-    initialize(config: Record<string, unknown>): void;
-    run(opts: { nodes: NodeListOf<Element> | Element[] }): Promise<void>;
-}
-
-function getMermaidRuntime(): MermaidRuntime | undefined {
-    return (globalThis as typeof globalThis & { mermaid?: MermaidRuntime }).mermaid;
-}
-
-function isDarkTheme(): boolean {
-    const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
-let mermaidLoadPromise: Promise<void> | null = null;
-
-export function ensureMermaid(): Promise<void> {
-    const existing = getMermaidRuntime();
-    if (existing?.initialize) {
-        return Promise.resolve();
-    }
-    if (mermaidLoadPromise) return mermaidLoadPromise;
-
-    mermaidLoadPromise = new Promise<void>((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = MERMAID_CDN;
-        script.async = true;
-        script.onload = () => {
-            const loaded = getMermaidRuntime();
-            if (!loaded) {
-                mermaidLoadPromise = null;
-                reject(new Error('Mermaid runtime did not initialize'));
-                return;
-            }
-            loaded.initialize({
-                startOnLoad: false,
-                theme: isDarkTheme() ? 'dark' : 'default',
-                securityLevel: 'loose',
-                flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
-                fontSize: 14,
-            });
-            resolve();
-        };
-        script.onerror = () => {
-            mermaidLoadPromise = null;
-            reject(new Error('Failed to load mermaid.js from CDN'));
-        };
-        document.head.appendChild(script);
-    });
-    return mermaidLoadPromise;
-}
 
 function buildToolbarHTML(): string {
     return '<div class="task-mermaid-toolbar">' +
@@ -322,18 +268,6 @@ async function initMermaid(root: HTMLElement): Promise<void> {
     });
 }
 
-function reinitMermaidTheme(): void {
-    const runtime = getMermaidRuntime();
-    if (!runtime) return;
-    runtime.initialize({
-        startOnLoad: false,
-        theme: isDarkTheme() ? 'dark' : 'default',
-        securityLevel: 'loose',
-        flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
-        fontSize: 14,
-    });
-}
-
 // ── Hook ───────────────────────────────────────────────────────────────
 
 export function useMermaid(rootRef: React.RefObject<HTMLElement | null>, contentKey?: unknown): void {
@@ -354,7 +288,7 @@ export function useMermaid(rootRef: React.RefObject<HTMLElement | null>, content
         const observer = new MutationObserver((mutations) => {
             for (const m of mutations) {
                 if (m.attributeName === 'data-theme') {
-                    reinitMermaidTheme();
+                    applyMermaidTheme();
                     const el = rootRef.current;
                     if (el && initDone.current) {
                         el.querySelectorAll('.mermaid-container[data-mermaid-ready]').forEach(c => {

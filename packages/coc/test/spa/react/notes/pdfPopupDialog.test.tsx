@@ -25,25 +25,23 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 // (browser-only) pdf.js library. `shouldError` simulates a document that fails
 // to render, which drives the iframe fallback inside PdfPopupDialog.
 const pdfjsStub = vi.hoisted(() => ({ shouldError: false, lastProps: null as any }));
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => {
-            pdfjsStub.lastProps = props;
-            React.useEffect(() => {
-                if (pdfjsStub.shouldError) props.onError?.();
-            }, [props.url]);
-            return (
-                <div
-                    data-testid="pdfjs-render-viewport"
-                    data-url={props.url}
-                    role="document"
-                    aria-label={props.label}
-                />
-            );
-        },
-    }),
-);
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => {
+        pdfjsStub.lastProps = props;
+        React.useEffect(() => {
+            if (pdfjsStub.shouldError) props.onError?.();
+        }, [props.url]);
+        return (
+            <div
+                data-testid="pdfjs-render-viewport"
+                data-url={props.url}
+                role="document"
+                aria-label={props.label}
+            />
+        );
+    },
+}));
 
 import { PdfPopupDialog } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfPopupDialog';
 
@@ -72,6 +70,8 @@ describe('PdfPopupDialog', () => {
         const viewport = screen.getByTestId('pdfjs-render-viewport');
         expect(viewport.getAttribute('data-url')).toBe(PDF.url);
         expect(viewport.getAttribute('aria-label')).toBe('sample.pdf');
+        // The worker is served at the site root; /static/pdf.worker.js would hit the SPA fallback.
+        expect(pdfjsStub.lastProps.workerSrc).toBe('/pdf.worker.js');
         expect(document.querySelector('iframe')).toBeNull();
     });
 

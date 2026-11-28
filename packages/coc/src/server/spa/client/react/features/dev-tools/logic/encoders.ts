@@ -10,7 +10,7 @@
  * React-free; every entry point returns `{ ok } | { ok: false, error }`.
  */
 
-import { escapeHtmlAttribute } from '../../../../shared/html';
+import { escapeHtmlAttribute } from '@plusplusoneplusplus/tiptap-kit/html';
 
 export type EncodeResult = { ok: true; value: string } | { ok: false; error: string };
 

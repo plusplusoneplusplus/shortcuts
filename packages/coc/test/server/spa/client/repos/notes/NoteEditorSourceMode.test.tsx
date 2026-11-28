@@ -69,15 +69,15 @@ vi.mock('@tiptap/extension-table-header', () => {
     return { TableHeader: stub };
 });
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
-vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-react/image', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock(
-    '../../../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
+    '@plusplusoneplusplus/tiptap-kit/comment-mark',
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css', () => ({}));
-vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-kit/comment-anchoring', () => ({
     findAnchorInDoc: vi.fn(() => null),
     applyCommentMark: vi.fn(),
     buildAnchorFromMark: vi.fn(() => null),

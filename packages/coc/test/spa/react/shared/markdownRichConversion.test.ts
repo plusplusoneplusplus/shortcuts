@@ -4,7 +4,7 @@ import {
     insertTextAtSelection,
     markdownToRichEditorHtml,
     richEditorHtmlToMarkdown,
-    parseNoteFrontMatter,
+    parseFrontMatter,
 } from '../../../../src/server/spa/client/react/shared/markdown-document/markdownRichConversion';
 import type { MarkdownDocumentIO } from '../../../../src/server/spa/client/react/shared/markdown-document/MarkdownDocumentIO';
 
@@ -67,7 +67,7 @@ describe('richEditorHtmlToMarkdown', () => {
     });
 
     it('re-attaches the original front matter block ahead of the edited body', () => {
-        const parsed = parseNoteFrontMatter('---\ntitle: X\n---\n\nold body');
+        const parsed = parseFrontMatter('---\ntitle: X\n---\n\nold body');
         expect(parsed.kind).toBe('valid');
         const result = richEditorHtmlToMarkdown({ html: '<p>new body</p>', frontMatter: parsed });
         expect(result.startsWith('---')).toBe(true);

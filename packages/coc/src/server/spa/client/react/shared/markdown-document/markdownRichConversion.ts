@@ -17,9 +17,9 @@
 import type { MarkdownDocumentIO } from './MarkdownDocumentIO';
 import {
     composeMarkdownWithFrontMatter,
-    parseNoteFrontMatter,
-} from '../../features/notes/editor/noteFrontMatter';
-import type { NoteFrontMatterParseResult } from '../../features/notes/editor/noteFrontMatter';
+    parseFrontMatter,
+} from '@plusplusoneplusplus/tiptap-kit/front-matter';
+import type { FrontMatterParseResult } from '@plusplusoneplusplus/tiptap-kit/front-matter';
 import {
     htmlToMarkdown,
     markdownToHtml,
@@ -40,7 +40,7 @@ export interface MarkdownToRichEditorHtmlResult {
     /** HTML suitable for Tiptap `setContent()`, with image `src` rewritten. */
     html: string;
     /** Parsed front matter; `kind: 'valid'` carries the split body + raw block. */
-    frontMatter: NoteFrontMatterParseResult;
+    frontMatter: FrontMatterParseResult;
     /** Markdown body fed to the rich editor (front matter stripped when valid). */
     body: string;
 }
@@ -57,7 +57,7 @@ export function markdownToRichEditorHtml(
     params: MarkdownToRichEditorHtmlParams,
 ): MarkdownToRichEditorHtmlResult {
     const { markdown, io, workspaceId, root } = params;
-    const frontMatter = parseNoteFrontMatter(markdown);
+    const frontMatter = parseFrontMatter(markdown);
     const body = frontMatter.kind === 'valid' ? frontMatter.frontMatter.body : markdown;
     const html = rewriteHtmlImageSrc(markdownToHtml(body), io, workspaceId, root);
     return { html, frontMatter, body };
@@ -70,7 +70,7 @@ export interface RichEditorHtmlToMarkdownParams {
      * Front matter parsed when the document was loaded. When `kind: 'valid'`
      * the original front matter block is re-composed ahead of the edited body.
      */
-    frontMatter: NoteFrontMatterParseResult;
+    frontMatter: FrontMatterParseResult;
 }
 
 /**
@@ -110,5 +110,5 @@ export function insertTextAtSelection(
     return source.slice(0, start) + insert + source.slice(end);
 }
 
-export { composeMarkdownWithFrontMatter, parseNoteFrontMatter };
-export type { NoteFrontMatterParseResult };
+export { composeMarkdownWithFrontMatter, parseFrontMatter };
+export type { FrontMatterParseResult };

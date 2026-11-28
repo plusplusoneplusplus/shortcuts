@@ -47,7 +47,7 @@ const ANCHOR = { quotedText: 'selected words', prefix: 'before ', suffix: ' afte
 
 const revealCommentThreadSpy = vi.fn();
 
-vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-kit/comment-anchoring', () => ({
     createTextAnchorFromSelection: () => ANCHOR,
     findAnchorInDoc: () => null,
     applyCommentMark: vi.fn(),

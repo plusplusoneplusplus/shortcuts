@@ -3,7 +3,7 @@
  *
  * Per-table "Wrap text" toggle on AI-response Markdown tables. Layout itself
  * is proven in the browser (test/e2e/chat-table-wrap.spec.ts); this covers the
- * state contract: opt-in, independence and streaming re-renders.
+ * state contract: opt-in, default-on, independence and streaming re-renders.
  */
 
 import React from 'react';
@@ -49,32 +49,33 @@ describe('MarkdownView table wrap toggle', () => {
         expect(wrapButtons()).toHaveLength(0);
     });
 
-    it('defaults off and toggles with an accessible pressed button', () => {
+    it('defaults on and toggles with an accessible pressed button', () => {
         render(<MarkdownView html={chatMarkdownToHtml(bigTable('First'))} tableWrapToggle />);
         const [btn] = wrapButtons();
         expect(btn.tagName).toBe('BUTTON');
         expect(btn.getAttribute('type')).toBe('button');
-        expect(btn.getAttribute('aria-pressed')).toBe('false');
-        expect(btn.getAttribute('title')).toBe('Wrap text to fit the pane');
-        const table = tableOf(btn);
-        expect(table.classList.contains('interactive-table-wrapped')).toBe(false);
-
-        fireEvent.click(btn);
         expect(btn.getAttribute('aria-pressed')).toBe('true');
         expect(btn.getAttribute('title')).toMatch(/Stop wrapping/);
+        const table = tableOf(btn);
         expect(table.classList.contains('interactive-table-wrapped')).toBe(true);
 
         fireEvent.click(btn);
         expect(btn.getAttribute('aria-pressed')).toBe('false');
+        expect(btn.getAttribute('title')).toBe('Wrap text to fit the pane');
         expect(table.classList.contains('interactive-table-wrapped')).toBe(false);
+
+        fireEvent.click(btn);
+        expect(btn.getAttribute('aria-pressed')).toBe('true');
+        expect(table.classList.contains('interactive-table-wrapped')).toBe(true);
     });
 
-    it('keeps rich cell content and the rest of the toolbar when wrapped', () => {
+    it('keeps rich cell content and the rest of the toolbar when wrapping toggles', () => {
         render(<MarkdownView html={chatMarkdownToHtml(bigTable('First'))} tableWrapToggle />);
         const [btn] = wrapButtons();
         const table = tableOf(btn);
         const alignBefore = Array.from(table.querySelectorAll('th, td')).map(c => c.className);
         fireEvent.click(btn);
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
         expect(Array.from(table.querySelectorAll('th, td')).map(c => c.className)).toEqual(alignBefore);
         expect(table.querySelectorAll('thead th')).toHaveLength(2);
         expect(table.querySelectorAll('tbody tr')).toHaveLength(6);
@@ -91,9 +92,10 @@ describe('MarkdownView table wrap toggle', () => {
         );
         const [first, second] = wrapButtons();
         fireEvent.click(second);
-        expect(first.getAttribute('aria-pressed')).toBe('false');
-        expect(second.getAttribute('aria-pressed')).toBe('true');
-        expect(tableOf(first).classList.contains('interactive-table-wrapped')).toBe(false);
+        expect(first.getAttribute('aria-pressed')).toBe('true');
+        expect(second.getAttribute('aria-pressed')).toBe('false');
+        expect(tableOf(first).classList.contains('interactive-table-wrapped')).toBe(true);
+        expect(tableOf(second).classList.contains('interactive-table-wrapped')).toBe(false);
     });
 
     it('keeps the toggle state across streaming html updates', () => {
@@ -108,9 +110,9 @@ describe('MarkdownView table wrap toggle', () => {
 
         const [first, second] = wrapButtons();
         expect(wrapButtons()).toHaveLength(2);
-        expect(first.getAttribute('aria-pressed')).toBe('true');
-        expect(tableOf(first).classList.contains('interactive-table-wrapped')).toBe(true);
-        expect(second.getAttribute('aria-pressed')).toBe('false');
+        expect(first.getAttribute('aria-pressed')).toBe('false');
+        expect(tableOf(first).classList.contains('interactive-table-wrapped')).toBe(false);
+        expect(second.getAttribute('aria-pressed')).toBe('true');
     });
 
     it('carries the state over when section actions re-enable after streaming', () => {
@@ -120,6 +122,21 @@ describe('MarkdownView table wrap toggle', () => {
         rerender(<MarkdownView html={html} hideSectionCopy tableWrapToggle />);
         expect(wrapButtons()).toHaveLength(0);
         rerender(<MarkdownView html={html} tableWrapToggle />);
-        expect(wrapButtons()[0].getAttribute('aria-pressed')).toBe('true');
+        expect(wrapButtons()[0].getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('keeps toolbar actions named when labels hide in icon-only mode', () => {
+        render(<MarkdownView html={chatMarkdownToHtml(bigTable('First'))} tableWrapToggle />);
+        const table = tableOf(wrapButtons()[0]);
+        const names = ['Wrap text', 'Show filters', 'Toggle column visibility', 'Copy as Markdown', 'Copy as CSV', 'Expand table'];
+        expect(within(table).getAllByRole('button').slice(0, names.length).map(b => b.getAttribute('aria-label'))).toEqual(names);
+        const columns = within(table).getByRole('button', { name: 'Toggle column visibility' });
+        expect(columns).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(columns);
+        expect(columns).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.click(within(table).getByRole('button', { name: 'Show filters' }));
+        expect(within(table).getByRole('button', { name: 'Hide filters' })).toBeTruthy();
+        fireEvent.click(within(table).getByRole('button', { name: 'Expand table' }));
+        expect(screen.getByRole('button', { name: 'Exit fullscreen' })).toBeTruthy();
     });
 });

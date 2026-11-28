@@ -14,7 +14,7 @@ import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Highlight } from '@tiptap/extension-highlight';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
-import { CommentExtension } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension';
+import { CommentExtension } from '@plusplusoneplusplus/tiptap-kit/comment-mark';
 
 interface FindState {
     results: { from: number; to: number }[];

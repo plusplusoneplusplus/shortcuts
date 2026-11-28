@@ -13,7 +13,7 @@
  * resolver is directly unit-testable.
  */
 
-import { resolveAnchor, type TextAnchor } from '../../notes/editor/textAnchor';
+import { resolveAnchor, type TextAnchor } from '@plusplusoneplusplus/tiptap-kit/text-anchor';
 import type { QuickAskAnchor } from './types';
 
 /** Outcome of resolving a side-note anchor against a rendered turn. */

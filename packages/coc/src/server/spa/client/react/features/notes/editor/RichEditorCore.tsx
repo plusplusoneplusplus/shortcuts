@@ -1,46 +1,29 @@
 /**
- * RichEditorCore — reusable Tiptap editor shell.
+ * RichEditorCore — the CoC editor: tiptap-react's `RichEditor` shell plus the
+ * CoC nodes (PDF, map, paper/YouTube embeds, note links, sidenotes, file
+ * paths, AI-edit marks, comments), CoC link opening (`canvas://` panel tabs,
+ * link-handler settings) and the embed dialogs.
  *
- * Owns the editor instance, extension wiring, and `EditorContent` rendering.
  * Does NOT depend on notes REST APIs, comments hooks, or workspace routing.
  * The parent component (e.g. NoteEditor) orchestrates load/save/mode switching.
  */
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useEditor, EditorContent } from '@tiptap/react';
-import type { Editor, EditorEvents } from '@tiptap/core';
-import { StarterKit } from '@tiptap/starter-kit';
-import { NotesCodeBlock } from './extensions/notesCodeBlock';
-import { notesLowlight } from './extensions/notesLowlight';
-import { TaskList } from '@tiptap/extension-task-list';
-import { TaskItem } from '@tiptap/extension-task-item';
-import { Link } from '@tiptap/extension-link';
-import { Placeholder } from '@tiptap/extension-placeholder';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import {
-    TableCellWithWrap,
-    TableHeaderWithWrap,
-} from './extensions/tableColumnWrap';
-import { TableReorder } from './extensions/tableReorder';
-import { Highlight } from '@tiptap/extension-highlight';
-import { Superscript } from '@tiptap/extension-superscript';
-import { Subscript } from '@tiptap/extension-subscript';
-import { TextStyle, Color, FontFamily, FontSize } from '@tiptap/extension-text-style';
-import { FindAndReplace } from '@tiptap/extension-find-and-replace';
-import { TextAlign } from '@tiptap/extension-text-align';
-import { IndentExtension } from './extensions/indentExtension';
-import { ResizableImage } from './extensions/resizableImage';
-import { MermaidBlock } from './extensions/mermaidBlock';
-import { MathInline, MathDisplay } from './extensions/mathNode';
-import { MapBlock } from './extensions/mapBlock';
+import type { Editor } from '@tiptap/core';
+import type { EditorView } from '@tiptap/pm/view';
+import { RichEditor } from '@plusplusoneplusplus/tiptap-react/editor';
+import { CodeBlock, codeLowlight } from '@plusplusoneplusplus/tiptap-react/code-block';
+import { ResizableImage } from '@plusplusoneplusplus/tiptap-react/image';
+import { MermaidBlock } from '@plusplusoneplusplus/tiptap-react/mermaid';
+import { MathInline, MathDisplay } from '@plusplusoneplusplus/tiptap-react/math';
+import { MapBlock } from '@plusplusoneplusplus/tiptap-embeds/map';
 import { PdfBlock } from './extensions/pdfBlock';
 import type { PdfFullWindowRequest } from './extensions/pdfBlock';
 import { PdfPopupDialog } from './extensions/PdfPopupDialog';
-import { CommentExtension } from './extensions/commentExtension';
-import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
-import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
+import { CommentExtension } from '@plusplusoneplusplus/tiptap-kit/comment-mark';
+import { EditDiffDecoration } from '@plusplusoneplusplus/tiptap-kit/edit-diff';
+import { YouTubeEmbedDecorationExtension } from '@plusplusoneplusplus/tiptap-embeds/youtube';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { PaperLinkEmbedDecorationExtension } from './extensions/PaperLinkEmbedDecorationExtension';
 import { PaperPopupDialog } from './extensions/PaperPopupDialog';
@@ -52,7 +35,6 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
-import { jumpToHeadingAnchor } from './noteTocUtils';
 import { parseCanvasLink } from '../../../shared/canvasLink';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvasLink';
@@ -61,6 +43,8 @@ import { openCanvasLink } from '../../repo-detail/unified-right-panel/openCanvas
 // here (rather than only from NoteEditor) so a mount outside Notes — the
 // markdown review dialog's rich view, for one — still gets the styles even if
 // the bundler ever code-splits the two apart.
+import '@plusplusoneplusplus/tiptap-react/styles.css';
+import '@plusplusoneplusplus/tiptap-embeds/styles.css';
 import './noteEditor.css';
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -79,9 +63,9 @@ export interface RichEditorCoreProps {
     /** Called once the editor instance is ready. */
     onEditorReady?: (editor: Editor) => void;
     /** ProseMirror `handlePaste` override — lets the parent intercept paste events. */
-    handlePaste?: (view: any, event: ClipboardEvent) => boolean;
+    handlePaste?: (view: EditorView, event: ClipboardEvent) => boolean;
     /** ProseMirror `handleDrop` override — lets the parent intercept file drops. */
-    handleDrop?: (view: any, event: DragEvent) => boolean;
+    handleDrop?: (view: EditorView, event: DragEvent) => boolean;
     /**
      * Goal 1: workspace the PDF Quick Ask answer endpoint runs against. Threaded
      * into the PdfBlock + full-window overlay so a paper text-layer selection can
@@ -117,15 +101,7 @@ export interface RichEditorCoreProps {
     scrollContainerRef?: { current: HTMLElement | null };
 }
 
-export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
-    return /Mac|iPhone|iPad|iPod/i.test(platform)
-        ? '⌘+Click to open link'
-        : 'Ctrl+Click to open link';
-}
-
-export function getLinkHoverTitle(href: string, platform = globalThis.navigator?.platform ?? '') {
-    return `${href}\n${getLinkOpenTitle(platform)}`;
-}
+export { getLinkHoverTitle, getLinkOpenTitle } from '@plusplusoneplusplus/tiptap-react/editor';
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -145,361 +121,128 @@ export function RichEditorCore({
     resolvePaperSource,
     scrollContainerRef,
 }: RichEditorCoreProps) {
-    // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
-    // captured once by `useEditor`, but the note path/root change on navigation —
-    // so read them through refs at write time, not at editor-creation time.
+    // The extension config is captured once by `useEditor`, but the note
+    // path/root, callbacks and link context change on navigation and
+    // re-render — so extensions read them through refs at call time.
     const notePathRef = useRef(notePath);
     notePathRef.current = notePath;
     const noteRootRef = useRef(noteRoot);
     noteRootRef.current = noteRoot;
-    // Goal 3 (AC-03): the "chat about this paper" handler is read through a ref so
-    // the extension config (captured once by `useEditor`) always calls the latest
-    // callback even as the parent re-renders / the note changes.
     const onChatAboutPaperRef = useRef(onChatAboutPaper);
     onChatAboutPaperRef.current = onChatAboutPaper;
-    // paper-link-embed (AC-03): the inline viewer seam is baked into the extension
-    // config once by `useEditor`, so it reaches the latest resolver through a ref
-    // (the note — and thus the ingest target root — changes on navigation).
     const resolvePaperSourceRef = useRef(resolvePaperSource);
     resolvePaperSourceRef.current = resolvePaperSource;
-    // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
 
-    const readOnlyRef = useRef(readOnly);
-    readOnlyRef.current = readOnly;
-
-    const onChangeRef = useRef(onChange);
-    onChangeRef.current = onChange;
-
-    const onEditorReadyRef = useRef(onEditorReady);
-    onEditorReadyRef.current = onEditorReady;
-    // `useEditor` captures its config once, so the click handler cannot close
-    // over `editor` (undefined at that point) or over the container prop; both
-    // are read through refs at click time instead.
-    const editorInstanceRef = useRef<Editor | null>(null);
-    const scrollContainerPropRef = useRef(scrollContainerRef);
-    scrollContainerPropRef.current = scrollContainerRef;
-
-    const handlePasteRef = useRef(handlePaste);
-    handlePasteRef.current = handlePaste;
-
-    const handleDropRef = useRef(handleDrop);
-    handleDropRef.current = handleDrop;
-
     const [linkHandlerConfig] = useLinkHandlers();
-    const linkHandlerConfigRef = useRef(linkHandlerConfig);
-    linkHandlerConfigRef.current = linkHandlerConfig;
     // Read at click time by `canvas://` links, which open a panel canvas tab.
-    const canvasLinkContext = { host: useUnifiedPanelHost(), workspaceId };
-    const canvasLinkContextRef = useRef(canvasLinkContext);
-    canvasLinkContextRef.current = canvasLinkContext;
+    const linkContext = { host: useUnifiedPanelHost(), workspaceId, linkHandlerConfig };
+    const linkContextRef = useRef(linkContext);
+    linkContextRef.current = linkContext;
 
-    // AC-03: the ⛶ Popup button on a decorated YouTube link asks us to open the
-    // video in a Dialog. A `useState` setter is referentially stable, so wiring
-    // it straight into the extension config (captured once by `useEditor`) is safe.
+    // Embed buttons ask for a dialog. `useState` setters are stable, so they
+    // are safe inside the once-captured extension config. One of each at a time.
     const [popupVideoId, setPopupVideoId] = useState<string | null>(null);
-
-    // AC-05: the ⛶ full-window button on a PDF embed asks us to open the PDF in
-    // an in-app overlay. Mirrors the `popupVideoId` pattern — a stable setter is
-    // safe to wire straight into the extension config captured once by `useEditor`.
-    // Only one PDF overlay is open at a time; a new request replaces the prior one.
     const [popupPdf, setPopupPdf] = useState<PdfFullWindowRequest | null>(null);
-
-    // paper-link-embed (AC-04): the ⛶ Popout button on a decorated paper link asks
-    // us to open the paper in a maximized modal. Mirrors `popupPdf` — a stable
-    // setter is safe to wire into the extension config captured once by `useEditor`.
     const [popupPaper, setPopupPaper] = useState<PaperLinkInfo | null>(null);
 
-    const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
-        if (!readOnlyRef.current) onChangeRef.current?.(ed as Editor);
-    }, []);
-
-    // Stable resolver handed to the popout dialog + inline viewer. Referentially
-    // stable (so their resolve effects do not refire) yet always calls the latest
-    // `resolvePaperSource` prop through the ref.
+    // Stable (so the dialogs' resolve effects do not refire) yet always calls
+    // the latest `resolvePaperSource` prop.
     const stableResolvePaper = useCallback((info: PaperLinkInfo): Promise<PdfPopupTarget> => {
         const fn = resolvePaperSourceRef.current;
         if (!fn) return Promise.reject(new Error('paper resolver unavailable'));
         return fn(info);
     }, []);
 
-    const editor = useEditor({
-        editable: !readOnly,
-        shouldRerenderOnTransaction: true,
-        extensions: [
-            MapBlock,
-            PdfBlock.configure({
-                onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
-                workspaceId,
-                getNotePath: () => notePathRef.current,
-                getNoteRoot: () => noteRootRef.current,
-                onChatAboutPaper: (paperTextRelPath: string) =>
-                    onChatAboutPaperRef.current?.(paperTextRelPath),
-            }),                     // must precede StarterKit so its parseHTML rule wins
-            MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
-            MathInline,
-            MathDisplay,
-            StarterKit.configure({
-                heading: { levels: [1, 2, 3, 4, 5, 6] },
-                link: false,
-                // Disable StarterKit's plain CodeBlock so CodeBlockLowlight is the
-                // single `codeBlock` node type — its lowlight decorations color
-                // fenced-block tokens live while editing. A block with an explicit
-                // language (set via the per-block picker or a ```lang fence on
-                // import) is highlighted; one with no language stays plain
-                // (notesLowlight disables auto-detection).
-                codeBlock: false,
-            }),
-            // CodeBlockLowlight extended with a per-block language picker NodeView
-            // (AC-02). The lowlight instance colors tokens; the picker sets the
-            // node's `language` attribute.
-            NotesCodeBlock.configure({ lowlight: notesLowlight }),
-            TaskList,
-            TaskItem.configure({ nested: true }),
-            Link.configure({
-                openOnClick: false,
-                // Keep `canvas://<id>` hrefs through parse, render and save.
-                protocols: ['canvas'],
-                HTMLAttributes: {
-                    rel: 'noopener noreferrer',
-                    target: '_blank',
-                },
-            }),
-            Placeholder.configure({ placeholder }),
-            // Column resizing (AC-01). `resizable: true` installs ProseMirror's
-            // `columnResizing` plugin, which owns the drag: it renders the
-            // `.column-resize-handle` decoration, puts `.resize-cursor` on the
-            // editor root while dragging, and writes the new width into each
-            // cell's `colwidth` attribute on mouseup. Its TableView also wraps
-            // the table in `div.tableWrapper`, which the CSS scrolls (AC-12).
-            // `renderWrapper` stays off so `getHTML()` keeps emitting a bare
-            // `<table>` for the markdown serializer.
-            //
-            // `cellMinWidth` is 60 rather than tiptap's 25 because with our
-            // border-box cells (1px border + 8/10px padding) 25px leaves ~3px of
-            // content box — a column you can drag into uselessness.
-            Table.configure({
-                resizable: true,
-                handleWidth: 5,
-                cellMinWidth: 60,
-                lastColumnResizable: true,
-            }),
-            TableRow,
-            // Stock TableCell/TableHeader plus two attributes: a
-            // `backgroundColor` token (per-cell fill) and a `wrap` mode (set
-            // per column by the toolbar toggle); everything else is stock.
-            TableCellWithWrap,
-            TableHeaderWithWrap,
-            // Row/column move commands. prosemirror-tables has them;
-            // @tiptap/extension-table does not expose them.
-            TableReorder,
-            Highlight.configure({ multicolor: true }),
-            // Superscript / subscript. Upstream declares no `excludes`, so a run
-            // could otherwise carry both marks at once and render as neither.
-            // Listing both names makes each one clear the other on apply.
-            Superscript.extend({ excludes: 'superscript subscript' }),
-            Subscript.extend({ excludes: 'superscript subscript' }),
-            // Text color. TextStyle is the generic <span style="…"> mark Color
-            // hangs its `color` attribute off; both ship in
-            // @tiptap/extension-text-style. Only inline `color` survives the
-            // markdown round trip — noteMarkdown strips every other style prop.
-            TextStyle,
-            Color,
-            // Font family — another attribute on the same TextStyle span, so a
-            // run can carry both a color and a font without either extension
-            // clobbering the other. Stacks come from `fontFamilies.ts`.
-            FontFamily,
-            // Font size — a third attribute on that same TextStyle span. It is a
-            // mark, not a block attribute, so a size applies to any run of text
-            // (heading, list item, table cell) without changing the block type.
-            // Sizes come from `fontSizes.ts`; only px round-trips.
-            FontSize,
-            TextAlign.configure({ types: ['heading', 'paragraph'] }),
-            IndentExtension,
-            ResizableImage.configure({ inline: false, allowBase64: false }),
-            NoteLinkExtension,
-            SidenoteRefExtension,
-            FilePathNodeExtension,
-            AiEditDecorationExtension,
-            YouTubeEmbedDecorationExtension.configure({
-                onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
-            }),
-            // AC-02: paper/PDF links get view-only Open inline / Popout / New tab
-            // affordances. New tab works standalone; Popout (AC-04) and the inline
-            // pdf.js viewer (AC-03) are wired to host seams below.
-            PaperLinkEmbedDecorationExtension.configure({
-                // AC-04: open the paper in a maximized modal.
-                onRequestPopout: (info: PaperLinkInfo) => setPopupPaper(info),
-                // AC-03: mount the ephemeral inline pdf.js viewer into the widget
-                // container. A React root is torn down on collapse/destroy — the
-                // unmount is deferred so it never runs during a React render pass.
-                renderInlineViewer: (container, info, onClose) => {
-                    const root = createRoot(container);
-                    root.render(
-                        <PaperInlineViewer
-                            info={info}
-                            resolveSource={stableResolvePaper}
-                            onClose={onClose}
-                        />,
-                    );
-                    return () => {
-                        setTimeout(() => root.unmount(), 0);
-                    };
-                },
-            }),
-            ...(commentsEnabled
-                ? [
-                    CommentExtension.configure({
-                        onCommentActivated: (commentId: string | null) => {
-                            onCommentActivatedRef.current?.(commentId);
-                        },
-                    }),
-                ]
-                : []),
-            // Registered last so its match decorations paint above the comment
-            // and AI-edit decorations rather than under them. The extension binds
-            // no keyboard shortcut of its own, so Ctrl+F stays native browser find
-            // (which still reaches the sidebar, TOC and chat panel); search is
-            // driven entirely from the toolbar's find/replace panel.
-            FindAndReplace.configure({
-                // The bundled styles fill matches with yellow, which is
-                // indistinguishable from the first Highlight mark color (#fff3b0)
-                // and from comment highlights. noteEditor.css outlines matches
-                // instead, so they read on top of a user highlight.
-                injectCSS: false,
-            }),
-        ],
-        editorProps: {
-            handleClick: (view, pos, event) => {
-                if (!(event.ctrlKey || event.metaKey)) return false;
-                // A bare `#fragment` href is a same-note heading anchor. It is
-                // resolved here against the live headings rather than handed to
-                // `openLink`, which would `window.open('#…')` a stray window at
-                // the SPA root. Swallowed either way: a stale anchor is a
-                // silent no-op, never a navigation.
-                const jumpIfAnchor = (href: string | null | undefined): boolean => {
-                    if (!href?.startsWith('#')) return false;
-                    const ed = editorInstanceRef.current;
-                    if (ed) {
-                        jumpToHeadingAnchor(ed, scrollContainerPropRef.current?.current ?? null, href);
-                    }
-                    return true;
-                };
-                // A `canvas://<id>` link opens the canvas as a panel tab. With
-                // no panel or visible chat it is a no-op, never a window.open.
-                const openIfCanvas = (href: string | null | undefined): boolean => {
-                    const canvasLink = href ? parseCanvasLink(href) : null;
-                    if (!canvasLink) return false;
-                    const { host, workspaceId: ownerWorkspaceId } = canvasLinkContextRef.current;
-                    if (ownerWorkspaceId) {
-                        openCanvasLink({ canvasId: canvasLink.canvasId, ownerWorkspaceId, host });
-                    }
-                    return true;
-                };
-                const { state } = view;
-                const $pos = state.doc.resolve(pos);
-                const linkMark = $pos.marks().find((m: any) => m.type.name === 'link');
-                if (linkMark?.attrs.href) {
-                    if (jumpIfAnchor(linkMark.attrs.href)) return true;
-                    if (openIfCanvas(linkMark.attrs.href)) return true;
-                    openLink(linkMark.attrs.href, linkHandlerConfigRef.current);
-                    return true;
-                }
-                // Fallback: check if the DOM target is an <a> element. Read the
-                // raw attribute for the anchor test — `.href` is resolved
-                // against the page URL, so a fragment arrives absolute.
-                const anchor = (event.target as HTMLElement).closest?.('a');
-                if (anchor && jumpIfAnchor(anchor.getAttribute('href'))) return true;
-                if (anchor && openIfCanvas(anchor.getAttribute('href'))) return true;
-                if (anchor?.href) {
-                    openLink(anchor.href, linkHandlerConfigRef.current);
-                    return true;
-                }
-                return false;
-            },
-            handleDOMEvents: {
-                keydown: (view, event) => {
-                    if (event.key === 'Control' || event.key === 'Meta') {
-                        view.dom.classList.add('ctrl-held');
-                    }
-                    return false;
-                },
-                keyup: (view, event) => {
-                    if (event.key === 'Control' || event.key === 'Meta') {
-                        view.dom.classList.remove('ctrl-held');
-                    }
-                    return false;
-                },
-                blur: (view) => {
-                    view.dom.classList.remove('ctrl-held');
-                    return false;
-                },
-                mouseover: (_view, event) => {
-                    const target = event.target;
-                    if (!(target instanceof Element)) return false;
-
-                    const anchor = target.closest('a[href]');
-                    const href = anchor?.getAttribute('href');
-                    if (anchor && href) {
-                        // Idempotent write: PM's DOMObserver treats the mutation
-                        // as an external edit and redraws the link's children;
-                        // when the hovered child is an inline atom chip the
-                        // redraw re-fires mouseover on the recreated element,
-                        // and an unconditional write loops every frame.
-                        const title = getLinkHoverTitle(href);
-                        if (anchor.getAttribute('title') !== title) {
-                            anchor.setAttribute('title', title);
-                        }
-                    }
-                    return false;
-                },
-                // Mark the editor as a valid drop target for external file drags
-                // (a dragover that never calls preventDefault would forbid the drop).
-                dragover: (_view, event) => {
-                    if ((event as DragEvent).dataTransfer?.types.includes('Files')) {
-                        event.preventDefault();
-                    }
-                    return false;
-                },
-            },
-            handlePaste: (view, event) => {
-                if (readOnlyRef.current) return true;
-                if (handlePasteRef.current) {
-                    return handlePasteRef.current(view, event as ClipboardEvent);
-                }
-                return false;
-            },
-            handleDrop: (view, event) => {
-                if (readOnlyRef.current) return true;
-                if (handleDropRef.current) {
-                    return handleDropRef.current(view, event as DragEvent);
-                }
-                return false;
-            },
-        },
-        onUpdate,
-    });
-
-    useEffect(() => {
-        editor?.setEditable?.(!readOnly, false);
-    }, [editor, readOnly]);
-
-    // Notify parent when editor becomes available
-    useEffect(() => {
-        editorInstanceRef.current = editor ?? null;
-        if (editor) onEditorReadyRef.current?.(editor);
-    }, [editor]);
+    // A `canvas://<id>` link opens the canvas as a panel tab; with no panel or
+    // owning workspace it is a no-op, never a window.open. Anything else goes
+    // through the user's link-handler settings.
+    const openNoteLink = useCallback((href: string): boolean => {
+        const { host, workspaceId: ownerWorkspaceId, linkHandlerConfig: config } = linkContextRef.current;
+        const canvasLink = parseCanvasLink(href);
+        if (canvasLink) {
+            if (ownerWorkspaceId) {
+                openCanvasLink({ canvasId: canvasLink.canvasId, ownerWorkspaceId, host });
+            }
+            return true;
+        }
+        openLink(href, config);
+        return true;
+    }, []);
 
     return (
-        <>
-            {/* `note-editor` is the CSS scope every rule in noteEditor.css hangs
-                off. NoteEditor also puts it on its own container, but a bare
-                mount (the markdown review dialog's rich view) has no such
-                ancestor, and without it the table cell fills — which render as
-                `background-color: var(--note-table-bg-*)`, and the palette is
-                declared on that scope — resolve to nothing and disappear. */}
-            <EditorContent editor={editor} className="note-editor" />
+        <RichEditor
+            readOnly={readOnly}
+            placeholder={placeholder}
+            leadingExtensions={[
+                // Must precede StarterKit so their parseHTML rules win.
+                MapBlock,
+                PdfBlock.configure({
+                    onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
+                    workspaceId,
+                    getNotePath: () => notePathRef.current,
+                    getNoteRoot: () => noteRootRef.current,
+                    onChatAboutPaper: (paperTextRelPath: string) =>
+                        onChatAboutPaperRef.current?.(paperTextRelPath),
+                }),
+                MermaidBlock,
+                MathInline,
+                MathDisplay,
+            ]}
+            // CodeBlockLowlight with a per-block language picker. A block with
+            // an explicit language is highlighted live; one without stays plain
+            // (codeLowlight disables auto-detection).
+            codeBlock={CodeBlock.configure({ lowlight: codeLowlight })}
+            extensions={[
+                ResizableImage.configure({ inline: false, allowBase64: false }),
+                NoteLinkExtension,
+                SidenoteRefExtension,
+                FilePathNodeExtension,
+                EditDiffDecoration,
+                YouTubeEmbedDecorationExtension.configure({
+                    onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
+                }),
+                // Paper/PDF links get Open inline / Popout / New tab actions.
+                PaperLinkEmbedDecorationExtension.configure({
+                    onRequestPopout: (info: PaperLinkInfo) => setPopupPaper(info),
+                    // Mount the inline pdf.js viewer into the widget container.
+                    // The unmount is deferred so it never runs during a React render.
+                    renderInlineViewer: (container, info, onClose) => {
+                        const root = createRoot(container);
+                        root.render(
+                            <PaperInlineViewer
+                                info={info}
+                                resolveSource={stableResolvePaper}
+                                onClose={onClose}
+                            />,
+                        );
+                        return () => {
+                            setTimeout(() => root.unmount(), 0);
+                        };
+                    },
+                }),
+                ...(commentsEnabled
+                    ? [
+                        CommentExtension.configure({
+                            onCommentActivated: (commentId: string | null) => {
+                                onCommentActivatedRef.current?.(commentId);
+                            },
+                        }),
+                    ]
+                    : []),
+            ]}
+            // Keep `canvas://<id>` hrefs through parse, render and save.
+            linkProtocols={['canvas']}
+            onOpenLink={openNoteLink}
+            onChange={onChange}
+            onEditorReady={onEditorReady}
+            handlePaste={handlePaste}
+            handleDrop={handleDrop}
+            scrollContainerRef={scrollContainerRef}
+            // Carry shared and CoC styles even when mounted without NoteEditor.
+            className="rich-editor note-editor"
+        >
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
             <PdfPopupDialog
                 pdf={popupPdf}
@@ -518,6 +261,6 @@ export function RichEditorCore({
                     noteRoot={noteRoot}
                 />
             )}
-        </>
+        </RichEditor>
     );
 }

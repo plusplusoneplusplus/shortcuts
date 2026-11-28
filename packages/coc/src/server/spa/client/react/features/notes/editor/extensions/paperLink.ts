@@ -15,18 +15,19 @@
  *
  * This reuses the existing recognizers rather than inventing a new regex:
  *   - {@link recognizeArxivUrl} from the server-side (pure) arXiv module, and
- *   - forge {@link isPdfUrl}.
+ *   - {@link isPdfUrl} from the embeds package.
  *
  * Pure — no I/O, no DOM. Safe to import anywhere and unit-test in isolation.
  */
 
-import { isPdfUrl, isYouTubeUrl, isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { isPdfUrl, isYouTubeUrl, isEmbeddableMapUrl } from '@plusplusoneplusplus/tiptap-embeds/urls';
+import type { PaperLinkInfo as BasePaperLinkInfo } from '@plusplusoneplusplus/tiptap-embeds/paper';
 import { recognizeArxivUrl, type RecognizedArxiv } from '../../../../../../../notes/arxiv-url';
 
 /** How a paper link should be rendered by the inline/popout viewers. */
 export type PaperLinkKind = 'arxiv' | 'pdf';
 
-export interface PaperLinkInfo {
+export interface PaperLinkInfo extends BasePaperLinkInfo {
     /** `'arxiv'` when the href is a recognized arXiv reference, else `'pdf'`. */
     kind: PaperLinkKind;
     /**

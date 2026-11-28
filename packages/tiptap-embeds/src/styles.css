@@ -1,0 +1,174 @@
+/* ── Google Maps block node view ─────────────────────────────────────────── */
+
+.rich-editor .ProseMirror .map-node-view {
+    margin: 0.75rem 0;
+}
+
+.rich-editor .ProseMirror .map-node-view.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
+.rich-editor .ProseMirror .map-node-view-frame-wrap {
+    height: 400px;
+}
+
+.rich-editor .ProseMirror .map-node-view-source {
+    width: 100%;
+    box-sizing: border-box;
+    border: 0;
+    border-top: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: #ffffff;
+    color: #1e1e1e;
+}
+
+.rich-editor .ProseMirror .map-node-view-source:focus {
+    outline: 2px solid #0078d4;
+    outline-offset: -2px;
+}
+
+.rich-editor .ProseMirror .map-node-view-error {
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: #b91c1c;
+    font-size: 12px;
+    background: #fff5f5;
+}
+
+.dark .rich-editor .ProseMirror .map-node-view.ProseMirror-selectednode {
+    outline-color: #4fc3f7;
+}
+
+.dark .rich-editor .ProseMirror .map-node-view-source {
+    border-top-color: #3c3c3c;
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+
+.dark .rich-editor .ProseMirror .map-node-view-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+}
+
+/* ── Inline PDF block node view ──────────────────────────────────────────── */
+
+.rich-editor .ProseMirror .pdf-node-view {
+    margin: 0.75rem 0;
+}
+
+.rich-editor .ProseMirror .pdf-node-view.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
+.rich-editor .ProseMirror .pdf-node-view-frame-wrap {
+    height: auto;
+}
+
+/* Inner wrapper anchors the resize handle to the iframe's bottom edge (the
+   fallback link sits below it, in normal flow). */
+.rich-editor .ProseMirror .pdf-node-view-frame-inner {
+    position: relative;
+}
+
+/* Bottom-edge drag handle: faint by default, highlighted on hover/select/drag. */
+.rich-editor .ProseMirror .pdf-node-view-resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to bottom, transparent, rgba(0, 120, 212, 0.18));
+    opacity: 0.6;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.rich-editor .ProseMirror .pdf-node-view-frame-inner:hover .pdf-node-view-resize-handle,
+.rich-editor .ProseMirror .pdf-node-view.pdf-selected .pdf-node-view-resize-handle,
+.rich-editor .ProseMirror .pdf-node-view.ProseMirror-selectednode .pdf-node-view-resize-handle,
+.rich-editor .ProseMirror .pdf-node-view.pdf-resizing .pdf-node-view-resize-handle {
+    opacity: 1;
+    background: linear-gradient(to bottom, transparent, rgba(0, 120, 212, 0.35));
+}
+
+.rich-editor .ProseMirror .pdf-node-view-resize-tooltip {
+    position: absolute;
+    bottom: 10px;
+    right: 4px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.75);
+    color: #ffffff;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* The iframe swallows document-level mousemove during a drag; disabling its
+   pointer events for the drag duration keeps the handle's listeners firing. */
+.rich-editor .ProseMirror .pdf-node-view.pdf-resizing .md-pdf-embed-frame {
+    pointer-events: none;
+}
+
+.dark .rich-editor .ProseMirror .pdf-node-view-resize-handle {
+    background: linear-gradient(to bottom, transparent, rgba(79, 195, 247, 0.22));
+}
+
+.dark .rich-editor .ProseMirror .pdf-node-view-frame-inner:hover .pdf-node-view-resize-handle,
+.dark .rich-editor .ProseMirror .pdf-node-view.pdf-selected .pdf-node-view-resize-handle,
+.dark .rich-editor .ProseMirror .pdf-node-view.ProseMirror-selectednode .pdf-node-view-resize-handle,
+.dark .rich-editor .ProseMirror .pdf-node-view.pdf-resizing .pdf-node-view-resize-handle {
+    background: linear-gradient(to bottom, transparent, rgba(79, 195, 247, 0.4));
+}
+
+.rich-editor .ProseMirror .pdf-node-view-link-only {
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    color: #616161;
+    font-size: 12px;
+    background: #ffffff;
+}
+
+.rich-editor .ProseMirror .pdf-node-view-link-only a {
+    color: #0078d4;
+}
+
+.rich-editor .ProseMirror .pdf-node-view-error {
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: #b91c1c;
+    font-size: 12px;
+    background: #fff5f5;
+}
+
+.dark .rich-editor .ProseMirror .pdf-node-view.ProseMirror-selectednode {
+    outline-color: #4fc3f7;
+}
+
+.dark .rich-editor .ProseMirror .pdf-node-view-link-only {
+    color: #cccccc;
+    background: #1e1e1e;
+}
+
+.dark .rich-editor .ProseMirror .pdf-node-view-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+}

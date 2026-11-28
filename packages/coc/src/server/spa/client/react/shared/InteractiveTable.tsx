@@ -519,6 +519,7 @@ export function InteractiveTable({
                         className="interactive-table-btn"
                         onClick={() => setShowFilters(f => !f)}
                         title={showFilters ? 'Hide filters' : 'Show filters'}
+                        aria-label={showFilters ? 'Hide filters' : 'Show filters'}
                     >
                         {showFilters ? '✕' : '⊞'} <span className="interactive-table-btn-label">Filter</span>
                     </button>
@@ -528,6 +529,8 @@ export function InteractiveTable({
                             className="interactive-table-btn"
                             onClick={() => setShowColPicker(v => !v)}
                             title="Toggle column visibility"
+                            aria-label="Toggle column visibility"
+                            aria-expanded={showColPicker}
                         >
                             ⊞ <span className="interactive-table-btn-label">Columns</span>
                         </button>
@@ -557,6 +560,7 @@ export function InteractiveTable({
                         className="interactive-table-btn"
                         onClick={handleCopyMarkdown}
                         title="Copy as Markdown"
+                        aria-label={copyFeedback === 'md' ? 'Copied as Markdown' : 'Copy as Markdown'}
                     >
                         {copyFeedback === 'md' ? '✓' : '⧉'}{' '}
                         <span className="interactive-table-btn-label">
@@ -567,6 +571,7 @@ export function InteractiveTable({
                         className="interactive-table-btn"
                         onClick={handleCopyCsv}
                         title="Copy as CSV"
+                        aria-label={copyFeedback === 'csv' ? 'Copied as CSV' : 'Copy as CSV'}
                     >
                         {copyFeedback === 'csv' ? '✓' : '⧉'}{' '}
                         <span className="interactive-table-btn-label">
@@ -577,6 +582,7 @@ export function InteractiveTable({
                         className="interactive-table-btn"
                         onClick={() => setIsFullscreen(f => !f)}
                         title={isFullscreen ? 'Exit fullscreen' : 'Expand table'}
+                        aria-label={isFullscreen ? 'Exit fullscreen' : 'Expand table'}
                     >
                         {isFullscreen ? '⤡' : '⤢'}{' '}
                         <span className="interactive-table-btn-label">

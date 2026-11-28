@@ -91,26 +91,19 @@ vi.mock('@tiptap/starter-kit', () => ({
         },
     },
 }));
-// NotesCodeBlock (CodeBlockLowlight + language-picker NodeView) replaces
-// StarterKit's plain CodeBlock; capture the lowlight registry it is configured
-// with so the swap can be asserted.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock',
-    () => ({
-        NotesCodeBlock: {
-            configure: (opts: any) => {
-                capturedLowlightOptions = opts;
-                return { name: 'codeBlockLowlight' };
-            },
+// tiptap-react's CodeBlock (CodeBlockLowlight + language-picker NodeView)
+// replaces StarterKit's plain CodeBlock; capture the lowlight registry it is
+// configured with so the swap can assert it is wired to codeLowlight.
+vi.mock('@plusplusoneplusplus/tiptap-react/code-block', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-react/code-block')>()),
+    CodeBlock: {
+        configure: (opts: any) => {
+            capturedLowlightOptions = opts;
+            return { name: 'codeBlockLowlight' };
         },
-    }),
-);
-// RichEditorCore imports the shared 16-language registry from notesLowlight;
-// stub it so the swap can assert CodeBlockLowlight is wired to that instance.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight',
-    () => ({ notesLowlight: mockLowlightRegistry }),
-);
+    },
+    codeLowlight: mockLowlightRegistry,
+}));
 vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
 vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-link', () => ({
@@ -148,16 +141,16 @@ vi.mock('@tiptap/extension-table-header', () => {
     return { TableHeader: stub };
 });
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-react/image', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock',
+    '@plusplusoneplusplus/tiptap-react/mermaid',
     () => ({ MermaidBlock: {} }),
 );
 const mockMapBlock = vi.hoisted(() => ({}));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock',
+    '@plusplusoneplusplus/tiptap-embeds/map',
     () => ({ MapBlock: mockMapBlock }),
 );
 // PdfBlock is configured with an onRequestFullWindow bridge; `configure` returns
@@ -178,16 +171,14 @@ vi.mock(
 // The full-window PdfPopupDialog now renders through PdfJsRenderer (pdf.js
 // text layer, AC-03). Stub it so this test never loads the real browser-only
 // pdf.js library; the popup-wiring test asserts the viewport it renders.
+vi.mock('@plusplusoneplusplus/tiptap-embeds/pdf', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-embeds/pdf')>()),
+    PdfJsRenderer: (props: any) => (
+        <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
+    ),
+}));
 vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
-    () => ({
-        PdfJsRenderer: (props: any) => (
-            <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
-        ),
-    }),
-);
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
+    '@plusplusoneplusplus/tiptap-kit/comment-mark',
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 
@@ -244,15 +235,11 @@ describe('RichEditorCore', () => {
 
     // ── CSS scope travels with the editor ────────────────────────────────
 
-    it('carries the note-editor CSS scope class itself, so styles do not depend on the host', () => {
-        // Every rule in noteEditor.css is `.note-editor .ProseMirror …`. NoteEditor
-        // puts that class on its own container, but RichEditorCore is also mounted
-        // bare (markdown review dialog, rich view). Without the class on the editor
-        // itself, a bare mount loses all of it — most visibly the table cell fills,
-        // whose `var(--note-table-bg-*)` palette is declared on that same scope and
-        // silently resolves to nothing, so a filled cell renders unfilled.
+    it('carries shared and CoC CSS scopes even without a host wrapper', () => {
         render(<RichEditorCore />);
-        expect(screen.getByTestId('rich-editor-content').className).toContain('note-editor');
+        const classes = screen.getByTestId('rich-editor-content').className.split(/\s+/);
+        expect(classes).toContain('rich-editor');
+        expect(classes).toContain('note-editor');
     });
 
     // ── onChange fires when content changes ──────────────────────────────

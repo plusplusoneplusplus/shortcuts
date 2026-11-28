@@ -20,7 +20,7 @@ import {
     DEFAULT_HIGHLIGHT_COLOR,
     HIGHLIGHT_COLORS,
     normalizeCssColor,
-} from '../../../../src/server/spa/client/react/features/notes/editor/colorPalette';
+} from '@plusplusoneplusplus/tiptap-kit/text-style';
 
 const RED = '#e11d48';
 const GREEN = HIGHLIGHT_COLORS[1].color;

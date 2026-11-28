@@ -17,12 +17,12 @@ import {
     INDENT_TYPES,
     EMBED_INDENT_TYPES,
     TEXT_INDENT_TYPES,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/indentExtension';
-import { ResizableImage } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage';
+} from '@plusplusoneplusplus/tiptap-kit/indent';
+import { ResizableImage } from '@plusplusoneplusplus/tiptap-react/image';
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
-import { MapBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock';
-import { MermaidBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock';
-import { MathInline, MathDisplay } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mathNode';
+import { MapBlock } from '@plusplusoneplusplus/tiptap-embeds/map';
+import { MermaidBlock } from '@plusplusoneplusplus/tiptap-react/mermaid';
+import { MathInline, MathDisplay } from '@plusplusoneplusplus/tiptap-react/math';
 
 const MAP_URL = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
 

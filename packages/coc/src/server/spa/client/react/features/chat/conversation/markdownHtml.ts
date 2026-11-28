@@ -1,8 +1,8 @@
 import { parseTargetHref } from '../../../../../../shared/sentinel-target-reference';
 import { Marked } from 'marked';
-import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
+import { mathMarkedExtension } from '@plusplusoneplusplus/tiptap-kit/math';
 import { htmlLineBreakMarkedExtension } from '../../../../shared/htmlLineBreaks';
-import { escapeHtmlText as escapeHtml } from '../../../../shared/html';
+import { escapeHtmlText as escapeHtml } from '@plusplusoneplusplus/tiptap-kit/html';
 import { parseCanvasLink } from '../../../shared/canvasLink';
 import { linkifyFilePaths, parseFilePathRef, recoverDashboardFileHref } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';

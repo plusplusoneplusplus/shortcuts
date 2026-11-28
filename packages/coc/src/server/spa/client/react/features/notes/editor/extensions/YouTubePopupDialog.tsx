@@ -4,14 +4,14 @@
  * Bridges the plain-DOM decoration widget (YouTubeEmbedDecorationExtension) to
  * the React world: RichEditorCore holds a `popupVideoId` state, the ⛶ button's
  * `onRequestPopup` sets it, and this component renders the shared {@link Dialog}
- * with an autoplaying `youtube-nocookie` iframe.
+ * around the embeds package's autoplaying {@link YouTubePopupPlayer}.
  *
  * Rendering is fully gated on `videoId`: when it is `null` the component returns
  * `null`, so closing the dialog unmounts the iframe and playback stops.
  */
 
 import { Dialog } from '../../../../ui/Dialog';
-import { youTubeEmbedUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { YouTubePopupPlayer } from '@plusplusoneplusplus/tiptap-embeds/youtube';
 
 export interface YouTubePopupDialogProps {
     /** The video id to play, or `null` to keep the dialog closed / unmounted. */
@@ -26,17 +26,7 @@ export function YouTubePopupDialog({ videoId, onClose }: YouTubePopupDialogProps
 
     return (
         <Dialog open onClose={onClose} title="YouTube" className="max-w-[800px]">
-            <div className="yt-embed-popup-frame-wrap">
-                <iframe
-                    className="yt-embed-popup-frame"
-                    src={youTubeEmbedUrl(videoId, { autoplay: true })}
-                    title="YouTube video player"
-                    sandbox="allow-scripts allow-same-origin allow-presentation"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                    allowFullScreen
-                />
-            </div>
+            <YouTubePopupPlayer videoId={videoId} />
         </Dialog>
     );
 }
