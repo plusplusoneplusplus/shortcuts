@@ -317,6 +317,16 @@ describe('generated extension publications with a real Node host', () => {
         expect((await publish()).success).toBe(true);
     });
 
+    it('allows overlapping data wipes and keeps the gate closed until the last one releases', async () => {
+        // A replace-mode import wipes while an explicit wipe may still run.
+        const [first, second] = await Promise.all([deps.hosts.prepareDataWipe(), deps.hosts.prepareDataWipe()]);
+        first();
+        first();
+        expect(() => publish()).toThrow('wiped');
+        second();
+        expect((await publish()).success).toBe(true);
+    });
+
     it('reconciles a committed package whose last durable record was already removed', async () => {
         const created = await publish();
         const [item] = listGeneratedPackages(root, owner);

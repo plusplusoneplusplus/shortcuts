@@ -55,7 +55,8 @@ export class CanvasExtensionHostRegistry {
     private readonly cleanup = new Set<Promise<void>>();
     private readonly deletions = new Map<string, Promise<void>>();
     private disposed = false;
-    private wiping = false;
+    /** Active data wipes; a replace-mode import can wipe while an explicit wipe runs. */
+    private wipes = 0;
     private epoch = 0;
     private readonly ownerEpochs = new Map<string, number>();
     private disposePromise?: Promise<void>;
@@ -240,13 +241,14 @@ export class CanvasExtensionHostRegistry {
     }
 
     async prepareDataWipe(): Promise<() => void> {
-        if (this.wiping) throw new Error('Canvas data wipe is already pending');
-        this.wiping = true;
+        this.wipes++;
+        let released = false;
+        const release = () => { if (!released) { released = true; this.wipes--; } };
         try {
             await this.stopAll();
             for (const owner of await listSessionWorkspaceOwners(this.options.dataDir)) await this.stopConversation(owner, true);
-            return () => { this.wiping = false; };
-        } catch (error) { this.wiping = false; throw error; }
+            return release;
+        } catch (error) { release(); throw error; }
     }
 
     dispose(): Promise<void> {
@@ -394,7 +396,7 @@ export class CanvasExtensionHostRegistry {
 
     private assertEnabled(): void {
         if (this.disposed) throw new Error('Canvas extension registry is disposed');
-        if (this.wiping) throw new Error('Canvas extension data is being wiped');
+        if (this.wipes > 0) throw new Error('Canvas extension data is being wiped');
         if (!this.options.config().canvasExtensions?.enabled) throw new Error('Canvas extensions are disabled');
     }
 
