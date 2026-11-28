@@ -22,6 +22,8 @@ import { taskCache } from './task-cache';
 import { getRepoDataPath } from '../paths';
 
 const HTML_EMBED_MAX_BYTES = 4 * 1024 * 1024;
+/** Text cap for GET /files/preview (Files tab, file previews, workspace-file editor loads). */
+export const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024;
 const HTML_EMBED_TYPES = new Set(['.html', '.htm']);
 const TRUSTED_PREVIEW_DIRS = [
     ...TRUSTED_READ_ONLY_DIRS,
@@ -356,9 +358,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 if (!stat.isFile()) {
                     return sendError(res, 404, 'Not a file');
                 }
-                // File size cap: 4MB
-                if (stat.size > 4 * 1024 * 1024) {
-                    return sendError(res, 400, 'File too large (max 4MB)');
+                if (stat.size > WORKSPACE_FILE_PREVIEW_MAX_BYTES) {
+                    return sendError(res, 400, 'File too large (max 16MB)');
                 }
 
                 const content = await fs.promises.readFile(realPath, 'utf-8');

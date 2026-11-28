@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
+import { WORKSPACE_FILE_PREVIEW_MAX_BYTES } from '../../src/server/tasks/tasks-read-handler';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
@@ -209,6 +210,54 @@ describe('File Preview API', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.language).toBe('css');
+        });
+    });
+
+    // ========================================================================
+    // Size limit (Files tab opens with lines=0)
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/preview — Size limit', () => {
+        const MB = 1024 * 1024;
+
+        async function previewFull(srv: ExecutionServer, wsId: string, fullPath: string) {
+            return request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(fullPath)}&lines=0`
+            );
+        }
+
+        it('uses a 16 MB cap', () => {
+            expect(WORKSPACE_FILE_PREVIEW_MAX_BYTES).toBe(16 * MB);
+        });
+
+        it('opens a text file just above the old 4 MB cap', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const fullPath = createFile('above-4mb.json', 'x'.repeat(4 * MB + 1));
+
+            const res = await previewFull(srv, wsId, fullPath);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).content).toHaveLength(4 * MB + 1);
+        });
+
+        it('opens a text file exactly at the 16 MB cap', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const fullPath = createFile('at-16mb.json', 'x'.repeat(16 * MB));
+
+            const res = await previewFull(srv, wsId, fullPath);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).content).toHaveLength(16 * MB);
+        });
+
+        it('rejects a text file one byte above the 16 MB cap', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const fullPath = createFile('above-16mb.json', 'x'.repeat(16 * MB + 1));
+
+            const res = await previewFull(srv, wsId, fullPath);
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe('File too large (max 16MB)');
         });
     });
 
