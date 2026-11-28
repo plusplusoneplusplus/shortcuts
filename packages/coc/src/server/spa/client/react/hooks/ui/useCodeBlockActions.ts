@@ -41,17 +41,20 @@ export function useCodeBlockActions(
             if (raw == null || pending.has(btn)) return;
             clearTimeout(timers.get(btn));
             pending.add(btn);
+            btn.removeAttribute('data-copy-state');
             try {
                 // HTML attribute entities are already decoded by the DOM. A second
                 // decode corrupts literal code such as "&lt;" and "&#10;".
                 await copyToClipboard(raw);
                 if (!active) return;
                 btn.textContent = 'Copied!';
+                btn.setAttribute('data-copy-state', 'copied');
                 btn.setAttribute('aria-label', 'Copied!');
                 btn.title = 'Copied!';
             } catch {
                 if (!active) return;
                 btn.textContent = 'Copy failed';
+                btn.setAttribute('data-copy-state', 'failed');
                 btn.setAttribute('aria-label', 'Copy failed. Try again');
                 btn.title = 'Copy failed. Try again';
             } finally {
@@ -61,6 +64,8 @@ export function useCodeBlockActions(
                 btn.textContent = btn.closest('.code-block-compact') ? 'Copy' : 'Copy all';
                 btn.setAttribute('aria-label', 'Copy all');
                 btn.title = 'Copy all';
+                // Feedback keeps a hover-revealed Copy visible until it resets.
+                btn.removeAttribute('data-copy-state');
                 timers.delete(btn);
             }, 3000));
         }

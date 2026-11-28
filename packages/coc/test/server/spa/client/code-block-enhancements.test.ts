@@ -334,16 +334,38 @@ describe('compact chat and canvas code block surface', () => {
         return css.match(new RegExp(escaped + '\\s*\\{([^}]+)\\}'))?.[1] ?? '';
     };
 
-    it('anchors Copy to the surface and reserves space outside the code scroller', () => {
+    it('floats a compact Copy over the code without reserving width', () => {
         expect(rule('.markdown-body .code-block-compact')).toContain('position: relative');
         const copy = rule('.markdown-body .code-block-compact > .code-block-copy');
         expect(copy).toContain('position: absolute');
-        expect(copy).toContain('top: 8px');
-        expect(copy).toContain('right: 8px');
+        expect(copy).toContain('top: 6px');
+        expect(copy).toContain('right: 6px');
+        expect(copy).toContain('min-width: 0');
+        expect(copy).toContain('margin: 0');
+        expect(rule('.dark .markdown-body .code-block-compact > .code-block-copy')).toContain('background: rgba(45, 45, 45, 0.92)');
+        // Regression: the scroller used to keep a 104px right margin for Copy.
         const pre = rule('.markdown-body .code-block-compact > .code-block-content');
-        expect(pre).toContain('margin: 0 104px 0 0');
+        expect(pre).toContain('margin: 0;');
+        expect(pre).not.toMatch(/margin:\s*0\s+\d+px/);
         expect(pre).toContain('padding: 0');
         expect(rule('.markdown-body .code-block-content')).toContain('overflow-x: auto');
+        // The code grows with long lines; its end padding lets them scroll clear of Copy.
+        const code = rule('.markdown-body .code-block-compact > .code-block-content > code');
+        expect(code).toContain('display: inline-block');
+        expect(code).toContain('min-width: 100%');
+        expect(code).toContain('padding: 12px 64px 12px 16px');
+    });
+
+    it('reveals Copy on hover, focus and feedback for mouse users and keeps it visible on touch', () => {
+        const hover = css.match(/@media \(hover: hover\) and \(pointer: fine\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+        expect(hover).toMatch(/\.code-block-compact > \.code-block-copy \{\s*opacity: 0;/);
+        expect(hover).toContain('.markdown-body .code-block-compact:hover > .code-block-copy');
+        expect(hover).toContain('.markdown-body .code-block-compact:focus-within > .code-block-copy');
+        expect(hover).toContain('.markdown-body .code-block-compact > .code-block-copy[data-copy-state]');
+        const touch = css.match(/@media \(pointer: coarse\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+        expect(touch).toContain('min-height: 32px');
+        expect(touch).not.toContain('opacity');
+        expect(rule('.markdown-body .code-block-copy:focus-visible')).toContain('outline: 2px solid');
     });
 
     it('uses one border and excludes enhanced blocks from nested code-card styles in both themes', () => {
@@ -351,7 +373,7 @@ describe('compact chat and canvas code block surface', () => {
         expect(code).toContain('border: 0');
         expect(code).toContain('border-radius: 0');
         expect(code).toContain('background: transparent');
-        expect(code).toContain('padding: 12px 16px');
+        expect(code).toContain('padding: 12px 64px 12px 16px');
         expect(css).not.toMatch(/\.markdown-body pre(?:\s|\s*>\s*code)/);
         expect(css).not.toMatch(/\.markdown-body code\s*[,\{]/);
         expect(css).toContain('.dark .canvas-mermaid-preview .markdown-body pre:not(.code-block-content) > code');

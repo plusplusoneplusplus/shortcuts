@@ -212,6 +212,38 @@ describe('useCodeBlockActions', () => {
         expect(writeText).toHaveBeenCalledTimes(1);
     });
 
+    it('marks copy feedback so a hover-revealed Copy stays visible until it resets', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const writeText = vi.fn()
+                .mockResolvedValueOnce(undefined)
+                .mockRejectedValueOnce(new Error('denied'));
+            Object.defineProperty(navigator, 'clipboard', {
+                value: { writeText }, writable: true, configurable: true,
+            });
+            container.innerHTML = '<div class="code-block-container code-block-compact" data-raw="a  b"><button class="code-block-copy">Copy</button></div>';
+            const button = container.querySelector('button')!;
+            renderHook(() => useCodeBlockActions(createRef(container)));
+            expect(button.textContent).toBe('Copy');
+            expect(button.hasAttribute('data-copy-state')).toBe(false);
+
+            button.click();
+            await waitFor(() => expect(button.getAttribute('data-copy-state')).toBe('copied'));
+            expect(button.textContent).toBe('Copied!');
+            expect(writeText).toHaveBeenLastCalledWith('a  b');
+
+            button.click();
+            await waitFor(() => expect(button.getAttribute('data-copy-state')).toBe('failed'));
+            expect(button.textContent).toBe('Copy failed');
+
+            await vi.advanceTimersByTimeAsync(3000);
+            expect(button.hasAttribute('data-copy-state')).toBe(false);
+            expect(button.textContent).toBe('Copy');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     // ── Cleanup ──────────────────────────────────────────────────────
 
     it('removes event listener on unmount', () => {
