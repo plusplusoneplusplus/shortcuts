@@ -23,15 +23,21 @@ function createIo(content = '# Initial', mtime = 7): MarkdownDocumentIO {
 function Harness({
     io,
     autosaveDebounceMs,
+    root,
+    onConflict,
 }: {
     io: MarkdownDocumentIO;
     autosaveDebounceMs?: number;
+    root?: string;
+    onConflict?: (error: unknown, markdown: string) => void;
 }) {
     const session = useMarkdownDocumentSession({
         workspaceId: 'ws1',
         documentPath: 'doc.md',
         io,
+        root,
         autosaveDebounceMs,
+        onConflict,
         confirmRefreshMessage: 'Discard edits?',
     });
 
@@ -43,7 +49,7 @@ function Harness({
             <div data-testid="conflict">{session.conflictContent ?? ''}</div>
             <button onClick={() => session.queueSave('# Queued')}>Queue</button>
             <button onClick={() => session.flushSave()}>Flush</button>
-            <button onClick={() => session.saveNow('# Manual')}>Save now</button>
+            <button onClick={() => session.saveNow('# Manual').catch(() => {})}>Save now</button>
             <button onClick={() => session.refresh()}>Refresh</button>
         </div>
     );
@@ -121,6 +127,33 @@ describe('useMarkdownDocumentSession', () => {
 
         await waitFor(() => expect(screen.getByTestId('save-state').textContent).toBe('conflict'));
         expect(screen.getByTestId('conflict').textContent).toBe('# Disk');
+    });
+
+    it('keeps conflict state and the pending save context when a manual save conflicts', async () => {
+        const io = createIo('# Initial', 3);
+        const conflict = Object.assign(new Error('mtime_mismatch'), {
+            status: 409,
+            currentContent: '# Disk',
+        });
+        vi.mocked(io.saveContent).mockRejectedValueOnce(conflict);
+        const onConflict = vi.fn();
+        render(<Harness io={io} root="root-a" onConflict={onConflict} />);
+
+        await screen.findByText('# Initial');
+        await act(async () => {
+            fireEvent.click(screen.getByText('Save now'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('save-state').textContent).toBe('conflict'));
+        expect(screen.getByTestId('conflict').textContent).toBe('# Disk');
+        expect(onConflict).toHaveBeenCalledWith(conflict, '# Manual');
+
+        // The kept pending content and context must target the same document.
+        await act(async () => {
+            fireEvent.click(screen.getByText('Flush'));
+        });
+        expect(io.saveContent).toHaveBeenLastCalledWith('ws1', 'doc.md', '# Manual', 3, 'root-a');
+        expect(screen.getByTestId('save-state').textContent).toBe('saved');
     });
 });
 
