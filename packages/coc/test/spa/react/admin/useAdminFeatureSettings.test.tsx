@@ -65,7 +65,8 @@ beforeEach(() => {
 describe('useAdminFeatureSettings', () => {
     it('defaults canvas extensions off and saves the explicit opt-in on Features', async () => {
         const definition = FEATURES_CARD_SETTINGS.find(d => d.key === 'canvasExtensions.enabled');
-        expect(definition?.ui?.hint).toContain('run code shipped in any opened repo');
+        expect(definition?.ui?.hint).toContain('Allows Node code from opened repos');
+        expect(definition?.ui?.hint).toContain('a guest view is not a Node sandbox');
         const { view } = renderController();
         act(() => view.result.current.hydrate({}));
         expect(view.result.current.featureValues['canvasExtensions.enabled']).toBe(false);
