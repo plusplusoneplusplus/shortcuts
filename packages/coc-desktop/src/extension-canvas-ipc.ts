@@ -84,9 +84,10 @@ export function registerExtensionCanvasIpc(serverUrl: () => string | undefined):
         contents.once('destroyed', owner.destroyed);
         return owner;
     };
-    ipcMain.handle(EXTENSION_CANVAS_OPEN_CHANNEL, async (event, viewId: unknown, workspaceId: unknown, canvasId: unknown) => {
+    ipcMain.handle(EXTENSION_CANVAS_OPEN_CHANNEL, async (event, viewId: unknown, workspaceId: unknown, canvasId: unknown, reload?: unknown) => {
         if (!trusted(event) || disposed) return { ok: false, message: 'A local CoC desktop window is required.' };
-        if (!validViewId(viewId) || !validId(workspaceId) || !validId(canvasId)) {
+        if (!validViewId(viewId) || !validId(workspaceId) || !validId(canvasId)
+            || (reload !== undefined && typeof reload !== 'boolean')) {
             return { ok: false, message: 'Invalid canvas identity.' };
         }
         const owner = ownerFor(event.sender);
@@ -98,7 +99,7 @@ export function registerExtensionCanvasIpc(serverUrl: () => string | undefined):
         try {
             const base = extensionCanvasUrl(serverUrl())!;
             const response = await fetch(new URL(
-                `/api/workspaces/${encodeURIComponent(workspaceId)}/canvases/${encodeURIComponent(canvasId)}/copilot-extension/open`, base,
+                `/api/workspaces/${encodeURIComponent(workspaceId)}/canvases/${encodeURIComponent(canvasId)}/copilot-extension/${reload === true ? 'reload' : 'open'}`, base,
             ), {
                 method: 'POST', redirect: 'error',
                 signal: AbortSignal.any([view.controller.signal, AbortSignal.timeout(60_000)]),

@@ -22,6 +22,7 @@ import type {
   SentinelCodaFindingWriteResponse,
   SentinelCodaFindingDismissResponse,
   AttachSentinelTodoReferenceRequest,
+  DetachSentinelTodoReferenceRequest,
   BindSentinelTodoPrRequest,
   AcceptSentinelTodoArtifactRequest,
   SentinelTodoDependencyEvaluation,
@@ -132,6 +133,15 @@ export class SentinelTodosClient {
     return this.transport.request<SentinelTodoWriteResponse>(
       ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/references`),
       { method: 'POST', body: request },
+    );
+  }
+
+  detachReference(
+    workspaceId: string, processId: string, itemId: string, request: DetachSentinelTodoReferenceRequest,
+  ): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request<SentinelTodoWriteResponse>(
+      ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/references`),
+      { method: 'DELETE', body: request },
     );
   }
 

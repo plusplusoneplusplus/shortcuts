@@ -203,6 +203,13 @@ The client covers core REST domains and realtime process events. Repo-scoped cal
 | Shortcut | Action |
 |----------|--------|
 | `Cmd/Ctrl+Shift+M` | Add comment on selected text |
+| `Ctrl+[` / `Ctrl+]` | Previous / next visited chat in the selected workspace |
+
+Chat history navigation uses Ctrl on Windows, Linux, and macOS. It works in the
+chat composer and yields to other form fields, rich text editors, Monaco, and
+keys already handled by an editor. Alt, Shift, and Cmd combinations do not
+activate it. With no available chat in that direction, the key keeps its normal
+behavior.
 
 ## Configuration
 

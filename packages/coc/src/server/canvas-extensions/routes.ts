@@ -56,7 +56,7 @@ export function registerCanvasExtensionRoutes(routes: Route[], options: {
 
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/copilot-extension\/open$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/copilot-extension\/(open|reload)$/,
         handler: async (_req, res, match) => {
             const runtime = options.runtime;
             if (!runtime?.config().canvasExtensions?.enabled) return sendError(res, 404, 'Not found');
@@ -66,15 +66,20 @@ export function registerCanvasExtensionRoutes(routes: Route[], options: {
             const canvas = runtime.canvasStore.getCanvas(workspaceId, canvasId);
             if (!canvas || canvas.type !== 'copilot-extension') return sendError(res, 404, 'Canvas not found');
             if (!canvas.processId) return sendError(res, 422, 'Canvas has no owning conversation');
+            const controller = new AbortController();
+            const cancel = () => { if (!res.writableEnded) controller.abort(new Error('Canvas view closed')); };
+            res.once('close', cancel);
             try {
                 const opened = await reopenCanvasExtension({
                     ...runtime, dataDir: options.dataDir, processStore: options.processStore,
                     workspaceId, processId: canvas.processId,
-                }, canvasId);
+                }, canvasId, { reload: match![3] === 'reload', signal: controller.signal });
                 res.setHeader('Cache-Control', 'no-store');
                 sendJson(res, opened);
             } catch (error) {
                 sendJson(res, canvasExtensionFailure(error), 422);
+            } finally {
+                res.off('close', cancel);
             }
         },
     });

@@ -71,8 +71,8 @@ per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 up to 50 chat visits in memory through `layout/chatSelectionHistory.ts`, keyed
 by the exact workspace selection id. Re-selecting the current chat, clearing
 selection, and viewing chat-reference routes preserve that workspace's history.
-Ctrl+Alt+Left/Right step backward/forward through the shared queue-job hash builder
-and normal route selection, skipping entries absent from the owner-qualified queue
+`Ctrl+[` / `Ctrl+]` (literal Ctrl on every platform) step backward/forward through
+the shared queue-job hash builder and normal route selection, skipping entries absent from the owner-qualified queue
 and unarchived history snapshot. Replay moves the cursor without recording a new
 visit; a new selection after going back discards the forward branch. Mounted sidebar preferences publish their current
 archive IDs to a provider-instance registry in `QueueContext`, scoped by the same
@@ -81,7 +81,9 @@ optimistic archive actions block jumps before history refreshes; layout-effect
 cleanup removes snapshots on owner changes and unmount. `RepoChatTab` keys its
 preferences provider by that cache key. With no available destination, missing entries and unresolved remote owners
 leave navigation and the key untouched. The binding allows the chat composer and
-yields to other form fields, rich text editors, and Monaco.
+yields to other form fields, rich text editors, Monaco, composition, and handled
+keydown events. It matches bracket characters without Alt, Shift, or Meta,
+independently of physical key codes.
 
 Group member chat routes use
 `#repos/<groupSelectionId>/chats/member/<ownerWorkspaceId>/<canonicalProcessId>`.
@@ -426,7 +428,11 @@ conversation publishes its concrete owner and panel scope through
 that scope separately from each structured command, requires a registered
 exact-source SPA main frame, and resolves owner-qualified tab ids against URL
 views sharing the concrete session key. File previews and other clones stay
-outside this scope; Electron URL popouts inherit their opener's owner.
+outside this scope; Electron URL popouts inherit their opener's owner. A web tab
+opened by hand (`+`, Ctrl/Cmd+T, history, a chat link) takes the panel's
+`browserOwner`: in a repo group showing a member chat that is `viewingChatOwner`'s
+workspace, so its session key equals the chat's control scope and `tabs` lists it;
+otherwise the dock target. Agent-opened tabs already use the chat owner.
 
 Main reveal events open or reuse ordinary descriptors through
 `openUnifiedPanelTab`, including collapsed/unmounted panels. Existing descriptors
@@ -1232,6 +1238,9 @@ pasted Markdown links into editable title/URL fields with accessible validation.
 Shared coc-client URL validation restricts Teams/Slack to supported HTTPS
 message/channel links without content reads. External replacements
 and clears preserve conversation attachments; omission preserves external links.
+The detail view of unarchived items gives each conversation and external reference a
+Remove button: conversations use `detachReference`, externals PATCH the remaining
+external list. Both use the item revision; Retry after a conflict reapplies to the reloaded item.
 External links follow shared desktop/web navigation without selecting the card or
 starting a conversation excursion. References remain display metadata. Detail notes
 store and edit raw Markdown but display inline Markdown through `SentinelTodoNotes`

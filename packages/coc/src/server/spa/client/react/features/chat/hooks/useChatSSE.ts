@@ -116,6 +116,8 @@ export interface AskUserBatch {
 /** Live canvas create/update notification for the canvas side panel. */
 export interface CanvasUpdatedEvent {
     canvasId: string;
+    /** Refresh mounted views without opening or selecting a tab. */
+    refreshOnly?: boolean;
     /** Persisted kind; Kusto updates refresh without opening or selecting a panel tab. */
     canvasType?: string;
     title: string;
@@ -637,6 +639,7 @@ export function useChatSSE({
                     onCanvasUpdated?.({
                         canvasId: data.canvasId,
                         ...(typeof data.canvasType === 'string' ? { canvasType: data.canvasType } : {}),
+                        ...(data.refreshOnly === true ? { refreshOnly: true } : {}),
                         title: typeof data.title === 'string' ? data.title : '',
                         revision: data.revision,
                         editor: data.editor === 'user' ? 'user' : 'ai',

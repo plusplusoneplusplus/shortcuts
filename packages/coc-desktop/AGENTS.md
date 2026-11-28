@@ -4,6 +4,7 @@ Follow [root guidance](../../AGENTS.md). Load [coc-knowledge](../../.github/skil
 
 ## Browser
 
+- Installed extension guests accept only saved canvas IDs through the trusted local SPA bridge. Reload uses the fixed local server to retire the exact conversation/extension runtime and replace the guest; preserve saved input, reject stale replies, and keep other workspace/conversation runtimes intact.
 - `browser-view-host.ts` registers exact-source SPA owners and gates IPC. Auth and the raw debugger stay in main.
 - `browser-host-manager.ts` keeps session routing apart from native view identity. URL views and Electron file previews share the manager and keep distinct profiles, permissions, and control eligibility.
 - AI control reaches a view only through `BrowserHostedView.control`. Cancellation still finishes dispatched mouse and key releases.

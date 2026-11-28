@@ -6,6 +6,8 @@
  *   PATCH /api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId  — edit
  *   POST  /api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/references
  *         — attach an existing local conversation as a reference-only link
+ *   DELETE /api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/references
+ *         — remove one attached conversation reference by exact identity
  *
  * `workspaceId` is the parent Sentinel chat's workspace (a repo or repo group)
  * on this server; clients route remote-owned chats to their owning server.
@@ -200,6 +202,25 @@ export function registerSentinelTodoRoutes(opts: {
             try {
                 sendJSON(res, 200, await service.attachReference(target, decodeURIComponent(match![3]), expectedRevision,
                     { processId, workspaceId }, 'user'));
+            } catch (error) {
+                fail(res, error);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'DELETE',
+        pattern: REFERENCES,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const { expectedRevision, ...conversation } = body ?? {};
+            if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
+            try {
+                sendJSON(res, 200, await service.detachReference(target, decodeURIComponent(match![3]), expectedRevision,
+                    conversation, 'user'));
             } catch (error) {
                 fail(res, error);
             }

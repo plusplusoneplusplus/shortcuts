@@ -101,6 +101,62 @@ describe('CanvasExtensionHostRegistry lifetime', () => {
         expect(options.startHost).toHaveBeenCalledTimes(2);
     });
 
+    it('revokes pending and queued work on explicit reset without replaying actions', async () => {
+        await registry.open(owner, extension, instance);
+        let release!: () => void;
+        host.invoke.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve(9); }));
+        const action = registry.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'increment' });
+        const queued = registry.invoke(owner, extension, { instanceId: instance.instanceId, actionName: 'increment' });
+        const outcomes = Promise.allSettled([action, queued]);
+        await vi.waitFor(() => expect(host.invoke).toHaveBeenCalledOnce());
+        const resetting = registry.reset(owner, extension);
+        await vi.waitFor(() => expect(host.dispose).toHaveBeenCalledOnce());
+        release();
+        await resetting;
+        expect((await outcomes).every(result => result.status === 'rejected')).toBe(true);
+        expect(host.invoke).toHaveBeenCalledOnce();
+        const replacement = fakeHost();
+        options.loadInstances = () => [instance];
+        vi.mocked(options.startHost!).mockResolvedValueOnce(replacement as unknown as CanvasExtensionHost);
+        await registry.declarations(owner, extension);
+        expect(replacement.open).toHaveBeenCalledExactlyOnceWith(instance);
+        expect(replacement.invoke).not.toHaveBeenCalled();
+    });
+
+    it('keeps runtimes for other workspaces, conversations and extensions on reset', async () => {
+        const scopes = [
+            { owner: { ...owner, workspaceId: 'workspace-2' }, extension },
+            { owner: { ...owner, processId: 'conversation-2' }, extension },
+            { owner, extension: { ...extension, extensionKey: 'member:other' } },
+        ];
+        await registry.open(owner, extension, instance);
+        const siblings = scopes.map(() => fakeHost());
+        for (const [index, scope] of scopes.entries()) {
+            vi.mocked(options.startHost!).mockResolvedValueOnce(siblings[index] as unknown as CanvasExtensionHost);
+            await registry.open(scope.owner, scope.extension, instance);
+        }
+        await registry.reset(owner, extension);
+        expect(host.running).toBe(false);
+        for (const [index, scope] of scopes.entries()) {
+            expect(siblings[index].running).toBe(true);
+            expect(await registry.invoke(scope.owner, scope.extension, {
+                instanceId: instance.instanceId, actionName: 'increment',
+            })).toBe(6);
+        }
+    });
+
+    it('invalidates declarations even when the runtime already expired', async () => {
+        vi.useFakeTimers();
+        await registry.declarations(owner, extension);
+        await vi.advanceTimersByTimeAsync(100);
+        await registry.reset(owner, extension);
+        const replacement = fakeHost();
+        replacement.declarations = [{ id: 'changed-by-local-import' }];
+        vi.mocked(options.startHost!).mockResolvedValueOnce(replacement as unknown as CanvasExtensionHost);
+        expect(await registry.declarations(owner, extension)).toEqual(replacement.declarations);
+        expect(options.startHost).toHaveBeenCalledTimes(2);
+    });
+
     it('does not cache failed startup and retries on the next list', async () => {
         vi.mocked(options.startHost!).mockRejectedValueOnce(new Error('startup failed'));
         await expect(registry.declarations(owner, extension)).rejects.toThrow('startup failed');

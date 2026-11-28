@@ -462,6 +462,19 @@ export function UnifiedRightPanel({
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
     );
+    // A web tab opened by hand belongs to the shown member chat's owner when a group
+    // panel shows one: the session that chat's AI browser control is bound to, so the
+    // agent can list it. Otherwise it belongs to the dock target.
+    const browserOwner = useMemo(() => {
+        const ownerWorkspaceId = viewingChatOwner ? viewingChatOwner.workspaceId : target;
+        const ownerRoutingRef = viewingChatOwner ? routingRefForPanelOwner(routingRef, ownerWorkspaceId) : targetRoutingRef;
+        const label = targetOptions.find(option => option.workspaceId === ownerWorkspaceId)?.label;
+        return {
+            ownerWorkspaceId,
+            ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
+            ...(ownerWorkspaceId !== workspaceId && label ? { repoLabel: label } : {}),
+        };
+    }, [viewingChatOwner, target, routingRef, targetRoutingRef, targetOptions, workspaceId]);
     // The "+" menu's Git entry opens the target repo's branch changes. A
     // group's own root names no repository, so it opens the group's Git page,
     // which shows its remembered member.
@@ -957,8 +970,8 @@ export function UnifiedRightPanel({
         });
     }, [chatId, open, workspaceId]);
 
-    // A web link clicked in a chat opens as a new browser tab owned by the dock
-    // target; a link in a resource (a canvas) names its own owner and scope.
+    // A web link clicked in a chat opens as a new browser tab with the panel's
+    // browser owner; a link in a resource (a canvas) names its own owner and scope.
     useEffect(() => {
         const onOpenUrl = (event: Event) => {
             const detail = (event as CustomEvent<OpenBrowserUrlDetail>).detail;
@@ -968,20 +981,22 @@ export function UnifiedRightPanel({
             const normalized = normalizeBrowserUrl(detail.url);
             if (!normalized.ok) return;
             detail.handled = true;
-            const ownerWorkspaceId = owner ? owner.workspaceId : target;
-            const ownerRoutingRef = owner ? owner.routingRef : targetRoutingRef;
-            const repoLabel = owner ? targetOptions.find(option => option.workspaceId === ownerWorkspaceId)?.label : targetLabel;
-            open(browserOpenInput({
-                ownerWorkspaceId,
-                ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
-                chatId: owner ? owner.chatId : chatId,
-                ...(ownerWorkspaceId !== workspaceId && repoLabel ? { repoLabel } : {}),
-            }, normalized.url));
+            if (!owner) {
+                open(browserOpenInput({ ...browserOwner, chatId }, normalized.url));
+            } else {
+                const repoLabel = targetOptions.find(option => option.workspaceId === owner.workspaceId)?.label;
+                open(browserOpenInput({
+                    ownerWorkspaceId: owner.workspaceId,
+                    ...(owner.routingRef === undefined ? {} : { ownerRoutingRef: owner.routingRef }),
+                    chatId: owner.chatId,
+                    ...(owner.workspaceId !== workspaceId && repoLabel ? { repoLabel } : {}),
+                }, normalized.url));
+            }
             setWorkspaceDockOpen(workspaceId, true);
         };
         window.addEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
         return () => window.removeEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
-    }, [chatId, open, target, targetLabel, targetOptions, targetRoutingRef, workspaceId]);
+    }, [browserOwner, chatId, open, targetOptions, workspaceId]);
 
     useEffect(() => {
         const onOpenPage = (event: Event) => {
@@ -2006,13 +2021,8 @@ export function UnifiedRightPanel({
 
     const openBrowserFromShortcut = useCallback((url?: string) => {
         setMenuOpen(false);
-        open(browserOpenInput({
-            ownerWorkspaceId: target,
-            ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
-            chatId,
-            ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
-        }, url));
-    }, [open, target, targetRoutingRef, chatId, workspaceId, targetLabel]);
+        open(browserOpenInput({ ...browserOwner, chatId }, url));
+    }, [open, browserOwner, chatId]);
 
     // Whether SPA focus hands browser-style tab shortcuts (Ctrl/Cmd+T, Ctrl/Cmd+1–9) to this panel.
     const ownsBrowserTabShortcut = useCallback((): boolean => {
@@ -2427,6 +2437,7 @@ export function UnifiedRightPanel({
                             target={target}
                             targetRoutingRef={targetRoutingRef}
                             targets={targetOptions}
+                            browserOwner={browserOwner}
                             onOpenResource={openResource}
                             todoAvailable={todoOwner !== null && chatId !== null}
                             onOpenWorkspaceResource={kind => {

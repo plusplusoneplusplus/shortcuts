@@ -199,6 +199,33 @@ describe('routeUnifiedCanvasUpdate', () => {
         expect(screen.getByTestId('probe').getAttribute('data-revision')).toBe('3');
     });
 
+    it.each(['0', '1'])('refreshes multiple installed instances without selecting or opening tabs when visibility is %s', visibility => {
+        routeUnifiedCanvasUpdate(args());
+        updateUnifiedPanelState(WS, prev => openTab(prev, {
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null,
+            resourceId: 'selected-browser', label: 'Browser', url: 'https://example.com/current',
+        }));
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), visibility);
+        const before = readUnifiedPanelState(WS);
+        render(<Probe workspaceId={WS} canvasId="canvas-1" />);
+        for (const canvasId of ['canvas-1', 'unopened-instance']) {
+            act(() => {
+                expect(routeUnifiedCanvasUpdate(args({ event: {
+                    ...event({ canvasId, revision: 2 }), canvasType: 'copilot-extension', refreshOnly: true,
+                } }))).toBeNull();
+            });
+        }
+        expect(screen.getByTestId('probe').getAttribute('data-revision')).toBe('2');
+        expect(readUnifiedPanelState(WS)).toBe(before);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe(visibility);
+        expect(visibleTabs(before, CHAT).some(tab => tab.browserUrl === 'coc://canvas/unopened-instance')).toBe(false);
+        const tabId = visibleTabs(before, CHAT).find(tab => tab.browserUrl === 'coc://canvas/canvas-1')!.id;
+        updateUnifiedPanelState(WS, prev => closeTab(prev, tabId));
+        const closed = readUnifiedPanelState(WS);
+        routeUnifiedCanvasUpdate(args({ event: { ...event({ revision: 3 }), refreshOnly: true } }));
+        expect(readUnifiedPanelState(WS)).toBe(closed);
+    });
+
     it('refreshes an explicitly opened Kusto tab without selecting it again or recreating it after close', () => {
         const input = canvasEventTabInput(args())!;
         const tabId = openUnifiedPanelTab(WS, input);

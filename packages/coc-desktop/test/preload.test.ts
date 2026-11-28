@@ -162,7 +162,9 @@ describe('preload bridge', () => {
         const opened = { ok: true, embed: 'webview', src: 'http://127.0.0.1:8123/', partition: 'token' };
         invoke.mockResolvedValueOnce(opened);
         expect(await api.open('view', 'workspace', 'canvas')).toEqual(opened);
-        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-open', 'view', 'workspace', 'canvas');
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-open', 'view', 'workspace', 'canvas', undefined);
+        await api.open('view', 'workspace', 'canvas', true);
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-open', 'view', 'workspace', 'canvas', true);
         await api.adopt('view', 10);
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:extension-canvas-adopt', 'view', 10);
         api.close('view');

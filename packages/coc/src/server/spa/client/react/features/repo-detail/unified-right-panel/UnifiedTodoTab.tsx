@@ -23,6 +23,7 @@ import type {
     SentinelTodoPriority,
     SentinelTodoStatus,
     SentinelTodoType,
+    SentinelTodoConversationReference,
     SentinelTodoExternalReference,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
@@ -616,14 +617,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, select
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
 
-    /** Apply a patch; resolves to an error message, or null on success. */
-    const saveItem = useCallback(async (
-        item: SentinelTodoItem,
-        patch: Omit<UpdateSentinelTodoRequest, 'expectedRevision'>,
-        expectedRevision = item.revision,
+    /** Run one item write; resolves to an error message, or null on success. */
+    const writeItem = useCallback(async (
+        write: () => Promise<{ ledgerRevision: number }>,
     ): Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null> => {
         try {
-            const { ledgerRevision } = await client.sentinelTodos.update(owner.ownerWorkspaceId, owner.processId, item.id, { expectedRevision, ...patch });
+            const { ledgerRevision } = await write();
             await showRevision(ledgerRevision);
             return null;
         } catch (error) {
@@ -633,8 +632,23 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, select
             const current = (error as { body?: { current?: SentinelTodoItem } }).body?.current;
             return { ...failure, ...(current ? { current } : {}) };
         }
+    }, [load, showRevision]);
+    /** Apply a patch; resolves to an error message, or null on success. */
+    const saveItem = useCallback((
+        item: SentinelTodoItem,
+        patch: Omit<UpdateSentinelTodoRequest, 'expectedRevision'>,
+        expectedRevision = item.revision,
+    ) => writeItem(() => client.sentinelTodos.update(owner.ownerWorkspaceId, owner.processId, item.id, { expectedRevision, ...patch })),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, load, showRevision]);
+        [client, ownerKey, writeItem]);
+    /** Remove one attached conversation reference at the item's revision. */
+    const detachReference = useCallback((item: SentinelTodoItem, ref: SentinelTodoConversationReference) =>
+        writeItem(() => client.sentinelTodos.detachReference(owner.ownerWorkspaceId, owner.processId, item.id, {
+            expectedRevision: item.revision, processId: ref.processId, workspaceId: ref.workspaceId,
+            ...(ref.serverIdentity ? { serverIdentity: ref.serverIdentity } : {}),
+        })),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [client, ownerKey, writeItem]);
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const highlightTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -897,7 +911,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, select
             kind: 'file' as const, ownerWorkspaceId: artifactWorkspaceId ?? owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef,
             chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
         }),
-        onSave: saveItem, onFollowLink: followLink,
+        onSave: saveItem, onDetachReference: detachReference, onFollowLink: followLink,
         categories: categoryDefinitions,
     });
     const clearGripDrag = () => {
@@ -1319,8 +1333,12 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
+type DetachReference = (
+    item: SentinelTodoItem, ref: SentinelTodoConversationReference,
+) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
+
 type TodoDetailProps = {
-    item: SentinelTodoItem; onSave: SaveItem; onFollowLink: FollowLink;
+    item: SentinelTodoItem; onSave: SaveItem; onDetachReference: DetachReference; onFollowLink: FollowLink;
     items: readonly SentinelTodoItem[]; ledgerRevision: number; onLedgerChange: () => Promise<void>; onItemLink: (itemId: string) => void;
     onArtifactLink: (reference: string, workspaceId?: string) => void;
     owner: SentinelTodoOwner;
@@ -1540,7 +1558,7 @@ function knownCategoryId(item: SentinelTodoItem, categories: readonly SentinelTo
     return item.categoryId && categories.some(category => category.id === item.categoryId) ? item.categoryId : null;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, categories, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onDetachReference, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, categories, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
@@ -1607,6 +1625,24 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         lastAction.current = attempt;
         await attempt();
     };
+
+    // Removal reads the latest item at each attempt, so Retry after a conflict
+    // removes from the reloaded version and never restores other changes.
+    const latestItem = useRef(item);
+    latestItem.current = item;
+    const removalFailure = (failure: { message: string; conflict: boolean; current?: SentinelTodoItem } | null) =>
+        failure?.conflict ? { ...failure, message: 'This item changed since you opened it. The latest version is shown and nothing was removed. Retry removes the reference from the latest version.' } : failure;
+    const removeConversation = (ref: SentinelTodoConversationReference) => {
+        void run(async () => removalFailure(await onDetachReference(latestItem.current, ref)), () => {});
+    };
+    const removeExternal = (ref: SentinelTodoExternalReference) => {
+        void run(async () => {
+            const current = latestItem.current;
+            const remaining = externalReferences(current).filter(other => other.kind !== ref.kind || other.url !== ref.url);
+            return removalFailure(await onSave(current, { externalReferences: remaining }, current.revision));
+        }, () => {});
+    };
+    const canRemoveReferences = !item.archived && !closeBlocked && editing === null && statusDraft === null;
 
     // Notes edited elsewhere since this draft began; never save over them silently.
     const notesConflict = editing?.notesOnly && item.notes !== (editing.initialFields?.notes ?? item.notes)
@@ -1780,8 +1816,10 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
             {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} onBusyChange={setOutcomesBusy} />}
-            <SentinelTodoConversationReferences item={item} owner={owner} onFollowLink={onFollowLink} />
-            <SentinelTodoExternalReferences item={item} />
+            <SentinelTodoConversationReferences item={item} owner={owner} onFollowLink={onFollowLink}
+                onRemove={item.archived ? undefined : removeConversation} removeDisabled={!canRemoveReferences} />
+            <SentinelTodoExternalReferences item={item}
+                onRemove={item.archived ? undefined : removeExternal} removeDisabled={!canRemoveReferences} />
             <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
                 expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} onBusyChange={setDependenciesBusy} />
             <div id={`${domId}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">

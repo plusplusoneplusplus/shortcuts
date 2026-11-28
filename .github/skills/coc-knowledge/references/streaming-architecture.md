@@ -362,7 +362,7 @@ ProcessStore
 | `memory-promoted` / `memory-promotion-failed` | auto-promote, memory-promote-executor |
 | `server-restarting`, `config-changed` | admin-handler |
 | `comment-added/updated/deleted` | diff-comments-handler |
-| `canvas-updated` | `CanvasUpdateNotifier` — the single fanout every canvas mutation (user save, capability, Kusto create/run) goes through. It emits this WS event AND a ProcessStore/SSE update on the canvas's `processId`; no route emits either on its own |
+| `canvas-updated` | `CanvasUpdateNotifier` — the single fanout every canvas mutation (user save, capability, Kusto create/run) goes through. It emits this WS event AND a ProcessStore/SSE update on the canvas's `processId`; no route emits either on its own. Optional `refreshOnly` reaches both channels and preserves panel selection/visibility while mounted views reconcile |
 
 ## Data flow — standalone mode
 

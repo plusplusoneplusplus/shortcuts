@@ -32,7 +32,27 @@ function referenceLabel(reference: SentinelTodoExternalReference, url: URL): str
     return reference.title?.trim() || (url.protocol === 'mailto:' ? url.pathname : `${url.host}${url.pathname === '/' ? '' : url.pathname}`);
 }
 
-export function SentinelTodoExternalReferences({ item }: { item: SentinelTodoItem }) {
+/** Per-reference removal; removes only the link, never the referenced resource. */
+export function RemoveReferenceButton({ label, disabled, onClick, testId }: {
+    label: string; disabled?: boolean; onClick: () => void; testId: string;
+}) {
+    return <button type="button" aria-label={`Remove reference ${label}`} title="Remove reference (the target is kept)"
+        data-testid={testId} disabled={disabled}
+        onKeyDown={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}
+        onClick={event => { event.stopPropagation(); onClick(); }}
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.06] hover:text-[#c72e2e] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.08] dark:hover:text-[#f48771]">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <path d="m4 4 8 8M12 4l-8 8" />
+        </svg>
+    </button>;
+}
+
+export function SentinelTodoExternalReferences({ item, onRemove, removeDisabled }: {
+    item: SentinelTodoItem;
+    /** Shown in the detail view only; absent for read-only rows and archived items. */
+    onRemove?: (reference: SentinelTodoExternalReference) => void;
+    removeDisabled?: boolean;
+}) {
     const show = useSentinelTodoExternalReferencesEnabled();
     if (!show) return null;
     const references = externalReferences(item).flatMap(reference => {
@@ -41,7 +61,7 @@ export function SentinelTodoExternalReferences({ item }: { item: SentinelTodoIte
     });
     if (!references.length) return null;
     return <ul aria-label={`External references for ${item.title}`} className="flex flex-wrap gap-x-2 gap-y-1 px-2 pb-1.5 text-[11px]">
-        {references.map(({ reference, url }, index) => <li key={`${reference.kind}:${reference.url}:${index}`} className="min-w-0 max-w-full">
+        {references.map(({ reference, url }, index) => <li key={`${reference.kind}:${reference.url}:${index}`} className="inline-flex min-w-0 max-w-full items-center gap-0.5">
             <a href={reference.url} target="_blank" rel="noopener noreferrer" draggable={false}
                 title={reference.title ? `${reference.title}\n${reference.url}` : reference.url}
                 className="inline-flex max-w-full items-baseline gap-1 rounded text-[#0078d4] hover:underline focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]"
@@ -55,6 +75,8 @@ export function SentinelTodoExternalReferences({ item }: { item: SentinelTodoIte
                 <span className="shrink-0 font-medium">{reference.kind === 'pr' ? 'PR' : reference.kind === 'email' ? 'Email' : reference.kind === 'teams' ? 'Teams' : reference.kind === 'slack' ? 'Slack' : 'Link'}</span>{' '}
                 <span className="min-w-0 break-words [overflow-wrap:anywhere]">{referenceLabel(reference, url)}</span>
             </a>
+            {onRemove && <RemoveReferenceButton label={referenceLabel(reference, url)} disabled={removeDisabled}
+                testId={`sentinel-todo-external-reference-remove-${item.id}-${index}`} onClick={() => onRemove(reference)} />}
         </li>)}
     </ul>;
 }

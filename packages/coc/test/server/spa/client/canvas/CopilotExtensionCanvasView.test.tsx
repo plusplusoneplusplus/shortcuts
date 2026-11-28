@@ -1,11 +1,11 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    CopilotExtensionCanvasView, type ExtensionCanvasBridge,
+    CopilotExtensionCanvasView, parseExtensionRuntimeReload, type ExtensionCanvasBridge,
 } from '../../../../../src/server/spa/client/react/features/canvas/CopilotExtensionCanvasView';
 import {
     registerCloneBaseUrls, resetCloneRegistryForTests,
@@ -43,6 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     resetCloneRegistryForTests();
     delete (window as { cocDesktop?: unknown }).cocDesktop;
 });
@@ -67,6 +68,147 @@ describe('Copilot extension guest', () => {
         expect(bridge.close).toHaveBeenCalledWith(bridge.open.mock.calls[0][0]);
         expect(unsubscribe).toHaveBeenCalledOnce();
         expect(guest.isConnected).toBe(false);
+    });
+
+    it('confirms reload, replaces the visible guest and keeps the saved identity', async () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const view = mount();
+        expect(screen.getByRole('button', { name: 'Reload' }).hasAttribute('disabled')).toBe(true);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const firstGuest = view.container.querySelector('webview')!;
+        const firstId = bridge.open.mock.calls[0][0];
+        act(() => stateListener({ viewId: firstId, status: 'loaded' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        expect(confirm).toHaveBeenCalledWith(expect.stringContaining('shared runtime in this conversation'));
+        expect(bridge.open).toHaveBeenCalledTimes(1);
+        expect(firstGuest.isConnected).toBe(true);
+        confirm.mockReturnValue(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(bridge.open).toHaveBeenCalledTimes(2));
+        const secondId = bridge.open.mock.calls[1][0];
+        expect(secondId).not.toBe(firstId);
+        expect(bridge.open).toHaveBeenLastCalledWith(secondId, 'ws-local', 'saved-canvas', true);
+        expect(bridge.close).toHaveBeenCalledWith(firstId);
+        expect(firstGuest.isConnected).toBe(false);
+        await waitFor(() => expect(view.container.querySelectorAll('webview')).toHaveLength(1));
+        expect(view.container.querySelector('webview')).not.toBe(firstGuest);
+        expect(screen.getByRole('button', { name: 'Reload' }).hasAttribute('disabled')).toBe(true);
+        act(() => stateListener({ viewId: secondId, status: 'loaded' }));
+        expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('reports invalid-code reload failure and permits explicit recovery without stale guest replies', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const view = mount();
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const firstId = bridge.open.mock.calls[0][0];
+        act(() => stateListener({ viewId: firstId, status: 'loaded' }));
+        const oldListener = stateListener;
+        bridge.open.mockResolvedValueOnce({ ok: false, message: 'Unexpected token in extension.mjs' });
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Unexpected token'));
+        expect(view.container.querySelector('webview')).toBeNull();
+        act(() => oldListener({ viewId: firstId, status: 'loaded' }));
+        expect(screen.getByRole('alert').textContent).toContain('Unexpected token');
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        expect(bridge.open).toHaveBeenLastCalledWith(expect.any(String), 'ws-local', 'saved-canvas', true);
+    });
+
+    it('discards an ignored reload reply when the canvas owner changes', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const view = mount();
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        act(() => stateListener({ viewId: bridge.open.mock.calls[0][0], status: 'loaded' }));
+        let finish!: (result: typeof ready) => void;
+        bridge.open.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        const reloadId = bridge.open.mock.calls[1][0];
+        view.rerender(<CopilotExtensionCanvasView workspaceId="other-workspace" canvasId="other-canvas" allowDesktopGuest />);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const guest = view.container.querySelector('webview');
+        await act(async () => finish({ ...ready, src: 'http://127.0.0.1:3211/' }));
+        expect(bridge.close).toHaveBeenCalledWith(reloadId);
+        expect(view.container.querySelector('webview')).toBe(guest);
+        expect(bridge.open).toHaveBeenLastCalledWith(expect.any(String), 'other-workspace', 'other-canvas');
+    });
+
+    it('opens once for an initial marker and replaces the guest only when its reload token changes', async () => {
+        const view = mount({ runtimeReload: { id: 'first' } });
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const first = view.container.querySelector('webview');
+        const firstId = bridge.open.mock.calls[0][0];
+        view.rerender(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'first' }} />);
+        expect(bridge.open).toHaveBeenCalledOnce();
+        view.rerender(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'second' }} />);
+        await waitFor(() => expect(bridge.open).toHaveBeenCalledTimes(2));
+        expect(bridge.close).toHaveBeenCalledWith(firstId);
+        expect(first?.isConnected).toBe(false);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        expect(view.container.querySelector('webview')).not.toBe(first);
+        expect(bridge.open.mock.calls.every(call => call.length === 3)).toBe(true);
+    });
+
+    it('shows a runtime reload failure without opening and recovers from a newer success marker', async () => {
+        const view = mount({ runtimeReload: { id: 'initial' } });
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const oldId = bridge.open.mock.calls[0][0];
+        const oldListener = stateListener;
+        view.rerender(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'failed', error: 'Invalid imported code' }} />);
+        expect(screen.getByRole('alert').textContent).toBe('Invalid imported code');
+        expect(view.container.querySelector('webview')).toBeNull();
+        expect(bridge.close).toHaveBeenCalledWith(oldId);
+        expect(bridge.open).toHaveBeenCalledOnce();
+        act(() => oldListener({ viewId: oldId, status: 'loaded' }));
+        expect(screen.getByRole('alert').textContent).toBe('Invalid imported code');
+        view.rerender(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'repaired' }} />);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        expect(bridge.open).toHaveBeenCalledTimes(2);
+        expect(bridge.open.mock.calls[1]).toHaveLength(3);
+    });
+
+    it('allows explicit manual retry from a persisted failure marker', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const view = mount({ runtimeReload: { id: 'failed', error: 'Invalid code' } });
+        expect(screen.getByRole('alert').textContent).toBe('Invalid code');
+        expect(bridge.open).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        expect(bridge.open).toHaveBeenCalledWith(expect.any(String), 'ws-local', 'saved-canvas', true);
+        view.rerender(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'repaired' }} />);
+        await waitFor(() => expect(bridge.open).toHaveBeenCalledTimes(2));
+        expect(bridge.open.mock.calls[1]).toHaveLength(3);
+    });
+
+    it('ignores a pending old reload marker open after the owner changes', async () => {
+        let finish!: (result: typeof ready) => void;
+        bridge.open.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const view = mount({ runtimeReload: { id: 'old-owner-reload' } });
+        const oldId = bridge.open.mock.calls[0][0];
+        view.rerender(<CopilotExtensionCanvasView workspaceId="other-workspace" canvasId="other-canvas"
+            allowDesktopGuest runtimeReload={{ id: 'new-owner-reload' }} />);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const current = view.container.querySelector('webview');
+        await act(async () => finish(ready));
+        expect(bridge.close).toHaveBeenCalledWith(oldId);
+        expect(view.container.querySelector('webview')).toBe(current);
+        expect(bridge.open).toHaveBeenLastCalledWith(expect.any(String), 'other-workspace', 'other-canvas');
+    });
+
+    it.each(['not json', 'null', '{}', '{"runtimeReload":null}', '{"runtimeReload":{"id":7}}',
+        '{"runtimeReload":{"id":""}}', '{"runtimeReload":{"id":"x","error":3}}'])
+    ('ignores invalid saved runtime markers: %s', content => {
+        expect(parseExtensionRuntimeReload(content)).toBeUndefined();
+    });
+
+    it('reads only the saved runtime marker identity and error', () => {
+        expect(parseExtensionRuntimeReload('{"runtimeReload":{"id":"reload-1","error":"Broken code","url":"http://untrusted"}}'))
+            .toEqual({ id: 'reload-1', error: 'Broken code' });
     });
 
     it('shows the browser fallback without a desktop bridge', () => {

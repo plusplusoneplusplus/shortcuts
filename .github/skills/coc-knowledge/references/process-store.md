@@ -193,7 +193,9 @@ without advancing ledger/item revisions.
 missing-kind compatibility; externals use additive item-column `external_references`
 JSON defaulting to `[]`. Default-on live `features.sentinelTodoExternalReferences`
 gates external projection and authoring. Create/update `externalReferences` replaces
-only external entries; omission preserves, `[]` clears. Validation canonicalizes
+only external entries; omission preserves, `[]` clears. `detachReference` removes one
+conversation by exact server/workspace/process identity with item CAS; each commit
+rewrites the item's reference rows so orders stay dense and unique. Validation canonicalizes
 supported PRs and deduplicates safe URLs; Teams/Slack require supported HTTPS
 message/channel links without content reads. Metadata never supplies output evidence,
 execution/review authority, monitoring or fulfillment, and leaves user verdicts intact.

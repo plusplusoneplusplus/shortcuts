@@ -65,6 +65,18 @@ export class CanvasExtensionHostRegistry {
         return this.run(owner, extension, host => Promise.resolve(structuredClone(host.declarations)));
     }
 
+    /** Explicit reload bypasses discovery hashes, including changes to local imports. */
+    async reset(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension): Promise<void> {
+        await this.assertOwner(owner);
+        this.declarationCache.delete(extension.extensionPath);
+        const entry = this.entries.get(JSON.stringify([owner.workspaceId, owner.processId, extension.extensionKey]));
+        if (entry) {
+            this.declarationCache.delete(entry.extension.extensionPath);
+            await this.retire(entry);
+        }
+        await this.assertOwner(owner);
+    }
+
     open(owner: CanvasExtensionOwner, extension: DiscoveredCanvasExtension, request: CanvasInstanceRequest) {
         // Snapshot input before queueing: reopening must use the successful open's original input.
         const saved = structuredClone(request);

@@ -53,8 +53,8 @@ describe('persisted canvas extension reopening routes', () => {
             }),
         });
     }
-    function post(canvasId: string, workspaceId = owner.workspaceId, body?: unknown) {
-        return fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/canvases/${encodeURIComponent(canvasId)}/copilot-extension/open`, {
+    function post(canvasId: string, workspaceId = owner.workspaceId, body?: unknown, action = 'open') {
+        return fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/canvases/${encodeURIComponent(canvasId)}/copilot-extension/${action}`, {
             method: 'POST', ...(body ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}),
         });
     }
@@ -112,6 +112,104 @@ describe('persisted canvas extension reopening routes', () => {
         const second = await (await post(canvas.id)).json();
         expect(second.url).toBe(opened.url);
         expect(startHost).toHaveBeenCalledOnce();
+    });
+
+    it('reloads imported local code in a fresh runtime while normal reopen reuses it', async () => {
+        const folder = path.join(repo, '.github', 'extensions', 'counter');
+        const entry = path.join(folder, 'extension.mjs');
+        fs.writeFileSync(path.join(folder, 'value.mjs'), 'export const offset = 0;');
+        fs.writeFileSync(entry, "import { offset } from './value.mjs';\n" + fs.readFileSync(entry, 'utf8')
+            .replace('ctx.input?.count ?? 0', '(ctx.input?.count ?? 0) + offset'));
+        const canvas = saved();
+        const first = await (await post(canvas.id)).json();
+        expect(await (await fetch(first.url)).json()).toEqual({ count: 7 });
+        fs.writeFileSync(path.join(folder, 'value.mjs'), 'export const offset = 10;');
+        const unchanged = await (await post(canvas.id)).json();
+        expect(unchanged.url).toBe(first.url);
+        expect(await (await fetch(unchanged.url)).json()).toEqual({ count: 7 });
+        const response = await post(canvas.id, owner.workspaceId, { input: { count: 999 } }, 'reload');
+        expect(response.status).toBe(200);
+        const reloaded = await response.json();
+        expect(reloaded).toMatchObject({ canvasId: canvas.id, instanceId: 'saved-instance', success: true });
+        expect(await (await fetch(reloaded.url)).json()).toEqual({ count: 17 });
+        await expect(fetch(first.url)).rejects.toThrow();
+        expect(startHost).toHaveBeenCalledTimes(2);
+        expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, canvas.id)!).input).toEqual({ count: 7 });
+    });
+
+    it('reports invalid code to saved views and recovers on reload after repair', async () => {
+        const canvas = saved();
+        const first = await (await post(canvas.id)).json();
+        const entry = path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs');
+        const source = fs.readFileSync(entry, 'utf8');
+        const before = canvasStore.getCanvas(owner.workspaceId, canvas.id);
+        emit.mockClear();
+        fs.writeFileSync(entry, 'invalid javascript !!!');
+        const failed = await post(canvas.id, owner.workspaceId, undefined, 'reload');
+        expect(failed.status).toBe(422);
+        expect(await failed.json()).toMatchObject({ success: false, error: { message: expect.any(String) } });
+        const failedRecord = canvasStore.getCanvas(owner.workspaceId, canvas.id)!;
+        expect(failedRecord.revision).toBe(before!.revision + 1);
+        expect(readCanvasExtensionInstance(failedRecord)).toMatchObject({ input: { count: 7 },
+            runtimeReload: { id: expect.any(String), error: expect.any(String) } });
+        expect(emit).toHaveBeenCalledOnce();
+        await expect(fetch(first.url)).rejects.toThrow();
+        fs.writeFileSync(entry, source.replaceAll("title: 'Counter'", "title: 'Repaired'"));
+        const repaired = await (await post(canvas.id, owner.workspaceId, undefined, 'reload')).json();
+        expect(repaired).toMatchObject({ success: true, title: 'Repaired', instanceId: 'saved-instance' });
+        expect(await (await fetch(repaired.url)).json()).toEqual({ count: 7 });
+    });
+
+    it('does not persist a reload result after its view disconnects', async () => {
+        const canvas = saved();
+        await post(canvas.id);
+        const before = canvasStore.getCanvas(owner.workspaceId, canvas.id)!;
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const original = hosts.open.bind(hosts);
+        const opening = vi.spyOn(hosts, 'open').mockImplementationOnce(async (...args) => {
+            const result = await original(...args);
+            await held;
+            return result;
+        });
+        let closed!: () => void;
+        const disconnected = new Promise<void>(resolve => { closed = resolve; });
+        server.once('request', (_req, res) => res.once('close', closed));
+        const controller = new AbortController();
+        const request = fetch(`${baseUrl}/api/workspaces/${owner.workspaceId}/canvases/${canvas.id}/copilot-extension/reload`, {
+            method: 'POST', signal: controller.signal,
+        });
+        const outcome = request.catch(error => error);
+        try {
+            await vi.waitFor(() => expect(opening).toHaveBeenCalledOnce());
+            controller.abort();
+            await outcome;
+            await disconnected;
+            release();
+            // This next owner operation drains behind the disconnected request.
+            expect((await post(canvas.id)).status).toBe(200);
+            expect(canvasStore.getCanvas(owner.workspaceId, canvas.id)!.revision).toBe(before.revision + 1);
+        } finally {
+            release();
+            controller.abort();
+            await outcome;
+        }
+    });
+
+    it('reloads only the selected conversation and workspace runtime', async () => {
+        const canvas = saved();
+        const sibling = { ...owner, processId: 'chat-b' };
+        await addConversation(sibling);
+        const other = saved(sibling);
+        const first = await (await post(canvas.id)).json();
+        const second = await (await post(other.id)).json();
+        expect((await post(canvas.id, 'repo-b', undefined, 'reload')).status).toBe(404);
+        expect((await post(canvas.id, owner.workspaceId, undefined, 'reload')).status).toBe(200);
+        await expect(fetch(first.url)).rejects.toThrow();
+        expect(await (await fetch(second.url)).json()).toEqual({ count: 7 });
+        enabled = false;
+        expect((await post(canvas.id, owner.workspaceId, undefined, 'reload')).status).toBe(404);
     });
 
     it('restores persisted instances through a replacement registry without saving runtime URLs', async () => {

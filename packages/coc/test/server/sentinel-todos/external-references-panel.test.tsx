@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { SentinelTodoExternalReference, SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
 
 const { api, client, routes, panelBrowser } = vi.hoisted(() => {
-    const api = { get: vi.fn(), create: vi.fn(), update: vi.fn(), connect: vi.fn() };
+    const api = { get: vi.fn(), create: vi.fn(), update: vi.fn(), detachReference: vi.fn(), connect: vi.fn() };
     return { api, client: { sentinelTodos: api, events: { connect: api.connect } },
         routes: [] as unknown[], panelBrowser: vi.fn() };
 });
@@ -376,5 +376,72 @@ describe('Sentinel typed external references', () => {
         await waitFor(() => expect(api.create).toHaveBeenCalledTimes(2));
         expect(api.create.mock.calls[1][2]).not.toHaveProperty('externalReferences');
         expect(api.create.mock.calls[1][2].idempotencyKey).toBe(api.create.mock.calls[0][2].idempotencyKey);
+    });
+});
+
+describe('Sentinel to-do per-reference removal', () => {
+    it('removes one external link at the item revision, keeping conversations and other links, only in the detail view', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        const row = await screen.findByTestId('sentinel-todo-row-item-one');
+        expect(within(row).queryByRole('button', { name: /^Remove reference/ })).toBeNull();
+        const detail = within(select());
+        fireEvent.click(detail.getByRole('button', { name: 'Remove reference Design' }));
+        await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+        expect(api.update.mock.calls[0].slice(0, 3)).toEqual(['ws-owner', 'queue_parent', 'item-one']);
+        expect(api.update.mock.calls[0][3]).toEqual({ expectedRevision: 1, externalReferences: links.slice(0, 3) });
+        await waitFor(() => expect(detail.queryByRole('button', { name: 'Remove reference Design' })).toBeNull());
+        expect(detail.getByRole('link', { name: 'Related conversation' })).toBeTruthy();
+        expect(api.detachReference).not.toHaveBeenCalled();
+    });
+
+    it('removes one conversation through the remote owner client, preserving external links', async () => {
+        registerCloneBaseUrls([{ cloneKey: 'remote:remote-server:ws-owner', workspaceId: 'ws-owner', baseUrl: 'https://remote.example.test' }]);
+        const remote = { ...owner, ownerRoutingRef: 'remote:remote-server:ws-owner' };
+        api.detachReference.mockImplementation(async () => {
+            snapshot = { revision: 2, items: [item({ revision: 2, references: links })] };
+            return { ledgerRevision: 2, item: snapshot.items[0], removed: true };
+        });
+        render(<UnifiedTodoTab owner={remote} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = within(select());
+        fireEvent.click(detail.getByRole('button', { name: 'Remove reference Related conversation' }));
+        await waitFor(() => expect(api.detachReference).toHaveBeenCalledTimes(1));
+        expect(api.detachReference.mock.calls[0]).toEqual(['ws-owner', 'queue_parent', 'item-one',
+            { expectedRevision: 1, processId: 'queue_ref', workspaceId: 'ws-other' }]);
+        await waitFor(() => expect(detail.queryByRole('link', { name: 'Related conversation' })).toBeNull());
+        expect(detail.getByRole('link', { name: 'Link Design' })).toBeTruthy();
+        expect(api.update).not.toHaveBeenCalled();
+        expect(routes.every(route => route === remote.ownerRoutingRef)).toBe(true);
+    });
+
+    it('sends the server identity for dashboard references and reports conflicts honestly, retrying on the latest revision', async () => {
+        const dashboard = { ...conversation, serverIdentity: 'server-b', serverLabel: 'Tunnel' };
+        snapshot.items = [item({ references: [dashboard, ...links] })];
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = within(select());
+        const current = item({ revision: 4, title: 'Server revised task', references: [dashboard, ...links] });
+        api.detachReference.mockImplementationOnce(async () => {
+            snapshot = { revision: 4, items: [current] };
+            throw Object.assign(new Error('Changed'), { status: 409, body: { code: 'conflict', current } });
+        }).mockResolvedValueOnce({ ledgerRevision: 5, item: current, removed: true });
+        fireEvent.click(detail.getByRole('button', { name: 'Remove reference Related conversation' }));
+        await waitFor(() => expect(detail.getByRole('alert').textContent).toContain('nothing was removed'));
+        expect(api.detachReference.mock.calls[0][3]).toEqual({ expectedRevision: 1, processId: 'queue_ref',
+            workspaceId: 'ws-other', serverIdentity: 'server-b' });
+        await waitFor(() => expect(screen.getAllByText('Server revised task').length).toBeGreaterThan(0));
+        fireEvent.click(detail.getByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(api.detachReference).toHaveBeenCalledTimes(2));
+        expect(api.detachReference.mock.calls[1][3]).toMatchObject({ expectedRevision: 4 });
+    });
+
+    it('shows no removal controls on archived items', async () => {
+        snapshot.items = [item({ archived: true })];
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-tab');
+        fireEvent.click(await screen.findByRole('button', { name: 'Archived (1)', exact: true }));
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = within(select());
+        expect(detail.queryByRole('button', { name: /^Remove reference/ })).toBeNull();
     });
 });

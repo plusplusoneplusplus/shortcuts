@@ -28,7 +28,7 @@ import { ExcalidrawSceneView, parseSceneContent } from '../../diagrams';
 import { ExtensionCanvasView } from '../ExtensionCanvasView';
 import { KustoView } from '../KustoView';
 import { SvgCanvasView } from '../SvgCanvasView';
-import { CopilotExtensionCanvasView } from '../CopilotExtensionCanvasView';
+import { CopilotExtensionCanvasView, parseExtensionRuntimeReload } from '../CopilotExtensionCanvasView';
 import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode } from '../canvas-panel-model';
 
 export interface CanvasBodyRendererProps {
@@ -145,6 +145,7 @@ export function CanvasBodyRenderer({
             workspaceId={workspaceId}
             routingRef={routingRef}
             canvasId={canvasId}
+            runtimeReload={parseExtensionRuntimeReload(canvas.content)}
             allowDesktopGuest={allowDesktopGuest}
         />;
     }

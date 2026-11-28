@@ -193,6 +193,14 @@ describe('useChatSSE', () => {
         expect(onCanvasUpdated).toHaveBeenCalledWith(payload);
     });
 
+    it.each([true, false, 'true', undefined])('forwards only boolean true refresh-only intent (%s)', refreshOnly => {
+        const onCanvasUpdated = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ onCanvasUpdated })));
+        const payload = { canvasId: 'installed-board', canvasType: 'copilot-extension', title: 'Board', revision: 2, editor: 'ai' };
+        act(() => MockEventSource.last._emit('canvas-updated', { ...payload, refreshOnly }));
+        expect(onCanvasUpdated).toHaveBeenCalledWith({ ...payload, ...(refreshOnly === true ? { refreshOnly: true } : {}) });
+    });
+
     it('ignores canvas events from an abandoned workspace stream', () => {
         const onCanvasUpdated = vi.fn();
         const options = makeOptions({ onCanvasUpdated });

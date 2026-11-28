@@ -109,6 +109,182 @@ describe('canvas extension tool factories and persistence', () => {
         }));
         expect(new CanvasStore(root).getCanvas(owner.workspaceId, canvas.id)).toEqual(canvas);
     });
+    it('reloads local imports with unchanged entry bytes and notifies every open instance once', async () => {
+        singleton = false;
+        const folder = path.join(repo, '.github', 'extensions', 'counter');
+        const entry = path.join(folder, 'extension.mjs');
+        fs.writeFileSync(path.join(folder, 'offset.mjs'), 'export const offset = 0;');
+        const source = "import { offset } from './offset.mjs';\n" + fs.readFileSync(entry, 'utf8')
+            .replace('ctx.input?.count ?? 0', '(ctx.input?.count ?? 0) + offset');
+        fs.writeFileSync(entry, source);
+        const first = await open(5, 'one');
+        const second = await open(10, 'two');
+        const closed = await open(20, 'closed');
+        await call('manage_canvas', { action: 'close', instanceId: 'closed' });
+        await call('invoke_canvas_action', { instanceId: 'one', actionName: 'workspace-write', input: { value: 'kept' } });
+        fs.writeFileSync(path.join(folder, 'offset.mjs'), 'export const offset = 30;');
+        expect(fs.readFileSync(entry, 'utf8')).toBe(source);
+        emitProcessEvent.mockClear(); broadcastProcessEvent.mockClear();
+        const result = await call('manage_canvas', { action: 'reload', instanceId: 'one' });
+        expect(result).toMatchObject({ success: true, canvasId: first.canvasId, instanceId: 'one', reused: true });
+        expect(result.refreshedCanvasIds.sort()).toEqual([first.canvasId, second.canvasId].sort());
+        expect(await (await fetch(result.url)).json()).toEqual({ count: 35 });
+        await expect(fetch(first.url)).rejects.toThrow();
+        await expect(fetch(second.url)).rejects.toThrow();
+        const a = readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, first.canvasId)!);
+        const b = readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, second.canvasId)!);
+        expect(a.runtimeReload).toEqual({ id: expect.any(String) });
+        expect(b.runtimeReload).toEqual(a.runtimeReload);
+        expect(a.input).toEqual({ count: 5 }); expect(b.input).toEqual({ count: 10 });
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, closed.canvasId)!).runtimeReload).toBeUndefined();
+        expect(emitProcessEvent).toHaveBeenCalledTimes(2);
+        expect(broadcastProcessEvent).toHaveBeenCalledTimes(2);
+        expect(startHost).toHaveBeenCalledTimes(2);
+        const reopened = await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'two' });
+        expect(await (await fetch(reopened.url)).json()).toEqual({ count: 40 });
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, second.canvasId)!).runtimeReload).toEqual(a.runtimeReload);
+        expect(await call('invoke_canvas_action', { instanceId: 'one', actionName: 'workspace-read' })).toEqual({ success: true, result: 'kept' });
+    });
+
+    it('publishes reload errors for affected views and recovers without changing saved identity/input', async () => {
+        const opened = await open();
+        const entry = path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs');
+        const source = fs.readFileSync(entry, 'utf8');
+        fs.writeFileSync(entry, 'invalid javascript !!!');
+        const failed = await call('manage_canvas', { action: 'reload', instanceId: opened.instanceId });
+        expect(failed).toMatchObject({ success: false, error: { message: expect.any(String) } });
+        const record = readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!);
+        expect(record).toMatchObject({ input: { count: 5 }, instanceId: opened.instanceId,
+            runtimeReload: { id: expect.any(String), error: failed.error.message } });
+        fs.writeFileSync(entry, source);
+        const recovered = await call('manage_canvas', { action: 'reload', instanceId: opened.instanceId });
+        expect(recovered.success).toBe(true);
+        const latest = readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!);
+        expect(latest.runtimeReload).toEqual({ id: expect.any(String) });
+        expect(latest.runtimeReload!.id).not.toBe(record.runtimeReload!.id);
+        expect(await (await fetch(recovered.url)).json()).toEqual({ count: 5 });
+        expect(canvasStore.listCanvases(owner.workspaceId)).toHaveLength(1);
+    });
+
+    it('does not reset or notify other conversations, workspaces or extensions', async () => {
+        const a = await open();
+        const sibling = { ...owner, processId: 'sibling' };
+        const b = await call('manage_canvas', { action: 'open', canvasId: qualifiedId, instanceId: 'other' }, sibling);
+        const foreign = { ...owner, workspaceId: 'foreign' };
+        vi.mocked(processStore.getWorkspaces).mockResolvedValue([
+            { id: owner.workspaceId, rootPath: repo }, { id: foreign.workspaceId, rootPath: repo },
+        ] as any);
+        const c = await call('manage_canvas', { action: 'open', canvasId: 'foreign:counter/counter', instanceId: 'foreign' }, foreign);
+        const folder = path.join(repo, '.github', 'extensions', 'other');
+        fs.mkdirSync(folder); fs.copyFileSync(path.join(repo, '.github', 'extensions', 'counter', 'extension.mjs'), path.join(folder, 'extension.mjs'));
+        const d = await call('manage_canvas', { action: 'open', canvasId: 'workspace-1:other/counter', instanceId: 'other-ext' });
+        emitProcessEvent.mockClear();
+        expect((await call('manage_canvas', { action: 'reload', instanceId: a.instanceId })).success).toBe(true);
+        for (const other of [b, c, d]) {
+            expect(other.success).toBe(true);
+            expect((await fetch(other.url)).ok).toBe(true);
+        }
+        expect(emitProcessEvent).toHaveBeenCalledExactlyOnceWith(owner.processId,
+            expect.objectContaining({ canvasUpdate: expect.objectContaining({ canvasId: a.canvasId }) }));
+    });
+
+    it('validates reload before resetting and rejects unknown, foreign and closed instances', async () => {
+        const reset = vi.spyOn(hosts, 'reset');
+        const opened = await open();
+        for (const args of [
+            { instanceId: '' }, { instanceId: 'missing' },
+            { instanceId: opened.instanceId, input: {} }, { instanceId: opened.instanceId, canvasId: qualifiedId },
+        ]) expect(await call('manage_canvas', { action: 'reload', ...args })).toMatchObject({ success: false });
+        expect(await call('manage_canvas', { action: 'reload', instanceId: opened.instanceId }, { ...owner, processId: 'foreign' }))
+            .toMatchObject({ success: false });
+        await call('manage_canvas', { action: 'close', instanceId: opened.instanceId });
+        expect(await call('manage_canvas', { action: 'reload', instanceId: opened.instanceId }))
+            .toMatchObject({ success: false, error: { message: expect.stringContaining('closed') } });
+        expect(reset).not.toHaveBeenCalled();
+    });
+
+    it('waits for running actions before reload and never replays them', async () => {
+        const opened = await open();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const original = hosts.invoke.bind(hosts);
+        const invoking = vi.spyOn(hosts, 'invoke').mockImplementationOnce(async (...args) => {
+            await held; return original(...args);
+        });
+        const reset = vi.spyOn(hosts, 'reset');
+        const action = call('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' });
+        await vi.waitFor(() => expect(invoking).toHaveBeenCalledOnce());
+        const reload = call('manage_canvas', { action: 'reload', instanceId: opened.instanceId });
+        try {
+            expect(reset).not.toHaveBeenCalled();
+            release();
+            expect(await action).toEqual({ success: true, result: 6 });
+            expect((await reload).success).toBe(true);
+            expect(invoking).toHaveBeenCalledOnce();
+        } finally { release(); await Promise.all([action, reload]); }
+    });
+
+    it.each(['disabled', 'archived'] as const)('does not publish late results after the owner is %s', async state => {
+        const opened = await open();
+        const before = canvasStore.getCanvas(owner.workspaceId, opened.canvasId);
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const original = hosts.open.bind(hosts);
+        const opening = vi.spyOn(hosts, 'open').mockImplementationOnce(async (...args) => {
+            const value = await original(...args); await held; return value;
+        });
+        const request = call('manage_canvas', { action: 'reload', instanceId: opened.instanceId });
+        try {
+            await vi.waitFor(() => expect(opening).toHaveBeenCalledOnce());
+            if (state === 'disabled') { enabled = false; await hosts.syncConfig(); }
+            else vi.mocked(processStore.getProcess).mockResolvedValue({ archived: true, metadata: { workspaceId: owner.workspaceId } } as any);
+            release();
+            expect(await request).toMatchObject({ success: false });
+            expect(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)).toEqual(before);
+        } finally { release(); await request; }
+    });
+
+    it('reports persistence conflicts without overwriting concurrent input or retrying reload', async () => {
+        const opened = await open();
+        const original = hosts.open.bind(hosts);
+        vi.spyOn(hosts, 'open').mockImplementationOnce(async (...args) => {
+            const value = await original(...args);
+            const canvas = canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!;
+            const instance = readCanvasExtensionInstance(canvas);
+            canvasStore.updateCanvas(owner.workspaceId, canvas.id, {
+                content: JSON.stringify({ ...instance, input: { count: 99 } }), editor: 'user',
+            });
+            return value;
+        });
+        const reset = vi.spyOn(hosts, 'reset');
+        emitProcessEvent.mockClear();
+        expect(await call('manage_canvas', { action: 'reload', instanceId: opened.instanceId }))
+            .toMatchObject({ success: false, error: { message: expect.stringContaining('revision-conflict') } });
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)!).input).toEqual({ count: 99 });
+        expect(reset).toHaveBeenCalledOnce();
+        expect(emitProcessEvent).not.toHaveBeenCalled();
+    });
+
+    it('honors tool cancellation and does not publish late reload results', async () => {
+        const opened = await open();
+        const before = canvasStore.getCanvas(owner.workspaceId, opened.canvasId);
+        const original = hosts.open.bind(hosts);
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const opening = vi.spyOn(hosts, 'open').mockImplementationOnce(async (...args) => {
+            const value = await original(...args); await held; return value;
+        });
+        const controller = new AbortController();
+        const tool = tools().find(tool => tool.name === 'manage_canvas')!;
+        const request = tool.handler!({ action: 'reload', instanceId: opened.instanceId }, { signal: controller.signal } as any);
+        try {
+            await vi.waitFor(() => expect(opening).toHaveBeenCalledOnce());
+            controller.abort(new Error('Canceled reload')); release();
+            expect(await request).toMatchObject({ resultType: 'failure' });
+            expect(canvasStore.getCanvas(owner.workspaceId, opened.canvasId)).toEqual(before);
+        } finally { release(); await request; }
+    });
+
     it('invokes real actions and returns structured CanvasError details', async () => {
         const opened = await open();
         expect(await call('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' })).toEqual({ success: true, result: 6 });
@@ -207,7 +383,11 @@ describe('canvas extension tool factories and persistence', () => {
         expect(opened.success).toBe(true);
         expect(canvasStore.getCanvas(group.id, opened.canvasId)).toMatchObject({ ...scope, type: 'copilot-extension' });
         expect(canvasStore.listCanvases('workspace-2')).toEqual([]);
-        expect(startHost.mock.calls.map(([opts]) => opts.extension.cwd)).toEqual([repo, secondRepo]);
+        const reloaded = await call('manage_canvas', { action: 'reload', instanceId: 'member' }, scope);
+        expect(reloaded).toMatchObject({ success: true, canvasId: opened.canvasId, refreshedCanvasIds: [opened.canvasId] });
+        expect(readCanvasExtensionInstance(canvasStore.getCanvas(group.id, opened.canvasId)!).runtimeReload).toEqual({ id: expect.any(String) });
+        expect(canvasStore.listCanvases('workspace-2')).toEqual([]);
+        expect(startHost.mock.calls.map(([opts]) => opts.extension.cwd)).toEqual([repo, secondRepo, secondRepo]);
     });
     it('closes a newly opened instance when its durable write fails', async () => {
         const close = vi.spyOn(CanvasExtensionHost.prototype, 'close');
@@ -241,7 +421,7 @@ describe('canvas extension tool factories and persistence', () => {
     it('validates manage_canvas action and per-action parameters before touching runtimes or records', async () => {
         for (const args of [{}, { action: 'reopen', canvasId: qualifiedId }, { action: 'OPEN', canvasId: qualifiedId }]) {
             expect(await call('manage_canvas', args)).toEqual({
-                success: false, error: { code: 'canvas-extension-error', message: 'action must be "open" or "close"' },
+                success: false, error: { code: 'canvas-extension-error', message: 'action must be "open", "close" or "reload"' },
             });
         }
         expect(await call('manage_canvas', { action: 'open' })).toMatchObject({
