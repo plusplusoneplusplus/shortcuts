@@ -95,7 +95,6 @@ describe('canvas web links open in the panel browser tab', () => {
         ].join('\n'));
         const table = screen.getByTestId('canvas-panel-preview').querySelector<HTMLElement>('.interactive-table')!;
         const wrap = within(table).getByRole('button', { name: 'Wrap text' });
-        fireEvent.click(wrap);
         expect(wrap).toHaveAttribute('aria-pressed', 'true');
         expect(events).toHaveLength(0);
         const docs = within(table).getByRole('link', { name: 'Docs' });

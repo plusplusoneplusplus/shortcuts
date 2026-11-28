@@ -85,6 +85,47 @@ afterEach(() => {
     sharedStyles.remove();
 });
 
+/** Declarations of `selector` inside `@container (max-width: N)` blocks, keyed by N. */
+function containerTiers(selector: string): Map<number, Record<string, string>> {
+    const tiers = new Map<number, Record<string, string>>();
+    css.walkAtRules('container', at => {
+        const width = Number(/max-width:\s*(\d+)px/.exec(at.params)?.[1]);
+        at.walkRules(rule => {
+            if (!rule.selectors.includes(selector)) return;
+            const decls: Record<string, string> = {};
+            rule.walkDecls(d => { decls[d.prop] = d.value; });
+            tiers.set(width, { ...tiers.get(width), ...decls });
+        });
+    });
+    return tiers;
+}
+
+describe('interactive table toolbar responsive layout', () => {
+    it('condenses to icon-only below 520px and tightens below 240px, never wrapping', () => {
+        const toolbar = css.nodes.find(n => n.type === 'rule' && n.selector === '.interactive-table-toolbar');
+        expect(toolbar?.toString()).toMatch(/container-type:\s*inline-size/);
+        expect(containerTiers('.interactive-table-btn-label').get(520)).toEqual({ display: 'none' });
+        // Higher specificity than the base `.interactive-table-btn` rule that follows it.
+        expect(containerTiers('.interactive-table-actions .interactive-table-btn').get(240)).toEqual({ padding: '1px 4px' });
+        for (const [, decls] of containerTiers('.interactive-table-toolbar')) expect(decls['flex-wrap']).not.toBe('wrap');
+        for (const [, decls] of containerTiers('.interactive-table-actions')) expect(decls['flex-wrap']).not.toBe('wrap');
+    });
+
+    it('opens the column picker inside the table edge in narrow panes', () => {
+        const decls = (selector: string) => {
+            const rule = css.nodes.find(n => n.type === 'rule' && n.selector === selector);
+            const out: Record<string, string> = {};
+            if (rule && rule.type === 'rule') rule.walkDecls(d => { out[d.prop] = d.value; });
+            return out;
+        };
+        expect(decls('.interactive-table-toolbar').position).toBe('relative');
+        expect(decls('.interactive-table-col-picker')).toMatchObject({
+            position: 'absolute', right: '4px', 'max-width': 'calc(100cqw - 8px)',
+        });
+        expect(decls('.interactive-table-col-picker').left).toBeUndefined();
+    });
+});
+
 describe('Markdown canvas shares response table wrapping', () => {
     it.each([280, 320, 400, 1280])('uses the same wrap controls and shared layout rules in a %ipx panel', width => {
         const { container } = render(<div style={{ width }}>
@@ -100,22 +141,20 @@ describe('Markdown canvas shares response table wrapping', () => {
         for (const root of [answer, canvas]) {
             const button = wrap(root);
             expect(button).toHaveAttribute('type', 'button');
-            expect(button).toHaveAttribute('aria-pressed', 'false');
-            expect(button).toHaveAttribute('title', 'Wrap text to fit the pane');
-            expect(root.querySelector('colgroup')).not.toBeNull();
-            expect(getComputedStyle(root.querySelector('table')!).minWidth).toBe('380px');
             expect(getComputedStyle(root.querySelector('.interactive-table-scroll')!).overflowX).toBe('auto');
-            expect(getComputedStyle(root.querySelector('.interactive-table-toolbar')!).flexWrap).toBe('wrap');
-            expect(getComputedStyle(root.querySelector('.interactive-table-actions')!).flexWrap).toBe('wrap');
+            // One compact toolbar row at every width: nothing wraps, only the row count shrinks.
+            expect(getComputedStyle(root.querySelector('.interactive-table-toolbar')!).flexWrap).toBe('nowrap');
+            expect(getComputedStyle(root.querySelector('.interactive-table-actions')!).flexWrap).toBe('nowrap');
+            expect(getComputedStyle(root.querySelector('.interactive-table-actions')!).flexShrink).toBe('0');
+            expect(getComputedStyle(root.querySelector('.interactive-table-row-count')!).textOverflow).toBe('ellipsis');
             const cell = root.querySelector('tbody td')!;
             const code = cell.querySelector('code')!;
             const original = cell.innerHTML;
             expect(cell).toHaveTextContent(LONG_CODE);
             expect(root).toHaveTextContent(LONG_TEXT.trim());
             expect(cell.querySelector('a')).toHaveAttribute('href', LONG_URL);
-            expect(getComputedStyle(cell).whiteSpace).toBe('nowrap');
 
-            fireEvent.click(button);
+            // Wrapped by default.
             expect(button).toHaveAttribute('aria-pressed', 'true');
             expect(root).toHaveClass('interactive-table-wrapped');
             expect(root.querySelector('colgroup')).toBeNull();
@@ -137,7 +176,14 @@ describe('Markdown canvas shares response table wrapping', () => {
             }
             fireEvent.click(button);
             expect(button).toHaveAttribute('aria-pressed', 'false');
+            expect(button).toHaveAttribute('title', 'Wrap text to fit the pane');
+            expect(root).not.toHaveClass('interactive-table-wrapped');
             expect(root.querySelector('colgroup')).not.toBeNull();
+            expect(getComputedStyle(root.querySelector('table')!).minWidth).toBe('380px');
+            expect(getComputedStyle(cell).whiteSpace).toBe('nowrap');
+            fireEvent.click(button);
+            expect(button).toHaveAttribute('aria-pressed', 'true');
+            expect(root.querySelector('colgroup')).toBeNull();
         }
         expect(onDraftChange).not.toHaveBeenCalled();
         expect(onCanvasSaved).not.toHaveBeenCalled();
@@ -151,10 +197,10 @@ describe('Markdown canvas shares response table wrapping', () => {
         </>);
         const canvases = container.querySelectorAll<HTMLElement>('[data-testid="canvas-panel-preview"] .interactive-table');
         fireEvent.click(wrap(canvases[1]));
-        expect(wrap(canvases[0])).toHaveAttribute('aria-pressed', 'false');
-        expect(wrap(canvases[1])).toHaveAttribute('aria-pressed', 'true');
+        expect(wrap(canvases[0])).toHaveAttribute('aria-pressed', 'true');
+        expect(wrap(canvases[1])).toHaveAttribute('aria-pressed', 'false');
         for (const button of within(within(container).getByTestId('answer')).getAllByRole('button', { name: 'Wrap text' })) {
-            expect(button).toHaveAttribute('aria-pressed', 'false');
+            expect(button).toHaveAttribute('aria-pressed', 'true');
         }
     });
 
@@ -166,11 +212,11 @@ describe('Markdown canvas shares response table wrapping', () => {
         rerender(canvasBody(updated, { revision: 2 }));
         expect(oldMount.isConnected).toBe(false);
         expect(container.querySelectorAll('.interactive-table-mount')).toHaveLength(1);
-        expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'true');
+        expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'false');
         expect(interactive(container).querySelectorAll('tbody tr')).toHaveLength(6);
         const viewingVersion: CanvasVersion = { revision: 1, title: 'Report', editor: 'ai', content: CONTENT, updatedAt: '' };
         rerender(canvasBody(CONTENT, { revision: 2, viewingVersion }));
-        expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'true');
+        expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'false');
         expect(interactive(container).querySelectorAll('tbody tr')).toHaveLength(5);
         unmount();
         expect(document.querySelector('.interactive-table-mount')).toBeNull();
@@ -185,8 +231,9 @@ describe('Markdown canvas shares response table wrapping', () => {
     ])('resets wrapping when the canvas owner/document changes: %j', options => {
         const { container, rerender } = render(canvasBody());
         fireEvent.click(wrap(interactive(container)));
-        rerender(canvasBody(CONTENT, options));
         expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'false');
+        rerender(canvasBody(CONTENT, options));
+        expect(wrap(interactive(container))).toHaveAttribute('aria-pressed', 'true');
         expect(container.querySelectorAll('.interactive-table-mount')).toHaveLength(1);
     });
 
@@ -210,7 +257,6 @@ describe('Markdown canvas shares response table wrapping', () => {
             {canvasBody()}
         </UnifiedPanelHostProvider>);
         const root = interactive(container);
-        fireEvent.click(wrap(root));
         fireEvent.click(root.querySelector('th[data-col-id="col_1"]')!);
         expect(root.querySelector('tbody td:nth-child(2)')).toHaveTextContent('10');
         fireEvent.click(within(root).getByTitle('Show filters'));

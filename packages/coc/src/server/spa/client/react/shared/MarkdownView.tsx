@@ -10,10 +10,11 @@
  * numeric aggregation (sum/avg). The original static table is hidden but
  * kept in the DOM for snapshot copy and accessibility fallback.
  *
- * With `tableWrapToggle`, interactive tables also get a per-table "Wrap text"
- * toggle (static tables already wrap via `.markdown-body`). The wrapped set
- * lives here, keyed by table id, because every `html` change — each streaming
- * chunk included — remounts the table portals.
+ * With `tableWrapToggle`, interactive tables wrap cell text by default and get
+ * a per-table "Wrap text" toggle (static tables already wrap via
+ * `.markdown-body`). The set of tables the user unwrapped lives here, keyed by
+ * table id, because every `html` change — each streaming chunk included —
+ * remounts the table portals.
  *
  * Generic canvas placeholders (`.md-canvas-embed`) resolve their persisted type
  * before rendering through React portals. Legacy Excalidraw placeholders retain
@@ -51,7 +52,7 @@ export interface MarkdownViewProps {
     fullMarkdown?: string;
     /** When true, section copy buttons are hidden (e.g. during streaming). */
     hideSectionCopy?: boolean;
-    /** Show a per-table "Wrap text" toggle on interactive tables. Opt-in for AI response surfaces. */
+    /** Wrap interactive tables by default, with a per-table "Wrap text" toggle. Opt-in for AI response surfaces. */
     tableWrapToggle?: boolean;
 }
 
@@ -97,7 +98,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [tablePortals, setTablePortals] = React.useState<
         { mountEl: HTMLElement; table: ExtractedTable; key: string }[]
     >([]);
-    const [wrappedTables, setWrappedTables] = React.useState<ReadonlySet<string>>(() => new Set());
+    const [unwrappedTables, setUnwrappedTables] = React.useState<ReadonlySet<string>>(() => new Set());
     const [canvasPortals, setCanvasPortals] = React.useState<CanvasPortal[]>([]);
     const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
     const { lightboxSrc, openFromTarget, closeLightbox } = useInlineImageLightbox();
@@ -347,11 +348,11 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                         tableKey={key}
                         {...table.data}
                         {...(tableWrapToggle ? {
-                            wrapText: wrappedTables.has(key),
-                            onWrapTextChange: (wrap: boolean) => setWrappedTables(prev => {
+                            wrapText: !unwrappedTables.has(key),
+                            onWrapTextChange: (wrap: boolean) => setUnwrappedTables(prev => {
                                 const next = new Set(prev);
-                                if (wrap) next.add(key);
-                                else next.delete(key);
+                                if (wrap) next.delete(key);
+                                else next.add(key);
                                 return next;
                             }),
                         } : {})}

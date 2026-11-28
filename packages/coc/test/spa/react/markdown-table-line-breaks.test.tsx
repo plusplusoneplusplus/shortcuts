@@ -110,7 +110,7 @@ describe.each(renderers)('$name table line breaks', ({ renderMarkdown }) => {
         const classes = Array.from(interactive.querySelectorAll('th, td'), c => c.className);
         const toggle = interactive.querySelector('button[aria-pressed]')!;
         fireEvent.click(toggle);
-        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
         expect(Array.from(interactive.querySelectorAll('th, td'), c => c.className)).toEqual(classes);
         expect(interactive.querySelectorAll('tbody td br')).toHaveLength(2);
     });
