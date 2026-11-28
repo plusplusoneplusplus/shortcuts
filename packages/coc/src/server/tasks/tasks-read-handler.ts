@@ -23,7 +23,7 @@ import { getRepoDataPath } from '../paths';
 
 const HTML_EMBED_MAX_BYTES = 4 * 1024 * 1024;
 /** Text cap for GET /files/preview (Files tab, file previews, workspace-file editor loads). */
-export const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024;
+const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024;
 const HTML_EMBED_TYPES = new Set(['.html', '.htm']);
 const TRUSTED_PREVIEW_DIRS = [
     ...TRUSTED_READ_ONLY_DIRS,
