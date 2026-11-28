@@ -195,7 +195,7 @@ describe('CanvasPanel', () => {
         await screen.findByText('Open in the CoC desktop app');
         expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan');
         expect(screen.getByTestId('canvas-panel-extension-badge')).toBeTruthy();
-        for (const id of ['mode-edit', 'export', 'version-older', 'version-newer', 'popout', 'preview', 'editor']) {
+        for (const id of ['mode-edit', 'export', 'version-older', 'version-newer', 'popout', 'preview', 'editor', 'reload-extension']) {
             expect(screen.queryByTestId(`canvas-panel-${id}`)).toBeNull();
         }
         expect(screen.queryByText(/privateInstance/)).toBeNull();
@@ -233,6 +233,40 @@ describe('CanvasPanel', () => {
             expect(close).toHaveBeenCalled();
         } finally {
             delete (window as any).__DASHBOARD_CONFIG__;
+            delete (window as any).cocDesktop;
+        }
+    });
+
+    it('puts the Copilot extension Reload in the header row, disabled while the guest loads', async () => {
+        let stateListener!: (state: { viewId: string; status: 'loading' | 'loaded' | 'failed' }) => void;
+        const open = vi.fn().mockResolvedValue({
+            ok: true, embed: 'webview', src: 'http://127.0.0.1:3210/', partition: 'extension-memory',
+        });
+        (window as any).cocDesktop = { extensionCanvas: {
+            open, close: vi.fn(), adopt: vi.fn(), onState: (cb: typeof stateListener) => { stateListener = cb; return () => {}; },
+        } };
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'copilot-extension' }));
+        let view: ReturnType<typeof render> | undefined;
+        try {
+            view = render(<CanvasPanel allowDesktopGuest workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onClose={vi.fn()} />);
+            await waitFor(() => expect(view!.container.querySelector('webview')).not.toBeNull());
+            const reload = screen.getByTestId('canvas-panel-reload-extension') as HTMLButtonElement;
+            const header = screen.getByTestId('canvas-panel-extension-badge').parentElement!;
+            expect(header.contains(reload)).toBe(true);
+            expect(header.contains(screen.getByTestId('canvas-panel-fullscreen'))).toBe(true);
+            expect(reload.getAttribute('aria-label')).toBe('Reload canvas extension');
+            expect(reload.getAttribute('title')).toBe('Reload canvas extension');
+            expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
+            expect(reload.disabled).toBe(true);
+            act(() => stateListener({ viewId: open.mock.calls[0][0], status: 'loaded' }));
+            expect(reload.disabled).toBe(false);
+            fireEvent.click(reload);
+            await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+            expect(open).toHaveBeenLastCalledWith(expect.any(String), 'ws-1', 'doc-abc123', true);
+            expect((screen.getByTestId('canvas-panel-reload-extension') as HTMLButtonElement).disabled).toBe(true);
+        } finally {
+            view?.unmount();
             delete (window as any).cocDesktop;
         }
     });

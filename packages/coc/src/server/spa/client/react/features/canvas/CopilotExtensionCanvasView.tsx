@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCloneBaseUrl } from '../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
@@ -34,13 +34,15 @@ export function parseExtensionRuntimeReload(content: string): ExtensionRuntimeRe
 }
 
 export function CopilotExtensionCanvasView({
-    workspaceId, canvasId, routingRef, allowDesktopGuest = false, runtimeReload,
+    workspaceId, canvasId, routingRef, allowDesktopGuest = false, runtimeReload, onRegisterReload,
 }: {
     workspaceId: string;
     canvasId: string;
     routingRef?: string | null;
     allowDesktopGuest?: boolean;
     runtimeReload?: ExtensionRuntimeReload;
+    /** The canvas header owns the Reload button; it stays disabled while the guest loads. */
+    onRegisterReload?: (reload: (() => void) | null, options?: { disabled?: boolean }) => void;
 }) {
     const ref = routingRef === null ? undefined : routingRef ?? workspaceId;
     const baseUrl = useCloneBaseUrl(ref);
@@ -122,21 +124,24 @@ export function CopilotExtensionCanvasView({
         };
     }, [enabled, bridge, workspaceId, canvasId, routingRef, reloadNonce, runtimeReloadId, runtimeReloadError]);
 
+    const reload = useCallback(() => {
+        if (status === 'loading' || !window.confirm('Reload this extension? This restarts its shared runtime in this conversation. Unsaved page input may be lost. Saved instance input and session files are kept. Other open canvases from this extension will refresh too. Running actions finish before reload. Actions are not replayed.')) return;
+        reloadRequested.current = { workspaceId, canvasId, routingRef };
+        setStatus('loading');
+        setReloadNonce(value => value + 1);
+    }, [status, workspaceId, canvasId, routingRef]);
+
+    useEffect(() => {
+        if (!enabled) return;
+        onRegisterReload?.(reload, { disabled: status === 'loading' });
+        return () => onRegisterReload?.(null);
+    }, [enabled, onRegisterReload, reload, status]);
+
     if (!enabled) {
         return <div className="p-6 text-center text-xs text-[#848484]">Open in the CoC desktop app</div>;
     }
     return (
         <div className="flex h-full min-h-[200px] flex-col" data-testid="copilot-extension-canvas">
-            <div className="flex shrink-0 justify-end border-b border-[#848484]/20 px-2 py-1">
-                <button type="button" disabled={status === 'loading'}
-                    className="rounded px-2 py-1 text-xs text-[#848484] hover:bg-[#848484]/10 disabled:opacity-50"
-                    onClick={() => {
-                        if (status === 'loading' || !window.confirm('Reload this extension? This restarts its shared runtime in this conversation. Unsaved page input may be lost. Saved instance input and session files are kept. Other open canvases from this extension will refresh too. Running actions finish before reload. Actions are not replayed.')) return;
-                        reloadRequested.current = { workspaceId, canvasId, routingRef };
-                        setStatus('loading');
-                        setReloadNonce(value => value + 1);
-                    }}>Reload</button>
-            </div>
             <div className="relative min-h-0 flex-1">
                 {status !== 'loaded' && (
                     <div role={status === 'failed' ? 'alert' : 'status'} className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#848484]">

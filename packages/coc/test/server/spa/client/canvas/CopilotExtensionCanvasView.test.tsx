@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { StrictMode, useCallback, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     CopilotExtensionCanvasView, parseExtensionRuntimeReload, type ExtensionCanvasBridge,
@@ -26,8 +26,26 @@ let bridge: {
 let stateListener: Parameters<ExtensionCanvasBridge['onState']>[0];
 let unsubscribe: ReturnType<typeof vi.fn>;
 
-function mount(props: Partial<Parameters<typeof CopilotExtensionCanvasView>[0]> = {}) {
-    return render(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas" allowDesktopGuest {...props} />);
+type ViewProps = Parameters<typeof CopilotExtensionCanvasView>[0];
+
+/** Stands in for the canvas header, which owns the Reload button. */
+function WithHeaderReload(props: ViewProps) {
+    const [reload, setReload] = useState<{ run: () => void; disabled: boolean } | null>(null);
+    const register = useCallback((run: (() => void) | null, options?: { disabled?: boolean }) => {
+        setReload(run ? { run, disabled: !!options?.disabled } : null);
+    }, []);
+    return <>
+        {reload && <button type="button" disabled={reload.disabled} onClick={reload.run}>Reload</button>}
+        <CopilotExtensionCanvasView {...props} onRegisterReload={register} />
+    </>;
+}
+
+function mount(props: Partial<ViewProps> = {}) {
+    const view = render(<WithHeaderReload workspaceId="ws-local" canvasId="saved-canvas" allowDesktopGuest {...props} />);
+    return {
+        ...view,
+        rerender: (ui: React.ReactElement<ViewProps>) => view.rerender(<WithHeaderReload {...ui.props} />),
+    };
 }
 
 beforeEach(() => {
@@ -95,6 +113,24 @@ describe('Copilot extension guest', () => {
         expect(screen.getByRole('button', { name: 'Reload' }).hasAttribute('disabled')).toBe(true);
         act(() => stateListener({ viewId: secondId, status: 'loaded' }));
         expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('draws no Reload row of its own and registers reload with the header only for a desktop guest', async () => {
+        const register = vi.fn();
+        const view = render(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            allowDesktopGuest onRegisterReload={register} />);
+        expect(screen.queryByRole('button')).toBeNull();
+        expect(register).toHaveBeenLastCalledWith(expect.any(Function), { disabled: true });
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        act(() => stateListener({ viewId: bridge.open.mock.calls[0][0], status: 'loaded' }));
+        expect(register).toHaveBeenLastCalledWith(expect.any(Function), { disabled: false });
+        view.unmount();
+        expect(register).toHaveBeenLastCalledWith(null);
+
+        const fallback = vi.fn();
+        render(<CopilotExtensionCanvasView workspaceId="ws-local" canvasId="saved-canvas"
+            onRegisterReload={fallback} />);
+        expect(fallback).not.toHaveBeenCalled();
     });
 
     it('reports invalid-code reload failure and permits explicit recovery without stale guest replies', async () => {

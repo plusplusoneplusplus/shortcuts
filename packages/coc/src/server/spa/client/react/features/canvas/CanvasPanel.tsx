@@ -101,9 +101,9 @@ export function CanvasPanel({
     onDirtyChange, onRegisterSave, allowDesktopGuest = false,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
-    const [extensionReload, setExtensionReload] = useState<{ run: () => void } | null>(null);
-    const registerExtensionReload = useCallback((run: (() => void) | null) => {
-        setExtensionReload(run ? { run } : null);
+    const [extensionReload, setExtensionReload] = useState<{ run: () => void; disabled: boolean } | null>(null);
+    const registerExtensionReload = useCallback((run: (() => void) | null, options?: { disabled?: boolean }) => {
+        setExtensionReload(run ? { run, disabled: !!options?.disabled } : null);
     }, []);
     const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
     const [mode, setMode] = useState<ViewMode>('preview');
@@ -231,7 +231,9 @@ export function CanvasPanel({
                 kustoEnabled={isKustoEnabled()}
                 creatingKusto={kusto.creating}
                 onCreateKusto={() => void kusto.create()}
-                onReloadExtension={canvas?.type === 'extension' && !viewingVersion && mode === 'preview' ? extensionReload?.run : undefined}
+                onReloadExtension={isCopilotExtension || (canvas?.type === 'extension' && !viewingVersion && mode === 'preview')
+                    ? extensionReload?.run : undefined}
+                reloadExtensionDisabled={extensionReload?.disabled}
                 onPopOut={onPopOut}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={toggleFullscreen}
