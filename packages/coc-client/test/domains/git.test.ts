@@ -190,6 +190,9 @@ describe('GitClient', () => {
     await client.stageFiles('repo/a', ['src/a.ts', 'src/b.ts']);
     await client.unstageFiles('repo/a', ['src/a.ts', 'src/b.ts']);
     await client.discardAllChanges('repo/a');
+    await client.revertWorkingTreeChange('repo/a', {
+      filePath: '/r/a.ts', stage: 'staged', expected: [{ filePath: '/r/a.ts', stage: 'staged', status: 'M' }],
+    });
 
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/workspaces/repo%2Fa/git/repo-state',
@@ -218,6 +221,7 @@ describe('GitClient', () => {
       '/workspaces/repo%2Fa/git/changes/stage-batch',
       '/workspaces/repo%2Fa/git/changes/unstage-batch',
       '/workspaces/repo%2Fa/git/changes/discard-all',
+      '/workspaces/repo%2Fa/git/changes/revert',
     ]);
     expect(adapter.calls[1].options?.query).toEqual({ op: 'pull' });
     expect(adapter.calls[3].options).toMatchObject({ method: 'POST', body: { remote: 'origin' } });
@@ -242,6 +246,10 @@ describe('GitClient', () => {
     expect(adapter.calls[22].options).toMatchObject({ method: 'DELETE', body: { filePath: 'src/a.ts' } });
     expect(adapter.calls[23].options).toMatchObject({ method: 'POST', body: { filePaths: ['src/a.ts', 'src/b.ts'] } });
     expect(adapter.calls[25].options).toMatchObject({ method: 'POST' });
+    expect(adapter.calls[26].options).toMatchObject({
+      method: 'POST',
+      body: { filePath: '/r/a.ts', stage: 'staged', expected: [{ filePath: '/r/a.ts', stage: 'staged', status: 'M' }] },
+    });
   });
 
   it('sends current-branch-only scope for Git tab fetch and pull actions', async () => {

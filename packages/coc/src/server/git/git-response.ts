@@ -9,6 +9,13 @@ export function gitStatusToChar(status: string): string {
     return STATUS_CHARS.get(status) ?? status;
 }
 
+const CHAR_STATUSES = new Map([...STATUS_CHARS].map(([status, char]) => [char, status]));
+
+/** The inverse of `gitStatusToChar`, for status rows a client sends back. */
+export function gitCharToStatus(char: string): string {
+    return CHAR_STATUSES.get(char) ?? char;
+}
+
 /** Only truncated patch responses carry line-count metadata on the wire. */
 export function patchContentResponse(content: DiffContent) {
     return {

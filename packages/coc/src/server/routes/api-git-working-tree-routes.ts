@@ -1,5 +1,6 @@
 /**
  * Endpoints for listing working-tree changes, staging, unstaging, discarding,
+ * reverting one status row,
  * batch stage/unstage, deleting untracked files, per-file working-tree diffs, and
  * both full-text sides of a working-tree file.
  */
@@ -8,7 +9,7 @@ import { WorkingTreeService, BranchService, loadWorkingTreePatch } from '@pluspl
 import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { internalError, badRequest, handleAPIError, missingFields, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
-import { gitStatusToChar, patchContentResponse } from '../git/git-response';
+import { gitCharToStatus, gitStatusToChar, patchContentResponse } from '../git/git-response';
 import {
     WORKING_TREE_CONTENT_STAGES,
     createWorkingTreeContentIO,
@@ -129,6 +130,40 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
 
             const result = await workingTreeService.discardChanges(ws.rootPath, body.filePath);
             getWsServer?.()?.broadcastGitChanged(id, 'discard');
+            return result;
+        },
+    }));
+
+    // POST /api/workspaces/:id/git/changes/revert — Revert one status row after a fresh status check
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/revert$/,
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const stages = WORKING_TREE_CONTENT_STAGES as readonly string[];
+            const isRow = (row: any) => row && typeof row.filePath === 'string' && stages.includes(row.stage)
+                && typeof row.status === 'string' && (row.originalPath === undefined || typeof row.originalPath === 'string');
+            if (typeof body.filePath !== 'string' || !stages.includes(body.stage) || !Array.isArray(body.expected) || !body.expected.every(isRow)) {
+                return void handleAPIError(res, missingFields(['filePath', 'stage', 'expected']));
+            }
+            const paths = [body.filePath, ...body.expected.flatMap((row: any) => [row.filePath, row.originalPath ?? []].flat())];
+            if (paths.some(p => !resolveWorkingTreePath(ws.rootPath, p))) {
+                return void handleAPIError(res, badRequest('Path is outside the workspace'));
+            }
+
+            const result = await workingTreeService.revertChange(ws.rootPath, {
+                filePath: body.filePath,
+                stage: body.stage,
+                expected: body.expected.map((row: any) => ({
+                    filePath: row.filePath, stage: row.stage, status: gitCharToStatus(row.status) as any,
+                    ...(row.originalPath ? { originalPath: row.originalPath } : {}),
+                })),
+            });
+            if (result.success) getWsServer?.()?.broadcastGitChanged(ws.id, 'revert');
             return result;
         },
     }));
