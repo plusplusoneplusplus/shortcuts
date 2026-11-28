@@ -4,7 +4,7 @@ import { act, render, screen, fireEvent, waitFor, within } from '@testing-librar
 import React, { useEffect } from 'react';
 
 const h = vi.hoisted(() => ({
-    client: { git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileContent: vi.fn(), listDiffComments: vi.fn() } },
+    client: { git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileContent: vi.fn(), listDiffComments: vi.fn(), revertWorkingTreeChange: vi.fn() } },
     endpoint: undefined as string | undefined,
     unresolved: false,
     searchEnabled: false,
@@ -240,6 +240,85 @@ describe('WorkingTreeAllFilesDiff shared review', () => {
             scope: 'file', selectedText: '', comment: 'Whole file note', category: 'general',
         });
         expect(current().stage).toBe('staged');
+    });
+    describe('revert from the changed-files menu', () => {
+        const menu = () => screen.getByTestId('context-menu');
+        const item = (name: RegExp) => within(menu()).getByRole('menuitem', { name });
+        async function openMenu(stage: string) {
+            render(<WorkingTreeAllFilesDiff {...props} />);
+            await screen.findByTestId('full-working-diff');
+            fireEvent.contextMenu(row(stage), { clientX: 5, clientY: 5 });
+        }
+
+        it('keeps the existing actions and adds a revert matched to the row', async () => {
+            await openMenu('Unstaged');
+            expect(within(menu()).getAllByRole('menuitem').map(el => el.textContent?.replace(/^\W+/, ''))).toEqual([
+                'Open file', 'Comment', 'Copy path', 'Discard unstaged changes…',
+            ]);
+            fireEvent.keyDown(document, { key: 'Escape' });
+            fireEvent.contextMenu(row('Untracked'), { clientX: 5, clientY: 5 });
+            expect(item(/Delete untracked file/)).not.toBeDisabled();
+            fireEvent.keyDown(document, { key: 'Escape' });
+            fireEvent.contextMenu(row('Staged'), { clientX: 5, clientY: 5 });
+            expect(item(/Revert to last commit/)).not.toBeDisabled();
+        });
+
+        it('cancel closes the confirmation without touching Git', async () => {
+            await openMenu('Untracked');
+            fireEvent.click(item(/Delete untracked file/));
+            const dialog = screen.getByRole('dialog', { name: 'Delete untracked file?' });
+            expect(dialog.textContent).toContain('new.txt will be deleted from disk');
+            fireEvent.click(within(dialog).getByTestId('working-change-revert-cancel'));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            fireEvent.contextMenu(row('Untracked'), { clientX: 5, clientY: 5 });
+            fireEvent.click(item(/Delete untracked file/));
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(h.client.git.revertWorkingTreeChange).not.toHaveBeenCalled();
+        });
+
+        it('confirms with the mixed-state rows it described, then reloads strictly', async () => {
+            h.client.git.revertWorkingTreeChange.mockResolvedValue({ success: true });
+            await openMenu('Unstaged');
+            fireEvent.click(item(/Discard unstaged changes/));
+            const dialog = screen.getByRole('dialog', { name: 'Discard unstaged changes?' });
+            expect(dialog.textContent).toContain('Staged changes to this file are kept.');
+            const loads = h.client.git.getWorkingTreeChanges.mock.calls.length;
+            await act(async () => fireEvent.click(within(dialog).getByTestId('working-change-revert-confirm')));
+            expect(h.client.git.revertWorkingTreeChange).toHaveBeenCalledTimes(1);
+            expect(h.client.git.revertWorkingTreeChange).toHaveBeenCalledWith('ws-1', {
+                filePath: '/repo/a.ts', stage: 'unstaged',
+                expected: [
+                    { filePath: '/repo/a.ts', stage: 'staged', status: 'M' },
+                    { filePath: '/repo/a.ts', stage: 'unstaged', status: 'M' },
+                ],
+            });
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            await waitFor(() => expect(h.client.git.getWorkingTreeChanges.mock.calls.length).toBe(loads + 1));
+            expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1', { refresh: true });
+        });
+
+        it('shows a refused revert in the dialog and does not reload', async () => {
+            h.client.git.revertWorkingTreeChange.mockResolvedValue({ success: false, error: 'This file changed since the list was loaded. Refresh and try again.' });
+            await openMenu('Staged');
+            fireEvent.click(item(/Revert to last commit/));
+            const loads = h.client.git.getWorkingTreeChanges.mock.calls.length;
+            await act(async () => fireEvent.click(screen.getByTestId('working-change-revert-confirm')));
+            expect((await screen.findByTestId('working-change-revert-error')).textContent).toMatch(/changed since/);
+            expect(screen.getByRole('dialog', { name: 'Revert to last commit?' })).toBeTruthy();
+            expect(h.client.git.getWorkingTreeChanges.mock.calls.length).toBe(loads);
+        });
+
+        it('disables the revert while the file has unsaved edits', async () => {
+            render(<WorkingTreeAllFilesDiff {...props} />);
+            await screen.findByTestId('full-working-diff');
+            fireEvent.click(screen.getByRole('button', { name: 'Edit buffer' }));
+            fireEvent.contextMenu(row('Unstaged'), { clientX: 5, clientY: 5 });
+            expect(item(/Discard unstaged changes/)).toBeDisabled();
+            fireEvent.keyDown(document, { key: 'Escape' });
+            fireEvent.contextMenu(row('Untracked'), { clientX: 5, clientY: 5 });
+            expect(item(/Delete untracked file/)).not.toBeDisabled();
+        });
     });
     it('opens on the requested file and stage instead of the first change', async () => {
         render(<WorkingTreeAllFilesDiff {...props} filePath="/repo/a.ts" stage="unstaged" />);

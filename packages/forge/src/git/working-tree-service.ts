@@ -150,6 +150,58 @@ function toGitChange(entry: NativeGitStatusEntry, repoRoot: string, repositoryNa
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Single-change revert
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How one status row is reverted.
+ * - `discard-unstaged`: restore the worktree file from the index; staged changes stay.
+ * - `restore-from-head`: restore index and worktree from HEAD. Undoes a staged change
+ *   (and any unstaged edits to the same file); a file absent from HEAD is removed.
+ * - `delete-untracked`: delete the untracked file from disk.
+ */
+export type WorkingTreeRevertKind = 'discard-unstaged' | 'restore-from-head' | 'delete-untracked';
+
+/** The status fields a revert plan reads. */
+export type WorkingTreeRevertRow = Pick<GitChange, 'filePath' | 'stage' | 'status' | 'originalPath'>;
+
+/** The revert for one row, or null when it has no safe revert (conflicts, unknown statuses). */
+export function workingTreeRevertKind(row: Pick<GitChange, 'stage' | 'status'>): WorkingTreeRevertKind | null {
+    if (row.stage === 'untracked') return 'delete-untracked';
+    if (row.stage === 'staged') return ['modified', 'added', 'deleted', 'renamed', 'copied'].includes(row.status) ? 'restore-from-head' : null;
+    // An unstaged `added` row is an intent-to-add file: `checkout --` would empty it.
+    if (row.status === 'added') return 'restore-from-head';
+    return row.status === 'modified' || row.status === 'deleted' ? 'discard-unstaged' : null;
+}
+
+/** Paths a revert writes: a staged rename also restores its original path. */
+export function workingTreeRevertPaths(row: WorkingTreeRevertRow): string[] {
+    return workingTreeRevertKind(row) === 'restore-from-head' && row.status === 'renamed' && row.originalPath
+        ? [row.filePath, row.originalPath] : [row.filePath];
+}
+
+/** Every status row that names one of `paths`, as source or rename original. */
+export function workingTreeRevertRelatedRows<T extends WorkingTreeRevertRow>(rows: T[], paths: string[]): T[] {
+    const touched = new Set(paths.map(p => path.normalize(p)));
+    return rows.filter(row => touched.has(path.normalize(row.filePath))
+        || (row.originalPath !== undefined && touched.has(path.normalize(row.originalPath))));
+}
+
+function revertRowKey(row: WorkingTreeRevertRow): string {
+    return JSON.stringify([path.normalize(row.filePath), row.stage, row.status, row.originalPath ? path.normalize(row.originalPath) : null]);
+}
+
+/** One row to revert, plus every related row the caller saw when it confirmed. */
+export interface WorkingTreeRevertRequest {
+    filePath: string;
+    stage: GitChangeStage;
+    expected: WorkingTreeRevertRow[];
+}
+
+/** The answer when fresh status no longer matches what the caller confirmed. */
+export const WORKING_TREE_REVERT_STALE = 'This file changed since the list was loaded. Refresh and try again.';
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WorkingTreeService
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -404,6 +456,55 @@ export class WorkingTreeService {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', `deleteUntrackedFile failed: ${filePath}`, error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Revert one status row after re-reading status.
+     *
+     * Refuses unless the fresh rows for the affected paths match `expected`
+     * exactly, so a revert never loses more than the caller confirmed. Only
+     * paths git reported are touched; other files are never part of the command.
+     */
+    async revertChange(repoRoot: string, request: WorkingTreeRevertRequest): Promise<GitOperationResult> {
+        const fail = (error: string): GitOperationResult => ({ success: false, error });
+        try {
+            const fresh = await this.getAllChanges(repoRoot, { throwOnError: true });
+            const target = fresh.find(row => row.stage === request.stage && path.normalize(row.filePath) === path.normalize(request.filePath));
+            if (!target) return fail(WORKING_TREE_REVERT_STALE);
+            const kind = workingTreeRevertKind(target);
+            if (!kind) return fail(target.status === 'conflict' ? 'Resolve the merge conflict before reverting this file.' : `Cannot revert a ${target.status} change.`);
+            const paths = workingTreeRevertPaths(target);
+            const related = workingTreeRevertRelatedRows(fresh, paths);
+            const expectedKeys = request.expected.map(revertRowKey).sort();
+            const freshKeys = related.map(revertRowKey).sort();
+            if (JSON.stringify(expectedKeys) !== JSON.stringify(freshKeys)) return fail(WORKING_TREE_REVERT_STALE);
+            for (const p of paths) {
+                const rel = path.relative(repoRoot, p);
+                if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return fail(`Path is outside the repository: ${p}`);
+            }
+
+            if (kind === 'delete-untracked') {
+                const stat = fs.lstatSync(target.filePath);
+                if (stat.isDirectory()) return fail(`Not deleting a directory: ${target.filePath}`);
+                fs.unlinkSync(target.filePath);
+                return { success: true };
+            }
+            if (kind === 'discard-unstaged') {
+                await runGit(repoRoot, ['restore', '--worktree', '--', target.filePath]);
+                return { success: true };
+            }
+            if (related.some(row => row.stage === 'untracked')) {
+                return fail('An untracked file at this path would be overwritten. Move or delete it first.');
+            }
+            if (related.some(row => row.status === 'conflict')) {
+                return fail('Resolve the merge conflict before reverting this file.');
+            }
+            await runGit(repoRoot, ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...paths]);
+            return { success: true };
+        } catch (error) {
+            getLogger().error('Git', `revertChange failed: ${request.filePath}`, error instanceof Error ? error : undefined);
+            return fail(error instanceof Error ? error.message : 'Unknown error');
         }
     }
 }

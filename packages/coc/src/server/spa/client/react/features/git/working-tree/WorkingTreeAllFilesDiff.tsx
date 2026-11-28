@@ -13,6 +13,7 @@ import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifi
 import { openChangedFileSource, openFileMenuItem } from '../diff/changedFileSource';
 import { useFileCommentComposer } from '../diff/fileCommentComposer';
 import { useCopyChangedFilePath } from '../diff/copyChangedFilePath';
+import { useWorkingChangeRevert } from './workingChangeRevert';
 import { useReviewContentSearchController } from '../diff/useReviewContentSearchController';
 import type { ReviewContentSearchTarget } from '../diff/FileDiffPanel';
 import { ReviewViewIdentity, type CommitPickerOptions } from '../commits/CommitHashPicker';
@@ -74,6 +75,8 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
     const sourceOwner = useCommitContextOwner(workspaceId, attachmentDestinationId);
     const fileComment = useFileCommentComposer();
     const copyPath = useCopyChangedFilePath();
+    // Same owner client and workspace as the change list, so a revert never crosses repositories.
+    const revert = useWorkingChangeRevert({ workspaceId, client, onReverted: () => setAttempt(value => value + 1) });
     const onDirtyChange = useCallback((value: boolean) => {
         setDirty(value);
         guard.onDirtyChange(value);
@@ -215,7 +218,13 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
                     context: workingTreeCommentContext(workspaceId, change.filePath, change.stage),
                     unavailableReason: 'Untracked files have no comments',
                     displayPath: file.path,
-                }), copyPath.menuItem(repoRelative(change.filePath, change.repositoryRoot))] : [];
+                }), copyPath.menuItem(repoRelative(change.filePath, change.repositoryRoot)),
+                // A retained dirty editor may outlive its entry; only rows in the current status can be reverted.
+                ...(changes.some(current => changeKey(current) === changeKey(change)) ? [
+                    { label: '', separator: true, onClick: () => {} },
+                    revert.menuItem(change, changes, dirty && selected?.filePath === change.filePath
+                        ? 'Save or discard your unsaved edits first.' : undefined),
+                ] : [])] : [];
             }}
             renderEmpty={<div className="git-review-empty" data-testid="working-tree-all-files-empty">{files.length ? 'No matching files.' : 'No working-tree changes'}</div>}
             renderFile={({ file, paths, select, target }) => {
@@ -244,6 +253,7 @@ function WorkingChangesReview(props: WorkingTreeAllFilesDiffProps) {
         />
         {fileComment.composer}
         {copyPath.feedback}
+        {revert.dialog}
         {guard.dialog}
     </>;
 }

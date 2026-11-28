@@ -329,6 +329,24 @@ export interface GitWorkingTreeChange {
   isBinary?: boolean;
 }
 
+/** One status row as the change list reported it (single-character `status`). */
+export interface GitWorkingTreeRevertRow {
+  filePath: string;
+  stage: GitWorkingTreeContentStage;
+  status: string;
+  originalPath?: string;
+}
+
+/**
+ * Revert one status row. `expected` is every row the caller showed for the
+ * affected paths; the server refuses when fresh status differs.
+ */
+export interface GitWorkingTreeRevertRequest {
+  filePath: string;
+  stage: GitWorkingTreeContentStage;
+  expected: GitWorkingTreeRevertRow[];
+}
+
 export interface GitWorkingTreeChangesResponse {
   changes: GitWorkingTreeChange[];
   repoState: GitRepoState;

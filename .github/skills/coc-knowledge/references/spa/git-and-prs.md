@@ -240,6 +240,18 @@ Renames use the new path; deletions keep their path. Save failures keep the
 draft and show the error; save or cancel returns focus to the row. A saved
 comment posts `git-review-comments-updated` on the pop-out channel so open
 `useDiffComments` / `useReviewComments` views re-read.
+Working changes adds one destructive revert item after a separator
+(`workingChangeRevert.tsx`). `planWorkingChangeRevert` picks it from the row's
+stage and status — untracked → **Delete untracked file**; unstaged M →
+**Discard unstaged changes** (to the index, staged edits kept); unstaged D or
+staged D → **Restore deleted file**; staged M → **Revert to last commit**;
+staged A/C or intent-to-add → **Delete new file**; staged R → **Undo rename**
+(both paths) — and a confirmation dialog names what is lost, counting other rows
+for the same paths (mixed staged/unstaged). Conflicts, a restore over an
+untracked file at the same path, unsaved edits to that file and retained rows
+no longer in status disable the item with a reason. Confirm posts the plan's
+`expected` rows through the list's own owner client and workspace; refusals stay
+in the dialog, success reloads strictly.
 Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
 patch/content loaders, comment context and transport; the supplied paths replace
 the source’s fallback file-list loader. PR mobile/patch-only views retain the slim

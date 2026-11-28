@@ -33,6 +33,7 @@ import type {
   GitRepoState,
   GitWorkingTreeChangesResponse,
   GitWorkingTreeContentStage,
+  GitWorkingTreeRevertRequest,
   GitWorkingTreeFileContentResponse,
   GitAutoPullStatusResponse,
   ListWorktreesResponse,
@@ -514,6 +515,11 @@ export class GitClient {
 
   deleteUntrackedFile(workspaceId: string, filePath: string): Promise<GitOperationResult> {
     return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/changes/untracked'), jsonRequest('DELETE', { filePath }));
+  }
+
+  /** Revert one status row: discard, restore from HEAD, or delete untracked, as its state requires. */
+  revertWorkingTreeChange(workspaceId: string, request: GitWorkingTreeRevertRequest): Promise<GitOperationResult> {
+    return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/changes/revert'), jsonRequest('POST', request));
   }
 
   /** Discard every working-tree change (staged, unstaged, and untracked) in one call. */

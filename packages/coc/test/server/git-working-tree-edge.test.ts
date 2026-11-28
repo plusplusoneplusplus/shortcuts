@@ -36,6 +36,7 @@ const mockGetFileDiff = vi.fn();
 const mockStageFiles = vi.fn();
 const mockUnstageFiles = vi.fn();
 const mockLoadWorkingTreePatch = vi.fn();
+const mockRevertChange = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -51,6 +52,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getFileDiff: mockGetFileDiff,
             stageFiles: mockStageFiles,
             unstageFiles: mockUnstageFiles,
+            revertChange: mockRevertChange,
         }); }),
         loadWorkingTreePatch: (...args: any[]) => mockLoadWorkingTreePatch(...args),
     };
@@ -110,6 +112,8 @@ describe('Git Working Tree Edge Cases', () => {
 
     const WORKSPACE_ID = 'ws-working-tree-edge';
     const WORKSPACE_ROOT = '/test/working-tree-repo';
+    const OTHER_WORKSPACE_ID = 'ws-working-tree-other';
+    const OTHER_WORKSPACE_ROOT = '/test/other-repo';
 
     const base = () => `http://127.0.0.1:${port}`;
 
@@ -125,6 +129,7 @@ describe('Git Working Tree Edge Cases', () => {
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'Working Tree Repo', rootPath: WORKSPACE_ROOT },
+            { id: OTHER_WORKSPACE_ID, name: 'Other Repo', rootPath: OTHER_WORKSPACE_ROOT },
         ]);
 
         const routes: Route[] = [];
@@ -150,6 +155,66 @@ describe('Git Working Tree Edge Cases', () => {
         mockStageFiles.mockReset();
         mockUnstageFiles.mockReset();
         mockLoadWorkingTreePatch.mockReset();
+        mockRevertChange.mockReset();
+    });
+
+    describe('POST /api/workspaces/:id/git/changes/revert', () => {
+        const revert = (workspaceId: string, body: unknown) => request(
+            `${base()}/api/workspaces/${workspaceId}/git/changes/revert`, { method: 'POST', body: JSON.stringify(body) },
+        );
+
+        it('reverts in the addressed workspace and maps client status letters back to service statuses', async () => {
+            mockRevertChange.mockResolvedValue({ success: true });
+            const filePath = `${OTHER_WORKSPACE_ROOT}/b2.txt`;
+            const res = await revert(OTHER_WORKSPACE_ID, {
+                filePath, stage: 'staged',
+                expected: [{ filePath, stage: 'staged', status: 'R', originalPath: `${OTHER_WORKSPACE_ROOT}/b.txt` }],
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockRevertChange).toHaveBeenCalledTimes(1);
+            expect(mockRevertChange).toHaveBeenCalledWith(OTHER_WORKSPACE_ROOT, {
+                filePath, stage: 'staged',
+                expected: [{ filePath, stage: 'staged', status: 'renamed', originalPath: `${OTHER_WORKSPACE_ROOT}/b.txt` }],
+            });
+        });
+
+        it('returns the service refusal unchanged', async () => {
+            mockRevertChange.mockResolvedValue({ success: false, error: 'This file changed since the list was loaded. Refresh and try again.' });
+            const filePath = `${WORKSPACE_ROOT}/a.txt`;
+            const res = await revert(WORKSPACE_ID, { filePath, stage: 'unstaged', expected: [{ filePath, stage: 'unstaged', status: 'M' }] });
+            expect(res.json()).toEqual({ success: false, error: expect.stringMatching(/changed since/) });
+        });
+
+        it.each([
+            ['another workspace', `${OTHER_WORKSPACE_ROOT}/a.txt`],
+            ['a parent directory', `${WORKSPACE_ROOT}/../escape.txt`],
+            ['the root itself', WORKSPACE_ROOT],
+        ])('rejects a path in %s without calling the service', async (_label, filePath) => {
+            const res = await revert(WORKSPACE_ID, { filePath, stage: 'untracked', expected: [{ filePath, stage: 'untracked', status: '?' }] });
+            expect(res.status).toBe(400);
+            expect(mockRevertChange).not.toHaveBeenCalled();
+        });
+
+        it('rejects a rename original outside the workspace', async () => {
+            const filePath = `${WORKSPACE_ROOT}/b2.txt`;
+            const res = await revert(WORKSPACE_ID, {
+                filePath, stage: 'staged', expected: [{ filePath, stage: 'staged', status: 'R', originalPath: '/etc/passwd' }],
+            });
+            expect(res.status).toBe(400);
+            expect(mockRevertChange).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['no expected rows', { filePath: `${WORKSPACE_ROOT}/a.txt`, stage: 'staged' }],
+            ['an unknown stage', { filePath: `${WORKSPACE_ROOT}/a.txt`, stage: 'index', expected: [] }],
+            ['a malformed row', { filePath: `${WORKSPACE_ROOT}/a.txt`, stage: 'staged', expected: [{ filePath: 1 }] }],
+        ])('rejects %s', async (_label, body) => {
+            const res = await revert(WORKSPACE_ID, body);
+            expect(res.status).toBe(400);
+            expect(mockRevertChange).not.toHaveBeenCalled();
+        });
     });
 
     // ========================================================================

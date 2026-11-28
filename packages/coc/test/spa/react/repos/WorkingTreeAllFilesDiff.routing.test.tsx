@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { useEffect } from 'react';
 
 const h = vi.hoisted(() => {
-    const make = () => ({ git: { getWorkingTreeChanges: vi.fn(), getWorkingTreeFileDiff: vi.fn().mockResolvedValue({ diff: '' }),
+    const make = () => ({ git: { getWorkingTreeChanges: vi.fn(), revertWorkingTreeChange: vi.fn().mockResolvedValue({ success: true }), getWorkingTreeFileDiff: vi.fn().mockResolvedValue({ diff: '' }),
         getWorkingTreeFileContent: vi.fn().mockResolvedValue({
             binary: false, tooLarge: false, base: { content: 'needle', exists: true }, head: { content: 'needle', exists: true },
         }) } });
@@ -55,6 +55,19 @@ describe('working review concrete owner routing', () => {
         expect(h.first.git.getWorkingTreeFileContent).toHaveBeenCalledWith('member', '/repo/first.ts', 'staged');
         expect(h.local.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
         expect(h.second.git.getWorkingTreeFileContent).not.toHaveBeenCalled();
+    });
+    it('sends a revert only to the owner that listed the change', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId={first} />);
+        await screen.findByTestId('owned-pane');
+        fireEvent.contextMenu(screen.getByRole('button', { name: /first\.ts/ }), { clientX: 5, clientY: 5 });
+        fireEvent.click(within(screen.getByTestId('context-menu')).getByRole('menuitem', { name: /Revert to last commit/ }));
+        await act(async () => fireEvent.click(screen.getByTestId('working-change-revert-confirm')));
+        expect(h.first.git.revertWorkingTreeChange).toHaveBeenCalledWith('member', {
+            filePath: '/repo/first.ts', stage: 'staged', expected: [{ filePath: '/repo/first.ts', stage: 'staged', status: 'M' }],
+        });
+        expect(h.local.git.revertWorkingTreeChange).not.toHaveBeenCalled();
+        expect(h.second.git.revertWorkingTreeChange).not.toHaveBeenCalled();
+        await waitFor(() => expect(h.first.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('member', { refresh: true }));
     });
     it('explicit local owners stay on page origin despite a remote workspace with the same id', async () => {
         render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="member" />);
