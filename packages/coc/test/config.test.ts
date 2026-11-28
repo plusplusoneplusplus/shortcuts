@@ -73,7 +73,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: true, richPasteEnabled: true, backgroundEnabled: true, navigationApprovalEnabled: true, humanTakeoverEnabled: false, cursorOverlayEnabled: true, demoRecordingEnabled: false, annotationEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.canvasExtensions).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.canvasExtensions).toEqual({ enabled: false, singletonPerSession: true });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
                 idleCheckIntervalMs: 300_000,
@@ -1171,6 +1171,7 @@ timeout: 300
                 '  enabled: true',
                 'canvasExtensions:',
                 '  enabled: true',
+                '  singletonPerSession: false',
                 'kusto:',
                 '  enabled: true',
                 '  azureCli:',
@@ -1316,7 +1317,7 @@ timeout: 300
             expect(notFromFile).toEqual([]);
             expect(result.resolved.features.diffContentSearch).toBe(true);
             expect(result.resolved.features.diffEngineToggle).toBe(true);
-            expect(result.resolved.canvasExtensions.enabled).toBe(true);
+            expect(result.resolved.canvasExtensions).toEqual({ enabled: true, singletonPerSession: false });
             expect(result.resolved.browserControl.enabled).toBe(true);
             // Saved false overrides the default-on frame, rich paste and background flags.
             expect(result.resolved.browserControl.framesEnabled).toBe(false);
@@ -1592,6 +1593,7 @@ timeout: 300
                   },
                   "canvasExtensions": {
                     "enabled": false,
+                    "singletonPerSession": true,
                   },
                   "chat": {
                     "askUser": {
@@ -1889,6 +1891,7 @@ timeout: 300
                   "browserControl.richPasteEnabled": "default",
                   "canvas.enabled": "default",
                   "canvasExtensions.enabled": "default",
+                  "canvasExtensions.singletonPerSession": "default",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
