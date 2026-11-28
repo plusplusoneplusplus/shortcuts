@@ -35,6 +35,7 @@ export interface CanvasPanelHeaderProps {
     onCreateKusto: () => void;
     onPopOut?: () => void;
     onReloadExtension?: () => void;
+    reloadExtensionDisabled?: boolean;
     isFullscreen: boolean;
     onToggleFullscreen: () => void;
     onClose?: () => void;
@@ -43,7 +44,7 @@ export interface CanvasPanelHeaderProps {
 export function CanvasPanelHeader({
     canvas, canvasId, title, kind, availableCanvases, onSelectCanvas, titleAccessory, versions, exporter,
     saveState, statusLabel, mode, onModeChange, kustoEnabled, creatingKusto, onCreateKusto,
-    onPopOut, onReloadExtension, isFullscreen, onToggleFullscreen, onClose,
+    onPopOut, onReloadExtension, reloadExtensionDisabled, isFullscreen, onToggleFullscreen, onClose,
 }: CanvasPanelHeaderProps) {
     const [titleSwitcherOpen, setTitleSwitcherOpen] = useState(false);
     const titleSwitcherButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -270,6 +271,7 @@ export function CanvasPanelHeader({
             )}
             {onReloadExtension && (
                 <button type="button" className={ICON_BTN_CLASS} onClick={onReloadExtension}
+                    disabled={reloadExtensionDisabled}
                     aria-label="Reload canvas extension" title="Reload canvas extension"
                     data-testid="canvas-panel-reload-extension">
                     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">

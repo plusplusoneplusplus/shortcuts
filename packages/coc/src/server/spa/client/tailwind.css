@@ -1364,7 +1364,9 @@
     padding: 0 10px;
 }
 
-/* Chat and canvas blocks keep Copy inside the surface, outside the scroller. */
+/* Chat and canvas blocks float a compact Copy over the code surface. The
+   scroller keeps the full width; the code's end padding lets the last
+   characters of long lines scroll clear of the button. */
 .markdown-body .code-block-compact {
     position: relative;
     background: #f8f8f8;
@@ -1372,19 +1374,53 @@
 
 .markdown-body .code-block-compact > .code-block-copy {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 6px;
+    right: 6px;
     z-index: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: opacity 120ms ease-in-out;
+}
+
+.dark .markdown-body .code-block-compact > .code-block-copy {
+    background: rgba(45, 45, 45, 0.92);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Mouse users see Copy on hover; it fades out so it does not cover text. */
+@media (hover: hover) and (pointer: fine) {
+    .markdown-body .code-block-compact > .code-block-copy {
+        opacity: 0;
+    }
+
+    .markdown-body .code-block-compact:hover > .code-block-copy,
+    .markdown-body .code-block-compact:focus-within > .code-block-copy,
+    .markdown-body .code-block-compact > .code-block-copy[data-copy-state] {
+        opacity: 1;
+    }
+}
+
+/* Touch keeps Copy visible with a larger hit target. */
+@media (pointer: coarse) {
+    .markdown-body .code-block-compact > .code-block-copy {
+        min-height: 32px;
+        padding: 4px 10px;
+    }
 }
 
 .markdown-body .code-block-compact > .code-block-content {
-    /* Keep every line clear of Copy, including during horizontal scrolling. */
-    margin: 0 104px 0 0;
+    margin: 0;
     padding: 0;
 }
 
 .markdown-body .code-block-compact > .code-block-content > code {
-    padding: 12px 16px;
+    display: inline-block;
+    min-width: 100%;
+    vertical-align: top;
+    padding: 12px 64px 12px 16px;
     min-height: 48px;
     box-sizing: border-box;
     background: transparent;

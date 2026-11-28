@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -209,6 +210,72 @@ describe('File Preview API', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.language).toBe('css');
+        });
+    });
+
+    // ========================================================================
+    // Size limit (Files tab opens with lines=0)
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/preview — Size limit', () => {
+        const MB = 1024 * 1024;
+
+        const sha256 = (text: string) => crypto.createHash('sha256').update(text, 'utf-8').digest('hex');
+
+        /** ASCII text of exactly `bytes` bytes, with marker lines at both ends. */
+        function textOfBytes(bytes: number): string {
+            const head = 'BEGIN\n';
+            const tail = '\nEND\n';
+            return head + 'x'.repeat(bytes - head.length - tail.length) + tail;
+        }
+
+        async function previewFull(srv: ExecutionServer, wsId: string, fullPath: string) {
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(fullPath)}&lines=0`
+            );
+            return { status: res.status, body: JSON.parse(res.body) };
+        }
+
+        it.each([
+            ['just above the old 4 MB cap', 4 * MB + 1],
+            ['exactly at the 16 MB cap', 16 * MB],
+        ])('returns the full text of a file %s', async (_label, bytes) => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const text = textOfBytes(bytes);
+            const fullPath = createFile(`preview-${bytes}.json`, text);
+
+            const { status, body } = await previewFull(srv, wsId, fullPath);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({
+                type: 'file',
+                path: fullPath,
+                fileName: `preview-${bytes}.json`,
+                language: 'json',
+                totalLines: 3,
+                truncated: false,
+            });
+            expect(body.lines[0]).toBe('BEGIN');
+            expect(body.lines[2]).toBe('END');
+            // Compare digests so a mismatch does not diff multi-MB strings.
+            expect(Buffer.byteLength(body.content, 'utf-8')).toBe(bytes);
+            expect(sha256(body.content)).toBe(sha256(text));
+        });
+
+        it('rejects a file one byte over 16 MB, counting bytes rather than characters', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            // 8 MiB + 1 characters, but 16 MiB + 1 bytes in UTF-8.
+            const text = 'a' + 'é'.repeat(8 * MB);
+            expect(text.length).toBeLessThan(16 * MB);
+            expect(Buffer.byteLength(text, 'utf-8')).toBe(16 * MB + 1);
+            const fullPath = createFile('over-16mb.json', text);
+
+            const { status, body } = await previewFull(srv, wsId, fullPath);
+
+            expect(status).toBe(400);
+            expect(body).toEqual({ error: 'File too large (max 16MB)' });
         });
     });
 

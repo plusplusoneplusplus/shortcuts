@@ -33,7 +33,7 @@ import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode }
 
 export interface CanvasBodyRendererProps {
     allowDesktopGuest?: boolean;
-    onRegisterExtensionReload?: (reload: (() => void) | null) => void;
+    onRegisterExtensionReload?: (reload: (() => void) | null, options?: { disabled?: boolean }) => void;
     routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
@@ -147,6 +147,7 @@ export function CanvasBodyRenderer({
             canvasId={canvasId}
             runtimeReload={parseExtensionRuntimeReload(canvas.content)}
             allowDesktopGuest={allowDesktopGuest}
+            onRegisterReload={onRegisterExtensionReload}
         />;
     }
     if (kind.isExcalidraw && excalidrawScene) {
