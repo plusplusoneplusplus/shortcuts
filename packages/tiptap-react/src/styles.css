@@ -536,3 +536,145 @@
     outline-color: #3794ff;
     background: rgba(55, 148, 255, 0.28);
 }
+
+/* ── Code block language picker ──────────────────────────────────────────────
+   CodeBlock's NodeView wraps the <pre> so the <select> can sit in the block's
+   top-right corner; it stays hidden until the block is hovered or the picker
+   itself is focused. */
+.rich-editor .ProseMirror .code-block-node-view { position: relative; }
+.rich-editor .ProseMirror .code-block-node-view-lang {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.5rem;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    font-size: 0.75em;
+    padding: 0.1rem 0.25rem;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #24292f;
+    cursor: pointer;
+}
+.rich-editor .ProseMirror .code-block-node-view:hover .code-block-node-view-lang,
+.rich-editor .ProseMirror .code-block-node-view:focus-within .code-block-node-view-lang {
+    opacity: 1;
+}
+.dark .rich-editor .ProseMirror .code-block-node-view-lang {
+    border-color: #3c3c3c;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+/* ── Image resize handles ────────────────────────────────────────────────────
+   ResizableImage's NodeView: corner handles, a size tooltip while dragging and
+   a reset button. Handles and reset show on hover or while resizing. */
+.rich-editor .ProseMirror .image-resize-wrapper {
+    display: block;
+    margin: 0.5em 0;
+}
+
+.rich-editor .ProseMirror .image-resize-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    line-height: 0;
+}
+
+.rich-editor .ProseMirror .image-resize-container img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    cursor: default;
+}
+
+.rich-editor .ProseMirror .image-resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #0078d4;
+    border: 1px solid #fff;
+    border-radius: 2px;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.rich-editor .ProseMirror .image-resize-container:hover .image-resize-handle,
+.rich-editor .ProseMirror .image-resizing .image-resize-handle {
+    opacity: 1;
+}
+
+.rich-editor .ProseMirror .image-resize-handle.top-left     { top: 4px; left: 4px; cursor: nwse-resize; }
+.rich-editor .ProseMirror .image-resize-handle.top-right    { top: 4px; right: 4px; cursor: nesw-resize; }
+.rich-editor .ProseMirror .image-resize-handle.bottom-left  { bottom: 4px; left: 4px; cursor: nesw-resize; }
+.rich-editor .ProseMirror .image-resize-handle.bottom-right { bottom: 4px; right: 4px; cursor: nwse-resize; }
+
+.rich-editor .ProseMirror .image-resizing .image-resize-container {
+    outline: 2px dashed #0078d4;
+    outline-offset: 2px;
+}
+
+.rich-editor .ProseMirror .image-resize-tooltip {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.rich-editor .ProseMirror .image-resize-reset {
+    position: absolute;
+    top: 4px;
+    right: 20px;
+    width: 20px;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    font-size: 13px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 0;
+}
+
+.rich-editor .ProseMirror .image-resize-container:hover .image-resize-reset {
+    opacity: 1;
+}
+
+.rich-editor .ProseMirror .image-resize-reset:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.dark .rich-editor .ProseMirror .image-resize-handle {
+    background: #4fc3f7;
+    border-color: #1e1e1e;
+}
+.dark .rich-editor .ProseMirror .image-resizing .image-resize-container {
+    outline-color: #4fc3f7;
+}
+.dark .rich-editor .ProseMirror .image-resize-tooltip {
+    background: rgba(50, 50, 50, 0.9);
+}
+.dark .rich-editor .ProseMirror .image-resize-reset {
+    background: rgba(255, 255, 255, 0.25);
+    color: #e0e0e0;
+}
+.dark .rich-editor .ProseMirror .image-resize-reset:hover {
+    background: rgba(255, 255, 255, 0.4);
+}

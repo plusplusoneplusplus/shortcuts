@@ -13,9 +13,8 @@ import { createRoot } from 'react-dom/client';
 import type { Editor } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import { RichEditor } from '@plusplusoneplusplus/tiptap-react/editor';
-import { NotesCodeBlock } from './extensions/notesCodeBlock';
-import { notesLowlight } from './extensions/notesLowlight';
-import { ResizableImage } from './extensions/resizableImage';
+import { CodeBlock, codeLowlight } from '@plusplusoneplusplus/tiptap-react/code-block';
+import { ResizableImage } from '@plusplusoneplusplus/tiptap-react/image';
 import { MermaidBlock } from '@plusplusoneplusplus/tiptap-react/mermaid';
 import { MathInline, MathDisplay } from '@plusplusoneplusplus/tiptap-react/math';
 import { MapBlock } from '@plusplusoneplusplus/tiptap-embeds/map';
@@ -193,8 +192,8 @@ export function RichEditorCore({
             ]}
             // CodeBlockLowlight with a per-block language picker. A block with
             // an explicit language is highlighted live; one without stays plain
-            // (notesLowlight disables auto-detection).
-            codeBlock={NotesCodeBlock.configure({ lowlight: notesLowlight })}
+            // (codeLowlight disables auto-detection).
+            codeBlock={CodeBlock.configure({ lowlight: codeLowlight })}
             extensions={[
                 ResizableImage.configure({ inline: false, allowBase64: false }),
                 NoteLinkExtension,

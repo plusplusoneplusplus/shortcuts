@@ -1,8 +1,9 @@
 /**
  * Package contract: each JavaScript `exports` subpath is a src/<area>/index.ts with
  * matching dist paths, the root re-exports every other area without losing a
- * name (`export *` drops collisions silently), and `math` (optional katex
- * peer) stays out of the root.
+ * name (`export *` drops collisions silently), and the optional-peer areas
+ * (`math` loads katex, `code-block` loads lowlight and highlight.js) stay out
+ * of the root.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,10 +20,11 @@ const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) 
 };
 const areas = Object.keys(manifest.exports).filter((k) => k !== '.' && k !== './styles.css').map((k) => k.slice(2));
 const rootSource = readFileSync(join(pkgDir, 'src', 'index.ts'), 'utf8');
+const SUBPATH_ONLY = ['math', 'code-block'];
 
 describe('tiptap-react exports', () => {
     it('maps each subpath to src/<area>/index.ts and dist/<area>/index.js', () => {
-        expect(areas).toEqual(expect.arrayContaining(['editor', 'toolbar', 'toc', 'math', 'mermaid']));
+        expect(areas).toEqual(expect.arrayContaining(['editor', 'toolbar', 'toc', 'math', 'mermaid', 'image', 'code-block']));
         for (const area of areas) {
             expect(existsSync(join(pkgDir, 'src', area, 'index.ts')), area).toBe(true);
             expect(manifest.exports[`./${area}`]).toEqual({
@@ -32,8 +34,8 @@ describe('tiptap-react exports', () => {
         }
     });
 
-    it('re-exports every non-math area from the root without losing a name', async () => {
-        for (const area of areas.filter((a) => a !== 'math')) {
+    it('re-exports every area except the optional-peer ones from the root without losing a name', async () => {
+        for (const area of areas.filter((a) => !SUBPATH_ONLY.includes(a))) {
             expect(rootSource).toContain(`'./${area}/index.js'`);
             const mod = (await import(`../src/${area}/index.ts`)) as Record<string, unknown>;
             for (const [name, value] of Object.entries(mod)) {
@@ -42,9 +44,12 @@ describe('tiptap-react exports', () => {
         }
     });
 
-    it('keeps math subpath-only because katex is an optional peer', () => {
-        expect(manifest.peerDependenciesMeta?.katex?.optional).toBe(true);
-        expect(rootSource).not.toContain("'./math/index.js'");
+    it('keeps optional-peer areas subpath-only', () => {
+        for (const peer of ['katex', '@tiptap/extension-code-block-lowlight', 'lowlight', 'highlight.js']) {
+            expect(manifest.peerDependenciesMeta?.[peer]?.optional, peer).toBe(true);
+        }
+        for (const area of SUBPATH_ONLY) expect(rootSource).not.toContain(`'./${area}/index.js'`);
+        expect(Object.keys(root)).not.toContain('codeLowlight');
     });
 
     it('keeps Tiptap and React as peers', () => {

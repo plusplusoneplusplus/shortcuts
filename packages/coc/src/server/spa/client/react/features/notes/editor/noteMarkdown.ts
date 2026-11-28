@@ -11,7 +11,7 @@ import type { MarkedExtension } from 'marked';
 import { mathMarkdownExtension } from '@plusplusoneplusplus/tiptap-kit/math';
 import { createMarkdownCodec, type MarkdownCodecExtension } from '@plusplusoneplusplus/tiptap-kit/markdown';
 import { mapMarkdownExtension, pdfMarkdownExtension } from '@plusplusoneplusplus/tiptap-embeds/markdown';
-import { resolveCodeLanguage } from './extensions/notesLowlight';
+import { resolveCodeLanguage } from '@plusplusoneplusplus/tiptap-react/code-block';
 import {
     appendQaFootnoteDefs,
     extractQaFootnoteDefs,

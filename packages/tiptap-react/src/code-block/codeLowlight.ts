@@ -1,18 +1,15 @@
 /**
- * notesLowlight — shared lowlight registry for the Notes editor's fenced code
- * blocks (CodeBlockLowlight, RichEditorCore.tsx).
+ * codeLowlight — lowlight registry for fenced code blocks (CodeBlock).
  *
- * Registers exactly the same 16 highlight.js grammars the read-only Git diff
- * viewer uses (useSyntaxHighlight.ts) — deliberately NOT lowlight's `common`
- * bundle. The `.hljs-*` token spans it emits are colored by the globally-loaded
- * github / github-dark stylesheets (html-template.ts), toggled by ThemeProvider,
- * so light + dark highlighting follow automatically.
+ * Registers a fixed set of 16 highlight.js grammars — deliberately NOT
+ * lowlight's `common` bundle. The `.hljs-*` token spans it emits carry no
+ * colors of their own: the host loads a highlight.js theme stylesheet (for
+ * example github / github-dark) to color them.
  *
  * Auto-detection is disabled: a code block with no `language` attribute (the
  * default for a new block and for a plain ```` ``` ```` fence) renders as plain,
  * uncolored text. Only a block whose language resolves to one of the 16
- * registered grammars is highlighted. This mirrors the read-only viewers, which
- * never call `highlightAuto` either.
+ * registered grammars is highlighted.
  */
 import { createLowlight } from 'lowlight';
 import langBash from 'highlight.js/lib/languages/bash';
@@ -36,14 +33,14 @@ import langYaml from 'highlight.js/lib/languages/yaml';
  * The 16 supported code-block languages, in dropdown display order. `value` is
  * the highlight.js grammar name stored on the node's `language` attribute (and
  * serialized as the markdown fence info-string); `label` is the human name shown
- * in the per-block language picker (AC-02).
+ * in the per-block language picker.
  */
-export interface NotesCodeLanguage {
+export interface CodeLanguage {
     value: string;
     label: string;
 }
 
-export const NOTES_CODE_LANGUAGES: readonly NotesCodeLanguage[] = [
+export const CODE_LANGUAGES: readonly CodeLanguage[] = [
     { value: 'typescript', label: 'TypeScript' },
     { value: 'javascript', label: 'JavaScript' },
     { value: 'python', label: 'Python' },
@@ -63,12 +60,12 @@ export const NOTES_CODE_LANGUAGES: readonly NotesCodeLanguage[] = [
 ] as const;
 
 /** Set of the 16 registered grammar names for O(1) membership checks. */
-const REGISTERED = new Set(NOTES_CODE_LANGUAGES.map((l) => l.value));
+const REGISTERED = new Set(CODE_LANGUAGES.map((l) => l.value));
 
 /**
- * Fence-token / alias → registered grammar name. Mirrors the extension map in
- * useSyntaxHighlight.ts so a markdown fence like ```` ```ts ````, ```` ```py ````
- * or ```` ```sh ```` resolves to its registered language on import (AC-03). Keys
+ * Fence-token / alias → registered grammar name, so a markdown fence like
+ * ```` ```ts ````, ```` ```py ```` or ```` ```sh ```` resolves to its registered
+ * language on import. Keys
  * are lowercase. The 16 canonical names map to themselves via REGISTERED, so they
  * do not need entries here.
  */
@@ -145,13 +142,13 @@ registry.register('markdown', langMarkdown);
 const EMPTY_ROOT = { type: 'root' as const, children: [] as unknown[] };
 
 /**
- * The lowlight instance handed to CodeBlockLowlight. It delegates `highlight` and
+ * The lowlight instance handed to CodeBlock (CodeBlockLowlight). It delegates `highlight` and
  * `listLanguages` to the real registry, but overrides `highlightAuto` to a no-op
  * that emits no token nodes — so a block with no (or an unknown) language renders
  * plain instead of being auto-detected. The extension only calls `highlightAuto`
  * when the node has no resolvable language, which is exactly the plain-text case.
  */
-export const notesLowlight = {
+export const codeLowlight = {
     highlight: (language: string, value: string, options?: unknown) => {
         if (!registry.registered(language)) return EMPTY_ROOT;
         // @ts-expect-error — lowlight's highlight signature accepts optional opts.

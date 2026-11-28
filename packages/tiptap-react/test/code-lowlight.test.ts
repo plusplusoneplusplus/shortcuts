@@ -2,21 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import hljs from 'highlight.js';
-import {
-    notesLowlight,
-    NOTES_CODE_LANGUAGES,
-    resolveCodeLanguage,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight';
-import { NotesCodeBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock';
+import { CodeBlock, CODE_LANGUAGES, codeLowlight, resolveCodeLanguage } from '../src/code-block/index.js';
 
 /**
- * Guards the shared lowlight registry that backs the Notes editor's
- * CodeBlockLowlight extension (RichEditorCore.tsx). Per the feature spec this
- * registers exactly the 16 highlight.js grammars the Git diff viewer uses —
- * deliberately NOT lowlight's `common` bundle — and disables auto-detection so a
- * block with no language renders plain.
+ * Guards the lowlight registry that backs CodeBlock. It registers exactly 16
+ * highlight.js grammars — deliberately NOT lowlight's `common` bundle — and
+ * disables auto-detection so a block with no language renders plain.
  *   - AC-01: highlighting a known-language snippet emits `.hljs-*` token spans
- *     (colored live by the globally-loaded github / github-dark stylesheets);
+ *     (colored by the host's highlight.js theme stylesheet);
  *     a block with no language is NOT auto-highlighted.
  *   - AC-03: fence aliases (ts, py, sh, yml, rs, …) resolve to registered langs.
  */
@@ -39,13 +32,13 @@ const CPP_SNIPPET = [
     '}',
 ].join('\n');
 
-describe('notes code-block lowlight registry', () => {
+describe('code-block lowlight registry', () => {
     it('registers exactly the 16 supported grammars', () => {
-        for (const { value } of NOTES_CODE_LANGUAGES) {
-            expect(notesLowlight.registered(value)).toBe(true);
+        for (const { value } of CODE_LANGUAGES) {
+            expect(codeLowlight.registered(value)).toBe(true);
         }
-        expect(notesLowlight.listLanguages().sort()).toEqual(
-            NOTES_CODE_LANGUAGES.map((l) => l.value).sort(),
+        expect(codeLowlight.listLanguages().sort()).toEqual(
+            CODE_LANGUAGES.map((l) => l.value).sort(),
         );
     });
 
@@ -53,12 +46,12 @@ describe('notes code-block lowlight registry', () => {
         // These ship in lowlight's `common` set but are intentionally excluded —
         // guards the decision against a future accidental `createLowlight(common)`.
         for (const lang of ['php', 'ruby', 'sql', 'kotlin', 'swift', 'perl']) {
-            expect(notesLowlight.registered(lang)).toBe(false);
+            expect(codeLowlight.registered(lang)).toBe(false);
         }
     });
 
     it('AC-01: honors an explicit language, coloring keywords, strings, and comments', () => {
-        const tree = notesLowlight.highlight('cpp', CPP_SNIPPET);
+        const tree = codeLowlight.highlight('cpp', CPP_SNIPPET);
         const classes = collectClassNames(tree);
 
         expect(classes.length).toBeGreaterThan(0);
@@ -71,15 +64,15 @@ describe('notes code-block lowlight registry', () => {
     it('AC-01: does not auto-detect — a block with no language emits no token nodes', () => {
         // The extension calls highlightAuto() when a block has no resolvable
         // language; our registry overrides it to a no-op so the block stays plain.
-        const tree = notesLowlight.highlightAuto(CPP_SNIPPET) as any;
+        const tree = codeLowlight.highlightAuto(CPP_SNIPPET) as any;
         expect(collectClassNames(tree)).toEqual([]);
         expect(tree.children).toEqual([]);
     });
 
     it('renders an unsupported text fence as plain code instead of throwing', () => {
-        expect(notesLowlight.registered('text')).toBe(false);
+        expect(codeLowlight.registered('text')).toBe(false);
 
-        const tree = notesLowlight.highlight('text', 'plain text') as any;
+        const tree = codeLowlight.highlight('text', 'plain text') as any;
 
         expect(collectClassNames(tree)).toEqual([]);
         expect(tree.children).toEqual([]);
@@ -87,17 +80,17 @@ describe('notes code-block lowlight registry', () => {
 
     it('loads a text fence through the real TipTap lowlight plugin without token decorations', () => {
         // The full Highlight.js package registers the `text` alias process-wide.
-        // TipTap 3.22.4 consults that registry before calling the isolated Notes
+        // TipTap 3.22.4 consults that registry before calling the isolated
         // registry, which is the cross-registry path that caused the regression.
         expect(hljs.getLanguage('text')).toBeDefined();
-        expect(notesLowlight.registered('text')).toBe(false);
+        expect(codeLowlight.registered('text')).toBe(false);
 
         let editor: Editor | undefined;
         expect(() => {
             editor = new Editor({
                 extensions: [
                     StarterKit.configure({ codeBlock: false }),
-                    NotesCodeBlock.configure({ lowlight: notesLowlight }),
+                    CodeBlock.configure({ lowlight: codeLowlight }),
                 ],
                 content: '<pre><code class="language-text">plain text</code></pre>',
             });

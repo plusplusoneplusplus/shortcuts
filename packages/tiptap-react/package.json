@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/tiptap-react",
   "version": "0.1.0",
-  "description": "React editor shell, formatting toolbar, TOC panel and math/mermaid node views for Tiptap, built on @plusplusoneplusplus/tiptap-kit",
+  "description": "React editor shell, formatting toolbar, TOC panel, resizable image, code block language picker and math/mermaid node views for Tiptap, built on @plusplusoneplusplus/tiptap-kit",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -45,6 +45,14 @@
       "types": "./dist/mermaid/index.d.ts",
       "import": "./dist/mermaid/index.js"
     },
+    "./image": {
+      "types": "./dist/image/index.d.ts",
+      "import": "./dist/image/index.js"
+    },
+    "./code-block": {
+      "types": "./dist/code-block/index.d.ts",
+      "import": "./dist/code-block/index.js"
+    },
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {
@@ -55,6 +63,7 @@
   "peerDependencies": {
     "@plusplusoneplusplus/tiptap-kit": "^0.1.0",
     "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-code-block-lowlight": "^3.31.3",
     "@tiptap/extension-find-and-replace": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",
@@ -72,11 +81,22 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
+    "highlight.js": "^11.0.0",
     "katex": "^0.16.0",
+    "lowlight": "^3.0.0",
     "react": "^18.3.1 || ^19.0.0"
   },
   "peerDependenciesMeta": {
+    "@tiptap/extension-code-block-lowlight": {
+      "optional": true
+    },
+    "highlight.js": {
+      "optional": true
+    },
     "katex": {
+      "optional": true
+    },
+    "lowlight": {
       "optional": true
     }
   },
@@ -86,6 +106,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@tiptap/core": "3.31.3",
+    "@tiptap/extension-code-block-lowlight": "3.31.3",
     "@tiptap/extension-find-and-replace": "3.31.3",
     "@tiptap/extension-highlight": "3.31.3",
     "@tiptap/extension-link": "3.31.3",
@@ -105,8 +126,10 @@
     "@tiptap/starter-kit": "3.31.3",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
+    "highlight.js": "^11.9.0",
     "jsdom": "^27.0.1",
     "katex": "^0.16.22",
+    "lowlight": "^3.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.3.0",

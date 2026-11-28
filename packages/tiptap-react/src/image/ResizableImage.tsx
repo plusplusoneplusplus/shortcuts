@@ -1,12 +1,15 @@
 /**
- * ResizableImage — Custom Tiptap image extension with drag-resize handles.
+ * ResizableImage — Tiptap image node (named `image`) with drag-resize handles.
  *
- * Extends @tiptap/extension-image with:
+ * Mirrors @tiptap/extension-image's options and adds:
  * - Optional `width` attribute persisted into the document model
  * - React NodeView rendering corner drag handles for resizing
  * - Aspect-ratio lock during drag
  * - Double-click to reset to original size
  * - Minimum width constraint (50px)
+ * - The kit's `indent` attribute
+ *
+ * The `.image-resize-*` styles ship in this package's styles.css.
  */
 
 import { useRef, useState, useCallback, useEffect } from 'react';

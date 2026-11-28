@@ -414,12 +414,18 @@ projects can reuse it without the dashboard:
   StarterKit), a `codeBlock` replacement and `extensions`, and opens links via
   `onOpenLink`; `#anchor` links stay in-document), `/toolbar` (formatting toolbar,
   dropdowns, table strip, find/replace panel, transaction tick), `/toc`
-  (`TocPanel`), `/math` (`MathInline`, `MathDisplay`) and `/mermaid`
-  (`MermaidBlock`). The root re-exports every area except `/math`, for the same
-  katex reason. Toolbar and TOC style with Tailwind utilities, so a host's Tailwind
+  (`TocPanel`), `/math` (`MathInline`, `MathDisplay`), `/mermaid`
+  (`MermaidBlock`), `/image` (`ResizableImage`, the `image` node with drag-resize
+  handles and a persisted `width`) and `/code-block` (`CodeBlock`, a
+  CodeBlockLowlight with a per-block language picker, plus `codeLowlight` with 16
+  grammars and no auto-detection, `CODE_LANGUAGES` and `resolveCodeLanguage`). The
+  root re-exports every area except `/math` and `/code-block`, which load the
+  optional `katex`, `@tiptap/extension-code-block-lowlight`, `lowlight` and
+  `highlight.js` peers. Toolbar and TOC style with Tailwind utilities, so a host's Tailwind
   `content` must scan `tiptap-react/src` (CoC's `tailwind.config.js` does, guarded
   by `test/scripts/tailwind-content.test.ts`). `/styles.css` ships the shared editor,
-  table, indentation, comment, Mermaid and find/replace styles under
+  table, indentation, comment, Mermaid, find/replace, code-block picker and image
+  resize styles under
   `.rich-editor .ProseMirror`, with `--rich-editor-table-bg-*` palette variables
   on `.rich-editor`, `--rich-editor-table-nowrap-max` for the no-wrap limit,
   and `.dark` theme overrides. CoC imports both package stylesheets before
@@ -442,7 +448,7 @@ projects can reuse it without the dashboard:
   `PaperLinkEmbedDecorationExtension.ts` (arXiv-aware `paperLink` classifier) and
   `YouTubePopupDialog` (CoC `Dialog`). `/styles.css` ships map and PDF block
   shell styles under `.rich-editor .ProseMirror` with `.dark` overrides.
-  Images, code-block language controls, note/file links, AI diffs, pdf.js,
+  Base image and fenced-code styles, note/file links, edit-diff colors, pdf.js,
   Quick Ask and paper annotations stay in CoC CSS.
 
 All `@tiptap/*` packages are peers, so the host owns the single Tiptap/ProseMirror

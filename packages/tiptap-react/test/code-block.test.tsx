@@ -25,11 +25,7 @@ vi.mock('@tiptap/extension-code-block-lowlight', () => ({
     },
 }));
 
-import {
-    CodeBlockLanguageView,
-    NotesCodeBlock,
-} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock';
-import { NOTES_CODE_LANGUAGES } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight';
+import { CodeBlock, CodeBlockLanguageView, CODE_LANGUAGES } from '../src/code-block/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,8 +58,8 @@ describe('CodeBlockLanguageView language picker', () => {
         const options = Array.from(select.options).map((o) => o.textContent);
 
         expect(options[0]).toBe('Plain text');
-        expect(options).toHaveLength(NOTES_CODE_LANGUAGES.length + 1);
-        for (const lang of NOTES_CODE_LANGUAGES) {
+        expect(options).toHaveLength(CODE_LANGUAGES.length + 1);
+        for (const lang of CODE_LANGUAGES) {
             expect(options).toContain(lang.label);
         }
     });
@@ -114,10 +110,10 @@ describe('CodeBlockLanguageView language picker', () => {
 
 // ── Extension wiring ─────────────────────────────────────────────────────────
 
-describe('NotesCodeBlock extension', () => {
+describe('CodeBlock extension', () => {
     it('extends CodeBlockLowlight with the language-picker NodeView', () => {
-        expect((NotesCodeBlock as any).name).toBe('codeBlock');
-        const nodeView = (NotesCodeBlock as any).addNodeView();
+        expect((CodeBlock as any).name).toBe('codeBlock');
+        const nodeView = (CodeBlock as any).addNodeView();
         // ReactNodeViewRenderer is mocked to identity, so it returns the component.
         expect(nodeView).toBe(CodeBlockLanguageView);
     });

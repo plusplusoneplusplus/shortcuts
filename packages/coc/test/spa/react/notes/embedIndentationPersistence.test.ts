@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { IndentExtension } from '@plusplusoneplusplus/tiptap-kit/indent';
-import { ResizableImage } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage';
+import { ResizableImage } from '@plusplusoneplusplus/tiptap-react/image';
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
 import { MapBlock } from '@plusplusoneplusplus/tiptap-embeds/map';
 import { MermaidBlock } from '@plusplusoneplusplus/tiptap-react/mermaid';

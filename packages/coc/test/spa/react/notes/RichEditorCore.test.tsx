@@ -91,26 +91,19 @@ vi.mock('@tiptap/starter-kit', () => ({
         },
     },
 }));
-// NotesCodeBlock (CodeBlockLowlight + language-picker NodeView) replaces
-// StarterKit's plain CodeBlock; capture the lowlight registry it is configured
-// with so the swap can be asserted.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock',
-    () => ({
-        NotesCodeBlock: {
-            configure: (opts: any) => {
-                capturedLowlightOptions = opts;
-                return { name: 'codeBlockLowlight' };
-            },
+// tiptap-react's CodeBlock (CodeBlockLowlight + language-picker NodeView)
+// replaces StarterKit's plain CodeBlock; capture the lowlight registry it is
+// configured with so the swap can assert it is wired to codeLowlight.
+vi.mock('@plusplusoneplusplus/tiptap-react/code-block', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/tiptap-react/code-block')>()),
+    CodeBlock: {
+        configure: (opts: any) => {
+            capturedLowlightOptions = opts;
+            return { name: 'codeBlockLowlight' };
         },
-    }),
-);
-// RichEditorCore imports the shared 16-language registry from notesLowlight;
-// stub it so the swap can assert CodeBlockLowlight is wired to that instance.
-vi.mock(
-    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight',
-    () => ({ notesLowlight: mockLowlightRegistry }),
-);
+    },
+    codeLowlight: mockLowlightRegistry,
+}));
 vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
 vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-link', () => ({
@@ -148,7 +141,7 @@ vi.mock('@tiptap/extension-table-header', () => {
     return { TableHeader: stub };
 });
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
+vi.mock('@plusplusoneplusplus/tiptap-react/image', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock(

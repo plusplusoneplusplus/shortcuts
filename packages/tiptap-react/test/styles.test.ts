@@ -18,7 +18,7 @@ describe('shared editor stylesheet', () => {
                 expect(selector.trim()).toMatch(/^(\.dark )?\.rich-editor(?: \.ProseMirror.*)?$/);
             }
         }
-        for (const selector of ['h1', 'ul', 'blockquote', 'code', 'hr', 'a', 'mark', 'table', '[data-indent="1"]', 'span[data-comment-id]', '.block-comment', '.mermaid-node-view', '.find-and-replace-result']) {
+        for (const selector of ['h1', 'ul', 'blockquote', 'code', 'hr', 'a', 'mark', 'table', '[data-indent="1"]', 'span[data-comment-id]', '.block-comment', '.mermaid-node-view', '.find-and-replace-result', '.code-block-node-view-lang', '.image-resize-handle.top-left', '.image-resize-reset']) {
             expect(css).toContain(`.rich-editor .ProseMirror ${selector}`);
         }
     });
